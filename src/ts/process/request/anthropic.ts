@@ -18,7 +18,8 @@ import { abortedResult, beginToolRound, gateResult, refusedToolContent, runAbort
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters } from './shared'
 import { limitedField, sendArgKey, sendKeyLine } from './secretKey'
 import { isSecretRef } from 'src/ts/secretRef'
-import { mergeAnthropicStreamUsage, parseAnthropicUsage } from '../../usage/usageParse'
+import { parseAnthropicUsage } from '../../usage/usageParse'
+import { createAnthropicStreamReader } from './anthropicStreamRead'
 
 interface Claude3TextBlock {
     type: 'text',
@@ -949,90 +950,15 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
             }
         }
         let breakError = ''
-        let thinking = false
 
         const stream = new ReadableStream<StreamResponseChunk>({
             async start(controller){
-                let text = ''
                 let reader = res.body.getReader()
-                // The decoded text after the last LF: at most one unfinished line carried to the next read.
-                let tail = ''
                 let retries = 0
-                let decoder = new TextDecoder()
-                // Usage of the response being read: `message_start` gives the start, the last `message_delta` the cumulative update.
-                let startUsage:unknown = null
-                let deltaUsage:unknown = null
-                // Reported only once a `message_delta` usage was seen, so a stopped or failed stream falls back to the estimate.
-                const reportStreamUsage = () => {
-                    try {
-                        if(deltaUsage === null){
-                            return
-                        }
-                        const usage = mergeAnthropicStreamUsage(startUsage, deltaUsage)
-                        if(usage){
-                            arg.usageMeter?.report(usage)
-                        }
-                    } catch (error) {}
-                }
-                const parseEvent = ((e:string) => {
-                    try {
-                        const parsedData = JSON.parse(e)
-
-                        if(parsedData?.type === 'message_start'){
-                            startUsage = parsedData?.message?.usage ?? null
-                        }
-                        if(parsedData?.type === 'message_delta' && parsedData?.usage){
-                            deltaUsage = parsedData.usage
-                        }
-
-                        if(parsedData?.type === 'content_block_delta'){
-                            if(parsedData?.delta?.type === 'text' || parsedData.delta?.type === 'text_delta'){
-                                if(thinking){
-                                    text += "</Thoughts>\n\n"
-                                    thinking = false
-                                }
-                                text += parsedData.delta?.text ?? ''
-                            }
-    
-                            if(parsedData?.delta?.type === 'thinking' || parsedData.delta?.type === 'thinking_delta'){
-                                if(!thinking){
-                                    text += "<Thoughts>\n"
-                                    thinking = true
-                                }
-                                text += parsedData.delta?.thinking ?? ''
-                            }
-    
-                            if(parsedData?.delta?.type === 'redacted_thinking'){
-                                if(!thinking){
-                                    text += "<Thoughts>\n"
-                                    thinking = true
-                                }
-                                text += '\n{{redacted_thinking}}\n'
-                            }
-                        }
-
-                        if(parsedData?.type === 'error'){
-                            const errormsg:string = parsedData?.error?.message
-                            if(errormsg && errormsg.toLocaleLowerCase().includes('overload') && db.antiServerOverloads && retries < (db.requestRetrys ?? 0)){
-                                // console.log('Overload detected, retrying...')
-                                controller.enqueue({
-                                    "0": "Overload detected, retrying..."
-                                })
-
-                                return 'overload'
-                            }
-                            // An in-band error ends the attempt as a failure: with no reported usage it is not counted.
-                            arg.usageMeter?.markFailed()
-                            text += "Error:" + parsedData?.error?.message
-
-                        }
-                        
-                    }
-                    catch (error) {
-                    }
-
-                        
-                        
+                const parser = createAnthropicStreamReader({
+                    onUsage: (usage) => arg.usageMeter?.report(usage),
+                    onFailed: () => arg.usageMeter?.markFailed(),
+                    retryOverload: () => Boolean(db.antiServerOverloads) && retries < (db.requestRetrys ?? 0),
                 })
                 let breakWhile = false
                 while(true){
@@ -1044,79 +970,68 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         if(done){
                             break
                         }
-                        const decoded = decoder.decode(value, {stream: true})
-                        let lines:string[] = []
-                        if(decoded.includes('\n')){
-                            lines = (tail + decoded).split('\n')
-                            tail = lines.pop() ?? ''
-                        }
-                        else{
-                            tail += decoded
-                        }
                         let emit = true
-                        for(const line of lines){
-                            if(!line.startsWith('data: ') || parseEvent(line.slice(6)) !== 'overload'){
-                                continue
-                            }
+                        if(parser.feed(value) === 'overload'){
+                            // console.log('Overload detected, retrying...')
+                            controller.enqueue({
+                                "0": "Overload detected, retrying..."
+                            })
                             // The retried reply starts from nothing: no text, no open thinking block, no partial line.
                             retries++
-                            thinking = false
-                            text = ''
-                            tail = ''
-                            startUsage = null
-                            deltaUsage = null
-                            decoder = new TextDecoder()
+                            parser.reset()
                             reader.cancel().catch(() => {})
                             await sleep(1000)
                             if(arg?.abortSignal?.aborted){
                                 breakWhile = true
                                 emit = false
-                                break
                             }
-                            const retryRes = await fetchNative(replacerURL, {
-                                body: JSON.stringify(body),
-                                headers: headers,
-                                method: "POST",
-                                chatId: arg.chatId,
-                                signal: arg.abortSignal,
-                                interceptor: 'anthropic_streaming_retry'
-                            })
-                            if(retryRes.status !== 200){
-                                arg.usageMeter?.markFailed()
-                                controller.enqueue({
-                                    "0": await textifyReadableStream(retryRes.body)
+                            else{
+                                const retryRes = await fetchNative(replacerURL, {
+                                    body: JSON.stringify(body),
+                                    headers: headers,
+                                    method: "POST",
+                                    chatId: arg.chatId,
+                                    signal: arg.abortSignal,
+                                    interceptor: 'anthropic_streaming_retry'
                                 })
-                                breakWhile = true
-                                emit = false
-                                break
+                                if(retryRes.status !== 200){
+                                    arg.usageMeter?.markFailed()
+                                    controller.enqueue({
+                                        "0": await textifyReadableStream(retryRes.body)
+                                    })
+                                    breakWhile = true
+                                    emit = false
+                                }
+                                else{
+                                    reader = retryRes.body.getReader()
+                                }
                             }
-                            reader = retryRes.body.getReader()
-                            break
                         }
 
                         if(emit){
                             controller.enqueue({
-                                "0": text
+                                "0": parser.text()
                             })
                         }
 
                     } catch (error) {
                         if(!arg?.abortSignal?.aborted){
                             // A source that errored rejects every later read, so retrying would never end.
-                            reportStreamUsage()
+                            parser.reportUsage()
                             controller.error(error)
                             return
                         }
                         await sleep(1)
                     }
                 }
-                if(thinking){
-                    text += "</Thoughts>\n\n"
+                const beforeFinish = parser.text()
+                const finished = parser.finish()
+                if(finished !== beforeFinish){
                     controller.enqueue({
-                        "0": text
+                        "0": finished
                     })
                 }
-                reportStreamUsage()
+                parser.reportUsage()
                 controller.close()
             },
             cancel(){

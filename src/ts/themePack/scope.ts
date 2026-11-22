@@ -11,7 +11,7 @@ import { bare, decls, type Decl } from './csslit'
 import { COMPOUND, normalise, type LintError } from './engine'
 import { inlinePrivate } from './failclosed'
 import { isAreaPart, type ScopedArea } from './areaParts'
-import { allowedTokenNames, reservedNameReason } from './appThemeNames'
+import { allowedTokenNames, reservedNameReason, stackingNameReason } from './appThemeNames'
 import type { ThemeArea } from './index'
 
 /** The properties a stylesheet may set on a part: effects that stay inside the matched element's box and its descendants and that define no document-wide name. */
@@ -185,11 +185,11 @@ const familyWhy = (family: string): string => `the @font-face family ${family} m
 const isColourSchemeChoice = (d: Decl, entry: string): boolean => d.prop === 'color-scheme' && /^(:root|html)$/.test(entry) && d.ctx.at.length === 0 && /^(light|dark)$/.test(d.value.replace(/\s*!important\s*$/, '').trim())
 
 /**
- * Judges a chat or Studio stylesheet against Rule SCOPE. `css` is the stylesheet with its @font-face blocks taken out, `families`
+ * Judges a chat, Studio or Settings stylesheet against Rule SCOPE. `css` is the stylesheet with its @font-face blocks taken out, `families`
  * the families those blocks register. Other areas are not scoped.
  */
 export function scopePass(area: ThemeArea, css: string, families: readonly string[]): LintError[] {
-    if (area !== 'chat' && area !== 'studio') return []
+    if (area !== 'chat' && area !== 'studio' && area !== 'settings') return []
     const errors: LintError[] = []
     const seen = new Set<string>()
     const add = (selector: string, prop: string, why: string): void => {
@@ -203,7 +203,7 @@ export function scopePass(area: ThemeArea, css: string, families: readonly strin
         if (d.ctx.keyframes) continue
         const custom = d.prop.startsWith('--')
         const listed = d.ctx.selector.trim() || '(no selector)'
-        if (custom && !d.prop.startsWith('--pack-') && !allowedTokens.has(d.prop)) add(listed, d.prop, reservedNameReason(d.prop) || tokenWhy(d.prop))
+        if (custom && !d.prop.startsWith('--pack-') && !allowedTokens.has(d.prop)) add(listed, d.prop, reservedNameReason(d.prop) || stackingNameReason(area, d.prop) || tokenWhy(d.prop))
         for (const entry of d.ctx.selector.split(',').map((s) => s.trim()).filter(Boolean)) {
             const parsed = parseSelectorEntry(entry)
             if (parsed.grammarWhy) { add(entry, d.prop, `not a pack selector: ${parsed.grammarWhy} (MC-1586)`); continue }

@@ -16,9 +16,9 @@ import { checkEntryPath } from '../drive/rtb/entryPath'
 import { RtbCouldNotReadError, rangeSourceFrom, type RangeSource } from '../drive/rtb/rangeSource'
 import { readDirectory, readEntry, type BodySink, type ContainerFinding, type ZipIndex } from '../drive/rtb/zip64Reader'
 
-export type AppliedArea = 'chat' | 'studio'
+export type AppliedArea = 'chat' | 'studio' | 'settings'
 /** The screen areas this build judges at install, in refusal order. An area joins only once every R20 tripwire row is refused there. */
-export const APPLIED_AREAS: readonly AppliedArea[] = ['chat', 'studio']
+export const APPLIED_AREAS: readonly AppliedArea[] = ['chat', 'studio', 'settings']
 
 function isAppliedArea(area: string): area is AppliedArea {
     return (APPLIED_AREAS as readonly string[]).includes(area)

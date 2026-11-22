@@ -37,11 +37,12 @@ const expectAccepted = (r: LintResult): void => { expect(r.ok, why(r)).toBe(true
 const areasOf = (area: ThemeArea | 'all'): readonly ThemeArea[] => (area === 'all' ? THEME_AREAS : [area])
 // Rule SCOPE (MC-1586, MC-1608): a chat or Studio stylesheet may name only its own screen's parts, so a fixture written for chat's
 // parts is refused as a Studio sheet, and a selector that names no part is refused in both.
-const SCOPE_STUDIO_PART = /is not a part of the studio screen/
+const SCOPE_STUDIO_PART = /is not a part of the (studio|settings) screen/
 const SCOPE_NO_PART = /names no part/
 // The part-value rule (settings and home): its own reason, never the chat and Studio Rule SCOPE text.
 const SCOPE_PART_VALUE = /must name a part by value/
-const namesChatPartInStudio = (area: ThemeArea, css: string): boolean => area === 'studio' && /data-part="chat-/.test(css)
+// Studio refuses a chat part; Settings, also an applied area, refuses every part that is not its own.
+const namesChatPartInStudio = (area: ThemeArea, css: string): boolean => (area === 'studio' && /data-part="chat-/.test(css)) || (area === 'settings' && /data-part="(?!settings(-[a-z0-9-]+)?")/.test(css))
 
 // Helper variables: a hostile pack that chains through --x, --a ... is also judged with those names listed, so the
 // underlying floor logic is shown to still work.

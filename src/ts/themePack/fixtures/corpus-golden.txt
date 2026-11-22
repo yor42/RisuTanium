@@ -468,7 +468,7 @@
 "studio-hostile on Navy: P15" 15dc4314504cc481 chat:90be42bb1a689e05 settings:90be42bb1a689e05 studio:53fa0f3f98ef4d95 home:90be42bb1a689e05
 "studio-hostile: P16" 36ab36c9e45bb338 chat:aed2edf052af1221 settings:aed2edf052af1221 studio:aed2edf052af1221 home:aed2edf052af1221
 "studio-hostile on Navy: P16" 2151238d4e3b2036 chat:3216b5cca38784ce settings:3216b5cca38784ce studio:553d32dfa6547e9b home:3216b5cca38784ce
-"studio-hostile: P17" 38304ede73179d02 chat:bda0a4cb49004742 settings:2eac487d5ff70ece studio:b6b2277c1cb6e6ee home:2eac487d5ff70ece
+"studio-hostile: P17" 38304ede73179d02 chat:bda0a4cb49004742 settings:d81a11d0d1ab0e5f studio:b6b2277c1cb6e6ee home:2eac487d5ff70ece
 "studio-hostile on Navy: P17" 18423d581b32d2f2 chat:7b654d85871f0815 settings:7b654d85871f0815 studio:2df5e78948ec9f7d home:7b654d85871f0815
 "studio-hostile: T01" e26ee23828577113 chat:800b7eaa2613a11d settings:800b7eaa2613a11d studio:5c290dd8bf3de6f9 home:800b7eaa2613a11d
 "studio-hostile on Navy: T01" 89fa1acd52ec6b36 chat:3ed5b348e0cd2bf7 settings:3ed5b348e0cd2bf7 studio:cfe728d6b805c282 home:3ed5b348e0cd2bf7
@@ -523,15 +523,15 @@
 "studio-hostile: T26" b2edd0336bd2ced0 chat:61271bb843d26fb2 settings:a1c68226a6c787af studio:5a5417a387fb8bfa home:73e3460c9a9ae351
 "studio-hostile on Navy: T26" 1dc6734726cfff91 chat:b78368a34ca98553 settings:8f5083bf9a6dc087 studio:bec988f35d09ed6a home:8f5083bf9a6dc087
 "HOME_BENIGN: B01 a yellow Send button" c58f7ace7aae0072 chat:f60eabdf1a3a3a50 settings:f60eabdf1a3a3a50 studio:f60eabdf1a3a3a50 home:f6d05a33d3b1a3e2
-"HOME_BENIGN: B02 a card with a radius, padding and a border (reach)" 900671349529ff49 chat:4e998267b1f10c94 settings:06e5345738eb02f6 studio:8de557dab1a0239f home:06e5345738eb02f6
+"HOME_BENIGN: B02 a card with a radius, padding and a border (reach)" 900671349529ff49 chat:4e998267b1f10c94 settings:f54fc422b672942a studio:8de557dab1a0239f home:06e5345738eb02f6
 "HOME_BENIGN: B03 role tokens inside the floors" d39914797302a664 chat:f24797f19924e759 settings:f24797f19924e759 studio:f24797f19924e759 home:6a077eaa2944965d
 "HOME_BENIGN: B04 a token under data-input" 83ca7089b7ef3f2b chat:a7b211b8ef96dcb9 settings:a7b211b8ef96dcb9 studio:a7b211b8ef96dcb9 home:afb28922197e14cf
 "HOME_BENIGN: B05 a positionable leaf moved by a few pixels" 1a17775a6f7dc7bf chat:7a16880c6c65bfb3 settings:7a16880c6c65bfb3 studio:7a16880c6c65bfb3 home:e82358c06317de99
 "HOME_BENIGN: B06 a safe leaf hidden (the contract allows it)" cb9546831d02b2fe chat:bea259d4f9e9ed34 settings:bea259d4f9e9ed34 studio:bea259d4f9e9ed34 home:2f5bfc83cc12ed66
-"HOME_BENIGN: B07 a hover rule on a safe part" 72afb365a29aebba chat:a7827be5430cc16d settings:347c26cfe84dd8ff studio:483fef299ab5951b home:347c26cfe84dd8ff
-"HOME_BENIGN: B08 an @media block with a safe rule" 9991b829e352ce9b chat:145c233dd84be1d8 settings:6f8799974b8ac3c6 studio:5b7125475349a1b2 home:6f8799974b8ac3c6
+"HOME_BENIGN: B07 a hover rule on a safe part" 72afb365a29aebba chat:a7827be5430cc16d settings:b7a93252617ddfb8 studio:483fef299ab5951b home:347c26cfe84dd8ff
+"HOME_BENIGN: B08 an @media block with a safe rule" 9991b829e352ce9b chat:145c233dd84be1d8 settings:df0bcac1c99acafe studio:5b7125475349a1b2 home:6f8799974b8ac3c6
 "HOME_BENIGN: B09 a layout rule on a safe part (grid, order)" 7f0f67abed288477 chat:66e5bca783553058 settings:66e5bca783553058 studio:66e5bca783553058 home:9afd0d4599f9494d
-"HOME_BENIGN: B10 a bubble on a reach part" b24168545ad1c235 chat:75909d5b2ed383bc settings:0afcdd6a003b6889 studio:6cddd84243a23269 home:0afcdd6a003b6889
+"HOME_BENIGN: B10 a bubble on a reach part" b24168545ad1c235 chat:75909d5b2ed383bc settings:e2592558f1cbe624 studio:6cddd84243a23269 home:0afcdd6a003b6889
 "HOME_BENIGN: B11 a state selector on a safe part" 9532bcd983eb1de5 chat:91d4ac6d836367f6 settings:91d4ac6d836367f6 studio:91d4ac6d836367f6 home:c1c9c6f611a6ac73
 "HOME_BENIGN: B12 a descendant chain ending at a reach part" ebc6ca667e6607b3 chat:76dc54d3939226e9 settings:76dc54d3939226e9 studio:76dc54d3939226e9 home:11ae6ef387a46977
 "NEW_BENIGN all: derived solids and channels" d304581b53f177b2 chat:d8159df7cd4b5767 settings:d8159df7cd4b5767 studio:d8159df7cd4b5767 home:d8159df7cd4b5767
@@ -540,15 +540,15 @@
 "NEW_BENIGN all: the new shared tokens inside their limits" 79e2ec034b8b413d chat:71e484f9b2088b91 settings:71e484f9b2088b91 studio:71e484f9b2088b91 home:71e484f9b2088b91
 "NEW_BENIGN all: a field border at 40%" 8526e6a2da06816d chat:30d9afebff8e42ef settings:30d9afebff8e42ef studio:30d9afebff8e42ef home:30d9afebff8e42ef
 "NEW_BENIGN all: an opaque sheet and toast" 060e79dda5cc4920 chat:16bd16a6be4dc6b6 settings:16bd16a6be4dc6b6 studio:16bd16a6be4dc6b6 home:16bd16a6be4dc6b6
-"NEW_BENIGN all: a focus colour on a focus rule" 42ec539c583d59a9 chat:b92837b3eccd42ec settings:b92837b3eccd42ec studio:40a4b619ab1b2187 home:b92837b3eccd42ec
-"NEW_BENIGN chat: recolour and reshape Send (reach)" fbb0cb13c22e17c1 chat:04d4fbf2f7e91584 settings:04d4fbf2f7e91584 studio:b36b293b00e0550f home:04d4fbf2f7e91584
-"NEW_BENIGN chat: respace the composer (reach)" e6adef0d5861858e chat:4dffe3d6b1580065 settings:4dffe3d6b1580065 studio:4882b89e05d623f6 home:4dffe3d6b1580065
-"NEW_BENIGN chat: recolour a list row (reach)" c1729683a5f9b0f1 chat:1504f5eb512da3a8 settings:1504f5eb512da3a8 studio:23e190f4bc233922 home:1504f5eb512da3a8
-"NEW_BENIGN chat: a safe leaf hidden" bce13f69b99fbf6c chat:b68cdf9ca2f6e015 settings:b68cdf9ca2f6e015 studio:1551ad5a0c018b13 home:b68cdf9ca2f6e015
-"NEW_BENIGN home: recolour the rail item (reach)" 390484af5c9e2330 chat:311a8ae473ec2855 settings:02b00bd3a0eca61e studio:d4b1e52569cc0e83 home:02b00bd3a0eca61e
+"NEW_BENIGN all: a focus colour on a focus rule" 42ec539c583d59a9 chat:b92837b3eccd42ec settings:4e192e26f3749317 studio:40a4b619ab1b2187 home:b92837b3eccd42ec
+"NEW_BENIGN chat: recolour and reshape Send (reach)" fbb0cb13c22e17c1 chat:04d4fbf2f7e91584 settings:33d3c91d7191aaee studio:b36b293b00e0550f home:04d4fbf2f7e91584
+"NEW_BENIGN chat: respace the composer (reach)" e6adef0d5861858e chat:4dffe3d6b1580065 settings:d8ff3f3d896838dc studio:4882b89e05d623f6 home:4dffe3d6b1580065
+"NEW_BENIGN chat: recolour a list row (reach)" c1729683a5f9b0f1 chat:1504f5eb512da3a8 settings:ad86dd69262fe939 studio:23e190f4bc233922 home:1504f5eb512da3a8
+"NEW_BENIGN chat: a safe leaf hidden" bce13f69b99fbf6c chat:b68cdf9ca2f6e015 settings:119d563151e3cf12 studio:1551ad5a0c018b13 home:b68cdf9ca2f6e015
+"NEW_BENIGN home: recolour the rail item (reach)" 390484af5c9e2330 chat:311a8ae473ec2855 settings:bef02016aaf1f37a studio:d4b1e52569cc0e83 home:02b00bd3a0eca61e
 "NEW_BENIGN home: persona chip recolour (reach)" f2ba2f73fbd0897f chat:14c56b87965d4496 settings:14c56b87965d4496 studio:14c56b87965d4496 home:3e4a705fada09171
 "NEW_BENIGN studio: recolour Apply (reach)" 173861119e45f419 chat:c0a6fbbe3ad8b40e settings:c0a6fbbe3ad8b40e studio:467d887bd4c9fc92 home:195aa47a853fa9e0
-"NEW_BENIGN studio: recolour the save slot (reach)" f1d7c27417d57515 chat:493fa6d44c07b721 settings:cf7a529f6aa0348b studio:cf7a529f6aa0348b home:cf7a529f6aa0348b
+"NEW_BENIGN studio: recolour the save slot (reach)" f1d7c27417d57515 chat:493fa6d44c07b721 settings:dd8e8e4e07143792 studio:cf7a529f6aa0348b home:cf7a529f6aa0348b
 "NEW_BENIGN settings: recolour the index item (reach)" c521d9a0c6c9a98e chat:31a2583a90337019 settings:13078a265a9c6318 studio:afa7e61dd441a8b8 home:13078a265a9c6318
 "NEW_BENIGN settings: a safe leaf hidden" 20fc69e3e5072670 chat:c4581b9a85766a46 settings:9e1c4683ec49c4de studio:c4581b9a85766a46 home:c4581b9a85766a46
 "NEW_HOSTILE all: color-mix on text" d08b91544ef476ca chat:6096134c05e9beb0 settings:aa9b51889d01730e studio:4869d3642367ef9a home:b463a55c3b9251ab
@@ -680,7 +680,7 @@
 "HOSTILE_2: subject non-ancestor part inside critical: sheet-title" a95f6cf1fdc91069 chat:a673fa13231eaccf settings:a673fa13231eaccf studio:a673fa13231eaccf home:a673fa13231eaccf
 "HOSTILE_2: sheet header" 8cdabec3d2dd0e6c chat:30961b4d9188c59c settings:30961b4d9188c59c studio:30961b4d9188c59c home:30961b4d9188c59c
 "HOSTILE_2: sheet handle" ed745aa9439c7418 chat:6a57b2c437ca32a2 settings:6a57b2c437ca32a2 studio:6a57b2c437ca32a2 home:6a57b2c437ca32a2
-"HOSTILE_2: font-family icon font" 8f4719d33e864995 chat:353661f7ec26d3d4 settings:353661f7ec26d3d4 studio:f36224c0aaa1f268 home:353661f7ec26d3d4
+"HOSTILE_2: font-family icon font" 8f4719d33e864995 chat:353661f7ec26d3d4 settings:25f93cd807f1e2f5 studio:f36224c0aaa1f268 home:353661f7ec26d3d4
 "HOSTILE_2: appearance/ resize" f469427c31104f81 chat:2a268525b9e301b6 settings:2a268525b9e301b6 studio:2a268525b9e301b6 home:2a268525b9e301b6
 "HOSTILE_2: cursor/user-select" a40b7f445c06149e chat:cf4ac16d514e90cc settings:cf4ac16d514e90cc studio:cf4ac16d514e90cc home:cf4ac16d514e90cc
 "HOSTILE_2: visibility via collapse caught?" 0bb58764c67957e9 chat:ec3520c7416fb9b6 settings:ec3520c7416fb9b6 studio:ec3520c7416fb9b6 home:ec3520c7416fb9b6
@@ -726,14 +726,14 @@
 "HOSTILE_3: X4 token on a root attribute that makes critical text invisible" 9d509b350432e327 chat:35d19b1406480593 settings:a64bf6b68365354d studio:27ccd1a588a8a17c home:cfcd47d8097141a7
 "HOSTILE_3: X5 root attribute that is not input or layout" 6cc5a556452f4361 chat:4647c9ff0ff8511a settings:0791497b1031b52d studio:4647c9ff0ff8511a home:0791497b1031b52d
 "HOSTILE_3: X6 root attribute descendant reaching a part" 8e76ce1a845d2a70 chat:e54d2664e8694c66 settings:e54d2664e8694c66 studio:e54d2664e8694c66 home:e54d2664e8694c66
-"BENIGN: B1 bubble fill" 8937e26358746dc6 chat:f6e2ba462dbfa4c7 settings:f6e2ba462dbfa4c7 studio:e9be3d1cb6ecd726 home:f6e2ba462dbfa4c7
+"BENIGN: B1 bubble fill" 8937e26358746dc6 chat:f6e2ba462dbfa4c7 settings:0daf8ac39699f1a0 studio:e9be3d1cb6ecd726 home:f6e2ba462dbfa4c7
 "BENIGN: B2 tail corner on run starts" 31c29f703839402f chat:403463de55a990ae settings:7d62c2d4725cb156 studio:8ed2d39443120342 home:7d62c2d4725cb156
 "BENIGN: B3 failed bubble takes the column" c3875ff767248cf4 chat:ba78b7f231866eea settings:c2010f08f2f96cf1 studio:62754876ca982dc3 home:c2010f08f2f96cf1
-"BENIGN: B4 compact actions on hover" 1c262ca66f57889c chat:c161bfde1d73aab2 settings:c161bfde1d73aab2 studio:c9380e83e9fa1ba4 home:c161bfde1d73aab2
+"BENIGN: B4 compact actions on hover" 1c262ca66f57889c chat:c161bfde1d73aab2 settings:db2e6e1a826fb7db studio:c9380e83e9fa1ba4 home:c161bfde1d73aab2
 "BENIGN: B5 token block" d33296b2763c0081 chat:425c6dfa3aa1eae6 settings:425c6dfa3aa1eae6 studio:425c6dfa3aa1eae6 home:425c6dfa3aa1eae6
 "BENIGN: B6 own actions beside the bubble" c6d3080b79191e0d chat:527c91a55b1d531b settings:1fd1d7f1b7c88c5d studio:01150e8885bc3c64 home:1fd1d7f1b7c88c5d
-"BENIGN: B7 forced colours outline" fdcffc6179c55cfa chat:ad4faf552c1514cb settings:ad4faf552c1514cb studio:329207844773479a home:ad4faf552c1514cb
-"BENIGN: B8 header title colour" b5ed9551fe6c46f9 chat:2da5f428484a1e0e settings:2da5f428484a1e0e studio:2d7d2f18598e6b1e home:2da5f428484a1e0e
+"BENIGN: B7 forced colours outline" fdcffc6179c55cfa chat:ad4faf552c1514cb settings:66d9e0b4d26602a9 studio:329207844773479a home:ad4faf552c1514cb
+"BENIGN: B8 header title colour" b5ed9551fe6c46f9 chat:2da5f428484a1e0e settings:e452eb1f9cb45510 studio:2d7d2f18598e6b1e home:2da5f428484a1e0e
 "BENIGN_2: D1 touch density" 47ebb26d1cf81f56 chat:2c00f2e70e078f4d settings:2c00f2e70e078f4d studio:2c00f2e70e078f4d home:2c00f2e70e078f4d
 "BENIGN_2: D2 wide layout" 5e41b0e81cb08c7e chat:23510dac71ee258a settings:23510dac71ee258a studio:23510dac71ee258a home:23510dac71ee258a
 "BENIGN_2: D3 both attributes" e22b4a1f8321ff89 chat:31431360da71780d settings:31431360da71780d studio:31431360da71780d home:31431360da71780d
@@ -819,29 +819,29 @@
 "legacy settings: row-hidden" 5503f6bdc9bf0f98 chat:9fdb60ed94872588 settings:9fdb60ed94872588 studio:9fdb60ed94872588 home:9fdb60ed94872588
 "legacy settings: toast-faded" df9e55ef297b3a0d chat:b121a460035cb31f settings:b121a460035cb31f studio:b121a460035cb31f home:b121a460035cb31f
 "legacy settings: index-right" ce671290388ce83e chat:40185980d215aad5 settings:2ad15760d5aba14b studio:40185980d215aad5 home:40185980d215aad5
-"studio reach: R1 sheet-root padding+font" 41e6f658d4e49135 chat:769784af99b71b7f settings:5ff8b9258e5b6799 studio:c73698ebed5f2826 home:5ff8b9258e5b6799
-"studio reach: R2 form-host padding+font" fd48fb1cefbf895f chat:d00e5c85b679bd64 settings:f204f831e1553970 studio:08133f11b886594a home:f204f831e1553970
-"studio reach: R3 main padding" d0cda4eb345a4031 chat:28e6f95d38f09a0d settings:bf8e386012797e5c studio:67d5547f31d2bb0c home:bf8e386012797e5c
-"studio reach: R4 toast-box padding/gap/width" 9a976ed223f893fa chat:31bb7110148cfb8d settings:a99ed4f059fe93a7 studio:370f505bbe6d22f3 home:a99ed4f059fe93a7
-"studio reach: R5 toast-box border 16px" ee33740dd541c44f chat:4ebad73001f74f4f settings:87f979902f3d26ce studio:545e1c6f6a4ae1cc home:87f979902f3d26ce
-"studio reach: R6 sheet-root border 16 + shadow 64" 30fe44546bdf5550 chat:2a528f589e97c774 settings:936234823aa506ec studio:c0d77459e6d90c36 home:936234823aa506ec
-"studio reach: R7 shell font-size 40" d28476a59ea6a343 chat:dd7efa073eba8509 settings:ed2fa4f302dbce75 studio:ed2fa4f302dbce75 home:ed2fa4f302dbce75
-"studio reach: R8 sheet-root letter-spacing/text-decoration/transform" 315a89546659caee chat:fa4ba651328f4b03 settings:b9085ed846e6ce82 studio:b9085ed846e6ce82 home:b9085ed846e6ce82
+"studio reach: R1 sheet-root padding+font" 41e6f658d4e49135 chat:769784af99b71b7f settings:9f5efbb8fc757935 studio:c73698ebed5f2826 home:5ff8b9258e5b6799
+"studio reach: R2 form-host padding+font" fd48fb1cefbf895f chat:d00e5c85b679bd64 settings:c65053e38b5d5f29 studio:08133f11b886594a home:f204f831e1553970
+"studio reach: R3 main padding" d0cda4eb345a4031 chat:28e6f95d38f09a0d settings:152c9db500152556 studio:67d5547f31d2bb0c home:bf8e386012797e5c
+"studio reach: R4 toast-box padding/gap/width" 9a976ed223f893fa chat:31bb7110148cfb8d settings:e9f442e26a8ebbdf studio:370f505bbe6d22f3 home:a99ed4f059fe93a7
+"studio reach: R5 toast-box border 16px" ee33740dd541c44f chat:4ebad73001f74f4f settings:0b23ff55ec81909e studio:545e1c6f6a4ae1cc home:87f979902f3d26ce
+"studio reach: R6 sheet-root border 16 + shadow 64" 30fe44546bdf5550 chat:2a528f589e97c774 settings:912e66e4b9d853cd studio:c0d77459e6d90c36 home:936234823aa506ec
+"studio reach: R7 shell font-size 40" d28476a59ea6a343 chat:dd7efa073eba8509 settings:3cd7d29fafcc9a25 studio:ed2fa4f302dbce75 home:ed2fa4f302dbce75
+"studio reach: R8 sheet-root letter-spacing/text-decoration/transform" 315a89546659caee chat:fa4ba651328f4b03 settings:0d8234f840906a82 studio:b9085ed846e6ce82 home:b9085ed846e6ce82
 "studio reach: R9 sheet-root font-family dingbat" 539945aa418dfe84 chat:9a2e9db879b9a5a0 settings:9a2e9db879b9a5a0 studio:9a2e9db879b9a5a0 home:9a2e9db879b9a5a0
-"studio reach: R10 toast-box text-align + width 100%" ba1eadeb1e50cc57 chat:bb7636f6faf3466d settings:f4f19cd3cb3a1a5e studio:f4f19cd3cb3a1a5e home:f4f19cd3cb3a1a5e
+"studio reach: R10 toast-box text-align + width 100%" ba1eadeb1e50cc57 chat:bb7636f6faf3466d settings:a4ca3c5f418706b6 studio:f4f19cd3cb3a1a5e home:f4f19cd3cb3a1a5e
 "studio reach: R11 alert via data-kind box" ede77a0381513ceb chat:e188e6194765e4ed settings:7624732d2425e184 studio:e188e6194765e4ed home:7624732d2425e184
 "studio reach: R12 data-kind=conflict padding" 983b9690cb463a5b chat:5c812330d84476d4 settings:aa27c9241fe0a4ca studio:5c812330d84476d4 home:aa27c9241fe0a4ca
-"studio reach: R13 color on ancestors" bd109318348a0310 chat:6c22374b9bfe5a64 settings:63e1bfed69613e7f studio:63e1bfed69613e7f home:63e1bfed69613e7f
+"studio reach: R13 color on ancestors" bd109318348a0310 chat:6c22374b9bfe5a64 settings:d2e05ea9169f906c studio:63e1bfed69613e7f home:63e1bfed69613e7f
 "studio reach: R14 data-kind=restore color/background close to bg" 0a0354fe33c22c04 chat:7b8a9a30dc7c1208 settings:2d444359c893da67 studio:7b8a9a30dc7c1208 home:2d444359c893da67
 "studio reach: R15 data-state=ask outline" cfaba86a44e197c6 chat:ec256debf470d4ec settings:9ab33be187bdf442 studio:ec256debf470d4ec home:9ab33be187bdf442
-"studio reach: R16 font-size 11 on sheet + width 50%" dc2394be54f3e950 chat:693b082a5edabbc6 settings:8095ecf14426239a studio:ce90a12db0a39d8c home:8095ecf14426239a
-"resource forms: unquoted" 0907fbc38948bfbc chat:52c294e974b6b62d settings:52c294e974b6b62d studio:84c2656b9c705d25 home:def31a5e3024f5b9
-"resource forms: unquoted with whitespace" 3df6189b8ff7f97d chat:6da8b17f4090944d settings:6da8b17f4090944d studio:24162196bd731676 home:d04e5083ee0fd4e0
-"resource forms: double quoted" 28a29f89ca3cf276 chat:0287b246f873bee0 settings:0287b246f873bee0 studio:c60351eadb449044 home:ba06afd36d89599c
-"resource forms: single quoted" 812c0d1053625d6c chat:823daedb9b3820b7 settings:823daedb9b3820b7 studio:d76f5a54a2e20820 home:27c1e60c22b34a9b
-"resource forms: quoted with whitespace" e996a34221bad575 chat:7ce41ce9f65fe27b settings:7ce41ce9f65fe27b studio:bd2e3251bd05dbb0 home:4cbfc71ebec88f5a
-"resource forms: image-set strings" 2c7dbcf3346e2ddf chat:56a74e242c73b03d settings:56a74e242c73b03d studio:57143e952f4ad2ba home:fcd3142a44ad4642
-"resource forms: vendor image-set" a9fb23a6f14f85b7 chat:7e39592bd1509a6f settings:7e39592bd1509a6f studio:4c02b5f9001d39df home:7e39592bd1509a6f
-"resource forms: after a comment" 5098f795cceca215 chat:ea4f72220450276f settings:ea4f72220450276f studio:53794bbe512ff4e5 home:666b03703b7e0fde
-"resource forms: font face sources" 0d7885809ea01656 chat:910877fdf99859bc settings:910877fdf99859bc studio:7155281a6511324e home:97a058a72d10d91f
+"studio reach: R16 font-size 11 on sheet + width 50%" dc2394be54f3e950 chat:693b082a5edabbc6 settings:78808b48dae79838 studio:ce90a12db0a39d8c home:8095ecf14426239a
+"resource forms: unquoted" 0907fbc38948bfbc chat:52c294e974b6b62d settings:6bff31724e413bc2 studio:84c2656b9c705d25 home:def31a5e3024f5b9
+"resource forms: unquoted with whitespace" 3df6189b8ff7f97d chat:6da8b17f4090944d settings:ec330b070f15a8d8 studio:24162196bd731676 home:d04e5083ee0fd4e0
+"resource forms: double quoted" 28a29f89ca3cf276 chat:0287b246f873bee0 settings:83c33ce1809e7f25 studio:c60351eadb449044 home:ba06afd36d89599c
+"resource forms: single quoted" 812c0d1053625d6c chat:823daedb9b3820b7 settings:c370814f227611c7 studio:d76f5a54a2e20820 home:27c1e60c22b34a9b
+"resource forms: quoted with whitespace" e996a34221bad575 chat:7ce41ce9f65fe27b settings:fef9674497892d7e studio:bd2e3251bd05dbb0 home:4cbfc71ebec88f5a
+"resource forms: image-set strings" 2c7dbcf3346e2ddf chat:56a74e242c73b03d settings:55eb058cede0d2b0 studio:57143e952f4ad2ba home:fcd3142a44ad4642
+"resource forms: vendor image-set" a9fb23a6f14f85b7 chat:7e39592bd1509a6f settings:9e643581f9afe89f studio:4c02b5f9001d39df home:7e39592bd1509a6f
+"resource forms: after a comment" 5098f795cceca215 chat:ea4f72220450276f settings:42dbe865538d5472 studio:53794bbe512ff4e5 home:666b03703b7e0fde
+"resource forms: font face sources" 0d7885809ea01656 chat:910877fdf99859bc settings:1a2c7bd10baa7a8d studio:7155281a6511324e home:97a058a72d10d91f
 "resource forms: remote and broken" bdd849c525037ce1 chat:7f6f1bc947b02561 settings:7f6f1bc947b02561 studio:7f6f1bc947b02561 home:bd0ebdaa93ffd2a9

@@ -131,6 +131,7 @@
         rawStreamingText?: string
         isOptimizedStreamingMessage?: boolean
         interrupted?: boolean
+        replyRunning?: boolean
         deferAutoTranslate?: boolean
         streaming?: boolean
         // Per-character setting: while the row streams, it shows a character count instead of the text.
@@ -154,7 +155,7 @@
         onOverlay?: (open: boolean) => void
     }
     let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, stepRow, onBranch, getTreeView, neighbourText, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize, onOverlay,
-        isLastMemory = false, messageGenerationInfo, interrupted = message.interrupted === true,
+        isLastMemory = false, messageGenerationInfo, interrupted = message.interrupted === true, replyRunning = false,
         deferAutoTranslate = false, streaming = false, renderWhenComplete = false, run = 'single', disabled = false, guiRevision = 0 }: Props = $props()
     let translated = $state(false)
     let translating = $state(false)
@@ -913,6 +914,7 @@
     {#if stopDeletePending}<div data-part="chat-message-delete-pending" role="status">{language.chatShellDeletePendingStop}</div>{/if}
     {#if renderFailed}<div data-part="chat-message-render-failed" role="note">{language.messageRenderFailed}</div>{/if}
     {#if interrupted && !streaming}<div data-part="chat-message-interrupted" role="note">{language.messageInterrupted}</div>{/if}
+    {#if replyRunning && !streaming}<div data-part="chat-message-interrupted" data-kind="running" role="status">{language.messageReplyRunning}</div>{/if}
     {#if isLastMemory}<div data-part="chat-message-memory-limit" style:border-top-width={`${DBState.db.memoryLimitThickness}px`}></div>{/if}
     {#if disabled}<div data-part="chat-message-divider" data-kind={disabled === 'allBefore' ? 'all-before' : 'disabled'}></div>{/if}
 </article>

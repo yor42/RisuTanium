@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { rangeSourceFrom } from '../drive/rtb/rangeSource'
 import { judgeAreaSheet, judgePackSheets, THEME_AREAS, type ThemeArea } from './index'
 import { intakePackBytes, readVerifiedFile, type IntakeResult, type PackJudge, type VerifiedPack } from './intake'
+import { scopePass } from './scope'
 
 const PACKS_DIR = new URL('../../../theme-packs/', import.meta.url)
 const DOCS_DIR = new URL('../../../docs/design/', import.meta.url)
@@ -75,7 +76,7 @@ describe('D-1 the downloadable packs keep their pinned size and SHA-256, in the 
     })
 })
 
-describe('D-2 intake accepts each pack with its chat and studio sheets judged and the other two areas skipped', () => {
+describe('D-2 intake accepts each pack with its chat, studio and settings sheets judged and home skipped', () => {
     for (const pack of PACKS) {
         it(pack.file, async () => {
             const accepted = acceptedPack(await intakePackBytes(packBytes(pack.file), judge))
@@ -92,9 +93,21 @@ describe('D-2 intake accepts each pack with its chat and studio sheets judged an
             })
             expect(accepted.sheets.chat?.result.ok).toBe(true)
             expect(accepted.sheets.studio?.result.ok).toBe(true)
-            expect(accepted.skippedAreas).toEqual(['home', 'settings'])
+            expect(accepted.sheets.settings?.result.ok).toBe(true)
+            expect(accepted.skippedAreas).toEqual(['home'])
             expect(accepted.size.warn).toBe(false)
             expect([...accepted.files.keys()]).toEqual(pack.fileKeys)
+        })
+    }
+})
+
+describe('C6 the settings.css of each downloadable pack passes Rule SCOPE for settings (the pattern token file is a settings app token file)', () => {
+    for (const pack of PACKS) {
+        it(pack.file, () => {
+            const css = strFromU8(unzipSync(packBytes(pack.file))['settings.css'])
+            const judged = judgeAreaSheet('settings', css, undefined, 'settings')
+            expect(judged.result.errors).toEqual([])
+            expect(scopePass('settings', judged.canonical, [])).toEqual([])
         })
     }
 })

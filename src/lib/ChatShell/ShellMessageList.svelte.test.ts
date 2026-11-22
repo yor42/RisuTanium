@@ -27,7 +27,7 @@ vi.mock('../ChatScreens/chatSurface.svelte', () => {
     return { chatSurface, isChatSurfaceInstalled: () => true, onSurfaceHiding: () => () => {} }
 })
 vi.mock('../../ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
-vi.mock('../../lang', () => ({ language: { loadMore: 'Load more', messageRenderFailed: 'Failed', messageRenderRetry: 'Retry', messageInterrupted: 'Interrupted' } }))
+vi.mock('../../lang', () => ({ language: { loadMore: 'Load more', messageRenderFailed: 'Failed', messageRenderRetry: 'Retry', messageInterrupted: 'Interrupted', messageReplyRunning: 'Still replying' } }))
 vi.mock('../../ts/characters', () => ({ getCharImage: async () => null }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'model' }) }))
 vi.mock('../../ts/storage/database.svelte', () => ({ getCurrentCharacter: () => null }))
@@ -63,6 +63,7 @@ import ShellMessageList from './ShellMessageList.svelte'
 import { ReloadGUIPointer as gui, ScrollToMessageStore as bookmark } from '../../ts/stores.svelte'
 import { chatFoldedStateMessageIndex as folded } from '../../ts/globalApi.svelte'
 import { chatSurface as surface } from '../ChatScreens/chatSurface.svelte'
+import { resetRunningRepliesForTests, setRunningReplies } from '../../ts/nativeReply/runningReplies.svelte'
 
 let app: ReturnType<typeof ShellMessageList> | undefined
 let target: HTMLElement
@@ -179,6 +180,24 @@ describe('ShellMessageList row identity and window', () => {
         await show()
         expect(find('stopped')?.querySelector('[data-part="chat-message-interrupted"]')?.textContent).toContain('Interrupted')
         expect(target.querySelector('[data-part="chat-first-message"]')).not.toBeNull()
+    })
+
+    test('T25: an interrupted reply whose key runs elsewhere shows the running note, reactively', async () => {
+        character.chats[0].message = [{ ...row('running'), interrupted: true }, { ...row('stream'), interrupted: true }, row('plain')]
+        resetRunningRepliesForTests()
+        setRunningReplies([{ key: 'running', target: null }, { key: 'stream', target: null }, { key: 'plain', target: null }])
+        await show()
+        const running = find('running')
+        expect(running?.querySelector('[data-part="chat-message-interrupted"][data-kind="running"]')?.textContent).toBe('Still replying')
+        expect(running?.textContent).not.toContain('Interrupted')
+        // An active stream reply and a message that is not interrupted show neither note.
+        expect(find('stream')?.querySelector('[data-part="chat-message-interrupted"]')).toBeNull()
+        expect(find('plain')?.querySelector('[data-part="chat-message-interrupted"]')).toBeNull()
+        setRunningReplies([])
+        flushSync()
+        const after = find('running')?.querySelector('[data-part="chat-message-interrupted"]')
+        expect(after?.textContent).toBe('Interrupted')
+        expect(after?.hasAttribute('data-kind')).toBe(false)
     })
 
     test('a surface rebuild replaces stale rows after the hidden visit', async () => {

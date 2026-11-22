@@ -342,6 +342,7 @@ describe('the bundled inputs', () => {
         const sentinels: Record<string, RegExp> = {
             'chat/theme-tokens.css': /--chat-dur-fast\s*:/, 'theme/nexus-tokens.css': /--nexus-text\s*:/, 'studio/studio-tokens.css': /--studio-[\w-]+\s*:/,
             'studio/st4.css': /--studio-[\w-]+\s*:/, 'settings/theme-tokens.css': /--settings-[\w-]+\s*:/, 'home/home-tokens.css': /--home-[\w-]+\s*:/,
+            'theme/pattern-tokens.css': /--pattern-[\w-]+\s*:/,
         }
         for (const [file, text] of Object.entries(TOKEN_FILES)) {
             expect(text.length, file).toBeGreaterThan(1000)
@@ -898,11 +899,13 @@ describe('MC-2542: every other family refusal stays a refusal', () => {
         expect(judged.warnings).toEqual([])
     })
 
-    test('V-T6: a settings sheet that registers a symbol name with its own face and uses it is accepted', () => {
-        const css = '@font-face{font-family:wingdings;src:url(f.woff2)}[data-part="settings-section-title"]{font-family:wingdings}'
-        const judged = judgeAreaSheet('settings', css)
-        expect(judged.result.errors).toEqual([])
-        expect(judged.warnings).toEqual([])
+    test('V-T6: a home sheet that registers a symbol name with its own face and uses it is accepted; a settings sheet, an applied area, is held to the pack- rule', () => {
+        const home = judgeAreaSheet('home', '@font-face{font-family:wingdings;src:url(f.woff2)}[data-part="home-story"]{font-family:wingdings}')
+        expect(home.result.errors).toEqual([])
+        expect(home.warnings).toEqual([])
+        const settings = judgeAreaSheet('settings', '@font-face{font-family:wingdings;src:url(f.woff2)}[data-part="settings-section-title"]{font-family:wingdings}')
+        expect(settings.result.ok).toBe(false)
+        expect(settings.result.errors.some((e) => /must start with pack-/.test(e.why)), JSON.stringify(settings.result.errors)).toBe(true)
     })
 })
 

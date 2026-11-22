@@ -6,10 +6,10 @@
 // on a mismatch. The chat screen is the shell surface: the ChatShell tree and the shell sidebar (src/lib/ChatShell/**).
 
 /** The areas whose stylesheets the scope rules judge. */
-export type ScopedArea = 'chat' | 'studio'
+export type ScopedArea = 'chat' | 'studio' | 'settings'
 
 /** Parts the shell renders from a component under src/lib/ChatScreens/** that the legacy chat screen renders as well. */
-export const SHARED_CHAT_PARTS: readonly string[] = ['notifications-off-notice']
+export const SHARED_CHAT_PARTS: readonly string[] = ['notifications-off-notice', 'reply-running-notice']
 
 /** Parts only the legacy chat screen renders: no shell element carries them, so a rule on them could never match the themed screen. */
 export const LEGACY_CHAT_PARTS: readonly string[] = ['chat-messages']
@@ -39,7 +39,7 @@ const CHAT_PART_NAMES: readonly string[] = [
     'chat-streaming-view', 'chat-suggestions', 'chat-swipe-arm', 'chat-swipe-commit-mark', 'chat-swipe-meter', 'chat-swipe-peek', 'chat-swipe-peek-chip', 'chat-swipe-peek-text',
     'chat-switch-actions', 'chat-switch-back', 'chat-switch-frame', 'chat-switch-retry', 'chat-switch-skeleton', 'chat-switch-text', 'chat-toast', 'chat-transcript',
     'chat-translate-preview', 'more-list', 'more-studio', 'more-subview', 'notifications-off-notice', 'plus-chip', 'plus-chip-label', 'plus-chip-mark', 'plus-chip-more',
-    'plus-chip-options', 'plus-chip-options-head', 'plus-chip-row', 'plus-chips', 'plus-chips-head', 'plus-live', 'row-menu', 'row-menu-group', 'row-menu-reason',
+    'plus-chip-options', 'plus-chip-options-head', 'plus-chip-row', 'plus-chips', 'plus-chips-head', 'plus-live', 'reply-running-notice', 'row-menu', 'row-menu-group', 'row-menu-reason',
     'sidebar-edit-order', 'sidebar-home', 'sidebar-more', 'sidebar-more-panel', 'sidebar-settings', 'sidebar-sort', 'strip-all', 'strip-avatar', 'strip-group-glyph',
     'strip-name', 'this-chat-all-settings', 'this-chat-body', 'this-chat-delete', 'this-chat-delete-reason', 'this-chat-export', 'this-chat-field', 'this-chat-group',
     'this-chat-hide-names', 'this-chat-jailbreak', 'this-chat-jump', 'this-chat-memory', 'this-chat-memory-view', 'this-chat-modules', 'this-chat-name-input', 'this-chat-note',
@@ -63,6 +63,11 @@ const STUDIO_PART = /^studio(-[a-z0-9-]+)?$/
 
 /** The Studio screen's parts: `studio` and every `studio-*` name (no such name is rendered outside src/lib/Studio/**). */
 export const isStudioPart = (name: string): boolean => STUDIO_PART.test(name)
+
+const SETTINGS_PART = /^settings(-[a-z0-9-]+)?$/
+
+/** The Settings screen's parts as a stylesheet may name them: `settings` and every `settings-*` name, so the names the design pages and downloadable sheets use are admitted too (SETTINGS_PARTS is the rename guard). */
+export const isSettingsPart = (name: string): boolean => SETTINGS_PART.test(name)
 
 const SETTINGS_PART_NAMES: readonly string[] = [
     'settings-advanced-calm', 'settings-advanced-page', 'settings-asset-width', 'settings-asset-width-custom', 'settings-back', 'settings-back-subtitle', 'settings-chat-shell-device-settings', 'settings-connection-add',
@@ -95,5 +100,6 @@ export const SETTINGS_PARTS: ReadonlySet<string> = new Set<string>(SETTINGS_PART
 
 /** Whether a stylesheet of the area may name this part. */
 export function isAreaPart(area: ScopedArea, name: string): boolean {
-    return area === 'chat' ? CHAT_PARTS.has(name) : isStudioPart(name)
+    if (area === 'chat') return CHAT_PARTS.has(name)
+    return area === 'settings' ? isSettingsPart(name) : isStudioPart(name)
 }

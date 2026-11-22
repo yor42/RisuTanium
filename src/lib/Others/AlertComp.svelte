@@ -45,6 +45,7 @@
     import PatternWarnMark from '../Nexus/pattern/PatternWarnMark.svelte';
     import type { PatternSeverity } from '../Nexus/pattern/patternWarning';
     import { motionPrefs } from 'src/ts/chatShell/motionPrefs.svelte';
+    import { ownScheme } from '../UI/ownScheme.svelte';
 
     const uid = $props.id();
 
@@ -1256,6 +1257,7 @@
             class="break-any"
             tabindex="-1"
             data-alert-box
+            use:ownScheme={a.ownScheme === 'saveGuard' ? 'prompt' : null}
             data-alert-size={WIDE_TYPES.has(a.type) ? 'wide' : undefined}
             role={ALERT_DIALOG_TYPES.has(a.type) ? 'alertdialog' : 'dialog'}
             aria-modal="true"

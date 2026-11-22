@@ -1,12 +1,15 @@
-// The token stylesheets and part registries the validator judges against: exactly the files the reference validator in
-// docs/design reads, bundled as strings so the validator needs no file system. This module is the one place a later stage
-// repoints to the app's own tokens (src/styles); until then verdicts match the reference.
+// The token stylesheets and part registries the validator judges against, bundled as strings so the validator needs no file
+// system: the files the reference validator in docs/design reads, plus theme/pattern-tokens.css, which only the pattern
+// registry checks of the reference read (the theme lint does not) and which the applied Settings area declares as its own
+// tokens. This module is the one place a later stage repoints to the app's own tokens (src/styles); until then verdicts
+// match the reference.
 import chatThemeTokens from '../../../docs/design/chat/theme-tokens.css?raw'
 import nexusTokens from '../../../docs/design/theme/nexus-tokens.css?raw'
 import studioTokens from '../../../docs/design/studio/studio-tokens.css?raw'
 import studioSlice4 from '../../../docs/design/studio/st4.css?raw'
 import settingsThemeTokens from '../../../docs/design/settings/theme-tokens.css?raw'
 import homeTokens from '../../../docs/design/home/home-tokens.css?raw'
+import patternTokens from '../../../docs/design/theme/pattern-tokens.css?raw'
 import partsShell from '../../../docs/design/studio/checks/th/parts-shell.json'
 import partsTgb from '../../../docs/design/studio/checks/th/parts-tgb.json'
 import partsLte from '../../../docs/design/studio/checks/th/parts-lte.json'
@@ -45,6 +48,7 @@ export const TOKEN_FILES = {
     'studio/st4.css': required('studio/st4.css', studioSlice4, '--studio-'),
     'settings/theme-tokens.css': required('settings/theme-tokens.css', settingsThemeTokens, '--settings-'),
     'home/home-tokens.css': required('home/home-tokens.css', homeTokens, '--home-'),
+    'theme/pattern-tokens.css': required('theme/pattern-tokens.css', patternTokens, '--pattern-'),
 } as const
 
 export type TokenFile = keyof typeof TOKEN_FILES

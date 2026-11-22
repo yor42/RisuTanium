@@ -362,9 +362,10 @@ describe('axis D: font families (REPRO)', () => {
         refused('chat', `@font-face{font-family:"Pretendard";src:url("fonts/a.woff2")}${NAME}{font-family:"Pretendard"}`, /MC-1568|MC-1550/)
     })
 
-    it('the settings and home areas keep their families', () => {
-        accepted('settings', '@font-face{font-family:"pack serif";src:url("fonts/a.woff2")}')
+    it('home keeps its families, and settings, an applied area, is held to the pack- rule (S3a-3)', () => {
         accepted('home', '@font-face{font-family:"pack serif";src:url("fonts/a.woff2")}')
+        refused('settings', '@font-face{font-family:"pack serif";src:url("fonts/a.woff2")}', /must start with pack-/)
+        accepted('settings', '@font-face{font-family:"pack-serif";src:url("fonts/a.woff2")}')
     })
 })
 
@@ -375,8 +376,16 @@ describe('the acceptance sheets stay accepted (T0a-7, GUARD)', () => {
         accepted(area, css)
     })
 
-    it('scope.ts leaves the settings and home areas alone', () => {
-        expect(scopePass('settings', '[data-part="chat-send"]{font-size:11px}', ['arial'])).toEqual([])
+    it('the four design settings sheets pass Rule SCOPE for settings, as an applied area (S3a-3)', () => {
+        for (const name of ['origin-navy', 'banana-cocoa', 'scratch-white', 'office-sheet']) {
+            const css = read(`settings/themes/${name}.css`)
+            expect(scopePass('settings', css, []), name).toEqual([])
+        }
+    })
+
+    it('scope.ts judges settings as chat and studio, and leaves home alone', () => {
+        expect(scopePass('settings', '[data-part="chat-send"]{font-size:11px}', ['arial'])).not.toEqual([])
+        expect(scopePass('home', '[data-part="chat-send"]{font-size:11px}', ['arial'])).toEqual([])
         expect(scopePass('home', ':root{--color-textcolor:#111111}', [])).toEqual([])
     })
 })
