@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::error::Error as StdError;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -43,8 +44,9 @@ pub struct ChatTarget {
 /// request, so a native cancel may end it while the page is frozen (MC-1435).
 /// The struct grows with further marks; they can overlap `chat_stop`, which is
 /// why it is not an enum. Native reply ownership (MC-1451) is not a tag: it
-/// rides on `FetchRequest::owner`, and no cancel path reads it. `chat_target`
-/// never decides a cancel.
+/// rides on `FetchRequest::owner`, and `chat_stop` never reads it. A separate
+/// owned flag on the live entry (set once the record is open) is what
+/// `cancel_all` consults. `chat_target` never decides a cancel.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StreamTags {
     pub chat_stop: bool,
@@ -66,6 +68,9 @@ struct LiveEntry {
     // target still stores it so a registration keeps its marks.
     #[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
     tags: StreamTags,
+    /// True once the request's record is open: `cancel_all` then leaves it to
+    /// run to its end and write its own record.
+    owned: Arc<AtomicBool>,
 }
 
 struct RegistryState {
@@ -94,6 +99,14 @@ pub struct RegistrationGuard {
     registry: FetchRegistry,
     id: String,
     serial: u64,
+    owned: Arc<AtomicBool>,
+}
+
+impl RegistrationGuard {
+    /// The entry's owned flag; the request sets it when its record is open.
+    fn owned_flag(&self) -> Arc<AtomicBool> {
+        self.owned.clone()
+    }
 }
 
 impl Drop for RegistrationGuard {
@@ -155,12 +168,14 @@ impl FetchRegistry {
         state.next_serial += 1;
         let serial = state.next_serial;
         let (handle, registration) = AbortHandle::new_pair();
-        state.live.insert(id.to_string(), LiveEntry { serial, handle, tags });
+        let owned = Arc::new(AtomicBool::new(false));
+        state.live.insert(id.to_string(), LiveEntry { serial, handle, tags, owned: owned.clone() });
         Registration::Live(
             RegistrationGuard {
                 registry: self.clone(),
                 id: id.to_string(),
                 serial,
+                owned,
             },
             registration,
         )
@@ -170,12 +185,19 @@ impl FetchRegistry {
         self.cancel_at(id, Instant::now());
     }
 
-    /// Aborts entries live at this instant; drained ids may register again.
+    /// Aborts the entries live at this instant that no open record owns; their
+    /// ids may register again. An owned request keeps running to its own end and
+    /// writes its record (a page load must not cancel it); `cancel_chat` and
+    /// `cancel` still stop it.
     pub fn cancel_all(&self) {
         let mut state = self.lock();
-        for (_, entry) in state.live.drain() {
+        state.live.retain(|_, entry| {
+            if entry.owned.load(Ordering::SeqCst) {
+                return true;
+            }
             entry.handle.abort();
-        }
+            false
+        });
     }
 
     /// Aborts every live entry the page marked `chat_stop` and returns how many.
@@ -287,6 +309,9 @@ pub struct ReplyEnd {
 /// The open record of an owned request. Dropping it ends the record's live
 /// membership, so the request's slot drops it only after the last write.
 pub trait OpenRecord: Send {
+    /// Appends the next received chunk to the record's partial journal. `offset`
+    /// is the journal's length before the chunk (the first call creates it).
+    fn append_part(&mut self, offset: u64, bytes: &[u8]) -> Result<(), String>;
     fn write_body(&mut self, bytes: &[u8]) -> Result<(), String>;
     fn write_end(&mut self, end: &ReplyEnd) -> Result<(), String>;
 }
@@ -295,6 +320,48 @@ pub trait OpenRecord: Send {
 /// ownership is refused (`invalid-key`, `exists`, `blob-too-large`, `store`).
 pub trait ReplyJournal: Send + Sync {
     fn open(&self, key: &str, page_version: u32, blob: &str) -> Result<Box<dyn OpenRecord>, &'static str>;
+}
+
+/// The most response body bytes all owned requests hold in memory at once.
+pub const MAX_OWNED_BODY_BYTES_TOTAL: usize = 64 * 1024 * 1024;
+
+/// A byte budget shared by the bodies owned requests keep for their end record.
+/// A body that cannot reserve its next chunk is dropped and ends
+/// `failed body-too-large`. Every reserved byte is released when its body is
+/// dropped or its request ends, so `used` returns to 0 once all have ended.
+pub struct BodyBudget {
+    used: AtomicUsize,
+    cap: usize,
+}
+
+impl BodyBudget {
+    pub fn with_cap(cap: usize) -> BodyBudget {
+        BodyBudget { used: AtomicUsize::new(0), cap }
+    }
+
+    #[cfg(test)]
+    pub fn used(&self) -> usize {
+        self.used.load(Ordering::SeqCst)
+    }
+
+    fn try_reserve(&self, bytes: usize) -> bool {
+        self.used
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| used.checked_add(bytes).filter(|total| *total <= self.cap))
+            .is_ok()
+    }
+
+    fn release(&self, bytes: usize) {
+        let _ = self.used.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| Some(used.saturating_sub(bytes)));
+    }
+}
+
+static PROCESS_BODY_BUDGET: OnceLock<Arc<BodyBudget>> = OnceLock::new();
+
+/// The process-wide budget every real owned request draws on.
+pub fn process_body_budget() -> Arc<BodyBudget> {
+    PROCESS_BODY_BUDGET
+        .get_or_init(|| Arc::new(BodyBudget::with_cap(MAX_OWNED_BODY_BYTES_TOTAL)))
+        .clone()
 }
 
 /// What the page asked this request to own. This module never touches the disk:
@@ -306,6 +373,8 @@ pub struct OwnedReply {
     pub journal: Option<Arc<dyn ReplyJournal>>,
     /// The request's hold on its notice token; dropping it ends the token.
     pub notice: Option<NoticeLink>,
+    /// The budget this request's in-memory body draws on.
+    pub budget: Arc<BodyBudget>,
 }
 
 impl OwnedReply {
@@ -324,6 +393,8 @@ impl OwnedReply {
 struct RecordSlot {
     record: Option<Box<dyn OpenRecord>>,
     ended: bool,
+    /// The registry entry's owned flag; set only once `record` is in place.
+    owned: Arc<AtomicBool>,
 }
 
 type SharedSlot = Arc<Mutex<RecordSlot>>;
@@ -333,6 +404,19 @@ fn lock_slot(slot: &SharedSlot) -> MutexGuard<'_, RecordSlot> {
 }
 
 impl RecordSlot {
+    /// Journals a chunk while the record is open and has no end: an append never
+    /// follows `end.json`, so a stopped record's part is never longer than the
+    /// listing measured.
+    fn append_part(&mut self, offset: u64, bytes: &[u8]) -> Result<(), String> {
+        if self.ended {
+            return Err("the record has ended".to_string());
+        }
+        match self.record.as_mut() {
+            Some(record) => record.append_part(offset, bytes),
+            None => Err("no open record".to_string()),
+        }
+    }
+
     fn write_body(&mut self, bytes: &[u8]) -> Result<(), String> {
         match self.record.as_mut() {
             Some(record) => record.write_body(bytes),
@@ -351,17 +435,53 @@ impl RecordSlot {
     }
 }
 
-/// Appends `chunk` unless the body already overflowed `cap`; an overflow drops
-/// what was kept, so an oversize body is never stored.
-fn accumulate(body: &mut Vec<u8>, overflow: &mut bool, chunk: &[u8], cap: usize) {
+/// Appends `chunk` unless the body already overflowed `cap` or the shared
+/// budget cannot hold it; an overflow drops what was kept (and releases its
+/// reservation), so an oversize body is never stored. `body.len()` is always
+/// exactly what this body has reserved.
+fn accumulate(body: &mut Vec<u8>, overflow: &mut bool, chunk: &[u8], cap: usize, budget: &BodyBudget) {
     if *overflow {
         return;
     }
-    if body.len() + chunk.len() > cap {
+    if body.len() + chunk.len() > cap || !budget.try_reserve(chunk.len()) {
+        budget.release(body.len());
         *overflow = true;
         *body = Vec::new();
     } else {
         body.extend_from_slice(chunk);
+    }
+}
+
+/// The partial journal of one owned request: every received chunk of a status
+/// 200 body is appended to `part.bin` before its event is emitted. It stops for
+/// good, without writing a partial chunk, at `cap` and at the first append
+/// error (logged once); the request itself carries on either way.
+struct Journal {
+    len: u64,
+    active: bool,
+    cap: u64,
+}
+
+impl Journal {
+    fn new(cap: u64) -> Journal {
+        Journal { len: 0, active: true, cap }
+    }
+
+    fn append(&mut self, slot: &SharedSlot, chunk: &[u8]) {
+        if !self.active {
+            return;
+        }
+        if self.len + chunk.len() as u64 > self.cap {
+            self.active = false;
+            return;
+        }
+        match lock_slot(slot).append_part(self.len, chunk) {
+            Ok(()) => self.len += chunk.len() as u64,
+            Err(message) => {
+                self.active = false;
+                eprintln!("native reply part journal stopped: {}", message);
+            }
+        }
     }
 }
 
@@ -389,7 +509,8 @@ fn log_unwritten(what: &str, result: &Option<Result<(), String>>) {
     }
 }
 
-/// The owned request's side of the tee: it keeps the body and writes the end.
+/// The owned request's side of the tee: it keeps the body, journals the chunks
+/// and writes the end.
 struct ReplyTee<'a> {
     slot: &'a SharedSlot,
     key: &'a str,
@@ -397,9 +518,32 @@ struct ReplyTee<'a> {
     body: Vec<u8>,
     overflow: bool,
     status: Option<u16>,
+    budget: Arc<BodyBudget>,
+    journal: Journal,
+    /// Body bytes received so far, whatever the journal or the budget did.
+    received: u64,
+}
+
+impl Drop for ReplyTee<'_> {
+    fn drop(&mut self) {
+        self.budget.release(self.body.len());
+    }
 }
 
 impl ReplyTee<'_> {
+    /// Takes one received chunk: returns the offset it starts at, keeps it in the
+    /// body and journals it (a status 200 body only). The caller emits the
+    /// chunk's event after this returns, so the journal is ahead of the page.
+    fn take_chunk(&mut self, chunk: &[u8]) -> u64 {
+        let offset = self.received;
+        self.received += chunk.len() as u64;
+        accumulate(&mut self.body, &mut self.overflow, chunk, MAX_REPLY_BODY_BYTES, &self.budget);
+        if self.status == Some(200) {
+            self.journal.append(self.slot, chunk);
+        }
+        offset
+    }
+
     /// The terminal step: decide the notice, write the end (the decision's
     /// `announced` and the visibility read with it), then publish the code. The
     /// hub lock is not held while the end is written, and a code is published
@@ -473,7 +617,10 @@ where
             None => Some("store"),
             Some(journal) => match journal.open(&owner.key, owner.page_version, &owner.blob) {
                 Ok(record) => {
-                    lock_slot(slot).record = Some(record);
+                    let mut held = lock_slot(slot);
+                    held.record = Some(record);
+                    // The only acceptance point: `cancel_all` spares the entry from here on.
+                    held.owned.store(true, Ordering::SeqCst);
                     None
                 }
                 Err(reason) => Some(reason),
@@ -494,7 +641,17 @@ where
         }
         return None;
     }
-    Some(ReplyTee { slot, key: &owner.key, notice: owner.notice.as_ref(), body: Vec::new(), overflow: false, status: None })
+    Some(ReplyTee {
+        slot,
+        key: &owner.key,
+        notice: owner.notice.as_ref(),
+        body: Vec::new(),
+        overflow: false,
+        status: None,
+        budget: owner.budget.clone(),
+        journal: Journal::new(MAX_REPLY_BODY_BYTES as u64),
+        received: 0,
+    })
 }
 
 /// The abort arm's end for an owned request: `stopped`, only when the slot holds
@@ -720,14 +877,18 @@ where
         match response.chunk().await {
             Ok(Some(chunk)) => {
                 last_activity = Instant::now();
-                if let Some(tee) = tee.as_mut() {
-                    accumulate(&mut tee.body, &mut tee.overflow, &chunk, MAX_REPLY_BODY_BYTES);
-                }
-                let event = json!({
+                // The journal write returns before the event is emitted.
+                let offset = tee.as_mut().map(|tee| tee.take_chunk(&chunk));
+                let mut event = json!({
                     "type": "chunk",
-                    "body": general_purpose::STANDARD.encode(chunk),
+                    "body": general_purpose::STANDARD.encode(&chunk),
                     "id": request.id,
                 });
+                // Only an owned request's chunk carries where it starts; an
+                // unowned event keeps its bytes.
+                if let Some(offset) = offset {
+                    event["offset"] = json!(offset);
+                }
                 if let Err(message) = emit(event.to_string()) {
                     if tee.is_none() {
                         return failure(&message);
@@ -783,10 +944,9 @@ where
     // The slot is created here, outside the abortable future: an abort drops
     // that future, and the record with its live membership must survive until
     // the abort arm has written its end.
-    let slot: Option<SharedSlot> = request
-        .owner
-        .as_ref()
-        .map(|_| Arc::new(Mutex::new(RecordSlot { record: None, ended: false })));
+    let slot: Option<SharedSlot> = request.owner.as_ref().map(|_| {
+        Arc::new(Mutex::new(RecordSlot { record: None, ended: false, owned: _guard.owned_flag() }))
+    });
     match Abortable::new(run_fetch(&request, &emit, slot.as_ref()), abort_registration).await {
         Ok(result) => result,
         // The one place every abort of a LIVE registration ends (`cancel_chat`,
@@ -2092,6 +2252,7 @@ mod tests {
             blob: "{}".to_string(),
             journal: Some(Arc::new(PanicJournal)),
             notice: None,
+            budget: process_body_budget(),
         });
         let (result, events) = run(&FetchRegistry::new(), req);
         join.join().unwrap();
@@ -2100,7 +2261,7 @@ mod tests {
         // An unresolved store is refused as `store`.
         let (port, join) = serve_hello();
         let mut req = request("o1", format!("http://127.0.0.1:{}/", port));
-        req.owner = Some(OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None, notice: None });
+        req.owner = Some(OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None, notice: None, budget: process_body_budget() });
         let (result, events) = run(&FetchRegistry::new(), req);
         join.join().unwrap();
         assert_unowned_run(&result, &events, "store");
@@ -2313,11 +2474,11 @@ mod tests {
         fs::remove_dir_all(&base).unwrap();
     }
 
-    // T10, guard: every abort of an owned request ends its record `stopped`.
+    // T10, guard: every abort of an owned request ends its record `stopped`. `cancel_all`
+    // is not one of them: it spares an owned request (`cancel_all_spares_an_owned_request`).
     #[test]
     fn aborts_write_stopped() {
         owned_abort_case(|registry| registry.cancel("ab"));
-        owned_abort_case(|registry| registry.cancel_all());
         owned_abort_case(|registry| assert_eq!(registry.cancel_chat(), 1));
     }
 
@@ -2372,8 +2533,8 @@ mod tests {
 
     #[test]
     fn stop_without_a_record_emits_nothing() {
-        let slot: SharedSlot = Arc::new(Mutex::new(RecordSlot { record: None, ended: false }));
-        let owner = OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None, notice: None };
+        let slot: SharedSlot = Arc::new(Mutex::new(RecordSlot { record: None, ended: false, owned: Arc::new(AtomicBool::new(false)) }));
+        let owner = OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None, notice: None, budget: process_body_budget() };
         stop_owned(&slot, &owner, "x", &|_| panic!("a stopped event for a request without a record"));
     }
 
@@ -2693,6 +2854,7 @@ mod tests {
             blob: "{}".to_string(),
             journal: None,
             notice: Some(NoticeLink::bind(hub.clone(), TOKEN)),
+            budget: process_body_budget(),
         });
         let seen: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(Vec::new()));
         let (probe_hub, probe) = (hub.clone(), seen.clone());
@@ -2776,12 +2938,627 @@ mod tests {
     fn a_body_over_the_cap_is_dropped_not_kept() {
         let mut body = Vec::new();
         let mut overflow = false;
-        accumulate(&mut body, &mut overflow, b"ab", 4);
-        accumulate(&mut body, &mut overflow, b"cd", 4);
+        let budget = BodyBudget::with_cap(usize::MAX);
+        accumulate(&mut body, &mut overflow, b"ab", 4, &budget);
+        accumulate(&mut body, &mut overflow, b"cd", 4, &budget);
         assert_eq!((body.as_slice(), overflow), (&b"abcd"[..], false));
-        accumulate(&mut body, &mut overflow, b"e", 4);
+        accumulate(&mut body, &mut overflow, b"e", 4, &budget);
         assert!(overflow && body.is_empty());
-        accumulate(&mut body, &mut overflow, b"f", 4);
+        accumulate(&mut body, &mut overflow, b"f", 4, &budget);
         assert!(overflow && body.is_empty());
+    }
+
+    #[test]
+    fn the_budget_reserves_up_to_its_cap_and_an_overflow_releases_the_body() {
+        let budget = BodyBudget::with_cap(5);
+        let (mut body, mut overflow) = (Vec::new(), false);
+        accumulate(&mut body, &mut overflow, b"abc", 100, &budget);
+        assert_eq!((budget.used(), overflow), (3, false));
+        accumulate(&mut body, &mut overflow, b"de", 100, &budget);
+        assert_eq!((budget.used(), overflow), (5, false));
+        accumulate(&mut body, &mut overflow, b"f", 100, &budget);
+        assert_eq!((budget.used(), overflow, body.len()), (0, true, 0));
+        assert!(budget.try_reserve(5));
+        assert!(!budget.try_reserve(1));
+    }
+
+    // Native reply journal (#514 S2a): a gated stub sends one chunk at a time, so the
+    // test sees each chunk event before the next byte exists.
+    enum Wire {
+        Data(Vec<u8>),
+        End,
+    }
+
+    fn serve_gated_status(status: &'static str) -> (u16, mpsc::Sender<Wire>, thread::JoinHandle<()>) {
+        let (tx, rx) = mpsc::channel::<Wire>();
+        let (port, join) = serve_bounded(move |mut stream| {
+            write_status_head(&mut stream, status);
+            while let Ok(wire) = rx.recv_timeout(Duration::from_secs(10)) {
+                match wire {
+                    Wire::Data(data) => write_chunk(&mut stream, &data),
+                    Wire::End => {
+                        let _ = stream.write_all(b"0\r\n\r\n");
+                        break;
+                    }
+                }
+            }
+        });
+        (port, tx, join)
+    }
+
+    fn serve_gated() -> (u16, mpsc::Sender<Wire>, thread::JoinHandle<()>) {
+        serve_gated_status("200 OK")
+    }
+
+    struct Live {
+        events: Events,
+        kinds: mpsc::Receiver<String>,
+        result: mpsc::Receiver<String>,
+    }
+
+    impl Live {
+        fn await_event(&self, kind: &str) {
+            loop {
+                let seen = self.kinds.recv_timeout(Duration::from_secs(5)).expect("the event did not arrive");
+                if seen == kind {
+                    return;
+                }
+            }
+        }
+
+        fn finish(&self) -> String {
+            self.result.recv_timeout(Duration::from_secs(5)).expect("the request did not end")
+        }
+    }
+
+    /// Runs `req` in the background; `tap` sees every event just before it is collected.
+    fn spawn_live(registry: &FetchRegistry, req: FetchRequest, tap: impl Fn(&Value) + Send + Sync + 'static) -> Live {
+        let (events, collect) = collector();
+        let (kinds_tx, kinds) = mpsc::channel::<String>();
+        let (result_tx, result) = mpsc::channel::<String>();
+        let registry = registry.clone();
+        tauri::async_runtime::spawn(async move {
+            let emit = move |payload: String| {
+                let parsed: Value = serde_json::from_str(&payload).unwrap();
+                tap(&parsed);
+                let sent = collect(payload);
+                let _ = kinds_tx.send(parsed["type"].as_str().unwrap_or("?").to_string());
+                sent
+            };
+            let _ = result_tx.send(run_registered(&registry, req, emit).await);
+        });
+        Live { events, kinds, result }
+    }
+
+    fn owned_req(id: &str, port: u16, owner: OwnedReply) -> FetchRequest {
+        let mut req = request(id, format!("http://127.0.0.1:{}/", port));
+        req.tags = chat_stop_tags(None);
+        req.owner = Some(owner);
+        req
+    }
+
+    /// Streams `chunks` through a status-`status` stub to a request `build` makes,
+    /// ends the body and returns the result and the events.
+    fn drive(
+        status: &'static str,
+        build: impl FnOnce(u16) -> FetchRequest,
+        chunks: &[&[u8]],
+        tap: impl Fn(&Value) + Send + Sync + 'static,
+    ) -> (String, Events) {
+        let (port, tx, join) = serve_gated_status(status);
+        let live = spawn_live(&FetchRegistry::new(), build(port), tap);
+        for chunk in chunks {
+            tx.send(Wire::Data(chunk.to_vec())).unwrap();
+            live.await_event("chunk");
+        }
+        tx.send(Wire::End).unwrap();
+        let result = live.finish();
+        join.join().unwrap();
+        (result, live.events.clone())
+    }
+
+    fn drive_owned(store: &ReplyStore<FaultOps>, base: &Path, chunks: &[&[u8]]) -> (String, Events) {
+        drive("200 OK", |port| owned_req("o1", port, owner_for(store, base, KEY)), chunks, |_| {})
+    }
+
+    /// Streams `chunks` to an owned request registered as `ab`, then cancels it by id.
+    fn drive_then_cancel(store: &ReplyStore<FaultOps>, base: &Path, chunks: &[Vec<u8>]) -> (String, Events) {
+        let registry = FetchRegistry::new();
+        let (port, tx, join) = serve_gated();
+        let live = spawn_live(&registry, owned_req("ab", port, owner_for(store, base, KEY)), |_| {});
+        for chunk in chunks {
+            tx.send(Wire::Data(chunk.clone())).unwrap();
+            live.await_event("chunk");
+        }
+        registry.cancel("ab");
+        let result = live.finish();
+        drop(tx);
+        join.join().unwrap();
+        (result, live.events.clone())
+    }
+
+    fn offsets_of(events: &Events) -> Vec<Option<u64>> {
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|event| event["type"] == json!("chunk"))
+            .map(|event| event["offset"].as_u64())
+            .collect()
+    }
+
+    fn decode_partial(text: &str) -> Vec<u8> {
+        let bytes = general_purpose::STANDARD.decode(text).unwrap();
+        bytes[..bytes.len() - crate::chunked_io::TRAILER_BYTES].to_vec()
+    }
+
+    fn part_len(base: &Path) -> Option<u64> {
+        fs::metadata(record_dir(base, KEY).join("part.bin")).ok().map(|meta| meta.len())
+    }
+
+    fn stopped_end_for_test() -> ReplyEnd {
+        ReplyEnd { outcome: ReplyOutcome::Stopped, ..failed_end(None) }
+    }
+
+    // R1, regression reproducer (MC-3559): a page load's `cancel_all` leaves an owned request running.
+    #[test]
+    fn cancel_all_spares_an_owned_request() {
+        let base = scratch("s2-r1");
+        let store = plain_store();
+        let registry = FetchRegistry::new();
+        let (port, tx, join) = serve_gated();
+        let live = spawn_live(&registry, owned_req("ab", port, owner_for(&store, &base, KEY)), |_| {});
+        tx.send(Wire::Data(b"hello ".to_vec())).unwrap();
+        live.await_event("chunk");
+
+        registry.cancel_all();
+        let _ = tx.send(Wire::Data(b"world".to_vec()));
+        let _ = tx.send(Wire::End);
+
+        assert_eq!(registry.live_len(), 1);
+        assert_eq!(parse(&live.finish()), json!({ "success": true }));
+        join.join().unwrap();
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.state, listing.outcome), (ReplyState::Terminal, Some(ReplyOutcome::Done)));
+        assert_eq!(fs::read(record_dir(&base, KEY).join("body.bin")).unwrap(), b"hello world");
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R2: the same `cancel_all` still aborts an unowned request and a refused owner.
+    #[test]
+    fn cancel_all_still_aborts_unowned_and_refused_requests() {
+        let base = scratch("s2-r2");
+        let store = plain_store();
+        let registry = FetchRegistry::new();
+        let (port_a, tx_a, join_a) = serve_gated();
+        let (port_b, tx_b, join_b) = serve_gated();
+        let unowned = spawn_live(&registry, request("u", format!("http://127.0.0.1:{}/", port_a)), |_| {});
+        let mut refused_req = with_policy(true, request("r", format!("http://127.0.0.1:{}/", port_b)));
+        refused_req.owner = Some(owner_for(&store, &base, KEY));
+        let refused = spawn_live(&registry, refused_req, |_| {});
+        tx_a.send(Wire::Data(b"a".to_vec())).unwrap();
+        tx_b.send(Wire::Data(b"b".to_vec())).unwrap();
+        unowned.await_event("chunk");
+        refused.await_event("chunk");
+
+        registry.cancel_all();
+
+        assert_eq!(parse(&unowned.finish()), cancelled_json());
+        assert_eq!(parse(&refused.finish()), cancelled_json());
+        assert_eq!(registry.live_len(), 0);
+        assert!(names_in(&base).is_empty());
+        drop((tx_a, tx_b));
+        join_a.join().unwrap();
+        join_b.join().unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R4, regression reproducer (W2): each chunk is in part.bin before its event is emitted.
+    #[test]
+    fn a_chunk_is_journaled_before_its_event() {
+        let base = scratch("s2-r4");
+        let store = plain_store();
+        let lengths = Arc::new(Mutex::new(Vec::<Option<u64>>::new()));
+        let (probe, watched) = (lengths.clone(), base.clone());
+        let tap = move |event: &Value| {
+            if event["type"] == json!("chunk") {
+                probe.lock().unwrap().push(part_len(&watched));
+            }
+        };
+
+        let (result, _) = drive(
+            "200 OK",
+            |port| owned_req("o1", port, owner_for(&store, &base, KEY)),
+            &[b"hello ", b"world"],
+            tap,
+        );
+
+        assert_eq!(parse(&result), json!({ "success": true }));
+        assert_eq!(*lengths.lock().unwrap(), vec![Some(6), Some(11)]);
+        assert_eq!(fs::read(record_dir(&base, KEY).join("body.bin")).unwrap(), b"hello world");
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.state, listing.outcome, listing.partial_bytes), (ReplyState::Terminal, Some(ReplyOutcome::Done), None));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R5, regression reproducer (MC-3558): a stopped owned stream lists and reads what it received.
+    #[test]
+    fn a_stopped_owned_stream_keeps_its_received_bytes_as_a_partial() {
+        let base = scratch("s2-r5");
+        let store = plain_store();
+
+        let (result, _) = drive_then_cancel(&store, &base, &[b"ab".to_vec(), b"cd".to_vec()]);
+
+        assert_eq!(parse(&result), cancelled_json());
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.state, listing.outcome), (ReplyState::Terminal, Some(ReplyOutcome::Stopped)));
+        assert_eq!(listing.partial_bytes, Some(4));
+        assert_eq!(decode_partial(&store.read_partial(&base, KEY, 0, u64::MAX).unwrap()), b"abcd");
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R6 (producer round trip): the served prefix, the read and the committed fixture agree byte for byte.
+    #[test]
+    fn a_cancelled_sse_stream_leaves_exactly_the_committed_part_fixture() {
+        let base = scratch("s2-r6");
+        let store = plain_store();
+        let chunks = part_fixture_chunks();
+
+        drive_then_cancel(&store, &base, &chunks);
+
+        let served = chunks.concat();
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.state, listing.partial_bytes), (ReplyState::Terminal, Some(served.len() as u64)));
+        let read = decode_partial(&store.read_partial(&base, KEY, 0, u64::MAX).unwrap());
+        assert_eq!(read, served);
+        assert_eq!(read, fs::read(part_fixture_path()).expect("the committed part fixture is missing"));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R7 (W8/W3): nothing is appended after the end, and a done run's part is its body.
+    #[test]
+    fn nothing_is_appended_after_the_end_and_a_done_part_is_the_body() {
+        let base = scratch("s2-r7");
+        let store = plain_store();
+        let record = store.open_record(&base, KEY, 1, "{}").unwrap();
+        let mut slot = RecordSlot { record: Some(record), ended: false, owned: Arc::new(AtomicBool::new(false)) };
+        slot.append_part(0, b"ab").unwrap();
+        assert!(matches!(slot.write_end(&stopped_end_for_test()), Some(Ok(()))));
+
+        assert!(slot.append_part(2, b"cd").is_err());
+
+        assert_eq!(part_len(&base), Some(2));
+        drop(slot);
+        fs::remove_dir_all(&base).unwrap();
+
+        let base = scratch("s2-r7-done");
+        let store = plain_store();
+        let (result, _) = drive_owned(&store, &base, &[b"hello ", b"world"]);
+        assert_eq!(parse(&result), json!({ "success": true }));
+        let listing = only_listing(&store, &base);
+        assert_eq!(part_len(&base), listing.body_bytes);
+        assert_eq!(fs::read(record_dir(&base, KEY).join("part.bin")).unwrap(), b"hello world");
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R8 (W5): the journal stops before a chunk that would cross its cap and never resumes.
+    #[test]
+    fn the_journal_stops_at_its_cap() {
+        let base = scratch("s2-r8");
+        let store = plain_store();
+        let record = store.open_record(&base, KEY, 1, "{}").unwrap();
+        let slot: SharedSlot = Arc::new(Mutex::new(RecordSlot { record: Some(record), ended: false, owned: Arc::new(AtomicBool::new(false)) }));
+        let mut journal = Journal::new(8);
+
+        journal.append(&slot, b"abcde");
+        journal.append(&slot, b"fghij");
+        journal.append(&slot, b"k");
+
+        assert_eq!(fs::read(record_dir(&base, KEY).join("part.bin")).unwrap(), b"abcde");
+        drop(slot);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R9 (W1): a head that is not 200 writes no part, and the done record is as before.
+    #[test]
+    fn a_non_200_head_writes_no_part() {
+        for status in ["500 Internal Server Error", "201 Created"] {
+            let base = scratch("s2-r9");
+            let store = plain_store();
+            let (result, _) = drive(status, |port| owned_req("o1", port, owner_for(&store, &base, KEY)), &[b"oops"], |_| {});
+            assert_eq!(parse(&result), json!({ "success": true }), "{}", status);
+            assert_eq!(part_len(&base), None, "{}", status);
+            assert_eq!(fs::read(record_dir(&base, KEY).join("body.bin")).unwrap(), b"oops");
+            let listing = only_listing(&store, &base);
+            assert_eq!((listing.state, listing.outcome, listing.partial_bytes), (ReplyState::Terminal, Some(ReplyOutcome::Done), None));
+            fs::remove_dir_all(&base).unwrap();
+        }
+    }
+
+    // R10 (E2, MC-3561): a failed append stops the journal for good; the request still ends done.
+    #[test]
+    fn an_append_fault_stops_the_journal_and_not_the_request() {
+        let base = scratch("s2-r10");
+        let ops = FaultOps::new().failing("append", 2);
+        let log = ops.log.clone();
+        let store = store_with(ops);
+
+        let (result, events) = drive_owned(&store, &base, &[b"aa", b"bb", b"cc"]);
+
+        assert_eq!(parse(&result), json!({ "success": true }));
+        assert_eq!(fs::read(record_dir(&base, KEY).join("part.bin")).unwrap(), b"aa");
+        let appends = log.lock().unwrap().iter().filter(|entry| *entry == "append:part.bin").count();
+        assert_eq!(appends, 2);
+        assert_eq!(fs::read(record_dir(&base, KEY).join("body.bin")).unwrap(), b"aabbcc");
+        assert_eq!(event_of(&events, "end")["reply"], json!({ "key": KEY, "outcome": "done", "stored": true }));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R11 (E1, MC-3561): the shared budget fails the body that would cross it, and returns to zero.
+    #[test]
+    fn the_global_budget_fails_the_body_that_crosses_it_and_is_released() {
+        let base = scratch("s2-r11");
+        let store = plain_store();
+        let budget = Arc::new(BodyBudget::with_cap(8));
+        let owner = |key: String| {
+            let mut owner = owner_for(&store, &base, &key);
+            owner.budget = budget.clone();
+            owner
+        };
+        let registry = FetchRegistry::new();
+        let (port_a, tx_a, join_a) = serve_gated();
+        let (port_b, tx_b, join_b) = serve_gated();
+        let a = spawn_live(&registry, owned_req("a", port_a, owner(key_n(1))), |_| {});
+        let b = spawn_live(&registry, owned_req("b", port_b, owner(key_n(2))), |_| {});
+
+        tx_a.send(Wire::Data(b"aaaaaa".to_vec())).unwrap();
+        a.await_event("chunk");
+        tx_b.send(Wire::Data(b"bbbbbb".to_vec())).unwrap();
+        b.await_event("chunk");
+        assert_eq!(budget.used(), 6);
+        tx_a.send(Wire::End).unwrap();
+        tx_b.send(Wire::End).unwrap();
+
+        assert_eq!(parse(&a.finish()), json!({ "success": true }));
+        assert_eq!(parse(&b.finish()), json!({ "success": true }));
+        join_a.join().unwrap();
+        join_b.join().unwrap();
+        assert_eq!(budget.used(), 0);
+        let listings = store.list(&base).unwrap();
+        let of = |key: String| listings.iter().find(|listing| listing.key == key).unwrap();
+        assert_eq!(of(key_n(1)).outcome, Some(ReplyOutcome::Done));
+        let overflowed = of(key_n(2));
+        assert_eq!((overflowed.outcome, overflowed.detail), (Some(ReplyOutcome::Failed), Some(ReplyDetail::BodyTooLarge)));
+        assert_eq!(overflowed.partial_bytes, Some(6), "the journal keeps the body the budget refused");
+
+        let (port_c, tx_c, join_c) = serve_gated();
+        let c = spawn_live(&registry, owned_req("c", port_c, owner(key_n(3))), |_| {});
+        tx_c.send(Wire::Data(b"cccccc".to_vec())).unwrap();
+        c.await_event("chunk");
+        tx_c.send(Wire::End).unwrap();
+        assert_eq!(parse(&c.finish()), json!({ "success": true }));
+        join_c.join().unwrap();
+        assert_eq!(budget.used(), 0);
+        let listings = store.list(&base).unwrap();
+        let third = listings.iter().find(|listing| listing.key == key_n(3)).unwrap();
+        assert_eq!(third.outcome, Some(ReplyOutcome::Done));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R12: two live owned requests; a page load spares both, the notification Stop stops both.
+    #[test]
+    fn two_owned_requests_survive_cancel_all_and_both_stop_on_cancel_chat() {
+        for stop in [false, true] {
+            let base = scratch("s2-r12");
+            let store = plain_store();
+            let registry = FetchRegistry::new();
+            let (port_a, tx_a, join_a) = serve_gated();
+            let (port_b, tx_b, join_b) = serve_gated();
+            let a = spawn_live(&registry, owned_req("a", port_a, owner_for(&store, &base, &key_n(1))), |_| {});
+            let b = spawn_live(&registry, owned_req("b", port_b, owner_for(&store, &base, &key_n(2))), |_| {});
+            tx_a.send(Wire::Data(b"a".to_vec())).unwrap();
+            tx_b.send(Wire::Data(b"b".to_vec())).unwrap();
+            a.await_event("chunk");
+            b.await_event("chunk");
+
+            if stop {
+                assert_eq!(registry.cancel_chat(), 2);
+            } else {
+                registry.cancel_all();
+                assert_eq!(registry.live_len(), 2);
+                let _ = tx_a.send(Wire::End);
+                let _ = tx_b.send(Wire::End);
+            }
+
+            let expected = if stop { (ReplyOutcome::Stopped, cancelled_json()) } else { (ReplyOutcome::Done, json!({ "success": true })) };
+            assert_eq!(parse(&a.finish()), expected.1);
+            assert_eq!(parse(&b.finish()), expected.1);
+            let outcomes: Vec<_> = store.list(&base).unwrap().iter().map(|listing| listing.outcome).collect();
+            assert_eq!(outcomes, vec![Some(expected.0); 2]);
+            drop((tx_a, tx_b));
+            join_a.join().unwrap();
+            join_b.join().unwrap();
+            fs::remove_dir_all(&base).unwrap();
+        }
+    }
+
+    // R13 (I3): the owned flag is set only once the record is open.
+    #[test]
+    fn cancel_all_aborts_a_refused_owner_and_one_still_opening() {
+        let base = scratch("s2-r13");
+        let store = plain_store();
+        let held = store.open_record(&base, KEY, 1, "{}").unwrap();
+        let registry = FetchRegistry::new();
+        let (port_a, tx_a, join_a) = serve_gated();
+        let (port_b, tx_b, join_b) = serve_gated();
+        let exists = spawn_live(&registry, owned_req("e", port_a, owner_for(&store, &base, KEY)), |_| {});
+        let no_store = OwnedReply { key: key_n(5), page_version: 1, blob: "{}".to_string(), journal: None, notice: None, budget: process_body_budget() };
+        let unresolved = spawn_live(&registry, owned_req("s", port_b, no_store), |_| {});
+        tx_a.send(Wire::Data(b"a".to_vec())).unwrap();
+        tx_b.send(Wire::Data(b"b".to_vec())).unwrap();
+        exists.await_event("chunk");
+        unresolved.await_event("chunk");
+
+        registry.cancel_all();
+
+        assert_eq!(parse(&exists.finish()), cancelled_json());
+        assert_eq!(parse(&unresolved.finish()), cancelled_json());
+        drop((tx_a, tx_b, held));
+        join_a.join().unwrap();
+        join_b.join().unwrap();
+        fs::remove_dir_all(&base).unwrap();
+
+        // A cancel_all that lands while the open is blocked aborts the request; it then ends stopped.
+        let base = scratch("s2-r13-open");
+        let gate = Gate::new();
+        let store = store_with(FaultOps::new().blocking("sync_dir", 1, gate.clone()));
+        let registry = FetchRegistry::new();
+        let (listener, port) = bind_stub();
+        let opening = spawn_live(&registry, owned_req("o", port, owner_for(&store, &base, KEY)), |_| {});
+        assert!(gate.wait_reached(Duration::from_secs(5)), "the open never started");
+
+        registry.cancel_all();
+        gate.release();
+
+        assert_eq!(parse(&opening.finish()), cancelled_json());
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.state, listing.outcome), (ReplyState::Terminal, Some(ReplyOutcome::Stopped)));
+        drop(listener);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R15, compatibility guard: two noticed owners on one hub publish their own codes.
+    #[test]
+    fn two_noticed_owners_publish_their_own_codes() {
+        let base = scratch("s2-r15");
+        let store = plain_store();
+        let hub = hidden_armed_hub();
+        hub.arm(TOKEN + 1, FLAG_OPTED_IN);
+        let owner_of = |key: String, token: i32| {
+            let arg = ReplyOwnerArg { key, page_version: 1, blob: "{}".to_string(), notice_token: Some(token) };
+            owned_reply_with_hub(&store, Some(arg), || Ok(base.clone()), hub.clone()).unwrap()
+        };
+
+        let (port, join) = serve_bounded(serve_reset);
+        let mut failing = request("f", format!("http://127.0.0.1:{}/", port));
+        failing.owner = Some(owner_of(key_n(1), TOKEN));
+        run(&FetchRegistry::new(), failing);
+        join.join().unwrap();
+        let (port, join) = serve_bounded(serve_body);
+        let mut done = request("d", format!("http://127.0.0.1:{}/", port));
+        done.owner = Some(owner_of(key_n(2), TOKEN + 1));
+        run(&FetchRegistry::new(), done);
+        join.join().unwrap();
+
+        assert_eq!(hub.poll(TOKEN), CODE_FAILED);
+        assert_eq!(hub.poll(TOKEN + 1), CODE_DONE);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R16 (F2): an owned chunk event says where it starts, whatever the journal or budget did;
+    // an unowned or refused-owner event keeps exactly its three keys.
+    #[test]
+    fn owned_chunk_events_carry_their_offset_and_others_do_not() {
+        let chunks: [&[u8]; 3] = [b"abcdef", b"ghijk", b"lmno"];
+        let expected = vec![Some(0), Some(6), Some(11)];
+
+        let base = scratch("s2-r16");
+        let store = plain_store();
+        let (_, events) = drive_owned(&store, &base, &chunks);
+        assert_eq!(offsets_of(&events), expected);
+        fs::remove_dir_all(&base).unwrap();
+
+        let base = scratch("s2-r16-fault");
+        let store = store_with(FaultOps::new().failing("append", 1));
+        let (_, events) = drive_owned(&store, &base, &chunks);
+        assert_eq!(offsets_of(&events), expected, "an append error does not stop the count");
+        fs::remove_dir_all(&base).unwrap();
+
+        let base = scratch("s2-r16-budget");
+        let store = plain_store();
+        let (_, events) = drive(
+            "200 OK",
+            |port| {
+                let mut owner = owner_for(&store, &base, KEY);
+                owner.budget = Arc::new(BodyBudget::with_cap(8));
+                owned_req("o1", port, owner)
+            },
+            &chunks,
+            |_| {},
+        );
+        assert_eq!(offsets_of(&events), expected, "a budget overflow does not stop the count");
+        fs::remove_dir_all(&base).unwrap();
+
+        let keys_of = |events: &Events| -> Vec<Vec<String>> {
+            events
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|event| event["type"] == json!("chunk"))
+                .map(|event| {
+                    let mut keys: Vec<String> = event.as_object().unwrap().keys().cloned().collect();
+                    keys.sort();
+                    keys
+                })
+                .collect()
+        };
+        let plain_keys = vec![vec!["body".to_string(), "id".to_string(), "type".to_string()]; 3];
+        let (_, events) = drive("200 OK", |port| request("u1", format!("http://127.0.0.1:{}/", port)), &chunks, |_| {});
+        assert_eq!(keys_of(&events), plain_keys);
+        let base = scratch("s2-r16-refused");
+        let store = plain_store();
+        let (_, events) = drive(
+            "200 OK",
+            |port| {
+                let mut req = with_policy(true, request("u2", format!("http://127.0.0.1:{}/", port)));
+                req.owner = Some(owner_for(&store, &base, KEY));
+                req
+            },
+            &chunks,
+            |_| {},
+        );
+        assert_eq!(keys_of(&events), plain_keys);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R17 (F4/W6): a non-done end flushes part.bin once, between the last append and the end file.
+    #[test]
+    fn a_non_done_end_flushes_the_part_once_before_the_end_file() {
+        let base = scratch("s2-r17");
+        let ops = FaultOps::new();
+        let log = ops.log.clone();
+        let store = store_with(ops);
+        drive_then_cancel(&store, &base, &[b"ab".to_vec(), b"cd".to_vec()]);
+        let entries = log.lock().unwrap().clone();
+        let at = |label: &str| entries.iter().position(|entry| entry == label).unwrap_or_else(|| panic!("{} missing from {:?}", label, entries));
+        let last_append = entries.iter().rposition(|entry| entry == "append:part.bin").unwrap();
+        assert_eq!(entries.iter().filter(|entry| *entry == "sync_file:part.bin").count(), 1);
+        assert!(last_append < at("sync_file:part.bin") && at("sync_file:part.bin") < at("rename:end.json"));
+        fs::remove_dir_all(&base).unwrap();
+
+        let base = scratch("s2-r17-done");
+        let ops = FaultOps::new();
+        let log = ops.log.clone();
+        let store = store_with(ops);
+        drive_owned(&store, &base, &[b"ab", b"cd"]);
+        assert!(!log.lock().unwrap().iter().any(|entry| entry.starts_with("sync_file")));
+        fs::remove_dir_all(&base).unwrap();
+
+        // Stopped after the head and before any chunk: no part exists, so nothing is flushed.
+        let base = scratch("s2-r17-empty");
+        let ops = FaultOps::new();
+        let log = ops.log.clone();
+        let store = store_with(ops);
+        let registry = FetchRegistry::new();
+        let (port, tx, join) = serve_gated();
+        let live = spawn_live(&registry, owned_req("ab", port, owner_for(&store, &base, KEY)), |_| {});
+        live.await_event("headers");
+        registry.cancel("ab");
+        assert_eq!(parse(&live.finish()), cancelled_json());
+        drop(tx);
+        join.join().unwrap();
+        assert!(!log.lock().unwrap().iter().any(|entry| entry.starts_with("sync_file")));
+        assert_eq!(part_len(&base), None);
+        fs::remove_dir_all(&base).unwrap();
     }
 }
