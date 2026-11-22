@@ -70,6 +70,7 @@ vi.mock('./Toggles.svelte', () => ({ default: () => {} }))
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
 import { registerWork, type WorkHandle } from 'src/ts/process/chatOrigin'
+import { changeChatTo } from 'src/ts/globalApi.svelte'
 import SideChatList from './SideChatList.svelte'
 
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
@@ -173,8 +174,40 @@ describe('the rows of the side chat list (T20)', () => {
         expect(target.querySelector('[data-part="reply-new-dot"]')?.getAttribute('aria-label')).toBe(language.chatNewReplyDot)
         expect(target.querySelector('[data-part="reply-error-dot"]')?.getAttribute('aria-label')).toBe(language.chatReplyErrorDot)
         const badge = target.querySelector('[data-part="reply-writing-badge"]')
-        expect(badge?.getAttribute('aria-label')).toBe(language.chatWritingBadge)
+        expect(badge?.getAttribute('aria-label')).toBe(language.chatStopReplyFor('three'))
+        expect(badge?.getAttribute('role')).toBe('button')
         expect(badge?.hasAttribute('aria-busy')).toBe(false)
+    })
+
+    test('reproducer (#449): tapping a row\'s badge stops that chat only and does not open the row', () => {
+        const chara = makeCharacter()
+        const target = mountList(chara)
+        const stops = { one: vi.fn(), three: vi.fn() }
+        handles.push(registerWork({ chaId: 'c0', chatId: 'chat-0' }, stops.one, 'reply'))
+        handles.push(registerWork({ chaId: 'c0', chatId: 'chat-2' }, stops.three, 'reply'))
+        flushSync()
+        vi.mocked(changeChatTo).mockClear()
+
+        const badge = target.querySelector<HTMLElement>('[data-risu-chat-idx="2"] [data-part="reply-writing-badge"]')!
+        badge.click()
+        flushSync()
+
+        expect(stops.three).toHaveBeenCalledTimes(1)
+        expect(stops.one).not.toHaveBeenCalled()
+        expect(changeChatTo).not.toHaveBeenCalled()
+    })
+
+    test('reproducer (#449): Enter on a focused badge stops that chat', () => {
+        const chara = makeCharacter()
+        const target = mountList(chara)
+        const stop = vi.fn()
+        handles.push(registerWork({ chaId: 'c0', chatId: 'chat-1' }, stop, 'reply'))
+        flushSync()
+
+        const badge = target.querySelector<HTMLElement>('[data-risu-chat-idx="1"] [data-part="reply-writing-badge"]')!
+        badge.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        flushSync()
+        expect(stop).toHaveBeenCalledTimes(1)
     })
 
     test('guard: a value this build does not know draws no dot', () => {

@@ -532,6 +532,7 @@ export const languageJapanese = {
     chatWritingBadge: "返信を作成中",
     chatNewReplyDot: "新しい返信",
     chatReplyErrorDot: "返信が完了しませんでした",
+    chatStopReplyFor: (name: string) => `${name}の返信を停止`,
     replyNotificationsSetting: "返信の通知",
     replyNotificationsHelp: "見ていないチャットで返信が完了したときに通知を受け取ります。",
     replyNotificationsBlocked: "Androidの設定でRisuTaniumの通知がオフになっています。スイッチをタップして設定を開いてください。",

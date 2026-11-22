@@ -192,6 +192,8 @@ const EMBEDDED = [
     'src/lib/Others/AlertComp.svelte',
     'src/lib/Others/CharListAvatar.svelte',
     'src/lib/Others/PluginDefinedIcon.svelte',
+    // The writing badge's Stop on a shell chat row (#449).
+    'src/lib/Others/ReplyStopButton.svelte',
     'src/lib/SideBars/CharConfig.svelte',
     'src/lib/SideBars/DevTool.svelte',
     // Enters through the TaskToastHarness test harness; it paints nothing (display: contents).

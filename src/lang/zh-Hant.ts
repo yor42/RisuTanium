@@ -532,6 +532,7 @@ export const languageChineseTraditional = {
     "chatWritingBadge": "正在撰寫回覆",
     "chatNewReplyDot": "新回覆",
     "chatReplyErrorDot": "回覆未完成",
+    "chatStopReplyFor": (name: string) => `停止 ${name} 的回覆`,
     "replyNotificationsSetting": "回覆通知",
     "replyNotificationsHelp": "當你未檢視的聊天完成回覆時收到通知。",
     "replyNotificationsBlocked": "Android 設定中已關閉 RisuTanium 的通知。點按開關即可開啟設定。",

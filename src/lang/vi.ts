@@ -532,6 +532,7 @@ export const languageVietnamese = {
     chatWritingBadge: "Đang viết phản hồi",
     chatNewReplyDot: "Phản hồi mới",
     chatReplyErrorDot: "Phản hồi chưa hoàn tất",
+    chatStopReplyFor: (name: string) => `Dừng phản hồi cho ${name}`,
     replyNotificationsSetting: "Thông báo phản hồi",
     replyNotificationsHelp: "Nhận thông báo khi phản hồi hoàn tất trong cuộc trò chuyện bạn không xem.",
     replyNotificationsBlocked: "Thông báo của RisuTanium đang tắt trong cài đặt Android. Chạm vào công tắc để mở cài đặt.",

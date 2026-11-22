@@ -532,6 +532,7 @@ export const languageSpanish = {
     chatWritingBadge: "Escribiendo una respuesta",
     chatNewReplyDot: "Respuesta nueva",
     chatReplyErrorDot: "La respuesta no terminó",
+    chatStopReplyFor: (name: string) => `Detener la respuesta de ${name}`,
     replyNotificationsSetting: "Notificaciones de respuestas",
     replyNotificationsHelp: "Recibe una notificación cuando termine una respuesta en un chat que no estás viendo.",
     replyNotificationsBlocked: "Las notificaciones de RisuTanium están desactivadas en los ajustes de Android. Toca el interruptor para abrirlos.",
