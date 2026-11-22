@@ -4,6 +4,7 @@ import {
     nextConnectionId, providerLabel, proxyName, str, storedConnections, uniqueName,
     type Connection, type ConnectionProvider,
 } from './connections'
+import { wrappedOf } from './keyVaultStore.svelte'
 import { GLOBAL_ROWS, type GlobalSlotRow } from './slotTable'
 
 type PresetLegacyProp = 'proxyKey' | 'forceReplaceUrl' | 'openAIKey'
@@ -89,23 +90,34 @@ export function planConnections(db: StoredDatabase): Plan | 'skip' | 'none' {
         }
     }
 
-    // A proxy connection is matched on exact strings on both sides and never edited here.
-    const findOrCreateProxy = (url: string, key: string): string => {
-        const hit = conns.find((conn) => conn.provider === 'reverse_proxy' && (conn.url ?? '') === url && conn.key === key)
+    // A proxy connection is matched on exact strings on both sides and never edited here. A non-empty key
+    // matches on the key alone (it is authoritative, so a both-set connection matches too); an empty key
+    // matches only a connection with the same envelope, so a key-less pair never lands on a wrapped proxy.
+    const findOrCreateProxy = (url: string, key: string, wrapped?: string): string => {
+        const hit = conns.find((conn) => conn.provider === 'reverse_proxy' && (conn.url ?? '') === url
+            && (key !== '' ? conn.key === key : conn.key === '' && wrappedOf(conn) === wrapped))
         if (hit) {
             return hit.id
         }
         const id = allocId()
-        conns.push({ id, name: uniqueName(proxyName(url), conns), provider: 'reverse_proxy', key, url })
+        const created: Connection = { id, name: uniqueName(proxyName(url), conns), provider: 'reverse_proxy', key, url }
+        if (wrapped !== undefined) {
+            created.keyWrapped = wrapped
+        }
+        conns.push(created)
         return id
     }
 
     // First migration (the owner does not resolve): the exact pair. Steady state: a partial edit of the owner.
     const absorbPair = (url: string, key: string, currentRef: unknown): string => {
         const current = connectionById(conns, currentRef, 'reverse_proxy')
-        return current
-            ? findOrCreateProxy(url || (current.url ?? ''), key || current.key)
-            : findOrCreateProxy(url, key)
+        if (!current) {
+            return findOrCreateProxy(url, key)
+        }
+        if (key !== '') {
+            return findOrCreateProxy(url || (current.url ?? ''), key)
+        }
+        return findOrCreateProxy(url || (current.url ?? ''), current.key, current.key === '' ? wrappedOf(current) : undefined)
     }
 
     const rootUrl = str(db.forceReplaceUrl)
@@ -180,6 +192,10 @@ export function planConnections(db: StoredDatabase): Plan | 'skip' | 'none' {
                     name: uniqueName(customModelName(model), conns),
                     provider: 'custom',
                     key: key || current.key,
+                }
+                const envelope = wrappedOf(current)
+                if (next.key === '' && envelope !== undefined) {
+                    next.keyWrapped = envelope
                 }
                 if (url !== '' || current.url !== undefined) {
                     next.url = url || current.url

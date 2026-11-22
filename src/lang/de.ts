@@ -4134,6 +4134,18 @@ export const languageGerman = {
         `RisuTanium hat ${count} ${count === 1 ? 'Persona' : 'Personas'} ausgelassen, deren Daten ungültig waren. Möglicherweise hat ein Plugin sie geschrieben.`,
     "personaListEmptyNotice": `In der Persona-Liste war keine verwendbare Persona mehr vorhanden, daher hat RisuTanium aus Ihrem Benutzernamen und Symbol eine hinzugefügt und ausgewählt.`,
     "personaSelectionMissingNotice": `Die ausgewählte Persona fehlte in der Persona-Liste, daher hat RisuTanium aus Ihrem aktuellen Benutzernamen, Symbol, Persona-Prompt und Ihrer Notiz eine hinzugefügt und ausgewählt.`,
+    "vaultKeepPlainNotice": `RisuTanium konnte Ihre Verbindungsschlüssel nicht mit dem sicheren Speicher dieses Geräts schützen, daher bleiben sie vorerst als Klartext gespeichert. Es wird bei jedem Start und bei jeder Schlüsseländerung erneut versucht.`,
+    "vaultNeedsReentryNotice": (names: string) =>
+        `Dieses Gerät kann den gespeicherten Schlüssel von folgenden Einträgen nicht lesen: ${names}. Geben Sie den Schlüssel für jeden davon erneut ein. Der alte gespeicherte Schlüssel bleibt unverändert, bis Sie das tun.`,
+    "vaultNeedsReentryLabel": `Schlüssel muss erneut eingegeben werden`,
+    "vaultKeyTemporarilyUnavailable": `Der gespeicherte Schlüssel kann gerade nicht gelesen werden. Versuchen Sie es gleich noch einmal.`,
+    "vaultKeyTemporarilyUnavailableHint": `Schlüssel vorübergehend nicht verfügbar; er erscheint, sobald er entschlüsselt ist.`,
+    "vaultExportUnreadableKeys": (names: string) =>
+        `Dieses Gerät kann den gespeicherten Schlüssel von folgenden Einträgen nicht lesen: ${names}. Die Sicherung würde diese Schlüssel leer enthalten; die auf diesem Gerät gespeicherten Schlüssel bleiben unverändert. Sicherung ohne sie erstellen?`,
+    "vaultExportKeysUnavailableNow": (names: string) =>
+        `Der gespeicherte Schlüssel von folgenden Einträgen kann gerade nicht gelesen werden, daher würde die Sicherung diese Schlüssel leer enthalten: ${names}. Sicherung ohne sie erstellen?`,
+    "vaultExportKeysLeftOutLate": (names: string) =>
+        `Diese Verbindungsschlüssel konnten beim Schreiben der Sicherung nicht gelesen werden, daher enthält sie sie leer: ${names}.`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `Das Backup wurde geladen, nachdem RisuTanium seine Charakterliste repariert hat: ${[
             dropped > 0 ? `${dropped} ${dropped === 1 ? 'Eintrag, der kein Charakter ist, wurde' : 'Einträge, die keine Charaktere sind, wurden'} ausgelassen` : '',
@@ -4251,7 +4263,7 @@ export const languageGerman = {
     "rtbRestoreLineOmittedEntries": (names: string[]) => `- Daten, ohne die das Backup erstellt wurde: ${names.join(', ')}`,
     "rtbRestoreLineSideNotRestored": (names: string[]) => `- Auf diesem Gerät gespeicherte Daten, die nicht wiederhergestellt wurden: ${names.join(', ')}`,
     "rtbRestoreLineSideFailed": (names: string[]) => `- Auf diesem Gerät gespeicherte Daten, die nicht vollständig geschrieben werden konnten: ${names.join(', ')}`,
-    "rtbRestoreSideNames": { iris: "Iris-Unterhaltungen", googleSearch: "Google-Suchschlüssel", hypaVector: "Daten der Gedächtnissuche", pluginSafe: "Plugin-Daten", pluginSafeLs: "Plugin-Einstellungen", pluginPermissions: "Plugin-Berechtigungen", mcpToolCalls: "MCP-Tool-Aufrufe", uiPrefs: "Oberflächeneinstellungen" },
+    "rtbRestoreSideNames": { iris: "Iris-Unterhaltungen", googleSearch: "Google-Suchschlüssel", hypaVector: "Daten der Gedächtnissuche", pluginSafe: "Plugin-Daten", pluginSafeLs: "Plugin-Einstellungen", pluginPermissions: "Plugin-Berechtigungen", mcpToolCalls: "MCP-Tool-Aufrufe", uiPrefs: "Oberflächeneinstellungen", connectionKeys: "Verbindungsschlüssel" },
     "rtbRestoreSettingsConfirm": (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `Die Einstellungen in diesem Backup wiederherstellen? ${fields} Einstellung(en), ${presets} Bot-Preset(s), ${memoryPresets} Gedächtnis-Preset(s) und ${translatorPresets} neue(s) Übersetzer-Preset(s) werden mit diesem Gerät zusammengeführt. Eine Einstellung, die dem Backup fehlt, bleibt unverändert. Charaktere, Chats, Schlüssel und Verbindungen werden nicht angetastet.${dropped > 0 ? ` ${dropped} Wert(e) im Backup sind nicht verwendbar und werden übersprungen.` : ''} Danach wird die App neu geladen.`,
     "rtbRestoreSettingsDone": "Die Einstellungen wurden wiederhergestellt. Die App wird jetzt neu geladen.",

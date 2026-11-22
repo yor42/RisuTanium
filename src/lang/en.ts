@@ -4258,6 +4258,18 @@ export const languageEnglish = {
         `RisuTanium left out ${count} persona${count === 1 ? '' : 's'} that ${count === 1 ? 'was' : 'were'} not valid data. A plugin may have written ${count === 1 ? 'it' : 'them'}.`,
     personaListEmptyNotice: `No usable persona was left in the persona list, so RisuTanium added one from your user name and icon and selected it.`,
     personaSelectionMissingNotice: `The selected persona was missing from the persona list, so RisuTanium added one from your current user name, icon, persona prompt and note and selected it.`,
+    vaultKeepPlainNotice: `RisuTanium could not protect your connection keys with this device's secure storage, so they stay saved as plain text for now. It tries again at every start and whenever you change a key.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `This device cannot read the saved key of: ${names}. Enter the key again for each of them. The old saved key is left untouched until you do.`,
+    vaultNeedsReentryLabel: `Key must be entered again`,
+    vaultKeyTemporarilyUnavailable: `The saved key cannot be read right now. Try again in a moment.`,
+    vaultKeyTemporarilyUnavailableHint: `Key temporarily unavailable; it will appear once decrypted.`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `This device cannot read the saved key of: ${names}. The backup would carry those keys empty, and the saved keys on this device stay untouched. Create the backup without them?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `The saved key of: ${names} cannot be read right now, so the backup would carry those keys empty. Create the backup without them?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `These connection keys could not be read while the backup was written, so it carries them empty: ${names}.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `The backup was loaded after RisuTanium repaired its character list: ${[
             dropped > 0 ? `${dropped} entr${dropped === 1 ? 'y that is' : 'ies that are'} not a character ${dropped === 1 ? 'was' : 'were'} left out` : '',
@@ -4376,7 +4388,7 @@ export const languageEnglish = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- Data the backup was made without: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Data kept on this device that was not restored: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Data kept on this device that could not be written completely: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "Iris conversations", googleSearch: "Google search key", hypaVector: "memory search data", pluginSafe: "plugin data", pluginSafeLs: "plugin settings", pluginPermissions: "plugin permissions", mcpToolCalls: "MCP tool calls", uiPrefs: "interface preferences" },
+    rtbRestoreSideNames: { iris: "Iris conversations", googleSearch: "Google search key", hypaVector: "memory search data", pluginSafe: "plugin data", pluginSafeLs: "plugin settings", pluginPermissions: "plugin permissions", mcpToolCalls: "MCP tool calls", uiPrefs: "interface preferences", connectionKeys: "connection keys" },
     rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `Restore the settings in this backup? ${fields} setting(s), ${presets} bot preset(s), ${memoryPresets} memory preset(s) and ${translatorPresets} new translator preset(s) will be merged into this device. A setting the backup lacks stays as it is. Characters, chats, keys and connections are not touched.${dropped > 0 ? ` ${dropped} value(s) in the backup cannot be used and are skipped.` : ''} The app reloads afterwards.`,
     rtbRestoreSettingsDone: "The settings were restored. The app reloads now.",

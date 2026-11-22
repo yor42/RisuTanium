@@ -18,6 +18,12 @@ export const PLUGIN_SAFE_STORE: ForageStoreConfig = Object.freeze({ name: 'plugi
 export const PLUGIN_PERMISSIONS_STORE: ForageStoreConfig = Object.freeze({ name: 'plugin_permissions', storeName: 'plugin_permissions' })
 export const MCP_TOOL_CALLS_STORE: ForageStoreConfig = Object.freeze({ name: 'mcp-tool-calls', storeName: 'mcp-tool-calls' })
 
+/**
+ * Device-local staging of the connection keys a `.rtb` restore brought: transient data the next boot
+ * applies to the restored database, never a store of the `.rtb` file's own sections.
+ */
+export const RESTORED_KEYS_STORE: ForageStoreConfig = Object.freeze({ name: 'risutanium-restored-keys', storeName: 'keys' })
+
 /** The prefix of every localStorage key and every `plugin` store key a plugin's safe storage owns. */
 export const SAFE_PLUGIN_LS_PREFIX = 'safe_plugin_'
 

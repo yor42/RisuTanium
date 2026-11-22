@@ -4115,6 +4115,18 @@ export const languageChinese = {
         `RisuTanium 排除了 ${count} 个不是有效数据的人设。这可能是插件写入的。`,
     "personaListEmptyNotice": `人设列表中没有剩余的可用人设，因此 RisuTanium 根据你的用户名和图标添加了一个人设并将其选中。`,
     "personaSelectionMissingNotice": `所选人设不在人设列表中，因此 RisuTanium 根据你当前的用户名、图标、人设提示词和备注添加了一个人设并将其选中。`,
+    "vaultKeepPlainNotice": `RisuTanium 无法使用此设备的安全存储保护你的连接密钥，因此这些密钥目前仍以明文保存。每次启动以及每次修改密钥时都会重试。`,
+    "vaultNeedsReentryNotice": (names: string) =>
+        `此设备无法读取以下项目已保存的密钥：${names}。请为每一项重新输入密钥。在你重新输入之前，旧的已保存密钥不会被改动。`,
+    "vaultNeedsReentryLabel": `需要重新输入密钥`,
+    "vaultKeyTemporarilyUnavailable": `暂时无法读取已保存的密钥，请稍后再试。`,
+    "vaultKeyTemporarilyUnavailableHint": `密钥暂时不可用；解密后会显示。`,
+    "vaultExportUnreadableKeys": (names: string) =>
+        `此设备无法读取以下项目已保存的密钥:${names}。备份中这些密钥将为空,此设备上已保存的密钥保持不变。是否在不含这些密钥的情况下创建备份?`,
+    "vaultExportKeysUnavailableNow": (names: string) =>
+        `以下项目已保存的密钥目前无法读取,因此备份中这些密钥将为空:${names}。是否在不含这些密钥的情况下创建备份?`,
+    "vaultExportKeysLeftOutLate": (names: string) =>
+        `写入备份时无法读取以下连接密钥,因此备份中这些密钥为空:${names}。`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `RisuTanium 修复角色列表后已加载此备份：${[
             dropped > 0 ? `${dropped} 个不是角色的条目已被排除` : '',
@@ -4232,7 +4244,7 @@ export const languageChinese = {
     "rtbRestoreLineOmittedEntries": (names: string[]) => `- 创建备份时未包含的数据：${names.join(', ')}`,
     "rtbRestoreLineSideNotRestored": (names: string[]) => `- 保留在此设备上、未被恢复的数据：${names.join(', ')}`,
     "rtbRestoreLineSideFailed": (names: string[]) => `- 保留在此设备上、未能完整写入的数据：${names.join(', ')}`,
-    "rtbRestoreSideNames": { iris: "Iris 对话", googleSearch: "Google 搜索密钥", hypaVector: "记忆检索数据", pluginSafe: "插件数据", pluginSafeLs: "插件设置", pluginPermissions: "插件权限", mcpToolCalls: "MCP 工具调用", uiPrefs: "界面偏好设置" },
+    "rtbRestoreSideNames": { iris: "Iris 对话", googleSearch: "Google 搜索密钥", hypaVector: "记忆检索数据", pluginSafe: "插件数据", pluginSafeLs: "插件设置", pluginPermissions: "插件权限", mcpToolCalls: "MCP 工具调用", uiPrefs: "界面偏好设置", connectionKeys: "连接密钥" },
     "rtbRestoreSettingsConfirm": (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `要还原此备份中的设置吗？${fields} 项设置、${presets} 个机器人预设、${memoryPresets} 个记忆预设和 ${translatorPresets} 个新的翻译器预设将合并到此设备。备份中没有的设置保持不变。角色、聊天、密钥和连接不会被改动。${dropped > 0 ? ` 备份中有 ${dropped} 个值无法使用，将被跳过。` : ''} 完成后应用会重新加载。`,
     "rtbRestoreSettingsDone": "设置已还原。应用现在将重新加载。",

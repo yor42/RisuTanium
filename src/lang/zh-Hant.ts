@@ -4159,6 +4159,18 @@ export const languageChineseTraditional = {
         `RisuTanium 排除了 ${count} 個不是有效資料的使用者人設。這可能是外掛寫入的。`,
     "personaListEmptyNotice": `使用者人設清單中沒有剩餘的可用人設，因此 RisuTanium 根據你的使用者名稱和圖示新增了一個人設並將其選取。`,
     "personaSelectionMissingNotice": `所選的使用者人設不在人設清單中，因此 RisuTanium 根據你目前的使用者名稱、圖示、人設提示詞和備註新增了一個人設並將其選取。`,
+    "vaultKeepPlainNotice": `RisuTanium 無法使用此裝置的安全儲存空間保護你的連線金鑰，因此這些金鑰目前仍以明文儲存。每次啟動以及每次修改金鑰時都會重試。`,
+    "vaultNeedsReentryNotice": (names: string) =>
+        `此裝置無法讀取以下項目已儲存的金鑰：${names}。請為每一項重新輸入金鑰。在你重新輸入之前，舊的已儲存金鑰不會被更動。`,
+    "vaultNeedsReentryLabel": `需要重新輸入金鑰`,
+    "vaultKeyTemporarilyUnavailable": `暫時無法讀取已儲存的金鑰，請稍後再試。`,
+    "vaultKeyTemporarilyUnavailableHint": `金鑰暫時無法使用；解密後會顯示。`,
+    "vaultExportUnreadableKeys": (names: string) =>
+        `此裝置無法讀取以下項目已儲存的金鑰:${names}。備份中這些金鑰將為空,此裝置上已儲存的金鑰維持不變。是否在不含這些金鑰的情況下建立備份?`,
+    "vaultExportKeysUnavailableNow": (names: string) =>
+        `以下項目已儲存的金鑰目前無法讀取,因此備份中這些金鑰將為空:${names}。是否在不含這些金鑰的情況下建立備份?`,
+    "vaultExportKeysLeftOutLate": (names: string) =>
+        `寫入備份時無法讀取以下連線金鑰,因此備份中這些金鑰為空:${names}。`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `RisuTanium 修復角色列表後已載入此備份：${[
             dropped > 0 ? `${dropped} 個不是角色的項目已被排除` : '',
@@ -4276,7 +4288,7 @@ export const languageChineseTraditional = {
     "rtbRestoreLineOmittedEntries": (names: string[]) => `- 建立備份時未包含的資料：${names.join(', ')}`,
     "rtbRestoreLineSideNotRestored": (names: string[]) => `- 保留在此裝置上、未被還原的資料：${names.join(', ')}`,
     "rtbRestoreLineSideFailed": (names: string[]) => `- 保留在此裝置上、未能完整寫入的資料：${names.join(', ')}`,
-    "rtbRestoreSideNames": { iris: "Iris 對話", googleSearch: "Google 搜尋金鑰", hypaVector: "記憶搜尋資料", pluginSafe: "外掛資料", pluginSafeLs: "外掛設定", pluginPermissions: "外掛權限", mcpToolCalls: "MCP 工具呼叫", uiPrefs: "介面偏好設定" },
+    "rtbRestoreSideNames": { iris: "Iris 對話", googleSearch: "Google 搜尋金鑰", hypaVector: "記憶搜尋資料", pluginSafe: "外掛資料", pluginSafeLs: "外掛設定", pluginPermissions: "外掛權限", mcpToolCalls: "MCP 工具呼叫", uiPrefs: "介面偏好設定", connectionKeys: "連線金鑰" },
     "rtbRestoreSettingsConfirm": (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `要還原此備份中的設定嗎？${fields} 項設定、${presets} 個機器人預設集、${memoryPresets} 個記憶預設集和 ${translatorPresets} 個新的翻譯器預設集將合併到此裝置。備份中沒有的設定維持不變。角色、聊天、金鑰和連線不會被更動。${dropped > 0 ? ` 備份中有 ${dropped} 個值無法使用，將被略過。` : ''} 完成後應用程式會重新載入。`,
     "rtbRestoreSettingsDone": "設定已還原。應用程式現在將重新載入。",
