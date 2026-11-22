@@ -1,5 +1,4 @@
 import type { ByteStore } from 'src/ts/storage/store/contract'
-import { isTauri } from 'src/ts/platform'
 
 /**
  * "Always for this workspace" grants (MC-3371, MC-3409): one mutating workspace tool in one workspace. They live only
@@ -186,8 +185,10 @@ function applyDelta(delta: Delta): Promise<boolean> {
             delta(state.grants)
             if (!state.noticeShown) {
                 state.noticeShown = true
+                // Loaded on demand: a model-level importer of this file must not pull in the platform probe (it reads
+                // `window` at load), the alert machinery or the language tables.
+                const { isTauri } = await import('src/ts/platform')
                 const location = isTauri ? `${WORKSPACE_TOOL_GRANTS_KEY} (app data folder)` : WORKSPACE_TOOL_GRANTS_KEY
-                // Loaded on demand: a model-level importer of this file must not pull in the alert machinery or the language tables.
                 const { queueNotice } = await import('src/ts/alertPrompts')
                 const { language } = await import('src/lang')
                 queueNotice(language.alerts.workspaceToolGrantsUnreadable(location))
