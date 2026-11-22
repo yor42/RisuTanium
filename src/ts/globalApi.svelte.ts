@@ -2640,7 +2640,8 @@ if (isTauri) {
         }
     }).then(async () => {
         try {
-            // Earlier page loads' native requests have no reader; finish cancelling before this page sends one.
+            // Earlier page loads' unowned requests have no reader; finish cancelling them before this page sends one.
+            // Owned ones finish into their record.
             await Promise.resolve(invoke('cancel_all_streamed_fetch')).catch(() => {})
         } catch (error) {
             console.error(error)

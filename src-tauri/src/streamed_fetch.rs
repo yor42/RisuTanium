@@ -3112,10 +3112,10 @@ mod tests {
         live.await_event("chunk");
 
         registry.cancel_all();
+        assert_eq!(registry.live_len(), 1);
         let _ = tx.send(Wire::Data(b"world".to_vec()));
         let _ = tx.send(Wire::End);
 
-        assert_eq!(registry.live_len(), 1);
         assert_eq!(parse(&live.finish()), json!({ "success": true }));
         join.join().unwrap();
         let listing = only_listing(&store, &base);

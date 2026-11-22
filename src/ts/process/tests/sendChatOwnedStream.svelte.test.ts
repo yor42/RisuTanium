@@ -7,14 +7,12 @@
  *
  * Drives the REAL, unmocked sendChat with a fake streaming result; the mock set is the one of
  * sendChatNativeReplyPush.svelte.test.ts. The request mock registers the probe, bind and invoke the way the call site of
- * equestOpenAI does. Real pageState with a fake store and a fake commit source.
+ * requestOpenAI does. Real pageState with a fake store and a fake commit source.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import '../../polyfill'
-
-//#region module mocks
 
 //#region module mocks
 
