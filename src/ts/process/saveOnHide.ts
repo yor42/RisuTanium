@@ -8,7 +8,7 @@
  * a chat, it acts only when the page has unsaved edits or pending drafts. A
  * pending draft is an unsaved edit: a hide writes it and saves it. A page with
  * neither unsaved edits nor pending drafts is never made dirty by a hide, so a
- * hide never changes what a peer tab's commit or a parked loop sees. One other
+ * hide never changes what a peer tab's commit or a parked loop sees. One
  * exception: a leave flush that moves an unsaved edit held outside the database
  * into it (the vault's pending keys) requests the save itself. The save is best
  * effort, not durable: the asynchronous write may not finish if the page is

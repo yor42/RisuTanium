@@ -3,7 +3,7 @@
  *
  * The definition of the sheet that asks, once, about everything a `.bin` leaves out because upstream has no place for it.
  * The consequences are one line per source group (alternative replies, other chat data only this app uses, this app's
- * own data), so a profile holding all seven kinds still shows every kind on screen without a tap. Item names stay behind
+ * own data), so a profile holding all eight kinds still shows every kind on screen without a tap. Item names stay behind
  * the sheet's disclosure.
  *
  * Component-free and engine-free: it imports the sheet's types and the shared prompt-name cut only.

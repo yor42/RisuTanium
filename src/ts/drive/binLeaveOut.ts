@@ -2,7 +2,7 @@
  * Bin Leave-Out
  *
  * What a `.bin` export leaves out because upstream has no place for it, as one summary the export hands to a single
- * leave-out sheet instead of seven prompts. The summary lists the kinds in the order the per-kind prompts ask them, and a
+ * leave-out sheet instead of eight prompts. The summary lists the kinds in the order the per-kind prompts ask them, and a
  * kind that is absent from the profile is absent from the list, so an empty list means there is nothing to confirm.
  *
  * Pure: it reads the labels the export already computed and never changes them.

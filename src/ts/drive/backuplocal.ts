@@ -923,7 +923,7 @@ async function confirmOmitChatDrafts(session: ExportSession, left: { drafts: num
 }
 
 /**
- * The fork-only consent before the writer opens: the seven per-kind prompts, or one answer to `options.askLeaveOut` that
+ * The fork-only consent before the writer opens: the eight per-kind prompts, or one answer to `options.askLeaveOut` that
  * names every present kind. A summary with nothing in it asks nothing. An unanswered summary (`null`) falls back to the
  * per-kind prompts, so a sheet that could not be shown never turns the consent silent. `true` when the export may go on.
  */
