@@ -52,6 +52,9 @@ class MainActivity : TauriActivity() {
   // The chat a notification tap named, held until the page asks for it; main thread only.
   private var pendingTarget: NoticeTarget? = null
 
+  // The shortcut's "start without theme pack" request, held until the page asks for the launch options.
+  private val pendingPackSafe = PendingPackSafe()
+
   private val replyNotifier by lazy { ReplyNotifier(applicationContext) }
 
   // Declared before barGate, which is built from it. The callback and the timeout it creates are
@@ -221,10 +224,12 @@ class MainActivity : TauriActivity() {
     // A file the app was started with. A restored instance and a relaunch from the recents list
     // carry the intent that started the earlier instance, whose file was already handled.
     // A notification tap is held under the same rule, so a relaunch from the recents list or a
-    // recreation never opens the chat again.
+    // recreation never opens the chat again. The shortcut's request follows the same rule, so a
+    // relaunch from the recents list never turns the theme pack off.
     if (savedInstanceState == null && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
       OpenedFilesBridge.enqueue(intent)
       pendingTarget = targetOfIntent(intent)
+      if (isPackSafeModeIntent(actionOfIntent(intent))) pendingPackSafe.arm()
       // Debug only. The worker is serial, so a page request after this sees the keys gone, and the
       // main thread does no Keystore work.
       if (shouldDeleteVaultKeys(BuildConfig.DEBUG, intent.getBooleanExtra(EXTRA_DEBUG_DELETE_VAULT_KEYS, false))) {
@@ -236,6 +241,21 @@ class MainActivity : TauriActivity() {
   // The intent comes from outside the app (the activity is exported); a read that throws is no target.
   private fun targetOfIntent(source: Intent): NoticeTarget? =
     targetFromIntent({ source.action }, { name -> source.getStringExtra(name) })
+
+  // The intent comes from outside the app; a read that throws names no action.
+  private fun actionOfIntent(source: Intent): String? =
+    try {
+      source.action
+    } catch (error: Exception) {
+      null
+    }
+
+  // The page asked for the launch options: the shortcut's request is answered once and cleared, the
+  // touch-exploration state is read at answer time. The page validates both.
+  private fun answerLaunchOptions() {
+    val packSafe = pendingPackSafe.take()
+    callPage("window.__risuTaniumLaunchOptions?.(${encodeLaunchOptions(packSafe, touchExploration.enabled)})")
+  }
 
   // The page asked for the pending target: it is answered once, with null when there is none.
   private fun answerOpenTarget() {
@@ -256,6 +276,11 @@ class MainActivity : TauriActivity() {
     if (target != null) {
       pendingTarget = target
       callPage("window.__risuTaniumLaunchTargetReady?.()")
+    }
+    // The shortcut while the app runs: the page is told to ask again and enters safe mode live.
+    if (isPackSafeModeIntent(actionOfIntent(intent))) {
+      pendingPackSafe.arm()
+      callPage("window.__risuTaniumPackSafeModeReady?.()")
     }
   }
 
@@ -279,7 +304,7 @@ class MainActivity : TauriActivity() {
         imeState,
         touchExploration,
         SystemBarsBridge(::requestBarColor),
-        KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce, ::answerOpenTarget),
+        KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce, ::answerOpenTarget, ::answerLaunchOptions),
         newReplyNotificationsBridge(),
         OpenedFilesBridge(contentResolver)
       )
@@ -371,7 +396,7 @@ class MainActivity : TauriActivity() {
     webView.addJavascriptInterface(AccessibilityBridge(touchExploration), "__risuTaniumAccessibility")
     webView.addJavascriptInterface(SystemBarsBridge(::requestBarColor), "__risuTaniumSystemBars")
     webView.addJavascriptInterface(
-      KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce, ::answerOpenTarget),
+      KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce, ::answerOpenTarget, ::answerLaunchOptions),
       "__risuTaniumKeepAlive"
     )
     webView.addJavascriptInterface(newReplyNotificationsBridge(), "__risuTaniumReplyNotificationsHost")

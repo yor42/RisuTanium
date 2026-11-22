@@ -118,6 +118,8 @@ describe('the keep-alive service over the channel', () => {
         ['stopAfterWithOutcome', [10000, '{"v":2,"state":"stopped"}']],
         // The page asks for the chat a notification tap named; the answer comes back through a window hook.
         ['requestOpenTarget', []],
+        // The page asks for the launch options (pack safe mode, touch exploration); the answer comes back through a window hook.
+        ['requestLaunchOptions', []],
     ] as const)('%s goes out as one message', (method, args) => {
         const fake = createHostChannelFake()
         window.__risuTaniumHost = fake.channel

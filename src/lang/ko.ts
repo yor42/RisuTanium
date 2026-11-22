@@ -3799,6 +3799,7 @@ export const languageKorean = {
     "packEscapeTurnOff": "테마 팩 끄기",
     "packEscapeDismiss": "닫기",
     "packSafeModeNotice": "이번 세션에서는 테마 팩이 꺼져 있어요",
+    "packTurnedOffNotice": "이제 테마 팩이 꺼졌어요",
     "themePackBroken": (name: string, reason: string) => `테마 팩 "${name}"을(를) 적용하지 않았어요: ${reason}. 팩은 그대로 보관돼 있으며, 더 필요하지 않다면 여기에서 삭제할 수 있어요.`,
     "themePackBrokenFiles": "파일이 손상되었거나 없어요",
     "themePackBrokenRefused": "검사를 통과하지 못했어요",

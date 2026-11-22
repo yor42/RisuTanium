@@ -58,7 +58,7 @@ vi.mock('src/ts/alertTask.svelte', async (importOriginal) => {
 })
 
 import {
-    binCardDef, cardRestoreProgress, legacyRestoreProgress, restoreCleanupCardDef, restoreOldCardDef, restorePointCardDef, rtbCardDef,
+    binCardDef, cardRestoreProgress, legacyRestoreProgress, restoreCleanupCardDef, restoreOldCardDef, restorePointCardDef, rtbBootCardDef, rtbCardDef,
 } from 'src/ts/drive/restoreProgress'
 import { ExportCancelledError } from 'src/ts/exportCancel'
 import {
@@ -255,5 +255,26 @@ describe('the card seam', () => {
         expect(next.cancelRequested).toBe(true)
         expect(old.cancelRequested).toBe(true)
         await expect(old.race(new Promise<never>(() => { }))).rejects.toBeInstanceOf(ExportCancelledError)
+    })
+})
+
+describe('the start-up restore card (R3, MC-3634)', () => {
+    test('R3a: a card with no token shows the steps check, copy, load, finish with no Cancel, and no Cancel is ever reported (reproducer: a null token does not type on base, and the default card offers Cancel)', () => {
+        const progress = cardRestoreProgress(rtbBootCardDef(), null)
+        const view = taskHostView()
+        expect(view?.title).toBe(language.restoreTaskTitle)
+        expect(view?.steps.map((entry) => entry.label)).toEqual([language.importStepCheck, language.restoreStepCopy, language.restoreStepLoad, language.restoreStepFinish])
+        expect(view?.cancelOffered).toBe(false)
+        progress.bytes('copy', 5, 10, null)
+        expect(taskHostView()?.stepIndex).toBe(1)
+        expect(progress.cancelRequested).toBe(false)
+        expect(progress.lockCancel()).toBe(true)
+        progress.leave()
+        expect(taskShown()).toBe(false)
+    })
+
+    test('R3b: the default card with a token still offers Cancel (guard: passes before and after)', () => {
+        cardRestoreProgress(rtbBootCardDef())
+        expect(taskHostView()?.cancelOffered).toBe(true)
     })
 })

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="start_without_theme_pack"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_no_pack_short"
+        android:shortcutLongLabel="@string/shortcut_no_pack_long">
+        <intent
+            android:action="io.github.yor42.risutanium.action.START_WITHOUT_THEME_PACK"
+            android:targetPackage="io.github.yor42.risutanium"
+            android:targetClass="io.github.yor42.risutanium.PackSafeLaunchActivity" />
+    </shortcut>
+</shortcuts>

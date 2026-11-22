@@ -23,7 +23,8 @@ import { withCopiedKept } from 'src/ts/drive/rtbRestoreCopy'
 import { leftOutLines } from 'src/ts/drive/rtbRestoreFinish'
 import type { RestoreHold } from 'src/ts/drive/rtbRestoreHold'
 import type { PickedRtb, RtbVerifyEnd, VerifiedRtb } from 'src/ts/drive/rtbRestorePlan'
-import { runRtbBootRestore, type RtbBootDeps } from 'src/ts/drive/rtbBootRestore'
+import { bootCardWiring, bootHoldOptions, runRtbBootRestore, type RtbBootDeps } from 'src/ts/drive/rtbBootRestore'
+import { rtbBootCardDef, type RestoreProgress } from 'src/ts/drive/restoreProgress'
 
 vi.mock('src/ts/stores.svelte', async () => {
     const { writable } = await import('svelte/store')
@@ -83,6 +84,8 @@ interface Options {
     releaseTrueRejects?: boolean
     /** Leaves `clearAlert` to the shell's own, which reads and writes the alert store of the mocked stores module. */
     realClearAlert?: boolean
+    /** Leaves `wait` to the shell's own, which writes the alert store of the mocked stores module. */
+    realWait?: boolean
     /** The result the gate's stageKeys returns. */
     staged?: SideRestoreResult | null
 }
@@ -168,6 +171,11 @@ function rig(options: Options = {}): Rig {
     }
     if (options.realClearAlert === true) {
         delete deps.clearAlert
+    }
+    if (options.realWait === true) {
+        delete deps.wait
+        // The shell's own clear would wipe the wait text this run is asked about.
+        deps.clearAlert = () => { log.push('clear-alert') }
     }
     return {
         log, releases, errors, waits, notices, planInputs, stagedSeen,
@@ -393,6 +401,177 @@ describe('the failures after installed (T-S6)', () => {
         expect(first.log).toContain('reload')
         const exit = rig({ entry: 'exit', deps: boom })
         expect(await exit.run()).toEqual(finished(INSTALLED))
+    })
+})
+
+describe('the restore card (R3, MC-3634)', () => {
+    /** A card that writes its calls into the rig's own log, so the order against the shell's calls is one list. */
+    function cardOver(r: () => Rig, options: { throws?: boolean } = {}): { open: () => RestoreProgress, phases: string[], bytes: [string, number, number][] } {
+        const phases: string[] = []
+        const bytes: [string, number, number][] = []
+        const note = (item: string): void => {
+            r().log.push(item)
+            if (options.throws === true) {
+                throw new Error('the card host broke')
+            }
+        }
+        const card: RestoreProgress = {
+            phase: (step) => { phases.push(step); note(`card:${step}`) },
+            bytes: (step, done, total) => { bytes.push([step, done, total]); note(`card:bytes:${step}`) },
+            aside: (ask) => ask(),
+            cancelRequested: false,
+            race: (wait) => wait,
+            lockCancel: () => true,
+            cancelled: () => { },
+            handOver: () => card,
+            leave: () => { note('card:leave') },
+        }
+        return { open: () => { r().log.push('card:open'); return card }, phases, bytes }
+    }
+
+    test('R3: a first-life restore opens the card before the busy entry, walks check, copy, load, finish, leaves before the installed wait and keeps every other call in its order (reproducer: no card on base)', async () => {
+        let r!: Rig
+        const card = cardOver(() => r)
+        r = rig({ deps: { openCard: card.open } })
+        expect(await r.run()).toBe(PENDING)
+        expect(card.phases).toEqual(['check', 'copy', 'load', 'finish'])
+        expect(r.log[0]).toBe('card:open')
+        expect(r.log.indexOf('card:open')).toBeLessThan(r.log.indexOf('busy'))
+        expect(r.log.indexOf('card:leave')).toBeLessThan(r.log.indexOf('wait:reloading'))
+        expect(r.log.filter((item) => !item.startsWith('card:'))).toEqual(['busy', 'settled', 'read-only', 'busy-check', 'hold', 'verify', 'copy', 'reread', 'plan', 'wait:installing', 'keep', 'snapshot', 'gate:busy-check', 'gate:clear-tool-grants', 'gate:clear-grants', 'gate:stage-keys', 'commit-start', 'mark', 'sides', 'wait:reloading', 'release:true', 'mark-reload', 'reload'])
+    })
+
+    test('R3c: the card is left before every error, and before the notices on both entries', async () => {
+        const skipped: RtbInstallFacts = { ...FACTS, skippedAssets: [{ name: 'bad name', reason: 'invalidName' }] }
+        const rows: { name: string, options: Options, at: 'error' | 'notice' }[] = [
+            { name: 'settings-only file', options: { deps: { verify: async () => ({ kind: 'settings', settings: {} as never }) as unknown as RtbVerifyEnd } }, at: 'error' },
+            { name: 'copy stopped, text not shown', options: { deps: { copy: async () => ({ kind: 'stopped', outcome: 'failed', cause: 'write-failed', facts: FACTS, shown: false }) } }, at: 'error' },
+            { name: 'file changed', options: { deps: { reread: async () => ({ kind: 'changed', detail: 'x' }) } }, at: 'error' },
+            { name: 'plan damaged', options: { deps: { planRestore: () => { throw new RtbRestoreError('missing-frame', 'x', 't') } } }, at: 'error' },
+            { name: 'throw before the gate', options: { deps: { reread: async () => { throw new Error('x') } } }, at: 'error' },
+            { name: 'not started', options: { outcome: { status: 'x' } as unknown as BootBuiltOutcome, install: async () => ({ entry: 'exit', outcome: { status: 'not-started' } }) }, at: 'error' },
+            { name: 'notices, first life', options: { deps: { copy: async () => ({ kind: 'copied', facts: skipped }) } }, at: 'notice' },
+            { name: 'notices, exit', options: { entry: 'exit', deps: { copy: async () => ({ kind: 'copied', facts: skipped }) } }, at: 'notice' },
+        ]
+        for (const row of rows) {
+            let r!: Rig
+            const card = cardOver(() => r)
+            r = rig({ ...row.options, deps: { ...row.options.deps, openCard: card.open } })
+            await r.run()
+            const first = r.log.indexOf(row.at)
+            expect(first, row.name).toBeGreaterThan(-1)
+            expect(r.log.indexOf('card:leave'), row.name).toBeGreaterThan(-1)
+            expect(r.log.indexOf('card:leave'), row.name).toBeLessThan(first)
+        }
+    })
+
+    test('R3d: a throw after the gate passed leaves the card before the unconfirmed error and its wait', async () => {
+        let r!: Rig
+        const card = cardOver(() => r)
+        r = rig({ deps: { openCard: card.open }, install: async (request) => { await request.beforeFirstWrite(); throw new Error('landed?') } })
+        await r.run()
+        expect(r.log.indexOf('card:leave')).toBeGreaterThan(-1)
+        expect(r.log.indexOf('card:leave')).toBeLessThan(r.log.indexOf('error'))
+        expect(r.log.indexOf('error')).toBeLessThan(r.log.indexOf('wait-alert'))
+    })
+
+    test('R3e: a card whose every call throws changes nothing about how the restore ends (guard: the shell calls and the end equal the card-less run)', async () => {
+        const plain = rig()
+        const plainEnd = await plain.run()
+        let r!: Rig
+        const card = cardOver(() => r, { throws: true })
+        r = rig({ deps: { openCard: card.open } })
+        expect(await r.run()).toBe(plainEnd)
+        expect(r.log.filter((item) => !item.startsWith('card:'))).toEqual(plain.log)
+        const exit = rig({ entry: 'exit' })
+        const exitEnd = await exit.run()
+        let e!: Rig
+        const exitCard = cardOver(() => e, { throws: true })
+        e = rig({ entry: 'exit', deps: { openCard: exitCard.open } })
+        expect(await e.run()).toEqual(exitEnd)
+        expect(e.log.filter((item) => !item.startsWith('card:'))).toEqual(exit.log)
+    })
+
+    test('R3f: an openCard that throws changes nothing about how the restore ends (guard)', async () => {
+        const plain = rig({ entry: 'exit' })
+        const plainEnd = await plain.run()
+        const broken = rig({ entry: 'exit', deps: { openCard: () => { throw new Error('no card') } } })
+        expect(await broken.run()).toEqual(plainEnd)
+        expect(broken.log).toEqual(plain.log)
+    })
+
+    test('R3g: the card\'s verify and copy wiring: the check phase for the file check and the password stands the card aside, and the copy bytes land on the copy step', async () => {
+        const seen: string[] = []
+        const progress: RestoreProgress = {
+            phase: (step) => { seen.push(`phase:${step}`) },
+            bytes: (step, done, total) => { seen.push(`bytes:${step}:${done}/${total}`) },
+            aside: async (ask) => { seen.push('aside'); return await ask() },
+            cancelRequested: false,
+            race: (wait) => wait,
+            lockCancel: () => true,
+            cancelled: () => { },
+            handOver: () => progress,
+            leave: () => { },
+        }
+        const wiring = bootCardWiring(progress)
+        wiring.verifyDeps.wait?.('text')
+        expect(seen).toEqual(['phase:check'])
+        const pending = wiring.verifyDeps.password?.('first')
+        expect(seen).toEqual(['phase:check', 'aside'])
+        pending?.catch(() => { })
+        wiring.copyDeps.bytes?.(3, 10)
+        expect(seen.at(-1)).toBe('bytes:copy:3/10')
+    })
+
+    test('R3h: with a card open the boot hold reports the card\'s check step and raises no wait alert; without a card it keeps its own wait (reproducer: bootHoldOptions absent on ad483a21d, where the hold raised alertWait over the card)', () => {
+        const seen: string[] = []
+        alertStore.set({ type: 'none', msg: '' })
+        const progress = { phase: (step: string) => { seen.push(step) } } as unknown as RestoreProgress
+        const withCard = bootHoldOptions(progress)
+        expect(withCard.checking).toBeDefined()
+        withCard.checking?.()
+        expect(seen).toEqual(['check'])
+        expect(get(alertStore).type).toBe('none')
+        expect(bootHoldOptions(null).checking).toBeUndefined()
+    })
+
+    test('R3i: the stop alerts of the verification and the copy leave the card first (kills a wiring error dep that does not leave)', () => {
+        const log: string[] = []
+        const progress = { leave: () => { log.push('leave') } } as unknown as RestoreProgress
+        const unsubscribe = alertStore.subscribe((value) => { if (value.type === 'error') { log.push('alert') } })
+        try {
+            const wiring = bootCardWiring(progress)
+            wiring.verifyDeps.error?.('verify stop')
+            wiring.copyDeps.error?.('copy stop')
+        } finally {
+            unsubscribe()
+        }
+        expect(log).toEqual(['leave', 'alert', 'leave', 'alert'])
+    })
+
+    test('R3j: the real wait raises no wait alert while the card is open and shows the first-life text once the card left (kills a real wait that always alerts)', async () => {
+        alertStore.set({ type: 'none', msg: '' })
+        let r!: Rig
+        const card = cardOver(() => r)
+        const during: string[] = []
+        r = rig({
+            realWait: true,
+            deps: { openCard: card.open },
+            install: async (request) => {
+                during.push(get(alertStore).type)
+                await request.beforeFirstWrite()
+                return { entry: 'first-life', outcome: INSTALLED }
+            },
+        })
+        expect(await r.run()).toBe(PENDING)
+        expect(during).toEqual(['none'])
+        const after = get(alertStore)
+        expect(after.type).toBe('wait')
+        expect(after.msg).toBe(language.store2Boot.recoveryInstalledBody)
+    })
+
+    test('the boot card def has the steps check, copy, load, finish and the card is opened with no Cancel token', () => {
+        expect(rtbBootCardDef().steps.map((item) => item.id)).toEqual(['check', 'copy', 'load', 'finish'])
     })
 })
 

@@ -176,6 +176,7 @@ class HostMessageListener(
       is BridgeCommand.KeepAliveStopAfterWithOutcome -> keepAlive.stopAfterWithOutcome(command.ms, command.json)
       is BridgeCommand.KeepAliveRequestNotificationPermissionOnce -> keepAlive.requestNotificationPermissionOnce()
       is BridgeCommand.KeepAliveRequestOpenTarget -> keepAlive.requestOpenTarget()
+      is BridgeCommand.KeepAliveRequestLaunchOptions -> keepAlive.requestLaunchOptions()
       is BridgeCommand.ReplyNotificationsRefresh -> replyNotifications.refresh()
       is BridgeCommand.ReplyNotificationsEnable -> replyNotifications.enable()
       is BridgeCommand.ReplyNotificationsDisable -> replyNotifications.disable()
