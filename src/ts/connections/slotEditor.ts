@@ -36,7 +36,7 @@ export function customModelUrlValue(db: Database, modelId: string): string {
 }
 
 /** Appends a connection and returns the stored element, which may be a reactive proxy. */
-function appendConnection(db: Database, conn: Connection): Connection {
+export function appendConnection(db: Database, conn: Connection): Connection {
     db.connections = [...storedConnections(db), conn]
     return storedConnections(db).find((item) => item.id === conn.id) ?? conn
 }
