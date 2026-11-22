@@ -25,7 +25,7 @@
         {/each}
         {#if translatePreview}<span data-part="chat-translate-preview">{translatePreview}</span>{/if}
         {#if stickersOpen && currentCharacter}
-            <div data-part="chat-sticker-assets"><AssetInput currentCharacter={currentCharacter} onSelect={onselect} /></div>
+            <div data-part="chat-sticker-assets"><AssetInput currentCharacter={currentCharacter} onSelect={onselect} grid /></div>
         {/if}
         {#if showSuggestions && children}<div data-part="chat-suggestions">{@render children()}</div>{/if}
     </div>
@@ -36,7 +36,9 @@
     [data-part="chat-attachment-chip"] { display: inline-flex; align-items: center; height: var(--size-touch); white-space: nowrap; padding-left: var(--space-7); background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--radius-5); }
     [data-part="chat-attachment-chip"] button { display: inline-flex; align-items: center; justify-content: center; width: var(--size-touch); height: var(--size-touch); color: var(--nexus-text); }
     [data-part="chat-attachment-chip"] button :global(svg) { flex: none; width: calc(var(--icon-size-md) * var(--icon-scale)); height: calc(var(--icon-size-md) * var(--icon-scale)); stroke-width: var(--icon-stroke); }
-    [data-part="chat-sticker-assets"] { display: flex; max-height: var(--size-rel-20); overflow: auto; }
+    /* With the picker open the strip wraps, so the picker grid takes a full-width row of its own beside chips or suggestions. */
+    [data-part="chat-extras-strip"]:has(> [data-part="chat-sticker-assets"]) { flex-wrap: wrap; }
+    [data-part="chat-sticker-assets"] { flex: 1 0 100%; min-width: 0; max-height: var(--size-rel-20); overflow-x: hidden; overflow-y: auto; }
     [data-part="chat-translate-preview"] { display: inline-flex; align-items: center; height: var(--size-touch); max-width: var(--size-38); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 var(--space-7); background: var(--nexus-surface-raised); color: var(--nexus-text); }
     [data-part="chat-suggestions"] { flex: none; }
 </style>

@@ -4105,7 +4105,11 @@ export const languageVietnamese = {
         `RisuTanium không thể lưu preset ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với preset sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các preset đã lưu gần nhất vẫn được giữ.`,
     saveLoadoutsHeldNotice: (name: string) =>
         `RisuTanium không thể lưu Loadout ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với Loadout sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các Loadout đã lưu gần nhất vẫn được giữ.`,
+    savePluginsHeldNotice: (name: string) =>
+        `RisuTanium không thể lưu plugin ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với plugin sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các plugin đã lưu gần nhất vẫn được giữ.`,
     saveItemModuleLabel: (name: string) => `module "${name}"`,
+    saveItemWorkspaceLabel: (name: string) => `không gian làm việc "${name}"`,
+    saveItemWorkspaceFileLabel: (path: string) => `tệp không gian làm việc "${path}"`,
     saveItemSettingLabel: (field: string) => `cài đặt "${field}"`,
     saveItemPluginDataLabel: (key: string) => `dữ liệu plugin "${key}"`,
     saveItemStaticsLabel: "thống kê sử dụng",
@@ -4114,6 +4118,18 @@ export const languageVietnamese = {
         `RisuTanium đã loại bỏ ${count} persona không phải dữ liệu hợp lệ. Có thể một plugin đã ghi chúng.`,
     personaListEmptyNotice: `Không còn persona nào dùng được trong danh sách persona, nên RisuTanium đã thêm một persona từ tên người dùng và biểu tượng của bạn rồi chọn nó.`,
     personaSelectionMissingNotice: `Persona đã chọn không có trong danh sách persona, nên RisuTanium đã thêm một persona từ tên người dùng, biểu tượng, lời nhắc persona và ghi chú hiện tại của bạn rồi chọn nó.`,
+    vaultKeepPlainNotice: `RisuTanium không thể bảo vệ các khóa kết nối của bạn bằng bộ nhớ bảo mật của thiết bị này, nên hiện tại các khóa vẫn được lưu dưới dạng văn bản thuần. Ứng dụng sẽ thử lại mỗi lần khởi động và mỗi khi bạn đổi khóa.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `Thiết bị này không thể đọc khóa đã lưu của: ${names}. Hãy nhập lại khóa cho từng mục. Khóa đã lưu trước đó được giữ nguyên cho đến khi bạn nhập lại.`,
+    vaultNeedsReentryLabel: `Cần nhập lại khóa`,
+    vaultKeyTemporarilyUnavailable: `Hiện chưa thể đọc khóa đã lưu. Hãy thử lại sau giây lát.`,
+    vaultKeyTemporarilyUnavailableHint: `Khóa tạm thời không khả dụng; khóa sẽ hiển thị sau khi được giải mã.`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `Thiết bị này không thể đọc khóa đã lưu của: ${names}. Bản sao lưu sẽ chứa các khóa đó ở dạng trống, còn các khóa đã lưu trên thiết bị này vẫn giữ nguyên. Tạo bản sao lưu mà không có chúng?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `Hiện không thể đọc khóa đã lưu của: ${names}, nên bản sao lưu sẽ chứa các khóa đó ở dạng trống. Tạo bản sao lưu mà không có chúng?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `Không thể đọc các khóa kết nối này khi ghi bản sao lưu, nên bản sao lưu chứa chúng ở dạng trống: ${names}.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `Bản sao lưu đã được tải sau khi RisuTanium sửa danh sách nhân vật: ${[
             dropped > 0 ? `${dropped} mục không phải nhân vật đã bị loại bỏ` : '',
@@ -4231,7 +4247,7 @@ export const languageVietnamese = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- Dữ liệu mà bản sao lưu đã được tạo mà không có: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng chưa được khôi phục: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng không thể ghi đầy đủ: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "cuộc trò chuyện Iris", googleSearch: "khóa tìm kiếm Google", hypaVector: "dữ liệu tìm kiếm bộ nhớ", pluginSafe: "dữ liệu plugin", pluginSafeLs: "cài đặt plugin", pluginPermissions: "quyền của plugin", mcpToolCalls: "lệnh gọi công cụ MCP", uiPrefs: "tùy chọn giao diện" },
+    rtbRestoreSideNames: { iris: "cuộc trò chuyện Iris", googleSearch: "khóa tìm kiếm Google", hypaVector: "dữ liệu tìm kiếm bộ nhớ", pluginSafe: "dữ liệu plugin", pluginSafeLs: "cài đặt plugin", pluginPermissions: "quyền của plugin", mcpToolCalls: "lệnh gọi công cụ MCP", uiPrefs: "tùy chọn giao diện", connectionKeys: "khóa kết nối" },
     rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `Khôi phục cài đặt trong bản sao lưu này? ${fields} cài đặt, ${presets} bộ cài đặt sẵn của bot, ${memoryPresets} bộ cài đặt sẵn của bộ nhớ và ${translatorPresets} bộ cài đặt sẵn của trình dịch mới sẽ được gộp vào thiết bị này. Cài đặt mà bản sao lưu không có sẽ được giữ nguyên. Nhân vật, cuộc trò chuyện, khóa và kết nối không bị động đến.${dropped > 0 ? ` ${dropped} giá trị trong bản sao lưu không thể dùng và bị bỏ qua.` : ''} Sau đó ứng dụng sẽ tải lại.`,
     rtbRestoreSettingsDone: "Đã khôi phục cài đặt. Ứng dụng sẽ tải lại ngay bây giờ.",

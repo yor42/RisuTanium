@@ -6,19 +6,20 @@ import { IMPORT_REPLACES_BASE, type CommitRequest, type CommitResult, type Commi
 import { isKnownUnitType } from '../storage/store2/format'
 import { baseManifestOf, type BaseManifest } from '../storage/store2/legacy/importTree'
 import { omittedTailsOf, planRestore, RtbRestoreError, type RestorePlanInput, type RestoreRequest } from '../storage/store2/rtb/restoreBuild'
-import { applySideAction, defaultSideBackends, type SideBackends } from './rtb/sideStores'
+import { applySideAction, defaultSideBackends, type SideBackends, type SideRestoreResult } from './rtb/sideStores'
 import { decodeBlock } from './rtb/unitBlocks'
 import { RtbCouldNotReadError } from './rtb/rangeSource'
 import { readEntry } from './rtb/zip64Reader'
 import { copyRtbEntries, landedFactsOf, withCopiedKept, type CopyEnd, type RtbCopyCause, type RtbCopyDeps, type RtbCopyPlan, type RtbInstallFacts } from './rtbRestoreCopy'
 import { checkAuthoritativeBase, isRtbBusyAbort, rtbGuardedCommitter, type RestoreHold } from './rtbRestoreHold'
+import { stageConnectionKeys } from './rtbRestoreFinish'
 import type { RestorePlan } from './rtbRestorePlan'
 import type { Store2ImportRefusal } from './storeImport'
 
 /**
  * The install stage of a `.rtb` restore (CHORE-128 S12a-2): after the copy, the file's units are re-read and checked
  * against what the verification saw (I0), the commit key is read again and the guards re-asked (I1, I2), the restore is
- * planned (I3), the plugin grants are cleared (MC-2252), and the profile is committed (I4).
+ * planned (I3), the connection keys are staged, the plugin grants are cleared (MC-2252), and the profile is committed (I4).
  *
  * `installRtbRestore` never rejects. Every throw outside a decided stop becomes an end: `unconfirmed` once the commit was called, because the
  * commit may have landed and the write lock must then stay closed; otherwise `stopped` with `write-failed`. The hold is
@@ -32,7 +33,10 @@ import type { Store2ImportRefusal } from './storeImport'
  *   never `commitStreamed`, so the busy check at the flip runs.
  * - A held marker is cleared on every end but `landed` (whose final write cleared it), before the hold is released, and
  *   a clear that throws never keeps the release from running.
- * - The plugin grants are cleared after the guard and the plan, immediately before the commit, and not before.
+ * - `side.connection-keys` is staged before the commit can land, after the guard and the plan. Staging before the commit
+ *   only adds records, keyed by the file's envelopes, and never removes one. Every other side section, and the
+ *   connection-keys `absent`/`newer` clear, runs after the commit landed; the finish never applies a connection-keys `restore`.
+ * - The plugin grants are cleared after the guard, the plan and the staging, immediately before the commit, and not before.
  * - Every stop after the copy began names what the copy left on this device, unless its message already says so.
  */
 
@@ -45,8 +49,8 @@ export type RtbInstallCause =
     | 'unconfirmed'
 
 export type RtbInstallEnd =
-    /** The commit landed; the hold is still held and the finish stage releases it. */
-    | { kind: 'landed', flushed: boolean | undefined, facts: RtbInstallFacts }
+    /** The commit landed; the hold is still held and the finish stage releases it. `staged` is the connection-keys staging done before the commit, null when that action is not a `restore`. */
+    | { kind: 'landed', flushed: boolean | undefined, facts: RtbInstallFacts, staged: SideRestoreResult | null }
     /** The commit may or may not have landed; the hold is released with the write lock kept closed. */
     | { kind: 'unconfirmed', cause: RtbInstallCause, facts: RtbInstallFacts }
     /** Nothing was committed; the hold is released. */
@@ -166,6 +170,7 @@ export async function installRtbRestore(plan: RtbInstallPlan, hold: RestoreHold,
     const deps: RtbInstallDeps = { ...realInstallDeps(), copy: (copyPlan, copyHold) => copyRtbEntries(copyPlan, copyHold, options.copyDeps), ...options }
     let commitStarted = false
     let facts = emptyFacts()
+    let staged: SideRestoreResult | null = null
     const decided: Decided = { end: null, message: null }
     const stop = (outcome: 'nothing-replaced' | 'failed', cause: RtbInstallCause, text: string | null): RtbInstallEnd => {
         decided.message = text
@@ -183,7 +188,7 @@ export async function installRtbRestore(plan: RtbInstallPlan, hold: RestoreHold,
         switch (result.status) {
             case 'committed':
                 decided.message = null
-                decided.end = { kind: 'landed', flushed: result.flushed, facts: deps.facts(facts) }
+                decided.end = { kind: 'landed', flushed: result.flushed, facts: deps.facts(facts), staged }
                 return decided.end
             case 'conflict':
             case 'unknown':
@@ -267,14 +272,18 @@ export async function installRtbRestore(plan: RtbInstallPlan, hold: RestoreHold,
             }
             throw error
         }
-        await clearPluginGrants(plan, deps.sideBackends)
 
-        // I4: the commit.
+        // The installing wait shows first so the staging time reads as part of the load.
         if (deps.installing !== undefined) {
             deps.installing()
         } else {
             deps.wait(language.rtbRestoreInstalling)
         }
+        // The connection keys are staged after every question and before the commit can land; the finish never applies them.
+        staged = await stageConnectionKeys(plan, { applySide: applySideAction, sideBackends: deps.sideBackends })
+        await clearPluginGrants(plan, deps.sideBackends)
+
+        // I4: the commit.
         const guarded: Committer = rtbGuardedCommitter(plan.target.committer, hold.busy)
         commitStarted = true
         let result: CommitResult

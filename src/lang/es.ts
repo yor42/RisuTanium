@@ -4108,7 +4108,11 @@ export const languageSpanish = {
         `RisuTanium no puede guardar el preset ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los presets no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos presets guardados.`,
     saveLoadoutsHeldNotice: (name: string) =>
         `RisuTanium no puede guardar el loadout ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los loadouts no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos loadouts guardados.`,
+    savePluginsHeldNotice: (name: string) =>
+        `RisuTanium no puede guardar el plugin ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los plugins no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos plugins guardados.`,
     saveItemModuleLabel: (name: string) => `el módulo "${name}"`,
+    saveItemWorkspaceLabel: (name: string) => `el espacio de trabajo "${name}"`,
+    saveItemWorkspaceFileLabel: (path: string) => `el archivo del espacio de trabajo "${path}"`,
     saveItemSettingLabel: (field: string) => `el ajuste "${field}"`,
     saveItemPluginDataLabel: (key: string) => `los datos de plugin "${key}"`,
     saveItemStaticsLabel: "las estadísticas de uso",
@@ -4117,6 +4121,18 @@ export const languageSpanish = {
         `RisuTanium omitió ${count} ${count === 1 ? 'persona que no era un dato válido' : 'personas que no eran datos válidos'}. Puede que un plugin ${count === 1 ? 'la' : 'las'} haya escrito.`,
     personaListEmptyNotice: `No quedó ninguna persona utilizable en la lista de personas, así que RisuTanium añadió una a partir de tu nombre de usuario e icono y la seleccionó.`,
     personaSelectionMissingNotice: `La persona seleccionada faltaba en la lista de personas, así que RisuTanium añadió una a partir de tu nombre de usuario, icono, prompt de persona y nota actuales y la seleccionó.`,
+    vaultKeepPlainNotice: `RisuTanium no pudo proteger tus claves de conexión con el almacenamiento seguro de este dispositivo, así que por ahora siguen guardadas como texto sin cifrar. Lo intenta de nuevo en cada inicio y cada vez que cambias una clave.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `Este dispositivo no puede leer la clave guardada de: ${names}. Vuelve a introducir la clave de cada uno. La clave guardada anterior se conserva intacta hasta que lo hagas.`,
+    vaultNeedsReentryLabel: `Hay que volver a introducir la clave`,
+    vaultKeyTemporarilyUnavailable: `La clave guardada no se puede leer ahora mismo. Inténtalo de nuevo en un momento.`,
+    vaultKeyTemporarilyUnavailableHint: `Clave no disponible temporalmente; aparecerá cuando se descifre.`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `Este dispositivo no puede leer la clave guardada de: ${names}. La copia de seguridad incluiría esas claves vacías y las claves guardadas en este dispositivo no se modifican. ¿Crear la copia de seguridad sin ellas?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `La clave guardada de: ${names} no se puede leer ahora mismo, por lo que la copia de seguridad incluiría esas claves vacías. ¿Crear la copia de seguridad sin ellas?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `Estas claves de conexión no se pudieron leer mientras se escribía la copia de seguridad, por lo que la incluye vacías: ${names}.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `La copia de seguridad se cargó después de que RisuTanium reparara su lista de personajes: ${[
             dropped > 0 ? `${dropped} ${dropped === 1 ? 'entrada que no es un personaje se omitió' : 'entradas que no son personajes se omitieron'}` : '',
@@ -4234,7 +4250,7 @@ export const languageSpanish = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- Datos sin los que se creó el respaldo: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Datos guardados en este dispositivo que no se restauraron: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Datos guardados en este dispositivo que no se pudieron escribir por completo: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "conversaciones de Iris", googleSearch: "clave de búsqueda de Google", hypaVector: "datos de búsqueda de memoria", pluginSafe: "datos de plugins", pluginSafeLs: "ajustes de plugins", pluginPermissions: "permisos de plugins", mcpToolCalls: "llamadas a herramientas MCP", uiPrefs: "preferencias de la interfaz" },
+    rtbRestoreSideNames: { iris: "conversaciones de Iris", googleSearch: "clave de búsqueda de Google", hypaVector: "datos de búsqueda de memoria", pluginSafe: "datos de plugins", pluginSafeLs: "ajustes de plugins", pluginPermissions: "permisos de plugins", mcpToolCalls: "llamadas a herramientas MCP", uiPrefs: "preferencias de la interfaz", connectionKeys: "claves de conexión" },
     rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `¿Restaurar los ajustes de este respaldo? Se combinarán en este dispositivo ${fields} ajuste(s), ${presets} preajuste(s) de bots, ${memoryPresets} preajuste(s) de memoria y ${translatorPresets} preajuste(s) nuevo(s) de traductor. Un ajuste que falte en el respaldo se queda como está. No se tocan personajes, chats, claves ni conexiones.${dropped > 0 ? ` ${dropped} valor(es) del respaldo no se pueden usar y se omiten.` : ''} Después la aplicación se recarga.`,
     rtbRestoreSettingsDone: "Los ajustes se restauraron. La aplicación se recarga ahora.",
