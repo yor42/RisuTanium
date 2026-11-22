@@ -192,7 +192,9 @@ export interface SideSkip {
 
 /**
  * `malformed`: the store was not touched (pass 1, or a conflict; a plugin-permissions conflict still clears the grants, MC-2047).
- * `changed`: pass 2 failed after the store was cleared; `written` records were written.
+ * `changed`: pass 2 failed after the store was cleared; `written` records were written. The connection-keys staging
+ * store is not cleared by a restore: there `changed` and `write-failed` with `phase: 'write'` mean `written` file
+ * records were added over the existing ones.
  * `write-failed`: the store itself failed. For `phase: 'clear'`, plugin-safe-ls and
  * ui-prefs clear key by key, so the failure may have removed some keys; the other
  * stores clear in one operation and are unchanged.
@@ -223,6 +225,11 @@ type Accepted =
     | { kind: 'bad', reason: string }
 
 interface StoreOps {
+    /**
+     * Whether a restore clears the store between the passes. The connection-keys staging store is staged before the
+     * commit and only ever adds records; its clear is the `absent`/`newer` action, which runs after the commit.
+     */
+    clearsBeforeRestore: boolean
     clear(): Promise<void>
     accept(key: string, value: unknown): Accepted
     write(key: string, value: unknown): Promise<void>
@@ -239,6 +246,7 @@ function opsFor(id: SideSectionId, backends: SideBackends): StoreOps {
             return instance
         }
         return {
+            clearsBeforeRestore: true,
             clear: () => store().clear(),
             accept: (key, value) => ({ kind: 'write', key, value }),
             write: async (key, value) => {
@@ -248,6 +256,7 @@ function opsFor(id: SideSectionId, backends: SideBackends): StoreOps {
     }
     if (spec.kind === 'safe-ls') {
         return {
+            clearsBeforeRestore: true,
             clear: async () => {
                 const storage = backends.local()
                 for (const key of localKeys(storage).filter((candidate) => candidate.startsWith(SAFE_PLUGIN_LS_PREFIX))) {
@@ -268,7 +277,10 @@ function opsFor(id: SideSectionId, backends: SideBackends): StoreOps {
             instance ??= backends.forage(RESTORED_KEYS_STORE)
             return instance
         }
+        // After the first failed wrap in one run the vault is not asked again: the remaining lines are staged as plain.
+        let wrapStopped = false
         return {
+            clearsBeforeRestore: false,
             clear: () => store().clear(),
             // The record is keyed by the envelope the restored database holds; the wrap is async, so it runs in write.
             accept: (key, value) => {
@@ -279,12 +291,19 @@ function opsFor(id: SideSectionId, backends: SideBackends): StoreOps {
             },
             write: async (envelope, value) => {
                 const line = value as { id: string, p: string }
-                const wrapped = backends.stageWrap === undefined ? null : await backends.stageWrap(line.p)
+                let wrapped: string | null = null
+                if (!wrapStopped && backends.stageWrap !== undefined) {
+                    wrapped = await backends.stageWrap(line.p)
+                    if (wrapped === null) {
+                        wrapStopped = true
+                    }
+                }
                 await store().setItem(envelope, wrapped === null ? { id: line.id, p: line.p } : { id: line.id, w: wrapped })
             },
         }
     }
     return {
+        clearsBeforeRestore: true,
         clear: async () => {
             const storage = backends.local()
             for (const key of UI_PREFS_KEYS) {
@@ -405,10 +424,12 @@ async function restoreSection(id: SideSectionId, body: SideBodyReader, ops: Stor
         return { id, status: 'malformed', reason: stop.reason, line: stop.line, conflict: false }
     }
 
-    try {
-        await ops.clear()
-    } catch (error) {
-        return { id, status: 'write-failed', phase: 'clear', written: 0, key: null, message: messageOf(error) }
+    if (ops.clearsBeforeRestore) {
+        try {
+            await ops.clear()
+        } catch (error) {
+            return { id, status: 'write-failed', phase: 'clear', written: 0, key: null, message: messageOf(error) }
+        }
     }
 
     // Pass 2: re-validate every line before writing it.

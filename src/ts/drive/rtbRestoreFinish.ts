@@ -1,7 +1,7 @@
 import { alertNormalWait, alertWait } from '../alert'
 import { language } from 'src/lang'
 import { markAppInitiatedReload } from '../reloadGuard'
-import { sideDataName, SIDE_SECTION_IDS, type SideSectionId } from './rtb/entryNames'
+import { CONNECTION_KEYS_ID, sideDataName, SIDE_SECTION_IDS, type SideSectionId } from './rtb/entryNames'
 import { RtbCouldNotReadError } from './rtb/rangeSource'
 import { applySideAction, defaultSideBackends, sideResultIsNamed, type SideBackends, type SideBodyReader, type SideRestoreResult } from './rtb/sideStores'
 import { readEntry } from './rtb/zip64Reader'
@@ -26,6 +26,9 @@ import type { RestorePlan } from './rtbRestorePlan'
  * - The hold is released, then the reload is marked app-initiated, then the page reloads: the mark outlives only a short
  *   time, and the release can queue behind another tab.
  * - Every section of the side data is attempted; a throw in one is named in the notice and does not stop the others.
+ * - `side.connection-keys` is staged before the commit can land (`stageConnectionKeys`), only adding records, keyed by the
+ *   file's envelopes. Every other section, and the connection-keys `absent`/`newer` clear, runs here after the commit. The
+ *   finish never applies a connection-keys `restore`; it names the result the staging returned.
  * - The plugin grants are cleared whatever the file holds for them (MC-2047, MC-2252).
  * - No restore-time re-check of the page runs here: the commit has landed (MC-2254).
  *
@@ -35,7 +38,8 @@ import type { RestorePlan } from './rtbRestorePlan'
 /** The part of the plan this stage reads. */
 export type RtbFinishPlan = Pick<RestorePlan, 'source' | 'index' | 'side' | 'notice' | 'assets'>
 export type RtbFinishHold = Pick<RestoreHold, 'release'>
-export type RtbFinishLanded = { flushed: boolean | undefined, facts: RtbInstallFacts }
+/** `staged` is the result of the connection-keys staging the install ran before the commit; null when that action is not a `restore`. */
+export type RtbFinishLanded = { flushed: boolean | undefined, facts: RtbInstallFacts, staged: SideRestoreResult | null }
 
 /** The calls the finish makes outside the file; tests replace them to observe order and to keep the page out of it. */
 export interface RtbFinishDeps {
@@ -112,16 +116,45 @@ export function bodyReaderOf(plan: Pick<RestorePlan, 'source' | 'index'>, id: Si
     }
 }
 
-/** S.1: every side section in order; a throw becomes that section's `write-failed` result and the next section runs. */
-export async function restoreSides(plan: RtbFinishPlan, deps: Pick<RtbFinishDeps, 'applySide' | 'sideBackends'>): Promise<SideRestoreResult[]> {
+function sideFailure(id: SideSectionId, message: string): SideRestoreResult {
+    return { id, status: 'write-failed', phase: 'write', written: 0, key: null, message }
+}
+
+/**
+ * Stages the connection keys before the commit can land: the result of the `restore` action of `side.connection-keys`, or
+ * null when the action is not a `restore`. Never throws: a throw becomes that section's `write-failed` result, which the
+ * finish names. Staging only adds records; the `absent`/`newer` clear stays in `restoreSides`, after the commit.
+ */
+export async function stageConnectionKeys(plan: Pick<RestorePlan, 'source' | 'index' | 'side'>, deps: Pick<RtbFinishDeps, 'applySide' | 'sideBackends'>): Promise<SideRestoreResult | null> {
+    const item = plan.side.find((candidate) => candidate.action.id === CONNECTION_KEYS_ID)
+    if (item === undefined || item.action.kind !== 'restore') {
+        return null
+    }
+    try {
+        return await deps.applySide(item.action, bodyReaderOf(plan, item.action.id), deps.sideBackends)
+    } catch (error) {
+        console.error(error)
+        return sideFailure(item.action.id, error instanceof Error ? error.message : String(error))
+    }
+}
+
+/**
+ * S.1: every side section in order; a throw becomes that section's `write-failed` result and the next section runs. A
+ * connection-keys `restore` is never applied here: it was staged before the commit, and `staged` is its result.
+ */
+export async function restoreSides(plan: RtbFinishPlan, deps: Pick<RtbFinishDeps, 'applySide' | 'sideBackends'>, staged: SideRestoreResult | null): Promise<SideRestoreResult[]> {
     const results: SideRestoreResult[] = []
     for (const item of plan.side) {
+        if (item.action.id === CONNECTION_KEYS_ID && item.action.kind === 'restore') {
+            results.push(staged ?? sideFailure(item.action.id, 'not staged before the commit'))
+            continue
+        }
         try {
             const body = item.action.kind === 'restore' ? bodyReaderOf(plan, item.action.id) : null
             results.push(await deps.applySide(item.action, body, deps.sideBackends))
         } catch (error) {
             console.error(error)
-            results.push({ id: item.action.id, status: 'write-failed', phase: 'write', written: 0, key: null, message: error instanceof Error ? error.message : String(error) })
+            results.push(sideFailure(item.action.id, error instanceof Error ? error.message : String(error)))
         }
     }
     return results
@@ -181,7 +214,7 @@ function leaveCard(deps: Pick<RtbFinishDeps, 'leave'>): void {
 export async function finishRtbRestore(plan: RtbFinishPlan, hold: RtbFinishHold, landed: RtbFinishLanded, options: Partial<RtbFinishDeps> = {}): Promise<void> {
     const deps: RtbFinishDeps = { ...realFinishDeps(), ...options }
     try {
-        const results = await restoreSides(plan, deps)
+        const results = await restoreSides(plan, deps, landed.staged)
         leaveCard(deps)
         if (plan.notice.outsideEntryCount > 0 || plan.notice.unreadableLists > 0) {
             console.warn(`rtb restore: ${plan.notice.outsideEntryCount} entries outside the known sections, ${plan.notice.unreadableLists} unreadable lists`)
