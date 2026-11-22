@@ -27,6 +27,7 @@ class HostMessageListener(
   private val appOrigin: String,
   private val gestureInsets: GestureInsetHolder,
   private val ime: ImeStateHolder,
+  private val touchExploration: TouchExplorationHolder,
   private val systemBars: SystemBarsBridge,
   private val keepAlive: KeepAliveBridge,
   private val replyNotifications: ReplyNotificationsBridge,
@@ -53,6 +54,11 @@ class HostMessageListener(
   // last height sent on it (the visible flag follows from the height).
   private var imeReplyProxy: JavaScriptReplyProxy? = null
   private var lastPushedIme: Double? = null
+
+  // Main thread only. The latest main-frame channel that subscribed to touch exploration, and the
+  // last value sent on it.
+  private var touchReplyProxy: JavaScriptReplyProxy? = null
+  private var lastPushedTouch: Boolean? = null
 
   override fun onPostMessage(
     view: WebView,
@@ -106,6 +112,24 @@ class HostMessageListener(
     }
   }
 
+  // The accessibility listener calls this after it updates the holder; the value is sent only when
+  // it changed since the last send.
+  fun pushTouchExploration(enabled: Boolean) {
+    val proxy = touchReplyProxy ?: return
+    if (lastPushedTouch == enabled) return
+    sendTouchExploration(proxy, enabled)
+  }
+
+  private fun sendTouchExploration(proxy: JavaScriptReplyProxy, enabled: Boolean) {
+    try {
+      proxy.postMessage(encodeTouchExplorationEvent(enabled))
+      lastPushedTouch = enabled
+    } catch (error: Exception) {
+      Log.w(TAG, "touch exploration push failed", error)
+      if (touchReplyProxy === proxy) touchReplyProxy = null
+    }
+  }
+
   private fun dispatch(message: WebMessageCompat, replyProxy: JavaScriptReplyProxy) {
     if (message.type != WebMessageCompat.TYPE_STRING) return
     val text = message.data ?: return
@@ -137,6 +161,10 @@ class HostMessageListener(
       is BridgeCommand.SubscribeIme -> {
         imeReplyProxy = replyProxy
         sendIme(replyProxy, ime.heightDp)
+      }
+      is BridgeCommand.SubscribeTouchExploration -> {
+        touchReplyProxy = replyProxy
+        sendTouchExploration(replyProxy, touchExploration.enabled)
       }
       is BridgeCommand.SetBackground -> systemBars.setBackground(command.red, command.green, command.blue)
       is BridgeCommand.KeepAliveStart -> keepAlive.start(command.title, command.stopLabel)

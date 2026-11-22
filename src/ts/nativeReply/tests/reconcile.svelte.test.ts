@@ -13,6 +13,7 @@ import {
 } from '../pageState'
 import { createReconciler, recoveredText, type ApplyOutcome, type ReconcileDeps } from '../reconcile'
 import type { ReplyListing } from '../store'
+import { createUsageMeter } from 'src/ts/usage/usageMeter'
 
 /**
  * T12 (guard, new rule): every row of the reconcile table over a real DBState and a fake store. T13: one pass at a time
@@ -78,7 +79,7 @@ function rig(listings: ReplyListing[], options: { text?: string | null, apply?: 
     const preLoad = vi.fn(async (_c: number, _h: number) => undefined)
     const showParked = vi.fn(async () => {})
     const deps: ReconcileDeps = {
-        store: { list, readBody, park, discard },
+        store: { list, readBody, readBodyBytes: vi.fn(async (_key: string) => new Uint8Array()), readPartialBytes: vi.fn(async (_key: string) => new Uint8Array()), park, discard },
         gate: () => gate.value,
         notice: (text) => notices.push(text),
         notes: {
@@ -89,6 +90,9 @@ function rig(listings: ReplyListing[], options: { text?: string | null, apply?: 
         },
         recoverText: async () => options.text === undefined ? 'a reply' : options.text,
         apply,
+        replayStream: async () => ({ modelText: '', meter: createUsageMeter() }),
+        applyStream: async (): Promise<ApplyOutcome> => 'failed',
+        settleUsage: () => {},
         restoreCharacter: restore,
         preLoadChat: preLoad,
         showParked,

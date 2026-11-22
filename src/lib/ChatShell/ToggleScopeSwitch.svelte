@@ -2,6 +2,7 @@
     import { onDestroy } from 'svelte'
     import { language } from 'src/lang'
     import { DBState } from 'src/ts/stores.svelte'
+    import { playUiSound } from 'src/ts/uiSound/uiSound'
     import type { Chat } from 'src/ts/storage/database.svelte'
     import {
         currentScopeKeys,
@@ -84,7 +85,9 @@
         if (restoreChatScope(discardedFrom, snapshot)) {
             closeRow()
             scoped = true
+            playUiSound('undo')
         } else {
+            playUiSound('warning')
             // The row time keeps running; the refusal replaces the Undo for the rest of it.
             snapshot = undefined
             discardedFrom = undefined
