@@ -40,6 +40,9 @@ export function wantedOf(manifest: Manifest): Wanted[] {
         { identity: 'statics', ref: fixed.statics, type: UNIT_TYPE.statics },
         { identity: 'loadouts', ref: fixed.loadouts, type: UNIT_TYPE.loadouts },
     ]
+    if (fixed.chatDrafts !== undefined) {
+        wanted.push({ identity: 'chatDrafts', ref: fixed.chatDrafts, type: UNIT_TYPE.chatDrafts })
+    }
     fixed.presets.forEach((ref, index) => wanted.push({ identity: `preset:${index}`, ref, type: UNIT_TYPE.preset }))
     manifest.shards.forEach((ref, index) => wanted.push({ identity: `shard:${index}`, ref, type: UNIT_TYPE.shard }))
     return wanted

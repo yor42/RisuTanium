@@ -260,6 +260,11 @@ export interface AssembleOptions {
      * read. Only the boot fallback passes it; every other caller stays strict and throws on such a unit.
      */
     skipTaskPresets?: ReadonlySet<string>
+    /**
+     * The boot found the draft unit damaged or missing and dropped it: the database is assembled without drafts and hint
+     * flags and the unit is not read. Only the boot passes it; every other caller stays strict and throws on such a unit.
+     */
+    skipChatDrafts?: boolean
 }
 
 /** The database the manifest and its units describe. Characters come back in `characters` order, fully loaded. */
@@ -294,6 +299,13 @@ export function assembleDatabase(manifest: Manifest, source: UnitSource, options
     defineOwn(database, 'pluginV2', plugins.pluginV2)
     defineOwn(database, 'pluginCustomStorage', assemblePluginStorage(manifest, source))
     defineOwn(database, 'loadouts', readListField(readContent(source, fixed.loadouts, UNIT_TYPE.loadouts, 'loadouts'), 'items', 'loadouts'))
+    // Defined only when the manifest names the draft unit and it holds an entry, like the task presets above.
+    if (fixed.chatDrafts !== undefined && options.skipChatDrafts !== true) {
+        const chats = readListField(readContent(source, fixed.chatDrafts, UNIT_TYPE.chatDrafts, 'chatDrafts'), 'chats', 'chatDrafts')
+        if (chats.length > 0) {
+            defineOwn(database, 'chatDrafts', chats)
+        }
+    }
     const statics = readContent(source, fixed.statics, UNIT_TYPE.statics, 'statics')
     if (statics.value !== undefined) {
         defineOwn(database, 'statics', statics.value)

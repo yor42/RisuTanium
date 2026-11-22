@@ -129,6 +129,19 @@ export function advancePrevious(old: PreviousEncoding, target: StoredTree, optio
         const items = parsed.status === 'ok' || parsed.status === 'stale' ? (parsed.value.body as ContentBody).items : undefined
         loadoutsBody = Array.isArray(items) ? items : undefined
     }
+    // The draft unit is optional: a manifest that does not name it registers no identity, so a unit the peer removed is not
+    // copied from the old encoding. A body that is missing or invalid is left unknown, like the loadouts.
+    let chatDraftsBody: readonly JsonValue[] | undefined
+    if (fixed.chatDrafts !== undefined) {
+        const chatDraftsBytes = register('chatDrafts', UNIT_TYPE.chatDrafts, fixed.chatDrafts)
+        if (unchanged('chatDrafts', UNIT_TYPE.chatDrafts, fixed.chatDrafts) !== undefined) {
+            chatDraftsBody = objectsBefore.chatDrafts
+        } else if (chatDraftsBytes !== undefined) {
+            const parsed = readUnit(chatDraftsBytes, UNIT_TYPE.chatDrafts)
+            const chats = parsed.status === 'ok' || parsed.status === 'stale' ? (parsed.value.body as ContentBody).chats : undefined
+            chatDraftsBody = Array.isArray(chats) ? chats : undefined
+        }
+    }
 
     const presets: JsonObject[] = []
     let presetsKnown = true
@@ -183,6 +196,9 @@ export function advancePrevious(old: PreviousEncoding, target: StoredTree, optio
     }
     if (loadoutsBody !== undefined) {
         objects.loadouts = loadoutsBody
+    }
+    if (chatDraftsBody !== undefined) {
+        objects.chatDrafts = chatDraftsBody
     }
     if (presetsKnown) {
         objects.presets = presets

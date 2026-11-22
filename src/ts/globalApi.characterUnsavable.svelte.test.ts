@@ -244,6 +244,56 @@ describe('T-A8: isCharacterUnsavable follows the latest pass', () => {
         expect(page.w.api.isSaveClean()).toBe(false)
     })
 
+    // New-behaviour guards (T1.16), not pre-fix reproducers: the draft scope and its label do not exist on the pre-fix base,
+    // where an unknown scope would be told as plugin data.
+    test('P4 guard (new rule): draft edits that were never saved and cannot be saved get the draft notice, not the plugin data one', async () => {
+        const page = await startPage()
+        await settled(page.w)
+        const { alertToast } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const notice = language.saveItemNeverSavedNotice(language.saveItemChatDraftsLabel)
+        const pluginNotice = language.saveItemNeverSavedNotice(language.saveItemPluginDataLabel('chatDrafts'))
+        const shown = (text: string): number => vi.mocked(alertToast).mock.calls.filter(([toast]) => toast === text).length
+
+        await nextCommit(page.w, () => {
+            page.db.chatDrafts = [{ cha: 'c', chat: 'k', drafts: [unreadable()] }]
+            characters(page.db)[2].personality = 'edited next to the held drafts'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(() => shown(notice) >= 1, 'the draft notice', 6000)
+        expect(shown(pluginNotice)).toBe(0)
+        expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited next to the held drafts' })
+        expect(page.w.api.isSaveClean()).toBe(false)
+    })
+
+    test('P5 guard (new rule): saved draft edits that can no longer be saved keep their last saved set and get the unsaved draft notice', async () => {
+        const page = await startPage()
+        await settled(page.w)
+        const { alertToast } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const notice = language.saveItemUnsavedNotice(language.saveItemChatDraftsLabel)
+        const shown = (text: string): number => vi.mocked(alertToast).mock.calls.filter(([toast]) => toast === text).length
+        const good = { cha: 'c', chat: 'k', drafts: [{ m: 'id:m1', text: 'saved edit', bh: '0123456789abcdef0123456789abcdef', at: 1 }] }
+
+        await nextCommit(page.w, () => {
+            page.db.chatDrafts = [good]
+            page.flush()
+        })
+        expect((await page.k.saved()).chatDrafts).toEqual([good])
+
+        await nextCommit(page.w, () => {
+            page.db.chatDrafts = [good, { cha: 'c2', chat: 'k2', drafts: [unreadable()] }]
+            characters(page.db)[2].personality = 'edited next to the unsaved drafts'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(() => shown(notice) >= 1, 'the unsaved draft notice', 6000)
+        expect((await page.k.saved()).chatDrafts).toEqual([good])
+        expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited next to the unsaved drafts' })
+        expect(page.w.api.isSaveClean()).toBe(false)
+    })
+
     test('a task preset list that cannot be saved gets the task preset notice, not the bot preset one', async () => {
         const page = await startPage()
         await settled(page.w)

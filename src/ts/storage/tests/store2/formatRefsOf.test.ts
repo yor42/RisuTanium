@@ -47,6 +47,7 @@ const MANIFEST_SAMPLE: Sample = {
             presets: [ref('preset1'), ref('preset2')], taskPresets: [ref('taskpreset1'), ref('taskpreset2')], plugins: [ref('plugin1'), ref('plugin2')],
             pluginStorage: { buckets: 2, refs: [ref('bucket1'), ref('bucket2')] },
             workspaces: [ref('workspace1'), ref('workspace2')],
+            chatDrafts: ref('chatdrafts'),
             legacyKeep: { unit: ref('legacy'), v: 1, files: [{ key: 'database/database.bin', status: 'ok' }] },
         },
     },
@@ -57,7 +58,7 @@ const MANIFEST_SAMPLE: Sample = {
         ['fixed.presets[]', 'preset1'], ['fixed.presets[]', 'preset2'], ['fixed.taskPresets[]', 'taskpreset1'], ['fixed.taskPresets[]', 'taskpreset2'],
         ['fixed.plugins[]', 'plugin1'], ['fixed.plugins[]', 'plugin2'],
         ['fixed.pluginStorage.refs[]', 'bucket1'], ['fixed.pluginStorage.refs[]', 'bucket2'],
-        ['fixed.workspaces[]', 'workspace1'], ['fixed.workspaces[]', 'workspace2'], ['fixed.legacyKeep.unit', 'legacy'],
+        ['fixed.workspaces[]', 'workspace1'], ['fixed.workspaces[]', 'workspace2'], ['fixed.chatDrafts', 'chatdrafts'], ['fixed.legacyKeep.unit', 'legacy'],
     ].map(([path, name]) => `${path}:${tailOf(name)}`),
 }
 
@@ -150,7 +151,7 @@ describe('refsOf guard', () => {
         const required: [UnitType, string[]][] = [
             [UNIT_TYPE.commit, ['current.key', 'retained[].key', 'pins[].key']],
             [UNIT_TYPE.manifest, ['shards[]', 'fixed.config', 'fixed.configAl', 'fixed.il', 'fixed.statics', 'fixed.order', 'fixed.loadouts',
-                'fixed.moduleIndex', 'fixed.moduleBuckets[]', 'fixed.presets[]', 'fixed.taskPresets[]', 'fixed.plugins[]', 'fixed.pluginStorage.refs[]', 'fixed.workspaces[]', 'fixed.legacyKeep.unit']],
+                'fixed.moduleIndex', 'fixed.moduleBuckets[]', 'fixed.presets[]', 'fixed.taskPresets[]', 'fixed.plugins[]', 'fixed.pluginStorage.refs[]', 'fixed.workspaces[]', 'fixed.chatDrafts', 'fixed.legacyKeep.unit']],
             [UNIT_TYPE.shard, ['entries[].core', 'entries[].lore', 'entries[].scripts', 'entries[].al', 'entries[].il',
                 'entries[].chats[].core', 'entries[].chats[].chunks[]', 'entries[].chats[].alt[]']],
             [UNIT_TYPE.moduleIndex, ['entries[].unit', 'entries[].al', 'entries[].il']],

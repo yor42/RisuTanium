@@ -4254,6 +4254,7 @@ export const languageEnglish = {
     saveItemPluginDataLabel: (key: string) => `the plugin data "${key}"`,
     saveItemStaticsLabel: "the usage statistics",
     saveItemCharacterOrderLabel: "the character order",
+    saveItemChatDraftsLabel: "the unsent message edits and long-chat hints",
     personasRepairedNotice: (count: number) =>
         `RisuTanium left out ${count} persona${count === 1 ? '' : 's'} that ${count === 1 ? 'was' : 'were'} not valid data. A plugin may have written ${count === 1 ? 'it' : 'them'}.`,
     personaListEmptyNotice: `No usable persona was left in the persona list, so RisuTanium added one from your user name and icon and selected it.`,
