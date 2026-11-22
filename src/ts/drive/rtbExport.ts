@@ -5,6 +5,8 @@
  * Contracts:
  *  - Refusals (a read-only, non-store2 or session-less page) run before anything registers busy, opens a
  *    writer or saves.
+ *  - The wrapped connection keys are read and confirmed once, before the seal derivation and the writer; a decline
+ *    writes nothing, and after the writer opens no vault call is made (the section comes from that snapshot).
  *  - Every store2 unit read of the walk happens while this export's busy entry is registered, and before the
  *    first `s/`, `i/` or `a/` entry is written. The automatic collection pass neither starts nor continues
  *    past a batch while busy, so the walk never reads a unit a pass removed.
@@ -37,6 +39,7 @@ import { ANDROID_EXPORT_PIECE_BYTES, ANDROID_PIECE_SOURCE, exportAssetPieceSourc
 import { moduleCommitVerdict, isSaveClean, type LocalWriter } from '../globalApi.svelte'
 import { legacyInlayStore, listAppInlayKeys, withInlayLock } from '../process/files/inlayStore'
 import { ensureGestureForWriter, openWriterOutsideBusy, runExport, type ExportSession, type ExportShellCard } from './exportShell'
+import { liveRtbExportKeys, type RtbExportKeys } from './exportKeys'
 import { openInlay } from './inlayBackupExport'
 import type { ExportOmitted, ExportOutcome } from './operationEnd'
 import { CoalescingSink } from './rtb/coalescingSink'
@@ -44,6 +47,7 @@ import type { OmittedEntry } from './rtb/manifest'
 import { passwordBytes } from './rtb/sealed/password'
 import { DEFAULT_SEAL_PARAMS, type SealParams } from './rtb/sealed/policy'
 import { prepareSeal, type PreparedSeal, type SealDeps } from './rtb/sealed/sealWriter'
+import { CONNECTION_KEYS_ID } from './rtb/entryNames'
 import { writeRtb, type RtbWriteResult, type SideInput } from './rtb/rtbWriter'
 import { defaultSideBackends, readSideStores, type SideBackends } from './rtb/sideStores'
 import { RTB_SIDE_TAGS } from './rtb/sideTags'
@@ -101,6 +105,12 @@ export interface RtbExportDeps {
     platform(): RtbPlatform
     clock(): number
     keyEnv?: KeyEnv
+    /**
+     * The Keystore-wrapped connection keys: read and confirmed before the seal derivation and the writer, then written as the
+     * connection-keys section. `null` only for a caller that has no keys to carry (the section is then left out); it is required
+     * so a new caller cannot drop the confirm and the section by omission.
+     */
+    keys: RtbExportKeys | null
     /** Tests only: runs between two unit batches, inside the walk. */
     afterUnitBatch?: () => Promise<void>
     /** Tests only: the key-derivation cost and the injected seams of the seal; live uses the policy defaults. */
@@ -120,6 +130,8 @@ export interface RtbExportReport {
     omitted: OmittedEntry[]
     referencedNotices: ReferencedNotice[]
     oldInlayStoreUnlisted: boolean
+    /** Connections whose wrapped key was first found unreadable after the confirm: no line was written for them. */
+    keysLeftOutLate: string[]
     counts: { units: number, inlays: number, assets: number }
 }
 
@@ -206,6 +218,13 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
 
     emit({ phase: 'opening' })
     session.cancel.throwIfCancelled()
+    // The wrapped keys are read and confirmed before the seal derivation and every writer step, so a decline writes nothing
+    // and no vault call is needed once the writer is open.
+    const keySnapshot = deps.keys === null ? null : await deps.keys.snapshot()
+    if (deps.keys !== null && keySnapshot !== null && !await deps.keys.confirm(session, keySnapshot)) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+    session.cancel.throwIfCancelled()
     let seal: PreparedSeal | null = null
     try {
         if (options.password !== undefined) {
@@ -231,7 +250,14 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
         const unsavedExcluded = !deps.isSaveClean() || deps.moduleVerdicts().some((verdict) => verdict !== 'saved')
 
         const store = await deps.store()
-        const sides = await readSideStores(deps.sideBackends)
+        const sides: Record<string, SideInput> = await readSideStores(deps.sideBackends)
+        // A restore applies a line only to a connection whose envelope equals the line's, so a key typed since the stored frame
+        // cannot be overwritten; building the lines after the save only makes the section as complete as the stored frame.
+        const keyLines = deps.keys !== null && keySnapshot !== null ? deps.keys.lines(keySnapshot) : null
+        if (keyLines !== null) {
+            const records = keyLines.records
+            sides[CONNECTION_KEYS_ID] = { records: (async function* () { yield* records })() }
+        }
         const context: RtbSectionContext = { cancel: session.cancel, lateOmitted: [], onProgress: emit }
         const platform = deps.platform()
         const inlayState = { oldStoreUnlisted: false, unsupported: [] as string[] }
@@ -341,6 +367,7 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
             omitted: [...manifestOmitted],
             referencedNotices: closure.referenced.notices,
             oldInlayStoreUnlisted: inlayState.oldStoreUnlisted,
+            keysLeftOutLate: keyLines === null ? [] : [...keyLines.late],
             // Writer v1 writes two entries per inlay (`i/*.meta` and `i/*.body`).
             counts: { units: closure.units, inlays: rowEntries(result, 'inlays') / 2, assets: rowEntries(result, 'assets') },
         }
@@ -447,6 +474,7 @@ export function liveRtbExportDeps(): RtbExportDeps {
         writerInfo: { app: 'risutanium', version: appVer, build: import.meta.env.MODE },
         platform: livePlatform,
         clock: Date.now,
+        keys: liveRtbExportKeys(),
     }
 }
 

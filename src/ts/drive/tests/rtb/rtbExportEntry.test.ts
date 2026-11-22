@@ -64,7 +64,7 @@ const bin = language.saveBackupLocal
 function reportOf(over: Partial<RtbExportReport> = {}): RtbExportReport {
     return {
         fileName: 'local-20261117.rtb', length: 10, snapshotId: 's', createdAt: 1_700_000_000_000, committedAt: 1_700_000_000_000,
-        unsavedExcluded: false, omitted: [], referencedNotices: [], oldInlayStoreUnlisted: false, counts: { units: 1, inlays: 0, assets: 0 },
+        unsavedExcluded: false, omitted: [], referencedNotices: [], oldInlayStoreUnlisted: false, keysLeftOutLate: [], counts: { units: 1, inlays: 0, assets: 0 },
         ...over,
     }
 }

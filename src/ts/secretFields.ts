@@ -51,6 +51,7 @@ export const SECRET_FIELDS = [
     { scope: 'database', field: 'OaiCompAPIKeys', sub: '[*]', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
     { scope: 'database', field: 'customModels', sub: '[].key', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
     { scope: 'database', field: 'connections', sub: '[].key', class: 'resolved', stage: 1, reader: 'connections/keyAccess.ts (all chat requests)' },
+    { scope: 'database', field: 'connections', sub: '[].keyWrapped', class: 'excluded', reason: 'Keystore ciphertext of [].key; never a reference, read only through keyAccess' },
     //#endregion
 
     //#region stage 2 readers

@@ -765,7 +765,7 @@ describe('the stages\' card deps', () => {
         }
         const hold = { release: async (keep: boolean) => { log.push(`release:${keep}`) } }
 
-        await page.finish.finishRtbRestore(plan, hold, { flushed: false, facts }, deps)
+        await page.finish.finishRtbRestore(plan, hold, { flushed: false, facts, staged: null }, deps)
 
         const firstLeave = log.indexOf('leave')
         expect(firstLeave).toBeGreaterThanOrEqual(0)
@@ -783,7 +783,7 @@ describe('the stages\' card deps', () => {
         const log: string[] = []
         const hold = { release: async (keep: boolean) => { log.push(`release:${keep}`) } }
 
-        await page.finish.finishRtbRestore(plan, hold, { flushed: true, facts }, {
+        await page.finish.finishRtbRestore(plan, hold, { flushed: true, facts, staged: null }, {
             wait: (text) => { log.push(`wait:${text}`) },
             leave: () => { throw new Error('the card broke') },
             markReload: () => { log.push('mark') },
