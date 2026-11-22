@@ -55,6 +55,8 @@ export interface FakeContext {
     resumeCalls: number
     suspendCalls: number
     readonly destination: object
+    /** Replaceable per test, e.g. to settle a resume at a chosen moment. */
+    resume(): Promise<void>
 }
 
 interface FakeSource {

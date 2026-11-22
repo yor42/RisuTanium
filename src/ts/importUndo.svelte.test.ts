@@ -304,7 +304,7 @@ describe('the Undo action on the result card', () => {
             expect(tracker.character, `${id} is marked for saving`).toContain(id)
             expect($state.snapshot(DBState.db.characterOrder)).not.toContain(id)
         }
-        expect(h.toasts).toEqual([{ kind: 'info', text: 'Moved 3 to the Trash' }])
+        expect(h.toasts).toEqual([{ kind: 'info', text: 'Moved 3 to the Trash', cue: 'undo' }])
         //A9: an undone character is restorable.
         expect(() => restoreCharacterFromTrash(listed('A'))).not.toThrow()
         expect(listed('A').trashTime).toBeUndefined()
