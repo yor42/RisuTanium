@@ -182,7 +182,7 @@ class AppUpdateControllerTest {
     controller.resumed()
     install()
     val name = factory.sinkNames.single()
-    assertEquals(listOf("opener", "deliver", "sink.close", "launch", "revoke:$name", "deleteAll", "deliver"), log)
+    assertEquals(listOf("opener", "deliver", "sink.close", "sink.seal", "launch", "revoke:$name", "deleteAll", "deliver"), log)
     assertEquals(
       listOf("{\"id\":5,\"method\":\"appUpdate.install\",\"update\":\"ok\",\"outcome\":\"notInstalled\"}"),
       terminal()

@@ -10,6 +10,34 @@ import org.junit.Test
 class AppUpdateServiceTest {
   private val abcSha256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 
+  // A sealed file refuses a write-mode open (what a file:// write from the page does) but is still
+  // deleted, because deletion needs the directory's write bit, not the file's.
+  @Test
+  fun aSealedUpdateFileRefusesWritesYetCanStillBeDeleted() {
+    val dir = java.nio.file.Files.createTempDirectory("risu-seal").toFile()
+    val file = java.io.File(dir, "update-test.apk")
+    try {
+      val sink = UpdateFileSink(dir, file)
+      sink.output().use { it.write(byteArrayOf(1, 2, 3)) }
+      assertTrue(sink.seal())
+      assertFalse(file.canWrite())
+      var refused = false
+      try {
+        java.io.FileOutputStream(file).close()
+      } catch (error: java.io.IOException) {
+        refused = true
+      }
+      assertTrue(refused)
+      assertEquals(3L, file.length())
+      sink.delete()
+      assertFalse(file.exists())
+    } finally {
+      file.setWritable(true)
+      file.delete()
+      dir.delete()
+    }
+  }
+
   @Test
   fun aSignerIsTheSha256HexOfItsCertificate() {
     assertEquals(setOf(abcSha256), signerSet(listOf("abc".toByteArray())))

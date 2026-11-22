@@ -27,6 +27,8 @@ fun interface HttpOpener {
 interface FileSink {
   val path: String
   fun output(): OutputStream
+  // Makes the closed file read-only for this app and reports whether it really is. Deleting must still work.
+  fun seal(): Boolean
   fun delete()
 }
 
@@ -255,6 +257,10 @@ private fun installAttempt(
       is CopyResult.Complete -> copied.written
     }
     output.close()
+    // Sealed before any verification read, so no write-mode open (a file:// URL from the page skips the
+    // fs scope) can change the bytes between the verdict and the installer's read. An unsealed file is
+    // never verified or handed over; the failure is a storage failure and the file is deleted.
+    if (!sink.seal()) return JobResult.Failed(UpdateErrorCode.STORAGE)
     if (!completeLength(written, input.size)) return JobResult.Failed(UpdateErrorCode.INCOMPLETE)
   }
   if (cancel.isCancelled()) return JobResult.Cancelled

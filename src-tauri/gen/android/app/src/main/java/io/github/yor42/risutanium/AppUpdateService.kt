@@ -350,12 +350,20 @@ private class AndroidJobFactory(private val context: Context, private val dir: F
   }
 }
 
-private class UpdateFileSink(private val dir: File, private val file: File) : FileSink {
+internal class UpdateFileSink(private val dir: File, private val file: File) : FileSink {
   override val path: String = file.absolutePath
 
   override fun output(): OutputStream {
     dir.mkdirs()
     return FileOutputStream(file)
+  }
+
+  // Owner-only bits are what matter: the page runs under this app's own uid. The directory stays
+  // writable, so delete() still works on the sealed file.
+  override fun seal(): Boolean {
+    file.setWritable(false, false)
+    file.setReadOnly()
+    return !file.canWrite()
   }
 
   override fun delete() {

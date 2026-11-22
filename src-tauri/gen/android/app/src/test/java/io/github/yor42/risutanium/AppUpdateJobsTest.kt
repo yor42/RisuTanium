@@ -75,6 +75,15 @@ class FakeSink(private val log: MutableList<String>) : FileSink {
     }
   }
 
+  var sealOk = true
+  var sealThrows = false
+
+  override fun seal(): Boolean {
+    log.add("sink.seal")
+    if (sealThrows) throw IOException("SYNTH seal")
+    return sealOk
+  }
+
   override fun delete() {
     deleted = true
   }
@@ -194,7 +203,33 @@ class AppUpdateJobsTest {
     assertEquals(JobResult.Ok, result)
     assertArrayEquals(body, sink.written.toByteArray())
     assertFalse(sink.deleted)
-    assertEquals(listOf("sink.close", "installed.read", "archive.read"), log)
+    assertEquals(listOf("sink.close", "sink.seal", "installed.read", "archive.read"), log)
+  }
+
+  // The seal refuses later write-mode opens, so it must precede every verification read.
+  @Test
+  fun aSealFailureFailsAsStorageDeletesAndNeverVerifiesOrHandsOver() {
+    sink.sealOk = false
+    val result = run(serving(ByteArray(10)), 10L)
+    assertEquals(JobResult.Failed(UpdateErrorCode.STORAGE), result)
+    assertTrue(sink.deleted)
+    assertEquals(listOf("sink.close", "sink.seal"), log)
+  }
+
+  @Test
+  fun aSealThatThrowsIsAFailureAndDeletes() {
+    sink.sealThrows = true
+    val result = run(serving(ByteArray(10)), 10L)
+    assertTrue(result is JobResult.Failed)
+    assertTrue(sink.deleted)
+    assertFalse(log.contains("installed.read"))
+    assertFalse(log.contains("archive.read"))
+  }
+
+  @Test
+  fun theFileIsNeverSealedBeforeTheCopyIsComplete() {
+    run(serving(ByteArray(9)), 10L)
+    assertFalse(log.contains("sink.seal"))
   }
 
   // J-J5

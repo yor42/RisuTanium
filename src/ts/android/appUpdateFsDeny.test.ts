@@ -4,8 +4,11 @@ import { describe, expect, test } from 'vitest'
 
 // The update APK is verified in cache/app-update and then read by the system installer. The page's fs scope
 // allows /data/**, so without these denies script in the page could rename or rewrite the verified file in
-// between (MC-3609). Both path forms are denied because /data/data is a link to /data/user/0, and the cache
-// directory itself is denied so it cannot be renamed away with app-update inside it.
+// between (MC-3609). The guarantee is layered: these denies stop path-form fs commands, the native job seals
+// the file read-only before verifying it (tauri-plugin-fs skips the scope for file:// URLs on Android, so the
+// seal is what refuses those writes), and the random file name is never sent to the page. Both path forms are
+// denied because /data/user/0 is a link to /data/data, and the cache directory itself is denied so it cannot
+// be renamed away with app-update inside it.
 
 interface FsScopeEntry {
     identifier: string

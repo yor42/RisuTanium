@@ -36,9 +36,11 @@ fun randomUpdateName(): String {
 // - An accepted generation is answered by exactly one Reply, unless the process dies.
 // - A grant is revoked before the file is deleted.
 // - A name is never issued twice in a process, so a grant can never expose an earlier attempt's file.
-//   Other apps cannot reach the private cache; the page's own fs scope is kept out of cache/app-update
-//   by a deny in src-tauri/capabilities/migrated.json, so nothing in this app can replace the verified
-//   file before the installer reads it.
+//   Other apps cannot reach the private cache. Within this app the verified file is protected in layers:
+//   the page's fs scope is kept out of cache/app-update by a deny in src-tauri/capabilities/migrated.json
+//   (path-form commands only; a file:// URL skips the scope on Android), the file is sealed read-only
+//   before it is verified (so a file:// write-mode open fails), and its random name is never sent to
+//   the page.
 // - jobFinished acts only while the state is Running for that same generation.
 class AppUpdateFlow(private val drawName: () -> String = ::randomUpdateName) {
   var state: FlowState = FlowState.Idle
