@@ -361,6 +361,9 @@ describe('the first-life restore of a .rtb (INT1)', () => {
             ...vi.mocked(boot.alert.alertNormalWait).mock.calls.map((call) => call[0]),
         ]
         expect(shown).toContain(language.store2Boot.recoveryInstalledBody)
+        // The card shows the run: the hold's other-tabs wait and the installing text raise no alert over it.
+        expect(shown).not.toContain(language.restoreCheckingOtherTabs)
+        expect(shown).not.toContain(language.rtbRestoreInstalling)
         expect(shown).not.toContain(language.store2ImportDone)
         expect(shown).not.toContain(language.store2ImportNotFlushed)
         expect(shown.some((text) => typeof text === 'string' && text.includes('Test device'))).toBe(false)
@@ -498,12 +501,13 @@ describe('the real busy checks of the start-up restore (INT3)', () => {
         const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => { })
         const { beginBusy } = await import('src/ts/process/memory/busyActions')
         let rival: BusyHandle | null = null
-        // The installing text is the last alert before the installer call, so the rival begins after the first check and before the gate.
-        vi.mocked(boot.alert.alertWait).mockImplementation((text: string) => {
-            if (text === language.rtbRestoreInstalling) {
-                rival ??= beginBusy('import')
-            }
-            return { type: 'none', msg: '' }
+        // The plan is the last step before the installer call, so the rival begins after the first check and before the gate.
+        const restoreBuild = await import('src/ts/storage/store2/rtb/restoreBuild')
+        const realPlan = restoreBuild.planRestore
+        vi.spyOn(restoreBuild, 'planRestore').mockImplementation((input) => {
+            const request = realPlan(input)
+            rival ??= beginBusy('import')
+            return request
         })
         try {
             const end = await endOf((await pick(rig.target, file)).ended)
