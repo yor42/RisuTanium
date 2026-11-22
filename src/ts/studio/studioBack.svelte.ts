@@ -22,7 +22,7 @@ interface BackLayer {
     isOpen: () => boolean
     close: () => void
     /** What a handled press changes; defaults to `isOpen`, for a layer whose close always closes it. */
-    snapshot?: () => unknown
+    snapshot?: () => string | boolean
 }
 
 /**
