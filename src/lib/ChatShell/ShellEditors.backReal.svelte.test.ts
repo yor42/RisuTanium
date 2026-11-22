@@ -93,6 +93,7 @@ import { alertConfirm, alertSelect } from '../../ts/alert'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 import { answerShownPrompt, pageCovered, resetAlertPromptsForTests } from '../../ts/alertPrompts'
 import { draftContentOrphanGate } from '../../ts/draftContentOrphanGate'
+import { forgetChatDrafts } from '../../ts/chatDraftStore'
 import { hasMessageEditorDrafts, resetLocalDraftsForTest } from '../../ts/localDrafts'
 import { chatSurface } from '../ChatScreens/chatSurface.svelte'
 import { language } from '../../lang'
@@ -193,6 +194,8 @@ beforeEach(() => {
     translation.cached = 'cached translation'
     resetLocalDraftsForTest()
     draftContentOrphanGate.clear()
+    // An editor left open with typed text persists its draft; each test starts from a chat with none.
+    forgetChatDrafts('c', 'room')
     vi.mocked(alertConfirm).mockClear()
     vi.mocked(alertSelect).mockClear()
 })

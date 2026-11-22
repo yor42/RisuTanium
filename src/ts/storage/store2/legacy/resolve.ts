@@ -496,6 +496,9 @@ export async function resolveLegacyRoot(
     // Utility workspaces are fork-only the same way: a file's key of that name must never become type 28 and 29 units,
     // and the page's own workspaces are set by the caller after the resolve.
     delete database.utilityWorkspaces
+    // Unsent message edits and hint flags are fork-only too: a file's key of that name must never become a type 30 unit.
+    // Both the whole and the streamed import resolve the root here.
+    delete database.chatDrafts
     return database
 }
 

@@ -2,7 +2,10 @@ import type { RPCToolCallContent } from './mcplib'
 import type { RunSubject } from '../chatOrigin'
 import { advertisedToolKey, refusedToolContent, type ToolLoopState } from '../request/toolLoop'
 import { classifyTool } from './toolPermission'
-import { askToolApproval, TOOL_SUMMARY_LIMIT } from './toolApproval'
+import { askToolApproval, TOOL_SUMMARY_LIMIT, type ToolApprovalRequest } from './toolApproval'
+import { addToolGrant, hasToolGrant, toolGrantsOffered } from './toolGrants'
+import { addServerChatGrant, chatKeyOf, hasServerChatGrant, isVisibleChat } from './serverChatGrants.svelte'
+import type { ToolApprovalActionPart } from 'src/ts/alert'
 import { DBState } from 'src/ts/stores.svelte'
 
 /** What an authorization needs to know about the call. */
@@ -17,8 +20,9 @@ function refused(text: string): RPCToolCallContent[] {
 }
 
 /**
- * A plain-text rendering of a call for the prompt, cut to `TOOL_SUMMARY_LIMIT` characters. It only reads the
- * arguments and never throws, so describing a call cannot change anything. `action` leads the text when given.
+ * A plain-text rendering of a call for the prompt, cut to `TOOL_SUMMARY_LIMIT` characters (code points, so a
+ * surrogate pair is never split). It only reads the arguments and never throws, so describing a call cannot change
+ * anything. `action` leads the text when given.
  */
 export function describeToolCall(name: string, args: unknown, action?: string): string {
     let rendered: string
@@ -27,8 +31,22 @@ export function describeToolCall(name: string, args: unknown, action?: string): 
     } catch {
         rendered = String(args)
     }
-    const text = `${action ? `${action}: ` : ''}${name}(${rendered})`
-    return text.length > TOOL_SUMMARY_LIMIT ? `${text.slice(0, TOOL_SUMMARY_LIMIT)}...` : text
+    const text = escapeBidiControls(`${action ? `${action}: ` : ''}${name}(${rendered})`)
+    return clipCodePoints(text, TOOL_SUMMARY_LIMIT)
+}
+
+/** Bidi embedding, override, isolate and mark controls shown as `\uXXXX`, so text in a prompt cannot reorder what follows it. */
+function escapeBidiControls(text: string): string {
+    return text.replace(/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`)
+}
+
+/** `text` cut to `max` code points with a trailing mark; shorter text is returned as it is. */
+function clipCodePoints(text: string, max: number): string {
+    if(text.length <= max) {
+        return text
+    }
+    const points = Array.from(text)
+    return points.length > max ? `${points.slice(0, max).join('')}...` : text
 }
 
 function argText(args: unknown, key: string): string {
@@ -106,8 +124,12 @@ function clipPath(path: string): string {
     if(path.length <= ACTION_PATH_MAX_CHARS) {
         return path
     }
+    const points = Array.from(path)
+    if(points.length <= ACTION_PATH_MAX_CHARS) {
+        return path
+    }
     const keep = Math.floor((ACTION_PATH_MAX_CHARS - 3) / 2)
-    return `${path.slice(0, keep)}...${path.slice(path.length - keep)}`
+    return `${points.slice(0, keep).join('')}...${points.slice(points.length - keep).join('')}`
 }
 
 /**
@@ -116,21 +138,61 @@ function clipPath(path: string): string {
  * for any other tool.
  */
 export function describeWorkspaceAction(name: string, args: unknown): string | undefined {
+    return workspaceActionParts(name, args)?.map(part => part.text).join('')
+}
+
+/** Whether a `move_file` call replaces its destination: it deletes a file, so a grant never covers it (MC-3614). */
+function isOverwriteMove(name: string, args: unknown): boolean {
+    return name === 'move_file' && !!args && typeof args === 'object' && (args as Record<string, unknown>).overwrite === true
+}
+
+/** The action line of `describeWorkspaceAction` in pieces, each path its own piece so the dialog can isolate it. */
+export function workspaceActionParts(name: string, args: unknown): ToolApprovalActionPart[] | undefined {
     let template = Object.hasOwn(WORKSPACE_ACTIONS, name) ? WORKSPACE_ACTIONS[name] : undefined
     if(!template) {
         return undefined
     }
-    if(name === 'move_file' && args && typeof args === 'object' && (args as Record<string, unknown>).overwrite === true) {
+    if(isOverwriteMove(name, args)) {
         template = WORKSPACE_MOVE_OVERWRITE
     }
-    return template.replace(/\{(path|from|to)\}/g, (_, key: string) => clipPath(argText(args, key)))
+    const parts: ToolApprovalActionPart[] = []
+    let last = 0
+    for(const match of template.matchAll(/\{(path|from|to)\}/g)) {
+        if(match.index > last) {
+            parts.push({ text: template.slice(last, match.index) })
+        }
+        parts.push({ text: clipPath(argText(args, match[1])), path: true })
+        last = match.index + match[0].length
+    }
+    if(last < template.length) {
+        parts.push({ text: template.slice(last) })
+    }
+    return parts
+}
+
+const INSTRUCTION_FILE_NAMES = new Set(['agents.md', 'skill.md'])
+
+/** The paths a workspace call names, by tool. */
+function workspacePathArgs(name: string, args: unknown): string[] {
+    const keys = name === 'move_file' ? ['from', 'to'] : ['path']
+    return keys.map(key => argText(args, key))
+}
+
+/** Whether a workspace call writes, deletes or moves AGENTS.md or SKILL.md, whose text steers later runs. */
+function touchesInstructionFile(name: string, args: unknown): boolean {
+    return workspacePathArgs(name, args).some(path => {
+        const leaf = path.trim().split(/[\\/]/).pop() ?? ''
+        return INSTRUCTION_FILE_NAMES.has(leaf.toLowerCase())
+    })
 }
 
 /**
  * Decides one model-driven tool call before any client is looked up or started. A call with no server, outside
  * the run's advertised set, or to a workspace tool without a bound workspace is refused. `read` and `free`
  * tools go through; `mutating` and `third-party` tools need the user's answer, and a run that was stopped
- * before or during the question runs nothing. Returns the content to answer the model with when the call must
+ * before or during the question runs nothing. In a bound workspace a saved "always" grant for the tool skips the
+ * question, except for a move that overwrites, which always asks; an "always" answer saves a grant only there.
+ * Returns the content to answer the model with when the call must
  * not run, or null when it may.
  */
 export async function authorizeToolCall(name: string, args: unknown, info: ToolCallInfo): Promise<RPCToolCallContent[] | null> {
@@ -154,17 +216,56 @@ export async function authorizeToolCall(name: string, args: unknown, info: ToolC
     if(stopped()) {
         return refused(`Stopped before ${name} ran.`)
     }
-    const decision = await askToolApproval({
+    const workspaceId = url === 'internal:workspace' ? info.toolLoop?.workspace?.id : undefined
+    // A grant covers one tool in the bound workspace, never a move that overwrites (MC-3409, MC-3614).
+    const grantable = workspaceId !== undefined && kind === 'mutating' && !isOverwriteMove(name, args)
+    if(grantable && await hasToolGrant(workspaceId, name)) {
+        return stopped() ? refused(`Stopped before ${name} ran.`) : null
+    }
+    // A server grant covers a third-party server for the chat on screen only; internal tools never get one (MC-3413).
+    const serverKey = kind === 'third-party' && !url.startsWith('internal:') ? chatKeyOf(info.subject) : null
+    if(serverKey !== null && hasServerChatGrant(serverKey, url)) {
+        return stopped() ? refused(`Stopped before ${name} ran.`) : null
+    }
+    const offerServer = serverKey !== null && isVisibleChat(serverKey)
+    const request: ToolApprovalRequest = {
         tool: name,
         url,
         kind,
         summary: describeToolCall(name, args, actionOf(name, args, url, info.subject)),
-    }, { signal })
+    }
+    if(offerServer) {
+        request.view = {
+            action: [],
+            instructionTarget: false,
+            replacement: null,
+            offerAlways: false,
+            offerServer: true,
+        }
+    }
+    if(workspaceId !== undefined) {
+        request.view = {
+            action: workspaceActionParts(name, args) ?? [],
+            instructionTarget: touchesInstructionFile(name, args),
+            replacement: name === 'edit_file' && typeof (args as Record<string, unknown> | null)?.new_text === 'string'
+                ? clipCodePoints((args as Record<string, string>).new_text, TOOL_SUMMARY_LIMIT)
+                : null,
+            offerAlways: grantable && toolGrantsOffered(),
+        }
+    }
+    const decision = await askToolApproval(request, { signal })
     if(stopped()) {
         return refused(`Stopped before ${name} ran.`)
     }
     if(decision === 'deny') {
         return refused(`Denied by the user: ${name}`)
+    }
+    if(decision === 'always' && grantable) {
+        await addToolGrant(workspaceId, name)
+    }
+    if(decision === 'server' && offerServer) {
+        // Recorded only while this is still the chat on screen; if the user left it meanwhile this call runs once.
+        addServerChatGrant(serverKey, url)
     }
     return null
 }

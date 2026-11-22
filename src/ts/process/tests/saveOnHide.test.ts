@@ -448,3 +448,58 @@ describe('T-LF1: the leave registry joins the one leave rule', () => {
         }
     })
 })
+
+describe('the draft flush in the leave rule', () => {
+    function drafted(options: { kinds?: InFlightKind[], unsaved?: boolean, written: boolean, calls: string[] }): FlushDeps {
+        return {
+            kinds: () => options.kinds ?? [],
+            streams: () => [],
+            unsaved: () => options.unsaved ?? false,
+            mark: vi.fn(),
+            saveNow: vi.fn(() => { options.calls.push('saveNow') }),
+            draftFlush: () => { options.calls.push('draftFlush'); return options.written },
+            settle: () => { options.calls.push('settle') },
+        }
+    }
+
+    test('a written draft settles the effects, then saves, with nothing else unsaved and no chat in flight', () => {
+        const calls: string[] = []
+        const deps = drafted({ written: true, calls })
+
+        flushBeforeLeaving(deps)
+
+        expect(calls).toEqual(['draftFlush', 'settle', 'saveNow'])
+    })
+
+    test('(g) a flush that wrote nothing, on a page with nothing unsaved, requests no save and settles nothing (guard)', () => {
+        const calls: string[] = []
+        const deps = drafted({ written: false, calls })
+
+        flushBeforeLeaving(deps)
+
+        expect(calls).toEqual(['draftFlush'])
+        expect(deps.saveNow).not.toHaveBeenCalled()
+    })
+
+    test('a chat in flight still marks after the draft settles, and saves once', () => {
+        const calls: string[] = []
+        const deps = drafted({ kinds: ['chat'], written: true, calls })
+
+        flushBeforeLeaving(deps)
+
+        expect(calls).toEqual(['draftFlush', 'settle', 'saveNow'])
+    })
+
+    test('a fault in the draft flush never stops the rest of the leave rule', () => {
+        const calls: string[] = []
+        const deps = { ...drafted({ unsaved: true, written: false, calls }), draftFlush: () => { throw new Error('draft fault') } }
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        try {
+            flushBeforeLeaving(deps)
+        } finally {
+            logged.mockRestore()
+        }
+
+        expect(calls).toEqual(['saveNow'])
+    })
+})

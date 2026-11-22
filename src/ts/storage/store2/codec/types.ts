@@ -88,7 +88,7 @@ export class ModuleSetUnsavableError extends CodecInputError {
 }
 
 /** What an item the pass went on without belongs to; the label of a `moduleSet` item is made by the save loop. */
-export type SkippedItemScope = 'module' | 'moduleSet' | 'presets' | 'taskPresets' | 'plugins' | 'settings' | 'pluginData' | 'loadouts' | 'statics' | 'characterOrder' | 'workspaces'
+export type SkippedItemScope = 'module' | 'moduleSet' | 'presets' | 'taskPresets' | 'plugins' | 'settings' | 'pluginData' | 'loadouts' | 'statics' | 'characterOrder' | 'workspaces' | 'chatDrafts'
 
 /** A part of the database a pass could not read as plain JSON and went on without. */
 export interface SkippedItem {
@@ -187,6 +187,11 @@ export interface PreviousObjects {
      * or did not parse: a later loadouts fault then fails the pass.
      */
     loadouts?: readonly JsonValue[]
+    /**
+     * The draft unit's `chats` list as the encoding holds it. In memory only (never written): a draft set a later pass
+     * cannot read is put back whole from here. Absent when the encoding holds no unit or the unit was not read or did not parse.
+     */
+    chatDrafts?: readonly JsonValue[]
     /**
      * The decoded bot preset bodies, in list order, of the encoding. In memory only (never written). Absent when the
      * encoding does not hold them all (a carried list, or a unit the boot did not read): a preset record is then never

@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { get } from "svelte/store";
 import { setDatabase, defaultSdDataFunc, getDatabase, type Database } from "./storage/database.svelte";
 import { applyUsageRetention } from "./usage/usageRetention";
+import { reconcileChatDraftsAtBoot } from "./chatDraftStore";
 import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { takePresetIdsMinted } from "./storage/presetMeta";
 import { takeConnectionsMigrated } from "./connections/migrate";
@@ -22,6 +23,8 @@ import { characterURLImport, handlePendingRealmLink } from "./characterCards";
 import { desktopLaunchImport } from "./desktopLaunch";
 import { androidOpenedFilesImport } from "./android/openedFiles";
 import { startLaunchNavigation } from "./android/launchTarget";
+import { keepAliveHost } from "./android/hostBridge";
+import { startLaunchOptions } from "./android/launchOptions";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { decodeRisuSave, decodeRisuSaveReporting, encodeRisuSaveLegacy, type SalvageOmittedBlock } from "./storage/risuSave";
 import { legacyPartialFact, legacyPartialNoticeText, setLegacyPartialSave, type LegacyPartialSave } from "./storage/legacyPartialSave";
@@ -105,6 +108,11 @@ export async function loadData() {
                 throw missingStore2BootError()
             }
             if (isTauri) {
+                // Asks the Android host how the app was started (the "Start without theme pack" shortcut) and whether
+                // touch exploration is on. Never awaited: boot does not wait, and a late answer acts live.
+                if (isAndroidTransport()) {
+                    startLaunchOptions(keepAliveHost())
+                }
                 LoadingStatusState.text = "Checking Files..."
                 appWindow?.maximize()
                 // Creating is idempotent, so no existence check precedes it: one call per directory.
@@ -429,6 +437,13 @@ export async function loadData() {
                 // setting once at start (the record path applies it again when the local month changes).
                 try {
                     applyUsageRetention(getDatabase(), new Date(), { force: true })
+                } catch (error) {
+                    console.error(error)
+                }
+                // After the boot trash purge and `assignIds`: drops the unsent edits of chats this profile no longer has
+                // (a purged character, or chats an imported profile lacks). A trashed character keeps its own.
+                try {
+                    reconcileChatDraftsAtBoot()
                 } catch (error) {
                     console.error(error)
                 }

@@ -1165,7 +1165,7 @@ const KIND_OF = {
     tos: 'message', cardexport: 'tool', requestdata: 'tool', addchar: 'tool', hypaV2: 'tool', selectModule: 'excluded',
     chatOptions: 'tool', pukmakkurit: 'excluded', branches: 'tool', progress: 'message', pluginconfirm: 'message', requestlogs: 'tool',
     staleAccountNotice: 'message', patternSelect: 'message', patternInput: 'message', peerConflicts: 'message', parkedReply: 'message',
-    updateOffer: 'tool', presetBundle: 'message',
+    updateOffer: 'tool', presetBundle: 'message', toolApproval: 'message',
 } satisfies Record<alertData['type'], 'message' | 'tool' | 'excluded'>
 
 const openStored = (data: Record<string, unknown>): Promise<HTMLElement> => openViewer(() => alertStore.set(data as never))
@@ -1189,6 +1189,7 @@ const OPEN: Record<Exclude<alertData['type'], 'none' | 'toast' | 'selectModule' 
     peerConflicts: () => openPeerConflicts(),
     parkedReply: () => openParkedReply(),
     presetBundle: () => openStored({ type: 'presetBundle', msg: '', presetBundle: { rows: [{ name: 'A', folder: null, aiModel: 'm' }], existingNames: [] } }),
+    toolApproval: () => openStored({ type: 'toolApproval', msg: '', cancelAnswer: 'deny', toolApproval: { server: 'internal:workspace', action: [{ text: 'delete workspace file (' }, { text: 'a.txt', path: true }, { text: ')' }], summary: 'delete_file({"path":"a.txt"})', instructionTarget: false, offerAlways: true, replacement: null } }),
     selectChar: () => openChooser(() => alertSelectChar()),
     cardexport: () => openExport(),
     requestdata: () => openRequestData(),

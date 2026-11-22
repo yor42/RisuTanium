@@ -1,5 +1,6 @@
 import type { UtilityWorkspace, UtilityWorkspaceFile } from '../../../storage/database.svelte'
 import { DBState } from '../../../stores.svelte'
+import { removeWorkspaceToolGrants } from '../../mcp/toolGrants'
 import { normalizeWorkspacePath, workspacePathKey, type WorkspacePathRefusal } from './paths'
 import { checkWorkspaceText, utf8ByteLength, type TextGuardRefusal } from './textGuard'
 
@@ -147,6 +148,8 @@ export function deleteWorkspace(workspaceId: string): boolean {
         return false
     }
     DBState.db.utilityWorkspaces = list.filter(candidate => candidate.id !== workspaceId)
+    // The saved "always" approvals of that workspace go with it; the call never rejects.
+    void removeWorkspaceToolGrants(workspaceId)
     return true
 }
 

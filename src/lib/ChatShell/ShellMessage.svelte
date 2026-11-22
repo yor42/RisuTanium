@@ -54,6 +54,7 @@
     import { ParseMarkdown, type CbsConditions, type simpleCharacterArgument } from '../../ts/parser/parser.svelte'
     import type { TreeView } from '../../ts/process/chatTreeView'
     import type { MessageIdentity } from '../../ts/draftContents'
+    import { persistTargetOf } from '../../ts/chatDraftsModel'
     import { draftIdentityKey } from '../../ts/draftContents'
     import { chatWindowKey } from '../../ts/chatWindowPolicy'
     import { DBState, selIdState, HideIconStore } from '../../ts/stores.svelte'
@@ -769,7 +770,12 @@
         }
     })
     function currentMessageIdentity(): MessageIdentity {
-        return { kind: 'msg', chatKey: chatWindowKey(owner?.chaId, chat), chatId: chat?.message?.[idx]?.chatId, index: idx }
+        const identity: MessageIdentity = { kind: 'msg', chatKey: chatWindowKey(owner?.chaId, chat), chatId: chat?.message?.[idx]?.chatId, index: idx }
+        const persist = persistTargetOf(owner?.chaId, chat?.id)
+        if (persist !== undefined) {
+            identity.persist = persist
+        }
+        return identity
     }
     function translationOpenToken() {
         const row = chat?.message?.[idx]

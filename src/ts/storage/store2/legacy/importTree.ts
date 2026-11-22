@@ -1,7 +1,7 @@
 import { repairDatabaseIds } from '../../../process/chatIds'
 import type { TaskPreset } from '../../../process/utility/taskPreset'
 import type { JsonObject, JsonValue } from '../../blockFrame'
-import type { Database, UtilityWorkspace } from '../../database.svelte'
+import type { ChatDraftEntry, Database, UtilityWorkspace } from '../../database.svelte'
 import { repairBotPresetsId } from '../../botPresetRepair'
 import { repairCharacterTree, summarizeRepair, type RepairRefusal } from '../../characterTreeRepair'
 import { completeRestoredTree } from '../../treeToBlockSet'
@@ -111,6 +111,12 @@ export interface ImportRequest {
     ltmEngine?: boolean
     /** The page's own ChroMemory settings, kept by value. Absent: the imported profile has none; the tree's own key is removed either way. */
     ltmSettings?: JsonValue
+    /**
+     * The page's own unsent message edits and hint flags (chatDrafts entries), kept by value: a `.bin` carries none, so the list
+     * the page holds is set on the imported tree. Absent or empty: the imported profile has none. The tree's own key is removed
+     * either way.
+     */
+    chatDrafts?: readonly JsonObject[]
     /**
      * The content index of the base the import is built over, read before the plan. `importLegacyTree` reads one from the
      * commit key when absent, so a page import always reuses by content; the boot installer never passes one (it judges no
@@ -248,13 +254,13 @@ export function repairImportRoot(tree: Database): void {
 }
 
 /**
- * Sets the page's own task presets, installed theme packs, active theme pack, usage keys, price overrides and ChroMemory
- * choice and settings on a resolved database, which holds a copy of the file's root: a `.bin` carries none of them (its export leaves them out), so
+ * Sets the page's own task presets, installed theme packs, active theme pack, usage keys, price overrides, ChroMemory
+ * choice and settings, and unsent message edits and hint flags on a resolved database, which holds a copy of the file's root: a `.bin` carries none of them (its export leaves them out), so
  * a key of that name in the file is dropped (for `statics`, its usage keys only), and only what `request` passes is set.
  * `resolveLegacyTree` has already removed `taskPresets`. Shared by the whole and the streamed prepare.
  */
 export function applyImportOverlay(
-    database: Database, request: Pick<ImportRequest, 'taskPresets' | 'utilityWorkspaces' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'ltmEngine' | 'ltmSettings'>,
+    database: Database, request: Pick<ImportRequest, 'taskPresets' | 'utilityWorkspaces' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'ltmEngine' | 'ltmSettings' | 'chatDrafts'>,
 ): void {
     if (request.taskPresets !== undefined && request.taskPresets.length > 0) {
         // The objects stay open: the type names the fields this build reads, the stored object keeps every key.
@@ -291,6 +297,12 @@ export function applyImportOverlay(
     if (request.ltmSettings !== undefined) {
         // The settings are plain JSON the reader narrows; the stored object keeps every key.
         database.ltmSettings = structuredClone(request.ltmSettings)
+    }
+    // Deleted first, so the file's own key never survives a page that holds none, on the whole and the streamed path alike.
+    delete database.chatDrafts
+    if (request.chatDrafts !== undefined && request.chatDrafts.length > 0) {
+        // Plain JSON the codec reads field by field; the stored entries keep every key.
+        database.chatDrafts = request.chatDrafts.map(entry => structuredClone(entry) as unknown as ChatDraftEntry)
     }
 }
 
@@ -383,7 +395,7 @@ export type PrepareStop = Extract<ImportOutcome, { status: 'declined' | 'read-fa
  * repair would replace.
  */
 export async function prepareImport(
-    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'utilityWorkspaces' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'ltmEngine' | 'ltmSettings' | 'baseContent'>, hooks: ImportHooks,
+    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'utilityWorkspaces' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'ltmEngine' | 'ltmSettings' | 'chatDrafts' | 'baseContent'>, hooks: ImportHooks,
 ): Promise<PreparedImport | PrepareStop> {
     let tree = request.source.tree
     if (tree === null) {

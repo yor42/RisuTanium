@@ -4,10 +4,10 @@ import { UNIT_TYPE } from 'src/ts/storage/store2/format/versions'
 import { V1_REF_STRINGS, checkRefs, checkReqTokens, normalizeRefs } from 'src/ts/drive/rtb/refsFingerprint'
 
 describe('the v1 refs strings', () => {
-    test('are the walkable rows of the refs table: 34 rows less the three commit rows and the legacyKeep row', () => {
-        expect(REFS_TABLE.length).toBe(34)
-        expect(V1_REF_STRINGS.length).toBe(30)
-        expect(new Set(V1_REF_STRINGS).size).toBe(30)
+    test('are the walkable rows of the refs table: 35 rows less the three commit rows and the legacyKeep row', () => {
+        expect(REFS_TABLE.length).toBe(35)
+        expect(V1_REF_STRINGS.length).toBe(31)
+        expect(new Set(V1_REF_STRINGS).size).toBe(31)
         for (const row of REFS_TABLE) {
             const text = `${row.type}:${row.path}`
             const skipped = row.type === UNIT_TYPE.commit || text === '2:fixed.legacyKeep.unit'
@@ -17,7 +17,7 @@ describe('the v1 refs strings', () => {
 })
 
 describe('T13lib refs membership and grammar', () => {
-    test('all 30 v1 strings, in any order, and an empty list are accepted', () => {
+    test('all 31 v1 strings, in any order, and an empty list are accepted', () => {
         expect(checkRefs([...V1_REF_STRINGS])).toEqual({ kind: 'ok' })
         expect(checkRefs([])).toEqual({ kind: 'ok' })
     })

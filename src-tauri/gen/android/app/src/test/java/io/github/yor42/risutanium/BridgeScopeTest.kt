@@ -461,6 +461,17 @@ class BridgeScopeTest {
     assertNull(toCommand("keepAlive", "openTarget", emptyList(), null))
   }
 
+  // The page asks for the launch options (the shortcut's pack-safe request and the touch-exploration state).
+
+  @Test
+  fun theLaunchOptionsRequestTakesNoArguments() {
+    assertSame(BridgeCommand.KeepAliveRequestLaunchOptions, toCommand("keepAlive", "requestLaunchOptions", emptyList(), null))
+    assertNull(toCommand("keepAlive", "requestLaunchOptions", listOf(true), null))
+    assertNull(toCommand("keepAlive", "requestLaunchOptions", listOf(null), null))
+    assertNull(toCommand("keepAlive", "launchOptions", emptyList(), null))
+    assertNull(toCommand("ime", "requestLaunchOptions", emptyList(), null))
+  }
+
   @Test
   fun aKeyVaultCallBecomesACommandAndABadArgumentListWithAnIdIsAnsweredNotDropped() {
     assertEquals(BridgeCommand.VaultWrap(1, "SYNTH-KEY-1234"), toCommand("keyVault", "wrap", listOf("SYNTH-KEY-1234"), 1))

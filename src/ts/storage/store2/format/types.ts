@@ -73,6 +73,8 @@ export interface Manifest {
         pluginStorage: { buckets: number, refs: Ref[] }
         /** Type 28 units, one per utility workspace. Present only when non-empty: an empty list is written as no field and read as none. */
         workspaces?: Ref[]
+        /** The type 30 unit, one whole unit of unsent message edits and long-chat hint flags. Present only when it holds something. */
+        chatDrafts?: Ref
         legacyKeep: null | { unit: Ref, v: number, files: LegacyKeepFile[] }
     }
 }
@@ -274,7 +276,7 @@ export interface WorkspaceRecord {
     files: { id: string, path: string, size: number, mtime: number, ref: Ref }[]
 }
 
-/** Types 4, 5, 6, 9, 11, 12, 13, 14, 16, 17, 18, 29: frame level only, the contents belong to the unit codec. */
+/** Types 4, 5, 6, 9, 11, 12, 13, 14, 16, 17, 18, 29, 30: frame level only, the contents belong to the unit codec. */
 export interface ContentBody {
     v: number
     [field: string]: JsonValue
