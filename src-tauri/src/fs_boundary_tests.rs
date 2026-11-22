@@ -36,6 +36,9 @@ const MARKER: &[u8] = b"s1a-marker-bytes";
 const ID: &str = "0123456789abcdef";
 const TEMP: &str = "risu-write-0123456789abcdef.tmp";
 const OUTSIDE_MESSAGE: &str = "refused key: outside the app's store";
+/// The origin the page's IPC carries in these tests. The app is served from `http://tauri.localhost` on Windows and
+/// Android and from `tauri://localhost` on other hosts, and a capability for local URLs matches only that origin.
+const LOCAL_URL: &str = if cfg!(any(windows, target_os = "android")) { "http://tauri.localhost" } else { "tauri://localhost" };
 /// What the pinned fs plugin answers a content URL on a host that is not Android: it has no content resolver there.
 const PLUGIN_URL_ANSWER: &str = "URL is not a valid path";
 
@@ -189,7 +192,7 @@ fn invoke(h: &Harness, cmd: &str, body: InvokeBody, headers: tauri::http::Header
             cmd: cmd.into(),
             callback: CallbackFn(0),
             error: CallbackFn(1),
-            url: "http://tauri.localhost".parse().unwrap(),
+            url: LOCAL_URL.parse().unwrap(),
             body,
             headers,
             invoke_key: INVOKE_KEY.to_string(),
@@ -1594,7 +1597,7 @@ fn invoke_in(webview: &tauri::WebviewWindow<MockRuntime>, cmd: &str, body: Value
             cmd: cmd.into(),
             callback: CallbackFn(0),
             error: CallbackFn(1),
-            url: "http://tauri.localhost".parse().unwrap(),
+            url: LOCAL_URL.parse().unwrap(),
             body: InvokeBody::Json(body),
             headers: tauri::http::HeaderMap::new(),
             invoke_key: INVOKE_KEY.to_string(),
