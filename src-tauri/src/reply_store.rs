@@ -17,7 +17,11 @@
 //! migration tested against the fixture. `outcome` `done` implies a `body.bin`
 //! of exactly `bodyBytes`; a `failed` or `stopped` record with a stray body is
 //! valid and consume removes it. `part.bin` is the raw response body received so
-//! far, appended in place and in received order, so any prefix of it is valid
+//! far. The owned request writes it: it is created at the first chunk of a
+//! status-200 head (in the existing directory, never creating it), each chunk is
+//! appended in place before that chunk's event is emitted, appending stops at
+//! the body cap, nothing is appended after `end.json`, and a non-done end
+//! flushes it once. Any prefix of it is valid
 //! (it may end inside a line or a UTF-8 character). It is never read for a
 //! `done` record, is listed as `partialBytes` for a record that did not finish
 //! (dead, incomplete, failed or stopped) and goes away with the directory. A
@@ -34,7 +38,7 @@
 use crate::chunked_io::{read_range, TEXT_RANGE_MAX_BYTES};
 use crate::durable_write::{is_temp_name, rename_with_retry, FileOps, RealOps};
 use crate::reply_notice::{process_notices, NoticeHub, NoticeLink};
-use crate::streamed_fetch::{OpenRecord, OwnedReply, ReplyDetail, ReplyEnd, ReplyJournal, ReplyOutcome};
+use crate::streamed_fetch::{process_body_budget, OpenRecord, OwnedReply, ReplyDetail, ReplyEnd, ReplyJournal, ReplyOutcome};
 use base64::{engine::general_purpose, Engine as _};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -438,15 +442,39 @@ fn classify(dir: &Path, key: &str, nonce: &str) -> Option<ReplyListing> {
 struct Record<O: FileOps> {
     inner: Arc<Inner<O>>,
     dir: PathBuf,
+    /// Whether this writer created `part.bin`; only then is it synced at a non-done end.
+    part_created: bool,
     _guard: LiveGuard,
 }
 
 impl<O: FileOps + Send + Sync + 'static> OpenRecord for Record<O> {
+    /// The first chunk (offset 0) creates `part.bin` in the existing record
+    /// directory (never the directory itself); every chunk is then appended in
+    /// place, offset-checked. No temp file, rename, truncate or per-chunk fsync.
+    fn append_part(&mut self, offset: u64, bytes: &[u8]) -> Result<(), String> {
+        let path = self.dir.join(PART_FILE);
+        let ops = &self.inner.ops;
+        if offset == 0 && !self.part_created {
+            ops.create_empty(&path).map_err(|e| format!("failed to create {}: {}", path.display(), e))?;
+            self.part_created = true;
+        }
+        ops.append(&path, offset, bytes).map_err(|e| format!("failed to append to {}: {}", path.display(), e))
+    }
+
     fn write_body(&mut self, bytes: &[u8]) -> Result<(), String> {
         write_new_in_existing_dir(&self.inner.ops, &self.dir, BODY_FILE, bytes).map(|_| ())
     }
 
     fn write_end(&mut self, end: &ReplyEnd) -> Result<(), String> {
+        // A record that did not finish is read back from `part.bin`: flush it once
+        // before the end makes it listable. Best effort; a `done` end is read from
+        // `body.bin`.
+        if self.part_created && end.outcome != ReplyOutcome::Done {
+            let path = self.dir.join(PART_FILE);
+            if let Err(error) = self.inner.ops.sync_file(&path) {
+                eprintln!("could not flush the partial body {}: {}", path.display(), error);
+            }
+        }
         let file = EndFile {
             format: END_FORMAT.to_string(),
             v: FORMAT_VERSION,
@@ -500,7 +528,14 @@ pub fn owned_reply_with_hub<O: FileOps + Send + Sync + 'static>(
         let journal: Arc<dyn ReplyJournal> = Arc::new(StoreJournal { store: store.clone(), base });
         journal
     });
-    Some(OwnedReply { key: arg.key, page_version: arg.page_version, blob: arg.blob, journal, notice })
+    Some(OwnedReply {
+        key: arg.key,
+        page_version: arg.page_version,
+        blob: arg.blob,
+        journal,
+        notice,
+        budget: process_body_budget(),
+    })
 }
 
 impl<O: FileOps + Send + Sync + 'static> ReplyStore<O> {
@@ -572,7 +607,7 @@ impl<O: FileOps + Send + Sync + 'static> ReplyStore<O> {
             self.discard_partial(&dir);
             return Err("store");
         }
-        Ok(Box::new(Record { inner: self.inner.clone(), dir, _guard: guard }))
+        Ok(Box::new(Record { inner: self.inner.clone(), dir, part_created: false, _guard: guard }))
     }
 
     /// Best-effort removal of a record directory whose open failed; whatever stays
@@ -939,12 +974,15 @@ pub(crate) mod test_support {
             RealOps.create_synced(temp, bytes)
         }
         fn create_empty(&self, temp: &Path) -> io::Result<()> {
+            self.step("create_empty", format!("create_empty:{}", file_name_of(temp)))?;
             RealOps.create_empty(temp)
         }
         fn append(&self, temp: &Path, offset: u64, bytes: &[u8]) -> io::Result<()> {
+            self.step("append", format!("append:{}", file_name_of(temp)))?;
             RealOps.append(temp, offset, bytes)
         }
         fn sync_file(&self, path: &Path) -> io::Result<()> {
+            self.step("sync_file", format!("sync_file:{}", file_name_of(path)))?;
             RealOps.sync_file(path)
         }
         fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
@@ -964,6 +1002,56 @@ pub(crate) mod test_support {
         fn temp_name(&self) -> String {
             RealOps.temp_name()
         }
+    }
+
+    /// The synthetic body the part fixture is built from, cut the way a socket
+    /// cuts it: one chunk ends inside a data line, the next inside a UTF-8
+    /// character (the emoji). It holds an OpenAI-style stream with Korean text, an
+    /// emoji, a `stream_options.include_usage` chunk and no `[DONE]`.
+    pub fn part_fixture_chunks() -> Vec<Vec<u8>> {
+        let frame = |delta: &str, finish: &str| {
+            format!(
+                "data: {{\"id\":\"chatcmpl-synthetic\",\"object\":\"chat.completion.chunk\",\"choices\":[{{\"index\":0,\"delta\":{},\"finish_reason\":{}}}]}}\n\n",
+                delta, finish
+            )
+        };
+        let first = frame("{\"role\":\"assistant\",\"content\":\"안녕하세요, \"}", "null");
+        let second = frame("{\"content\":\"🙂 세계\"}", "null").into_bytes();
+        let third = frame("{\"content\":\"!\"}", "\"stop\"");
+        let usage = "data: {\"id\":\"chatcmpl-synthetic\",\"object\":\"chat.completion.chunk\",\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":5,\"total_tokens\":12}}\n\n";
+        let emoji = second.windows(4).position(|w| w == "🙂".as_bytes()).expect("the emoji is in the second frame");
+        let (line_cut, char_cut) = (30, emoji + 2);
+        vec![
+            [first.as_bytes(), &second[..line_cut]].concat(),
+            second[line_cut..char_cut].to_vec(),
+            [&second[char_cut..], third.as_bytes()].concat(),
+            usage.as_bytes().to_vec(),
+        ]
+    }
+
+    pub fn part_fixture_path() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("native-reply-part-v1")
+            .join(PART_FILE)
+    }
+
+    /// The part fixture as the real writer produces it: the chunks appended in
+    /// order through an open record.
+    pub fn produce_part(base: &Path) -> Vec<u8> {
+        let store = plain_store();
+        let mut record = store.open_record(base, KEY, 1, "{}").unwrap();
+        let mut offset = 0u64;
+        for chunk in part_fixture_chunks() {
+            record.append_part(offset, &chunk).unwrap();
+            offset += chunk.len() as u64;
+        }
+        fs::read(record_dir(base, KEY).join(PART_FILE)).unwrap()
+    }
+
+    fn file_name_of(path: &Path) -> String {
+        path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()
     }
 
     pub fn store_with(ops: FaultOps) -> ReplyStore<FaultOps> {
@@ -1578,6 +1666,53 @@ mod tests {
         )
         .unwrap();
         assert!(!parsed.announced);
+    }
+
+    /// Regenerates the committed part fixture with the real writer. Run once on
+    /// purpose: `cargo test --lib write_part_fixture -- --ignored`.
+    #[test]
+    #[ignore]
+    fn write_part_fixture() {
+        let base = scratch("part-fixture-producer");
+        let bytes = produce_part(&base);
+        let target = part_fixture_path();
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, bytes).unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn part_producer_matches_committed_fixture() {
+        let base = scratch("part-fixture-compare");
+        let produced = produce_part(&base);
+        assert_eq!(
+            produced,
+            fs::read(part_fixture_path()).expect("the committed part fixture is missing"),
+            "part.bin differs from the committed bytes"
+        );
+        assert_eq!(produced, part_fixture_chunks().concat());
+        assert!(std::str::from_utf8(&part_fixture_chunks()[1]).is_err(), "one chunk must end inside a UTF-8 character");
+        assert!(std::str::from_utf8(&produced).is_ok());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn append_part_creates_once_checks_the_offset_and_never_creates_the_directory() {
+        let base = scratch("part-append");
+        let store = plain_store();
+        let mut record = store.open_record(&base, KEY, 1, "{}").unwrap();
+        record.append_part(0, b"ab").unwrap();
+        record.append_part(2, b"cd").unwrap();
+        assert!(record.append_part(2, b"zz").is_err(), "a chunk at the wrong offset writes nothing");
+        assert_eq!(fs::read(record_dir(&base, KEY).join(PART_FILE)).unwrap(), b"abcd");
+        drop(record);
+
+        let gone = key_n(2);
+        let mut orphan = store.open_record(&base, &gone, 1, "{}").unwrap();
+        fs::remove_dir_all(record_dir(&base, &gone)).unwrap();
+        assert!(orphan.append_part(0, b"ab").is_err(), "a consumed record is not recreated");
+        assert!(!record_dir(&base, &gone).exists());
+        fs::remove_dir_all(&base).unwrap();
     }
 
     // R10, guard + compatibility half: the token is read, never stored, and an unknown field is still refused.

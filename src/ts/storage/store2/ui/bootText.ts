@@ -216,15 +216,15 @@ export function flaggedLists(items: readonly FlaggedItem[]): BootList[] {
     const groups = new Map<string, FlaggedGroup>()
     // A task preset belongs to no character and has no readable name: it is named by its position in the saved list.
     const taskPresets = new Map<number, Set<FlaggedState>>()
-    // A workspace file belongs to no character: it is named by its workspace's id and its path.
-    const workspaceFiles = new Map<string, Map<string, Set<FlaggedState>>>()
+    // A workspace file belongs to no character: it is named by its workspace's name (its id when the flag has none) and its path.
+    const workspaceFiles = new Map<string, { name: string, files: Map<string, Set<FlaggedState>> }>()
     for (const item of items) {
         if (item.kind === 'workspace-file') {
-            const files = workspaceFiles.get(item.wsId) ?? new Map<string, Set<FlaggedState>>()
-            const states = files.get(item.path) ?? new Set<FlaggedState>()
+            const group = workspaceFiles.get(item.wsId) ?? { name: item.wsName ?? item.wsId, files: new Map<string, Set<FlaggedState>>() }
+            const states = group.files.get(item.path) ?? new Set<FlaggedState>()
             states.add(item.why)
-            files.set(item.path, states)
-            workspaceFiles.set(item.wsId, files)
+            group.files.set(item.path, states)
+            workspaceFiles.set(item.wsId, group)
             continue
         }
         if (item.kind === 'task-preset') {
@@ -269,9 +269,9 @@ export function flaggedLists(items: readonly FlaggedItem[]): BootList[] {
             items: [...taskPresets].map(([position, states]) => text.flaggedTaskPresetLine(position + 1, flaggedStateText(states))),
         })
     }
-    for (const [wsId, files] of workspaceFiles) {
+    for (const { name, files } of workspaceFiles.values()) {
         lists.push({
-            heading: text.flaggedWorkspaceHeading(wsId),
+            heading: text.flaggedWorkspaceHeading(name),
             items: [...files].map(([path, states]) => text.flaggedWorkspaceFileLine(path, flaggedStateText(states))),
         })
     }

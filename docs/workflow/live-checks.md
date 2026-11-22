@@ -56,6 +56,13 @@ Identify a device by serial and model before any command; never run a command ag
 - Record `reverse --list` at the start; list every reversed port and what serves it; report any reverse the run did not create and never use it. A reversed port never serves a relaying or proxying server unless the brief declares it.
 - At the end: `reverse --remove tcp:<p>` for every own port, then `reverse --list` and `net-status` again. If `net-status` ever shows Wi-Fi on or associated, run `svc wifi disable`, stop and report.
 
+**Guard refusals and stray input (2026-11-22).**
+
+- Every device helper copy (for example `ui.mjs`) refuses to run without an explicit serial or phone argument; a helper never defaults to a phone.
+- Input that lands in another app (a stray tap, launcher or search keystrokes) is an incident: stop, report it in the run's disclosures, and the affected row is rerun.
+- A verb the brief does not allow (on 2026-11-22: `reverse --list` and `dumpsys --noredact` on a phone whose brief did not list them) is never sent; stop and ask lane B first.
+- A guard exit 99 (usage error) may be corrected once by completing the same call, with no flag, port, target or verb changed. Policy refusals (exits 93 and 97, and target, port, verb or foreground refusals) mean stop and report; never work around them.
+
 **Tab S9 and other restricted serials.** Taps only on elements located and identified in the same read (`locate-css` through the CDP DOM, then a scope-file `tap`); a refused verb (exit 95) stops that route, never a reason to improvise another. Never list a folder; touch exact file names only.
 
 **State and data.**
@@ -85,6 +92,7 @@ Identify a device by serial and model before any command; never run a command ag
 - Network: `--host-resolver-rules` maps `*.risuai.xyz`, RisuRealm, `discord.com`, `*.discord.com` and `discord.gg` to `~NOTFOUND`, and maps the mock host (for example `MAP mock.test 127.0.0.1`; the web build refuses `localhost`, `127.0.0.1` and `0.0.0.0` as endpoints). Add the fail-closed belt `--proxy-server=http://127.0.0.1:9 --proxy-bypass-list=<-loopback>;mock.test;localhost;127.0.0.1`. Route the app's first-run fetches to `openrouter.ai` and `raw.githubusercontent.com` to the mock or block them.
 - On a non-DEV web build, a reload after any CDP input shows a `beforeunload` "Reload site?" dialog (the app's intended guard), and an unanswered one hangs every later evaluate. `connect()` in `chatshell-cdp/lib.mjs` accepts it; a helper that attaches its own session must do the same, and an evaluate timeout after a reload means checking for an open dialog first.
 - On a web build with a mock endpoint, turn on 직접 요청 보내기 (usePlainFetch) before any send; on Tauri and Android leave it off.
+- Set the download behaviour (`Browser.setDownloadBehavior`) on a browser-level CDP session; set on a page session it cancels downloads started from an iframe.
 - Privacy: set Chrome's download directory to scratch before any download; never list user folders (Downloads, Documents, Desktop) and check one exact path with `Test-Path`; on desktop builds read only named UIA elements (the filename box, Save, Cancel with AutomationId 2), never a tree dump. Verifier briefs carry the same rule.
 
 **Network blocks.** Confirm the interceptor is attached by a read-back first. Prove a block only against non-existent synthetic hosts that match the pattern (for example `x.risuai.xyz.invalid`) or with Wi-Fi off. An unconfirmed interceptor is a stop. Never fetch a real forbidden host. A block set on the page session does not reliably cover out-of-process iframes or workers, which run in their own targets: attach to every target (`Target.setAutoAttach` with `flatten`) and set the block on each attached session, then read it back on the iframe target before a step that can reach a forbidden host. A flow that embeds a forbidden site (the Realm share) runs against a `*.invalid` host where the build allows it. The fail-closed resolver and the closed proxy port stay on as a second layer, never the only one (DV-S6b-4, 2026-11-20: a page-only block probably missed the Realm iframe's upload; the closed proxy port stopped it with ERR_PROXY_CONNECTION_FAILED).

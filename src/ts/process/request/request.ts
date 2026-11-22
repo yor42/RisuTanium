@@ -31,7 +31,7 @@ import { slotConnection } from 'src/ts/connections/connections';
 import { afterLimit, clearLease, newKeyRotation, splitKeys, type KeyRotation } from './keyRing';
 import { SecretRefError } from '../../secretRef';
 import { VaultKeyUnavailableError } from 'src/ts/connections/keyVaultStore.svelte';
-import { beginUsageCapture, settleUsage, settleUsageFailure } from '../../usage/usageCapture';
+import { beginUsageCapture, settleUsage, settleUsageFailure, usageModelKey } from '../../usage/usageCapture';
 import type { UsageMeterState, UsagePurpose } from '../../usage/usageTypes';
 import type { NativeReplyGrant } from '../../nativeReply/grant';
 
@@ -96,6 +96,8 @@ interface requestDataArgument{
 
 export interface RequestDataArgumentExtended extends requestDataArgument{
     aiModel?:string
+    // The ledger key of the resolved model, set once it is resolved: an owned stream stores it in its blob, and it is the key the live usage is recorded under.
+    replyUsageModelKey?:string
     multiGen?:boolean
     abortSignal?:AbortSignal
     modelInfo?:LLMModel
@@ -639,10 +641,11 @@ async function requestChatDataByFormat(arg:requestDataArgument, model:ModelModeE
         await leaseArgKey(targ, `customModels:${targ.aiModel}`)
     }
 
+    targ.replyUsageModelKey = usageModelKey(targ.aiModel, db)
     const format = targ.modelInfo.format
-    // Only the OpenAI-compatible chat request reads a reply from a record, and a streamed reply has none. The format is
-    // read after the reverse proxy chose its own.
-    if(format !== LLMFormat.OpenAICompatible || targ.useStreaming){
+    // Only the OpenAI-compatible chat request owns a reply, streamed or not. The format is read after the reverse proxy
+    // chose its own.
+    if(format !== LLMFormat.OpenAICompatible){
         targ.nativeReplyGrant = undefined
     }
 

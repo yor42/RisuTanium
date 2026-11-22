@@ -159,10 +159,12 @@ describe('the grant goes to the first attempt only', () => {
         expect(heldReply(KEY)?.bound).toBe(false)
     })
 
-    test('T3: a streamed request offers none', async () => {
+    test('T3: a streamed OpenAI-compatible request is offered the grant and binds it', async () => {
         installDb({ useStreaming: true })
-        await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase), useStreaming: true })
-        expect(heldReply(KEY)?.bound).toBe(false)
+        const { fetchNative } = await import('../../globalApi.svelte')
+        vi.mocked(fetchNative).mockRejectedValueOnce(new Error('no transport in this suite'))
+        await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase), useStreaming: true, chatId: KEY, usageInputEstimate: 3 })
+        expect(heldReply(KEY)?.bound).toBe(true)
     })
 
     test('T4: a fetch made before the request binds cannot take ownership', async () => {

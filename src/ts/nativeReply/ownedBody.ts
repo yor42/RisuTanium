@@ -78,6 +78,8 @@ export interface PumpProbe {
     stamp: ReplyStamp | null
     /** Ends the native request and the pump without an error; null until the pump exists. */
     abandon: (() => void) | null
+    /** Called with every stamp the pump learns (end, error, stopped); set by a stream request that keeps per-reply facts. */
+    onStamp?: (stamp: ReplyStamp) => void
 }
 
 export function createPumpProbe(): PumpProbe {
@@ -118,7 +120,7 @@ function knowledgeOfListing(entry: ReplyListing | undefined): TerminalKnowledge 
     return { outcome: entry.outcome, stored, status: entry.status }
 }
 
-function knowledgeOfStamp(stamp: ReplyStamp, headStatus: number | undefined): TerminalKnowledge {
+export function knowledgeOfStamp(stamp: ReplyStamp, headStatus: number | undefined): TerminalKnowledge {
     return { outcome: stamp.outcome, stored: stamp.stored, status: stamp.status ?? headStatus }
 }
 

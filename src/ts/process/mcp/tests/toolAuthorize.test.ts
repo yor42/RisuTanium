@@ -4,7 +4,9 @@
  * selected, so a call reaches only the URL it names. Nothing here says anything about a native backend.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { newToolLoop, advertisedToolKey } from '../../request/toolLoop'
+import { language } from 'src/lang'
+import { fillLang } from 'src/lang/fill'
+import { newToolLoop, advertisedToolKey, type ToolStep } from '../../request/toolLoop'
 
 const h = vi.hoisted(() => ({
     /** Every client built, by URL. */
@@ -247,9 +249,9 @@ describe('refusals decided before any prompt', () => {
         await mcp.callMCPTool('delete_file', { path: 'a.md' }, { mcpURL: 'internal:workspace', toolLoop })
 
         expect(h.approvals.map(a => a.kind)).toEqual(['mutating', 'mutating', 'mutating'])
-        expect(h.approvals[0].summary.startsWith('write workspace file (notes/a.md), replacing its whole content if it already exists: write_file(')).toBe(true)
-        expect(h.approvals[1].summary.startsWith('move workspace file (a.md) to (b.md)')).toBe(true)
-        expect(h.approvals[2].summary).toContain('delete workspace file (a.md)')
+        expect(h.approvals[0].summary.startsWith(`${fillLang(language.toolApprovalActionWriteFile, { path: 'notes/a.md' })}: write_file(`)).toBe(true)
+        expect(h.approvals[1].summary.startsWith(fillLang(language.toolApprovalActionMoveFile, { from: 'a.md', to: 'b.md' }))).toBe(true)
+        expect(h.approvals[2].summary).toContain(fillLang(language.toolApprovalActionDeleteFile, { path: 'a.md' }))
     })
 
     test('a move that overwrites names the file it deletes first, even behind a very long from path', async () => {
@@ -264,10 +266,11 @@ describe('refusals decided before any prompt', () => {
 
         const [long, short, plain] = h.approvals.map(a => a.summary)
         expect(long.length).toBeLessThanOrEqual(803)
-        expect(long.startsWith('DELETE and replace workspace file (AGENTS.md) if it exists, which cannot be undone')).toBe(true)
+        expect(long.startsWith(fillLang(language.toolApprovalActionMoveOverwrite, { to: 'AGENTS.md', from: from.slice(0, 5) }).split(from.slice(0, 5))[0])).toBe(true)
+        expect(long.indexOf('(AGENTS.md)')).toBeLessThan(long.indexOf('ddddd'))
         expect(long).toContain('x.md')
-        expect(short.startsWith('DELETE and replace workspace file (b.md) if it exists, which cannot be undone')).toBe(true)
-        expect(plain).not.toContain('DELETE')
+        expect(short.startsWith(fillLang(language.toolApprovalActionMoveOverwrite, { to: 'b.md', from: 'a.md' }))).toBe(true)
+        expect(plain).toBe(`${fillLang(language.toolApprovalActionMoveFile, { from: 'a.md', to: 'b.md' })}: move_file({"from":"a.md","to":"b.md"})`)
     })
 
     test('a truthy non-boolean overwrite gets no delete warning, matching the tool, which refuses it', async () => {
@@ -277,7 +280,7 @@ describe('refusals decided before any prompt', () => {
 
         await mcp.callMCPTool('move_file', { from: 'a.md', to: 'b.md', overwrite: 'true' }, { mcpURL: 'internal:workspace', toolLoop })
 
-        expect(h.approvals[0].summary.startsWith('move workspace file (a.md) to (b.md)')).toBe(true)
+        expect(h.approvals[0].summary.startsWith(fillLang(language.toolApprovalActionMoveFile, { from: 'a.md', to: 'b.md' }))).toBe(true)
     })
 
     test('a long path in an action line keeps its start and its file name', async () => {
@@ -288,8 +291,36 @@ describe('refusals decided before any prompt', () => {
 
         await mcp.callMCPTool('delete_file', { path }, { mcpURL: 'internal:workspace', toolLoop })
 
-        expect(h.approvals[0].summary.startsWith('delete workspace file (start/')).toBe(true)
-        expect(h.approvals[0].summary).toContain('/end.md), which cannot be undone')
+        const [head, tail] = fillLang(language.toolApprovalActionDeleteFile, { path: '\u0000' }).split('\u0000')
+        expect(h.approvals[0].summary.startsWith(`${head}start/`)).toBe(true)
+        expect(h.approvals[0].summary).toContain(`/end.md${tail}`)
+    })
+
+    test('the template text comes from the language keys, so a translated line is used as it is', async () => {
+        h.answer = async () => 'deny'
+        const toolLoop = newToolLoop(null)
+        toolLoop.workspace = { id: 'ws-1' }
+        const { language: live } = await import('src/lang')
+        const saved = live.toolApprovalActionDeleteFile
+        live.toolApprovalActionDeleteFile = 'LOCALIZED {path} END'
+        try {
+            await mcp.callMCPTool('delete_file', { path: 'a.md' }, { mcpURL: 'internal:workspace', toolLoop })
+        } finally {
+            live.toolApprovalActionDeleteFile = saved
+        }
+
+        expect(h.approvals[0].summary.startsWith('LOCALIZED a.md END: delete_file(')).toBe(true)
+    })
+
+    test('a path with a bidi control in an action line is shown escaped', async () => {
+        h.answer = async () => 'deny'
+        const toolLoop = newToolLoop(null)
+        toolLoop.workspace = { id: 'ws-1' }
+
+        await mcp.callMCPTool('delete_file', { path: 'a\u202Eb.md' }, { mcpURL: 'internal:workspace', toolLoop })
+
+        expect(h.approvals[0].summary).toContain('a\\u202eb.md')
+        expect(h.approvals[0].summary).not.toContain('\u202E')
     })
 
     test('a workspace read runs without a prompt and a workspace writer in the same run prompts', async () => {
@@ -344,5 +375,85 @@ describe('Stop', () => {
         expect(textOf(result)).toContain('Stopped')
         expect(h.approvals).toEqual([])
         expect(h.created).toEqual([])
+    })
+})
+
+describe('step events', () => {
+    function stepLoop(controller?: AbortController) {
+        const steps: ToolStep[] = []
+        const toolLoop = newToolLoop(controller?.signal ?? null)
+        toolLoop.workspace = { id: 'ws-1' }
+        toolLoop.onStep = (step) => { steps.push(step) }
+        return { steps, toolLoop }
+    }
+    const WS = 'internal:workspace'
+
+    test('a read, a denied write and an unadvertised call each give one step with their outcome', async () => {
+        const { steps, toolLoop } = stepLoop()
+        toolLoop.advertised = new Set([advertisedToolKey('read_file', WS), advertisedToolKey('delete_file', WS)])
+        h.answer = async () => 'deny'
+
+        await mcp.callMCPTool('read_file', { path: 'a.md' }, { mcpURL: WS, toolLoop })
+        await mcp.callMCPTool('delete_file', { path: 'b.md' }, { mcpURL: WS, toolLoop })
+        await mcp.callMCPTool('write_file', { path: 'c.md', text: 'x' }, { mcpURL: WS, toolLoop })
+
+        expect(steps).toEqual([
+            // The bound workspace has no stored files here, so the real workspace client answers with a failure.
+            { name: 'read_file', summary: 'a.md', outcome: 'error' },
+            { name: 'delete_file', summary: 'b.md', outcome: 'denied' },
+            { name: 'write_file', summary: 'c.md', outcome: 'refused' },
+        ])
+    })
+
+    test('a call without a server and a workspace tool without a workspace are refused steps', async () => {
+        const { steps, toolLoop } = stepLoop()
+        delete toolLoop.workspace
+
+        await mcp.callMCPTool('read_file', { path: 'a.md' }, { mcpURL: WS, toolLoop })
+        await mcp.callMCPTool('read_file', { path: 'a.md' }, { toolLoop })
+
+        expect(steps.map(step => step.outcome)).toEqual(['refused', 'refused'])
+    })
+
+    test('a run stopped before or during the question gives stopped steps', async () => {
+        const during = new AbortController()
+        const first = stepLoop(during)
+        h.answer = async () => { during.abort(); return 'once' }
+        await mcp.callMCPTool('delete_file', { path: 'a.md' }, { mcpURL: WS, toolLoop: first.toolLoop })
+
+        const before = new AbortController()
+        before.abort()
+        const second = stepLoop(before)
+        await mcp.callMCPTool('delete_file', { path: 'a.md' }, { mcpURL: WS, toolLoop: second.toolLoop })
+
+        expect(first.steps.map(step => step.outcome)).toEqual(['stopped'])
+        expect(second.steps.map(step => step.outcome)).toEqual(['stopped'])
+    })
+
+    test('an approved write that the workspace client fails is one error step', async () => {
+        const { steps, toolLoop } = stepLoop()
+
+        await mcp.callMCPTool('write_file', { path: 'a.md', text: 'x' }, { mcpURL: WS, toolLoop })
+
+        expect(steps).toEqual([{ name: 'write_file', summary: 'a.md', outcome: 'error' }])
+    })
+
+    test('a decision that throws gives an error step and the error still reaches the caller', async () => {
+        const { steps, toolLoop } = stepLoop()
+        h.answer = async () => { throw new Error('approver down') }
+
+        await expect(mcp.callMCPTool('write_file', { path: 'a.md', text: 'x' }, { mcpURL: WS, toolLoop })).rejects.toThrow('approver down')
+
+        expect(steps).toEqual([{ name: 'write_file', summary: 'a.md', outcome: 'error' }])
+    })
+
+    test('a hook that throws changes nothing about the answer', async () => {
+        const { toolLoop } = stepLoop()
+        toolLoop.onStep = () => { throw new Error('hook bug') }
+        h.answer = async () => 'deny'
+
+        const result = await mcp.callMCPTool('delete_file', { path: 'a.md' }, { mcpURL: WS, toolLoop })
+
+        expect(textOf(result)).toBe('Denied by the user: delete_file')
     })
 })

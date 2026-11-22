@@ -35980,3 +35980,1609 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - Tag: decisions (maintainer via AskUserQuestion, "Accept, warn authors (Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-570a`, `#467`, `MC-175`, `MC-091`.
 
 **What the maintainer chose.** A default-on toggle is off in upstream RisuAI, which ignores the 5th field, so the same card builds a different prompt there until the user touches the toggle. This is accepted. Studio's default field and the toggle help text tell authors that upstream ignores defaults.
+
+### MC-3007 — #438 Each screen sheet owns its root tokens; sidebar.css is a chat appendix, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; P-1, P-5, P-8). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2944`, `MC-3002`.
+
+**What the maintainer chose.** Each screen sheet (chat, settings, home, studio) carries its own `:root` tokens, applied only while its screen shows. popups.css and sidebar.css set no tokens. sidebar.css is a chat appendix judged with chat.css and on only with chat (chat.css keeps its sidebar parts). Shape tokens also restyle legacy components shown inside or beside a new shell on a themed screen.
+
+### MC-3008 — #438 One verdict per pack: any refused sheet breaks the whole pack, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; P-6, P-6b). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2944`.
+
+**What the maintainer chose.** A refused sheet for any applied area makes the whole pack broken with the refusal list (record kept). An install with any refused sheet is refused.
+
+### MC-3009 — #438 popups.css only over themed screens; critical dialogs and action toasts stay tokens-only, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; P-2, P-3, P-4). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2947`, `MC-691`, `MC-3053`.
+
+**What the maintainer chose.** popups.css styles popups only over themed screens (built-in over legacy-switch screens, Welcome/boot and areas the pack ships no sheet for). Toasts with an action (Undo) stay tokens-only under their own part name; plain toasts take part CSS. Critical is marked by MC-2947 kind at each call site. The shared dialog frame (pattern-layer, pattern-scrim, pattern-dialog) stays tokens-only for every dialog; inner parts of pickers, info alerts and generic progress take part CSS.
+
+### MC-3010 — #438 Pack effects follow OS reduce-motion and reduce-transparency, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; Q7, S5). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `#438`.
+
+**What the maintainer chose.** OS reduce-motion turns off pack motion; OS reduce-transparency (where the WebView reports it) turns off blur and filters. No new app setting.
+
+### MC-3121 — #438 Non-chat sheet colours are accepted but apply only once the area is colour-ready, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; senior-advisor item A, S4 design). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3002`, `MC-3007`.
+
+**What the maintainer chose.** Colours in settings.css, home.css and studio.css are judged and accepted at install. Each non-chat screen applies only its judged shape variant (no base, no colour variant) until a later PR switches that area to colour-ready, when its markup reads tokens. Studio and Settings take colour from the colour scheme today, so the pack's chat.css colours reach them through the Theme pack scheme.
+
+### MC-3122 — #438 A popups.css colour clash with any screen sheet refuses the pack, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; senior-advisor item F). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3008`, `MC-3009`.
+
+**What the maintainer chose.** If popups.css colours fail contrast against any of the pack's screen sheets, the pack is refused at install, as a sidebar clash is.
+
+### MC-3123 — #438 A pack with no screen sheet is refused, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; senior-advisor item E). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3007`, `MC-3009`.
+
+**What the maintainer chose.** A pack with only popups.css or only sidebar.css can never show anything, so install refuses it.
+
+### MC-3124 — #438 sidebar.css without chat.css is refused, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan r2 P-9). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3007`, `MC-3123`.
+
+**What the maintainer chose.** A pack that has sidebar.css and another screen sheet but no chat.css is refused at install ("sidebar.css needs chat.css").
+
+### MC-3125 — #438 Install notice when a sheet's colours are held back, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan r2 P-10). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3121`.
+
+**What the maintainer chose.** When a non-chat sheet carries colours held back under MC-3121, the install result says the screen uses the pack's shapes only for now and its colours are kept for a later version.
+
+### MC-3126 — #438 popups.css colours only over colour-ready screens, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan r2 P-11). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3009`, `MC-3121`.
+
+**What the maintainer chose.** popups.css applies its judged shape variant over screens that are not colour-ready and its colour variant only over colour-ready ones (chat today).
+
+### MC-3127 — #438 A pack that shows nothing on this version is accepted with a notice, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; Gate 1 r2 E5). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3001`, `MC-3121`, `MC-3125`.
+
+**What the maintainer chose.** A pack whose applied sheets show nothing on this version (for example studio-only with colours only) is accepted. The MC-3125 notice adds that it changes nothing on this version yet, and status reports it empty.
+
+### MC-3131 — #459 branch and user-swipe questions answered with the recommended options, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, both options marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: `t459\answers.md:3` to `:5`. Related: `#459`, MC-2989, MC-2878.
+
+**Question.** How the Agnai and Kobold Lite imports keep a branch, and whether user-message alternates from Character.AI (Lianne, Morse, Dumper) and Ooba files are kept.
+
+**What the maintainer chose.** Branches, "First reply only": each Agnai or Kobold Lite branch's first differing message becomes a swipe at that spot; the messages after it in that branch stay dropped and counted in the existing "not kept" notice (matches MC-2989's "same seam"). User swipes, "Keep like replies": user-message alternates become swipes too, the same rule as MC-2878 PQ-3; at `.bin` export they follow the existing alternatives rule.
+
+### MC-3132 — #459 plan open questions PQ-A to PQ-C answered with the recommended options, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, all options marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: `t459\answers.md:7` to `:10`; `t459\plan.md` Open items. Related: `#459`, MC-3131.
+
+**Question.** The three product questions the #459 plan left open.
+
+**What the maintainer chose.** PQ-A "Count, don't keep": an Agnai sibling, Kobold branch head or Dumper alternate from a different speaker than the shown message stays dropped and counted; swipes stay same-speaker and the #440 seam and tree builder are unchanged. PQ-B "One per distinct text": Kobold Lite branches whose first differing message has the same text at the same position give one swipe. PQ-C "Don't count": a picture or audio token in a kept Kobold Lite branch head is not counted in the "media not kept" notice (accepted limitation).
+
+### MC-3120 — #234 G10: no regression over the pre-stage app; 1 s goes to #508, 2026-11-21
+
+- Tag: decisions (maintainer, relayed by lane A to the #234 session). Date: 2026-11-21. Exact times: UNKNOWN. Amends `MC-2835` and `MC-2818`. Related: `MC-2931`, `#234`, `#508`.
+
+**What the maintainer chose.** "No-regression for now". A Home stage may add no more than 100 ms over the app before that stage in any G10 cell (Note 9, 1000 synthetic characters, run value `max(T_resp, T_tap)`). Reaching Home interactive within 1 s is a separate ticket, #508, which carries the S4a baseline (S3b head: return 1482 ms, boot 1972 ms with shelf, 1895 ms without).
+
+**Consequence.** If S4a alone exceeds its base by more than 100 ms in a G10 cell, the deferred library mount (S4a-2) ships as its own PR; otherwise S4a is accepted and S4b proceeds.
+
+### MC-3053 — #247 S7-2 leaves the theme-pack popup hooks to #438 S3c, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, asked on #438's request). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `#438`, MC-3009, MC-2947, MC-3047, MC-3049.
+
+**Question.** #438 asked #247 S7-2 to also add its popup hooks: a `data-part-critical` marker on popups by MC-2947 kind (delete and data-loss confirms, save failure, restore and import, export and backup, permission prompts, the legacy-switch warning), passed in from each alert call site, plus separate part names for Undo toasts and plain toasts. S7-2's plan had none of this; it already kept the shared frame names (`pattern-layer`, `pattern-scrim`, `pattern-dialog`) stable, as #438 also asked.
+
+**What the maintainer chose.** "In #438 S3c (Recommended)": S7-2 ships as planned with no new Gate 1, keeps the frame part names stable and tokens-only, and names in its PR the files S3c touches after it. #438 S3c adds the call-site critical kinds and markers and the toast part split as its own pass over AlertComp, ToastHost and the alert call sites. Not chosen: "Add them to S7-2" (a kind argument on the alert helpers, every MC-2947 call site marked, a new Gate 1); "Split: names now, kinds later" (data-part names and the toast split in S7-2, the critical kinds in S3c).
+
+# MC records for #384
+
+### MC-3171 — Automatic worktree write grant accepted with its residual: any implementing writer-role agent in the session's own worktree, 2026-11-21
+
+- Tag: decisions (maintainer AskUserQuestion in the #387/#384 tooling session, "Accept residual (Recommended)" over "Keep exact grants"). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2750`, `#384`, `docs/workflow/ownership.md`.
+
+**What the maintainer chose.** Ship the automatic write grant for `sonnet-coder`, `haiku-editor`, `translator`, `doc-writer` and `record-clerk` inside the session's own linked worktree. The worktree's guard, hook, workflow-state, governance, MC-record and legal/branding paths are left out, `test-warrior` keeps exact grants, and the per-file check stays with the brief and the Gate 2 diff read. Accepted residual: the guard cannot tie an agent to its dispatch, so any implementing writer-role agent that the session spawns, a device-track coder included, may write ordinary files in that worktree.
+
+### MC-3059 — #492 Vault V1 scope: full cutover of chat-provider keys into connections, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #492 session scratch `vault\v1\decisions.md`. Related: `#492`, MC-3055, MC-772, MC-774, MC-2155.
+
+**Question.** How far Vault V1, which has no 연결 page yet, moves keys into the new connections store.
+
+**What the maintainer chose.** "Full cutover (Recommended)": every chat-provider key (OpenAI, reverse proxy, Anthropic, OpenRouter, NanoGPT, Mistral, Cohere, Ollama, NovelList, Mancer, the NovelAI chat token, Horde, Gemini, the Vertex private key, per-model OpenAI-compatible keys and custom-model keys) moves into `db.connections`; requests read keys only from there; the existing Bot Settings fields keep working and edit the connection. V2 is then UI only, and V5 encrypts one place. Non-chat keys stay where they are until V4.
+
+### MC-3060 — #492 editing a shared proxy key changes every preset that uses that connection, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #492 session scratch `vault\v1\decisions.md`. Related: `#492`, MC-3059, MC-3061.
+
+**Question.** After migration several presets that used the same proxy address and key share one connection; what an edit of that proxy key in Bot Settings changes.
+
+**What the maintainer chose.** "Every preset sharing it (Recommended)": replacing the key updates every preset that points at that connection.
+
+### MC-3061 — #492 migration makes one connection per distinct proxy address and key pair, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #492 session scratch `vault\v1\decisions.md`. Related: `#492`, DS-060.
+
+**Question.** DS-060's outcome says "one connection per distinct address + key pair" while its title says "merge same address": two presets with the same proxy URL but different keys get one connection or two.
+
+**What the maintainer chose.** "Two (address + key) (Recommended)": one connection per distinct URL and key pair, named after the host; no key is dropped.
+
+### MC-3062 — #492 `.bin` export translates connections back with no leave-out warning, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #492 session scratch `vault\v1\decisions.md`. Related: `#492`, MC-772, MC-774, DS-068.
+
+**Question.** On `.bin` export connections become the plain upstream key fields again and the store is dropped, so connection names are lost on a `.bin` round trip; whether the export leave-out list warns about it.
+
+**What the maintainer chose.** "No warning (Recommended)": this is translation under MC-774 item 1, not fork-only data; keys and URLs are kept, names come back as host names on re-import, and `.rtb` keeps everything.
+
+### MC-3063 — #492 each custom model gets its own connection, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #492 session scratch `vault\v1\decisions.md`. Related: `#492`, MC-3059, DS-048.
+
+**Question.** Whether two custom models with the same URL and key share one connection.
+
+**What the maintainer chose.** "One per model (Recommended)": each custom model gets its own connection, and editing one model's key changes only that model, as before.
+
+### MC-3064 — #492 the DS-060 rename notice waits for the V2 연결 page, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #492 session scratch `vault\v1\decisions.md`. Related: `#492`, `#493`, DS-060.
+
+**Question.** When the one-time notice listing the migrated connections for renaming appears, given that V1 has no page where names are visible.
+
+**What the maintainer chose.** "With V2's page (Recommended)": no notice and no new strings in V1; V2 shows it.
+
+### MC-3065 — #492 only the Ollama key moves into its connection in V1, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #492 session scratch `vault\v1\decisions.md`. Related: `#492`.
+
+**Question.** Whether V1 moves the Ollama server URL (`ollamaURL`) into the Ollama connection along with its key.
+
+**What the maintainer chose.** "Key only (Recommended)": the URL stays a plain Bot Settings field in V1.
+
+### MC-3066 — #492 only the Vertex private key moves into its connection in V1, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #492 session scratch `vault\v1\decisions.md`. Related: `#492`.
+
+**Question.** Whether V1 moves the Vertex client email and region into the Vertex connection along with the private key.
+
+**What the maintainer chose.** "PEM only (Recommended)": email and region stay plain fields; later stages may move them into connection options.
+
+### MC-3067 — #492 four answers after the senior-advisor challenge, 2026-11-21
+
+- Tag: decisions (maintainer, one AskUserQuestion call, four questions, every option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #492 session scratch `vault\v1\decisions.md`. Related: `#492`, MC-350, MC-3059.
+
+**What the maintainer chose.**
+1. The active preset's older stored proxy pair, which the app never uses: "Keep as unused connection (Recommended)"; nothing is lost.
+2. All chat keys now share one saved settings row, so two tabs editing different keys at once get a conflict dialog: "Accept limitation (Recommended)".
+3. Rollback before the first V1 build on the daily phone: "You take an .rtb first (Recommended)"; the PR carries the install note and no extra code is added.
+4. Each preset's copy of the OpenAI key, which neither the fork nor upstream reads: "Clear it (Recommended)"; `.bin` export writes `''` there.
+
+### MC-3201 — #496 ChroMemory injects by default; shadow is an Index-tab toggle, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: S1b session scratch `ltm-s1b\decisions-s1b.md`. Related: `#496`, `#402`, MC-3034, MC-3037.
+
+**Question.** With S1b adding injection, does picking ChroMemory inject at once, or start in shadow mode (recall computed and shown in the Memory panel, nothing sent) until the user turns shadow off?
+
+**What the maintainer chose.** "Inject by default". Picking ChroMemory injects; shadow is a toggle in the Memory panel's Index tab, stored as `ltmSettings.shadow` (absent reads as off) and applying to all chats.
+
+### MC-3202 — #496 model-facing memory headings are fixed English, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: `ltm-s1b\decisions-s1b.md`. Related: `#496`, MC-3201.
+
+**Question.** The injected memory block carries a heading inside the `<Previous Conversation>` wrap; that text goes to the model, not the UI. Fixed English, or the UI language?
+
+**What the maintainer chose.** "Fixed English". The heading and the `[#n] name:` prefix are constants with no locale keys; changing the app language does not change the prompt.
+
+### MC-3203 — #496 optional ChroMemory budget input, blank means automatic, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: `ltm-s1b\decisions-s1b.md`. Related: `#496`, MC-3037, MC-2848.
+
+**Question.** Should S1b add a number input for the recall budget (default `min(2400, 15% of max context)`) in the ChroMemory settings panel?
+
+**What the maintainer chose.** "Input, blank = auto". An optional number field writes `ltmSettings.budgetTokens`; an empty field removes the key and keeps the automatic default.
+
+### MC-3204 — #496 Index-tab Rebuild discards the chat's index; the next send rebuilds it, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: `ltm-s1b\decisions-s1b.md`. Related: `#496`, MC-3039.
+
+**Question.** The index needs a send's processed text, so a rebuild can only happen on a send. What should the Index tab's Rebuild do?
+
+**What the maintainer chose.** "Discard; next send rebuilds". Rebuild drops this chat's in-memory index at once, with no confirm, and the tab says it rebuilds on the next send. Nothing persisted is touched.
+
+### MC-3205 — #496 ChroMemory Memory rows follow the "Show Menu Hypa Modal" setting, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: `ltm-s1b\decisions-s1b.md`. Related: `#496`.
+
+**Question.** Under ChroMemory a Memory row opens the new Memory panel from the chat menus and the character config panel. Should the chat-menu rows follow `showMenuHypaMemoryModal` like the V2/V3 rows?
+
+**What the maintainer chose.** "Follow that setting". The this-chat sheet, plus sheet and chat-screen menu rows show only when the setting is on; the character config panel button shows regardless, as it does for V3.
+
+### MC-3206 — #496 only the recalled-chat heading is sent until notes arrive in S5, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: `ltm-s1b\decisions-s1b.md`; S1b plan-r1 open item O1. Related: `#496`, MC-3202.
+
+**Question.** The spec gives the memory block a notes heading and a recalled-chat heading; notes arrive only in S5. What does S1b send?
+
+**What the maintainer chose.** "Only recalled-chat heading". The block carries "Earlier in this chat" alone until S5 adds notes, so the model is not invited to invent notes and no tokens go to an empty section.
+
+### MC-3207 — #496 the first ChroMemory send waits for the full index build, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: Note 9 row DV-S1b-2 (lane B, PR #543 head f9c56753d, synthetic --ltm-bench short fixture): first send after opening a 5,000-message chat, engine time median 978 ms, max 1040 ms. Related: `#496`, MC-3039, spec section 9 and open question 12.3.
+
+**Question.** The first-send index build is above 0.5 s on the Note 9. Should that first send wait for the full index, or go out with partial memory under a time box?
+
+**What the maintainer chose.** "Wait, ship as is". The first send per chat per app session waits for the full build (about 1 s on a Note 9) and every send carries full memory; no time box is added.
+
+### MC-3232 — #537: desktop test builds stay keyless through a config override, 2026-11-21
+
+- Tag: decisions (session, within the scope lane A set for #537; no new product trade-off). Date: 2026-11-21. Exact times: UNKNOWN. Implements `MC-3231`. Related: `#537`, `#515`.
+
+**What was decided.** `src-tauri/tauri.conf.json` turns `bundle.createUpdaterArtifacts` on and carries the fork's own updater public key (minisign key ID ED1D63FEDD9B600F, replacing upstream's 568339210319651F). With that flag on, `tauri build` fails without `TAURI_SIGNING_PRIVATE_KEY`. `desktop-test-build.yml` (manual, public workflow artifacts) therefore passes `--config src-tauri/tauri.test-build.conf.json`, which sets the flag back to false, and receives no signing secret. Only `release-desktop.yml` has the key; it uploads the signed updater files and a merged `latest.json` to its draft release.
+
+**Why.** The test build's artifacts are public and short-lived, and nothing installs updates from them. Keeping the private key out of that workflow limits where the secret is exposed. Both `tauri-action` (which resolves the path against the project path, the repository root) and the Tauri CLI read the override; a local build with a throwaway key showed the three cases (key: signed `.sig`; override without key: builds, no `.sig`; neither: fails).
+
+**Consequence.** Test-build installers carry no `.sig` files and cannot be offered as updates.
+
+### MC-3233 — #537: the desktop boot update check is on, against the fork's own releases, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Builds on `MC-3231`. Revisits B6f in Maintainer-Context (relaunch never on Android). Related: `#537`, `#515`.
+
+**What the maintainer chose.** Turn the boot update check back on. `plugins.updater.endpoints` is `https://github.com/yor42/RisuTanium/releases/latest/download/latest.json`; `src/ts/update.ts` checks on desktop boot and keeps the remind-later choices (ignore, 1, 3, 5 or 7 days). No upstream service is contacted.
+
+**Consequence.** The check runs only on Tauri desktop builds (`isTauriDesktop`), never on Android, where the updater plugin is not compiled in; that keeps B6f's rule that `relaunch()` never runs on Android. It is skipped in dev builds and while a reminder is active, and is capped at 10 s. While no release is published, `releases/latest` returns 404 and the check fails silently. GitHub's `latest` skips drafts and prereleases, so a prerelease is never offered. Offers depend on the top-level `version` in `src-tauri/tauri.conf.json`, which Tauri uses over Cargo.toml.
+
+### MC-3234 — #537: the update popup shows both versions and the release notes, 2026-11-21
+
+- Tag: decisions (maintainer, relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3233`, `MC-058`, `MC-239`.
+
+**What the maintainer chose.** Replace the yes/no update question with a popup that shows the installed version, the new version and the changelog, designed with the frontend-design skill (project theme colours, one bold element), accessible (dialog, focus, Back and Escape) and usable in narrow windows, with untrusted notes never rendered as HTML.
+
+**Consequence.** The notes render as plain text (no HTML sink, so no sanitizer); `latest.json` is not covered by the update signature, so notes and versions are untrusted even with the right key. Not now, Escape and Back lead to the remind-later choice. A failed download or install shows an error and boot continues; a failed relaunch after a successful install says to reopen the app. A download that stalls without an error keeps the wait screen until the window is closed (nothing is installed before the signature verifies, and the update is offered again next boot).
+
+### MC-3235 — #537: release notes come from a release-workflow input, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #537 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3234`.
+
+**What the maintainer chose.** "Dispatch input": `release-desktop.yml` takes a `releaseNotes` input that becomes the top of the release body, with the install instructions below it. tauri-action copies the release body into `latest.json` `notes`, so the popup shows those notes followed by the install text.
+
+**Consequence.** Editing the draft's body on GitHub afterwards does not change `latest.json`. Multi-line notes are passed with `gh workflow run ... -f releaseNotes=...`; the web form takes one line.
+
+### MC-3236 — #537: downgrade protection is turned on before the first published release, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #537 session; security choice). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3233`, `#515`.
+
+**What the maintainer chose.** "Before first release": #537 ships without `plugins.updater.requireSignedVersion`. A follow-up ticket bumps `@tauri-apps/cli` (2.9.1 does not put the version in the signature, and it is older than the resolved `tauri` 2.12.7 crate, so it also cannot patch the bundle-type marker) and turns `requireSignedVersion` on before the first published release.
+
+**Why it matters.** Without it, someone who can edit this repository's releases but has no signing key could pair an inflated version with an older genuinely signed release and push installed builds back to it. Installed builds keep their config forever, so the setting must be on in the first published build.
+
+### MC-3283 — #489: the OpenAI-compatible tool-stream replay is fixed with the Gemini one (shared cause), 2026-11-21
+
+- Tag: scope (session-recorded amendment under `MC-091`). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#489`, `#455`, `MC-091`, `MC-1451`.
+
+**Failure.** The issue named the stale `lastValue` replay only in the Gemini streaming tool loop (`google.ts` `wrapToolStream`). The OpenAI-compatible chat wrapper (`openAI/requests.ts` `wrapToolStream`) has the same shape: `lastValue` survives the swap to the follow-up reader, so a follow-up stream that yields no chunk replays the previous round's tool calls until the 25-round cap.
+
+**Causal connection and correction.** Same defect, same one-line fix: reset `lastValue` right after taking the follow-up reader, as the Responses wrapper already did. Both loops have a reproducer in `streamingBugs489.svelte.test.ts` (25 tool calls before the fix, 1 after). No product trade-off is involved.
+
+### MC-3284 — #489: legacy Ooba streaming is fixed at the producer, not the reply consumer, 2026-11-21
+
+- Tag: design (session-recorded). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#489`, `#455`, `MC-1451`.
+
+**What changed.** `requestOobaLegacy` now enqueues `{"0": text}` records, the chunk shape every other provider emits, and its stream is typed `ReadableStream<StreamResponseChunk>` so the type check catches a bare string. The streaming consumer in `index.svelte.ts` is unchanged, which keeps the #455 display coalescing and the MC-1451 hidden-page delivery out of this change's reach.
+
+### MC-3293 — #544: Tauri CLI 2.12.5 signs the version and desktop updates require it, 2026-11-21
+
+- Tag: decisions (session, within the scope lane A set for #544; implements `MC-3236`). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#544`, `#537`, `#515`, `MC-3231`.
+
+**What was decided.** `@tauri-apps/cli` moves from 2.9.1 to 2.12.5 and `plugins.updater.requireSignedVersion` is true in `src-tauri/tauri.conf.json`, pinned by `src/ts/updaterConfig.test.ts`. 2.12.5 rather than the newest 2.12.6 because pnpm's `minimumReleaseAge` refused 2.12.6 (published 2026-11-18). The Rust `tauri-plugin-updater` crate does not move: 2.13.1 already reads `requireSignedVersion` (its `config.rs`).
+
+**Evidence.** A local NSIS build signed with a throwaway key generated under %TEMP% and deleted afterwards wrote a `.sig` whose trusted comment ends `version:0.1.0`, and the CLI logged that it patched the binary with bundle type `nsis`; no `__TAURI_BUNDLE_TYPE` warning appeared.
+
+**Consequence.** An installed build refuses an update whose signature does not sign the offered version, so a signed older release cannot be offered under an inflated `latest.json` version. Releases signed by CLI 2.9.1 carry no signed version; none was ever published.
+
+### MC-3294 — #544: Rust crates with an npm counterpart stay on that package's major.minor, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #544 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3293`, `#544`.
+
+**Problem.** CLI 2.12.5 fails `tauri build` when an npm `@tauri-apps/*` package and its crate differ in major.minor. `src-tauri/Cargo.lock` is not tracked, so a fresh resolve took newer crate minors than the npm pins (http 2.9 vs 2.8, shell 2.6 vs 2.4, fs 2.7 vs 2.6, updater 2.14 vs 2.13); a first build passed only because no lock existed yet when the CLI looked, and every later build in the same tree failed. Main's lock and the APK worktrees' locks still matched npm.
+
+**What the maintainer chose.** Pin the crates rather than bump the npm packages: in `src-tauri/Cargo.toml`, `tauri` and every `tauri-plugin-*` crate with an npm counterpart uses a tilde range on the npm package's major.minor (patch releases still resolve). `src/ts/tauriVersionParity.test.ts` fails when a paired crate loses the tilde or its major.minor differs from npm's.
+
+**Consequence.** Fresh checkouts (CI, release) resolve the same minors that existing local builds use. Moving a Tauri plugin to a new minor now means bumping the npm package and the crate range together.
+
+### MC-3333 — #198 (CHORE-323): the lorebook list is for the latest reply only and is not saved, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, relayed by lane A in the issue comment of 2026-11-21). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2140`, `CHORE-323`, `#198`.
+
+**What the maintainer chose.** The per-reply list of lorebook entries is shown for the latest reply only and is not persisted.
+
+**Consequence.** The list lives in memory (`src/ts/process/loreUse.ts`), keyed to the `chatId` of the reply the latest send writes; a reload, or the next send's scan, replaces it. Nothing is added to the message, the chat, `.bin` or `.rtb`.
+
+### MC-3334 — #198 (CHORE-323): a tappable entry count under the reply expands into the list; an entry opens in the lorebook editor, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, relayed by lane A in the issue comment of 2026-11-21). Date: 2026-11-21. Exact times: UNKNOWN. Amends `MC-2140` (the entry count stays, now tappable). Related: `CHORE-323`, `#198`.
+
+**What the maintainer chose.** The lorebook entry count becomes tappable and expands a small list under the reply: each entry's name and its source (character, chat or module). Tapping an entry opens it in the lorebook editor.
+
+**Consequence.** The current chat screen had no per-reply count yet (the count of `MC-2140` was the UI-S1 design), so #198 adds the count and the list together. The editor is Studio, opened on the entry, when Studio can open; otherwise the classic editor's lorebook page of that owner, which cannot single out one entry. An entry moved, renamed or deleted after the send opens the owner's lorebook list instead of whatever entry now sits at its old position.
+
+### MC-3335 — #198 (CHORE-323): built against the current chat screen now, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, relayed by lane A in the issue comment of 2026-11-21). Date: 2026-11-21. Exact times: UNKNOWN. Supersedes the parking of `MC-2140`. Related: `CHORE-323`, `#198`.
+
+**What the maintainer chose.** CHORE-323 is scheduled now and no longer waits for the UI-S1 chat polish stage.
+
+**Consequence.** The count and list are built into the current chat shell message (`src/lib/ChatShell/ShellMessage.svelte`, via `ReplyLoreUse.svelte`); UI-S1 polish may restyle them later.
+
+### MC-3128 — #438 Pack-settable app shape tokens: --ui-radius-* steps and --ui-border-width, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan P-S2-1). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3007`, `MC-3121`.
+
+**What the maintainer chose.** Packs may set `--ui-radius-xs`, `--ui-radius-sm`, `--ui-radius-md`, `--ui-radius-lg`, `--ui-radius-xl`, `--ui-radius-2xl`, `--ui-radius-3xl`, `--ui-radius-4xl`, `--ui-radius` and `--ui-border-width`. Radius is bounded to 0-32 px and the hairline to 1-3 px. The app's Tailwind radius and border scale reads them, with defaults equal to today's values. These names are pack format; renaming them after release breaks packs.
+
+### MC-3129 — #438 The app shape tokens are settable from chat.css too, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan P-S2-2). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3007`, `MC-3128`.
+
+**What the maintainer chose.** The ten app shape tokens are settable in chat, settings, studio and home sheets from one shared token file, so chat.css also reshapes legacy components shown on the chat screen.
+
+### MC-3130 — #438 A persisted judge verdict cache is allowed, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan P-S41-1). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3008`, `#363`.
+
+**What the maintainer chose.** Judge verdicts of a stored pack may be cached on the device so start-up can skip re-judging unchanged bytes. The cache is a separate byte-store entry, keyed by judge identity and archive hash (plus label, area and text hash), never exported in .bin or .rtb, removed with its pack and rebuilt when the judge identity changes. Its location is refined by MC-3243.
+
+### MC-3303 — #151 preset bundle file: `.risup` with inner type `presetBundle`, 2026-11-21
+
+- Tag: decisions (maintainer, asked by the #151 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-175`, `MC-774`, `#151` (CHORE-577).
+
+**What the maintainer chose.** A preset bundle is saved as `<name>_presets.risup`, the same container as a single preset (msgpack, legacy cipher, fflate, rpack) with an inner `type: 'presetBundle'`, rather than a new extension or a zip.
+
+**Consequence.** Android and Windows file-open already route `.risup`; no new association. Upstream and older fork builds cannot open a bundle (they refuse an unknown type without importing anything); single-preset `.risup` files keep importing everywhere. The bundle is a fork-only file format; the database and `.bin` shape do not change.
+
+### MC-3304 — #151 bundle import never overwrites; same names get a suffix, 2026-11-21
+
+- Tag: decisions (maintainer, asked by the #151 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3303`, `#151`.
+
+**What the maintainer chose.** Importing a bundle adds every selected preset; none replaces an existing one. A preset whose name matches an existing preset is renamed with a ` (2)` style suffix. The preview lets the user untick presets they do not want.
+
+**Consequence.** No per-row conflict dialog and no replace-by-name path, so a bundle can never destroy a tuned preset, its slot hotkey or links to it.
+
+### MC-3305 — #151 bundles strip exactly what single-preset export strips, 2026-11-21
+
+- Tag: decisions (maintainer, asked by the #151 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3074`, `MC-3076`, `#492`, `#151`.
+
+**What the maintainer chose.** Each preset in a bundle goes through the same share strip as a single export: API keys (the `botPreset` entries of the secret-field registry), the link to a saved connection and the endpoint URLs are left out, with the existing warning before export. Import runs the same per-preset blanking as a single import.
+
+**Consequence.** No new key rule: the vault key model (`db.connections`, `#492`; `#493`/`#495` in flight) stays the one source, and a bundle can neither carry keys nor point a foreign preset at the importer's keys.
+
+### MC-3306 — #151 export ticked presets or all; folders travel as names, 2026-11-21
+
+- Tag: decisions (maintainer, asked by the #151 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3303`, CHORE-573, `#151`.
+
+**What the maintainer chose.** Export takes ticked presets or all presets. The bundle carries each preset's folder name; import puts a preset into the existing folder with that name, creating it if missing, and the preview shows the folder. A folder chooser and folder list UI stay with the UI-S preset list.
+
+**Consequence.** Folder ids and hotkey slots never travel (they are device-local); imported presets get fresh ids as today.
+
+### MC-3307 — #151 bundle file name and keys-left-out notice timing, 2026-11-21
+
+- Tag: decisions (maintainer, asked by the #151 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3303`, `MC-3305`, `#151`.
+
+**What the maintainer chose.** The bundle is saved as `<folder>_presets.risup` when every exported preset sits in one folder, otherwise `RisuTanium_presets.risup`, with no name prompt. The "keys were left out" notice appears after saving, exactly as for a single preset export.
+
+**Consequence.** Single-preset export is unchanged; no pre-export confirm is added.
+
+### MC-3243 — #438 The verdict cache lives under its own byte-store prefix, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan S4-1 Q1). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3130`, `MC-3008`.
+
+**What the maintainer chose.** Amends MC-3130. If the persisted judge verdict cache is built (stage S4-1 PR-B, only when the Note 9 measurement after PR-A still misses the S3 threshold), it lives under its own byte-store prefix `themepack-verdicts/` (`a-<archive sha256>` for installed packs, `b-<built-in slug>` for built-ins). Backups, restores and sweeps never list that prefix. Entries that no current pack or built-in names are pruned after Remove, after install and once per app lifetime.
+
+### MC-3113 — #495 a temporarily undecryptable key shows an empty field with a hint under it, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion; the recommended option was not chosen). Date: 2026-11-21. Exact times: UNKNOWN. Source: #495 session scratch `vault\v5\decisions.md`. Related: `#495`, MC-3110, MC-3075.
+
+**Question.** On Android, a saved connection key that the Keystore has not decrypted yet (for up to a few seconds after start-up, or while the Keystore is briefly stuck) still counts as present, and the card shows no notice (MC-3110). What that key's edit field in the settings page shows in the meantime.
+
+**What the maintainer chose.** "Blank plus a hint". The field stays empty and a small "key temporarily unavailable" line shows under it until the key is decrypted. The field then fills in on its own. Typing in the field replaces the key. Rejected: blank only (the recommended option); the field read-only until the key is ready.
+
+**Consequence.** One more UI string in all 8 locales (`vaultKeyTemporarilyUnavailableHint`). A sync, reactive predicate `connectionKeyTemporarilyUnavailable(conn)` in keyAccess.ts drives the hint at every key editor. The predicate makes no vault call and is false off Android with the vault. MC-3110 still holds: no boot notice and no re-entry flag for such a key.
+
+### MC-3114 — #495 restored connection keys are staged before the .rtb restore commits, 2026-11-22
+
+- Tag: decision (maintainer, AskUserQuestion; the recommended option was chosen). Date: 2026-11-22. Exact times: UNKNOWN. Source: #495 session; device evidence lane B D5 crash-before-first-save attempt 2 (PR #557). Related: `#495`, MC-350, MC-3074.
+
+**Question.** The side data of a `.rtb` restore, including the connection-key staging records, is written after the restore commits. If the app is killed in the second or two between the two, some keys can end up unstaged. Restored on another phone, those connections then show "키 다시 입력 필요" and need the key typed again. Same-phone restores and correctness are unaffected. Whether S2 fixes this.
+
+**What the maintainer chose.** "Fix in S2": the connection-key staging moves before the restore commit. Rejected: merging with the window listed as a known limitation and a follow-up ticket.
+
+**Consequence.** A change to the restore's commit order, so the Tier 2 path applies: designer plan, opus Gate 1, a reproducer and opus Gate 2. The other side sections keep their after-commit order.
+
+### MC-3115 — #495 restore key staging stops calling the Keystore after the first failed wrap, 2026-11-22
+
+- Tag: decision (maintainer, AskUserQuestion; the recommended option was chosen). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#495`, MC-3114, MC-3073.
+
+**Question.** With the connection-key staging before the `.rtb` restore commit (MC-3114), a hung Keystore makes each key wait up to the 10 s watchdog before the commit. How staging handles a hang.
+
+**What the maintainer chose.** "Stop after first failure". After the first failed wrap in one staging run, the remaining keys are staged as plain records and are wrapped at the next start. The worst-case delay is about 10 to 20 s. Rejected: waiting out each key's timeout (up to about 3 minutes for 20 keys).
+
+**Consequence.** Plain records can stay in the device-local staging store until the next start wraps them, the same kind of leftover as the existing plain staging path.
+
+### MC-3116 — #495 a hand-edited .rtb can change a key through pre-commit staging; accepted, 2026-11-22
+
+- Tag: decision (maintainer, AskUserQuestion, security; the recommended option was chosen). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#495`, MC-3114.
+
+**Question.** With staging before the commit, a hand-edited `.rtb` whose key line pairs one of this profile's envelopes with a different key text can change that connection's key at the next start, even when the restore never commits. Building such a file needs a copy of the profile's own envelope.
+
+**What the maintainer chose.** "Accept": recorded as a known limitation. Rejected: a follow-up to skip a staged record whose carrier's current envelope this device can already read (that needs a decrypt before boot step 1 and changes the start-up order).
+
+### MC-3322 — #444: deliver every listed streaming part, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion via lane A, recorded on issue #444). Date: 2026-11-21. Exact time: UNKNOWN. Related: `MC-1087` (UI-S1a accepted limitations), `MC-2954` (ticketing), `#444`.
+
+**What the maintainer chose.** Deliver all listed parts of #444: the multi-paragraph markup fix, the screen-reader announcement, the image skeleton, the code and style streaming chips, the `~~~` scene break and Shift+Delete routing. Tier 2 with Gate 1 and device rows.
+
+### MC-3323 — #444: an unresolved span mid-stream shows a neutral "formatting" chip, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion via lane A, recorded on issue #444). Date: 2026-11-21. Exact time: UNKNOWN. Related: `MC-3322`, `MC-1087`.
+
+**What the maintainer chose.** While a reply streams, an unresolved `{{#if}}` or display-regex span that covers several paragraphs shows a neutral "formatting" placeholder chip, reusing the Thinking chip pattern. Raw tags never show, and the text still appears in order.
+
+### MC-3324 — #444: screen readers hear "reply started", then the completion, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion via lane A, recorded on issue #444). Date: 2026-11-21. Exact time: UNKNOWN. Related: `MC-3322`, `MC-1087`.
+
+**What the maintainer chose.** A screen reader announces "reply started" when a reply begins streaming, then announces the completion. The earlier behaviour announced only at completion.
+
+### MC-3349 — #444: a lone `~~~` line draws as a scene divider everywhere, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #444 session). Date: 2026-11-21. Exact time: UNKNOWN. Related: `MC-3322`, `MC-1087`; spec row "`~~~` scene break" in `docs/design/chat/SLICE1_SPEC.md`.
+
+**What the maintainer chose.** "Divider everywhere". A lone `~~~` line between paragraphs draws as a centred scene divider while streaming and once finished, in both the new and the classic chat shell. A `~~~` with an info string, or one with a closing `~~~`, stays a code block. Only rendering changes; saved data is untouched.
+
+**Consequence.** Cards that use a lone `~~~` look different in this fork than upstream, where it opens a code block running to the end of the message.
+
+### MC-3350 — #444: Shift+Delete routing counts as already shipped, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #444 session). Date: 2026-11-21. Exact time: UNKNOWN. Related: `MC-3322`, `MC-1087`.
+
+**What the maintainer chose.** "Count as shipped". Shift+Delete and Shift+click already delete from a message onward in the new shell on main (`src/ts/chatShell/messageKeys.ts`, covered by `messageKeys.test.ts`, `ShellMessage.keys.svelte.test.ts` and `ShellMessage.deleteflow.svelte.test.ts`). #444 adds no code for it, and the PR records it as already on main.
+
+### MC-3351 — #444: scene-break rule, look and reach, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #444 session, grilling round). Date: 2026-11-21. Exact time: UNKNOWN. Refines `MC-3349`.
+
+**What the maintainer chose.** "Line after decides": a line of three or more tildes with nothing else is a scene break when the next line is blank or the text ends; text on the next line opens a code block, so `~~~` / code / `~~~` stays code, and two scene breaks give two dividers. Exception accepted: `~~~`, a blank line, text, `~~~` draws divider / text / divider. Streaming and finished views always agree. "Short centred rule": about 30% wide, centred, in the theme's rule colour, distinct from a `---` rule. "All markdown": every markdown renderer gets the rule (both chat shells, creator notes, descriptions, HTML chat export, translation re-renders).
+
+**Consequence.** With legacy translation mode on, a message containing a lone `~~~` gets a new translation cache key once and is translated again.
+
+### MC-3352 — #444: "Reply finished" for every end; no classic-shell announcements, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #444 session, grilling round). Date: 2026-11-21. Exact time: UNKNOWN. Refines `MC-3324`.
+
+**What the maintainer chose.** "\"Reply finished\" always": the new shell announces "Reply started" and then "Reply finished" for success, Stop and errors alike, with no chat name. A send error still shows its existing alert card. The classic shell gets no announcements.
+
+### MC-3353 — #444: the Formatting chip holds text until the span closes or the reply ends, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #444 session, grilling round). Date: 2026-11-21. Exact time: UNKNOWN. Refines `MC-3323`.
+
+**What the maintainer chose.** "Until reply ends": no length limit on a held span. If it never closes, the held text appears when the reply ends, and an unbalanced span then shows its raw tags as it does today.
+
+### MC-3354 — #444: image skeleton stays until the image form closes, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #444 session, grilling round). Date: 2026-11-21. Exact time: UNKNOWN. Related: `MC-3322`.
+
+**What the maintainer chose.** "Skeleton until close": `{{img::`, `{{inlay::`, `{{inlay` and `<img` keep the skeleton until they close, exempt from the 64-character release that other unfinished macros get.
+
+### MC-3355 — #444: the code peek box is capped and follows the newest line, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #444 session, grilling round). Date: 2026-11-21. Exact time: UNKNOWN. Related: `MC-3322`.
+
+**What the maintainer chose.** "Capped and follows": the raw-code peek is at most about 40% of the screen height, scrolls, and keeps the newest line in view unless the user scrolls up inside it.
+
+### MC-3356 — #444: one chip at a time, after the visible text, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #444 session, grilling round). Date: 2026-11-21. Exact time: UNKNOWN. Related: `MC-3323`.
+
+**What the maintainer chose.** "After text, one chip": streaming chips, the existing Thinking chip included, sit after the visible text of the paragraph being written; when unfinished constructs overlap, only the earliest one's chip shows.
+
+### MC-3054 — #247 S7d covers the 8 AlertComp tool dialogs plus the two prompts, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, before planning). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, MC-3046, MC-3049, MC-3226.
+
+**Question.** Which dialogs the S7d per-dialog redesign covers.
+
+**What the maintainer chose.** "AlertComp + 2 prompts (Recommended)": the 8 AlertComp tool dialogs (requestdata, requestlogs, cardexport, branches, addchar, chatOptions, selectChar, hypaV2) plus PeerConflicts and ParkedReplyPrompt. ModuleChatMenu (selectModule) is out because the regular module menu shares it. Not chosen: "AlertComp dialogs only"; "All 11 dialogs".
+
+### MC-3221 — #247 S7d goes before #438 S3c, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, before planning). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `#438`, MC-3053.
+
+**Question.** Whether S7d or #438 S3c (the theme-pack popup hooks) changes the alert dialogs first.
+
+**What the maintainer chose.** "S7d first, then S3c (Recommended)": S7d keeps its part names stable and tokens-only. #438 S3c adds its markers on S7d's final markup and waits for S7d to merge. Not chosen: "S3c first, then S7d"; "In parallel, split by dialog".
+
+### MC-3222 — Tapping outside the export dialog does nothing, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, OPQ-S7d-2). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, MC-3054.
+
+**Question.** What a tap on the backdrop of the card export dialog does once it moves into the shared dialog box. Before S7d the backdrop was a button that cancelled.
+
+**What the maintainer chose.** "Nothing (Recommended)": the backdrop becomes an inert scrim, no longer a button or a Tab stop. The export is cancelled only through the dialog's close button. Not chosen: "Cancel the export".
+
+### MC-3223 — The request data viewer gets a "Request info" headline, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, OPQ-S7d-3). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, MC-058.
+
+**Question.** Whether the request data (generation info) viewer gets a headline. It had no title.
+
+**What the maintainer chose.** "Add 'Request info' (Recommended)": the new key `alertRequestDataTitle: 'Request info'` is the headline and the dialog's accessible name. The 7 locales came through lane A in the same PR. Not chosen: "No title".
+
+### MC-3224 — JSON in the tool dialogs uses a quiet theme highlight, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, OPQ-S7d-5). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**Question.** How the JSON code panels in the data viewers are coloured. Before S7d they used a fixed dark highlight theme.
+
+**What the maintainer chose.** "Quiet theme highlight (Recommended)": the panels sit on the raised theme surface. Keys are in strong text; values and punctuation are in secondary text. The rules are scoped to the dialog's code part and must reach >= 4.5:1 in every theme. Not chosen: "Keep the dark block"; "Plain monochrome".
+
+### MC-3225 — In the parked-reply prompt, Later takes the confirm fill on the right, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, OPQ-S7d-6). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**Question.** Which parked-reply button is emphasised, and where each button sits.
+
+**What the maintainer chose.** "Later, on the right (Recommended)": Later gets the confirm fill on the right; Discard is neutral on the left and still acts at once. Not chosen: "Discard in red".
+
+### MC-3226 — The module chooser (selectModule) stays untouched, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, OPQ-S7d-1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, MC-3054.
+
+**Question.** Whether the selectModule branch gets the new dialog frame.
+
+**What the maintainer chose.** "Leave it untouched (Recommended)": the selectModule branch stays byte-identical, with no frame. Not chosen: "Layer only, no backdrop"; "Full frame".
+
+### MC-3227 — The hard-coded English labels in the tool dialogs stay for now, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, OPQ-S7d-4). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, MC-058.
+
+**Question.** Whether S7d translates the literal English labels in the tool dialogs (format names, tab labels and the like).
+
+**What the maintainer chose.** "Keep literal for now (Recommended)": the labels stay as they are, and localizing them is a leftover. Not chosen: "Translate them in S7d".
+
+### MC-3228 — Branch preview nodes get keyboard and screen-reader access, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, OPQ-S7d-7; not the recommendation). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, MC-3229.
+
+**Question.** Whether the branch tree's nodes, which pointer hover alone could reach, get keyboard and screen-reader access.
+
+**What the maintainer chose.** "Add keyboard access": each branch node becomes a native button named by its message's first line (truncated). Focus shows the preview and blur hides it, as hover does; pointer behaviour is unchanged. Not chosen: "Pointer only, leftover (Recommended)". MC-3229 sets the Tab model.
+
+### MC-3229 — The branch tree is one Tab stop with arrow keys, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, follow-up to MC-3228). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, MC-3228.
+
+**Question.** MC-3228's question did not state the Tab cost. A large character's tree gives thousands of nodes; ten 200-message chats give about 2,000. So the follow-up asked how keyboard users move through the tree.
+
+**What the maintainer chose.** "Tree is one stop + arrows": the tree takes one Tab stop, with roving focus (only the current node has tabindex 0). Up/Down move along a branch and Left/Right move across branches. MC-3228's naming and preview rules still hold, and Escape closes from any node. Not chosen: "One Tab stop per node".
+
+### MC-3230 — S7d fixes the overlapping sibling subtrees in the branch layout, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, OPQ-S7d-8). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**Question.** `getMaxChildren` in `branches.ts` returned 1 for a leaf without storing it, so `renderBranch` laid sibling subtrees over each other. The same layout code is in upstream. Should S7d fix it?
+
+**What the maintainer chose.** "Fix it in S7d (Recommended)": a leaf stores `maxChildren = 1` before returning 1, pinned by `branches.layout.test.ts`. The change affects drawing only; upstream-compatible data is unaffected. Not chosen: "Leave it as upstream".
+
+### MC-3434 — The branch preview stays inside the tree's visible area, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion, after the Note 9 device row DV-S7d-7). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#247`, MC-3228, MC-3229.
+
+**Question.** On a 411 px phone, tapping a branch node at the tree's right edge focused it, but its preview opened entirely outside the visible area. The preview's fixed right-of-node position predates S7d; the plan expected only a partly off-screen preview. Should S7d fix it?
+
+**What the maintainer chose.** "Fix it in S7d (Recommended)": the preview opens right of the node when it fits, otherwise to its left, and is always clamped into the tree's visible box, never wider than it. Unit and component tests pin it, and the right-edge tap is re-checked on a Note 9. Not chosen: "Leftover, merge as is".
+
+### MC-3253 — #493 Connections page allows one connection per global provider, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #493 session scratch `vault\v2\decisions.md`. Related: `#493`, MC-3055, MC-3059.
+
+**Question.** Requests use the first connection of a global provider and presets store no connection choice (only reverse proxy and custom models store an id), so what "Add connection" should allow.
+
+**What the maintainer chose.** "One per provider (Recommended)": Add offers only providers with no connection yet; several connections only for reverse proxy and custom, which already store an id. No request-path or format change in V2.
+
+### MC-3254 — #493 the rename notice is device-local with no saved-data change, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #493 session scratch `vault\v2\decisions.md`. Related: `#493`, MC-3064, MC-350.
+
+**Question.** V1 recorded nothing about which connections its migration created; where V2 remembers the rename-notice list until the user dismisses it.
+
+**What the maintainer chose.** "Device-local, no format (Recommended)": the notice shows once per device for connections still carrying their migration default name (provider or host name); the dismissal is kept in localStorage. No saved-data change.
+
+### MC-3255 — #493 loose key fields stay editable with a link to Connections, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #493 session scratch `vault\v2\decisions.md`. Related: `#493`, MC-3059, MC-3259.
+
+**Question.** The key fields in Bot settings, Other bot settings, Custom models and the welcome step edit the same stored key as the new page; what happens to them.
+
+**What the maintainer chose.** "Keep, add page link (Recommended)": the fields stay editable (masked) and each key block gets a small "Manage in Connections" link. MC-3259 later removed the welcome-step link.
+
+### MC-3256 — #493 the Connections row appears in both Settings screens, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #493 session scratch `vault\v2\decisions.md`. Related: `#493`, MC-3056.
+
+**Question.** The new Settings screen is opt-in per device and off on the Beta Mobile GUI and Lite, so where the top-level Connections row appears.
+
+**What the maintainer chose.** "Both screens (Recommended)": a row in the legacy Settings list and in the new shell (a top-level page plus a view under Models and presets).
+
+### MC-3257 — #493 a reverse proxy added on the page is used when none is, with a Use button, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #493 session scratch `vault\v2\decisions.md`. Related: `#493`, MC-3253.
+
+**Question.** Nothing in the app picks a reverse proxy by id, so a second proxy added from the page would be used by nothing; how adding one should work.
+
+**What the maintainer chose.** "Auto-use + 'Use' button (Recommended)": a new proxy becomes the working one when none resolves, as Bot settings does today; an unused proxy's detail gets a "Use in the current settings" button.
+
+### MC-3258 — #493 Add connection does not offer the custom provider, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #493 session scratch `vault\v2\decisions.md`. Related: `#493`, `#539`, MC-3063.
+
+**Question.** Custom-model connections are one per custom model and creating models is V3 (#539); whether Add connection offers the custom provider.
+
+**What the maintainer chose.** "Exclude custom (Recommended)": custom connections still list, rename, change or remove their key and delete; they are created with their model.
+
+### MC-3259 — #493 no Connections link in the welcome step, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #493 session scratch `vault\v2\decisions.md`. Related: `#493`, MC-3255.
+- Supersedes / amends: narrows MC-3255 (no link in the welcome step).
+
+**Question.** The welcome step keeps the typed key unsaved until onboarding finishes, so a link there would leave onboarding and lose the key; what the welcome step shows.
+
+**What the maintainer chose.** "No link (Recommended)": the welcome step is unchanged.
+
+### MC-3260 — #493 no used-by count on cloud provider cards, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #493 session scratch `vault\v2\decisions.md`. Related: `#493`, MC-3253.
+
+**Question.** No complete model-to-provider table exists (only 7 of 13 providers map), so "Used by N presets" for cloud providers would often be wrong; what those cards show.
+
+**What the maintainer chose.** "No count for cloud (Recommended)": counts only for reverse proxy (presets) and custom (models); cloud cards show no used-by line, and a second same-provider connection is marked unused.
+
+### MC-3261 — #493 the key help line says restore points keep keys, 2026-11-21
+
+- Tag: decision (maintainer, AskUserQuestion, option marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: #493 session scratch `vault\v2\decisions.md`; Gate 1 round 1 finding F1. Related: `#493`, DS-069, DS-027.
+- Supersedes / amends: amends the DS-069 help wording for the current storage.
+
+**Question.** DS-069 says keys are not kept in undo, restore points or sharing exports, but store2 restore points keep the config unit with `connections` and their keys; what the page says.
+
+**What the maintainer chose.** "Truthful line (Recommended)": "Keys aren't kept in undo or sharing exports. Full backups and restore points keep them." The PR lists as a known limitation that deleting a connection does not erase its key from older restore points.
+
+### MC-3399 — #180 scope: window Studio's merged lore/regex list; the tree keeps its paging, 2026-11-22
+
+- Tag: decisions (maintainer, asked by the #180 session with AskUserQuestion). Date: 2026-11-22. Exact time: UNKNOWN. Related: `#180`, `#212` (PR #550, the windower), `CHORE-823`, `MC-2060`.
+
+**What was found.** The issue says lorebook lists mount one editor per entry. That is true only of the legacy sidebar, which the issue puts out of scope. In the new UI, lore entries appear in Studio as single-line rows of fixed height: the tree and the merged view (Merged > Lorebook / Regex) each showed pages of 100 with a "Show more" button.
+
+**What the maintainer chose.** "Window merged lore view": the merged list (`StudioCombined.svelte`, which lore and regex share) uses the #212 windower instead of 100-row paging, and every row is reachable by scrolling. The Studio tree keeps its paging, because windowing its roving-focus tree is larger work. The merged toggles view (`StudioToggleCombined.svelte`) is unchanged. The windower API is unchanged (Tier 1). Not chosen: closing #180 as not needed, windowing the tree too, or parking #180 until a new-UI lorebook editor exists.
+
+**Consequence.** If a new-UI lorebook editor list (one editor per entry) is built later, windowing it is new work, not part of #180.
+
+### MC-3379 — #181: the new chat sticker picker becomes a windowed vertical grid, 2026-11-22
+
+- Tag: decisions (maintainer, asked directly by the #181 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#181`, `#212` (PR #550), `MC-2430`.
+
+**What the session found.** The module asset lists of the new UI were already windowed: the Studio module asset form renders the same `StudioAssetList` that PR #550 windowed. What #181 still had to do was the new chat screen's sticker picker (`AssetInput` inside `ExtrasStrip`), which showed every tile in one horizontal scrolling row and asked for every tile's URL, while the windower only windows vertically.
+
+**What the maintainer chose.** "Vertical grid". The picker becomes a grid of 72 px tile rows that scrolls vertically inside its existing 40vh cap. Each tile row is one window row, and only mounted tiles ask for a URL. The windower is unchanged. The alternatives not chosen were a horizontal axis in the shared windower (Tier 2, coordinated with #180 and #182) and lazy URLs without windowing.
+
+**Consequence.** The new chat picker no longer scrolls sideways. The legacy chat screen keeps its inline wrapping layout, and it still mounts every tile and asks for every URL.
+
+### MC-3314 — #161 unparked: a "Settings only" scope in the .rtb, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion via lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2077`, `MC-350`, `#161`.
+
+**What the maintainer chose.** #161 is unparked, because the .rtb restore has shipped. It is built as a "Settings only" scope in the .rtb: a choice on the Data page's Make-backup sheet, reusing the .rtb container and the `side.ui-prefs` shape (`MC-2077`). The file carries no connection keys, chats or characters; keys are omitted outright. Tier 2; the designer settles the merge rule and the exact fields.
+
+**Consequence.** No new backup format: a settings-only file is an .rtb, so the .rtb's version stamp and older-build behaviour (`MC-350`) apply to it.
+
+### MC-3359 — #161 settings-only .rtb fields: UI, generation and presets, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #161 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3314`, `MC-2077`, `#151`.
+
+**What the maintainer chose.** "UI + generation + presets". A settings-only .rtb carries the display, theme and accessibility fields (theme, colour scheme, font, sizes, language, send-with-enter, hotkeys, custom CSS and similar), the chat and generation settings (main and sub model, temperature, context and response sizes, penalties, sampling, streaming, translator, memory and LTM settings), and presets: the preset list with keys and URLs blanked, the selected preset, preset folders and the prompt-template fields; plus the 15 `side.ui-prefs` keys. Always left out: every API key and token, the connections list, server URLs and endpoints, characters, chats, modules, lorebooks, personas, plugins, loadouts and global scripts.
+
+**Consequence.** The exact field allowlist is the designer's, inside these groups; an id that points into an excluded list is not carried.
+
+### MC-3360 — #161 settings restore overwrites what the file holds, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #161 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3314`, `MC-3359`.
+
+**What the maintainer chose.** "Overwrite what's in file". Each setting present in the file overwrites the device's value; a setting the file lacks (from an older or newer build) keeps the device's value. Presets in the file are added, a preset with the same id is overwritten, and presets only on the device stay.
+
+**Consequence.** No reset to defaults on restore; settings files from other builds stay restorable.
+
+### MC-3361 — #161 settings-only .rtb leaves theme images out, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #161 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3359`.
+
+**What the maintainer chose.** "Leave them out". Installed theme packs, the custom background image and custom GUI are not carried; the theme choice and colour scheme still travel.
+
+**Consequence.** The settings-only file carries no assets and its restore writes none.
+
+### MC-3362 — #161 older builds see a settings-only .rtb as damaged (rtb 1), 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #161 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-350`, `MC-686`.
+
+**What the maintainer chose.** "Damaged (rtb 1)". A settings-only file keeps manifest version 1 and omits the store2, assets and inlays sections, so a build from before this change refuses it as damaged without writing anything.
+
+**Consequence.** No manifest version bump; the refusal on older builds is the MC-350 guard and is tested against the current reader's rules.
+
+### MC-3363 — #161 settings-only .rtb at Welcome, built-in pack and file name, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #161 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3314`, `MC-3361`.
+
+**What the maintainer chose.** Three choices, each the recommended option. A settings-only .rtb picked on the Welcome restore, or found at boot, is refused with a hint to finish setup and restore it from Settings > Data; nothing is written. The active theme pack is not carried even when it is a built-in one; the colour scheme and theme choice still travel. A settings-only backup is named `settings-YYYYMMDD.rtb`, distinct from the full `local-YYYYMMDD.rtb`.
+
+**Consequence.** A settings restore runs only on a set-up profile, from Settings > Data.
+
+### MC-3364 — #161 memory and translator preset lists merge like bot presets, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #161 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3360`.
+
+**What the maintainer chose.** "Merge like bot presets". On a settings restore, memory (HypaV3) presets merge by id: the file's presets are added, a preset with the same id is overwritten, and presets only on the device stay. Translator presets have no id: the file's entries are added unless an identical entry already exists, and device-only entries stay.
+
+**Consequence.** No preset list on the device loses entries through a settings restore.
+
+### MC-3336 — #202: the project workspace is an in-app store2 entity on every platform, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Supersedes the 2026-11-18 sizing answer Q4 (machine-local side key) and settles the `MC-1005` sizing assumption. Related: `MC-774`, `MC-350`, `MC-933`, `#202`.
+
+**What the maintainer chose.** The Utility project workspace is a store2 entity on every platform. It is carried in the `.rtb`. The `.bin` leaves it out, and the export warning names it before the export starts (`MC-774`). A storage-format change ships an automatic forward migration, and data a build cannot read is kept, never overwritten (`MC-350`).
+
+**Consequence.** The workspace needs a new store2 kind with its codec, `.rtb` row, `.bin` strip and warning, golden vectors and older-reader rule; the format contract takes an `opus-reviewer` gate. `MC-3369` settles what the entity holds.
+
+### MC-3337 — #202: read-only tools run freely; every mutating tool call prompts, at one choke point, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Supersedes the 2026-11-18 sizing answer Q1 (gate covers Utility runs only). Related: `MC-912`, `#202`.
+
+**What the maintainer chose.** Read-only tools run without a prompt. Every mutating tool call prompts, including the internal `risuai` and `fs` tools that run without approval today. The check sits at one choke point (`callMCPTool`, through an `authorizeToolCall` step), so every provider's tool loop goes through it.
+
+**Consequence.** The gate is app-wide, not Utility-only: role-play chats that call the internal tools also meet it. Read versus mutating comes from the app's own tool metadata, never from a server's `annotations`. A change to this single enforcement point is a security contract (`MC-912`, `opus-reviewer`). `MC-3371` settles what the prompt offers.
+
+### MC-3338 — #202: instruction sources are workspace AGENTS.md/SKILL.md discovery plus built-in tools; no MCP or stdio, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Supersedes the 2026-11-18 sizing answer Q2 (root AGENTS.md only); keeps Q3 (no MCP or stdio from presets). Related: `MC-933`, `#202`.
+
+**What the maintainer chose.** A Utility run takes instructions from AGENTS.md and SKILL.md files discovered in the workspace, and its tools are the app's built-in tools only. MCP servers and stdio are out of this ticket. The app's own development instruction files are never read.
+
+**Consequence.** Workspace instruction files are untrusted input: they cannot change the tool set or the permission rules. Skill scripts do not run (no spawn on Android or web).
+
+### MC-3369 — #202: the workspace holds in-app copies of files, imported and exported by the user, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-21. Exact times: UNKNOWN. Builds on `MC-3336`. Related: `#202`.
+
+**What the maintainer chose.** "In-app files" over "Pointer to a real folder". The workspace is a set of files stored inside the app (store2, carried in the `.rtb`). The user adds files by importing them (single files or a `.zip`) and gets them out as a `.zip` export. Tools read and write only these in-app copies, never real files on the device, and behave the same on every platform.
+
+**Consequence.** No native folder picker, no Android SAF plugin and no Tauri fs-scope or capability change. Path containment is a property of the app's own virtual tree (no symlinks, junctions or drive paths exist in it), so the escape matrix of the 2026-11-18 sizing shrinks to path normalization. Workspace file bytes are persisted data with a size and asset lifecycle of their own.
+
+### MC-3370 — #202: Utility mode turns on for Android as well as desktop, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-21. Exact times: UNKNOWN. Amends `MC-933` decision 2 (desktop first). Related: `MC-3336`, `#202`.
+
+**What the maintainer chose.** "Android + desktop" over "All platforms" and "Desktop only for now". Utility (chat, task presets, workspace and tools) shows on Android and on desktop Tauri. Web and Node-hosted stay hidden until a later decision. Approval prompts are built for phones first.
+
+**Consequence.** The Utility availability gate moves from desktop-only to Tauri (desktop or Android) with store2. Android device rows are needed for the Utility screen, the workspace import and export, and the approval prompt.
+
+### MC-3371 — #202: the approval prompt offers allow once, allow always for this workspace, or deny, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-21. Exact times: UNKNOWN. Builds on `MC-3337`. Related: `#202`.
+
+**What the maintainer chose.** "Allow for this workspace" over "Every call, no remember" and "Allow for this reply". A mutating call's prompt offers allow once, deny, and allow always for this workspace. The "always" grant is saved on the device and can be revoked in settings.
+
+**Consequence.** A grants store and a revoke control are part of the ticket. Device-local means the grants are not in the `.bin` or the `.rtb`, so a restored workspace asks again. Calls outside a workspace (the internal `risuai` and `fs` tools in a role-play chat) have no workspace to remember against; the plan decides their remember scope within this rule or asks.
+
+### MC-3372 — #202: workspace files are text only, one store2 unit per file, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-21. Exact times: UNKNOWN. Builds on `MC-3336`, `MC-3369`. Related: `#202`.
+
+**What the maintainer chose.** "Text files, one unit each" over "Assets, workspace-owned" and "Assets via the config". Each workspace file is its own small store2 unit, referenced from the workspace record. Binary files are refused on import.
+
+**Consequence.** Reachability and `.rtb` carry use the existing unit references (`refsOf`, GC mark, export closure); no new asset keep-set owner. A file edit rewrites only that file's unit.
+
+### MC-3373 — #202: workspace caps are 1 MiB per file, 25 MiB per workspace, 500 files, 100 MiB unpacked per zip import, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3372`, `#202`.
+
+**What the maintainer chose.** "1 MiB / 25 MiB / 500" over smaller and larger sets. The caps apply at import and on every tool write. A `.zip` import stops after 100 MiB of unpacked data, before the workspace caps are checked. The numbers are not measured.
+
+### MC-3374 — #202: many workspaces; a Utility conversation picks one or none, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3371`, `#202`.
+
+**What the maintainer chose.** "Many; pick one per chat" over "bound to a task preset" and "one workspace only". A Utility conversation picks one workspace or none; with none, no workspace tools are offered. "Always" grants are keyed by workspace.
+
+### MC-3375 — #202: outside a workspace the prompt is allow once or deny; classification of the other tools, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-21. Exact times: UNKNOWN. Builds on `MC-3337`, `MC-3371`. Related: `#202`.
+
+**What the maintainer chose.** "Once/deny only" over "Remember per tool". A mutating call with no workspace (for example `internal:risuai` or `internal:fs` in a role-play chat) offers only allow once or deny, and nothing is saved. Third-party MCP tools always prompt; their read-only hints are untrusted. The memory write tool prompts. The nested AI call (`runLLM`) and web search run without a prompt. The Playground's manual tool runner does not prompt, because the user is the caller.
+
+### MC-3376 — #202: every AGENTS.md goes into the instructions; SKILL.md files are listed and read on demand, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-21. Exact times: UNKNOWN. Builds on `MC-3338`. Related: `#202`.
+
+**What the maintainer chose.** "All AGENTS.md + skill index" over "Root AGENTS.md + full skills". Every AGENTS.md in the workspace is added to the instructions, root first, each labelled with its path. For each SKILL.md only the frontmatter name and description are listed; the model reads a skill's full text through the read tool. Skill scripts never run. Instruction text is capped at 48 KiB in total, with a visible truncation note.
+
+### MC-3377 — #202: workspace deletes are final after a confirm; no workspace trash, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#202`.
+
+**What the maintainer chose.** "Final, confirmed" over "30-day Trash". A tool delete is final once its prompt is approved. Deleting a file or a whole workspace from the screen asks first. Workspaces have no trash entries.
+
+### MC-3378 — #202: plugin body interceptors are skipped when a Utility request offers workspace tools, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-21. Exact times: UNKNOWN. Restates the 2026-11-18 sizing answer Q5 (c) and narrows `MC-998` for this case. Related: `MC-998`, `#202`.
+
+**What the maintainer chose.** "Yes, skip with tools" over "Never skip". When a Utility request offers workspace tools, V3 body interceptors do not see it, so file contents and tool arguments stay away from plugins. Without workspace tools, interceptors still run as `MC-998` decided.
+
+### MC-3409 — #202: "always allow for this workspace" covers one tool in one workspace, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-22. Exact times: UNKNOWN. Narrows `MC-3371`. Related: `MC-3374`, `#202`.
+
+**What the maintainer chose.** "This tool, this workspace" over "All tools, this workspace". Approving `write_file` "always" does not approve `delete_file` or `move_file`; each mutating tool asks once per workspace.
+
+### MC-3410 — #202: a partial import keeps the acceptable files and lists the refused ones, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3372`, `MC-3373`, `#202`.
+
+**What the maintainer chose.** "Import the rest, list refused" over "Refuse the whole import". Entries refused as binary, over 1 MiB, badly named or encrypted are listed by name with the reason; the acceptable text files are imported. Overrunning the workspace caps (25 MiB, 500 files) refuses the whole import.
+
+### MC-3411 — #202: an import path that already exists asks once per import, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3410`, `#202`.
+
+**What the maintainer chose.** "Ask once" over "Always replace" and "Always refuse". One question per import offers replace all, keep existing or cancel.
+
+### MC-3412 — #202: workspace runs are sent non-streamed in this ticket, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#202`, `#548`.
+
+**What the maintainer chose.** "Non-streamed is fine" over "Streamed tool loops first". Tool loops exist only on the non-streamed request path, so a Utility run with a workspace is sent non-streamed: the reply text appears when the run ends, while tool steps and approval prompts show live. Runs without a workspace keep streaming.
+
+### MC-3413 — #202: third-party tool prompts offer "allow this server for the rest of this chat", in memory only, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-22. Exact times: UNKNOWN. Amends `MC-3375` for third-party tools. Related: `MC-3337`, `MC-175`, `#202`.
+
+**What the maintainer chose.** "Allow server for this chat" over "Every call, as decided". A call to a third-party MCP server, stdio tool or plugin-registered tool still prompts (the app cannot tell its reads from writes), but the prompt also offers "allow this server for the rest of this chat". The grant is held in memory only, never saved, and ends when the user leaves the chat or the app restarts. Internal mutating tools outside a workspace stay allow once / deny.
+
+**Consequence.** Upstream modules and plugins that call MCP tools several times per reply prompt once per chat, not once per call.
+
+### MC-3414 — #202: all workspaces together are capped at 100 MiB, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-22. Exact times: UNKNOWN. Extends `MC-3373`. Related: `#202`.
+
+**What the maintainer chose.** "100 MiB total" over "No total cap now" and "Lazy loading in this ticket". Imports and tool writes are refused once all workspaces together reach 100 MiB. Workspace text stays loaded at boot in this ticket; a Note 9 boot measurement is taken before the UI PR merges.
+
+### MC-3415 — #202: a .rtb restore stops if the saved tool approvals cannot be cleared, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-22. Exact times: UNKNOWN. Builds on `MC-3371`. Related: `#202`.
+
+**What the maintainer chose.** "Stop the restore" over "Restore and warn". A `.rtb` restore clears the device's saved "always" tool approvals before it installs anything, so a restored workspace asks again. The clear runs where the V3 plugin-grant clear runs (`MC-2252`): after every restore check passes, immediately before the commit. If the approvals file cannot be written, the restore stops before anything is installed and names the cause; nothing is lost and the user can retry. Re-confirmed the same day after the plugin-grant precedent (log, continue, name it in the finish notice) was put to the maintainer; plugin grants keep that behaviour.
+
+### MC-3416 — #202: the tool gate may merge before the per-chat server option, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3413`, `MC-011`, `#202`.
+
+**What the maintainer chose.** "Accept the interim" over "Hold the gate PR". The app-wide tool gate lands as its own PR first. On builds between that PR and the one adding "allow this server for this chat" (`MC-3413`), third-party MCP tools in role-play chats prompt on every call, reads included.
+
+### MC-3614 — #202: an "always" grant for move_file never covers an overwrite move, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #202 session). Date: 2026-11-22. Exact times: UNKNOWN. Builds on `MC-3377`, `MC-3409`. Related: `#202`.
+
+**What the maintainer chose.** "Overwrite still asks (Recommended)" over "Separate always for overwrite" and "Always covers both". The option read: "\"Always\" covers plain moves only; a move that would delete a file always prompts, as delete_file is kept separate today (MC-3377, MC-3409)." A `move_file` call with `overwrite: true` deletes the destination for good (`MC-3377`), so it prompts every time, even when the workspace holds an "always" grant for `move_file` (`MC-3409`). Plain moves stay covered by that grant. This settles PR-C Gate 2 note N2.
+
+### MC-3454 — #265 stage 5: final cleanup is Tier 1, closes #265, 2026-11-22
+
+- Tag: decisions (session 265-s5, under lane A's approval of #265 stage 5). Date: 2026-11-22. Exact time: UNKNOWN. Related: `MC-876`, `MC-888`, `MC-2344`..`MC-2348`, `MC-2746`, `#265`.
+
+**What was decided.** Stage 5 removes only inert leftovers and is sized Tier 1 (short in-session plan, one fresh Sonnet Gate 2, no opus: no storage contract changes). Its PR closes #265. Each removal was re-checked by grep at origin/main f3c67eca4 before deletion: nothing in the app produces or serves `/sw/img/` URLs, `usingSw`/`setUsingSw` appear only in test mocks, and no test imports a store module that stages 4b-4e removed (those stages already deleted the store tests, so none were left for this stage).
+
+### MC-3455 — #265 stage 5: a `/sw/img/` address is no longer an app image, 2026-11-22
+
+- Tag: decisions (session 265-s5). Date: 2026-11-22. Exact time: UNKNOWN. Related: `MC-3454`, `#138`.
+
+**What was decided.** The chat card drops a same-origin `/sw/img/` image like any other unknown same-origin path, and image repair treats a `/sw/img/` source as unresolved. Since stage 1 removed the service worker, nothing serves these addresses, so such an image was already broken; the tests now assert the new outcome. Only the Node server's `/api/asset/` stays recognized.
+
+### MC-3456 — #265 stage 5: `buildsite` removed; governance and launch rows reported, not edited, 2026-11-22
+
+- Tag: decisions (session 265-s5). Date: 2026-11-22. Exact time: UNKNOWN. Related: `MC-3454`, `MC-876`.
+
+**What was decided.** The `buildsite` script (the same output as `build` without source maps) and its README mention are removed. The AGENTS.md row "Hosted web build | `pnpm buildsite`" goes through lane A. `.claude/launch.json` is protected and unchanged: its `risuai-web` entry runs `pnpm dev`, a plain Vite page that the app now refuses; a `pnpm dev:server` entry with a scratch `RISU_DEV_SERVER_DIR` would replace it. Kept on purpose: `fake-indexeddb` (Studio history and the Node key tests), streamsaver and the export helper service worker, and the `bootstrap.noServiceWorker` and `globalApiNodeAssetRoute` guard tests.
+
+### MC-3244 — #438 Critical alerts are decided by alert type, 2026-11-22
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan S3c OPQ-1). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3009`, `MC-2947`.
+
+**What the maintainer chose.** Every message alert (ask, error, normal, input, select, wait, progress, markdown, terms of service, the stale-account notice, plugin confirm) is critical and takes only tokens from a pack. Tool dialogs and pickers take part CSS. No call site carries a kind argument. This narrows MC-3009: info alerts and generic progress are tokens-only too.
+
+### MC-3245 — #438 Which tool prompts are critical, 2026-11-22
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan S3c OPQ-2). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3009`, `MC-3244`.
+
+**What the maintainer chose.** The peer-conflicts prompt, the parked-reply prompt and the preset-bundle prompt are critical. The card export picker and the update offer are not.
+
+### MC-3246 — #438 Names shared with critical popups stay tokens-only, 2026-11-22
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan S3c OPQ-3 and OPQ-4). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3009`, `MC-3244`.
+
+**What the maintainer chose.** Part names used by both critical and non-critical popups are tokens-only everywhere, with no renames. The task runner, which hosts backup, restore, import and export, stays tokens-only as a whole, generic progress and its minimised task toasts included.
+
+### MC-3247 — #438 Popups follow the pack only over screens the pack themes, 2026-11-22
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan S3c OPQ-5). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3126`, `MC-3127`.
+
+**What the maintainer chose.** popups.css styles popups only over a screen whose sheet applies something in the current colour mode. Over a screen whose sheet applies nothing on this version (for example a colours-only sheet in shape mode), popups keep the built-in look.
+
+### MC-3474 — #572 Back from a merged-list entry returns to that list at the opened row, 2026-11-22
+
+- Tag: decisions (session, within the issue's stated expectation). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#572`, `#180`, `MC-1507`.
+
+**What was decided.** On a phone, a lore or regex row opened from the merged (Combined) list remembers that list. Back from the entry's detail shows the merged list again, scrolls the opened row into view and moves focus to that row; a second Back goes to the tree. Any other selection (tree, search, a toggle use, a lore tester result), the header title, the end of the visit and a new visit drop the way back, so Back from there goes to the tree as before. Back from an entry opened out of the tree is unchanged.
+
+**Consequence.** The scroll position is restored by revealing the opened row (the window host's reveal), not by restoring a pixel offset, so it holds after the windowed list remounts and rows are re-measured. The merged toggles view and the lore tester under the merged lore list still open entries with no way back to the list; they are outside #572's lorebook/regex scope.
+
+### MC-3524 — #451 desktop and Android ask before a `.bin` export whose asset sizes could not be listed, 2026-11-22
+
+- Tag: decision (maintainer, AskUserQuestion answer "Warn on listing failure (Recommended)", asked by the #451 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-223`, `MC-322` 2, `MC-501` group F, `MC-532` 2, `MC-2131`, `MC-2954`, `#451` (CHORE-129 web/Node residual).
+
+**Re-check against origin/main 09666b9f9 before the question.** The Node path already has the size check: CHORE-372 stage 4 (`af1cd2186`, 2026-10-25, `MC-532` 2) names every asset over 100 MiB from one server `min-size` listing and asks before the writer opens, in full and partial `.bin` exports. A Node asset is capped at 1 GiB, so the 4 GiB entry limit cannot be reached there. A plain web page has no storage since #265, so it has no export. `MC-322` 2 declined the 500 MB soft limit, and `MC-532`'s 100 MiB warning covers the same assets. The remaining gap was on the desktop and Android apps: when the sized listing command fails, the export falls back to the unsized listing and neither size prompt can name anything.
+
+**What the maintainer chose.** When the desktop or Android sized listing fails (or is not attempted because the page marked its batch commands unavailable; Gate 2 found that case, and the session applied the same rule to it), a full or partial `.bin` export asks before the writer opens whether to create the backup without the size check, naming the consequences (an item over 100 MiB may be included unnamed; an item of 4 GiB or more stops the backup partway). Confirming continues as before; declining writes nothing (declined, `oversize-declined`). Rejected: refusing the export on a listing failure (it would block every `.bin` backup on that device), and closing `#451` with no code.
+
+**Consequence.** No format, save-path or listing change: one prompt before the writer opens, one new string (`backupSizesUncheckedConfirm`, 8 locales). A Node page never sees it (it has no sized listing command to fail; its server listing either answers, answers nothing for a server that cannot hold such an asset, or fails the export before the writer opens).
+
+### MC-3464 — #565 stream-end focus goes to the message row, 2026-11-22
+
+- Tag: decisions (session judgement inside the issue's stated expectation; no maintainer ask needed). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#565`, `#444`, PR #558.
+
+**What was decided.** When a reply finishes while focus is inside its streaming view (the `chat-stream-code` chip or any other focusable part of it), the message row (`article[data-part="chat-message"]`, already a tab stop) takes the focus, without scrolling. The issue allowed either "the matching element of the finished message" or the message container; the finished render has no counterpart of the chip, so the container is the only stable target. Focus the reader already moved elsewhere is left alone.
+
+**Consequence.** The row's body branch now follows a `streamBody` state that the focus check itself flips, so the check always runs while the streaming view is still in the DOM. In Svelte 5.57 a plain `$effect.pre` on the `streaming` prop ran after the branch swap in the message list, so it could not see the focus.
+
+### MC-3465 — #565 ships without the TalkBack swipe-only case, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #565 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3464`, `#565`, PR #580.
+
+**What the maintainer chose.** "Ship as is". On a Note 9 (DV-565-1, lane B), TalkBack resting on the streaming code chip is accessibility focus only: `document.activeElement` stays `body`, so the page cannot see it, and at stream end TalkBack's focus falls to the app view. The fix covers keyboard focus and a chip the user activated (DV-565-3: focus reached the reply 54 ms after the end and TalkBack read it). The swipe-only TalkBack case is recorded as a platform limit; the "Reply finished" announcement still plays.
+
+**Consequence.** DV-565-1 is re-marked: its DOM-focus criterion applies to an activated chip (covered by DV-565-3's pass), not to a chip TalkBack only rests on. Focusing the reply whenever nothing holds DOM focus was declined, because it would pull a TalkBack reader who is reading an earlier message onto the new reply.
+
+### MC-3514 — #448: the trash leftovers are already fixed on main; the PR adds guards only and closes the ticket, 2026-11-22
+
+- Tag: finding (session, within the scope lane A set for #448). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-925`, `MC-892`, `MC-2954`, `#448`.
+
+**What was found.** The three leftovers `MC-925` named no longer hold on origin/main 09666b9f9, so no application code changes.
+1. Restore position and folder memory: built by UI-S4 stage E1 (`trashOrigins`, `src/ts/trashOrigin.ts`), with its own tests.
+2. The boot purge of expired trash: `saveDb` is store2 only, so no legacy save path is left. The purge marks nothing, but the change effects mark on their first run on every boot, so the boot's first pass runs, and every pass builds the manifest from the live character list, so the purged character leaves the stored profile at boot. A read trace that said nothing would write it missed the first-run marks; a test over the real save loop disproved it. The purge already queues the inlay cleanup of the purged characters.
+3. A permanent removal during a save pass: a removal after the pass copied the list is stored by that pass and dropped by the next, which the removal's own mark and reload flag schedule; a pass that does not commit folds its snapshot back and only ever sets the reload flag.
+
+**Consequence.** The PR adds compatibility guards (passing before and after): `src/ts/storage/tests/store2/bootTrashPurgeSaved.svelte.test.ts` and two in-flight removal cases in `src/ts/storage/tests/store2/saveLoop.test.ts`. Known limits: the boot test repeats the purge rather than running `checkNewFormat`; GC of the dropped unit is not asserted byte by byte.
+
+### MC-3534 — #450 list-row images queue at every size; no per-list withholding, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion asked by the #450 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-760` (the 64 MiB per-list budget and the known gap this closes), `MC-1254`, `MC-1259`, `MC-1263` (CHORE-708, the app-wide 64 MiB in-flight queue), `#450`.
+
+**Finding the question rested on.** Since `MC-760` recorded the gap, CHORE-708 put the three named surfaces (alternate portraits and group member icons in the character configuration, persona icons in Persona settings, the Personas page and the chat persona sheet) on the app-wide whole-read queue, but only for files of 8 MiB or more. Smaller files in those lists still read all at once, so for example 20 persona icons of 7 MiB put 140 MiB of reads in flight together.
+
+**What the maintainer chose.** Option "Queue all sizes (Recommended)": on list rows every whole read waits in the existing 64 MiB queue whatever its size. Every image still shows; only how many read at once is capped. Single images (the character icon, the group icon, the user icon, the persona editor icon) keep the 8 MiB rule.
+
+**Alternatives rejected.** Closing `#450` as already covered by CHORE-708 (small files stay unbounded); applying the `MC-760` list budget literally (rows past 64 MiB show the icon-and-name box instead of the picture).
+
+**Consequence.** No persisted data or format changes. On Android a list with many small images may paint its rows in turn while the queue is busy (strict first come, first served, as `MC-1259`); off Android nothing changes.
+
+### MC-3504 — #446 a value JSON cannot store in plugins or workspaces is skipped like every other kind, 2026-11-22
+
+- Tag: decisions (maintainer, asked by the #446 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-2129`, `MC-2954`, `#280`, `#446`.
+
+**What the maintainer chose.** "Skip + notice": a value JSON cannot store (a bigint, a cycle) in the plugin lists (`plugins`, `pluginV2`) or in a utility workspace no longer fails every save pass. The pass keeps the last saved copy of what it cannot read, saves everything else, and shows the existing "could not save" notice naming it, as characters, modules, presets, loadouts, settings and plugin-data keys already do. The bad value stays in memory only. Offered alternatives were "keep blocking, but report louder" and "both".
+
+**Consequence.** The former rule "a plugin or workspace fault is never skipped" is retired, and the guard test that asserted it is inverted. Other edits keep saving while one plugin or workspace holds an unstorable value, so an app kill no longer loses them. What is never-saved has no copy to keep and is left out of the save, with the never-saved notice.
+
+### MC-3505 — #446 notice text: a held-plugins notice and workspace labels, 2026-11-22
+
+- Tag: decisions (maintainer, asked by the #446 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3504`, `MC-058`, `#446`.
+
+**What the maintainer chose.** Three new keys rather than reusing a generic label: a held-plugins notice modelled on the held-loadouts one (other plugin changes wait until the bad value is fixed; the last saved plugins are kept), a workspace label used with the existing unsaved/never-saved notices, and a workspace-file label. With the file label, the existing missing-text workspace-file item no longer reads as "plugin data". Offered alternatives were "two labels only" and "three keys without the file-label fix".
+
+**Consequence.** Three en.ts keys plus all 7 non-English locales in the #446 PR (translator role, localeParity).
+
+### MC-3544 — #452 GridCatalog TalkBack name: scope finding, 2026-11-22
+
+- Tag: finding (session for #452, not a maintainer decision). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#452`, `#312`, `#476`, `MC-3315`, `MC-3316`, `MC-3317`.
+
+**What was found.** The GridCatalog field part of #452 (the "stage F" remainder of #312, recorded in PR #382) was already delivered on main by 2a2797e99 (#476, PR #352): the search `TextInput` takes `label={language.search}`, so its `aria-describedby` starts with the name that Android WebView TalkBack speaks. The only control in the grid view still without an accessible name was the icon-only Back button (`data-part="library-back"`, `title` only). PR #587 names it with the existing `settingsPage.back` key (no locale change) and adds a jsdom reproducer for both the button name and the search field's spoken description. The paper texture (MC-3315/MC-3317) and the Node auto-release (MC-3316) parts stay open on #452.
+
+### MC-3584 — #272 builds the long-chat hint and keeps its "already shown" flag per chat, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #272 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`, `#210`, `MC-3318`, `MC-3319`, `DD-072`.
+
+**What was decided.** The long-chat hint (docs/design/chat/SLICE4_SPEC.md §2, DD-072) was never built; #210 closed without it. #272 builds it as specified: in a chat over 2,000 messages it shows once, fades, and has no button. Its "dismissal" is a per-chat "already shown" flag, stored in the same fork-only store2 kind as the edit drafts (MC-3319).
+
+**Consequence.** One new en.ts string (`longChatLine`) with all 7 locales in the same PR. The flag follows MC-3319: kept in the .rtb, left out of the .bin with the named export warning.
+
+### MC-3585 — #272 persisted edit drafts keep today's cap: the 200 newest, no age expiry, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #272 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`, `MC-3318`.
+
+**What was decided.** Saved edit drafts are capped at the 200 newest across all chats, the same as today's in-memory cap, with no age expiry. A draft stays until it is saved, discarded, its message changes, or 200 newer drafts push it out.
+
+### MC-3586 — #272 persists only message-edit drafts, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #272 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`, `MC-3318`, `MC-072`.
+
+**What was decided.** Only text typed while editing an existing message survives an app restart. The translation-text editor and the message box (composer) stay in memory only, as today (MC-072).
+
+### MC-3587 — #272 restores a saved edit draft only when Edit is tapped on that message, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #272 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`, `MC-042`, `MC-068`.
+
+**What was decided.** After a restart, tapping Edit on the message opens the editor with the draft and today's restore marker. Nothing opens on its own when the chat opens.
+
+### MC-3588 — #272 accepts the chat-drafts req token: no downgrade to a pre-#272 build once drafts are saved, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #272 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`, `MC-350`, `#202`.
+
+**What was decided.** The new store2 kind 30 carries a `chat-drafts` req token, written with the first saved edit draft or hint flag and never lowered. From then on a pre-#272 build (today's MVP APK included) opens the profile read-only and refuses a `.rtb` holding drafts; nothing is lost. This matches utility workspaces.
+
+### MC-3589 — #272 multi-tab: drafts merge per bucket; the peer prompt only when both tabs changed one, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #272 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`.
+
+**What was decided.** When another tab or device commits a draft or flag change, each draft bucket takes theirs if this tab left it unchanged since the shared base, keeps mine if theirs is unchanged, and shows the peer prompt only when both changed it.
+
+### MC-3590 — #272 .bin import keeps the page's drafts and hint flags, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #272 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`, `MC-774`.
+
+**What was decided.** Importing a `.bin` keeps this page's saved edit drafts and hint flags, as task presets, workspaces and theme packs are kept. Entries for chats the imported profile lacks are removed at the next start.
+
+### MC-3591 — #272 a trashed character keeps its drafts and hint flags until permanent deletion, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #272 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`, `#448`.
+
+**What was decided.** Moving a character to the trash keeps its saved edit drafts and hint flags, so a restore brings them back; permanent deletion removes them.
+
+### MC-3592 — #272 drafts use one whole unit; MC-3589's merge applies to the whole set, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #272 session, on the senior-advisor's recommendation). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`, `MC-3589`.
+
+**What was decided.** Kind 30 is one optional whole unit (the `loadouts` template) instead of 16 hash buckets. MC-3589's rule now applies to the whole draft set: take theirs if this tab left it unchanged, keep mine if theirs is unchanged, and show the peer prompt when both tabs changed any draft or flag between two commits. This never occurs on Android (one WebView).
+
+### MC-3593 — #272 a damaged draft unit is skipped at startup, kept on disk, and never sends the profile to recovery, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion via lane A, relayed 2026-11-22). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`, `MC-350`, `MC-3592`.
+
+**What was decided.** A damaged kind-30 draft unit is not read. Startup continues without those drafts and hint flags; the profile is not sent to recovery. The damaged bytes stay on disk, never overwritten or deleted (MC-350's keep-unreadable rule).
+
+**Consequence.** This replaces the plan's strict boot for the draft unit (Gate 1 round 2 E7). Since drafts are one whole unit (MC-3592), a damaged unit loses every draft and flag in it for that session, not only one chat's. Gate 2's opus review covers the boot/read change as a delta.
+**Amendment (maintainer, AskUserQuestion in the #272 session, 2026-11-22).** "Kept on disk" means the restore-point window, as for every other unreadable unit: the damaged bytes stay while a retained commit names them, and the store's cleanup may collect them once that history ages out. Skipping a damaged draft unit is silent: no notice and no new string.
+### MC-3312 — #272 DV-1b (swipe away from Recents) is covered by DV-1 and not run, 2026-11-22
+
+- Tag: decisions (maintainer, ruling relayed by lane A, 2026-11-22). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#272`, `#604`, `MC-3587`.
+
+**What was decided.** DV-1b is recorded as NOT RUN. DV-1 covers it: opening Recents hides the page, and the hide flush saves the draft, so a later swipe-away only ends a process whose draft is already committed. The device guard refused the swipe route (exit 93), and no other route was needed.
+
+### MC-3574 — #541: the Android APK joins the desktop draft release only when asked, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session). Date: 2026-11-22. Exact times: UNKNOWN. Builds on `MC-3242` (in-app download and system installer) and `MC-3233`. Related: `#541`, `#537`.
+
+**What the maintainer chose.** "Same draft, opt-in": `release-desktop.yml` gets an Android job that attaches the release-signed APK and a small `latest-android.json` to the same draft release, only when a new `includeAndroid` input is ticked (default off). Android builds read `releases/latest/download/latest-android.json` from this fork's GitHub only.
+
+**Consequence.** Android stays unreleased until the maintainer decides the memory and performance gate is passed (the open sizing question in #541). A separate Android release was rejected because the newest release becomes GitHub's `latest`, which would break the desktop `latest.json` lookup.
+
+### MC-3575 — #541: the downloaded APK must match package, signer and a higher version, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; security choice). Date: 2026-11-22. Exact times: UNKNOWN. Implements `MC-350` for updates. Related: `#541`.
+
+**What the maintainer chose.** "Signer+package+version": before the system installer opens, the downloaded APK must have the installed app's package name, exactly the installed app's signing certificate(s), and a higher versionCode. On any failure the file is deleted and a clear message is shown; an uninstall is never offered. No certificate is pinned in source and no file hash is required.
+
+**Why.** The installed app's own signer is the root of trust; a pinned certificate would make key rotation a code change and block throwaway-key device tests, and a hash in `latest-android.json` is controlled by the same release editor as the APK.
+
+### MC-3576 — #541: metered networks still check; the popup shows the APK size and a mobile-data line, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#541`, `MC-3234`.
+
+**What the maintainer chose.** "Check, show size": the boot check always runs; the popup shows the APK size, and on a metered connection adds a line saying the device is on mobile data. Nothing downloads before Install.
+
+### MC-3577 — #541: a missing "Install unknown apps" permission is explained and its settings page opened, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; manifest permission). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#541`.
+
+**What the maintainer chose.** "Explain, open settings": the manifest gains `REQUEST_INSTALL_PACKAGES`. When the per-app toggle is off, a popup explains it and opens Android's "Install unknown apps" page for RisuTanium; on return the install continues if allowed. The user still confirms Install in the system installer.
+
+### MC-3578 — #541: device tests use a debug-only local update origin, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; security choice). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#541`, `MC-3575`.
+
+**What the maintainer chose.** "Debug-only local origin": only the debug build type gets a build-time test origin, limited to `http://127.0.0.1:<port>`; the PC serves throwaway-key-signed APKs through `adb reverse`. Release builds contain none of it, and the release dex is checked for that. Device rows run on debug builds; the release path is covered by unit tests and its 404 behaviour.
+
+### MC-3579 — #541: the APK download follows redirects only to this repository's release path or *.githubusercontent.com, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; security choice). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#541`.
+
+**What the maintainer chose.** After the fixed github.com URL, https redirects are followed only to github.com under `/yor42/RisuTanium/releases/download/` or to a host ending in `.githubusercontent.com`. A strict host list was rejected because installed builds would lose in-app updates for good if GitHub renames its CDN host again. Integrity rests on the package and signer check (MC-3575), not on the host.
+
+### MC-3580 — #541: the released APK is universal (all four ABIs), 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#541`, `MC-3574`.
+
+**What the maintainer chose.** "Universal" over arm64-only: the release job builds all four Android ABIs into one APK, about four times the arm64-only size, so armv7 and x86 devices can install it too.
+
+### MC-3581 — #541: debug builds skip the check, ACCESS_NETWORK_STATE is added, the APK must be the offered version, key rotation is unsupported, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; security and permission choices). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3575`, `MC-3576`, `MC-3578`.
+
+**What the maintainer approved.** Debug-signed builds never check for updates unless the MC-3578 test origin was compiled in. The manifest gains `ACCESS_NETWORK_STATE` (install-time, no prompt) for the mobile-data line. The downloaded APK's versionCode must equal the one the popup offered. The signer must equal the installed set exactly, so a future rotated (v3 lineage) key needs a code change in an earlier release first; this is a recorded limitation.
+
+### MC-3582 — #541: session choices on WebView fallback, permission order and message delivery, 2026-11-22
+
+- Tag: decisions (session, within the scope the maintainer set for #541; no new product trade-off). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3577`.
+
+**What was decided.** WebViews without `WEB_MESSAGE_LISTENER` run no update check, as with the key vault. The install permission is checked at the Install tap before downloading and again just before the installer hand-off. Cancel and installer-cancel show as toasts; failures show an error alert that boot waits on, as on desktop.
+
+### MC-3583 — #541: Gate 1 round 2 answers (signing isolation, merged messages, manual fallback, accepted limitations), 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; security and product choices). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3574`, `MC-3575`, `MC-3577`, `MC-3581`.
+
+**What the maintainer chose.**
+- Signing: both protections. The four `ANDROID_KEYSTORE_*` secrets move into a GitHub environment limited to `main` (the maintainer creates it in repository settings), and the release job builds unsigned and signs in a separate step that runs only SDK build-tools, so no package install, cargo build script or Gradle plugin runs while the keystore is on disk.
+- Messages: the not-an-APK, wrong-package, not-newer and not-the-offered-version failures share one message (the file failed verification, was deleted and nothing was installed); wrong signer keeps its own message.
+- Fallback: update failure alerts carry a line and a link to this fork's GitHub releases page for a manual install.
+- Accepted limitations: Android 14+ and Samsung One UI 6+ (installer, Auto Blocker) stay unproven on a real device until the first real release (emulators API 33/35 and Note 9 API 29 cover the rest); on Android 7-9 the legacy signer API cannot see key-rotation lineage (still an exact match, backed by the platform's install check); if granting "Install unknown apps" restarts the app, boot offers the update again instead of continuing.
+
+### MC-3604 — #541: the release workflow moves to its own ticket, #590, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; scope). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3574`, `MC-3580`, `MC-3583`, `#590`.
+
+**What the maintainer chose.** "Split workflow out" after Gate 1's second substantive rejection, which fell mostly on the release workflow: #541 delivers the in-app check, download, verification and install, the manifest and popup changes, and the client-side `latest-android.json` schema and parser. #590 delivers the release job (universal APK, separate signing job, `latest-android.json` producer, upload to the draft), the main-only secrets environment and the `android-build.yml` change.
+
+**Why.** The mechanism was reconsidered at the second rejection: the senior-advisor challenge had already confirmed the Kotlin bridge and streamed download, and neither rejection asked for a different mechanism, so the scope was narrowed instead. Android releases are opt-in (MC-3574), so nothing ships until #590 lands; device rows for #541 use the debug-only local origin (MC-3578).
+
+### MC-3605 — #590: android-build.yml release mode joins the main-only environment and the separate signing job, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; security). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3583`, `MC-3604`, `#590`.
+
+**What the maintainer chose.** "Join env + sign job": once the keystore secrets live in the main-only environment, `android-build.yml`'s release mode uses that environment and the same build-unsigned-then-separate-sign-job pattern, so release-signed builds run only from `main`. Debug mode is unchanged. Implemented by #590.
+
+### MC-3606 — #541: the installer hand-off drops EXTRA_RETURN_RESULT so Android's "App installed / Open" screen stays, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; plan OQ-A). Date: 2026-11-22. Exact times: UNKNOWN. Amends `MC-3582` (message delivery). Related: `MC-3577`.
+
+**Evidence.** The S0 scratch spike (throwaway probe app, API 29 Note 9, API 33 and 35 emulators) showed that with `EXTRA_RETURN_RESULT` a successful self-update kills the process and leaves no success screen, while without it Android's "App installed. Done / Open" dialog stays up (screenshots in the session's S0 result).
+
+**What the maintainer chose.** "Show 'App installed / Open'": the hand-off does not pass `EXTRA_RETURN_RESULT`. Any return from the installer while the app is still running reads as not installed and shows one toast; cancel and failure are not told apart (the system installer has already shown its own failure screen).
+
+### MC-3607 — #541: archive signers are read with GET_SIGNING_CERTIFICATES together with GET_SIGNATURES, 2026-11-22
+
+- Tag: decisions (session, within MC-3575 and MC-3583; no new trade-off). Date: 2026-11-22. Exact times: UNKNOWN. Related: plan decision rule D1.
+
+**What was decided.** On API 29 `getPackageArchiveInfo` with `GET_SIGNING_CERTIFICATES` alone returned a null `signingInfo`; with `GET_SIGNATURES` added both were filled and matched the installed set (API 33 and 35 fill it either way). The archive read therefore passes both flags and compares `apkContentsSigners` on API 28 and above, so the accepted rotation-blind limitation stays at Android 7-9 (MC-3583) and is not widened. After an "Install unknown apps" grant on API 33 and 35 the installer returns without resuming, so the app relaunches the hand-off itself after the permission check (MC-3582's order); the spike saw no process restart on grant.
+
+### MC-3608 — #541: Cancel on the install-permission explanation is a "not now" that leads to the remind-later choice, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session). Date: 2026-11-22. Exact times: UNKNOWN. Refines `MC-3577`.
+
+**What the maintainer chose.** "Remind-later choice": when the "Install unknown apps is off" explanation appears (at the Install tap, or when the permission went off during the download) and the person taps Cancel instead of Open settings, the app shows the existing remind-later choice (ignore, 1, 3, 5 or 7 days) and boot continues, with no error alert. Only "still off after the settings page" is an error, with the manual-install link (MC-3583).
+
+### MC-3609 — #541: the page's fs scope denies the update folder, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; security choice from Gate 2 F1). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3575`.
+
+**Finding.** Gate 2 found that the main window's Tauri fs scope (`/data/**/*` with write, rename and remove) reaches `cache/app-update`, so script running in the page could replace the verified APK between the verdict and the system installer's read.
+
+**What the maintainer chose.** "Deny fs scope" over accepting it as a limitation or a held-descriptor mechanism: `src-tauri/capabilities/migrated.json` denies `cache/app-update`, its contents and the `cache` directory itself (so it cannot be renamed away), in both the `/data/user/*/<package>` and `/data/data/<package>` forms. Tauri's scope checks denies before allows on the resolved path. A test pins the entries; a device row proves the page's write and rename there are refused.
+
+### MC-3610 — #541: the downloaded APK is made read-only before verification; MC-3609's deny alone does not cover file:// writes, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #541 session; security choice from Gate 2 round 2). Date: 2026-11-22. Exact times: UNKNOWN. Amends `MC-3609`.
+
+**Finding.** Gate 2 round 2 showed, and the session confirmed in tauri-plugin-fs 2.6.0's `resolve_file`, that on Android a `file://` URL skips the fs scope for open, read and write. The MC-3609 deny still refuses the path-form commands (read-dir, rename, remove, copy), so the page cannot list the folder, and the APK's random 128-bit name is never sent to the page, but a page that knew the name could still overwrite the file.
+
+**What the maintainer chose.** "Read-only file + secret name": right after the download stream closes and before any verification read, the native side makes the APK read-only; if that fails, the attempt fails and the file is deleted. The deny and the never-shared random name stay as further layers.
+
+### MC-3611 — #541: the remaining residual after the seal is a write already in flight and the page's grant set, 2026-11-22
+
+- Tag: decisions (session, from Gate 2 round 3; known limitation, no new trade-off). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3609`, `MC-3610`, `#603`.
+
+**What remains.** During the download the page could reach the update file without its name through `file:///proc/self/fd/<n>`, because tauri-plugin-fs skips the scope for `file://` URLs on Android. A handle opened that way is harmless after the seal only because the page holds no command that writes through a held handle (`fs:allow-write`, `fs:allow-ftruncate` and `fs:write-all` are not granted), and every granted write opens, writes and closes in one step; a reopen after the seal is refused by the read-only mode. Left over: (i) a single write that opened before the seal and lands after the verification reads, which needs main-frame code execution and a long preemption; (ii) a dependency on the grant set, pinned by `appUpdateFsDeny.test.ts`. The page's broad `/data/**` scope and the `file://` bypass themselves are pre-existing on main and tracked by #603.
+
+### MC-3564 — #246 UI sounds switch sits in Display > Sound next to Play Message Audio, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, label "Display > Sound (Recommended)"). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#246`, `MC-2312`, `MC-3327`.
+
+**What the maintainer chose.** The per-device UI sounds switch (on by default, MC-2312) is a row in the Display page's Sound group, next to Play Message Audio, in both the Settings shell and classic Settings.
+
+### MC-3565 — #246 setting-toggle sounds cover the data-driven setting checkboxes only, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, label "Settings checkboxes (Recommended)"). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#246`, `MC-3327`.
+
+**What the maintainer chose.** The MC-3327 "setting toggles" event plays toggle-on or toggle-off for the data-driven setting checkboxes rendered by SettingCheck (classic and shell Settings) and for the new sound switch. Chat and card toggles, the per-device rows (low power, reduce card effects, seasonal logo, haptics, shell and Studio switches) and other raw checkboxes stay silent.
+
+### MC-3566 — #246 an Undo offer toast appears silently, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, label "Silent (Recommended)"). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#246`, `MC-3327`.
+
+**What the maintainer chose.** An Undo offer toast plays no sound when it appears. The undo cue plays only when Undo is used and succeeds; a refused or timed-out Undo plays the warning cue.
+
+### MC-3567 — #246 remaining UI sound defaults accepted, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, label "Accept all (Recommended)"). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#246`, `MC-3327`, `MC-3328`, `MC-3329`, `MC-1204`.
+
+**What the maintainer chose.** Send plays the send cue, a received reply the receive cue and a send failure the error cue. Plain toasts sound by kind (info, success, warning, error); task toasts and the reply-notice toasts stay silent. The undo cue covers toast Undo, import Undo and the chat-scope switch's inline Undo; Studio History undo is a later option. The ChatShell "can't send" refusal card plays the error cue. There is no volume slider (the system media volume applies), cues mix over TTS with no special case, and the ticket ships as one PR whose second stage adds the TalkBack mute before merge.
+
+### MC-3594 — #203 a module install reloads the chat only when the displayed origin references it, 2026-11-22
+
+- Tag: decisions (session arbitration in the #203 session after Gate 1; no maintainer product choice). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-1064`, `MC-1066`, `MC-2131`, `MC-091`, `#203` (CHORE-631).
+
+**What was decided.** The module loader sets `ReloadGUIPointer` after installing a module stub's body only when the displayed origin (selected chat, character, persona, enabled modules, integration string) references that slot by id or namespace, read at install time. When the read fails or no read is registered, it still bumps. The read lives in the import-free leaf `src/ts/process/moduleDisplayRefs.ts`; `moduleEnsure.ts` registers `moduleRefIdsOf` with it at load.
+
+**Consequence.** A v3 plugin's `getDatabase`, which loads every module stub in the library, no longer remounts the chat body (and so restarts styled message output and module embeddings) once per module after a cold start. Every `ReloadGUIPointer` consumer reads modules through the selected origin; the module list and Studio read the slot reactively, so an unreferenced install needs no reload.
+
+### MC-3595 — #203 no GUI-bump hold across getDatabase's module materialisation, 2026-11-22
+
+- Tag: decisions (session arbitration on Gate 1 finding F1). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3594`, `#203`.
+
+**What was decided.** The planned `holdModuleGuiBumps` around `materialiseModuleStubs` was dropped. Plugins load and can call `getDatabase` before `loadedStore` and before the last chat is restored. A bump recorded then would have waited until the whole library was loaded, then restarted the already painted chat once. It would also have delayed every unheld bump (Studio undo, import replace) for the whole load.
+
+**Consequence.** Referenced installs bump when they happen, or are coalesced by a boot or send hold that is already open. Unreferenced installs, which are the ones getDatabase makes in bulk, do not bump at all (`MC-3594`).
+
+### MC-3596 — #203 the rule also covers boot and send installs (shared cause, MC-091), 2026-11-22
+
+- Tag: decisions (session arbitration; scope amendment under `MC-091`). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3594`, `MC-091`, `#203`.
+
+**What was decided.** The install tail is shared, so the rule applies to every caller, not only getDatabase. Boot, send, export, MCP, Studio and save-loop valve installs of a module that the displayed origin does not reference (for example after a chat switch during a load) no longer bump. Causal connection: the same unconditional bump in the same install tail. Correction: the per-install check above.
+
+**Consequence.** A chat switch remounts on its own (moduleUpdate bumps when the selection changes and the id set changes). A module that is referenced later goes through moduleUpdate's added-row check, as a resident module does.
+Left for lane A, not changed here:
+- the save-loop valve's referenced installs in one pass (rare);
+- the trigger and Lua direct `ReloadGUIPointer.set` calls (MC-1064 candidate 3);
+- as a follow-up candidate, a getDatabase copy read that does not install bodies into the live list (it would also keep the memory saving of stubs).
+
+### MC-3554 — #514 sizing assumes full native ownership of streamed replies, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #514 sizing session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#514`, `CHORE-722`, `MC-1480`, `MC-1498`, `MC-1499`.
+
+**What the maintainer chose.** "Size full ownership": #514 means Rust owns a streamed reply until it ends, so the reply is kept if the page is hidden or killed. The question stated that the old "stage 0c" meant the native live count (MC-1480), that a page-only count replaced it (MC-1499), and that MC-1498 had parked streamed ownership. This answer reopened streamed ownership for sizing. The later "Start S1 now" came through lane A.
+
+### MC-3555 — #514 a recovered streamed reply records its usage, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #514 sizing session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#514`, `MC-3554`.
+
+**What the maintainer chose.** "Record usage on recovery": replaying a recovered streamed reply also writes its usage entry to the statistics ledger. The option text said "Do the same for non-stream later", so usage on non-stream recovery is a follow-up candidate and not #514 scope.
+
+### MC-3556 — #514 covers all four stream providers, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #514 sizing session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#514`, `MC-1467`.
+
+**What the maintainer chose.** "All four in #514": #514 is not done until OpenAI-compatible chat, OpenAI Responses, Anthropic and Gemini streams are all native-owned. Non-stream native ownership stays OpenAI-compatible chat only.
+
+### MC-3557 — #514 an in-band error in a 200 stream behaves like non-stream, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #514 sizing session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#514`, `MC-1479`.
+
+**What the maintainer chose.** "Like non-stream": when a 200 stream carries an in-band error (for example Anthropic `Error:` text), the done notice still posts. The page shows the reply as it arrived, and it stays retryable. It is not treated as a final failure.
+
+### MC-3558 — #514 Rust journals an owned stream as it arrives, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #514 session after the senior-advisor challenge). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#514`, `MC-1473`, `MC-1459`.
+
+**What the maintainer chose.** "Add Rust append journal": Rust writes the owned stream body to disk as it arrives. A process killed mid-stream then keeps the partial up to the last received byte. This reverses the MC-1473 deferral for owned streams. A recovered partial gets text only (MC-1459, detailed by MC-3560). The journal's persisted shape (`part.bin`, listing `partialBytes`, `native_reply_read_partial`) was fixed and its reader built in #514 S1. The writer is S2.
+
+### MC-3559 — #514 a page load no longer cancels an owned reply, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #514 session after the senior-advisor challenge). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#514`, `MC-091`, `MC-1078`.
+
+**What the maintainer chose.** "Exempt owned replies": a page load (a reload or WebView recreation) no longer cancels a native request the reply store owns, for streamed and non-stream replies alike. Rust finishes the request and the reopened page places the reply. Today every page load cancels all native requests, so a reload mid-reply ends it as "stopped elsewhere". This lands with the S2 writer as a shared-cause correction.
+
+### MC-3560 — #514 recovered partial and usage rules, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #514 grilling of the S1 plan; every answer was the recommended option). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#514`, `MC-1459`, `MC-1478`, `MC-3555`.
+
+**What the maintainer chose.**
+- P1: a recovered partial gets editoutput scripts and the unseen mark only. It gets no output trigger, listeners, inlay or TTS.
+- P2: the partial keeps `interrupted` and gets the existing note for its outcome, once: interrupted for a kill, failed elsewhere, or stopped elsewhere.
+- P3: a partial whose chat is gone or trashed is noted and discarded, not parked.
+- P4: partial usage follows the live rules: reported usage if present, else an estimate for a kill or Stop. A failure counts reported usage only.
+- P5: a parked complete reply records usage once, after a successful park.
+- P6: a crash between the statistics commit and the chat commit can count one reply twice. This is accepted as a documented limitation.
+- P7: when a complete replay is empty, the partial and its `interrupted` flag are kept, "failed elsewhere" posts once, and the record is consumed.
+
+### MC-3561 — #514 S2 owned-stream edge rules, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #514 grilling of the S2 plan; every answer was the recommended option). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#514`, `MC-3558`, `MC-3559`, `MC-3308`.
+
+**What the maintainer chose.**
+- E1: owned stream bodies share one 64 MiB total budget across all live owned requests, on top of the per-body limit.
+- E2: a journal write error does not stop the request. Rust keeps streaming, logs the error once, and the end record still lands.
+- E3: after a reload, a send in the same chat as a still-running owned reply is allowed. The recovered reply is placed after that send ends.
+- E4: after a reload, the keep-alive may not cover the owned reply. This is accepted and observed on device, not fixed in S2.
+- E5: a hidden page whose owned body went over budget gets a "failed" notice. This is accepted and documented as a known limitation.
+
+### MC-3562 — #514 S2 implementation before the device baseline, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #514 session after S2 Gate 1 passed). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#514`, `MC-3561`.
+
+**What the maintainer chose.** "Start now": S2 is implemented before lane B's Note 9 baseline rows on main (B1, B2, J1, B3) are in. Those rows must be in before the S2 PR merges, because the S2 device rows compare against them.
+
+### MC-3612 — #514 after a reload an owned reply shows an in-progress note (fix after S2), 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion through lane A; ID from lane A's block). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#514`, `MC-3559`.
+
+**What the maintainer chose.** S2 ships with the limitation that after a reload, a reply the native side still owns shows the saved copy's "Interrupted" note until Rust finishes and the record is placed (seen in device rows D3 and D4s). A later stage fixes it: such a reply shows an in-progress note instead of "Interrupted". The fix is carried into S3's scope.
+
+### MC-3419 — #560: theme packs exist for user freedom; acceptance packs are built at full spec, 2026-11-22
+
+- Tag: decisions (maintainer, via lane A). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#560`, `#438`, `#452`. Amends `MC-691`, `MC-692`, `MC-695`, `MC-2535`.
+
+**What was decided.** The validator must not stop a user from choosing a pack that looks ugly or has hard-to-read text. Only security, app-breaking/softlock and resource checks stay as refusals. The acceptance packs (Banana Cocoa, Scratch White, Office Sheet, Origin Navy, later Terran Eclipse) are built at full spec from their inspiration using the UI design skill. If the validator refuses or warns on one, that is evidence the validator is too strict, not a reason to tone the pack down.
+
+**Consequence.** The acceptance packs no longer prove the contract by fitting it; a refusal of an acceptance pack is a validator defect. Per-pack full-spec rebuilds are follow-ups under `#452`. Frozen goldens stay frozen.
+
+### MC-3420 — #560: the theme-pack settings route never takes pack CSS, and a pack-free safe mode offers "Turn off theme pack", 2026-11-22
+
+- Tag: decisions (maintainer, via lane A). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3419`, `#560`, `#438`.
+
+**What was decided.** Both escape routes. The theme-pack settings page and the route to it never take pack CSS and are marked critical. A pack-free safe mode at boot offers "Turn off theme pack".
+
+**Consequence.** Readability of the rest of the app is no longer guaranteed by the validator; recovery from an unreadable pack is guaranteed by this route instead. It lands before `#438` themes Settings.
+
+### MC-3421 — #560: former contrast and readability refusals become informational notes, 2026-11-22
+
+- Tag: decisions (maintainer, via lane A). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3419`, `MC-2544`. Supersedes `MC-1569`, `MC-1626`; `MC-3122` refuse becomes a note.
+
+**What was decided.** What used to refuse on contrast or readability becomes an informational note under the "Installed" line (the `MC-2544` warnings channel). Install proceeds.
+
+### MC-3422 — #560: effects admitted with bounds; overlay and text-spoofing properties stay banned, 2026-11-22
+
+- Tag: decisions (maintainer, via lane A). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3419`, `MC-3317`. Reopens the `MC-2538` "kept" list; supersedes `MC-2309`.
+
+**What was decided.** `::before`/`::after` only with empty `content` (no text). mask, clip-path and border-image are allowed. Outer shadows are allowed up to the existing 64 px ceiling. Overlay and text-spoofing properties stay banned: z-index, position fixed/sticky, `content` text, direction/unicode-bidi/writing-mode, `all`, offset. Capped raster images were already admitted by `MC-3317`.
+
+### MC-3423 — #560: layout floors refuse only on critical prompts and the escape route, 2026-11-22
+
+- Tag: decisions (maintainer, via lane A). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3419`, `MC-3420`.
+
+**What was decided.** Minimum font size, touch targets, widths and the 360x640 fit stay as refusals only on critical prompts and the escape route. Elsewhere they become informational notes.
+
+### MC-3424 — #560: the escape route's entry controls are critical and the Theme pack page uses the user's own colour scheme, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3420`, `#438`.
+
+**Problem.** Pack sheets already never reach Settings, but the pack's colour scheme (`theme-pack`) paints every screen, Settings included, so an unreadable palette would still reach the route.
+
+**What the maintainer chose.** The route's entry controls (sidebar/menu Settings button, "All settings", the Display navigation, the Theme pack row) become critical parts that packs cannot style. The Theme pack page itself renders in the user's own non-pack colour scheme. The rest of Settings keeps pack colours, so `#438` can still theme it.
+
+### MC-3425 — #560: boot safe mode is reached by a launcher shortcut and a boot-screen button, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3420`.
+
+**What the maintainer chose.** Two triggers, both: an Android launcher shortcut "Start without theme pack" (long-press the app icon; desktop keeps the Ctrl+. hotkey), and, while a pack is active, a "Turn off theme pack" button on the loading screen for a few seconds, drawn before the pack applies. The automatic start after a failed boot (a new persisted flag) was not chosen.
+
+### MC-3426 — #560: token floors for font size and touch size keep refusing, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3423`.
+
+**What the maintainer chose.** Floors on shared tokens (for example `--font-size-sm`, `--size-touch`) keep refusing, because critical prompts read those tokens. Floors on individual non-critical parts become informational notes.
+
+### MC-3427 — #560: all shadows up to 64 px, and pseudo-elements may be positioned, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3422`, `MC-2309`.
+
+**What the maintainer chose.** Outer shadows, inset shadows and text-shadow are all lifted from the 2 px cap to the existing 64 px ceiling. `::before`/`::after` (empty `content` only) may use `position: absolute|relative` inside their element, which allows drawn bubble tails. The maintainer was told that a large absolutely positioned pseudo-element can intercept taps on neighbouring controls.
+
+**Consequence.** The plan must keep critical controls and the escape route tappable despite positioned pseudo-elements (for example, pack pseudo-elements never receive pointer events).
+### MC-3428 — #560: the escape route's entry controls also render in the user's own colour scheme, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3424`.
+
+**What the maintainer chose.** Besides being critical parts, the entry controls (sidebar Settings button, "All settings", the Display navigation, the Home drawer Settings item) render in the user's own non-pack colour scheme, like the Theme pack page, so an unreadable pack palette cannot hide the way to Settings.
+
+### MC-3429 — #560: mask and clip-path are refused on interactive parts, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3422`.
+
+**What the maintainer chose.** mask and clip-path are allowed on decorative parts and on `::before`/`::after`, and refused on interactive (reach-tier) parts, because clip-path removes hit testing and mask can make a control invisible. border-image is allowed on every non-critical part.
+
+### MC-3430 — #560: a small pack pseudo-element may visually cover part of a critical prompt, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3427`.
+
+**What the maintainer chose.** Taps always pass through pack pseudo-elements (enforced). A bounded pseudo-element (box at most 64 px) that paints over part of a critical prompt is an accepted, known limitation; no app stacking guard.
+
+### MC-3431 — #560: the 64 px shadow ceiling is total reach, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3427`.
+
+**What the maintainer chose.** Offset, blur and spread together reach at most 64 px, measured by the existing shadow-measuring pass, which keeps refusing shadows it cannot measure.
+### MC-3432 — #560: a pack pseudo-element paints at most 64 px in total, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session, after Gate 1). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3427`, `MC-3430`. Amends `MC-3430`'s bound.
+
+**Problem.** Gate 1 found that "box at most 64 px" understated the painted extent: with its border and a 64 px shadow a pack `::before`/`::after` could paint about 224 px, placed against the nearest positioned container, and app pseudo-elements with opposing offsets ignore a pack-only size check.
+
+**What the maintainer chose.** Box, border and shadow of a pack pseudo-element together paint at most 64 px, and the pack rule declares its own position, width and height.
+
+### MC-3433 — #560: save-guard and failed-card prompts render in the user's own colour scheme, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session, after Gate 1). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3421`, `MC-3428`.
+
+**Problem.** Once contrast floors become notes, pack colour tokens could make the text of data-loss prompts unreadable while their controls stay tappable.
+
+**What the maintainer chose.** The save-guard and failed-card prompts use the user's own non-pack colour scheme, the same mechanism as the escape route, so a pack cannot make them unreadable.
+### MC-3444 — #560: an absolutely positioned pack pseudo-element may sit away from its own element, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3427`, `MC-3432`.
+
+**What the maintainer chose.** A pack `::before`/`::after` with `position: absolute` is placed against the nearest positioned ancestor, which may be far from its own element. This is accepted: the 64 px total paint bound (`MC-3432`), tap pass-through and the escape-route stacking guard bound the harm. No list of app-positioned parts restricts it.
+### MC-3445 — #560: own colours apply only when a pack fails the readability check, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session, after the senior-advisor challenge). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3424`, `MC-3428`, `MC-3433`, `MC-3421`. Amends `MC-3424`, `MC-3428` and `MC-3433` from "always" to "when the pack fails the check".
+
+**Problem.** As planned, every pack whose colours differ from the user's pre-pack scheme would always have shown the Settings entry buttons, the Theme pack row, the failed-reply card and dialogs in pre-pack colours (for example dark buttons and dialogs inside a light acceptance pack), contrary to `MC-3419`'s full-spec look. Two Gate 1 rounds also found that sub-tree colour re-scoping leaks by construction. Separately, the session had widened `MC-3433` to every dialog without a ruling; that widening is withdrawn.
+
+**What the maintainer chose.** Readable packs keep their full look everywhere. Only a pack that carries a contrast or readability note (the `MC-3421` findings) gets the user's own colours on the Settings entry controls, the Theme pack row, the failed-reply card and the save-guard prompts. Until the check result arrives at boot, own colours may show briefly. The hard guarantee is safe mode (`MC-3425`), whose banner reads no theme token.
+
+**Session reading (orchestrator, not asked).** For a failing pack, Settings paints in the user's own scheme at the root while it is open, since the Theme pack row cannot be switched alone without re-scoping; a readable pack keeps pack colours in Settings.
+### MC-3446 — #560: read-only refusals and storage error alerts are not save-guard prompts, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3445`, `MC-3433`.
+
+**What the maintainer chose.** The read-only page refusal and the storage error alerts report a refusal or an error and offer no choice that loses data, so they do not get own colours under `MC-3445`. Only the failed-reply card and real save-guard choices do.
+
+### MC-3447 — #560: symbol-font and missing-focus-ring notes also switch own colours on, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3445`, `MC-3421`.
+
+**What the maintainer chose.** The `MC-3445` trigger counts contrast and opacity notes, the symbol-font note and the missing-focus-ring note. Any of them switches the protected controls to the user's own colours.
+
+### MC-3644 — #560: the save-failure error alert also takes own colours, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3445`, `MC-3446`. An exception to `MC-3446`.
+
+**What the maintainer chose.** When a pack fails the readability check (`MC-3445`), the error alert shown when a save did not happen uses the user's own colours, so the user can always read that their data was not saved. Other storage error alerts stay out, as `MC-3446` ruled.
+
+**Session readings (orchestrator, within `MC-3445`..`MC-3447`, not asked).** The trigger checks the pack's painted scheme in every phase and adds the judge verdict once it arrives, so readable packs never show own colours at boot. The parked-reply prompt counts as a save-guard choice, because its Discard deletes a parked reply. The escape hosts keep the app's own focus ring when a missing-focus-ring note triggers own colours.
+
+### MC-3645 — #560: the two restore-flow warnings join the save-guard set, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3445`, `MC-3446`, `MC-3644`.
+
+**What the maintainer chose.** When a pack fails the readability check (`MC-3445`), two prompts raised by the restore machinery also take the user's own colours: the restore warning that unsaved changes are lost (it can appear during a boot restore, outside Settings), and the warning that another tab may overwrite restored data (web and desktop only, never on Android). Other confirmations the user starts themself (delete, replace, the cold-storage backup, discarding a message edit, the module-import security consent) keep the pack's colours, as `MC-3445` ruled.
+
+### MC-3646 — #560: the launcher shortcut's trampoline is exported, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #560 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-3425`.
+
+**What the maintainer chose.** The trampoline activity that the "Start without theme pack" launcher shortcut opens is exported, so that no launcher or Android version can refuse it. #611 merges on the in-app device evidence. The device guard refused the launcher taps on the Note 9, so the launcher path was never driven there. Gate 2 found that exporting adds no new reach: MainActivity is already exported and accepts the same action, which only turns the pack off for the session and writes nothing.
+
+### MC-2932 — #234 S5: the sidebar's Home look covers all of Home, Realm view included, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #234 session). Date: 2026-11-22. Exact times: UNKNOWN. Builds on `MC-2819`. Related: `MC-2933`, `#234`.
+
+**What the maintainer chose.** "All of Home (Recommended)". The upstream Sidebar's flush darkbg rail look applies for as long as HomeShell is mounted, including while the full-page RisuRealm browser is open from Home. The alternative was the classic look while the Realm view is open.
+
+**Consequence.** The `homeChrome.landing` hold is taken once when HomeShell is created and released when it is destroyed; it does not follow the Realm view. The sidebar does not change look on a Realm round trip.
+
+### MC-2933 — #234 S5: the legacy sidebar welcome block is dropped on Home, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #234 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-2932`, `#234`, the #431 PC-row leftover.
+
+**What the maintainer chose.** "Drop it on Home (Recommended)". The sidebar panel's "Welcome to RisuTanium!" heading and its "Select a bot to start chatting" hint are not rendered while the Home look is on, so the landing greeting is the page's only h1. The panel stays as an empty darkbg column at its unchanged width. Playground keeps the welcome. The alternatives were a plain line without the hint, or no change in S5.
+
+**Consequence.** Collapsing the panel to the rail on Home is a follow-up for lane A to file; it needs a close path that does not wait on the panel's `animationend`.
+
+### MC-2934 — #234 S5: Light-scheme menu labels on the darkbg rail are accepted at 12 % below main, 2026-11-22
+
+- Tag: decisions (maintainer, AskUserQuestion in the #234 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `MC-2819`, `MC-2932`, `#234`, PR #602 row D-S5-6.
+
+**What the maintainer chose.** "Accept as is (Recommended)". In the Light scheme with the menu-bar sidebar layout, the rail's darkbg (`#f0f0f0`) lowers the menu label contrast 12.2-12.3 % below main's white rail (lowest 5.68:1, above the 4.5:1 text minimum; icons 12.1:1 or higher; dark improves). The plan's 10 % relative rule is waived for this row. The alternative was to keep a white rail in Light, dropping MC-2819's flush darkbg look there.
+
+**Consequence.** No change to S5's colours; the row is recorded as an accepted limitation in PR #602.
+
+### MC-3634 — #439 start-up .rtb restore shows the restore card, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #439/#491 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#439`, `MC-2943`, `MC-2802`, `MC-2334`.
+
+**What the maintainer chose.** "Restore card (Recommended)": the start-up `.rtb` restore (`rtbBootRestore`) shows the same task card as the Settings `.rtb` restore (Check, Copy files with a live byte line, Load), over the boot screen, with no Cancel button. This amends MC-2802 ("the start-up .rtb restore stays as it is today") and MC-2334's boot-screen exclusion for this restore only. Not chosen: "Keep wait dialog, live %" (today's wait dialog with a percent that moves with every chunk).
+
+### MC-3635 — #491 a large inlay counts half while read and half while written on the copy line, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #439/#491 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#491`, `MC-2919`, `MC-3051`.
+
+**What the maintainer chose.** "Half read, half write (Recommended)": the copy byte line keeps the backup's bytes as its total; each inlay's share moves through its first half while its body is read and its second half while it is written, so the line never stands still and still ends at the backup's size. Not chosen: "Count reads and writes" (a total of backup bytes plus the inlay bytes written again).
+
+### MC-3636 — #491 the native inlay write already reports per-chunk progress; no native change, 2026-11-22
+
+- Tag: finding (session for #439/#491, not a maintainer decision). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#491`, `#484`, `MC-3051`.
+
+**What was found.** The Tauri files store's `writeBlob` (desktop and Android transports) already writes a Blob in chunks through the chunked writer and reports each chunk to an `onProgress` callback, and `writeAppInlay` already forwards `options.onProgress` to it. The `.rtb` copy (`copyInlay` in `rtbRestoreCopy.ts`) and the `.bin` files step (`InlayRestoreCollector.writeGroup`) simply did not pass a callback, so #491 needs no native write-path change and no change to the write order (body, metadata commit, old body delete). The web IndexedDB slice write named in the issue no longer exists: the IndexedDB byte store was removed (#509, #542). The Node store's `writeBlob` wrote in slices without reporting; it gains the same callback.
+
+### MC-3637 — #608 DV-439-491-1 (start-up .rtb restore card on a Note 9) recorded NOT RUN, merge on DV-2 and offline tests, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, #439/#491 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#439`, `#608`, `MC-3634`. Also confirmed to lane A via AskUserQuestion, 2026-11-22.
+
+**What the maintainer chose.** "Record NOT RUN, merge (Recommended)": the gating row DV-439-491-1 is recorded as NOT RUN, because a release build reaches the start-up `.rtb` restore offer only on a first life whose app store still lists a numbered backup (`database/dbbackup-<n>.bin`; store2 builds no longer write them) or from the recovery screen, and lane B's device checklist forbids seeding either from outside the app. DV-439-491-2 (Settings restore of the 2.53 GiB synthetic `.rtb`: longest byte-line hold 0.86 s, base 52-61 s) and the offline boot-card reproducers are the evidence; lane A merges on green CI. Not chosen: "Allow seeding, debug build" (place one synthetic numbered backup in app storage on a Note 9 for this row only).
+
+### MC-3624 — #449 Stop on every Home library view, 2026-11-22
+
+- Tag: maintainer decision (AskUserQuestion in the #449 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#449`, `MC-3320`, `MC-3321`.
+
+**Decision.** The writing badge stops the reply in all three Home library views: the Grid tile, the Simple row and the List row. In the Simple and List views the pencil moves out of the name's own button and becomes its own Stop button beside it, so the same pencil always means the same thing and no control is nested inside another. The Trash list shows no badge, as before.
+
+### MC-3625 — #449 a character-level badge stops each writing chat by its own id, 2026-11-22
+
+- Tag: maintainer decision (AskUserQuestion in the #449 session). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#449`, `#596`, `MC-3308`, `MC-3320`.
+
+**Decision.** A Home library tile or row stands for a character, not a chat. Tapping its writing badge stops every chat of that character that is writing a reply, each stopped by its own chat id through the same per-chat Stop the open chat uses. There is no picker. Today one chat writes at a time, so this stops one; once several chats write at once (#596, MC-3308) it stays correct without a change.
+
+### MC-3626 — #449 the row Stop reuses the open chat's Stop, so partial text needs no new rule, 2026-11-22
+
+- Tag: finding (session for #449, not a maintainer decision). Date: 2026-11-22. Exact times: UNKNOWN. Related: `#449`, `MC-3321`, `MC-3309`.
+
+**What was found.** The open chat's Stop (the shell composer and the default chat screen) calls `stopComposerWorkIn` with the shown chat's origin, which stops the work registered for that chat only. Every new row Stop calls that same function with the origin taken from the row, never from the selection, `abortChat` or the published unit. So a reply stopped from a row keeps or drops its partial text exactly as the open chat's Stop does (MC-3321), by construction. The Android notification's Stop still stops every reply (MC-3309).
+
+### MC-3327 — #246 go-ahead with a lean core set of v1 sound events, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, lane A round 4). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#246`, `#593`, `MC-3328`, `MC-3329`.
+
+**What the maintainer chose.** #246 (UI sounds) goes ahead. The v1 events are a lean core set: send, reply received, send failure, toasts, undo and setting toggles.
+
+### MC-3328 — #246 sounds are off while TalkBack touch exploration is on, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, lane A round 4). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#246`, `#593`, `MC-3327`.
+
+**What the maintainer chose.** UI sounds turn themselves off while TalkBack touch exploration is on. This needs a Kotlin bridge and a Note 9 TalkBack device row.
+
+### MC-3329 — #246 the Play Message Audio chime and the pack receive cue stay separate, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, lane A round 5). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#246`, `#593`, `MC-3327`.
+
+**What the maintainer chose.** The existing Play Message Audio chime and the new pack receive cue stay separate settings. The designer adds a rule so that one reply never plays both sounds.
+
+### MC-3262 — A community LTM plugin's LLM calls stall a Send; recorded as a parallel-replies use case, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, "Wait for parallel replies"). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1293`, `MC-3308`, `#596`.
+
+**What the maintainer reported.** Community long-term-memory plugins and modules call the LLM several times before and after a reply. A Send made during that time stalls.
+
+**What lane A found (source trace on origin/main c8352a071, not executed).** Hooks inside a reply (start and output triggers, the beforeRequest/afterRequest replacers, chatOutput listeners) hold `doingChat` until their own LLM calls finish, and a Send then returns with no queue. Plugin, Lua and trigger LLM calls carry no abort signal, so Stop does not cancel them. Calls outside a reply (v3 `runLLMModel`, Lua buttons) are not gated.
+
+**What the maintainer chose.** File nothing now. This is a use case for the parallel-replies goal (MC-1293), sized as #596.
+
+### MC-3308 — Parallel replies run one per chat, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, "One per chat (Recommended)"). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#596`, `MC-1293`, `MC-3262`, `MC-3309`, `MC-3310`.
+
+**What the maintainer chose.** Replies in different chats run in parallel. A chat that is already writing still refuses a second send. Parallel replies within one chat are left for later (Utility sub-agents).
+
+### MC-3309 — With parallel replies, the notification Stop stops every reply, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, "Stop all (Recommended)"). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#596`, `#449`, `#514`, `MC-3308`.
+
+**What the maintainer chose.** The Android notification's Stop stops every running reply. Stopping a single chat happens in the app (#449). #514 S2 needs no target-aware native cancel.
+
+### MC-3310 — With parallel replies, one summary keep-alive card, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, "One summary card (Recommended)"). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#596`, `MC-3308`.
+
+**What the maintainer chose.** One keep-alive card ("N replies writing") covers all running replies. It keeps an outcome per chat, so no result is lost.
+
+### MC-3311 — The Android /data/**/* fs scope gets its own narrowing ticket; #541 is unchanged, 2026-11-22
+
+- Tag: decisions (maintainer via AskUserQuestion, "File a ticket to narrow (Recommended)"). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#541`, `#603`, `#605`.
+
+**What was found.** #541's device row DV-15 showed that the page's fs scope allows `/data/**/*`, in `src-tauri/capabilities/migrated.json` since 5a931d4ba. This is pre-existing, not caused by #541.
+
+**What the maintainer chose.** File a ticket to narrow the scope (#603). #541 continues unchanged, keeping its deny entries and read-only seal.

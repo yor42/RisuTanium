@@ -243,6 +243,18 @@ describe('keys', () => {
 })
 
 describe('fail closed', () => {
+    test('bytes that turn unreadable after a load drop the grants held before, and a new grant holds in memory', async () => {
+        const a = await page()
+        await a.addToolGrant('ws1', 'write_file')
+        expect(await a.hasToolGrant('ws1', 'write_file')).toBe(true)
+        store.files.set(KEY, new TextEncoder().encode('not json'))
+
+        expect(await a.addToolGrant('ws1', 'edit_file')).toBe(true)
+
+        expect(await a.hasToolGrant('ws1', 'write_file')).toBe(false)
+        expect(await a.hasToolGrant('ws1', 'edit_file')).toBe(true)
+    })
+
     test('a grant does not match between the seal and the clear\'s write', async () => {
         const a = await page()
         await a.addToolGrant('ws1', 'write_file')
