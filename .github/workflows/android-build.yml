@@ -8,21 +8,14 @@ name: Android APK build
 # Build types
 #   debug    Signed with the runner's throwaway debug key, so it cannot update-install over an
 #            APK built or signed elsewhere. Needs no secrets.
-#   release  Signed with a release keystore from repository secrets (below). The run fails
-#            early, naming the missing secret, if any of the four is absent.
+#   release: dispatch from main only. The shared workflow builds without a key, inspects, signs in
+#            environment `android-release` (secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+#            ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD; variable ANDROID_RELEASE_CERT_SHA256) and inspects again.
+#            No repository-level copies. The key is never re-created for this app: another key cannot update
+#            installed copies. Setup and checks: Agents/Tools/device/SIGNING.md. The signed artifact lasts 14 days.
+#            After changing a variable or secret, confirm that no repository-level copy exists before "Re-run failed jobs", or use "Re-run all jobs", because a partial re-run does not repeat guard.
 #
-# Creating the release keystore and secrets (one time, keep the keystore and passwords safe;
-# losing the key means installed apps can never be updated):
-#   1. keytool -genkeypair -v -keystore risutanium-release.jks -alias risutanium \
-#        -keyalg RSA -keysize 4096 -validity 10000
-#   2. base64 -w0 risutanium-release.jks    (PowerShell: [Convert]::ToBase64String([IO.File]::ReadAllBytes("risutanium-release.jks")))
-#   3. Repository Settings > Secrets and variables > Actions > New repository secret:
-#        ANDROID_KEYSTORE_BASE64    the base64 text from step 2
-#        ANDROID_KEYSTORE_PASSWORD  the keystore password
-#        ANDROID_KEY_ALIAS          the alias from step 1
-#        ANDROID_KEY_PASSWORD       the key password
-#   4. Never commit the keystore. The workflow decodes it to a runner temp path and writes
-#      src-tauri/gen/android/keystore.properties, which is gitignored.
+# The environment rule checks the ref a run starts from, not code that the run checks out later.
 on:
   workflow_dispatch:
     inputs:
@@ -42,8 +35,8 @@ on:
         default: aarch64
 
 concurrency:
-  group: android-build
-  cancel-in-progress: true
+  group: android-build-${{ inputs.build_type }}
+  cancel-in-progress: ${{ inputs.build_type == 'debug' }}
 
 permissions:
   contents: read
@@ -54,30 +47,14 @@ env:
   ONNXRUNTIME_NODE_INSTALL_CUDA: skip
 
 jobs:
+  # Release builds run in the reusable workflow below; this job is the debug build.
   build-android:
+    if: inputs.build_type == 'debug'
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v7
-
-      # Fail before the long build if a release build cannot be signed.
-      - name: Check release signing secrets
-        if: inputs.build_type == 'release'
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          missing=0
-          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Repository secret $name is not set. See the comment block at the top of this workflow."
-              missing=1
-            fi
-          done
-          exit "$missing"
 
       # The pnpm version comes from the packageManager field in package.json.
       - name: Install pnpm
@@ -115,24 +92,6 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Write release signing configuration
-        if: inputs.build_type == 'release'
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          keystore_path="$RUNNER_TEMP/release.jks"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
-          {
-            echo "storeFile=$keystore_path"
-            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
-            echo "keyAlias=$ANDROID_KEY_ALIAS"
-            echo "keyPassword=$ANDROID_KEY_PASSWORD"
-          } > src-tauri/gen/android/keystore.properties
-
       # The legal flag comes from .env.production (on). Nothing here sets or overrides it.
       - name: Build APK
         env:
@@ -149,11 +108,6 @@ jobs:
           fi
           pnpm tauri "${args[@]}"
 
-      - name: Remove release signing material
-        if: always() && inputs.build_type == 'release'
-        run: |
-          rm -f "$RUNNER_TEMP/release.jks" src-tauri/gen/android/keystore.properties
-
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
@@ -161,3 +115,19 @@ jobs:
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14
+
+  # Release builds: guard, build, inspect, sign, inspect again. The four secrets are passed by name and reach
+  # only the sign job of the reusable workflow, inside environment android-release.
+  release-apk:
+    if: inputs.build_type == 'release'
+    uses: ./.github/workflows/android-release-apk.yml
+    with:
+      abi: ${{ inputs.abi }}
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    permissions:
+      contents: read
+      actions: read
