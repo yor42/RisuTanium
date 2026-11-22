@@ -1,4 +1,4 @@
-# Live State — observed 2026-11-21
+# Live State — observed 2026-11-22
 
 Current-state entry point: one current block, rewritten when observations change; history moves to `Agents/Archive/`. It does not supersede maintainer decisions. Authority order is in [README](README.md): GitHub issues and project board 1 on yor42/RisuTanium for ticket status, [Maintainer-Context](Maintainer-Context.md) through the [Decision-Index](Decision-Index.md) for decisions, this file and the latest lane handoffs for current state, [Roadmap](Roadmap.md) as scope history.
 
@@ -12,13 +12,15 @@ Everything below "Current state" up to 2026-11-20 is archived verbatim in [Archi
 
 ## Current state
 
-- **Merged work and open PRs:** read `git log origin/main` and the open PR list on yor42/RisuTanium; the records batch 5 paragraph that stood here is archived verbatim in [Archive/Live-State-history-2026-11-20.md](Archive/Live-State-history-2026-11-20.md). MC IDs come from per-session blocks of 10 assigned by lane A (MC-2713); blocks are granted through MC-3220 as of 2026-11-21, and pending entries live in `Agents/mc/` until folded.
+- **Merged work and open PRs:** read `git log origin/main` and the open PR list on yor42/RisuTanium; the records batch 5 paragraph that stood here is archived verbatim in [Archive/Live-State-history-2026-11-20.md](Archive/Live-State-history-2026-11-20.md). MC IDs come from per-session blocks of 10 assigned by lane A (MC-2713); blocks are granted through MC-3683 as of 2026-11-22 (the next block starts at MC-3684), and pending entries live in `Agents/mc/` until folded. The 2026-11-22 records batch folded every entry merged by then.
+
+- **New sessions on hold (maintainer, 2026-11-22):** no new ticket sessions start, lane A's automatic starts for idle lanes included, until the maintainer lifts the hold; running tickets continue. Lane A keeps ready briefs for the held tickets (#596, #603, #599, #600, #598, #595) outside the tree.
 
 - **Current MVP (batch 54, 2026-11-05):** the release-signed APK of main `a3b5d706e` (`MC-1082`), built by the maintainer and installed on their phone at 14:39 KST; APK sha256 `4716857a605c614beebe0888e3e67291006de53112313317102b470c29f30cc4` (as typed, matches `result.json`); the maintainer reports no data loss (not checked by the lane). It contains CHORE-412 layout 2, so an older APK cannot read the store after the update and the way back is the pre-update `.bin` (`MC-1074`). `MC-350` carry-forward is live from this build. Dirty tree at build time: `dirty: true` (the unowned files, including the Android manifest edit). Owed: the Note 9 check of the streamed-fetch port (`MC-1078`).
 
 ## Open governance follow-ups
 
-- #384: automatic self-revoking per-worktree write grants (MC-2750).
+- #384 done 2026-11-21: automatic self-revoking per-worktree write grants (MC-2750, MC-3171; #534).
 - #387 done 2026-11-21: native-first route order, Codex/agy `optIn` and the route-health check in the workflow controller (MC-2748; #521). Policy revision `2026-11-21.1` was adopted in the main checkout's live state the same day (lane A).
 - #481 done 2026-11-21: ticket PRs write MC entries to `Agents/mc/<ticket>.md`; lane A folds them into Maintainer-Context in batches (MC-3044; #522).
 - MC-2752 done 2026-11-20: the `Agents/Handoff-2026-10-08*` backlog moved out of the tree by lane A after its live items went to #280 (comment) and #391.
