@@ -1,6 +1,8 @@
+import { language } from 'src/lang'
 import type { RPCToolCallContent } from './mcplib'
 import type { RunSubject } from '../chatOrigin'
-import { advertisedToolKey, refusedToolContent, type ToolLoopState } from '../request/toolLoop'
+import { advertisedToolKey, refusedToolContent, reportToolStep, type ToolLoopState, type ToolStepOutcome } from '../request/toolLoop'
+import { escapeBidiControls } from './bidiEscape'
 import { classifyTool } from './toolPermission'
 import { askToolApproval, TOOL_SUMMARY_LIMIT, type ToolApprovalRequest } from './toolApproval'
 import { addToolGrant, hasToolGrant, toolGrantsOffered } from './toolGrants'
@@ -35,10 +37,7 @@ export function describeToolCall(name: string, args: unknown, action?: string): 
     return clipCodePoints(text, TOOL_SUMMARY_LIMIT)
 }
 
-/** Bidi embedding, override, isolate and mark controls shown as `\uXXXX`, so text in a prompt cannot reorder what follows it. */
-function escapeBidiControls(text: string): string {
-    return text.replace(/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`)
-}
+export { escapeBidiControls }
 
 /** `text` cut to `max` code points with a trailing mark; shorter text is returned as it is. */
 function clipCodePoints(text: string, max: number): string {
@@ -106,16 +105,17 @@ function actionOf(name: string, args: unknown, url: string, subject?: RunSubject
     return url === 'internal:workspace' ? describeWorkspaceAction(name, args) : undefined
 }
 
-/** What each mutating `internal:workspace` tool does, with `{path}` the file it names (`from` and `to` for a move). */
-const WORKSPACE_ACTIONS: Readonly<Record<string, string>> = {
-    write_file: 'write workspace file ({path}), replacing its whole content if it already exists',
-    edit_file: 'edit workspace file ({path})',
-    delete_file: 'delete workspace file ({path}), which cannot be undone',
-    move_file: 'move workspace file ({from}) to ({to})',
+/** The language template of each mutating `internal:workspace` tool, with `{path}` the file it names (`from` and `to` for a move). */
+function workspaceActionTemplate(name: string, overwrite: boolean): string | undefined {
+    switch(name) {
+        case 'write_file': return language.toolApprovalActionWriteFile
+        case 'edit_file': return language.toolApprovalActionEditFile
+        case 'delete_file': return language.toolApprovalActionDeleteFile
+        // A move that replaces its destination leads with the file that will be deleted, before the source path.
+        case 'move_file': return overwrite ? language.toolApprovalActionMoveOverwrite : language.toolApprovalActionMoveFile
+        default: return undefined
+    }
 }
-
-/** A move that replaces its destination leads with the file that will be deleted, before the source path. */
-const WORKSPACE_MOVE_OVERWRITE = 'DELETE and replace workspace file ({to}) if it exists, which cannot be undone, by moving ({from}) onto it'
 
 /** The longest path an action line shows whole; a longer one keeps its start and end so the file name stays visible. */
 const ACTION_PATH_MAX_CHARS = 200
@@ -148,12 +148,9 @@ function isOverwriteMove(name: string, args: unknown): boolean {
 
 /** The action line of `describeWorkspaceAction` in pieces, each path its own piece so the dialog can isolate it. */
 export function workspaceActionParts(name: string, args: unknown): ToolApprovalActionPart[] | undefined {
-    let template = Object.hasOwn(WORKSPACE_ACTIONS, name) ? WORKSPACE_ACTIONS[name] : undefined
+    const template = workspaceActionTemplate(name, isOverwriteMove(name, args))
     if(!template) {
         return undefined
-    }
-    if(isOverwriteMove(name, args)) {
-        template = WORKSPACE_MOVE_OVERWRITE
     }
     const parts: ToolApprovalActionPart[] = []
     let last = 0
@@ -196,36 +193,60 @@ function touchesInstructionFile(name: string, args: unknown): boolean {
  * not run, or null when it may.
  */
 export async function authorizeToolCall(name: string, args: unknown, info: ToolCallInfo): Promise<RPCToolCallContent[] | null> {
+    let decision: ToolDecision
+    try {
+        decision = await decideToolCall(name, args, info)
+    } catch (error) {
+        reportToolStep(info.toolLoop, name, args, 'error')
+        throw error
+    }
+    // A call that may run is reported by `callMCPTool` after it ends, so it is the one step of that call.
+    if(decision.content) {
+        reportToolStep(info.toolLoop, name, args, decision.outcome)
+    }
+    return decision.content
+}
+
+/** The answer for the model (null when the call may run) and how the call ended for the run's step list. */
+type ToolDecision = { content: RPCToolCallContent[] | null, outcome: ToolStepOutcome }
+
+const GO: ToolDecision = { content: null, outcome: 'ran' }
+
+function stoppedBefore(name: string): ToolDecision {
+    return { content: refused(`Stopped before ${name} ran.`), outcome: 'stopped' }
+}
+
+async function decideToolCall(name: string, args: unknown, info: ToolCallInfo): Promise<ToolDecision> {
     const url = info.mcpURL
     if(!url) {
-        return refused(`Tool ${name} was called without a server and was not run.`)
+        return { content: refused(`Tool ${name} was called without a server and was not run.`), outcome: 'refused' }
     }
     const advertised = info.toolLoop?.advertised
     if(advertised && !advertised.has(advertisedToolKey(name, url))) {
-        return refusedToolContent(name)
+        return { content: refusedToolContent(name), outcome: 'refused' }
     }
     if(url === 'internal:workspace' && !info.toolLoop?.workspace) {
-        return refusedToolContent(name)
+        return { content: refusedToolContent(name), outcome: 'refused' }
     }
     const kind = classifyTool(url, name)
     if(kind === 'read' || kind === 'free') {
-        return null
+        return GO
     }
     const signal = info.toolLoop?.signal ?? null
     const stopped = () => signal?.aborted === true
     if(stopped()) {
-        return refused(`Stopped before ${name} ran.`)
+        return stoppedBefore(name)
     }
     const workspaceId = url === 'internal:workspace' ? info.toolLoop?.workspace?.id : undefined
     // A grant covers one tool in the bound workspace, never a move that overwrites (MC-3409, MC-3614).
     const grantable = workspaceId !== undefined && kind === 'mutating' && !isOverwriteMove(name, args)
     if(grantable && await hasToolGrant(workspaceId, name)) {
-        return stopped() ? refused(`Stopped before ${name} ran.`) : null
+        return stopped() ? stoppedBefore(name) : GO
     }
     // A server grant covers a third-party server for the chat on screen only; internal tools never get one (MC-3413).
     const serverKey = kind === 'third-party' && !url.startsWith('internal:') ? chatKeyOf(info.subject) : null
     if(serverKey !== null && hasServerChatGrant(serverKey, url)) {
-        return stopped() ? refused(`Stopped before ${name} ran.`) : null
+        return stopped() ? stoppedBefore(name) : GO
     }
     const offerServer = serverKey !== null && isVisibleChat(serverKey)
     const request: ToolApprovalRequest = {
@@ -255,10 +276,10 @@ export async function authorizeToolCall(name: string, args: unknown, info: ToolC
     }
     const decision = await askToolApproval(request, { signal })
     if(stopped()) {
-        return refused(`Stopped before ${name} ran.`)
+        return stoppedBefore(name)
     }
     if(decision === 'deny') {
-        return refused(`Denied by the user: ${name}`)
+        return { content: refused(`Denied by the user: ${name}`), outcome: 'denied' }
     }
     if(decision === 'always' && grantable) {
         await addToolGrant(workspaceId, name)
@@ -267,5 +288,5 @@ export async function authorizeToolCall(name: string, args: unknown, info: ToolC
         // Recorded only while this is still the chat on screen; if the user left it meanwhile this call runs once.
         addServerChatGrant(serverKey, url)
     }
-    return null
+    return GO
 }

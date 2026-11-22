@@ -137,13 +137,23 @@ describe('T23a: the read names a damaged workspace file and the open leaves it w
         if (read.status !== 'ok') {
             return
         }
-        expect(read.flagged).toEqual([{ kind: 'workspace-file', wsId: 'w1', path: 'notes/a.md', key, why: 'damaged' }])
+        expect(read.flagged).toEqual([{ kind: 'workspace-file', wsId: 'w1', wsName: 'First', path: 'notes/a.md', key, why: 'damaged' }])
         const fallback = createLeafFallback(read.flagged, () => 0)
         const lists = flaggedLists(fallback.items())
         expect(lists).toHaveLength(1)
-        expect(lists[0].heading).toContain('w1')
+        expect(lists[0].heading).toContain('First')
         expect(lists[0].items).toHaveLength(1)
         expect(lists[0].items[0]).toContain('notes/a.md')
+    })
+
+    test('N: a workspace without a name is shown by its id, and two flagged files of one workspace share one heading', () => {
+        const lists = flaggedLists([
+            { kind: 'workspace-file', wsId: 'w9', wsName: 'w9', path: 'a.md', key: 'k1', why: 'damaged', name: '' },
+            { kind: 'workspace-file', wsId: 'w9', wsName: 'w9', path: 'b.md', key: 'k2', why: 'missing', name: '' },
+        ])
+        expect(lists).toHaveLength(1)
+        expect(lists[0].heading).toContain('w9')
+        expect(lists[0].items).toHaveLength(2)
     })
 
     test('N: a missing file is flagged as missing', async () => {

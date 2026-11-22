@@ -72,12 +72,12 @@ function check(target: HTMLElement, expected: FieldExpectation[]): void {
 const GOOD = { id: 'p1', name: 'Fixer', instructions: 'Fix it.', model: 'gpt4o' }
 
 describe('UtilityScreen value control is named', () => {
-    test('no presets: no value control', () => {
-        check(open([]), [])
+    test('no presets: only the workspace picker is a value control', () => {
+        check(open([]), [{ name: language.utility.workspaces.pickerLabel }])
     })
 
     test('with presets: the preset select takes the preset label', () => {
-        check(open([GOOD]), [{ name: language.utility.presetLabel }])
+        check(open([GOOD]), [{ name: language.utility.presetLabel }, { name: language.utility.workspaces.pickerLabel }])
     })
 
     test('with the editor open: the select and the editor number inputs keep distinct names', () => {
@@ -88,6 +88,7 @@ describe('UtilityScreen value control is named', () => {
         flushSync()
         check(target, [
             { name: language.utility.presetLabel },
+            { name: language.utility.workspaces.pickerLabel },
             { name: language.utility.editor.temperature },
             { name: language.utility.editor.maxTokens },
         ])
