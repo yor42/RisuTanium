@@ -95,7 +95,16 @@ export interface SheetRef {
 }
 
 export const sheetReport = (css: string, registry?: RegistryInput): SheetHeightRow[] => sheetHeights(normalise(css), effective(registry))
-export const CRITICAL_PARTS: string[] = ['chat-failed-card', 'chat-save-guard', 'chat-critical-body', 'chat-critical-action', 'chat-critical-title', 'chat-critical-header', 'chat-critical-handle']
+// MC-3424: the entry controls of the way out of a bad pack are protected parts in every registry: the settings buttons of the chat sidebar, This chat sheet, the Home drawer, the legacy rail and the Settings index (both
+// screens' Display entry), plus the pack-free safe-mode banner. A pack may not name them, so it can neither hide nor restyle the route to Settings and to the Theme pack row.
+export const ESCAPE_ROUTE_PARTS: string[] = ['sidebar-settings', 'this-chat-all-settings', 'home-drawer-settings', 'settings-index-display', 'rail-settings', 'boot-pack-escape']
+// The Theme pack row and every part under it (the loader's host and failure line, the row, its tiles), pinned from the census of ThemePackRowLoader.svelte and ThemePackRow.svelte by escapeRoute.test.ts.
+export const THEME_PACK_ROW_CLOSURE: string[] = ['theme-pack-broken', 'theme-pack-checking', 'theme-pack-details', 'theme-pack-entry', 'theme-pack-help', 'theme-pack-icon', 'theme-pack-install', 'theme-pack-load-failed', 'theme-pack-none', 'theme-pack-outcome', 'theme-pack-remove',
+    'theme-pack-row', 'theme-pack-row-host', 'theme-pack-tile', 'theme-pack-unreadable', 'tile-glyph', 'tile-ground', 'tile-none-frame', 'tile-none-mark', 'tile-pattern', 'tile-plate']
+export const CRITICAL_PARTS: string[] = ['chat-failed-card', 'chat-save-guard', 'chat-critical-body', 'chat-critical-action', 'chat-critical-title', 'chat-critical-header', 'chat-critical-handle', ...ESCAPE_ROUTE_PARTS, ...THEME_PACK_ROW_CLOSURE]
+// Every part that encloses an escape element in some screen layout. No registry may list one as safe: a safe part may be hidden or moved, which would take the control with it; as a reach part it can only be recoloured, rebordered and respaced.
+// Pinned from the mounted-screen walk in escapeWalk.svelte.test.ts, which is the authority; escapeRoute.test.ts asserts the static census is a subset. Over-inclusion is harmless: a name that encloses an escape element in one layout only loses the safe tier everywhere.
+export const ESCAPE_ANCESTORS: ReadonlySet<string> = new Set(['chat-shell', 'chat-sheet', 'chat-sheet-layer', 'chat-sidebar', 'chat-sidebar-footer', 'display-page', 'home-drawer', 'home-drawer-layer', 'home-landing', 'settings-index', 'settings-page', 'settings-page-scroll', 'settings-section', 'settings-shell', 'settings-view', 'this-chat-body', 'this-chat-group'])
 // DD-243: the reach tier takes the controls a person needs to navigate, stop work, send, apply, undo and see a failed save. A pack may recolour, reborder and respace these parts (DD-155 allowlist);
 // it may not hide, move or re-lay them out, and no pack rule may change an outline. Each registry lists its own part names in `reach`; effective() removes them from the safe list wherever they were.
 //   chat: navigation (the sidebar, the chat list and its rows, the header with its menu), the generation strip that holds Stop, the composer with its field and Send, and the toast and status row that carry Undo.
@@ -105,7 +114,7 @@ export const REACH_CHAT: string[] = ['chat-header', 'chat-header-menu', 'chat-ge
 export const SAFE_LEAVES: Set<string> = new Set(['chat-message-avatar', 'chat-message-name', 'chat-message-badges', 'chat-message-actions', 'chat-message-actions-hover', 'chat-message-actions-float', 'chat-message-spacer', 'chat-message-alts', 'chat-message-name-row',
     'chat-header', 'chat-header-avatar', 'chat-header-title', 'chat-header-menu', 'chat-preset-chip', 'chat-gen-strip', 'chat-sidebar', 'chat-sidebar-header', 'chat-sidebar-toggle', 'chat-sidebar-search', 'chat-sidebar-strip', 'chat-sidebar-footer',
     'chat-list', 'chat-list-row', 'chat-list-row-main', 'chat-list-row-name', 'chat-list-row-time', 'chat-list-row-last', 'chat-list-row-count', 'chat-list-row-mark', 'chat-list-row-menu', 'chat-list-folder', 'chat-list-character',
-    'chat-composer', 'chat-composer-input', 'chat-composer-plus', 'chat-composer-persona', 'chat-send', 'chat-toast', 'chat-status-row', 'chat-sheet-scrim'].filter((p) => !REACH_CHAT.includes(p)))
+    'chat-composer', 'chat-composer-input', 'chat-composer-plus', 'chat-composer-persona', 'chat-send', 'chat-toast', 'chat-status-row', 'chat-sheet-scrim'].filter((p) => !REACH_CHAT.includes(p) && !ESCAPE_ANCESTORS.has(p)))
 // The part lists are a parameter (DS-075): a screen passes its own { critical: [...], safe: [...] } and gets chat's names plus its own; nothing module-level is mutated.
 // surfaces: [token, surface, label, ratio]: the colour tokens a pack states must keep this contrast on the surfaces a screen's protected text sits on (surface: canvas, sheet, glass, raised, toast)
 export const CHAT_SURFACES: SurfaceCheck[] = [['--nexus-text', 'canvas', 'the canvas', 4.5], ['--nexus-text-secondary', 'canvas', 'the canvas', 4.5], ['--nexus-ring', 'canvas', 'the canvas', 3], ['--nexus-ring', 'sheet', 'the sheet', 3]]
@@ -173,7 +182,7 @@ const effective = (reg?: RegistryInput | null): Registry => {
     if (!reg || reg === CHAT_REGISTRY) return CHAT_REGISTRY
     const controls = new Set([...REACH_CHAT, ...(reg.controls || [])])
     const reach = new Set([...controls, ...(reg.reach || [])])
-    return { controls, critical: new Set([...CRITICAL_PARTS, ...(reg.critical || [])]), safe: new Set([...SAFE_LEAVES, ...(reg.safe || [])].filter((p) => !reach.has(p))), reach, surfaces: reg.surfaces || CHAT_SURFACES, strictSafe: !!reg.strictSafe, positionable: new Set([...POSITIONABLE, ...(reg.positionable || [])]),
+    return { controls, critical: new Set([...CRITICAL_PARTS, ...(reg.critical || [])]), safe: new Set([...SAFE_LEAVES, ...(reg.safe || [])].filter((p) => !reach.has(p) && !ESCAPE_ANCESTORS.has(p))), reach, surfaces: reg.surfaces || CHAT_SURFACES, strictSafe: !!reg.strictSafe, positionable: new Set([...POSITIONABLE, ...(reg.positionable || [])]),
         minimums: { ...SHARED_MINIMUMS, ...(reg.minimums || {}) }, maximums: { ...SHARED_MAXIMUMS, ...(reg.maximums || {}) }, app: reg.tokens ? new Map([...APP, ...reg.tokens]) : APP,
         fixedWidth: new Set([...CHAT_FIXED_WIDTH, ...(reg.fixedWidth || [])]), settable: [...CHAT_SETTABLE, ...(reg.settable || [])], colours: reg.colours || [], transparentOk: reg.transparentOk || [], opaque: [...new Set([...SHARED_OPAQUE, ...(reg.opaque || [])])], pairs: [...SHARED_PAIRS, ...(reg.pairs || [])], same: reg.same || [], chains: [...CHAT_CHAINS, ...(reg.chains || [])], sheets: [...CHAT_SHEETS, ...(reg.sheets || [])], privatePrefix: reg.privatePrefix === undefined ? PRIVATE_PREFIX : reg.privatePrefix }
 }
@@ -315,6 +324,7 @@ function analyse(sel: string, reg: Registry = CHAT_REGISTRY): Analysis {
     const subj = subject as Subject | null
     for (const [k, v] of attrs) {
         if (k === 'data-part-critical') why.push('names data-part-critical')
+        if (k === 'data-own-scheme') why.push('names data-own-scheme')
         if (k === 'data-part' && reg.critical.has(v)) why.push(`names the protected part ${v}`)
     }
     const rootOnly = !!(syntax && parts.length === 1 && subj && subj.root && subj.attrs.every(([k]) => ROOT_ATTRS.includes(k)) && !subj.pseudo)

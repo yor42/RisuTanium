@@ -655,18 +655,18 @@ async function openBackupPage(c, sources, info = {}) {
   const filesRe = new RegExp(sources.map((s) => escapeRe(normText(langLiteral(s, 'backupAndFiles')))).join('|'))
   const shown = (re) => `[...document.querySelectorAll('button')].some(e => e.offsetParent && ${re.toString()}.test((e.innerText || '').trim()))`
   if (!(await c.ev(shown(saveRe)))) {
-    if (!(await c.ev(`!!document.querySelector('[data-part=settings-index-entry], [data-part=settings-page]')`))) {
+    if (!(await c.ev(`!!document.querySelector('[data-part=settings-index-entry], [data-part=settings-index-display], [data-part=settings-page]')`))) {
       // Home routes to Settings: the chat shell's footer button (ShellSidebar.svelte data-part sidebar-settings), the legacy rail's
       // Settings button (Sidebar.svelte, no data-part, wide and mid bands), or on the phone band the menu button and the drawer's Settings item
-      // (HomeTopBar.svelte data-part home-menu-button, HomeDrawer.svelte data-part home-drawer-item).
+      // (HomeTopBar.svelte data-part home-menu-button, HomeDrawer.svelte data-part home-drawer-settings).
       let route = null
       if (await clickSelector(c, '[data-part=sidebar-settings]')) route = 'sidebar-settings'
       else if (await mouseClick(c, settingsRe)) route = 'rail-button'
       // every band: the persona chip opens Settings at the Personas page (HomePersonaChip.svelte onclick openPersonaSettings, homeEmptyActions.ts)
       else if (await clickSelector(c, '[data-part=home-persona-chip]')) route = 'home-persona-chip'
       else if (await clickSelector(c, '[data-part=home-menu-button]')) {
-        await waitFor(c, `!!document.querySelector('[data-part=home-drawer-item]')`, 15000, 'the Home drawer')
-        if (!(await clickSelector(c, '[data-part=home-drawer-item]', settingsRe))) throw new Error('the Home drawer has no Settings item')
+        await waitFor(c, `!!document.querySelector('[data-part=home-drawer-settings]')`, 15000, 'the Home drawer')
+        if (!(await clickSelector(c, '[data-part=home-drawer-settings]'))) throw new Error('the Home drawer has no Settings item')
         route = 'home-drawer'
       }
       if (route === null) {
@@ -676,7 +676,7 @@ async function openBackupPage(c, sources, info = {}) {
       }
       info.settingsRoute = route
     }
-    await waitFor(c, `!!document.querySelector('[data-part=settings-index-entry], [data-part=settings-page]') || ${shown(filesRe)}`, 30000, 'the settings view')
+    await waitFor(c, `!!document.querySelector('[data-part=settings-index-entry], [data-part=settings-index-display], [data-part=settings-page]') || ${shown(filesRe)}`, 30000, 'the settings view')
     if (!(await c.ev(shown(saveRe)))) {
       const viaShell = await clickSelector(c, '[data-part=settings-index-entry][data-page=data]')
       if (!viaShell && !(await mouseClick(c, filesRe))) throw new Error('no Backup & Files entry in Settings')
