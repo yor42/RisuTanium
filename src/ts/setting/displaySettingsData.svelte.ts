@@ -12,6 +12,7 @@ import { updateTextThemeAndCSS } from '../gui/colorscheme';
 import { CustomGUISettingMenuStore } from '../stores.svelte';
 import { isTauriDesktop } from '../tauriDesktop';
 import { isAndroidTransport } from '../storage/tauriByteTransport';
+import { uiSoundsSupported } from '../uiSound/uiSoundPrefs';
 
 export const displayThemeSettingsItems: SettingItem[] = [
     {
@@ -272,6 +273,7 @@ export const displayOtherSettingsItems: SettingItem[] = [
     { id: 'display.hideAllImages', type: 'check', labelKey: 'hideAllImages', helpKey: 'hideAllImagesDesc', bindKey: 'hideAllImages', keywords: ['images', 'hide'] },
     { id: 'display.showFolderName', type: 'check', labelKey: 'showFolderNameInIcon', bindKey: 'showFolderName', keywords: ['folder', 'name', 'icon'] },
     { id: 'display.customBackground', type: 'custom', componentId: 'CustomBackgroundToggle', keywords: ['custom', 'background'] },
+    { id: 'display.uiSounds', type: 'custom', componentId: 'UiSoundsRow', condition: () => uiSoundsSupported(), keywords: ['sound', 'ui', 'sfx', 'effects'] },
     { id: 'display.playMessage', type: 'check', labelKey: 'playMessage', helpKey: 'msgSound', bindKey: 'playMessage', keywords: ['message', 'sound'] },
     { id: 'display.playMessageOnTranslateEnd', type: 'check', labelKey: 'playMessageOnTranslateEnd', bindKey: 'playMessageOnTranslateEnd', keywords: ['translate', 'sound'] },
     { id: 'display.roundIcons', type: 'check', labelKey: 'roundIcons', bindKey: 'roundIcons', keywords: ['round', 'icons'] },

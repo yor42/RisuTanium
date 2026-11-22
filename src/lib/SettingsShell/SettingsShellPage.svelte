@@ -15,6 +15,7 @@
     import HotkeySettings from '../Setting/Pages/HotkeySettings.svelte'
     import UsageStatisticsPage from '../Setting/Pages/UsageStatisticsPage.svelte'
     import AdvancedShellPage from './AdvancedShellPage.svelte'
+    import ConnectionsShellPage from './ConnectionsShellPage.svelte'
     import DataShellPage from './DataShellPage.svelte'
     import DataSheetHost from './data/DataSheetHost.svelte'
     import DisplayShellPage from './DisplayShellPage.svelte'
@@ -156,6 +157,8 @@
                     <HotkeySettings />
                 {:else if current === 17}
                     <UsageStatisticsPage />
+                {:else if current === 18 || current === 19}
+                    <ConnectionsShellPage />
                 {/if}
             </div>
         {/key}

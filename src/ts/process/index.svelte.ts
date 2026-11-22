@@ -62,7 +62,8 @@ import { hasModuleStubs } from "./moduleRefList";
 import { getSaveMarkCount, readImage } from "../globalApi.svelte";
 import { issueNativeReplyGrant, nativeReplyEligible } from "../nativeReply/grant";
 import { holdRecoveredReply, noteReplyPushed, ownsPushedReply, requestReconcile, settleNativeReplyInflight, takeAnnounced } from "../nativeReply/pageState";
-import type { ApplyOutcome, RecoveredReplyInput } from "../nativeReply/reconcile";
+import type { ApplyOutcome, RecoveredReplyInput, RecoveredStreamInput } from "../nativeReply/reconcile";
+import { settleRecoveredUsage } from "../usage/usageCapture";
 import { pluginV2 } from "../plugins/plugins.svelte";
 import { isColdChat } from "./coldstorageData";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
@@ -595,6 +596,140 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
     } finally {
         // After the push the reply is saved like any other: its mark and the waiter come first, whatever failed above.
         if(pushed){
+            markCharacterForSave(origin.chaId)
+            holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
+        }
+        handle.end()
+        doingChat.set(false)
+    }
+}
+
+/**
+ * Places a stream reply the native side received while this page could not see it (the reconcile's stream path), read
+ * from the recorded bytes. A whole body (`complete`) is written like the stream branch writes its own reply: the text is
+ * trimmed before the output scripts, with no escape and no replacers, and the same post-write chain as `applyRecoveredReply`
+ * follows. A prefix of a body (a partial) gets the output scripts and the unseen mark only, and its message keeps
+ * `interrupted`.
+ *
+ * Three cases, decided inside the `doingChat` exclusion (a running send or Continue is never written into):
+ * - the message is absent: it is appended once, with the key as its id;
+ * - it is present and still `interrupted` (the page's own partial): the text and the flag are upgraded in place, after the
+ *   flag is checked again in the stretch that writes, so an edit made during the awaits is never overwritten;
+ * - it is present and not interrupted: nothing is written; it is marked and held for the save like a written one, and the
+ *   outcome is `present`.
+ * The usage of the record is settled once, by the stretch that writes.
+ */
+export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Promise<ApplyOutcome> {
+    const { key, blob, modelText, complete, meter, how } = input
+    if(get(doingChat)){
+        recoveredApplyDeferred = true
+        return 'deferred'
+    }
+    const origin: Origin = { chaId: blob.target.chaId, chatId: blob.target.chatId }
+    const subject = createSendSubject(origin)
+    const entryCtx = subject.resolve()
+    if(!entryCtx || entryCtx.owner.type !== 'character'){
+        return 'failed'
+    }
+    // The message exists: it is awaited for its save like one this page pushed, and consumed only after that commit.
+    const holdPresent = (): ApplyOutcome => {
+        markCharacterForSave(origin.chaId)
+        holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
+        return 'present'
+    }
+    const entryIndex = entryCtx.chat.message.findIndex((message) => message.chatId === key)
+    if(entryIndex !== -1 && entryCtx.chat.message[entryIndex].interrupted !== true){
+        return holdPresent()
+    }
+    const upgrade = entryIndex !== -1
+    const currentChar = entryCtx.owner
+    const unit = new AbortController()
+    let stopped = false
+    doingChat.set(true)
+    const handle = registerWork(origin, () => {
+        stopped = true
+        unit.abort()
+    }, 'reply')
+    let written = false
+    try {
+        let head = modelText
+        if(DBState.db.removeIncompleteResponse){
+            head = trimUntilPunctuation(head)
+        }
+        const scriptIndex = upgrade ? entryIndex : entryCtx.chat.message.length
+        const scriptRef: MessageRef | null = upgrade ? { message: entryCtx.chat.message[entryIndex], index: entryIndex } : null
+        const processed = await processScriptFull(currentChar, head.trim(), 'editoutput', scriptIndex, {}, undefined, subject, scriptRef, undefined, 'bypass')
+        // The target may have gone or changed during the awaits: resolve and check again in the stretch that writes.
+        const writeCtx = subject.resolve()
+        if(stopped || !writeCtx){
+            return 'deferred'
+        }
+        const writeIndex = writeCtx.chat.message.findIndex((message) => message.chatId === key)
+        if(upgrade){
+            if(writeIndex === -1){
+                return 'deferred'
+            }
+            if(writeCtx.chat.message[writeIndex].interrupted !== true){
+                return holdPresent()
+            }
+            writeCtx.chat.message[writeIndex].data = processed.data
+            if(complete){
+                delete writeCtx.chat.message[writeIndex].interrupted
+            }
+        }
+        else{
+            if(writeIndex !== -1){
+                return holdPresent()
+            }
+            writeCtx.chat.message.push({
+                role: 'char',
+                data: processed.data,
+                saying: blob.saying,
+                time: Date.now(),
+                generationInfo: blob.generationInfo,
+                promptInfo: blob.promptInfo,
+                chatId: key,
+                ...(complete ? {} : { interrupted: true as const }),
+            })
+        }
+        writeCtx.owner.reloadKeys += 1
+        markCharacterForSave(origin.chaId)
+        written = true
+        settleRecoveredUsage(blob.usage, meter, how, modelText)
+
+        if(complete){
+            const parsedCtx = subject.resolve()
+            if(parsedCtx){
+                expandChatVariables(parsedCtx, subject, currentChar, undefined)
+                // The result of the output trigger is read for nothing: a recovered reply never asks for another request.
+                await runTrigger(currentChar, 'output', { chat: parsedCtx.chat, origin, signal: unit.signal })
+            }
+            // Only the emotion rewrite applies: an image generation tag is left as it came.
+            const inlayCtx = subject.resolve()
+            if(inlayCtx && currentChar.inlayViewScreen && currentChar.viewScreen === 'emotion'){
+                const inlayMessage = inlayCtx.chat.message.find((message) => message.chatId === key)
+                if(inlayMessage){
+                    inlayMessage.data = runInlayScreen(currentChar, inlayMessage.data).text
+                }
+            }
+            const listenerCtx = subject.resolve()
+            if(listenerCtx){
+                const messageIndex = listenerCtx.chat.message.findIndex((message) => message.chatId === key)
+                await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, messageIndex)
+            }
+        }
+        const markCtx = subject.resolve()
+        if(markCtx && !isChatOnScreen(origin)){
+            setReplyMark(origin, markCtx.chat, 'reply')
+        }
+        return 'applied'
+    } catch(error){
+        console.error(error)
+        return written ? 'applied' : 'failed'
+    } finally {
+        // After the write the reply is saved like any other: its mark and the waiter come first, whatever failed above. The
+        // target is read after the mark.
+        if(written){
             markCharacterForSave(origin.chaId)
             holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
         }

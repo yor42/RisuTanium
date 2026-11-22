@@ -119,7 +119,7 @@
         {@const studioShown = studio?.available(index) ?? false}
         <!-- The row button; with a Studio control beside it the divider line moves to the wrapper, so it runs under both. -->
         {#snippet rowButton(divided: boolean)}
-            <button class="flex p-2 border-t-darkborderc gap-2 w-full rounded-md transition-colors duration-150 hover:bg-darkbutton/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" class:border-t={divided} aria-busy={busy ? 'true' : undefined} onclick={() => {
+            <button class="flex p-2 border-t-darkborderc gap-2 w-full rounded-md transition-colors duration-150 hover:bg-darkbutton/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" class:border-t={divided} data-part="library-row" aria-busy={busy ? 'true' : undefined} onclick={() => {
                 if (onpick) {
                     onpick(index)
                     return
@@ -140,7 +140,7 @@
             </button>
         {/snippet}
         {#if studio && studioShown}
-            <div class="flex items-center gap-1 border-t-darkborderc" class:border-t={position !== 1}>
+            <div class="flex items-center gap-1 border-t-darkborderc" class:border-t={position !== 1} data-part="library-row">
                 {@render rowButton(false)}
                 <button
                     class="shrink-0 p-2 rounded-md text-textcolor2 hover:text-textcolor hover:bg-darkbutton/40 transition-colors duration-150 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected"

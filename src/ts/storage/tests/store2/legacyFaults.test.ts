@@ -32,7 +32,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 import { coldStorageHeader } from 'src/ts/process/coldstorageData'
 import type { Database } from 'src/ts/storage/database.svelte'
-import { decodeRisuSave, encodeRisuSaveLegacy, RisuSaveEncoder } from 'src/ts/storage/risuSave'
+import { decodeRisuSave, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
+import { RisuSaveEncoder } from 'src/ts/storage/tests/risuSaveEncoder'
 import { CodecInputError } from 'src/ts/storage/store2/codec'
 import { isJsonObject, toPlainJson } from 'src/ts/storage/store2/codec/normalize'
 import {

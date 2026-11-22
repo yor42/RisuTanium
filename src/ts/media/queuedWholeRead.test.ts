@@ -122,6 +122,46 @@ describe('what needs no queue', () => {
         hold.abort()
     })
 
+    test('(R) with everySize a file under 8 MiB is queued, while an unknown URL stays direct', async () => {
+        const small = await register('small', 4)
+        const hold = new AbortController()
+        expect(await awaitQueuedWholeRead(URL_OF('unknown'), hold.signal, { everySize: true })).toBe('direct')
+        expect(FakeImage.all).toHaveLength(0)
+
+        const queued = track(awaitQueuedWholeRead(small, hold.signal, { everySize: true }))
+        await flush()
+        expect(FakeImage.all.map((image) => image.src)).toEqual([small])
+        FakeImage.all[0].fire('load')
+        await flush()
+        expect(queued.value).toBe('queued')
+        hold.abort()
+    })
+
+    test('(R) with everySize small files wait behind a held 60 MiB grant until the sum fits', async () => {
+        const urls = [await register('s0', 3), await register('s1', 3)]
+        const grant = await androidWholeReadQueue().acquire(60 * MIB)
+        const hold = new AbortController()
+        const outcomes = urls.map((url) => track(awaitQueuedWholeRead(url, hold.signal, { everySize: true })))
+        await flush()
+        // 60 + 3 fits in 64 MiB; 60 + 3 + 3 does not, so the second waits.
+        expect(FakeImage.all.map((image) => image.src)).toEqual([urls[0]])
+        grant.release()
+        await flush()
+        expect(FakeImage.all.map((image) => image.src)).toEqual(urls)
+        FakeImage.all.forEach((image) => image.fire('load'))
+        await flush()
+        expect(outcomes.map((outcome) => outcome.value)).toEqual(['queued', 'queued'])
+        hold.abort()
+    })
+
+    test('off Android everySize changes nothing: direct, no registry lookup, no Image', async () => {
+        transport.android = false
+        const hold = new AbortController()
+        expect(await awaitQueuedWholeRead(URL_OF('x'), hold.signal, { everySize: true })).toBe('direct')
+        expect(lookups.wholeReadBytesOfUrl).not.toHaveBeenCalled()
+        expect(FakeImage.all).toHaveLength(0)
+    })
+
     test('off Android the registry is never consulted, so a large data: URL is never hashed', async () => {
         transport.android = false
         const hold = new AbortController()

@@ -35,11 +35,54 @@ export function hasSilencedFor(signal: AbortSignal | undefined): boolean {
     return signal !== undefined && silencedFor.has(signal)
 }
 
+// The sends that ended failed, a subset of `silencedFor`: the composer plays the error cue for these and none for a stopped one.
+const failedFor = new WeakSet<AbortSignal>()
+
+/** Whether the send that was started with this signal ended failed (not stopped). */
+export function hasFailedFor(signal: AbortSignal | undefined): boolean {
+    return signal !== undefined && failedFor.has(signal)
+}
+
 /** Records how a send ended, on screen or off: a failed or stopped one silences the composer's chime, any other outcome does not. */
 export function noteReplySound(signal: AbortSignal | undefined, outcome: ReplyOutcome): void {
     if (signal !== undefined && (outcome === 'failed' || outcome === 'stopped')) {
         silencedFor.add(signal)
+        if (outcome === 'failed') {
+            failedFor.add(signal)
+        }
     }
+}
+
+/** What `sendChatMain` knows of one finished send. */
+export interface ReplySoundFacts {
+    completed: boolean
+    threw: boolean
+    aborted: boolean
+    failed: boolean
+    silenced: boolean
+    chimed: boolean
+    playMessage: boolean
+}
+
+/**
+ * The one sound a send's end makes, from the composer. Stopped plays nothing; a throw or a failed outcome plays the error cue;
+ * a reply the notice already sounded (or a silenced one) adds nothing; the `playMessage` chime wins over the receive cue, so one
+ * reply never plays both.
+ */
+export function replySoundFor(facts: ReplySoundFacts): 'chime' | 'receive' | 'error' | null {
+    if (facts.aborted) {
+        return null
+    }
+    if (facts.threw || facts.failed) {
+        return 'error'
+    }
+    if (facts.silenced || facts.chimed) {
+        return null
+    }
+    if (facts.playMessage) {
+        return 'chime'
+    }
+    return facts.completed ? 'receive' : null
 }
 
 // The avatar code reads the character database and the thumbnail store, so it is loaded where the page runs in the
@@ -182,16 +225,16 @@ export function announceReply(announcement: ReplyAnnouncement | null, callerSign
         if (announcement.dialogRaised) {
             return
         }
-        postToast({ kind: 'error', text: fillLang(language.replyFailedElsewhere, { name: names.owner }), sub })
+        postToast({ kind: 'error', text: fillLang(language.replyFailedElsewhere, { name: names.owner }), sub, cue: null })
         return
     }
     if (announcement.outcome === 'stopped') {
-        postToast({ kind: 'warning', text: fillLang(language.replyStoppedElsewhere, { name: names.owner }), sub })
+        postToast({ kind: 'warning', text: fillLang(language.replyStoppedElsewhere, { name: names.owner }), sub, cue: null })
         return
     }
     const title = fillLang(language.replyFinishedElsewhere, { name: names.owner })
     if (nativeAnnounced) {
-        postToast({ kind: 'info', text: title, sub })
+        postToast({ kind: 'info', text: title, sub, cue: null })
         if (callerSignal !== undefined) {
             chimedFor.add(callerSignal)
         }
@@ -204,7 +247,7 @@ export function announceReply(announcement: ReplyAnnouncement | null, callerSign
     if (visible || !systemSounds) {
         playPageChime()
     }
-    postToast({ kind: 'info', text: title, sub })
+    postToast({ kind: 'info', text: title, sub, cue: null })
     if (android) {
         const key = replyNotificationKey(announcement.origin)
         void prepareReplyNoticeAvatar()

@@ -10,7 +10,7 @@ import { planAssets, type AssetPlanDeps, type CreatableRule, type SizedListing }
 import { verifyRtb } from 'src/ts/drive/rtb/rtbVerify'
 import type { RangeSource } from 'src/ts/drive/rtb/rangeSource'
 import type { SideBackends } from 'src/ts/drive/rtb/sideStores'
-import type { ForageStoreConfig } from 'src/ts/drive/rtb/sideStoreConfig'
+import { RESTORED_KEYS_STORE, type ForageStoreConfig } from 'src/ts/drive/rtb/sideStoreConfig'
 import type { RtbCopyPlan } from 'src/ts/drive/rtbRestoreCopy'
 import type { RtbFinishPlan } from 'src/ts/drive/rtbRestoreFinish'
 import type { Committer } from 'src/ts/storage/store2/commit'
@@ -250,6 +250,35 @@ export interface SideFakes {
     backends: SideBackends
     storage: FakeStorage
     forage(config: ForageStoreConfig): FakeForage
+}
+
+/** A staging store that logs every write to one shared `ops` list as `set:<key>` or `clear`, so a test can place a commit marker among them. */
+export class StagingForage extends FakeForage {
+    constructor(private readonly ops: string[]) {
+        super()
+    }
+
+    override async setItem(key: string, value: unknown): Promise<unknown> {
+        this.ops.push(`set:${key}`)
+        return await super.setItem(key, value)
+    }
+
+    override async clear(): Promise<void> {
+        this.ops.push('clear')
+        await super.clear()
+    }
+}
+
+/** The eight side stores in memory, with `staging` standing for the connection-key staging store. */
+export function stagingSideBackends(staging: StagingForage, stageWrap?: SideBackends['stageWrap']): SideBackends {
+    const fakes = sideFakes()
+    return {
+        forage: (config) => config.name === RESTORED_KEYS_STORE.name
+            ? staging as unknown as ReturnType<SideBackends['forage']>
+            : fakes.backends.forage(config),
+        local: fakes.backends.local,
+        stageWrap,
+    }
 }
 
 /** The eight side stores in memory, so a restore can be read back. */

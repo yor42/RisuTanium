@@ -378,7 +378,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 //#endregion
 
 import { prepareSaveIteration, type PrepareSaveIterationOptions } from '../../../src/ts/globalApi.svelte'
-import { RisuSaveEncoder, type toSaveType } from '../../../src/ts/storage/risuSave'
+import { type toSaveType } from '../../../src/ts/storage/risuSave'
+import { RisuSaveEncoder } from '../../../src/ts/storage/tests/risuSaveEncoder'
 import {
     installCharacterSaveMarks,
     markCharacterForSave,

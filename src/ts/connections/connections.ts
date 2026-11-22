@@ -12,13 +12,16 @@ export type ConnectionProvider =
 /**
  * One stored credential. `key` stays a plain string: multi-line rotation lists and `${NAME}`
  * references pass through verbatim. `url` is used only by `reverse_proxy` and `custom`.
- * `options` is reserved and never written.
+ * `options` is reserved and never written. `keyWrapped` is an opaque Keystore envelope of the key,
+ * present only with `key === ''` (a both-set connection is a transient state whose plain `key` wins);
+ * it is read and written only through keyAccess.
  */
 export type Connection = {
     id: string
     name: string
     provider: ConnectionProvider
     key: string
+    keyWrapped?: string
     url?: string
     options?: { [k: string]: string | number | boolean }
 }

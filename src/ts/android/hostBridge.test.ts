@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createHostChannelFake } from './hostChannelFake'
-import { connectHostBridge, gestureInsetLeft, hasOpenedFilesHost, hostChannelPresent, hostIme, hostRequest, keepAliveHost, openedFilesTake, replyNotificationsHost, systemBarsHost } from './hostBridge'
+import { connectHostBridge, gestureInsetLeft, hasOpenedFilesHost, hostChannelPresent, hostIme, hostRequest, hostTouchExploration, keepAliveHost, openedFilesTake, replyNotificationsHost, systemBarsHost } from './hostBridge'
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -21,13 +21,15 @@ afterEach(() => {
     delete window.__risuTaniumGestureInset
     delete window.__risuTaniumOpenedFilesHost
     delete window.__risuTaniumIme
+    delete window.__risuTaniumAccessibility
     // Lets go of the last channel so the next case starts unbound.
     connectHostBridge()
     vi.restoreAllMocks()
 })
 
 describe('binding the channel', () => {
-    test('the host is asked for the gesture inset and the keyboard state once per channel object, however often the adapter is used', () => {
+    // T23: the touch-exploration subscribe goes out once per channel object.
+    test('the host is asked for the gesture inset, the keyboard state and touch exploration once per channel object, however often the adapter is used', () => {
         const fake = createHostChannelFake()
         window.__risuTaniumHost = fake.channel
         connectHostBridge()
@@ -38,6 +40,7 @@ describe('binding the channel', () => {
         expect(fake.posted()).toEqual([
             { bridge: 'gestureInset', method: 'subscribe', args: [] },
             { bridge: 'ime', method: 'subscribe', args: [] },
+            { bridge: 'accessibility', method: 'subscribe', args: [] },
         ])
         expect(fake.listeners()).toBe(1)
     })
@@ -227,6 +230,66 @@ describe('the gesture inset over the channel', () => {
         window.__risuTaniumGestureInset = { left }
         expect(gestureInsetLeft()).toBe(0)
         expect(left).not.toHaveBeenCalled()
+    })
+})
+
+describe('touch exploration (TalkBack)', () => {
+    // T23/T25 channel half: unknown until the first push, booleans only, cleared on release; hostTouchExploration binds by itself.
+    test('over the channel it is null until pushed, follows booleans and ignores anything else', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        expect(hostTouchExploration()).toBeNull()
+        expect(fake.postedTo('accessibility', 'subscribe')).toHaveLength(1)
+        fake.deliver('{"event":"touchExploration","enabled":true}')
+        expect(hostTouchExploration()).toBe(true)
+        fake.deliver('{"event":"touchExploration","enabled":"false"}')
+        fake.deliver('{"event":"touchExploration","enabled":0}')
+        fake.deliver('{"event":"touchExploration"}')
+        expect(hostTouchExploration()).toBe(true)
+        fake.deliver('{"event":"touchExploration","enabled":false}')
+        expect(hostTouchExploration()).toBe(false)
+    })
+
+    test('hostTouchExploration alone binds the channel, as the other host getters do', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        hostTouchExploration()
+        expect(fake.listeners()).toBe(1)
+    })
+
+    test('a replaced or released channel clears the value', () => {
+        const first = createHostChannelFake()
+        window.__risuTaniumHost = first.channel
+        connectHostBridge()
+        first.deliver('{"event":"touchExploration","enabled":true}')
+        const second = createHostChannelFake()
+        window.__risuTaniumHost = second.channel
+        expect(hostTouchExploration()).toBeNull()
+        second.deliver('{"event":"touchExploration","enabled":true}')
+        delete window.__risuTaniumHost
+        expect(hostTouchExploration()).toBeNull()
+    })
+
+    // T25: the separate object, read on each call and narrowed to a boolean.
+    test('without a channel the separate object answers, narrowed to a boolean', () => {
+        expect(hostTouchExploration()).toBeNull()
+        let answer: unknown = true
+        window.__risuTaniumAccessibility = { touchExploration: () => answer }
+        expect(hostTouchExploration()).toBe(true)
+        answer = false
+        expect(hostTouchExploration()).toBe(false)
+        answer = 'true'
+        expect(hostTouchExploration()).toBeNull()
+        window.__risuTaniumAccessibility = { touchExploration: () => { throw new Error('bridge failed') } }
+        expect(hostTouchExploration()).toBeNull()
+    })
+
+    test('guard: with a channel the separate object is not consulted', () => {
+        const touchExploration = vi.fn(() => true)
+        window.__risuTaniumHost = createHostChannelFake().channel
+        window.__risuTaniumAccessibility = { touchExploration }
+        expect(hostTouchExploration()).toBeNull()
+        expect(touchExploration).not.toHaveBeenCalled()
     })
 })
 

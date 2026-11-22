@@ -39,8 +39,9 @@ vi.mock('../../ts/persona', () => ({
     readPersonaFiles: vi.fn(async () => []),
     addPersonasFromPng: vi.fn(async () => []),
 }))
+const lookupGet = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => 'background-image: none'))
 vi.mock('../../ts/media/charImageLookups', () => ({
-    useCharImageLookups: () => ({ get: async () => 'background-image: none', getIf: () => null, dispose: () => {} }),
+    useCharImageLookups: () => ({ get: lookupGet, getIf: () => null, dispose: () => {} }),
 }))
 vi.mock('../../ts/toast/toastHost.svelte', () => ({ postToast: vi.fn(), postUndoToast: vi.fn() }))
 vi.mock('../Nexus/pattern/patternWarning', async (importOriginal) => ({
@@ -190,6 +191,19 @@ afterEach(async () => {
 })
 
 describe('cards (P1, P14)', () => {
+    test('(R) #450: card icons are list rows that queue every size; the editor icon is a single image', async () => {
+        lookupGet.mockClear()
+        seed([persona('a', 'Ann', { icon: 'assets/ann.webp' }), persona('b', 'Bob', { icon: 'assets/bob.webp' })])
+        mountPage()
+        await settle()
+        const cardCalls = lookupGet.mock.calls.filter((call) => String(call[0]).startsWith('persona:'))
+        expect(cardCalls.map((call) => call[1]).sort()).toEqual(['assets/ann.webp', 'assets/bob.webp'])
+        expect(cardCalls.every((call) => (call[3] as { everySize?: boolean } | undefined)?.everySize === true)).toBe(true)
+        const editorCalls = lookupGet.mock.calls.filter((call) => call[0] === 'persona-editor')
+        expect(editorCalls.length).toBeGreaterThan(0)
+        expect(editorCalls.every((call) => call[3] === undefined)).toBe(true)
+    })
+
     test('each persona is a list item with one primary button, its note, its count and the in-use mark', () => {
         seed([persona('a', 'Ann'), persona('b', 'Bob'), persona('c', 'Cy')], 0, [
             { name: 'X', chats: [{ name: 'one', bindedPersona: 'b' }, { name: 'two', bindedPersona: 'b' }, { name: 'three' }] },

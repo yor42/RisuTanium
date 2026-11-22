@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import {
     assembleDatabase, bucketOfKey, groupKeysIntoBuckets, planScopedEncode, previousFrom, unitsToWrite,
-    type EncodedTree, type EncodeOptions, type EncodeScope, type ListDerivation, type PreviousEncoding, type ScopedPlan,
+    type EncodedTree, type EncodedUnit, type EncodeOptions, type EncodeScope, type ListDerivation, type PreviousEncoding, type ScopedPlan,
 } from '../../store2/codec'
 import { createKeyMint, type BuildContext } from '../../store2/commit'
 import { keyOfRef } from '../../store2/format'
@@ -131,6 +131,57 @@ function configFieldsOf(tree: EncodedTree, ...earlier: EncodedTree[]): Obj {
 
 function isWritten(tree: EncodedTree, identity: string): boolean {
     return tree.units.some(unit => unit.identity === identity && unit.reused === false)
+}
+
+/** A workspace file as `commitWorkspaceChange` produces it: the size is the UTF-8 byte length of the text. */
+function workspaceFile(id: string, path: string, text: string): Obj {
+    return { id, path, text, size: new TextEncoder().encode(text).length, mtime: 1_700_000_000_000 }
+}
+
+function workspaceOf(id: string, name: string, files: Obj[]): Obj {
+    return { id, name, createdAt: 1, files }
+}
+
+function withWorkspaces(db: Database, list: Obj[]): Database {
+    return live(db, (o) => {
+        o.utilityWorkspaces = list
+    })
+}
+
+const refHead = (ref: readonly unknown[]): string => ref.slice(0, 3).join(':')
+
+/**
+ * Every `plugin:`, `ws:` and `wsf:` identity of the tree's index is named by the manifest (a plugin ref, a workspace ref,
+ * or a file ref of a named workspace record), and every name has such an index entry. An unnamed index entry can be
+ * collected and later reused by digest, which leaves an incomplete tree.
+ */
+function expectFrontIndexNamed(tree: EncodedTree, ...earlier: EncodedTree[]): void {
+    const named = new Set<string>()
+    for (const ref of tree.manifest.fixed.plugins) {
+        named.add(refHead(ref))
+    }
+    const records = [...tree.index.units].filter(([identity]) => identity.startsWith('ws:'))
+    for (const ref of tree.manifest.fixed.workspaces ?? []) {
+        named.add(refHead(ref))
+        const hit = records.find(([, unit]) => refHead(unit.ref) === refHead(ref))
+        expect(hit, 'a named workspace record has an index entry').toBeDefined()
+        const [identity, unit] = hit as [string, (typeof records)[number][1]]
+        const record: EncodedUnit = { identity, key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest ?? '', reused: true }
+        const body = bodyIn(record, tree, ...earlier) as unknown as { files: Array<{ ref: readonly unknown[] }> }
+        for (const file of body.files) {
+            named.add(refHead(file.ref))
+        }
+    }
+    const indexed = new Set<string>()
+    for (const [identity, unit] of tree.index.units) {
+        if (/^(plugin|ws|wsf):/.test(identity)) {
+            expect(named.has(refHead(unit.ref)), `${identity} is named by the manifest`).toBe(true)
+            indexed.add(refHead(unit.ref))
+        }
+    }
+    for (const head of named) {
+        expect(indexed.has(head), `the name ${head} has an index entry`).toBe(true)
+    }
 }
 
 describe('C1 a module the pass cannot read is skipped and its saved copy is carried', () => {
@@ -441,6 +492,9 @@ describe('C9 compatibility guard: an import, which names no flag, still refuses 
         ['a cyclic loadout', (o) => { o.loadouts = [{ name: 'Loadout X', cycle: cyclic() }] }],
         ['a BigInt statics counter', (o) => { (o.statics as Obj).messages = 10n }],
         ['a cyclic character-order folder', (o) => { o.characterOrder = [{ name: 'Folder', data: [], cycle: cyclic() }] }],
+        ['a cyclic plugin', (o) => { (o.plugins as Obj[])[0].cycle = cyclic() }],
+        ['a BigInt in pluginV2', (o) => { (o.pluginV2 as Obj[])[0].big = 10n }],
+        ['a cyclic workspace file', (o) => { o.utilityWorkspaces = [workspaceOf('w1', 'Notes', [{ ...workspaceFile('f1', 'a.md', 'text'), cycle: cyclic() }])] }],
     ]
 
     test.each(CASES)('%s fails the pass with the input error and no skip record', async (_label, mutate) => {
@@ -597,15 +651,31 @@ describe('presets are held whole, bot and task separately', () => {
         expect(failure?.name).toBe('CodecInputError')
     })
 
-    test('C13c compatibility guard: a cyclic plugin is not skippable and fails the pass', async () => {
+    test('C13c reproducer: a cyclic plugin holds its list at the acknowledged plugins over two passes', async () => {
         const rig = makeRig(295, 11050)
         const base = profile()
         const first = await acknowledged(rig, base)
-        const next = live(base, (o) => {
+        const ack = first.tree.manifest.fixed.plugins
+        const bad = live(base, (o) => {
             (o.plugins as Obj[])[0].cycle = cyclic()
         })
-        const failure = await failureOf(() => rig.pass(next, first.previous, FULL))
-        expect(failure?.name).toBe('CodecInputError')
+        const second = await rig.pass(bad, first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'plugins', key: 'plugins', saved: true }])
+        expect(second.plan.carried.items).toEqual(['"Plugin 0"'])
+        expect(second.tree.manifest.fixed.plugins).toEqual(ack)
+        const afterSecond = previousFrom(second.tree)
+        ack.forEach((ref, index) => {
+            const identity = index < 3 ? `plugin:plugins:${index}` : `plugin:pluginV2:${index - 3}`
+            expect(afterSecond.units.get(identity)?.ref.slice(0, 3), identity).toEqual(ref.slice(0, 3))
+        })
+        expect(bodyOfIdentity(first.tree, 'il:config').x).toBeUndefined()
+        expect(bodyOfIdentity(second.tree, 'il:config', first.tree).x).toBe(true)
+        expectFrontIndexNamed(second.tree, first.tree)
+
+        const third = await rig.pass(bad, afterSecond, FULL)
+        expect(third.tree.manifest.fixed.plugins).toEqual(ack)
+        expect(briefOf(third.plan)).toEqual([{ scope: 'plugins', key: 'plugins', saved: true }])
+        expectFrontIndexNamed(third.tree, first.tree, second.tree)
     })
 
     test('C14 reproducer: while the bot list is held the saved selection names no stored preset', async () => {
@@ -895,5 +965,292 @@ describe('K6 and K7 compatibility guards: without a saved value to keep the faul
         expect(statics).toBeDefined()
         const failure = await failureOf(() => rig.pass(live(db, FIXED_FAULTS[1][1]), { ...first.previous, objects: rest }, FULL))
         expect(failure?.name).toBe('CodecInputError')
+    })
+})
+
+describe('plugins and workspaces the pass cannot read are held whole, like the other kinds', () => {
+    const newPlugin = (name: string): Obj => ({
+        name, displayName: `Plugin ${name}`, script: 'x', arguments: {}, realArg: {}, version: 2, customLink: [], argMeta: {}, enabled: true,
+    })
+    const pluginList = (o: Obj, list: 'plugins' | 'pluginV2'): Obj[] => o[list] as Obj[]
+    const filesOf = (o: Obj, workspace: number): Obj[] => (o.utilityWorkspaces as Obj[])[workspace].files as Obj[]
+    const notes = (): Obj[] => [workspaceOf('w1', 'Notes', [workspaceFile('f1', 'a.md', 'alpha'), workspaceFile('f2', 'b.md', 'beta')])]
+    const twoWorkspaces = (): Obj[] => [
+        ...notes(),
+        workspaceOf('w10', 'Other', [workspaceFile('g1', 'c.md', 'gamma'), workspaceFile('g2', 'd.md', 'delta')]),
+    ]
+    const headsOf = (tree: EncodedTree, identity: string): unknown[] | undefined => tree.index.units.get(identity)?.ref.slice(0, 3)
+
+    test('P1 reproducer: a cyclic pluginV2 plugin holds pluginV2 while plugins save with their edit, and a fix saves both', async () => {
+        const rig = makeRig(600, 13000)
+        const first = await acknowledged(rig, profile())
+        const ack = first.tree.manifest.fixed.plugins
+        const edited = (bad: boolean): Database => live(profile(), (o) => {
+            pluginList(o, 'plugins')[1].displayName = 'Edited'
+            if (bad) {
+                pluginList(o, 'pluginV2')[0].cycle = cyclic()
+            }
+        })
+        const second = await rig.pass(edited(true), first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'plugins', key: 'pluginV2', saved: true }])
+        expect(second.plan.carried.items).toEqual(['"Plugin 99"'])
+        expect(isWritten(second.tree, 'plugin:plugins:1')).toBe(true)
+        expect(second.tree.manifest.fixed.plugins.slice(3)).toEqual(ack.slice(3))
+        expect(second.tree.manifest.fixed.plugins[1]).not.toEqual(ack[1])
+        expect(bodyOfIdentity(second.tree, 'il:config', first.tree).x).toBe(true)
+        expectFrontIndexNamed(second.tree, first.tree)
+
+        const fixed = await rig.pass(edited(false), previousFrom(second.tree), FULL)
+        expect(fixed.plan.skippedItems).toEqual([])
+        expect(bodyOfIdentity(fixed.tree, 'il:config', first.tree, second.tree).x).toBeUndefined()
+        expectFrontIndexNamed(fixed.tree, first.tree, second.tree)
+    })
+
+    test('P4a reproducer: pluginV2 held while plugins lose their last entry keeps the acknowledged pluginV2 refs and no stale plugin identity', async () => {
+        const rig = makeRig(601, 13010)
+        const first = await acknowledged(rig, profile())
+        const ack = first.tree.manifest.fixed.plugins
+        const next = live(profile(), (o) => {
+            pluginList(o, 'plugins').pop()
+            pluginList(o, 'pluginV2')[0].cycle = cyclic()
+        })
+        const second = await rig.pass(next, first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'plugins', key: 'pluginV2', saved: true }])
+        const refs = second.tree.manifest.fixed.plugins
+        expect(refs).toHaveLength(3)
+        expect(refs.slice(0, 2)).toEqual(ack.slice(0, 2))
+        expect(refs.slice(2)).toEqual(ack.slice(3))
+        expect((bodyOfIdentity(second.tree, 'plugin:plugins:1', first.tree).plugin as Obj).name).toBe('plugin-1')
+        const afterSecond = previousFrom(second.tree)
+        expect(afterSecond.units.has('plugin:plugins:2')).toBe(false)
+        expect(headsOf(second.tree, 'plugin:pluginV2:0')).toEqual(ack[3].slice(0, 3))
+        expectFrontIndexNamed(second.tree, first.tree)
+        const third = await rig.pass(next, afterSecond, FULL)
+        expect(third.tree.manifest.fixed.plugins).toEqual(refs)
+        expectFrontIndexNamed(third.tree, first.tree, second.tree)
+    })
+
+    test('P4b reproducer: pluginV2 held while plugins gain a plugin keeps the acknowledged pluginV2 ref', async () => {
+        const rig = makeRig(602, 13020)
+        const first = await acknowledged(rig, profile())
+        const ack = first.tree.manifest.fixed.plugins
+        const next = live(profile(), (o) => {
+            pluginList(o, 'plugins').push(newPlugin('appended'))
+            pluginList(o, 'pluginV2')[0].cycle = cyclic()
+        })
+        const second = await rig.pass(next, first.previous, FULL)
+        const refs = second.tree.manifest.fixed.plugins
+        expect(refs).toHaveLength(5)
+        expect(refs.slice(0, 3)).toEqual(ack.slice(0, 3))
+        expect(refs[4]).toEqual(ack[3])
+        expect((bodyOfIdentity(second.tree, 'plugin:plugins:3').plugin as Obj).name).toBe('appended')
+        expectFrontIndexNamed(second.tree, first.tree)
+        const third = await rig.pass(next, previousFrom(second.tree), FULL)
+        expectFrontIndexNamed(third.tree, first.tree, second.tree)
+    })
+
+    test('P4m reproducer: plugins held whose live length differs from the acknowledged one, while pluginV2 gains a plugin', async () => {
+        const rig = makeRig(603, 13030)
+        const first = await acknowledged(rig, profile())
+        const ack = first.tree.manifest.fixed.plugins
+        const next = live(profile(), (o) => {
+            const plugins = pluginList(o, 'plugins')
+            plugins.splice(0, 0, newPlugin('front'))
+            plugins[3].cycle = cyclic()
+            pluginList(o, 'pluginV2').push(newPlugin('v2-appended'))
+        })
+        const second = await rig.pass(next, first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'plugins', key: 'plugins', saved: true }])
+        const refs = second.tree.manifest.fixed.plugins
+        expect(refs).toHaveLength(5)
+        expect(refs.slice(0, 3)).toEqual(ack.slice(0, 3))
+        expect(refs[3]).toEqual(ack[3])
+        expect((bodyOfIdentity(second.tree, 'plugin:pluginV2:1').plugin as Obj).name).toBe('v2-appended')
+        expect(previousFrom(second.tree).units.has('plugin:plugins:3')).toBe(false)
+        expectFrontIndexNamed(second.tree, first.tree)
+        const third = await rig.pass(next, previousFrom(second.tree), FULL)
+        expectFrontIndexNamed(third.tree, first.tree, second.tree)
+    })
+
+    test('P2 reproducer: the first pass after a boot carries the held plugin list', async () => {
+        const rig = makeRig(604, 13040)
+        const first = await acknowledged(rig, profile())
+        const next = live(profile(), (o) => {
+            pluginList(o, 'plugins')[0].cycle = cyclic()
+        })
+        const second = await rig.pass(next, rig.boot(first.tree), FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'plugins', key: 'plugins', saved: true }])
+        expect(second.tree.manifest.fixed.plugins).toEqual(first.tree.manifest.fixed.plugins)
+        expectFrontIndexNamed(second.tree, first.tree)
+    })
+
+    test('P3 reproducer: an acknowledged empty pluginV2 is carried as the empty list', async () => {
+        const rig = makeRig(605, 13050)
+        const base = live(profile(), (o) => {
+            o.pluginV2 = []
+        })
+        const first = await acknowledged(rig, base)
+        const next = live(base, (o) => {
+            o.pluginV2 = [{ ...newPlugin('fresh'), cycle: cyclic() }]
+        })
+        const second = await rig.pass(next, first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'plugins', key: 'pluginV2', saved: true }])
+        expect(second.tree.manifest.fixed.plugins).toEqual(first.tree.manifest.fixed.plugins)
+        expectFrontIndexNamed(second.tree, first.tree)
+    })
+
+    test('P5 reproducer: a plugin that is not an object holds its list and is named by its position', async () => {
+        const rig = makeRig(606, 13060)
+        const first = await acknowledged(rig, profile())
+        const next = live(profile(), (o) => {
+            o.pluginV2 = [null]
+        })
+        const second = await rig.pass(next, first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'plugins', key: 'pluginV2', saved: true }])
+        expect(second.plan.carried.items).toEqual(['"pluginV2[0]"'])
+        expect(second.tree.manifest.fixed.plugins).toEqual(first.tree.manifest.fixed.plugins)
+    })
+
+    test('G1 compatibility guard (passes before and after): a plugin list the previous encoding cannot attribute still fails the pass', async () => {
+        const rig = makeRig(607, 13070)
+        const first = await acknowledged(rig, profile())
+        const next = live(profile(), (o) => {
+            pluginList(o, 'pluginV2')[0].cycle = cyclic()
+        })
+        const hidden = rig.boot(first.tree, [first.tree.index.units.get('plugin:plugins:1')?.key as string])
+        const removed = new Map(first.previous.units)
+        expect(removed.delete('plugin:plugins:0')).toBe(true)
+        const { objects, ...withoutObjects } = first.previous
+        expect(objects).toBeDefined()
+        for (const previous of [hidden, { ...first.previous, units: removed }, withoutObjects]) {
+            const failure = await failureOf(() => rig.pass(next, previous, FULL))
+            expect(failure?.name).toBe('CodecInputError')
+        }
+    })
+
+    test('W1 reproducer: a cyclic file holds its whole workspace, the id w10 next to w1 is not confused, and a fix saves the edited file', async () => {
+        const rig = makeRig(610, 13100)
+        const base = withWorkspaces(profile(), twoWorkspaces())
+        const first = await acknowledged(rig, base)
+        const edited = (bad: boolean): Database => live(base, (o) => {
+            filesOf(o, 1).splice(1, 1)
+            if (bad) {
+                filesOf(o, 0)[0].cycle = cyclic()
+            } else {
+                filesOf(o, 0)[0] = workspaceFile('f1', 'a.md', 'alpha fixed')
+            }
+        })
+        const second = await rig.pass(edited(true), first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'workspaces', key: 'ws:w1', saved: true }])
+        expect(second.plan.carried.items).toEqual(['"Notes"'])
+        expect(second.tree.manifest.fixed.workspaces?.[0]).toEqual(first.tree.manifest.fixed.workspaces?.[0])
+        const afterSecond = previousFrom(second.tree)
+        for (const identity of ['ws:w1', 'wsf:w1:f1', 'wsf:w1:f2']) {
+            expect(afterSecond.units.get(identity)?.ref.slice(0, 3), identity).toEqual(headsOf(first.tree, identity))
+        }
+        expect(afterSecond.units.has('wsf:w10:g2')).toBe(false)
+        expect(isWritten(second.tree, 'ws:w10')).toBe(true)
+        expectFrontIndexNamed(second.tree, first.tree)
+
+        const third = await rig.pass(edited(true), afterSecond, FULL)
+        expect(briefOf(third.plan)).toEqual([{ scope: 'workspaces', key: 'ws:w1', saved: true }])
+        expect(third.tree.manifest.fixed.workspaces?.[0]).toEqual(first.tree.manifest.fixed.workspaces?.[0])
+        expectFrontIndexNamed(third.tree, first.tree, second.tree)
+
+        const fixed = await rig.pass(edited(false), previousFrom(third.tree), FULL)
+        expect(fixed.plan.skippedItems).toEqual([])
+        expect(isWritten(fixed.tree, 'wsf:w1:f1')).toBe(true)
+        expectFrontIndexNamed(fixed.tree, first.tree, second.tree, third.tree)
+    })
+
+    test('W2 reproducer: the first pass after a boot carries the held workspace', async () => {
+        const rig = makeRig(611, 13110)
+        const base = withWorkspaces(profile(), twoWorkspaces())
+        const first = await acknowledged(rig, base)
+        const next = live(base, (o) => {
+            filesOf(o, 0)[1].cycle = cyclic()
+        })
+        const second = await rig.pass(next, rig.boot(first.tree), FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'workspaces', key: 'ws:w1', saved: true }])
+        expect(second.tree.manifest.fixed.workspaces?.[0]).toEqual(first.tree.manifest.fixed.workspaces?.[0])
+        expectFrontIndexNamed(second.tree, first.tree)
+    })
+
+    test('W3 reproducer: a workspace never saved is left out and the pass lands', async () => {
+        const rig = makeRig(612, 13120)
+        const first = await acknowledged(rig, profile())
+        const next = live(profile(), (o) => {
+            o.utilityWorkspaces = [workspaceOf('w9', 'Fresh', [{ ...workspaceFile('f1', 'a.md', 'x'), cycle: cyclic() }])]
+        })
+        const second = await rig.pass(next, first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'workspaces', key: 'ws:w9', saved: false }])
+        expect(second.tree.manifest.fixed.workspaces ?? []).toEqual([])
+        expect(second.tree.index.units.has('ws:w9')).toBe(false)
+        expectFrontIndexNamed(second.tree, first.tree)
+    })
+
+    const UNREADABLE_IDS: Array<[string, (ws: Obj) => void]> = [
+        ['a BigInt id', (ws) => { ws.id = 10n }],
+        ['a missing id', (ws) => { delete ws.id }],
+        ['an id with a colon', (ws) => { ws.id = 'w1:x' }],
+        ['an empty id', (ws) => { ws.id = '' }],
+    ]
+
+    test.each(UNREADABLE_IDS)('G2 compatibility guard (passes before and after): a faulted workspace with %s fails the pass and the saved workspace is not dropped', async (_label, breakId) => {
+        const rig = makeRig(613, 13130)
+        const base = withWorkspaces(profile(), notes())
+        const first = await acknowledged(rig, base)
+        const next = live(base, (o) => {
+            const ws = (o.utilityWorkspaces as Obj[])[0]
+            ws.cycle = cyclic()
+            breakId(ws)
+        })
+        const failure = await failureOf(() => rig.pass(next, first.previous, FULL))
+        expect(failure?.name).toBe('CodecInputError')
+    })
+
+    test.each([['the faulted workspace first', 0], ['the readable workspace first', 1]])('G2 compatibility guard (passes before and after): a repeated workspace id fails the pass with %s', async (_label, faulted) => {
+        const rig = makeRig(614, 13140)
+        const base = withWorkspaces(profile(), twoWorkspaces())
+        const first = await acknowledged(rig, base)
+        const next = live(base, (o) => {
+            const list = o.utilityWorkspaces as Obj[]
+            list[1].id = 'w1'
+            list[faulted].cycle = cyclic()
+        })
+        const failure = await failureOf(() => rig.pass(next, first.previous, FULL))
+        expect(failure?.name).toBe('CodecInputError')
+    })
+
+    test('G3 compatibility guard (passes before and after): with no previous encoding a cyclic plugin or workspace fails the pass', async () => {
+        const rig = makeRig(615, 13150)
+        const plugin = live(profile(), (o) => {
+            pluginList(o, 'plugins')[0].cycle = cyclic()
+        })
+        const workspace = withWorkspaces(profile(), notes())
+        const bad = live(workspace, (o) => {
+            filesOf(o, 0)[0].cycle = cyclic()
+        })
+        for (const db of [plugin, bad]) {
+            const failure = await failureOf(() => rig.pass(db, null, FULL))
+            expect(failure?.name).toBe('CodecInputError')
+        }
+    })
+
+    test('G5 compatibility guard (passes before and after): valid plugins and workspaces give the same bytes with the flag on and off', async () => {
+        const db = withWorkspaces(profile(), twoWorkspaces())
+        const offRig = makeRig(616, 13160)
+        const off = await offRig.pass(db, null, { modules: true, characters: 'all' })
+        const offAgain = await offRig.pass(db, previousFrom(off.tree), { modules: true, characters: 'all' })
+        const onRig = makeRig(616, 13160)
+        const on = await onRig.pass(db, null, FULL)
+        const onAgain = await onRig.pass(db, previousFrom(on.tree), FULL)
+        for (const [a, b] of [[off.tree, on.tree], [offAgain.tree, onAgain.tree]]) {
+            expect(b.units.map(unit => unit.identity)).toEqual(a.units.map(unit => unit.identity))
+            a.units.forEach((unit, index) => {
+                expect(b.units[index].key, unit.identity).toBe(unit.key)
+                expect(b.units[index].digest, unit.identity).toBe(unit.digest)
+            })
+        }
     })
 })

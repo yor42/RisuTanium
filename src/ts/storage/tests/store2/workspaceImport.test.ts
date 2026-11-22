@@ -18,7 +18,8 @@ import { startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/st
 import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
 import { assembleDatabase } from 'src/ts/storage/store2/codec'
 import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
-import type { Manifest } from 'src/ts/storage/store2/format'
+import { keyOfRef, readUnit, UNIT_TYPE, type Manifest, type WorkspaceRecord } from 'src/ts/storage/store2/format'
+import { markLiveKeys } from 'src/ts/storage/store2/gc/mark'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Committer } from 'src/ts/storage/store2/commit'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -29,7 +30,7 @@ vi.setConfig({ testTimeout: 60_000 })
 type ImportStreamModule = typeof import('src/ts/storage/store2/legacy/importStream')
 
 /** The arm the running test is in, and what the streamed prepare decided in it (`onPrepared`, once per attempt that reached it). */
-const armBox = vi.hoisted(() => ({ arm: 'whole' as 'whole' | 'stream', verdicts: [] as string[] }))
+const armBox = vi.hoisted(() => ({ arm: 'whole' as 'whole' | 'stream', verdicts: [] as string[], refusedBeforeStream: false }))
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
@@ -62,6 +63,7 @@ beforeAll(() => {
 beforeEach(() => {
     vi.clearAllMocks()
     armBox.verdicts = []
+    armBox.refusedBeforeStream = false
     h.broadcasts.length = 0
     h.channels.length = 0
     vi.doUnmock('src/ts/storage/dbChangeEffects.svelte')
@@ -173,6 +175,20 @@ async function currentTree(page: Page): Promise<{ manifest: Manifest, stored: En
     return { manifest: read.tree.manifest, stored: assembleDatabase(read.tree.manifest, read.tree.source) as unknown as Entry }
 }
 
+/** The type 28 records the page's current manifest names, in list order. */
+async function workspaceRecords(page: Page): Promise<WorkspaceRecord[]> {
+    const { manifest } = await currentTree(page)
+    const refs = manifest.fixed.workspaces ?? []
+    const stored = await page.k.memory.readUnits(refs.map(ref => keyOfRef(ref)))
+    return refs.map((ref) => {
+        const unit = readUnit(stored.get(keyOfRef(ref)) as Uint8Array, UNIT_TYPE.workspace)
+        if (unit.status !== 'ok') {
+            throw new Error(`The workspace record reads ${unit.status}.`)
+        }
+        return unit.value.body as WorkspaceRecord
+    })
+}
+
 // ---- .bin construction ----
 
 function binEntry(name: string, data: Uint8Array): Uint8Array {
@@ -197,7 +213,7 @@ function binOf(...entries: Uint8Array[]): Uint8Array {
 }
 
 async function blockFileBytes(page: Page, db: Entry): Promise<Uint8Array> {
-    const encoder = new page.w.risuSave.RisuSaveEncoder()
+    const encoder = new page.w.encoderFixture.RisuSaveEncoder()
     await encoder.init(db as unknown as Database, { compression: false })
     await encoder.set(db as unknown as Database, { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
     return new Uint8Array(encoder.encode()!)
@@ -267,7 +283,7 @@ for (const arm of ['whole', 'stream'] as const) describe(`utility workspaces ove
     afterEach(() => {
         // The arm really ran: the stream arm took the streamed prepare, the whole arm never did.
         const streamed = armBox.verdicts.includes('stream')
-        expect(streamed).toBe(arm === 'stream')
+        expect(streamed || (arm === 'stream' && armBox.refusedBeforeStream)).toBe(arm === 'stream')
     })
 
     test('T7 R: the page\'s workspaces are kept by value with every key and text; the file\'s own are dropped', async () => {
@@ -307,6 +323,92 @@ for (const arm of ['whole', 'stream'] as const) describe(`utility workspaces ove
         expect(stored.mainPrompt).toBe('backup')
         expect(stored.utilityWorkspaces).toEqual(pageWorkspaces())
     })
+
+    test('T7 R: a page file with no text keeps its stored unit through the import instead of refusing it', async () => {
+        const page = await openPage()
+        await pageHolds(page, { utilityWorkspaces: pageWorkspaces() })
+        const before = (await workspaceRecords(page))[0].files.find(entry => entry.id === 'pf2')
+        expect(before).toBeDefined()
+        const held = page.db.utilityWorkspaces as { files: Entry[] }[]
+        delete held[0].files[1].text
+        // The refs come from the manifest the import's own carry names, so the commit carries that claim for the kept unit.
+        const carries: unknown[] = []
+        const committer = page.k.committer as Committer
+        const commit = committer.commit.bind(committer)
+        vi.spyOn(committer, 'commit').mockImplementation((read, request) => { carries.push(request.carry); return commit(read, request) })
+        const streamed = committer.commitStreamed?.bind(committer)
+        if (streamed !== undefined) {
+            vi.spyOn(committer, 'commitStreamed').mockImplementation((read, request) => { carries.push(request.carry); return streamed(read, request) })
+        }
+
+        await loadBin(await binWith(page, {}))
+        expect(carries.some(carry => typeof carry === 'object' && (carry as { units: number }).units >= 1)).toBe(true)
+
+        const { stored } = await currentTree(page)
+        expect(stored.mainPrompt).toBe('backup')
+        const record = (await workspaceRecords(page))[0]
+        expect(record.files.map(entry => entry.id)).toEqual(['pf1', 'pf2'])
+        expect(record.files.find(entry => entry.id === 'pf2')?.ref).toEqual(before?.ref)
+        const marked = await markLiveKeys(page.k.memory, await page.k.memory.readCommit())
+        expect(marked.status).toBe('marked')
+        if (marked.status === 'marked') {
+            expect(marked.live.has(keyOfRef(before!.ref))).toBe(true)
+        }
+    })
+
+    test('T7 R: a text-less file takes its ref from its own workspace when another workspace holds the same file id', async () => {
+        const page = await openPage()
+        const twin = (id: string, name: string, text: string): Entry => ({ id, name, createdAt: 1000, files: [file('shared', 'a.md', text)] })
+        await pageHolds(page, { utilityWorkspaces: [twin('page-w1', 'One', 'text one'), twin('page-w2', 'Two', 'text two')] })
+        const [first, second] = await workspaceRecords(page)
+        expect(first.files[0].ref).not.toEqual(second.files[0].ref)
+        const held = page.db.utilityWorkspaces as { files: Entry[] }[]
+        delete held[0].files[0].text
+
+        await loadBin(await binWith(page, {}))
+
+        const [firstAfter, secondAfter] = await workspaceRecords(page)
+        expect(firstAfter.files[0].ref).toEqual(first.files[0].ref)
+        expect(secondAfter.files[0].ref).toEqual(second.files[0].ref)
+    })
+
+    // The refs are bound to the base index the import's carry names. When a later read of the base fails, the import ends in the
+    // clean refusal, never in the "could not confirm" outcome of a carry that names a base the refs were not read from.
+    for (const failing of ['first', 'second'] as const) {
+        test(`T7 ${failing === 'second' ? 'R' : 'G'}: a backend failure on the ${failing} read of the base manifest refuses the import for the text-less file and writes nothing`, async () => {
+            const page = await openPage()
+            await pageHolds(page, { utilityWorkspaces: pageWorkspaces() })
+            const held = page.db.utilityWorkspaces as { files: Entry[] }[]
+            delete held[0].files[1].text
+            // The error class of the page's module graph, the one the import's instanceof checks see.
+            const { Store2BackendFailureError } = await import('src/ts/storage/store2/backend/errors')
+            const manifestKey = (await page.k.commitKey()).current?.key as string
+            const before = await page.k.memory.readCommit()
+            const realRead = page.k.counted.backend.readUnits.bind(page.k.counted.backend)
+            let reads = 0
+            vi.spyOn(page.k.counted.backend, 'readUnits').mockImplementation(async (keys, ...rest) => {
+                if (keys.includes(manifestKey) && ++reads === (failing === 'first' ? 1 : 2)) {
+                    throw new Store2BackendFailureError('Injected read failure.')
+                }
+                return realRead(keys, ...rest)
+            })
+            vi.mocked(page.alert.alertError).mockClear()
+            reads = 0
+            // The streamed prepare answers `stop` for this refusal, so the arm guard has no `stream` verdict to see.
+            armBox.refusedBeforeStream = true
+            const bin = await binWith(page, {})
+            reads = 0
+
+            await loadBin(bin)
+
+            expect(reads).toBeGreaterThanOrEqual(failing === 'first' ? 1 : 2)
+            expect(vi.mocked(page.alert.alertError)).toHaveBeenCalledTimes(1)
+            expect(String(vi.mocked(page.alert.alertError).mock.calls[0][0])).toContain('page-w1/pf2')
+            expect(vi.mocked(page.alert.alertStore.set).mock.calls.some(([value]) => (value as { type: string }).type === 'wait')).toBe(false)
+            expect(await page.k.memory.readCommit()).toEqual(before)
+            expect(page.db.mainPrompt).toBe('base')
+        })
+    }
 
     test('T7 G: a page with none and a file with none leaves the profile without the key', async () => {
         const page = await openPage()

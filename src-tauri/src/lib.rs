@@ -474,6 +474,17 @@ async fn native_reply_read_body(app: AppHandle, key: String, offset: u64, len: u
         .map_err(|e| format!("the reply task failed: {}", e))?
 }
 
+// The raw partial body of a record that did not finish: the same reply shape as
+// the body read, refused unless the listing carries `partialBytes`.
+#[tauri::command]
+async fn native_reply_read_partial(app: AppHandle, key: String, offset: u64, len: u64) -> Result<String, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let store = app.state::<reply_store::ReplyStore>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || store.read_partial(&base, &key, offset, len))
+        .await
+        .map_err(|e| format!("the reply task failed: {}", e))?
+}
+
 #[tauri::command]
 async fn native_reply_consume(app: AppHandle, key: String) -> Result<reply_store::RemoveOutcome, String> {
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -678,6 +689,7 @@ pub fn run() {
             cancel_all_streamed_fetch,
             native_reply_list,
             native_reply_read_body,
+            native_reply_read_partial,
             native_reply_consume,
             native_reply_discard,
             native_reply_park

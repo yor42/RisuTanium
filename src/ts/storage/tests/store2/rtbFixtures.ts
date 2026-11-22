@@ -546,6 +546,7 @@ export function rtbDeps(options: RtbDepsOptions): { deps: RtbExportDeps, writer:
         platform: () => ({ platform: 'web', label: 'Browser' }),
         clock: () => RTB_TEST_CLOCK,
         keyEnv: options.env,
+        keys: null,
         ...options.over,
     }
     return { deps, writer }

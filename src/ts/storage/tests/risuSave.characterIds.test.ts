@@ -69,8 +69,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-import { RisuSaveEncoder } from '../risuSave'
-import type { SaveLayout, toSaveType } from '../risuSave'
+import { RisuSaveEncoder, encodedLayout, type SaveLayout } from './risuSaveEncoder'
+import type { toSaveType } from '../risuSave'
 import type { Database } from '../database.svelte'
 
 beforeEach(() => {
@@ -111,7 +111,7 @@ async function encodeTree(db: Database): Promise<{ encoder: RisuSaveEncoder, lay
     const encoder = new RisuSaveEncoder()
     await encoder.init(db, { compression: false })
     await encoder.set(db, nothingMarked())
-    const layout = encoder.snapshotLayout()
+    const layout = encodedLayout(encoder)
     if (layout === null) {
         throw new Error('the encoder produced no layout')
     }
@@ -181,7 +181,7 @@ describe('entries and ids the encoder leaves out (regression: S1, S2, S3 class a
         const toSave = nothingMarked()
         toSave.character = ['config']
         await encoder.set(db, toSave)
-        const layout = encoder.snapshotLayout()!
+        const layout = encodedLayout(encoder)!
         expect(layout.keys).toEqual(clean.layout.keys)
         expect(blockText(layout, 'config')).toBe('{"version":1}')
     })
@@ -194,7 +194,7 @@ describe('marks (regression: S4)', () => {
         const toSave = nothingMarked()
         toSave.character = ['config', 'preset', 'root', 'modules']
         await encoder.set(db, toSave)
-        const after = encoder.snapshotLayout()
+        const after = encodedLayout(encoder)
         expect(after).not.toBeNull()
         expect(after!.keys).toEqual(before.keys)
     })
@@ -205,7 +205,7 @@ describe('marks (regression: S4)', () => {
         const toSave = nothingMarked()
         toSave.character = [Symbol('mark') as unknown as string]
         await expect(encoder.set(db, toSave)).resolves.toBeUndefined()
-        expect(encoder.snapshotLayout()!.keys).toEqual(before.keys)
+        expect(encodedLayout(encoder)!.keys).toEqual(before.keys)
     })
 
     test('a mark for a saved character that is gone still deletes its block (guard: removal is intentional)', async () => {
@@ -215,7 +215,7 @@ describe('marks (regression: S4)', () => {
         const toSave = nothingMarked()
         toSave.character = ['b']
         await encoder.set(smaller, toSave)
-        expect(encoder.snapshotLayout()!.keys).not.toContain('b')
+        expect(encodedLayout(encoder)!.keys).not.toContain('b')
     })
 })
 
@@ -237,8 +237,8 @@ describe('an id changed between the snapshot and the serialization (regression: 
         const toSave = nothingMarked()
         toSave.character = ['a']
         await encoder.set(db, toSave)
-        const after = encoder.snapshotLayout()!
-        expect(after.blocks[after.keys.indexOf('a')]).toBe(savedBlockOfA)
+        const after = encodedLayout(encoder)!
+        expect(Buffer.from(after.blocks[after.keys.indexOf('a')]).equals(Buffer.from(savedBlockOfA))).toBe(true)
         expect(after.keys).toEqual(before.keys)
         expect(toSave.character).toEqual(['a'])
     })
@@ -255,8 +255,8 @@ describe('an id changed between the snapshot and the serialization (regression: 
         })
         const encoder = new RisuSaveEncoder()
         await encoder.init(tree([a, character('b')]), { compression: false })
-        expect(encoder.snapshotLayout()!.keys).not.toContain('a')
-        expect(encoder.snapshotLayout()!.keys).toContain('b')
+        expect(encodedLayout(encoder)!.keys).not.toContain('a')
+        expect(encodedLayout(encoder)!.keys).toContain('b')
     })
 })
 
@@ -281,7 +281,7 @@ describe('containers (regression: S7)', () => {
             await encoder.init(db, { compression: false })
             await encoder.set(db, { ...nothingMarked(), [container]: true })
             const key = container
-            expect(blockText(encoder.snapshotLayout()!, key)).toBe('[]')
+            expect(blockText(encodedLayout(encoder)!, key)).toBe('[]')
         }
     })
 
@@ -289,7 +289,7 @@ describe('containers (regression: S7)', () => {
         const previous = (await encodeTree(tree([character('a')]))).encoder
         const encoder = new RisuSaveEncoder()
         await encoder.init(tree([character('a')], { modules: undefined }), { compression: false, previous })
-        expect(blockText(encoder.snapshotLayout()!, 'modules')).toBe('[]')
+        expect(blockText(encodedLayout(encoder)!, 'modules')).toBe('[]')
     })
 
     test.each([
@@ -314,41 +314,24 @@ describe('containers (regression: S7)', () => {
     })
 })
 
-describe('the exclusion report (unit of the new report API)', () => {
-    test('init reports each excluded entry with its reason', async () => {
-        const junk = 5
+describe('entries the encoder leaves out and containers it repairs', () => {
+    test('init stores a block for each usable character and none for a non-character, a missing id or a reserved id', async () => {
         const encoder = new RisuSaveEncoder()
-        await encoder.init(tree([character('a'), junk, character(''), character('preset'), character('b')]), { compression: false })
-        const report = encoder.getReport()
-        expect(report.excluded.map((item) => item.reason)).toEqual(['not-character', 'missing-id', 'unusable-id'])
-        expect(report.excluded[0].entry).toBe(junk)
+        await encoder.init(tree([character('a'), 5, character(''), character('preset'), character('b')]), { compression: false })
+        const layout = encodedLayout(encoder)!
+        expect(layout.keys).toContain('a')
+        expect(layout.keys).toContain('b')
+        expect(layout.keys).not.toContain('')
+        expect(layout.keys).not.toContain('5')
+        expect(blockText(layout, 'preset')).not.toContain('"chaId"')
     })
 
-    test('set reports an id that changed during the serialization', async () => {
-        const a = character('a')
-        const db = tree([a, character('b')])
-        const { encoder } = await encodeTree(db)
-        Object.defineProperty(a, 'toJSON', {
-            configurable: true,
-            enumerable: false,
-            value() {
-                a.chaId = 'preset'
-                return { ...(this as Entry), chaId: 'preset' }
-            },
-        })
-        const toSave = nothingMarked()
-        toSave.character = ['a']
-        await encoder.set(db, toSave)
-        expect(encoder.getReport().excluded).toEqual([{ entry: a, reason: 'id-changed', id: 'preset' }])
-    })
-
-    test('a clean pass reports nothing and a container that was missing is named', async () => {
-        const clean = new RisuSaveEncoder()
-        await clean.init(tree([character('a')]), { compression: false })
-        expect(clean.getReport()).toEqual({ excluded: [], repairedContainers: [] })
+    test('a container that was missing is stored as an empty list', async () => {
         const repaired = new RisuSaveEncoder()
         await repaired.init(tree([character('a')], { modules: undefined, plugins: null }), { compression: false })
-        expect(repaired.getReport().repairedContainers).toEqual(['modules', 'plugins'])
+        const layout = encodedLayout(repaired)!
+        expect(blockText(layout, 'modules')).toBe('[]')
+        expect(blockText(layout, 'plugins')).toBe('[]')
     })
 
     test.each(['constructor', 'toString', 'hasOwnProperty', 'valueOf'])('an id named %s keys an ordinary block in init and in set (guard: ids that Object.prototype also names)', async (name) => {
@@ -360,7 +343,7 @@ describe('the exclusion report (unit of the new report API)', () => {
         toSave.character = [name]
         ;(db.characters[1] as unknown as Entry).name = 'edited'
         await encoder.set(db, toSave)
-        const after = encoder.snapshotLayout()!
+        const after = encodedLayout(encoder)!
         expect(Buffer.from(after.blocks[after.keys.indexOf(name)]).equals(Buffer.from(before))).toBe(false)
         expect(blockText(after, name)).toContain('edited')
     })
@@ -372,17 +355,23 @@ describe('the exclusion report (unit of the new report API)', () => {
 })
 
 describe('duplicates and idempotence (guards, pass before and after)', () => {
-    test('two holders of one id still freeze that id while a junk entry is left out (S5)', async () => {
+    test('two holders of one id keep the saved block unchanged while a junk entry is left out (S5)', async () => {
         const encoder = new RisuSaveEncoder()
         await encoder.init(tree([character('a'), 5, character('a', { name: 'second' })]), { compression: false })
-        expect([...encoder.getFrozenKeys()]).toEqual(['a'])
+        const layout = encodedLayout(encoder)!
+        const frozenBlock = layout.blocks[layout.keys.indexOf('a')]
+        const toSave = nothingMarked()
+        toSave.character = ['a']
+        await encoder.set(tree([character('a', { name: 'edited' }), 5, character('a', { name: 'second' })]), toSave)
+        const after = encodedLayout(encoder)!
+        expect(Buffer.from(after.blocks[after.keys.indexOf('a')]).equals(Buffer.from(frozenBlock))).toBe(true)
     })
 
     test('a second pass with no marks stores no new bytes for any block (S6)', async () => {
         const db = tree([character('a'), 5, character('b')])
         const { encoder, layout } = await encodeTree(db)
         await encoder.set(db, nothingMarked())
-        const again = encoder.snapshotLayout()!
+        const again = encodedLayout(encoder)!
         expect(again.keys).toEqual(layout.keys)
         for (let i = 0; i < layout.keys.length; i++) {
             expect(Buffer.from(again.blocks[i]).equals(Buffer.from(layout.blocks[i]))).toBe(true)

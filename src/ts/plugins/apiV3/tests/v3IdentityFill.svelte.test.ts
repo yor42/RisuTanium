@@ -228,7 +228,8 @@ vi.mock(import('../../../process/ttsHooks'), () => ({
 
 import { makeRisuaiAPIV3, setChatToIndexImpl } from '../v3.svelte'
 import { DBState, selectedCharID } from '../../../stores.svelte'
-import { RisuSaveEncoder, decodeRisuSave } from '../../../storage/risuSave'
+import { decodeRisuSave } from '../../../storage/risuSave'
+import { RisuSaveEncoder } from '../../../storage/tests/risuSaveEncoder'
 import { repairDatabaseIds } from '../../../process/chatIds'
 import * as chatIdsModule from '../../../process/chatIds'
 import { resetIdlessCopyNoticeForTest } from '../../idlessCopyNotice'

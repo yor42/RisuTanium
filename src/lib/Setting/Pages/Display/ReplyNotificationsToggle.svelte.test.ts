@@ -247,6 +247,6 @@ describe('where the switch is offered (T27b)', () => {
     test('new API: the reply switch sits in the sound group right after the web notification switch', () => {
         const sound = DISPLAY_SHELL_SECTIONS.find((section) => section.id === 'display.sound')
         const ids = sound?.rows.map((row) => (row.kind === 'setting' ? row.item.id : row.id))
-        expect(ids).toEqual(['display.playMessage', 'display.playMessageOnTranslateEnd', 'display.notification', 'display.replyNotifications'])
+        expect(ids).toEqual(['display.uiSounds', 'display.playMessage', 'display.playMessageOnTranslateEnd', 'display.notification', 'display.replyNotifications'])
     })
 })

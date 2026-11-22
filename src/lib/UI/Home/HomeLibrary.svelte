@@ -28,3 +28,40 @@
 <div class="flex min-h-0 w-full flex-1 flex-col">
     <GridCatalog {studio} variant="home" />
 </div>
+
+<!-- The cast-sheet look of the Home variant only. Every rule descends from the root class GridCatalog sets in the
+     Home variant and keys on data-part hooks, so the App host's markup and utilities are untouched; the extra
+     class in each selector outranks the utilities, so no declaration needs !important. Sizes of tiles and rows
+     are unchanged: the windowing engine measures them. -->
+<style>
+    :global(.home-library [data-part="library-views"] button) {
+        background: none;
+        border-color: transparent;
+        border-radius: var(--home-control-radius);
+        box-shadow: none;
+    }
+    :global(.home-library [data-part="library-views"] button:hover) {
+        background: var(--nexus-surface-raised);
+        color: var(--nexus-text);
+    }
+    :global(.home-library [data-part="library-views"] button[aria-pressed="true"]) {
+        background: var(--nexus-surface-raised);
+        color: var(--nexus-text);
+        font-weight: 600;
+        box-shadow: inset 0 calc(-2 * var(--home-hairline)) 0 var(--home-select-bar);
+    }
+    :global(.home-library [data-part="library-tile"] .ico) {
+        border: var(--home-hairline) solid var(--nexus-edge);
+        border-radius: var(--home-radius-5);
+        box-shadow: none;
+    }
+    :global(.home-library [data-part="library-row"]) {
+        border-width: 0 0 var(--home-hairline);
+        border-color: var(--nexus-edge);
+        border-radius: var(--home-radius-5);
+    }
+    /* A Simple row with a Studio control is hooked on its wrapper and its row button: only the wrapper is ruled. */
+    :global(.home-library [data-part="library-row"] [data-part="library-row"]) {
+        border-width: 0;
+    }
+</style>

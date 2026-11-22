@@ -97,6 +97,10 @@ async function loadRisuSave() {
     return await import('src/ts/storage/risuSave')
 }
 
+async function loadRisuSaveEncoder() {
+    return await import('src/ts/storage/tests/risuSaveEncoder')
+}
+
 function bytesOf(character: TestCharacter): Uint8Array {
     return new TextEncoder().encode(JSON.stringify(character))
 }
@@ -110,7 +114,8 @@ beforeEach(() => {
 describe('the encoder on the desktop build', () => {
     test('with Remote Saving on in the live database, init and set write nothing under remotes/ or anywhere else and keep every character inline', async () => {
         const characters = [characterOf('s15-first', 'first marker'), characterOf('s15-second', 'second marker')]
-        const { RisuSaveEncoder, RisuSaveType } = await loadRisuSave()
+        const { RisuSaveType } = await loadRisuSave()
+        const { RisuSaveEncoder } = await loadRisuSaveEncoder()
         const encoder = new RisuSaveEncoder()
 
         await encoder.init(dbOf(...characters), { compression: false })
@@ -130,7 +135,7 @@ describe('reading a remote block on the desktop build', () => {
 
     /** A save whose character `b` is only a REMOTE pointer, as `pointer` says. */
     async function saveWithPointer(pointer: Record<string, unknown>): Promise<PointerFixture> {
-        const { RisuSaveEncoder } = await loadRisuSave()
+        const { RisuSaveEncoder } = await loadRisuSaveEncoder()
         const root = { formatversion: 999, __directory: ['preset', 'plugins', 'a', 'b', 'config'] }
         const save = await composeSave(new RisuSaveEncoder(), [
             { name: 'root', type: BLOCK.ROOT, data: JSON.stringify(root) },

@@ -218,7 +218,10 @@ vi.mock(import('../../../process/modules'), () => ({
 //#endregion
 
 import { makeRisuaiAPIV3 } from '../v3.svelte'
-import { DBState } from '../../../stores.svelte'
+import { DBState, selectedCharID } from '../../../stores.svelte'
+import { bumpModuleGui } from '../../../process/modules'
+// Registers the displayed origin's real reference read with the loader, as the page's import does.
+import '../../../process/moduleEnsure'
 import type { RisuPlugin } from '../../plugins.svelte'
 import type { Database } from '../../../storage/database.svelte'
 import type { RisuModule } from '../../../process/modules'
@@ -260,6 +263,11 @@ const modulesOf = (copy: unknown) => (copy as { modules: RisuModule[] }).modules
 
 /** Boots a tree of three modules and turns the second into its recorded stub; the database becomes the live one. */
 async function bootWithStub(): Promise<World> {
+    return bootWithStubs([1])
+}
+
+/** Boots a tree of three modules and turns each index of `stubbed` into its recorded stub; the world names the first one's unit. */
+async function bootWithStubs(stubbed: number[]): Promise<World> {
     const memory = createMemoryBackend()
     const source = { ...(buildSmall(2) as unknown as Obj), archiveCharacters: false, modules: [moduleBody('a'), moduleBody('b'), moduleBody('c')] } as unknown as Database
     await seedTree(memory, JSON.parse(JSON.stringify(source)) as Database, testEnv(createClock(), 4242), fakeLists)
@@ -273,23 +281,27 @@ async function bootWithStub(): Promise<World> {
     if (context?.encoder === undefined || residency === null || index === undefined) {
         throw new Error('The boot registered no residency.')
     }
-    const handle = moduleHandles(index.entries)[1]
-    const entry = residency.moduleEntryOf(handle)
-    if (entry === null) {
-        throw new Error('No entry for the module.')
-    }
-    for (const prefix of [IDENTITY.module, IDENTITY.alModule, IDENTITY.ilModule]) {
-        const unit = context.encoder.acknowledged().units.get(`${prefix}${handle}`)
-        if (unit !== undefined) {
-            delete unit.digest
-        }
-    }
     const database = booted.result.database as unknown as { modules: unknown[], enabledModules: string[], plugins: unknown[] }
-    database.modules[1] = moduleStubOf(entry)
+    let unitKey = ''
+    for (const at of stubbed) {
+        const handle = moduleHandles(index.entries)[at]
+        const entry = residency.moduleEntryOf(handle)
+        if (entry === null) {
+            throw new Error('No entry for the module.')
+        }
+        for (const prefix of [IDENTITY.module, IDENTITY.alModule, IDENTITY.ilModule]) {
+            const unit = context.encoder.acknowledged().units.get(`${prefix}${handle}`)
+            if (unit !== undefined) {
+                delete unit.digest
+            }
+        }
+        database.modules[at] = moduleStubOf(entry)
+        unitKey ||= keyOfRef(entry.unit)
+    }
     database.enabledModules = []
     database.plugins = [{ name: PLUGIN_NAME, script: '' }]
     DBState.db = database as unknown as Database
-    return { memory, unitKey: keyOfRef(entry.unit) }
+    return { memory, unitKey }
 }
 
 beforeEach(() => {
@@ -366,5 +378,36 @@ describe('a plugin reads and writes modules through the real loader', () => {
         await expect(result).rejects.toThrow(/"b" \(id-b\)/)
         await expect(result).rejects.toThrow(/damaged/)
         expect(isModuleStub(liveModules()[1])).toBe(true)
+    })
+})
+
+describe('getDatabase reloads the chat only for modules the chat references', () => {
+    type Live = { characters: { chatPage: number, chats: { modules?: string[] }[] }[] }
+
+    test('a library-wide read bumps the GUI once, for the one stub the selected chat references, not once per stub', async () => {
+        await bootWithStubs([0, 1, 2])
+        const live = DBState.db as unknown as Live
+        live.characters[0].chats[live.characters[0].chatPage].modules = ['id-b']
+        selectedCharID.set(0)
+        vi.mocked(bumpModuleGui).mockClear()
+        try {
+            const copy = await api().getDatabase(['modules'])
+
+            expect(modulesOf(copy).map((slot) => isModuleStub(slot))).toEqual([false, false, false])
+            expect(vi.mocked(bumpModuleGui)).toHaveBeenCalledTimes(1)
+        } finally {
+            selectedCharID.set(-1)
+        }
+    })
+
+    test('a read over stubs nothing displayed references sets no GUI pointer', async () => {
+        await bootWithStubs([0, 1, 2])
+        vi.mocked(bumpModuleGui).mockClear()
+
+        const copy = await api().getDatabase(['modules'])
+
+        expect(modulesOf(copy).map((slot) => isModuleStub(slot))).toEqual([false, false, false])
+        expect(liveModules().map((slot) => isModuleStub(slot))).toEqual([false, false, false])
+        expect(vi.mocked(bumpModuleGui)).not.toHaveBeenCalled()
     })
 })
