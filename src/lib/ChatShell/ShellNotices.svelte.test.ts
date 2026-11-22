@@ -2,6 +2,7 @@
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import type { Writable } from 'svelte/store'
 
 vi.mock('../../ts/stores.svelte', () => {
     const DBState = $state({ db: { characters: [{ chaId: 'c', type: 'character', chatPage: 0, removedQuotes: true, creatorNotes: '', chats: [{ id: 'chat-1', message: [] as { data: string }[] }] }] } })
@@ -61,7 +62,8 @@ describe('ShellNotices', () => {
 
     test('T16: a reply written in another chat does not disable Retry; work in the shown chat does', async () => {
         const { DBState } = await import('../../ts/stores.svelte')
-        const { doingChat } = await import('../../ts/process/index.svelte')
+        const { doingChat: doingChatStore } = await import('../../ts/process/index.svelte')
+        const doingChat = doingChatStore as Writable<boolean>
         DBState.db.characters[0].chats[0].message = [{ role: 'char', data: 'ERROR:old' }]
         const { default: ShellNotices } = await import('./ShellNotices.svelte')
         const target = document.createElement('div')

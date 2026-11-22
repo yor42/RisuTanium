@@ -576,7 +576,7 @@ vi.mock(import('src/ts/hotkey'), () => ({
 
 import { resetStore2ShellBox, store2ShellMock, type Store2ShellBox } from './store2ShellStub'
 import { setPageStorageMode } from 'src/ts/storage/pageStorageMode'
-import { sendChat, doingChat } from 'src/ts/process/index.svelte'
+import { sendChat } from 'src/ts/process/index.svelte'
 import { send, reroll, unReroll, runAutoMode, abortChat, isAutoModeActive, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { processMultiCommand } from 'src/ts/process/command'
@@ -921,7 +921,7 @@ beforeEach(() => {
     interceptedSleeps.clear()
     held.length = 0
     resetLocalDraftsForTest()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {
@@ -939,6 +939,7 @@ import { language } from 'src/lang'
 import { flushSync, mount, unmount } from 'svelte'
 import UserSettings from 'src/lib/Setting/Pages/UserSettings.svelte'
 import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
+import { clearRunningSends } from '../../process/tests/activeUnits.test-helpers'
 
 /**
  * `loadInternalBackup`, `LoadLocalBackup` and the busy-action registry, built

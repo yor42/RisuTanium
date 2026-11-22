@@ -53,10 +53,12 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
 
 import { DBState, selectedCharID, selIdState } from 'src/ts/stores.svelte'
 import { alertNormal, alertError } from 'src/ts/alert'
-import { doingChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
 import { registerWork } from 'src/ts/process/chatOrigin'
 import { resolveSwitchFocus } from './overlayFocus'
 import { switchTarget, switchCharacter, retrySwitch, backToPrevious, abandonPendingSwitch, clearPending } from './switchTarget.svelte'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 type Entry = Database['characters'][number]
 

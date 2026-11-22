@@ -12,7 +12,7 @@
  * trigger of a partial), M29a (consume directly on present).
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import type { Database, Chat, Message } from '../storage/database.svelte'
 import '../polyfill'
 import { heldReply, resetPageStateForTests, configurePageState } from '../nativeReply/pageState'
@@ -110,7 +110,9 @@ vi.mock(import('./chatOnScreen.svelte'), () => ({ isChatOnScreen: vi.fn(() => on
 vi.mock(import('../storage/characterSaveMarks'), () => ({ markCharacterForSave: vi.fn() }) as unknown as typeof import('../storage/characterSaveMarks'))
 
 
-import { applyRecoveredStreamReply, doingChat } from './index.svelte'
+import { applyRecoveredStreamReply, doingChat, sendChat } from './index.svelte'
+import { activeUnits } from './activeUnits'
+import { isWriting } from './chatOrigin'
 import { DBState } from '../stores.svelte'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
 import { createUsageMeter } from '../usage/usageMeter'
@@ -120,6 +122,7 @@ import type { CharacterVerdict } from '../nativeReply/characterSaved'
 import type { TokenUsage } from '../usage/usageTypes'
 import type { GeminiSignatureRecord } from '../nativeReply/streamReplay'
 import { LLMFormat } from '../model/types'
+import { simulateRunningSend, clearRunningSends } from './tests/activeUnits.test-helpers'
 
 const KEY = '0b9c1a7e-0000-4000-8000-000000000001'
 const base: ReplyBlobBase = {
@@ -208,7 +211,7 @@ beforeEach(() => {
     })
     onScreen.value = true
     saveMarkCount.value = 7
-    doingChat.set(false)
+    clearRunningSends()
     vi.mocked(markCharacterForSave).mockImplementation(() => { saveMarkCount.value += 1 })
     processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text, emoChanged: false }))
     runTriggerMock.mockResolvedValue(null)
@@ -432,7 +435,7 @@ describe('a partial (a prefix of a body)', () => {
 describe('the exclusion', () => {
     test('a running send defers: nothing is written, held or counted, and the flag stays the sender\'s', async () => {
         installDb()
-        doingChat.set(true)
+        simulateRunningSend()
         expect(await applyRecoveredStreamReply(input({ complete: false, outcome: 'dead' }))).toBe('deferred')
         expect(liveChat().message[1]).toMatchObject({ data: 'Hel', interrupted: true })
         expect(heldReply(KEY)).toBeUndefined()
@@ -440,7 +443,7 @@ describe('the exclusion', () => {
         expect(processScriptFullMock).not.toHaveBeenCalled()
         const { get } = await import('svelte/store')
         expect(get(doingChat)).toBe(true)
-        doingChat.set(false)
+        clearRunningSends()
         await applyRecoveredStreamReply(input())
         expect(get(doingChat)).toBe(false)
     })
@@ -531,9 +534,9 @@ describe('the usage of an applied record', () => {
 
     test('a deferred or failed apply counts nothing', async () => {
         installDb()
-        doingChat.set(true)
+        simulateRunningSend()
         await applyRecoveredStreamReply(input())
-        doingChat.set(false)
+        clearRunningSends()
         DBState.db.characters[0].chats = []
         await applyRecoveredStreamReply(input())
         await flush()
@@ -598,9 +601,9 @@ describe('Gemini signature inlays', () => {
         expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A] }))).toBe('present')
 
         installDb()
-        doingChat.set(true)
+        simulateRunningSend()
         expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A] }))).toBe('deferred')
-        doingChat.set(false)
+        clearRunningSends()
 
         installDb()
         processScriptFullMock.mockRejectedValueOnce(new Error('script'))
@@ -621,5 +624,97 @@ describe('Gemini signature inlays', () => {
         expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A], complete: false, outcome: 'dead' }))).toBe('applied')
         expect(liveChat().message[1].interrupted).toBe(true)
         expect(written()).toEqual(['sig-a'])
+    })
+})
+
+describe('the unit an apply holds', () => {
+    const TARGET = { chaId: 'cha', chatId: 'chat' }
+    const ELSEWHERE = { chaId: 'other-cha', chatId: 'other-chat' }
+
+    interface ScriptGate {
+        entered: Promise<void>
+        open(): void
+        fail(error: Error): void
+    }
+
+    /** Holds the output script of the next apply, so a test reads the registry while that apply runs. */
+    function holdOutputScript(): ScriptGate {
+        let enter!: () => void
+        const entered = new Promise<void>((resolve) => { enter = resolve })
+        let open!: () => void
+        let fail!: (error: Error) => void
+        const opened = new Promise<void>((resolve, reject) => { open = resolve; fail = reject })
+        // A gate nobody opens (a test that stopped early) is not an unhandled rejection.
+        opened.catch(() => {})
+        processScriptFullMock.mockImplementationOnce(async (_char: unknown, text: string) => {
+            enter()
+            await opened
+            return { data: text, emoChanged: false }
+        })
+        return { entered, open: () => open(), fail: (error) => fail(error) }
+    }
+
+    test('G2: today\'s global rule: a unit held in another chat defers an apply into this chat, and nothing is written', async () => {
+        installDb()
+        simulateRunningSend(ELSEWHERE)
+
+        expect(await applyRecoveredStreamReply(input({ complete: false, outcome: 'dead' }))).toBe('deferred')
+
+        expect(liveChat().message[1]).toMatchObject({ data: 'Hel', interrupted: true })
+        expect(heldReply(KEY)).toBeUndefined()
+        expect(usageKeys()).toEqual([])
+        expect(processScriptFullMock).not.toHaveBeenCalled()
+        expect(activeUnits.has(TARGET)).toBe(false)
+        expect(activeUnits.has(ELSEWHERE)).toBe(true)
+    })
+
+    const finishes: Array<[string, (gate: ScriptGate) => void, string]> = [
+        ['a normal write', (gate) => gate.open(), 'applied'],
+        ['a script that fails', (gate) => gate.fail(new Error('script')), 'failed'],
+        ['a chat that went away', (gate) => { DBState.db.characters[0].chats = []; gate.open() }, 'deferred'],
+        ['a message the page upgraded first', (gate) => { delete liveChat().message[1].interrupted; gate.open() }, 'present'],
+    ]
+
+    test.each(finishes)('G3: %s: the apply holds its own chat while it runs, refuses a send (today\'s global rule: into any chat), and releases once it returns', async (_name, finish, expected) => {
+        installDb()
+        // A live other chat, so a refusal is the gate's and not an unresolvable origin.
+        DBState.db.characters.push({ ...DBState.db.characters[0], chaId: 'other-cha', chats: [{ id: 'other-chat', note: '', name: '', localLore: [], fmIndex: -1, message: [], scriptstate: {} } as unknown as Chat] })
+        const gate = holdOutputScript()
+        const run = applyRecoveredStreamReply(input())
+        try {
+            await gate.entered
+            expect(get(doingChat)).toBe(true)
+            expect(activeUnits.has(TARGET)).toBe(true)
+            expect(await applyRecoveredStreamReply(input())).toBe('deferred')
+            const sent = sendChat(-1, { origin: ELSEWHERE }).catch(() => 'threw')
+            expect(isWriting(ELSEWHERE)).toBe(false)
+            let timer: ReturnType<typeof setTimeout> | undefined
+            const hung = new Promise<string>((resolve) => { timer = setTimeout(() => resolve('hung'), 2000) })
+            expect(await Promise.race([sent, hung])).toBe(false)
+            clearTimeout(timer)
+        } finally {
+            finish(gate)
+        }
+
+        expect(await run).toBe(expected)
+        expect(get(doingChat)).toBe(false)
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    test('O2: a subscriber sees no registered work for the chat when the unit is taken and when it is released', async () => {
+        installDb()
+        const seen: Array<{ busy: boolean, writing: boolean }> = []
+        const stop = doingChat.subscribe((busy) => { seen.push({ busy, writing: isWriting(TARGET) }) })
+        try {
+            expect(await applyRecoveredStreamReply(input())).toBe('applied')
+        } finally {
+            stop()
+        }
+
+        expect(seen).toEqual([
+            { busy: false, writing: false },
+            { busy: true, writing: false },
+            { busy: false, writing: false },
+        ])
     })
 })

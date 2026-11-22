@@ -58,10 +58,12 @@ vi.mock(import('src/ts/parser/parser.svelte'), () => ({
 }) as unknown as typeof import('src/ts/parser/parser.svelte'))
 
 import { DBState } from 'src/ts/stores.svelte'
-import { doingChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
 import { registerWork } from 'src/ts/process/chatOrigin'
 import { requestSuggestionData } from 'src/ts/process/suggestionRequest'
 import Suggestion from './Suggestion.svelte'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 interface LiveMessage { role: 'user' | 'char', data: string, chatId: string }
 interface LiveChat { message: LiveMessage[], suggestMessages?: string[] }

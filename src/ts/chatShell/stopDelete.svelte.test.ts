@@ -51,8 +51,10 @@ vi.mock('../model/modellist', () => ({ getModelInfo: vi.fn() }))
 vi.mock('../globalApi.svelte', () => ({ getFileSrc: vi.fn() }))
 vi.mock('../parser/parser.svelte', () => ({ ParseMarkdown: vi.fn() }))
 
-import { doingChat } from '../process/index.svelte'
+import { doingChat as doingChatStore } from '../process/index.svelte'
 import { alertNormal } from '../alert'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 const message = (id: string, role: 'user' | 'char' = 'char') => ({ role, data: id, chatId: id })
 

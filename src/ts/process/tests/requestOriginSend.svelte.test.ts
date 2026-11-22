@@ -197,8 +197,9 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from '../index.svelte'
+import { sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -243,7 +244,7 @@ function recordedRequests(): RecordedRequest[] {
 beforeEach(() => {
     requestChatDataMock.mockReset()
     stableDiffMock.mockReset()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 //#endregion

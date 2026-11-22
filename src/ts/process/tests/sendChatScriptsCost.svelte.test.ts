@@ -38,6 +38,7 @@ import type { WorkHandle } from '../chatOrigin'
 // `src/main.ts` does (`import "./ts/polyfill"`): the setup file's stand-in
 // throws on `undefined`, which the script pass clones.
 import '../../polyfill'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region module mocks
 
@@ -312,7 +313,6 @@ interface PromptEntry {
 }
 
 let sendChat: typeof import('../index.svelte').sendChat
-let doingChat: typeof import('../index.svelte').doingChat
 let setStreamFlushObserverForTests: typeof import('../index.svelte').setStreamFlushObserverForTests
 let beginWork: typeof import('../chatOrigin').beginWork
 let resetScriptCache: typeof import('../scripts').resetScriptCache
@@ -327,7 +327,6 @@ beforeAll(async () => {
 
     const index = await import('../index.svelte')
     sendChat = index.sendChat
-    doingChat = index.doingChat
     setStreamFlushObserverForTests = index.setStreamFlushObserverForTests
     beginWork = (await import('../chatOrigin')).beginWork
     resetScriptCache = (await import('../scripts')).resetScriptCache
@@ -484,7 +483,7 @@ beforeEach(() => {
     h.request.mockReset()
     h.request.mockResolvedValue({ type: 'success', result: 'unexpected' })
     h.onAddInfo = null
-    doingChat.set(false)
+    clearRunningSends()
     resetScriptCache()
     // `getModules` remembers its last result by module ids alone.
     refreshModules()
@@ -548,7 +547,7 @@ async function streamCost(chunkCount: number, prefix: string, lua?: string): Pro
     })
     installDb([A])
     selectedCharID.set(0)
-    doingChat.set(false)
+    clearRunningSends()
     resetScriptCache()
 
     const atFlush: number[] = []

@@ -77,8 +77,10 @@ vi.mock('../../lang', () => ({ language: {
 import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'
 import ActionSheet from './ActionSheet.svelte'
 import { DBState } from '../../ts/stores.svelte'
-import { doingChat } from '../../ts/process/index.svelte'
+import { doingChat as doingChatStore } from '../../ts/process/index.svelte'
 import { addActiveStream } from '../../ts/process/activeStreams'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 let stopStream: (() => void) | undefined
 let target: HTMLElement
