@@ -12,12 +12,16 @@ mod durable_write;
 mod env_secret;
 mod export_append;
 mod free_space;
+#[cfg(test)]
+mod fs_boundary_tests;
+mod fs_guard;
 mod launch_inputs;
 mod net_policy;
 mod reply_notice;
 mod reply_store;
 mod store2_batch;
 mod store2_gate;
+mod store_keys;
 mod streamed_fetch;
 use launch_inputs::LaunchInputs;
 use std::sync::Mutex;
@@ -578,6 +582,26 @@ pub extern "system" fn Java_io_github_yor42_risutanium_NativeStreams_pollReplyOu
     reply_notice::guarded(|| reply_notice::process_notices().poll(token))
 }
 
+/// The plugins every target registers, in registration order. This is the only place the fs plugin is registered: a
+/// later registration under the same name would replace it.
+pub fn app_plugins<R: tauri::Runtime>(builder: tauri::Builder<R>, target_os: &str) -> tauri::Builder<R> {
+    builder
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_os::init())
+        .plugin(fs_guard::Guarded::new(tauri_plugin_fs::init::<R>(), fs_guard::for_os(target_os)))
+}
+
+// A test binary that builds a mock app needs the common-controls manifest dependency on Windows, which the real
+// build gets from the resource file.
+#[cfg(all(test, windows, target_env = "msvc"))]
+#[used]
+#[link_section = ".drectve"]
+static TEST_MANIFEST: [u8; 168] = *b" /MANIFESTDEPENDENCY:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\" ";
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // The command line is consumed once per process chain: a relaunch finds the
@@ -626,14 +650,7 @@ pub fn run() {
             .plugin(tauri_plugin_updater::Builder::new().build());
     }
 
-    builder
-        .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
-        .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_fs::init())
+    app_plugins(builder, std::env::consts::OS)
         .setup(|app| {
             // The write-temp walk starts with the process so that the boot does not wait on it.
             // The base is resolved on the worker: on Android that waits for the UI thread.

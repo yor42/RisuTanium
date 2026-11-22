@@ -244,6 +244,21 @@ describe('applyRecoveredReply', () => {
         expect(heldReply(KEY)?.state).toBe('awaiting-save')
     })
 
+    test.each([
+        'Command plugin:fs|read_file not allowed by ACL',
+        'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file',
+    ])('an output trigger whose image read the access control list refuses logs to the console only and the reply stays applied: %s', async (refusal) => {
+        const { alertError } = await import('../alert')
+        vi.mocked(alertError).mockClear()
+        installDb()
+        runTriggerMock.mockRejectedValue(refusal)
+        expect(await applyRecoveredReply(input())).toBe('applied')
+        expect(liveChat().message.map((m) => m.data)).toEqual(['Hello!', 'hi', 'the recovered reply'])
+        expect(console.error).toHaveBeenCalled()
+        expect(alertError).not.toHaveBeenCalled()
+        expect(heldReply(KEY)?.state).toBe('awaiting-save')
+    })
+
     test('an error before the push keeps the record: failed, no entry', async () => {
         installDb()
         processScriptFullMock.mockRejectedValue(new Error('script'))

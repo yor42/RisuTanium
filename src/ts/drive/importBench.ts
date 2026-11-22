@@ -31,7 +31,7 @@ const BENCH_SMALL_READS = 1000
 const BENCH_SMALL_BYTES = 4096
 const BENCH_IPC_SIZES = [4096, 64 * 1024, 1024 * 1024]
 const BENCH_IPC_CALLS = 20
-const BENCH_SCRATCH_KEY = 'risu-bench-scratch'
+const BENCH_SCRATCH_KEY = 'modeldata/risu-bench-scratch'
 
 export interface BenchOptions {
     windows?: number[]

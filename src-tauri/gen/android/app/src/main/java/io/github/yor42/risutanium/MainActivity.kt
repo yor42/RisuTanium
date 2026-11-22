@@ -284,6 +284,21 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  // Every result delivered through onActivityResult, whichever launcher asked, passes one check before a
+  // consumer sees it: a link to this app's own files, a file path or a disguised local link becomes a cancel.
+  @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+  override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    val (code, checked) = checkedActivityResult(
+      resultCode,
+      data,
+      packageName,
+      { it.data?.toString() },
+      { it.clipData?.itemCount },
+      { intent, n -> intent.clipData?.getItemAt(n)?.uri?.toString() },
+    )
+    super.onActivityResult(requestCode, code, checked)
+  }
+
   // A configuration recreation leaves the superseded WebView alive and running next to the
   // replacement. It is retired right after wry has installed the replacement (the post runs after
   // the message that is creating it), so after that only the replacement runs. Only a view with
@@ -292,6 +307,8 @@ class MainActivity : TauriActivity() {
     val previous = liveWebView
     liveWebView = webView
     backWebView = webView
+    // This blocks every content link as a page load, the app's own provider included; picked files are read by path.
+    webView.settings.allowContentAccess = false
     // A new page life ends any update attempt of the old page.
     AppUpdateService.shared.newPage()
     // Until the page paints, the WebView shows the loading screen's colour, so no white or black frame appears.
