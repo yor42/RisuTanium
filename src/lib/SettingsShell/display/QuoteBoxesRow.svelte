@@ -14,11 +14,11 @@
     const quotes = $derived(ctx.db.customQuotesData ?? CURLY_QUOTES)
 </script>
 
-<div class="flex flex-col" data-part="quote-boxes">
+<div class="flex flex-col" data-part="settings-quote-boxes">
     {#each quoteBoxItems as item (item.id)}
         <ShellSettingRow id={item.id} {ctx} {item} />
     {/each}
-    <p class="mt-2 text-sm text-textcolor2" data-part="quote-preview">
+    <p class="mt-2 text-sm text-textcolor2" data-part="settings-quote-preview">
         <span class="mr-2">{language.settingsShellQuotePreviewTitle}</span>
         <span class="text-textcolor">{language.settingsShellQuotePreview(quotes[0], quotes[1], quotes[2], quotes[3])}</span>
     </p>

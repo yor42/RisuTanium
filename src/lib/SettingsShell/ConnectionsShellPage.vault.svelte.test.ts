@@ -125,16 +125,16 @@ describe('wrapped key states on the page', () => {
     test('a temporarily unavailable key shows the unavailable hint on the card, not "No key"', () => {
         install('vault')
         mountPage()
-        const card = part('connection-card').textContent ?? ''
+        const card = part('settings-connection-card').textContent ?? ''
         expect(card).toContain(language.vaultKeyTemporarilyUnavailableHint)
         expect(card).not.toContain(language.connectionsKeyMissingReason)
-        expect(document.querySelector('[data-part="connection-chip"]')).toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-chip"]')).toBeNull()
     })
 
     test('a key that needs re-entry shows the re-entry label on the card, not "No key"', () => {
         install('none')
         mountPage()
-        const card = part('connection-card').textContent ?? ''
+        const card = part('settings-connection-card').textContent ?? ''
         expect(card).toContain(language.vaultNeedsReentryLabel)
         expect(card).not.toContain(language.connectionsKeyMissingReason)
     })
@@ -143,23 +143,23 @@ describe('wrapped key states on the page', () => {
         install('vault')
         mountPage()
         await openDetail()
-        const detail = part('connection-key').textContent ?? ''
+        const detail = part('settings-connection-key').textContent ?? ''
         expect(detail).toContain(language.vaultKeyTemporarilyUnavailableHint)
         expect(detail).not.toContain(language.connectionsKeyMissing)
-        expect(document.querySelector('[data-part="connection-key-clear"]')).toBeNull()
-        expect(document.querySelector('[data-part="connection-key-input"]')).toBeNull()
-        expect(part('connection-key-replace')).not.toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-key-clear"]')).toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-key-input"]')).toBeNull()
+        expect(part('settings-connection-key-replace')).not.toBeNull()
     })
 
     test('the detail of a re-entry key opens straight into Change key with the label, not "No key"', async () => {
         install('none')
         mountPage()
         await openDetail()
-        const detail = part('connection-key').textContent ?? ''
+        const detail = part('settings-connection-key').textContent ?? ''
         expect(detail).toContain(language.vaultNeedsReentryLabel)
         expect(detail).not.toContain(language.connectionsKeyMissing)
-        expect(part('connection-key-input').querySelector('input')).not.toBeNull()
-        expect(part('connection-key-save')).not.toBeNull()
+        expect(part('settings-connection-key-input').querySelector('input')).not.toBeNull()
+        expect(part('settings-connection-key-save')).not.toBeNull()
     })
 })
 
@@ -171,14 +171,14 @@ describe('after a failed unwrap', () => {
         await unwrapEnvelope('SYNTH-ENVELOPE')
         mountPage()
         await settle()
-        const card = part('connection-card').textContent ?? ''
+        const card = part('settings-connection-card').textContent ?? ''
         expect(card).toContain(language.vaultKeyTemporarilyUnavailableHint)
         expect(card).not.toContain(language.connectionsKeyMissingReason)
         await openDetail()
-        const detail = part('connection-key').textContent ?? ''
+        const detail = part('settings-connection-key').textContent ?? ''
         expect(detail).toContain(language.vaultKeyTemporarilyUnavailableHint)
         expect(detail).not.toContain(language.connectionsKeyMissing)
-        expect(document.querySelector('[data-part="connection-key-clear"]')).toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-key-clear"]')).toBeNull()
     })
 
     // Permanent codes mean this device can never read the envelope, so the key must be typed again.
@@ -188,7 +188,7 @@ describe('after a failed unwrap', () => {
         await unwrapEnvelope('SYNTH-ENVELOPE')
         mountPage()
         await settle()
-        const card = part('connection-card').textContent ?? ''
+        const card = part('settings-connection-card').textContent ?? ''
         expect(card).toContain(language.vaultNeedsReentryLabel)
         expect(card).not.toContain(language.vaultKeyTemporarilyUnavailableHint)
         expect(card).not.toContain(language.connectionsKeyMissingReason)
@@ -200,28 +200,28 @@ describe('Back during a pending add', () => {
         DBState.db = { connections: [], proxyConnectionId: '', botPresets: [], customModels: [] } as unknown as Database
         install('vault')
         mountPage()
-        part('connection-add-open').click()
+        part('settings-connection-add-open').click()
         await settle()
         document.querySelector<HTMLElement>('[data-connection-provider="anthropic"]')!.click()
         await settle()
-        const field = part('connection-key-input').querySelector('input')!
+        const field = part('settings-connection-key-input').querySelector('input')!
         field.value = 'sk-SYNTH-claude-4321'
         field.dispatchEvent(new Event('input', { bubbles: true }))
         flushSync()
         fake.s.hold = true
-        part('connection-save').click()
+        part('settings-connection-save').click()
         await settle()
         expect(storedConnections(DBState.db).map((conn) => conn.provider)).toEqual(['anthropic'])
         expect(dispatchBack()).toBe(true)
         await settle()
-        expect(document.querySelector('[data-part="connection-add"]')).toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-add"]')).toBeNull()
         // The user is somewhere else when the wrap finishes.
         document.querySelector<HTMLElement>('[data-connection-open="conn-1"]')!.click()
         await settle()
         fake.s.hold = false
         for (const release of fake.s.held.splice(0)) release()
         await settle()
-        expect(document.querySelector('[data-part="connection-detail"]')).not.toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-detail"]')).not.toBeNull()
         const [stored] = storedConnections(DBState.db)
         expect(stored.key).toBe('')
         expect(stored.keyWrapped).toBe('ENV:sk-SYNTH-claude-4321')

@@ -26,6 +26,6 @@
     }
 </script>
 
-<div class="flex flex-col gap-6" data-part="data-page">
+<div class="flex flex-col gap-6" data-part="settings-data-page">
     <ShellSectionsPage bind:this={sectionsPage} sections={DATA_SHELL_SECTIONS} {components} />
 </div>

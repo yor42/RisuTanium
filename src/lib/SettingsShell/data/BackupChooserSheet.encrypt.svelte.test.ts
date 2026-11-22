@@ -50,13 +50,13 @@ afterEach(async () => {
 })
 
 const one = <T extends HTMLElement>(selector: string): T | null => document.querySelector<T>(selector)
-const tick = () => one<HTMLInputElement>('[data-part="data-chooser-encrypt-toggle"]')!
-const field1 = () => one<HTMLInputElement>('[data-part="data-chooser-password"]')
-const field2 = () => one<HTMLInputElement>('[data-part="data-chooser-password-again"]')
-const showBox = () => one<HTMLInputElement>('[data-part="data-chooser-password-show"]')
-const warning = () => one('[data-part="data-chooser-encrypt-warning"]')
-const problemLine = () => one('[data-part="data-chooser-password-problem"]')
-const startButton = () => one<HTMLButtonElement>('[data-part="data-chooser-start"]')!
+const tick = () => one<HTMLInputElement>('[data-part="settings-data-chooser-encrypt-toggle"]')!
+const field1 = () => one<HTMLInputElement>('[data-part="settings-data-chooser-password"]')
+const field2 = () => one<HTMLInputElement>('[data-part="settings-data-chooser-password-again"]')
+const showBox = () => one<HTMLInputElement>('[data-part="settings-data-chooser-password-show"]')
+const warning = () => one('[data-part="settings-data-chooser-encrypt-warning"]')
+const problemLine = () => one('[data-part="settings-data-chooser-password-problem"]')
+const startButton = () => one<HTMLButtonElement>('[data-part="settings-data-chooser-start"]')!
 const radio = (name: string, value: string) => one<HTMLInputElement>(`input[type="radio"][name$="-${name}"][value="${value}"]`)!
 
 function click(element: HTMLElement): void {
@@ -301,7 +301,7 @@ describe('the plain-HTTP line (T-S2-7)', () => {
         try {
             mountSheet()
             expect(occurrences()).toBe(1)
-            expect(tick().closest('[data-part="data-chooser-encrypt"]')!.textContent).toContain(language.settingsShellDataEncryptSlow)
+            expect(tick().closest('[data-part="settings-data-chooser-encrypt"]')!.textContent).toContain(language.settingsShellDataEncryptSlow)
             click(tick())
             expect(occurrences()).toBe(1)
             click(tick())

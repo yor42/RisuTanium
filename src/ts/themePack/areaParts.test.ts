@@ -107,7 +107,7 @@ describe('T0a-24: the generated chat part list', () => {
     })
 
     it('names other screens render are not chat parts', () => {
-        for (const n of ['reply-new-dot', 'reply-error-dot', 'reply-writing-badge', 'chat-shell-device-settings', 'pattern-dialog', 'settings-page', 'home-shell', 'studio-header']) expect(isAreaPart('chat', n), n).toBe(false)
+        for (const n of ['reply-new-dot', 'reply-error-dot', 'reply-writing-badge', 'settings-chat-shell-device-settings', 'pattern-dialog', 'settings-page', 'home-shell', 'studio-header']) expect(isAreaPart('chat', n), n).toBe(false)
         for (const n of CHAT_PARTS) expect(outside.has(n), `${n} is rendered outside the chat screen`).toBe(false)
     })
 

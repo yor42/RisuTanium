@@ -41,9 +41,13 @@ export const SETTINGS_TOKENS: TokenMap = readTokens(rootBlocks(tokenFile('settin
 
 
 // ---- the Settings registry
+// MC-3248: every part at or under the backup chooser's marked root is critical, so a pack can neither hide nor restyle the encryption warnings and the Cancel and Start controls. Pinned from the census of the marked subtree (settingsCriticalClosure.test.ts).
+export const SETTINGS_CRITICAL_CLOSURE: string[] = ['settings-data-chooser-actions', 'settings-data-chooser-cancel', 'settings-data-chooser-encrypt', 'settings-data-chooser-encrypt-slow', 'settings-data-chooser-encrypt-toggle', 'settings-data-chooser-encrypt-warning', 'settings-data-chooser-format', 'settings-data-chooser-heading',
+    'settings-data-chooser-password', 'settings-data-chooser-password-again', 'settings-data-chooser-password-label', 'settings-data-chooser-password-problem', 'settings-data-chooser-password-show', 'settings-data-chooser-root', 'settings-data-chooser-scope', 'settings-data-chooser-scope-note', 'settings-data-chooser-start']
 export const SETTINGS_CRITICAL: string[] = ['settings-dialog', 'settings-dialog-backdrop', 'settings-critical-title', 'settings-critical-body', 'settings-critical-actions', 'settings-critical-action', 'settings-save-retry', 'settings-fix-banner', 'settings-chat-error-card',
     // rule 3 names warnings: the inline warnings and failure results
-    'settings-connection-warning', 'settings-connection-card-status', 'settings-test-result', 'settings-picker-warning', 'settings-fix-mark', 'settings-preset-warning', 'settings-warning-banner']
+    'settings-connection-warning', 'settings-connection-card-status', 'settings-test-result', 'settings-picker-warning', 'settings-fix-mark', 'settings-preset-warning', 'settings-warning-banner',
+    ...SETTINGS_CRITICAL_CLOSURE]
 // parts that are never critical, never hold a critical element and never sit inside one (asserted in the browser by parts.mjs over the whole tour)
 export const SETTINGS_SAFE: string[] = ['settings-header', 'settings-search', 'settings-index-item', 'settings-index-link', 'settings-index-foot', 'settings-section-title', 'settings-jump-chips', 'settings-list-item', 'settings-toggle', 'settings-menu', 'settings-menu-item',
     'settings-callout', 'settings-banner', 'settings-toast', 'settings-results', 'settings-result', 'settings-result-group', 'settings-no-results', 'settings-switcher', 'settings-switcher-panel', 'settings-switcher-option', 'settings-switcher-option-name', 'settings-switcher-search', 'settings-switcher-scrim',
@@ -72,6 +76,8 @@ export const SETTINGS_MINIMUMS: Record<string, string | number> = { '--pattern-f
 export const SETTINGS_MAXIMUMS: Record<string, string | number> = { '--pattern-focus-width': '4px', '--pattern-focus-offset': '6px' }
 // a caller's partial registry keeps the Settings surfaces, tokens, reach list and settable list; strictSafe and partRequired (the part-value rule) are always on
 const full = (reg: RegistryInput): RegistryInput => ({ surfaces: SETTINGS_SURFACES, tokens: SETTINGS_TOKENS, colours: SETTINGS_REGISTRY.colours, ...reg, reach: [...SETTINGS_REACH, ...(reg.reach || [])], controls: [...SETTINGS_REACH, ...(reg.controls || [])], sheets: [...SETTINGS_SHEETS, ...(reg.sheets || [])], chains: [...SETTINGS_CHAINS, ...(reg.chains || [])], pairs: [...SETTINGS_PAIRS, ...(reg.pairs || [])], opaque: [...SETTINGS_REGISTRY.opaque, ...(reg.opaque || [])], settable: [...SETTINGS_SETTABLE, ...(reg.settable || [])], minimums: { ...SETTINGS_MINIMUMS, ...(reg.minimums || {}) }, maximums: { ...SETTINGS_MAXIMUMS, ...(reg.maximums || {}) }, strictSafe: true, partRequired: true })
+/** The completion of a partial registry, for the applied-area registry built where the slice registries are visible (./settings5b); building it here would make the slice modules, which spread this module's lists, a cycle. */
+export const fullSettingsRegistry = full
 
 export function lintPack(css: string, name = '', reg: RegistryInput = SETTINGS_REGISTRY): LintResult {
     return chat.lintPack(css, name, full(reg))

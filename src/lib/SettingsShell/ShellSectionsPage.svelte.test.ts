@@ -169,7 +169,7 @@ describe('ShellSectionsPage', () => {
     test('an open section renders its rows with its hint and jump row', async () => {
         const { target } = showPage()
         await settle()
-        expect(maybeRow(target, 'acc.sendWithEnter')?.querySelector('[data-part="setting-row-hint"]')).not.toBeNull()
+        expect(maybeRow(target, 'acc.sendWithEnter')?.querySelector('[data-part="settings-row-hint"]')).not.toBeNull()
         expect(maybeRow(target, 'test.jump')).not.toBeNull()
         target.querySelector<HTMLElement>('[data-setting-row="test.jump"] button')!.click()
         flushSync()
@@ -209,6 +209,6 @@ describe('ShellSectionsPage', () => {
         await settle()
         const row = maybeRow(touch.target, 'acc.enableBlockPartialEdit')!
         expect(row.querySelector('input[type="checkbox"]')).toBeNull()
-        expect(row.querySelector('[data-part="setting-row-note"]')).not.toBeNull()
+        expect(row.querySelector('[data-part="settings-row-note"]')).not.toBeNull()
     })
 })

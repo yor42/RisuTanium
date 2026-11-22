@@ -15,7 +15,7 @@
     const pending = $derived(languagePending(atMount, DBState.db.language))
 </script>
 
-<div role="status" class="mt-1" data-part="language-pending">
+<div role="status" class="mt-1" data-part="settings-language-pending">
     {#if pending}
         <p class="text-sm text-textcolor2">{settingsLabel('settingsShellLangPending')}</p>
     {/if}

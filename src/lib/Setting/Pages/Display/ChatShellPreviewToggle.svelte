@@ -44,7 +44,7 @@
 </div>
 
 {#if hapticsAvailable}
-<div class="flex items-center mt-2 gap-2" data-part="chat-shell-device-settings">
+<div class="flex items-center mt-2 gap-2" data-part="settings-chat-shell-device-settings">
     <label class="flex items-center gap-2">
         <input type="checkbox" aria-label={language.chatShellHaptics} data-setting="haptics" checked={haptics} onchange={toggleHaptics} />
         <span>{language.chatShellHaptics}</span>

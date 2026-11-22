@@ -152,7 +152,7 @@ afterEach(async () => {
 describe('the model tab links to the Connections page', () => {
     test('shows exactly one link and choosing it sets the settings index to 18', () => {
         const target = mountPage()
-        const links = Array.from(target.querySelectorAll<HTMLElement>('[data-part="connections-link"]'))
+        const links = Array.from(target.querySelectorAll<HTMLElement>('[data-part="settings-connections-link"]'))
         expect(links).toHaveLength(1)
         expect(links[0].textContent).toBe(language.connectionsManageLink)
         SettingsMenuIndex.set(1)

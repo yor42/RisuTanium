@@ -43,4 +43,4 @@
         onChange={onSwitch}
     />
 </div>
-<p class="text-sm text-textcolor2 mt-1" data-part="notification-status">{statusText}</p>
+<p class="text-sm text-textcolor2 mt-1" data-part="settings-notification-status">{statusText}</p>

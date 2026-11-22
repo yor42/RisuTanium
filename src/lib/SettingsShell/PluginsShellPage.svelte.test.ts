@@ -141,7 +141,7 @@ async function unmountOne(entry: Mounted): Promise<void> {
 
 const item = (target: HTMLElement, name: string) => target.querySelector<HTMLElement>(`[data-plugin="${name}"]`)!
 const part = <T extends HTMLElement = HTMLElement>(root: HTMLElement, name: string) => root.querySelector<T>(`[data-part="${name}"]`)
-const strip = (target: HTMLElement) => part(target, 'plugins-results')!.textContent ?? ''
+const strip = (target: HTMLElement) => part(target, 'settings-plugins-results')!.textContent ?? ''
 
 beforeEach(() => {
     localStorage.clear()
@@ -172,19 +172,19 @@ describe('a retired plugin row', () => {
         const { target } = render()
         await settle()
         const row = item(target, 'old')
-        const sw = part<HTMLButtonElement>(row, 'plugin-switch')!
+        const sw = part<HTMLButtonElement>(row, 'settings-plugin-enable')!
 
         expect(row.textContent).toContain('Shown old')
-        expect(part(row, 'plugin-access')!.textContent).toContain(api)
+        expect(part(row, 'settings-plugin-access-level')!.textContent).toContain(api)
         expect(sw.disabled).toBe(true)
         expect(sw.getAttribute('role')).toBe('switch')
         expect(sw.getAttribute('aria-checked')).toBe('false')
-        expect(sw.getAttribute('aria-describedby')).toBe(part(row, 'plugin-access')!.id)
-        expect(part(row, 'plugin-settings-file')).toBeNull()
-        expect(part(row, 'plugin-settings-toggle')).toBeNull()
+        expect(sw.getAttribute('aria-describedby')).toBe(part(row, 'settings-plugin-access-level')!.id)
+        expect(part(row, 'settings-plugin-settings-file')).toBeNull()
+        expect(part(row, 'settings-plugin-settings-toggle')).toBeNull()
         expect(JSON.stringify(DBState.db.plugins)).toBe(before)
 
-        part<HTMLButtonElement>(target, 'plugins-check')!.click()
+        part<HTMLButtonElement>(target, 'settings-plugins-check')!.click()
         await settle()
         sw.click()
         await settle()
@@ -200,11 +200,11 @@ describe('a 3.0 plugin row', () => {
         installDb([plugin('p', { versionOfPlugin: '1.2.0', allowedIPC: ['a', 'b'], enabled: false })])
         const { target } = render()
         const row = item(target, 'p')
-        const sw = part<HTMLButtonElement>(row, 'plugin-switch')!
+        const sw = part<HTMLButtonElement>(row, 'settings-plugin-enable')!
 
-        expect(part(row, 'plugin-version')!.textContent).toBe('v1.2.0 · API 3.0')
-        expect(part(row, 'plugin-access')!.textContent).toContain(language.pluginsPage.accessLimited)
-        expect(part(row, 'plugin-ipc')!.textContent).toBe(fillLang(language.pluginsPage.accessIpc, { count: 2 }))
+        expect(part(row, 'settings-plugin-version')!.textContent).toBe('v1.2.0 · API 3.0')
+        expect(part(row, 'settings-plugin-access-level')!.textContent).toContain(language.pluginsPage.accessLimited)
+        expect(part(row, 'settings-plugin-ipc')!.textContent).toBe(fillLang(language.pluginsPage.accessIpc, { count: 2 }))
         expect(sw.getAttribute('role')).toBe('switch')
         expect(sw.getAttribute('aria-checked')).toBe('false')
         expect(sw.getAttribute('aria-label')).toBe('Shown p')
@@ -221,8 +221,8 @@ describe('a 3.0 plugin row', () => {
     test('behaviour: the switch reflects the saved enabled state', async () => {
         installDb([plugin('p', { enabled: true }), plugin('q', { enabled: false })])
         const { target } = render()
-        expect(part(item(target, 'p'), 'plugin-switch')!.getAttribute('aria-checked')).toBe('true')
-        expect(part(item(target, 'q'), 'plugin-switch')!.getAttribute('aria-checked')).toBe('false')
+        expect(part(item(target, 'p'), 'settings-plugin-enable')!.getAttribute('aria-checked')).toBe('true')
+        expect(part(item(target, 'q'), 'settings-plugin-enable')!.getAttribute('aria-checked')).toBe('false')
     })
 })
 
@@ -265,7 +265,7 @@ describe('the update check', () => {
         expect(second).not.toHaveBeenCalled()
         expect(strip(reopened.target)).toContain('Bad One')
 
-        part<HTMLButtonElement>(reopened.target, 'plugins-check')!.click()
+        part<HTMLButtonElement>(reopened.target, 'settings-plugins-check')!.click()
         await settle()
 
         expect(second).toHaveBeenCalledTimes(2)
@@ -288,7 +288,7 @@ describe('the update check', () => {
         const fetchMock = stubFetch({})
         const { target } = render()
         await settle()
-        expect(part(target, 'plugins-check')).toBeNull()
+        expect(part(target, 'settings-plugins-check')).toBeNull()
         expect(fetchMock).not.toHaveBeenCalled()
     })
 
@@ -299,16 +299,16 @@ describe('the update check', () => {
         await settle()
         const row = item(target, 'up')
 
-        expect(part(row, 'plugin-update-chip')!.textContent).toBe(fillLang(language.pluginsPage.updateChip, { version: '2.0.0' }))
+        expect(part(row, 'settings-plugin-update-chip')!.textContent).toBe(fillLang(language.pluginsPage.updateChip, { version: '2.0.0' }))
 
-        part<HTMLButtonElement>(row, 'plugin-update')!.click()
+        part<HTMLButtonElement>(row, 'settings-plugin-update')!.click()
         await settle()
         expect(mocks.confirm).toHaveBeenCalledWith(language.pluginUpdateFoundInstallIt)
         expect(mocks.update).toHaveBeenCalledTimes(1)
         expect(mocks.toast).not.toHaveBeenCalled()
 
         mocks.update.mockImplementation(async () => false)
-        part<HTMLButtonElement>(row, 'plugin-update')!.click()
+        part<HTMLButtonElement>(row, 'settings-plugin-update')!.click()
         await settle()
         expect(mocks.toast).toHaveBeenCalledTimes(1)
         expect((mocks.toast.mock.calls[0][0] as { kind: string }).kind).toBe('error')
@@ -322,7 +322,7 @@ describe('removing a plugin', () => {
         const before = JSON.stringify(target)
         const { target: root } = render()
 
-        part<HTMLButtonElement>(item(root, 'b'), 'plugin-remove')!.click()
+        part<HTMLButtonElement>(item(root, 'b'), 'settings-plugin-remove')!.click()
         await settle()
 
         expect(mocks.confirm).toHaveBeenCalledWith(fillLang(language.pluginsPage.removeConfirm, { name: 'Shown b' }))
@@ -346,7 +346,7 @@ describe('removing a plugin', () => {
         mocks.confirm.mockImplementation(async () => false)
         const { target } = render()
 
-        part<HTMLButtonElement>(item(target, 'a'), 'plugin-remove')!.click()
+        part<HTMLButtonElement>(item(target, 'a'), 'settings-plugin-remove')!.click()
         await settle()
 
         expect(DBState.db.plugins).toHaveLength(1)
@@ -367,7 +367,7 @@ describe('the arguments panel', () => {
     async function open(): Promise<{ root: HTMLElement, entry: Mounted }> {
         installDb([withArgs()])
         const entry = render()
-        part<HTMLButtonElement>(item(entry.target, 'args'), 'plugin-settings-toggle')!.click()
+        part<HTMLButtonElement>(item(entry.target, 'args'), 'settings-plugin-settings-toggle')!.click()
         await settle()
         return { root: item(entry.target, 'args'), entry }
     }
@@ -387,7 +387,7 @@ describe('the arguments panel', () => {
     test('behaviour: select options show their own text and the disclosure is expanded', async () => {
         const { root } = await open()
         expect(Array.from(root.querySelectorAll('option')).map((o) => o.textContent?.trim())).toEqual(['low', 'high'])
-        expect(part(root, 'plugin-settings-toggle')!.getAttribute('aria-expanded')).toBe('true')
+        expect(part(root, 'settings-plugin-settings-toggle')!.getAttribute('aria-expanded')).toBe('true')
     })
 
     test('behaviour: typing alone writes nothing; blur and Enter write; a textarea ignores Enter', async () => {
@@ -434,11 +434,11 @@ describe('the arguments panel', () => {
         await settle()
         expect(DBState.db.plugins[0].realArg.count).toBe(12)
         expect(count.value).toBe('12')
-        expect(part(root, 'plugin-arg-invalid')!.textContent).toBe(language.pluginsPage.numberInvalid)
+        expect(part(root, 'settings-plugin-arg-invalid')!.textContent).toBe(language.pluginsPage.numberInvalid)
 
         type(count, '13')
         await settle()
-        expect(part(root, 'plugin-arg-invalid')!.textContent).toBe('')
+        expect(part(root, 'settings-plugin-arg-invalid')!.textContent).toBe('')
     })
 
     test('behaviour: focusing and leaving a field without typing writes nothing and shows no error', async () => {
@@ -447,7 +447,7 @@ describe('the arguments panel', () => {
             realArg: { five: '5', empty: '', word: 'w' },
         })])
         const entry = render()
-        part<HTMLButtonElement>(item(entry.target, 'args'), 'plugin-settings-toggle')!.click()
+        part<HTMLButtonElement>(item(entry.target, 'args'), 'settings-plugin-settings-toggle')!.click()
         await settle()
         const root = item(entry.target, 'args')
 
@@ -461,7 +461,7 @@ describe('the arguments panel', () => {
         expect(DBState.db.plugins[0].realArg).toEqual({ five: '5', empty: '', word: 'w' })
         expect(field(root, 'five').value).toBe('5')
         expect(field(root, 'empty').value).toBe('')
-        expect(Array.from(root.querySelectorAll('[data-part="plugin-arg-invalid"]')).map((n) => n.textContent)).toEqual(['', ''])
+        expect(Array.from(root.querySelectorAll('[data-part="settings-plugin-arg-invalid"]')).map((n) => n.textContent)).toEqual(['', ''])
     })
 })
 
@@ -475,7 +475,7 @@ describe('the settings-file import and the starter template', () => {
             data: new TextEncoder().encode(JSON.stringify({ type: 'risutanium-plugin-settings', version: 1, plugin: { name: 's', values: { key: 'new' } } })),
         }))
 
-        part<HTMLButtonElement>(item(target, 's'), 'plugin-settings-file')!.click()
+        part<HTMLButtonElement>(item(target, 's'), 'settings-plugin-settings-file')!.click()
         await settle()
 
         expect(DBState.db.plugins[0].realArg.key).toBe('new')
@@ -497,7 +497,7 @@ describe('the settings-file import and the starter template', () => {
             name: 'f.json',
             data: new TextEncoder().encode(JSON.stringify({ type: 'risutanium-plugin-settings', version: 1, plugin: { name: 's', values: { key: 'new' } } })),
         }))
-        part<HTMLButtonElement>(item(target, 's'), 'plugin-settings-file')!.click()
+        part<HTMLButtonElement>(item(target, 's'), 'settings-plugin-settings-file')!.click()
         await settle()
         DBState.db.plugins[0].realArg.key = 'later'
 
@@ -513,7 +513,7 @@ describe('the settings-file import and the starter template', () => {
         const { target } = render()
         mocks.select.mockImplementation(async () => '1')
 
-        part<HTMLButtonElement>(target, 'plugins-dev')!.click()
+        part<HTMLButtonElement>(target, 'settings-plugins-dev')!.click()
         await settle()
 
         expect(fetchMock).toHaveBeenCalledWith('/plugin_start.7z')
@@ -528,7 +528,7 @@ describe('the settings-file import and the starter template', () => {
         const { target } = render()
         mocks.select.mockImplementation(async () => '1')
 
-        part<HTMLButtonElement>(target, 'plugins-dev')!.click()
+        part<HTMLButtonElement>(target, 'settings-plugins-dev')!.click()
         await settle()
 
         expect(mocks.download).not.toHaveBeenCalled()

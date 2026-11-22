@@ -70,7 +70,7 @@ function show(index: number): HTMLElement {
 }
 
 const confirmLayer = () => document.querySelector<HTMLElement>('[data-part="pattern-layer"]')
-const showAllButton = (target: HTMLElement) => target.querySelector<HTMLElement>('[data-part="mode-show-all"]')!
+const showAllButton = (target: HTMLElement) => target.querySelector<HTMLElement>('[data-part="settings-mode-show-all"]')!
 const cancelButton = () => document.querySelector<HTMLElement>('[data-part="pattern-warn-cancel"]')!
 const primaryButton = () => document.querySelector<HTMLElement>('[data-part="pattern-warn-primary"]')!
 const pageMain = (target: HTMLElement) => target.querySelector('[data-part="settings-page"]')
@@ -99,14 +99,14 @@ describe('placement', () => {
     test('the group is the first element of the Display view', () => {
         const target = show(3)
         const view = target.querySelector('[data-part="settings-view"]')!
-        expect(view.firstElementChild?.getAttribute('data-part')).toBe('mode-visibility')
-        expect(view.querySelectorAll('[data-part="mode-visibility"]')).toHaveLength(1)
+        expect(view.firstElementChild?.getAttribute('data-part')).toBe('settings-mode-visibility')
+        expect(view.querySelectorAll('[data-part="settings-mode-visibility"]')).toHaveLength(1)
     })
 
     test('no other page renders the group', () => {
         for (const index of [0, 1, 2, 4, 6, 10, 11, 12, 13, 14, 15]) {
             const target = show(index)
-            expect(target.querySelector('[data-part="mode-visibility"]')).toBeNull()
+            expect(target.querySelector('[data-part="settings-mode-visibility"]')).toBeNull()
         }
     })
 })

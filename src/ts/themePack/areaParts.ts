@@ -64,6 +64,35 @@ const STUDIO_PART = /^studio(-[a-z0-9-]+)?$/
 /** The Studio screen's parts: `studio` and every `studio-*` name (no such name is rendered outside src/lib/Studio/**). */
 export const isStudioPart = (name: string): boolean => STUDIO_PART.test(name)
 
+const SETTINGS_PART_NAMES: readonly string[] = [
+    'settings-advanced-calm', 'settings-advanced-page', 'settings-asset-width', 'settings-asset-width-custom', 'settings-back', 'settings-back-subtitle', 'settings-chat-shell-device-settings', 'settings-connection-add',
+    'settings-connection-add-open', 'settings-connection-add-provider', 'settings-connection-alert', 'settings-connection-all-added', 'settings-connection-card', 'settings-connection-chip', 'settings-connection-delete', 'settings-connection-detail',
+    'settings-connection-error', 'settings-connection-key', 'settings-connection-key-clear', 'settings-connection-key-input', 'settings-connection-key-replace', 'settings-connection-key-save', 'settings-connection-name', 'settings-connection-name-note',
+    'settings-connection-notice', 'settings-connection-notice-dismiss', 'settings-connection-save', 'settings-connection-use', 'settings-connection-used', 'settings-connection-users', 'settings-connections-empty', 'settings-connections-link',
+    'settings-connections-list', 'settings-connections-root', 'settings-connections-view', 'settings-data-action', 'settings-data-backup-result', 'settings-data-chooser-actions', 'settings-data-chooser-cancel', 'settings-data-chooser-encrypt',
+    'settings-data-chooser-encrypt-slow', 'settings-data-chooser-encrypt-toggle', 'settings-data-chooser-encrypt-warning', 'settings-data-chooser-format', 'settings-data-chooser-heading', 'settings-data-chooser-password', 'settings-data-chooser-password-again', 'settings-data-chooser-password-label',
+    'settings-data-chooser-password-problem', 'settings-data-chooser-password-show', 'settings-data-chooser-root', 'settings-data-chooser-scope', 'settings-data-chooser-scope-note', 'settings-data-chooser-start', 'settings-data-page', 'settings-device-chip',
+    'settings-display-page', 'settings-easy-panel', 'settings-header', 'settings-hotkey-chord', 'settings-hotkey-conflict', 'settings-hotkey-conflict-action', 'settings-hotkey-dup-warning', 'settings-hotkey-page',
+    'settings-hotkey-readonly-note', 'settings-hotkey-recording', 'settings-hotkey-row', 'settings-hotkey-slot-conflict', 'settings-index', 'settings-index-display', 'settings-index-entry', 'settings-input-page',
+    'settings-language-page', 'settings-language-pending', 'settings-low-power', 'settings-mode-checkbox', 'settings-mode-fieldset', 'settings-mode-hide-switch', 'settings-mode-lock-reason', 'settings-mode-repair-banner',
+    'settings-mode-row', 'settings-mode-show-all', 'settings-mode-show-all-reason', 'settings-mode-status', 'settings-mode-visibility', 'settings-mode-visibility-home-note', 'settings-mode-visibility-note', 'settings-mode-visibility-title',
+    'settings-new-message-button-outline', 'settings-new-message-button-row', 'settings-notification-status', 'settings-notifications-off-line', 'settings-page', 'settings-page-heading', 'settings-page-scroll', 'settings-persona-active',
+    'settings-persona-binding', 'settings-persona-card', 'settings-persona-drag', 'settings-persona-editor', 'settings-persona-guard', 'settings-persona-list', 'settings-persona-portrait', 'settings-persona-search',
+    'settings-persona-usage', 'settings-plugin-access-level', 'settings-plugin-arg-invalid', 'settings-plugin-args', 'settings-plugin-enable', 'settings-plugin-export', 'settings-plugin-ipc', 'settings-plugin-name', 'settings-plugin-remove',
+    'settings-plugin-row', 'settings-plugin-rows', 'settings-plugin-settings-file', 'settings-plugin-settings-toggle', 'settings-plugin-update', 'settings-plugin-update-chip', 'settings-plugin-version',
+    'settings-plugins-add', 'settings-plugins-check', 'settings-plugins-dev', 'settings-plugins-item', 'settings-plugins-page', 'settings-plugins-result-current', 'settings-plugins-result-failed', 'settings-plugins-result-updates',
+    'settings-plugins-results', 'settings-plugins-warning', 'settings-quote-boxes', 'settings-quote-preview', 'settings-reduce-card-effects', 'settings-reduce-card-effects-by-low-power', 'settings-reduced-motion', 'settings-reply-notifications-help',
+    'settings-reply-notifications-status', 'settings-row-dot', 'settings-row-ends', 'settings-row-hint', 'settings-row-jump', 'settings-row-note', 'settings-row-reason', 'settings-search-browse',
+    'settings-search-clear', 'settings-search-close', 'settings-search-group', 'settings-search-input', 'settings-search-more', 'settings-search-none', 'settings-search-open', 'settings-search-partial',
+    'settings-search-result', 'settings-search-results', 'settings-search-status', 'settings-seasonal-logo', 'settings-seasonal-logo-help', 'settings-section', 'settings-section-heading', 'settings-shell',
+    'settings-theme-cards', 'settings-title', 'settings-ui-sounds', 'settings-ui-sounds-help', 'settings-ui-sounds-talkback', 'settings-usage-clear', 'settings-usage-cleared', 'settings-usage-empty',
+    'settings-usage-manage', 'settings-usage-models', 'settings-usage-months', 'settings-usage-note', 'settings-usage-overflow', 'settings-usage-price-editor', 'settings-usage-price-invalid', 'settings-usage-price-source',
+    'settings-usage-purposes', 'settings-view', 'settings-view-chip',
+]
+
+/** The `settings-*` parts the Settings screen renders (the SettingsShell tree and the Setting/Pages components it reaches). Every one carries the `settings-` prefix and no other screen renders one; settingsParts.test.ts recomputes the list from the markup and prints the expected constant on a mismatch. */
+export const SETTINGS_PARTS: ReadonlySet<string> = new Set<string>(SETTINGS_PART_NAMES)
+
 /** Whether a stylesheet of the area may name this part. */
 export function isAreaPart(area: ScopedArea, name: string): boolean {
     return area === 'chat' ? CHAT_PARTS.has(name) : isStudioPart(name)

@@ -32,9 +32,9 @@
         onChange={onSwitch}
     />
 </div>
-<p class="text-sm text-textcolor2 mt-1" data-part="reply-notifications-help">{language.replyNotificationsHelp}</p>
+<p class="text-sm text-textcolor2 mt-1" data-part="settings-reply-notifications-help">{language.replyNotificationsHelp}</p>
 {#if notificationsOff}
-    <div class="flex flex-wrap items-center gap-2 mt-1" data-part="notifications-off-line">
+    <div class="flex flex-wrap items-center gap-2 mt-1" data-part="settings-notifications-off-line">
         <p class="text-sm text-textcolor2 grow min-w-0">{language.notificationsOffNotice}</p>
         <button
             type="button"
@@ -45,5 +45,5 @@
     </div>
 {/if}
 {#if blocked}
-    <p class="text-sm text-textcolor2 mt-1" data-part="reply-notifications-status">{language.replyNotificationsBlocked}</p>
+    <p class="text-sm text-textcolor2 mt-1" data-part="settings-reply-notifications-status">{language.replyNotificationsBlocked}</p>
 {/if}

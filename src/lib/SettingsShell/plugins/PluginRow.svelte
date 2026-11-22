@@ -116,17 +116,17 @@
     const iconButton = 'inline-flex items-center justify-center min-h-11 min-w-11 rounded-md text-textcolor2 hover:text-textcolor'
 </script>
 
-<div class="flex flex-col gap-2 px-3 py-3 rounded-md bg-darkbutton text-textcolor" role="group" aria-labelledby="{uid}-name" data-part="plugins-item" data-plugin={plugin.name}>
+<div class="flex flex-col gap-2 px-3 py-3 rounded-md bg-darkbutton text-textcolor" role="group" aria-labelledby="{uid}-name" data-part="settings-plugins-item" data-plugin={plugin.name}>
     <div class="flex items-start gap-3">
         <div class="flex flex-col grow min-w-0">
             <span class="flex flex-wrap items-center gap-2">
-                <span id="{uid}-name" class="font-semibold break-words" data-part="plugin-name">{label}</span>
+                <span id="{uid}-name" class="font-semibold break-words" data-part="settings-plugin-name">{label}</span>
                 {#if hotReloading.includes(plugin.name)}
                     <span class="text-sm rounded bg-amber-700 px-2 py-1 text-white">{language.settingsPage.hotBadge}</span>
                 {/if}
             </span>
-            <span class="text-sm text-textcolor2" data-part="plugin-version">{versionLine}</span>
-            <span id="{uid}-access" class="text-sm" class:text-textcolor2={runnable} class:text-draculared={!runnable} data-part="plugin-access">
+            <span class="text-sm text-textcolor2" data-part="settings-plugin-version">{versionLine}</span>
+            <span id="{uid}-access" class="text-sm" class:text-textcolor2={runnable} class:text-draculared={!runnable} data-part="settings-plugin-access-level">
                 {#if access.kind === 'limited'}
                     {language.pluginsPage.accessLimited}
                 {:else}
@@ -136,7 +136,7 @@
                 {/if}
             </span>
             {#if access.kind === 'limited' && access.ipcCount > 0}
-                <span class="text-sm text-textcolor2" data-part="plugin-ipc">{fillLang(language.pluginsPage.accessIpc, { count: access.ipcCount })}</span>
+                <span class="text-sm text-textcolor2" data-part="settings-plugin-ipc">{fillLang(language.pluginsPage.accessIpc, { count: access.ipcCount })}</span>
             {/if}
         </div>
         <button
@@ -147,7 +147,7 @@
             aria-label={label}
             aria-describedby={mode === 'disabled' ? `${uid}-access` : undefined}
             disabled={mode === 'disabled'}
-            data-part="plugin-switch"
+            data-part="settings-plugin-enable"
             onclick={toggle}
         >
             <span class="text-sm">{on ? language.pluginsPage.switchOn : language.pluginsPage.switchOff}</span>
@@ -170,17 +170,17 @@
                 ><LinkIcon aria-hidden="true" /></a>
             {/if}
         {/each}
-        <button type="button" class={iconButton} aria-label={language.export} title={language.export} data-part="plugin-export" onclick={exportScript}>
+        <button type="button" class={iconButton} aria-label={language.export} title={language.export} data-part="settings-plugin-export" onclick={exportScript}>
             <DownloadIcon aria-hidden="true" />
         </button>
         {#if runnable && hasArgs}
-            <button type="button" class={iconButton} aria-label={language.pluginSettingsFile.button} title={language.pluginSettingsFile.button} data-part="plugin-settings-file" onclick={openSettingsFile}>
+            <button type="button" class={iconButton} aria-label={language.pluginSettingsFile.button} title={language.pluginSettingsFile.button} data-part="settings-plugin-settings-file" onclick={openSettingsFile}>
                 <Settings2Icon aria-hidden="true" />
             </button>
         {/if}
         {#if updateVersion}
-            <span class="text-sm text-textcolor px-2" data-part="plugin-update-chip">{fillLang(language.pluginsPage.updateChip, { version: updateVersion })}</span>
-            <button type="button" class="px-3 min-h-11 rounded-md bg-selected text-textcolor" data-part="plugin-update" onclick={update}>{language.pluginsPage.updateAction}</button>
+            <span class="text-sm text-textcolor px-2" data-part="settings-plugin-update-chip">{fillLang(language.pluginsPage.updateChip, { version: updateVersion })}</span>
+            <button type="button" class="px-3 min-h-11 rounded-md bg-selected text-textcolor" data-part="settings-plugin-update" onclick={update}>{language.pluginsPage.updateAction}</button>
         {/if}
         <span class="grow"></span>
         {#if runnable && hasArgs}
@@ -189,11 +189,11 @@
                 class="px-3 min-h-11 rounded-md text-textcolor2 hover:text-textcolor"
                 aria-expanded={open}
                 aria-controls="{uid}-args"
-                data-part="plugin-settings-toggle"
+                data-part="settings-plugin-settings-toggle"
                 onclick={() => { open = !open }}
             >{language.pluginsPage.settings}</button>
         {/if}
-        <button type="button" class={iconButton} aria-label={language.remove} title={language.remove} data-part="plugin-remove" onclick={remove}>
+        <button type="button" class={iconButton} aria-label={language.remove} title={language.remove} data-part="settings-plugin-remove" onclick={remove}>
             <TrashIcon aria-hidden="true" />
         </button>
     </div>
