@@ -2,6 +2,7 @@ import { v4 } from 'uuid'
 import { DBState, selIdState } from '../stores.svelte'
 import { registerDraft, unregisterDraft } from '../localDrafts'
 import { draftContentOrphanGate } from '../draftContentOrphanGate'
+import { flushChatDrafts, lookupPersistedEditDraft } from '../chatDraftStore'
 import { type MessageIdentity, type TranslationIdentity, type DraftRecord, isDraftRestore } from '../draftContents'
 import { MEASURE } from './memory/measureFlag'
 import { noteEditConfirm } from './chatPhaseRing'
@@ -53,7 +54,16 @@ export function createMessageEditorController(deps: MessageEditorDeps) {
     $effect(() => {
         if (editMode) {
             registerDraft(editDraftKey)
-            return () => unregisterDraft(editDraftKey)
+            return () => {
+                unregisterDraft(editDraftKey)
+                // Every way the editor closes (save, discard, Back, `closeEpoch`, a chat switch or unmount) ends here, so the
+                // draft typed in the last idle window reaches the profile now. A fault never breaks the teardown.
+                try {
+                    flushChatDrafts()
+                } catch (error) {
+                    console.error(error)
+                }
+            }
         }
     })
     $effect(() => {
@@ -177,7 +187,9 @@ export function createMessageEditorController(deps: MessageEditorDeps) {
         frozenBaseData = deps.getMessage()
         // Seed from the draft only when its stored base text still matches;
         // `draftContentOrphanGate.get` deletes a mismatched record itself.
-        const record = draftContentOrphanGate.get(identity, deps.getMessage())
+        // The in-memory record comes first because it is newer; a miss falls back to the draft kept across a restart, which
+        // is only looked up here, on an Edit tap, and never filed into the in-memory store.
+        const record = draftContentOrphanGate.get(identity, deps.getMessage()) ?? lookupPersistedEditDraft(identity, deps.getMessage())
         // MC-068's surfaced rule: a matching-base record only counts as a
         // restore when its text also differs from `message`. Capture
         // never writes such a record for a `msg:` identity in the first

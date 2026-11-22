@@ -4,7 +4,7 @@
  * test names the rule it fixes; its evidence is the mutant it kills.
  */
 import { describe, expect, test } from 'vitest'
-import { CHAT_DRAFT_CAP, capChatDrafts, chatDraftKey, countChatDrafts, narrowChatDrafts, reconcileChatDrafts } from 'src/ts/chatDraftsModel'
+import { CHAT_DRAFT_CAP, capChatDrafts, chatDraftKey, countChatDrafts, narrowChatDrafts, persistTargetOf, reconcileChatDrafts } from 'src/ts/chatDraftsModel'
 import type { ChatDraftEntry, PersistedEditDraft } from 'src/ts/storage/database.svelte'
 
 const BH = '00112233445566778899aabbccddeeff'
@@ -180,5 +180,13 @@ describe('reconcileChatDrafts', () => {
     test('returns the input array itself when nothing is dropped', () => {
         const keep = [entries[0]]
         expect(reconcileChatDrafts(keep, [{ chaId: 'live', chats: [{ id: 'c1' }] }])).toBe(keep)
+    })
+})
+describe('persistTargetOf', () => {
+    test('T3.11: both ids must be non-empty strings, else the edit stays memory-only', () => {
+        expect(persistTargetOf('cha', 'chat')).toEqual({ chaId: 'cha', chatId: 'chat' })
+        for (const [chaId, chatId] of [['', 'chat'], ['cha', ''], [undefined, 'chat'], ['cha', undefined], [4, 'chat'], ['cha', null]]) {
+            expect(persistTargetOf(chaId, chatId)).toBeUndefined()
+        }
     })
 })

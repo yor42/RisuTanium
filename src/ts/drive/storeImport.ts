@@ -1,4 +1,5 @@
 import { alertConfirm, alertError, alertNormalWait, alertStore, alertWait, waitAlert } from '../alert'
+import { flushPersistedDrafts } from '../draftContentOrphanGate'
 import { getSaveMarkCount, isSaveClean } from '../globalApi.svelte'
 import { language } from 'src/lang'
 import { getDatabase, type Database } from '../storage/database.svelte'
@@ -735,6 +736,12 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
     // imported legacy engine flags never outrank the page's choice.
     const { ltmEngine, ltmSettings } = pageChroMemory(getDatabase())
     // And the unsent message edits and hint flags: a `.bin` carries none, so the profile keeps the page's own, by value.
+    // A draft typed in the last idle window is written first, so it is among them.
+    try {
+        flushPersistedDrafts()
+    } catch (error) {
+        console.error(error)
+    }
     const chatDrafts = pageChatDrafts(getDatabase())
     // A committer without `commitStreamed` takes every file the whole way.
     const stream = committer.commitStreamed === undefined ? undefined : request.stream

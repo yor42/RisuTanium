@@ -177,3 +177,11 @@ export function reconcileChatDrafts(entries: readonly ChatDraftEntry[], slots: r
     })
     return kept.length === entries.length ? entries : kept
 }
+
+/**
+ * Where an original-message edit is kept across a restart: the owner's chaId and the chat's id, both non-empty strings.
+ * Anything else (an idless chat, a missing owner id) gives none, and the edit stays memory-only.
+ */
+export function persistTargetOf(chaId: unknown, chatId: unknown): { chaId: string, chatId: string } | undefined {
+    return typeof chaId === 'string' && chaId !== '' && typeof chatId === 'string' && chatId !== '' ? { chaId, chatId } : undefined
+}

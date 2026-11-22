@@ -337,6 +337,21 @@ for (const arm of ['whole', 'stream'] as const) describe(`Unsent message edits o
         expect(stored.chatDrafts).toEqual(PAGE_DRAFTS)
         expect(stored.chatDrafts).not.toBe(page.db.chatDrafts)
     })
+
+    test('T3.18: the import start writes a draft typed in the last idle window, so the profile keeps it', async () => {
+        const page = await openPage()
+        await pageHolds(page, { chatDrafts: PAGE_DRAFTS })
+        await import('src/ts/chatDraftStore')
+        const { draftContentOrphanGate } = await import('src/ts/draftContentOrphanGate')
+        draftContentOrphanGate.set({ kind: 'msg', chatKey: 'window', chatId: 'msg-q', index: 0, persist: { chaId: 'char-q', chatId: 'chat-q' } }, 'typed just now', 'the saved text')
+
+        await loadBin(page, await binWith(page, {}))
+
+        const stored = await storedDatabase(page)
+        const kept = (stored.chatDrafts as { cha: string, chat: string, drafts?: { text: string }[] }[]).find((entry) => entry.cha === 'char-q')
+        expect(kept?.drafts?.[0].text).toBe('typed just now')
+        expect((stored.chatDrafts as unknown[]).length).toBe(PAGE_DRAFTS.length + 1)
+    })
 })
 
 describe('Unsent message edits over the import overlay', () => {

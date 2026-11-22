@@ -27,6 +27,7 @@ import { applyCharacterDefaults } from "./storage/characterDefaults";
 import { createSendSubject, hasWorkIn, originOf, stopWorkIn } from "./process/chatOrigin";
 import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
+import { forgetChatDrafts, reconcileChatDraftsNow } from "./chatDraftStore";
 import { escapeHtmlText } from "./htmlEscape";
 import { keepChatPageOf, openChatOf } from "./chatShell/chatOpen";
 import { chatRecency } from "./chatShell/chatListModel";
@@ -1393,6 +1394,10 @@ export async function removeChar(identifier:string|number|character|groupChat,na
     // not listed (an already-trashed one) with nothing selected needs this mark.
     markCharacterForSave(removedChaId)
     queueInlayCleanupForCharacters(removed)
+    if(type !== 'normal'){
+        // A trashed character keeps its unsent edits until it is deleted for good.
+        reconcileChatDraftsNow()
+    }
     selectedCharID.set(-1)
     if(reported){
         reportTrashed(report, reported)
@@ -1467,6 +1472,7 @@ export async function removeTrashedCharacters(refs: (character | groupChat)[], o
         markCharacterForSave(ref.chaId)
     }
     queueInlayCleanupForCharacters([...doomed])
+    reconcileChatDraftsNow()
     if(selectedRef){
         selectedCharID.set(doomed.has(selectedRef) ? -1 : DBState.db.characters.indexOf(selectedRef))
     }
@@ -1724,6 +1730,9 @@ export async function removeChatConfirmed(owner: character | groupChat, chat: Ch
     // The removal reaches the save only through this mark when the owner is not the selected character.
     markCharacterForSave(owner.chaId)
     queueInlayCleanupForChat(chat)
+    if(owner.chaId && chat.id){
+        forgetChatDrafts(owner.chaId, chat.id)
+    }
     return true
 }
 
@@ -1767,6 +1776,9 @@ function removeKeepingCurrent(owner: character | groupChat, chat: Chat): boolean
     // The removal reaches the save only through this mark when the owner is not the selected character.
     markCharacterForSave(owner.chaId)
     queueInlayCleanupForChat(chat)
+    if(owner.chaId && chat.id){
+        forgetChatDrafts(owner.chaId, chat.id)
+    }
     if(!openGone){
         keepChatPageOf(owner, landing)
     }else if(openChatOf(owner, landing) === 'not-selected'){

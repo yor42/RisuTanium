@@ -71,6 +71,7 @@ import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedg
 import { binLeaveOutSummary, type BinLeaveOutEntry } from "./binLeaveOut";
 import { chroMemoryOn } from "../process/memory/memoryEngine";
 import { countChatDrafts } from "../chatDraftsModel";
+import { flushPersistedDrafts } from "../draftContentOrphanGate";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -882,7 +883,7 @@ function chatDraftsLeftOut(db: Database): { drafts: number, hintChats: number } 
 
 /**
  * Asks, before the writer opens, whether to create the backup without the unsent message edits and the long-chat hints already
- * shown (a .bin has no place for them). 	rue when the profile holds none or the person confirms; declining writes nothing.
+ * shown (a .bin has no place for them). True when the profile holds none or the person confirms; declining writes nothing.
  */
 async function confirmOmitChatDrafts(session: ExportSession, left: { drafts: number, hintChats: number }): Promise<boolean> {
     const present = left.drafts > 0 || left.hintChats > 0
@@ -895,6 +896,12 @@ async function confirmOmitChatDrafts(session: ExportSession, left: { drafts: num
  * per-kind prompts, so a sheet that could not be shown never turns the consent silent. `true` when the export may go on.
  */
 async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupExportOptions, db: Database, forkOnlyLabels: readonly ForkOnlyChatLabel[]): Promise<boolean> {
+    // Before anything is counted: a draft typed in the last idle window is part of what the warning names.
+    try {
+        flushPersistedDrafts()
+    } catch (error) {
+        console.error(error)
+    }
     const perKind = async (): Promise<boolean> => await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))
         && await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))
         && await confirmOmitTaskPresets(session, taskPresetLabels(db))

@@ -499,4 +499,27 @@ describe.each([
         expect(outcome).toMatchObject({ status: 'declined' })
         expect(backupSink.writes).toEqual([])
     }, 120_000)
+
+    test('T3.18: the export start writes a draft typed in the last idle window, so the summary counts it', async () => {
+        const db = page({})
+        const stores = await import('src/ts/stores.svelte')
+        ;(stores.DBState as { db: unknown }).db = db
+        // The store loads with the first message editor and installs its sink; the export reaches it through the gate.
+        await import('src/ts/chatDraftStore')
+        const { draftContentOrphanGate } = await import('src/ts/draftContentOrphanGate')
+        draftContentOrphanGate.set({ kind: 'msg', chatKey: 'window', chatId: 'msg-1', index: 0, persist: { chaId: 'char-a', chatId: 'chat-1' } }, 'typed just now', 'the saved text')
+        let summary: readonly BinLeaveOutEntry[] = []
+
+        try {
+            const outcome = await run({ askLeaveOut: async (given) => { summary = given; return true } })
+
+            expect(outcome).toMatchObject({ status: 'saved' })
+            expect(summary).toEqual([{ kind: 'chatDrafts', drafts: 1, hintChats: 0 }])
+            const written = await decodedDatabase()
+            expect(Object.hasOwn(written, 'chatDrafts')).toBe(false)
+        } finally {
+            ;(stores.DBState as { db: unknown }).db = {}
+            draftContentOrphanGate.clear()
+        }
+    }, 120_000)
 })

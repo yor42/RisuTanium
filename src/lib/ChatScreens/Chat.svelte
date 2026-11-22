@@ -35,6 +35,7 @@
     import { DBState, ReloadChatPointer, popupStore } from 'src/ts/stores.svelte'
     import { appDateFormat } from 'src/ts/appIntl.svelte'
     import { type MessageIdentity, type DraftRecord, draftIdentityKey } from "src/ts/draftContents"
+    import { persistTargetOf } from "src/ts/chatDraftsModel"
     import { formatDraftAge } from "src/ts/draftAge"
     import { chatWindowKey } from "src/ts/chatWindowPolicy"
     import { capitalize, sleep } from "src/ts/util"
@@ -224,12 +225,17 @@
     function currentMessageIdentity(): MessageIdentity {
         const chatCharacter = DBState.db.characters[selIdState.selId]
         const chat = chatCharacter?.chats?.[chatCharacter.chatPage]
-        return {
+        const identity: MessageIdentity = {
             kind: 'msg',
             chatKey: chatWindowKey(chatCharacter?.chaId, chat),
             chatId: chat?.message?.[idx]?.chatId,
             index: idx,
         }
+        const persist = persistTargetOf(chatCharacter?.chaId, chat?.id)
+        if (persist !== undefined) {
+            identity.persist = persist
+        }
+        return identity
     }
 
     function translationOpenToken(): { identity: string; row: Message | undefined; data: string | undefined; closeEpoch: number } {
