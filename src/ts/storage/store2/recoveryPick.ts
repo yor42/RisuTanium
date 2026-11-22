@@ -62,6 +62,7 @@ export const PATH_TYPES: Readonly<Record<string, UnitType>> = {
     'fixed.plugins[]': UNIT_TYPE.plugin,
     'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
     'fixed.workspaces[]': UNIT_TYPE.workspace,
+    'fixed.chatDrafts': UNIT_TYPE.chatDrafts,
     'fixed.legacyKeep.unit': UNIT_TYPE.legacyList,
     'entries[].core': UNIT_TYPE.characterCore,
     'entries[].lore': UNIT_TYPE.lore,

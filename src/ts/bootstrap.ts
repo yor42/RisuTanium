@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { get } from "svelte/store";
 import { setDatabase, defaultSdDataFunc, getDatabase, type Database } from "./storage/database.svelte";
 import { applyUsageRetention } from "./usage/usageRetention";
+import { reconcileChatDraftsAtBoot } from "./chatDraftStore";
 import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { takePresetIdsMinted } from "./storage/presetMeta";
 import { takeConnectionsMigrated } from "./connections/migrate";
@@ -429,6 +430,13 @@ export async function loadData() {
                 // setting once at start (the record path applies it again when the local month changes).
                 try {
                     applyUsageRetention(getDatabase(), new Date(), { force: true })
+                } catch (error) {
+                    console.error(error)
+                }
+                // After the boot trash purge and `assignIds`: drops the unsent edits of chats this profile no longer has
+                // (a purged character, or chats an imported profile lacks). A trashed character keeps its own.
+                try {
+                    reconcileChatDraftsAtBoot()
                 } catch (error) {
                     console.error(error)
                 }

@@ -31,13 +31,16 @@ export const BODY_V = 1
  * `module-buckets` marks a manifest whose module entries live in type 27 units.
  * `utility-workspaces` marks a store that has held a utility workspace (type 28 records and type 29 files). It is added
  * whenever the manifest lists one and is never lowered by a build that knows it.
+ * `chat-drafts` marks a store that has held a type 30 unit (unsent message edits and long-chat hint flags). It is added
+ * whenever the manifest names one and is never lowered by a build that knows it.
  */
 export const REQ_CHAT_ALT = 'chat-alt'
 export const REQ_TASK_PRESETS = 'task-presets'
 export const REQ_MODULE_BUCKETS = 'module-buckets'
 export const REQ_WORKSPACES = 'utility-workspaces'
+export const REQ_CHAT_DRAFTS = 'chat-drafts'
 export const MODULE_INDEX_V = 2
-export const KNOWN_REQ: ReadonlySet<string> = new Set<string>([REQ_CHAT_ALT, REQ_TASK_PRESETS, REQ_MODULE_BUCKETS, REQ_WORKSPACES])
+export const KNOWN_REQ: ReadonlySet<string> = new Set<string>([REQ_CHAT_ALT, REQ_TASK_PRESETS, REQ_MODULE_BUCKETS, REQ_WORKSPACES, REQ_CHAT_DRAFTS])
 
 export const UNIT_TYPE = {
     commit: 1,
@@ -69,6 +72,7 @@ export const UNIT_TYPE = {
     moduleBucket: 27,
     workspace: 28,
     workspaceFile: 29,
+    chatDrafts: 30,
 } as const
 
 export type UnitType = typeof UNIT_TYPE[keyof typeof UNIT_TYPE]

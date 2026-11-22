@@ -1197,7 +1197,9 @@ function unsavableItemNotice(item: SkippedItem): string {
                         ? language.saveItemStaticsLabel
                         : item.scope === 'characterOrder'
                             ? language.saveItemCharacterOrderLabel
-                            : language.saveItemPluginDataLabel(item.key)
+                            : item.scope === 'chatDrafts'
+                                ? language.saveItemChatDraftsLabel
+                                : language.saveItemPluginDataLabel(item.key)
         return item.saved ? language.saveItemUnsavedNotice(what) : language.saveItemNeverSavedNotice(what)
     } catch {
         return item.saved ? language.saveItemUnsavedNotice(`"${item.key}"`) : language.saveItemNeverSavedNotice(`"${item.key}"`)

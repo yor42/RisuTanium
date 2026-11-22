@@ -539,7 +539,7 @@ describe.each([
         await run({ askLeaveOut }, { assetsExplained: true })
 
         expect(summary.map((entry) => entry.kind)).toEqual(['alternatives', 'forkChatData', 'taskPresets', 'themePacks', 'usageStats'])
-        expect(summary.map((entry) => entry.count)).toEqual([1, 1, 2, 1, 1])
+        expect(summary.map((entry) => 'count' in entry ? entry.count : undefined)).toEqual([1, 1, 2, 1, 1])
         const [alternatives, forkChat, presets, packs] = summary
         expect(alternatives.kind === 'alternatives' && alternatives.branchChats).toBeGreaterThan(0)
         expect(forkChat.kind === 'forkChatData' && forkChat.kinds).toEqual(['interruptedNote'])
