@@ -11,6 +11,8 @@ import { encodeReplyBlob, encodeStreamReplyBlob, type ReplyBlobBase } from '../b
 import { configurePageState, resetPageStateForTests } from '../pageState'
 import { createReconciler, recoveredText, type ApplyOutcome, type ReconcileDeps, type RecoveredStreamInput } from '../reconcile'
 import type { ReplyListing } from '../store'
+import type { GeminiSignatureRecord } from '../streamReplay'
+import { LLMFormat } from 'src/ts/model/types'
 
 /**
  * Reconcile rows of a stream record (`openai-chat-stream`) over a real DBState and a fake store. A finished record reads
@@ -70,7 +72,7 @@ interface Rig {
     showParked: ReturnType<typeof vi.fn>
 }
 
-function rig(listings: ReplyListing[], options: { text?: string, apply?: ApplyOutcome } = {}): Rig {
+function rig(listings: ReplyListing[], options: { text?: string, apply?: ApplyOutcome, signatures?: GeminiSignatureRecord[] } = {}): Rig {
     resetPageStateForTests()
     const notices: string[] = []
     const consume = vi.fn(async (_key: string) => ({ result: 'removed' as const, flushed: true }))
@@ -91,7 +93,7 @@ function rig(listings: ReplyListing[], options: { text?: string, apply?: ApplyOu
     const readBodyBytes = vi.fn(async (_key: string) => BYTES)
     const readPartialBytes = vi.fn(async (_key: string) => BYTES)
     const meter = createUsageMeter()
-    const replayStream = vi.fn(async () => ({ modelText: options.text ?? 'Hello, world.', meter, signatures: [] }))
+    const replayStream = vi.fn(async () => ({ modelText: options.text ?? 'Hello, world.', meter, signatures: options.signatures ?? [] }))
     const applyStream = vi.fn(async (_input: RecoveredStreamInput): Promise<ApplyOutcome> => options.apply ?? 'applied')
     const settleUsage = vi.fn()
     const showParked = vi.fn(async () => {})
@@ -375,9 +377,14 @@ describe('the kind decides the path', () => {
         parse, usage: { modelKey: 'gpt-4o', inputEstimate: 120 },
         escape: base.escape, requestedMs: base.requestedMs,
     })
+    const GEMINI_PARSE = {
+        kind: 'gemini-stream', extractJson: null, jsonSchema: false, streamThoughts: false, saveSignatures: true,
+        signatureSource: 'gemini-x', signatureFormat: LLMFormat.GoogleCloud,
+    }
     const NEW_KIND_BLOBS: [string, string, Record<string, unknown>][] = [
         ['openai-responses-stream', newKindBlob({ kind: 'openai-responses-stream', extractJson: null, jsonSchema: false }), { kind: 'openai-responses-stream', extractJson: null, jsonSchema: false }],
         ['anthropic-stream', newKindBlob({ kind: 'anthropic-stream' }), { kind: 'anthropic-stream' }],
+        ['gemini-stream', newKindBlob(GEMINI_PARSE), GEMINI_PARSE],
     ]
 
     test.each(NEW_KIND_BLOBS)('T11: a finished %s record whose message is interrupted reaches the apply once and is not consumed', async (_kind, blobText, parse) => {
@@ -389,6 +396,23 @@ describe('the kind decides the path', () => {
         expect(r.replayStream.mock.calls[0][0]).toMatchObject({ parse })
         expect(r.notices).toEqual([])
         expect(r.consume).not.toHaveBeenCalled()
+    })
+
+    test('T15: a finished gemini-stream record hands the replay signatures to the apply', async () => {
+        const signatures: GeminiSignatureRecord[] = [{ id: 'sig-1', signature: { source: 'gemini-x', sourceFormat: LLMFormat.GoogleCloud, signatures: [{ type: 'text', content: 'hi' }] } }]
+        setChat([{ chatId: K1, data: 'part', interrupted: true }])
+        const r = rig([done({ blob: newKindBlob(GEMINI_PARSE) })], { signatures })
+        await pass(r)
+        expect(r.applyStream).toHaveBeenCalledTimes(1)
+        expect(r.applyStream.mock.calls[0][0].signatures).toEqual(signatures)
+    })
+
+    test('T18: a parked complete gemini-stream record never reaches the apply, so no signature is handed over', async () => {
+        const signatures: GeminiSignatureRecord[] = [{ id: 'sig-1', signature: { source: 'gemini-x', sourceFormat: LLMFormat.GoogleCloud, signatures: [{ type: 'text', content: 'hi' }] } }]
+        setChat([])
+        const r = rig([done({ blob: newKindBlob(GEMINI_PARSE), parked: true })], { signatures })
+        await pass(r)
+        expect(r.applyStream).not.toHaveBeenCalled()
     })
 
     test.each(NEW_KIND_BLOBS)('T19: a dead %s record with a part reads the partial bytes, applies as partial and posts the note once', async (_kind, blobText) => {

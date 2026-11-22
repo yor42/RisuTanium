@@ -2,13 +2,15 @@ import type { MessageGenerationInfo, MessagePresetInfo } from '../storage/databa
 import type { OpenAIParseContext, OpenAIStreamParseContext } from '../process/request/openAI/chatBodyParse'
 import type { ResponsesStreamParseContext } from '../process/request/openAI/responsesStreamTransform'
 import type { AnthropicStreamParseContext } from '../process/request/anthropicStreamRead'
+import type { GeminiStreamParseContext } from '../process/request/geminiStreamTransform'
+import { LLMFormat } from '../model/types'
 
 /**
  * The page's blob of a native reply record, version 1 (`pageVersion` 1). Rust keeps it opaque in the ticket and hands it
  * back in the listing, so the next launch can place a reply the page that sent the request never saw.
  *
  * The shape of each kind is frozen by its fixture (`tests/fixtures/blob-v1.json`, `blob-openai-chat-stream-v1.json`,
- * `blob-openai-responses-stream-v1.json`, `blob-anthropic-stream-v1.json`).
+ * `blob-openai-responses-stream-v1.json`, `blob-anthropic-stream-v1.json`, `blob-gemini-stream-v1.json`).
  * - A new parse kind is additive under page version 1: an older page lists it as unreadable, which it keeps and reports
  *   once.
  * - Changing the fields of an existing kind takes `pageVersion` 2 with a migration tested against that kind's fixture.
@@ -46,7 +48,7 @@ export interface ReplyUsageContext {
 }
 
 /** The parse rule of each recorded stream kind; the kind marker lives in `parse.kind` only. */
-export type StreamParseContext = OpenAIStreamParseContext | ResponsesStreamParseContext | AnthropicStreamParseContext
+export type StreamParseContext = OpenAIStreamParseContext | ResponsesStreamParseContext | AnthropicStreamParseContext | GeminiStreamParseContext
 
 export type StreamReplyBlob = ReplyBlobBase & { parse: StreamParseContext, usage: ReplyUsageContext }
 
@@ -115,6 +117,17 @@ export function encodeStreamReplyBlob(base: ReplyBlobBase, parse: StreamParseCon
         case 'anthropic-stream':
             parseFields = { kind: parse.kind }
             break
+        case 'gemini-stream':
+            parseFields = {
+                kind: parse.kind,
+                extractJson: parse.extractJson,
+                jsonSchema: parse.jsonSchema,
+                streamThoughts: parse.streamThoughts,
+                saveSignatures: parse.saveSignatures,
+                signatureSource: parse.signatureSource,
+                signatureFormat: parse.signatureFormat,
+            }
+            break
     }
     return JSON.stringify({
         format: REPLY_BLOB_FORMAT,
@@ -175,6 +188,24 @@ function decodeParseRule(parse: Record<string, unknown>): OpenAIParseContext | S
             return { kind: parse.kind, extractJson, jsonSchema: parse.jsonSchema }
         case 'anthropic-stream':
             return { kind: parse.kind }
+        case 'gemini-stream':
+            if (typeof parse.jsonSchema !== 'boolean'
+                || typeof parse.streamThoughts !== 'boolean'
+                || typeof parse.saveSignatures !== 'boolean'
+                || typeof parse.signatureSource !== 'string'
+                || (parse.signatureFormat !== LLMFormat.GoogleCloud && parse.signatureFormat !== LLMFormat.VertexAIGemini)
+                || extractJson === undefined) {
+                return null
+            }
+            return {
+                kind: parse.kind,
+                extractJson,
+                jsonSchema: parse.jsonSchema,
+                streamThoughts: parse.streamThoughts,
+                saveSignatures: parse.saveSignatures,
+                signatureSource: parse.signatureSource,
+                signatureFormat: parse.signatureFormat,
+            }
         default:
             return null
     }

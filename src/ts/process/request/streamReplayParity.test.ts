@@ -54,6 +54,7 @@ vi.mock('../../model/modelData/modelDataStore', () => ({
 vi.mock('../templates/jsonSchema', () => ({
     extractJSON: (data: string, path: string) => `X[${path}]${data}`,
     getOpenAIJSONSchema: () => ({ name: 'format', strict: true, schema: { type: 'object' } }),
+    getGeneralJSONSchema: () => ({ type: 'object' }),
 }))
 vi.mock('../../util', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../../util')>()),
@@ -63,14 +64,16 @@ vi.mock('../../util', async (importOriginal) => ({
 import { fetchNative } from '../../globalApi.svelte'
 import { LLMFlags, LLMFormat, LLMProvider, LLMTokenizer } from '../../model/types'
 import { createUsageMeter } from '../../usage/usageMeter'
-import { replayAnthropicStream, replayResponsesStream } from '../../nativeReply/streamReplay'
+import { replayAnthropicStream, replayGeminiStream, replayResponsesStream } from '../../nativeReply/streamReplay'
+import { saveInlayedSignature } from '../files/inlays'
+import { requestGoogleCloudVertex } from './google'
 import { requestClaude } from './anthropic'
 import { __testResponsesAPI, requestOpenAIResponseAPI } from './openAI/requests'
 import type { RequestDataArgumentExtended } from './request'
 
 /**
  * I6 (parity): for every byte partition of a body, the last emission of the live Responses or Anthropic stream equals the
- * replay's text and the hand-written text. The live half is the real `requestOpenAIResponseAPI` / `requestClaude` with a
+ * replay's text and the hand-written text (Gemini: under the per-line partition). The live half is the real `requestOpenAIResponseAPI` / `requestClaude` with a
  * mocked transport; the bodies are synthetic and use each provider's wire format. Mocked: the transport, `sleep`, the
  * database, store and plugin modules and the JSON extraction, so a pass says nothing about native behaviour.
  */
@@ -94,6 +97,8 @@ beforeEach(() => {
         jsonSchemaEnabled: false,
     })
     fetchNativeMock.mockReset()
+    vi.mocked(saveInlayedSignature).mockReset()
+    vi.mocked(saveInlayedSignature).mockResolvedValue('')
 })
 
 // ---- partitions ----
@@ -324,6 +329,118 @@ describe('Anthropic: the live last emission equals the replay for every partitio
                 expect(live, `live, ${partition}`).toBe(row.text)
                 const replayed = await replayAnthropicStream({ bytes: encoder.encode(row.body), complete: true }, createUsageMeter())
                 expect(replayed.modelText, `replay, ${partition}`).toBe(row.text)
+            }
+        })
+    }
+})
+
+
+// ---- Gemini ----
+
+const gline = (parts: unknown[], extra: Record<string, unknown> = {}) => 'data: ' + JSON.stringify({ candidates: [{ content: { parts } }], ...extra }) + '\n\n'
+const gtext = (text: string) => gline([{ text }])
+const GEM_USAGE = { promptTokenCount: 30, candidatesTokenCount: 7, totalTokenCount: 37 }
+
+interface GeminiRow {
+    name: string
+    body: string
+    /** The per-line live text, ids normalised. */
+    text: string
+    streamThoughts?: boolean
+    extractJson?: string
+    jsonSchema?: boolean
+    saveSignatures?: boolean
+}
+
+const GEMINI_ROWS: GeminiRow[] = [
+    { name: 'text', body: gtext('Hel') + gtext('lo ') + gtext('world'), text: 'Hello world' },
+    { name: 'thought parts then text, thoughts folded', body: gline([{ text: 'think', thought: true }, { text: 'ans' }]), text: '<Thoughts>\n\nthink\n\n</Thoughts>\n\nans' },
+    { name: 'a trailing thought with streamThoughts off', body: gtext('a') + gline([{ text: 'tt', thought: true }]), text: '<Thoughts>\n\ntt\n\n</Thoughts>\n\na' },
+    { name: 'a trailing thought with streamThoughts on', body: gtext('a') + gline([{ text: 'tt', thought: true }]), text: 'tt\n\na', streamThoughts: true },
+    { name: 'extractJson with the schema on', body: gtext('{"a":1}'), text: 'X[$.a]{"a":1}', extractJson: '$.a', jsonSchema: true },
+    { name: 'extractJson with the schema off', body: gtext('{"a":1}'), text: '{"a":1}', extractJson: '$.a', jsonSchema: false },
+    { name: 'a thought signature with saveSignatures on', body: gline([{ text: 'hi', thoughtSignature: 'S1' }]) + gtext(' there'), text: 'hi{{inlayeddata::#1}} there', saveSignatures: true },
+    { name: 'a thought signature with saveSignatures off', body: gline([{ text: 'hi', thoughtSignature: 'S1' }]) + gtext(' there'), text: 'hi there', saveSignatures: false },
+    { name: 'text then [DONE] then trailing lines', body: gtext('a') + gtext('b') + 'data: [DONE]\n\n' + gtext('c'), text: 'ab' },
+    { name: 'text then a malformed complete line', body: gtext('a') + gtext('b') + 'data: {not json}\n' + gtext('c'), text: 'ab' },
+    { name: 'usageMetadata', body: gline([{ text: 'x' }], { usageMetadata: GEM_USAGE }) + gtext('y'), text: 'xy' },
+    { name: 'CRLF, Korean and emoji', body: (gtext('가') + gtext('😀 end')).replace(/\n/g, '\r\n'), text: '가😀 end' },
+]
+
+/** The tokens of one text numbered by first appearance, so two runs with different generated ids compare. */
+function normalisedIds(text: string): string {
+    const seen: string[] = []
+    return text.replace(/\{\{inlayeddata::([^}]+)\}\}/g, (_, id: string) => {
+        if (!seen.includes(id)) {
+            seen.push(id)
+        }
+        return `{{inlayeddata::#${seen.indexOf(id) + 1}}}`
+    })
+}
+
+/** One chunk per complete line, then the unterminated rest. */
+function perLineChunks(body: string): Uint8Array[] {
+    const bytes = encoder.encode(body)
+    const cuts: number[] = []
+    bytes.forEach((value, i) => {
+        if (value === 0x0A && i + 1 < bytes.length) {
+            cuts.push(i + 1)
+        }
+    })
+    return chunksAt(bytes, cuts)
+}
+
+function geminiStreamOf(row: GeminiRow): Promise<ReadableStream<unknown>> {
+    return requestGoogleCloudVertex({
+        formated: [{ role: 'user', content: 'hello' }],
+        modelInfo: { id: 'dynamic_google_gemini-x', name: 'g', internalID: 'gemini-x', provider: LLMProvider.GoogleCloud, format: LLMFormat.GoogleCloud, flags: [LLMFlags.hasStreaming], parameters: ['temperature'], tokenizer: LLMTokenizer.GoogleCloud },
+        maxTokens: 100,
+        useStreaming: true,
+        mode: 'model',
+        extractJson: row.extractJson,
+        saveSignatures: row.saveSignatures,
+    } as unknown as Parameters<typeof requestGoogleCloudVertex>[0]).then((response) => {
+        expect(response.type).toBe('streaming')
+        return response.result as ReadableStream<unknown>
+    })
+}
+
+describe('Gemini: the replay equals the live last emission under the per-line partition', () => {
+    for (const row of GEMINI_ROWS) {
+        test(row.name, async () => {
+            Object.assign(h.db, {
+                google: { accessToken: 'plain-key', projectId: 'proj' },
+                vertexRegion: 'us-central1',
+                jsonSchemaEnabled: row.jsonSchema === true,
+                streamGeminiThoughts: row.streamThoughts === true,
+            })
+            const rule = {
+                extractJson: row.extractJson ?? null,
+                jsonSchema: row.jsonSchema === true,
+                streamThoughts: row.streamThoughts === true,
+                saveSignatures: row.saveSignatures === true,
+                signatureSource: 'gemini-x',
+                signatureFormat: LLMFormat.GoogleCloud,
+            }
+            const replayed = await replayGeminiStream({ bytes: encoder.encode(row.body), complete: true, rule }, createUsageMeter())
+            const replayText = normalisedIds(replayed.modelText)
+            expect(replayText, 'replay').toBe(row.text)
+
+            fetchNativeMock.mockReset()
+            fetchNativeMock.mockImplementation(async () => chunkedResponse(perLineChunks(row.body)))
+            const perLine = normalisedIds(await lastEmission(await geminiStreamOf(row)))
+            expect(perLine, 'live, per-line').toBe(row.text)
+
+            // Another partition never shows more than the per-line replay, and the replay keeps what the page last showed.
+            const thoughtFree = !row.body.includes('"thought":true')
+            for (const [partition, chunks] of partitionsOf(row.body)) {
+                fetchNativeMock.mockReset()
+                fetchNativeMock.mockImplementation(async () => chunkedResponse(chunks))
+                const live = normalisedIds(await lastEmission(await geminiStreamOf(row)))
+                expect(replayText.length, `length, ${partition}`).toBeGreaterThanOrEqual(live.length)
+                if (thoughtFree) {
+                    expect(replayText.startsWith(live), `prefix, ${partition}`).toBe(true)
+                }
             }
         })
     }

@@ -5,6 +5,8 @@ import { decodeReplyBlob, encodeReplyBlob, encodeStreamReplyBlob, isStreamReplyB
 import type { OpenAIParseContext, OpenAIStreamParseContext } from '../../process/request/openAI/chatBodyParse'
 import type { ResponsesStreamParseContext } from '../../process/request/openAI/responsesStreamTransform'
 import type { AnthropicStreamParseContext } from '../../process/request/anthropicStreamRead'
+import type { GeminiStreamParseContext } from '../../process/request/geminiStreamTransform'
+import { LLMFormat } from '../../model/types'
 
 /**
  * T5 (guard, MC-329): the committed fixture is what the producer writes, byte for byte, for the input the send builds.
@@ -251,14 +253,21 @@ const RESPONSES_FIXTURE = resolve(process.cwd(), 'src/ts/nativeReply/tests/fixtu
 const ANTHROPIC_FIXTURE = resolve(process.cwd(), 'src/ts/nativeReply/tests/fixtures/blob-anthropic-stream-v1.json')
 const responsesParse: ResponsesStreamParseContext = { kind: 'openai-responses-stream', extractJson: '$.reply', jsonSchema: true }
 const anthropicParse: AnthropicStreamParseContext = { kind: 'anthropic-stream' }
+const GEMINI_FIXTURE = resolve(process.cwd(), 'src/ts/nativeReply/tests/fixtures/blob-gemini-stream-v1.json')
+const geminiParse: GeminiStreamParseContext = {
+    kind: 'gemini-stream', extractJson: '$.reply', jsonSchema: true, streamThoughts: true, saveSignatures: true,
+    signatureSource: 'gemini-x', signatureFormat: LLMFormat.GoogleCloud,
+}
 
-// The blob texts of the two fixtures, inlined so a decoder that does not know the kind fails an assertion here.
+// The blob texts of the new-kind fixtures, inlined so a decoder that does not know the kind fails an assertion here.
 const RESPONSES_LITERAL = '{"format":"risu-native-reply-blob","target":{"chaId":"cha-0001","chatId":"chat-0001"},"targetName":"Alice","saying":"cha-0001","generationInfo":{"model":"gpt-4o","generationId":"0b9c1a7e-0000-4000-8000-000000000001","inputTokens":120,"outputTokens":300,"maxContext":4000,"stageTiming":{"stage1":1,"stage2":2,"stage3":0,"stage4":0}},"promptInfo":{"promptName":"Main","promptToggles":[{"key":"a","value":"ON"}]},"parse":{"kind":"openai-responses-stream","extractJson":"$.reply","jsonSchema":true},"usage":{"modelKey":"gpt-4o","inputEstimate":120},"escape":false,"requestedMs":1700000000000}'
 const ANTHROPIC_LITERAL = '{"format":"risu-native-reply-blob","target":{"chaId":"cha-0001","chatId":"chat-0001"},"targetName":"Alice","saying":"cha-0001","generationInfo":{"model":"gpt-4o","generationId":"0b9c1a7e-0000-4000-8000-000000000001","inputTokens":120,"outputTokens":300,"maxContext":4000,"stageTiming":{"stage1":1,"stage2":2,"stage3":0,"stage4":0}},"promptInfo":{"promptName":"Main","promptToggles":[{"key":"a","value":"ON"}]},"parse":{"kind":"anthropic-stream"},"usage":{"modelKey":"gpt-4o","inputEstimate":120},"escape":false,"requestedMs":1700000000000}'
+const GEMINI_LITERAL = '{"format":"risu-native-reply-blob","target":{"chaId":"cha-0001","chatId":"chat-0001"},"targetName":"Alice","saying":"cha-0001","generationInfo":{"model":"gpt-4o","generationId":"0b9c1a7e-0000-4000-8000-000000000001","inputTokens":120,"outputTokens":300,"maxContext":4000,"stageTiming":{"stage1":1,"stage2":2,"stage3":0,"stage4":0}},"promptInfo":{"promptName":"Main","promptToggles":[{"key":"a","value":"ON"}]},"parse":{"kind":"gemini-stream","extractJson":"$.reply","jsonSchema":true,"streamThoughts":true,"saveSignatures":true,"signatureSource":"gemini-x","signatureFormat":5},"usage":{"modelKey":"gpt-4o","inputEstimate":120},"escape":false,"requestedMs":1700000000000}'
 
 const NEW_KINDS: { name: string, fixture: string, literal: string, parse: StreamParseContext }[] = [
     { name: 'openai-responses-stream', fixture: RESPONSES_FIXTURE, literal: RESPONSES_LITERAL, parse: responsesParse },
     { name: 'anthropic-stream', fixture: ANTHROPIC_FIXTURE, literal: ANTHROPIC_LITERAL, parse: anthropicParse },
+    { name: 'gemini-stream', fixture: GEMINI_FIXTURE, literal: GEMINI_LITERAL, parse: geminiParse },
 ]
 
 describe.each(NEW_KINDS)('blob $name fixture', ({ fixture, literal, parse: kindParse }) => {
@@ -349,5 +358,53 @@ describe('blob responses rule fields', () => {
         expect(encodeStreamReplyBlob(base, streamParse, usage)).toBe(STREAM_LITERAL)
         expect(readFileSync(STREAM_FIXTURE, 'utf8').replace(/\r/g, '')).toBe(STREAM_LITERAL)
         expect(encodeReplyBlob(base, parse)).toBe(readFileSync(FIXTURE, 'utf8').replace(/\r/g, ''))
+    })
+})
+
+describe('blob gemini rule fields', () => {
+    const good = () => JSON.parse(GEMINI_LITERAL) as Record<string, unknown>
+    const decodes = (raw: Record<string, unknown>) => decodeReplyBlob(JSON.stringify(raw), 1).ok
+
+    test('T4: each missing or mistyped rule field is unreadable', () => {
+        const bads: [string, unknown][] = [
+            ['extractJson', 5], ['extractJson', undefined],
+            ['jsonSchema', 'yes'], ['jsonSchema', undefined],
+            ['streamThoughts', 1], ['streamThoughts', undefined],
+            ['saveSignatures', 'true'], ['saveSignatures', undefined],
+            ['signatureSource', 7], ['signatureSource', undefined],
+            ['signatureFormat', undefined],
+        ]
+        for (const [field, bad] of bads) {
+            const raw = good()
+            const parseRecord = raw.parse as Record<string, unknown>
+            if (bad === undefined) {
+                delete parseRecord[field]
+            } else {
+                parseRecord[field] = bad
+            }
+            expect(decodes(raw), `${field}=${String(bad)}`).toBe(false)
+        }
+        const noExtract = good()
+        ;(noExtract.parse as Record<string, unknown>).extractJson = null
+        expect(decodes(noExtract)).toBe(true)
+    })
+
+    test('T4: a signatureFormat other than the Google Cloud and Vertex values is unreadable', () => {
+        for (const bad of [0, 2, 7, '5', null, 5.5]) {
+            const raw = good()
+            ;(raw.parse as Record<string, unknown>).signatureFormat = bad
+            expect(decodes(raw), `signatureFormat=${String(bad)}`).toBe(false)
+        }
+        for (const ok of [LLMFormat.GoogleCloud, LLMFormat.VertexAIGemini]) {
+            const raw = good()
+            ;(raw.parse as Record<string, unknown>).signatureFormat = ok
+            expect(decodes(raw)).toBe(true)
+        }
+    })
+
+    test('T4: a gemini-stream blob needs the usage block', () => {
+        const raw = good()
+        delete raw.usage
+        expect(decodes(raw)).toBe(false)
     })
 })

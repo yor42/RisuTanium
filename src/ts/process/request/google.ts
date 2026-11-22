@@ -21,6 +21,7 @@ import { isAndroidTransport } from "src/ts/storage/tauriByteTransport"
 import { parseJsonBody, readBodyText } from "src/ts/network/frozenBody"
 import { parseGoogleUsage } from "../../usage/usageParse"
 import type { UsageMeter } from "../../usage/usageTypes"
+import { composeGeminiDisplay, extractGeminiContent, geminiReadRuleOf, geminiStreamTransform, initGeminiStreamState } from "./geminiStreamTransform"
 
 /** Vertex access token minted from a referenced service-account key. Memory only; never stored. */
 let vertexMemoryToken: { reference: string, email: string, token: string, expires: number } | null = null
@@ -1031,164 +1032,23 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
     }
 }
 
-function initStreamState(state?: {[key:string]:string}): {[key:string]:string} {
-    if(!state) {
-        return {
-            "__sign_text": "", 
-            "__sign_function": "", 
-            "__last_thought": "", 
-            "__thoughts": "", 
-            "__tool_calls": "[]", 
-            "0": ""
-        };
-    }
-    state["__sign_text"] = state["__sign_text"] || "";
-    state["__sign_function"] = state["__sign_function"] || "";
-    state["__last_thought"] = state["__last_thought"] || "";
-    state["__thoughts"] = state["__thoughts"] || "";
-    state["__tool_calls"] = state["__tool_calls"] || "[]";
-    state["0"] = state["0"] || "";
-    return state;
-}
-
-/**
- * Applies one complete or incomplete SSE line to `readed`. Returns true for a `[DONE]` line, which ends the
- * stream; a malformed line throws, as `JSON.parse` does.
- */
-function applyGeminiLine(
-    line:string,
-    readed:{[key:string]:string},
-    modelInfo:LLMModel,
-    saveSignature:boolean
-):boolean {
-    if (line.startsWith('data: ')) {
-        const dataStr = line.slice(6).trim();
-        if (dataStr === '[DONE]') return true;
-
-        const jsonData = JSON.parse(dataStr);
-
-        if (jsonData.candidates?.[0]?.content?.parts) {
-            const parts = jsonData.candidates[0].content.parts;
-            for (const part of parts) {
-                if (part.text) {
-                    readed["__thoughts"] += readed["__last_thought"];
-                    readed["__last_thought"] = "";
-                    if (part.thought){
-                        readed["__last_thought"] = part.text;
-                    }
-                    else {
-                        readed["0"] += part.text;
-                    }
-                    if (part.thoughtSignature) {
-                        readed["__sign_text"] = part.thoughtSignature;
-                        if(saveSignature){
-                            //Its a promise, but we don't need to await it here
-                            const sigId = v4()
-                            saveInlayedSignature(sigId, {
-                                source: modelInfo.internalID || modelInfo.id,
-                                sourceFormat: modelInfo.format,
-                                signatures: [{
-                                    type: 'text',
-                                    content: part.text,
-                                }]
-                            }).catch((error) => console.error('The Gemini signature could not be saved:', error))
-                            readed["0"] += `{{inlayeddata::${sigId}}}`;
-                        }
-                    }
-                }
-                if (part.functionCall) {
-                    const toolCallsData = JSON.parse(readed["__tool_calls"]);
-                    toolCallsData.push(part.functionCall);
-                    readed["__tool_calls"] = JSON.stringify(toolCallsData);
-                    if(part.thoughtSignature){
-                        readed["__sign_function"] = part.thoughtSignature;
-                        const sigId = v4()
-
-                        if(saveSignature){
-                            //Its a promise, but we don't need to await it here
-                            saveInlayedSignature(sigId, {
-                                source: modelInfo.internalID || modelInfo.id,
-                                sourceFormat: modelInfo.format,
-                                signatures: [{
-                                    type: 'function',
-                                    content: `${part.functionCall.name}(${JSON.stringify(part.functionCall.args)})`,
-                                }]
-                            }).catch((error) => console.error('The Gemini signature could not be saved:', error))
-                            readed["0"] += `{{inlayeddata::${sigId}}}`;
-                        }
-                    }
-                }
-            }
-        }
-
-        if(jsonData.usageMetadata){
-            readed['__usageMetadata'] = JSON.stringify(jsonData.usageMetadata)
-        }
-        if(jsonData.modelStatus){
-            readed['__modelStatus'] = JSON.stringify(jsonData.modelStatus)
-        }
-    }
-    return false
-}
-
 function getTranStream(args:{
     modelInfo:LLMModel,
     saveSignature:boolean
     usage?:UsageMeter
 }):TransformStream<Uint8Array, StreamResponseChunk> {
-    // Only the incomplete last line is kept between reads: each complete line is folded into `committed`
-    // once, and the tail is applied to a copy so it never changes what later reads see.
-    let carry = '';
-    // A committed `[DONE]` or malformed line ends all emission for good.
-    let halted = false;
-    const committed = initStreamState();
-    // One decoder per stream, so a character split across chunks is joined instead of replaced.
-    const decoder = new TextDecoder();
     const { modelInfo, saveSignature } = args
-    return new TransformStream<Uint8Array, StreamResponseChunk>({
-        transform(chunk, control) {
-            if (halted) return;
-            carry += decoder.decode(chunk, {stream: true});
-            const lastBreak = carry.lastIndexOf('\n');
-            if (lastBreak >= 0) {
-                const complete = carry.slice(0, lastBreak).split('\n');
-                carry = carry.slice(lastBreak + 1);
-                try {
-                    for (const line of complete) {
-                        if (applyGeminiLine(line, committed, modelInfo, saveSignature)) {
-                            halted = true;
-                            return;
-                        }
-                    }
-                } catch (error) {
-                    halted = true;
-                    return;
-                }
-            }
-
-            // The enqueued object is fresh: `wrapToolStream` mutates what it receives.
-            const readed = {...committed};
-            try {
-                if (applyGeminiLine(carry, readed, modelInfo, saveSignature)) return;
-                control.enqueue(readed)
-            } catch (error) {
-
-            }
+    return geminiStreamTransform({
+        saveSignatures: saveSignature,
+        signatureSource: modelInfo.internalID || modelInfo.id,
+        signatureFormat: modelInfo.format,
+    }, {
+        onUsage: (usage) => args.usage?.report(usage),
+        // Its a promise, but we don't need to await it here
+        onSignature: ({ id, signature }) => {
+            saveInlayedSignature(id, signature).catch((error) => console.error('The Gemini signature could not be saved:', error))
         },
-        flush() {
-            carry += decoder.decode();
-            // The cumulative usage of the committed lines only, parsed once.
-            const rawUsage = committed['__usageMetadata']
-            if(rawUsage){
-                try {
-                    const usage = parseGoogleUsage(JSON.parse(rawUsage))
-                    if(usage){
-                        args.usage?.report(usage)
-                    }
-                } catch (error) {}
-            }
-        }
-    });
+    })
 }
 
 export const __testGeminiStream = { getTranStream }
@@ -1204,18 +1064,18 @@ function wrapToolStream(
         async start(controller) {
 
             const db = getDatabase()
+            // Read once per request, as a recovered record reads it.
+            const rule = geminiReadRuleOf(arg, db)
             let reader = stream.getReader()
             let prefix = ''
-            let lastValue = initStreamState()
+            let lastValue = initGeminiStreamState()
 
             while(true){
                 let {done, value} = await reader.read()
 
-                value = initStreamState(value)
+                value = initGeminiStreamState(value)
 
-                if(arg.extractJson && (db.jsonSchemaEnabled || arg.schema)){
-                    value["0"] = extractJSON(value["0"], arg.extractJson, {subject: arg.subject})
-                }
+                value["0"] = extractGeminiContent(value["0"], rule, arg.subject)
 
                 let content = value["0"]
                 let thoughts = value["__thoughts"]
@@ -1224,7 +1084,7 @@ function wrapToolStream(
                 let signFunction = value["__sign_function"]
 
                 if(done){
-                    value = initStreamState(lastValue)
+                    value = initGeminiStreamState(lastValue)
 
                     content = value["0"]
                     thoughts = value["__thoughts"]
@@ -1406,7 +1266,7 @@ function wrapToolStream(
 
                         reader = transtream.readable.getReader()
                         // A follow-up stream that yields no chunk must end the reply, not replay this round's calls.
-                        lastValue = initStreamState()
+                        lastValue = initGeminiStreamState()
 
                         if(db.simplifiedToolUse) {
                             prefix += callCodes.join('\n\n')
@@ -1435,21 +1295,9 @@ function wrapToolStream(
                 
                 lastValue = value
 
-                if(db.streamGeminiThoughts) {
-                    controller.enqueue({
-                        "0": (prefix ? prefix + '\n\n' : '')
-                            + (thoughts ? `<Thoughts>\n\n${thoughts}\n\n</Thoughts>\n\n` : '')
-                            + (lastThought ? lastThought + '\n\n' : '') 
-                            + content
-                    })
-                }
-                else {
-                    controller.enqueue({
-                        "0": (prefix ? prefix + '\n\n' : '')
-                            + (thoughts + lastThought ? `<Thoughts>\n\n${thoughts + lastThought}\n\n</Thoughts>\n\n` : '')
-                            + content
-                    })
-                }
+                controller.enqueue({
+                    "0": composeGeminiDisplay({ content, thoughts, lastThought }, rule.streamThoughts, prefix)
+                })
             }
         }
     })

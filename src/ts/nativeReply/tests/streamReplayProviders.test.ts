@@ -16,11 +16,15 @@ vi.mock('../../stores.svelte', () => ({
     bodyIntercepterStore: writable(null),
 }))
 
+vi.mock('../../process/files/inlays', () => ({ saveInlayedSignature: vi.fn(async () => '') }))
+
 import { createRunSubject } from '../../process/chatOrigin'
+import { saveInlayedSignature } from '../../process/files/inlays'
 import { createUsageMeter } from '../../usage/usageMeter'
+import { LLMFormat } from '../../model/types'
 import type { UsageMeterState } from '../../usage/usageTypes'
 import type { ReplyBlobBase, StreamReplyBlob } from '../blob'
-import { replayAnthropicStream, replayResponsesStream, replayStreamRecord } from '../streamReplay'
+import { replayAnthropicStream, replayGeminiStream, replayResponsesStream, replayStreamRecord } from '../streamReplay'
 
 /**
  * Replay readers of the Responses and Anthropic stream kinds and the one kind dispatcher. The bodies are synthetic and use
@@ -39,10 +43,16 @@ const base: ReplyBlobBase = {
 const usage = { modelKey: 'gpt-4o', inputEstimate: 120 }
 const subject = createRunSubject({ chaId: 'cha', chatId: 'chat' })
 
-const BLOBS: Record<'openai-chat-stream' | 'openai-responses-stream' | 'anthropic-stream', StreamReplyBlob> = {
+const GEMINI_PARSE = {
+    kind: 'gemini-stream' as const, extractJson: null, jsonSchema: false, streamThoughts: false, saveSignatures: false,
+    signatureSource: 'gemini-x', signatureFormat: LLMFormat.GoogleCloud,
+}
+
+const BLOBS: Record<'openai-chat-stream' | 'openai-responses-stream' | 'anthropic-stream' | 'gemini-stream', StreamReplyBlob> = {
     'openai-chat-stream': { ...base, usage, parse: { kind: 'openai-chat-stream', deepSeekThinkingOutput: false, extractJson: null, jsonSchema: false, multiGen: false } },
     'openai-responses-stream': { ...base, usage, parse: { kind: 'openai-responses-stream', extractJson: null, jsonSchema: false } },
     'anthropic-stream': { ...base, usage, parse: { kind: 'anthropic-stream' } },
+    'gemini-stream': { ...base, usage, parse: GEMINI_PARSE },
 }
 
 const ev = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
@@ -50,11 +60,13 @@ const BODIES: Record<keyof typeof BLOBS, { body: string, text: string }> = {
     'openai-chat-stream': { body: 'data: ' + JSON.stringify({ choices: [{ index: 0, delta: { content: 'oa' } }] }) + '\n\n', text: 'oa' },
     'openai-responses-stream': { body: ev('response.output_text.delta', { type: 'response.output_text.delta', delta: 'rs' }), text: 'rs' },
     'anthropic-stream': { body: ev('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'an' } }), text: 'an' },
+    'gemini-stream': { body: 'data: ' + JSON.stringify({ candidates: [{ content: { parts: [{ text: 'gm' }] } }] }) + '\n\n', text: 'gm' },
 }
 const KINDS = Object.keys(BLOBS) as (keyof typeof BLOBS)[]
 
 beforeEach(() => {
     for (const key of Object.keys(h.db)) { delete h.db[key] }
+    vi.mocked(saveInlayedSignature).mockClear()
 })
 
 describe('T36: the dispatcher sends each kind to its own reader', () => {
@@ -158,5 +170,74 @@ describe('Anthropic replay', () => {
         const meter: UsageMeterState = { report: (u) => { reports.push(u) }, markFailed: () => {}, reported: () => null, failed: () => false }
         await replayAnthropicStream({ bytes: bytesOf(start + delta('x') + end), complete: true }, meter)
         expect(reports).toHaveLength(1)
+    })
+})
+
+describe('Gemini replay', () => {
+    const rule = { extractJson: null, jsonSchema: false, streamThoughts: false, saveSignatures: false, signatureSource: 'gemini-x', signatureFormat: LLMFormat.GoogleCloud }
+    const line = (parts: unknown[], extra: Record<string, unknown> = {}) => 'data: ' + JSON.stringify({ candidates: [{ content: { parts } }], ...extra }) + '\n\n'
+    const text = (value: string) => line([{ text: value }])
+
+    test('T13 (a): a body cut mid-line keeps the text of the complete lines', async () => {
+        const body = text('one ') + text('two ') + 'data: {"candidates":[{"content":{"parts":[{"text":"thr'
+        const { modelText } = await replayGeminiStream({ bytes: bytesOf(body), complete: false, rule, subject }, createUsageMeter())
+        expect(modelText).toBe('one two ')
+    })
+
+    test('T13 (b): text lines before a [DONE] line are kept and the lines after it are not read', async () => {
+        const body = text('one ') + text('two ') + 'data: [DONE]\n' + text('three')
+        const { modelText } = await replayGeminiStream({ bytes: bytesOf(body), complete: true, rule, subject }, createUsageMeter())
+        expect(modelText).toBe('one two ')
+    })
+
+    test('T13 (c): text lines before a malformed complete line are kept and the lines after it are not read', async () => {
+        const body = text('one ') + text('two ') + 'data: {not json}\n' + text('three')
+        const { modelText } = await replayGeminiStream({ bytes: bytesOf(body), complete: true, rule, subject }, createUsageMeter())
+        expect(modelText).toBe('one two ')
+    })
+
+    test('a body with no text gives an empty text, and the usage of the committed lines is reported once', async () => {
+        const meter = createUsageMeter()
+        const body = line([], { usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 2, totalTokenCount: 7 } })
+        const { modelText, signatures } = await replayGeminiStream({ bytes: bytesOf(body), complete: true, rule, subject }, meter)
+        expect(modelText).toBe('')
+        expect(signatures).toEqual([])
+        expect(meter.reported()).not.toBeNull()
+    })
+
+    test('T14: signatures are collected for the tokens in the text, never written, with the rule and the part as content', async () => {
+        const body = line([{ text: 'hi', thoughtSignature: 'S1' }]) + line([{ text: ' there', thoughtSignature: 'S2' }])
+        const { modelText, signatures } = await replayGeminiStream({ bytes: bytesOf(body), complete: true, rule: { ...rule, saveSignatures: true }, subject }, createUsageMeter())
+        expect(signatures).toHaveLength(2)
+        expect(signatures.map((record) => record.signature.signatures[0].content)).toEqual(['hi', ' there'])
+        for (const record of signatures) {
+            expect(record.signature.source).toBe('gemini-x')
+            expect(record.signature.sourceFormat).toBe(LLMFormat.GoogleCloud)
+            expect(modelText).toContain('{{inlayeddata::' + record.id + '}}')
+        }
+        expect(saveInlayedSignature).not.toHaveBeenCalled()
+    })
+
+    test('T14: with saveSignatures off no token and no record exist', async () => {
+        const { modelText, signatures } = await replayGeminiStream({ bytes: bytesOf(line([{ text: 'hi', thoughtSignature: 'S1' }])), complete: true, rule, subject }, createUsageMeter())
+        expect(modelText).toBe('hi')
+        expect(signatures).toEqual([])
+    })
+
+    test('T14: a signature whose token the JSON extraction removes from the text is dropped', async () => {
+        const body = line([{ text: '{"b":"x', thoughtSignature: 'S1' }, { text: '","a":"v"}' }])
+        const extracting = { ...rule, saveSignatures: true, extractJson: 'a', jsonSchema: true }
+        const kept = await replayGeminiStream({ bytes: bytesOf(body), complete: true, rule: { ...extracting, extractJson: null }, subject }, createUsageMeter())
+        expect(kept.signatures).toHaveLength(1)
+        const { modelText, signatures } = await replayGeminiStream({ bytes: bytesOf(body), complete: true, rule: extracting, subject }, createUsageMeter())
+        expect(modelText).toBe('v')
+        expect(signatures).toEqual([])
+    })
+    test('the thought display follows the rule: streamThoughts off folds the last thought into the block, on keeps it apart', async () => {
+        const body = text('a') + line([{ text: 'tt', thought: true }])
+        const off = await replayGeminiStream({ bytes: bytesOf(body), complete: true, rule, subject }, createUsageMeter())
+        const on = await replayGeminiStream({ bytes: bytesOf(body), complete: true, rule: { ...rule, streamThoughts: true }, subject }, createUsageMeter())
+        expect(off.modelText).toBe('<Thoughts>\n\ntt\n\n</Thoughts>\n\na')
+        expect(on.modelText).toBe('tt\n\na')
     })
 })
