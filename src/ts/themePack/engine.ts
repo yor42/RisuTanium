@@ -37,6 +37,8 @@ export interface RegistryInput {
     surfaces?: readonly SurfaceCheck[]
     /** No position, offsets or percentage widths on any safe part. */
     strictSafe?: boolean
+    /** The part-value rule: every compound of a selector names a part by a non-empty [data-part] value (a lone root-tier compound is exempt). */
+    partRequired?: boolean
     positionable?: Iterable<string>
     minimums?: Readonly<Record<string, string | number>>
     maximums?: Readonly<Record<string, string | number>>
@@ -63,6 +65,7 @@ export interface Registry {
     reach: Set<string>
     surfaces: readonly SurfaceCheck[]
     strictSafe: boolean
+    partRequired: boolean
     positionable: Set<string>
     minimums: Record<string, string | number>
     maximums: Record<string, string | number>
@@ -175,14 +178,14 @@ const readTokens = (css: string, into: TokenMap): TokenMap => {
 }
 const APP: TokenMap = readTokens(tokenFile('chat/theme-tokens.css'), readTokens(tokenFile('theme/nexus-tokens.css'), new Map()))
 
-export const CHAT_REGISTRY: Registry = { fixedWidth: new Set(CHAT_FIXED_WIDTH), critical: new Set(CRITICAL_PARTS), safe: SAFE_LEAVES, surfaces: CHAT_SURFACES, strictSafe: false, positionable: new Set(POSITIONABLE), minimums: { ...SHARED_MINIMUMS }, maximums: { ...SHARED_MAXIMUMS }, settable: CHAT_SETTABLE, colours: [], opaque: SHARED_OPAQUE, pairs: [...SHARED_PAIRS, ['--color-on-accent', '--nexus-accent', 4.5, 'the accent fill']], reach: new Set(REACH_CHAT), chains: CHAT_CHAINS, sheets: CHAT_SHEETS, privatePrefix: PRIVATE_PREFIX, app: APP, controls: new Set(REACH_CHAT) }
+export const CHAT_REGISTRY: Registry = { fixedWidth: new Set(CHAT_FIXED_WIDTH), critical: new Set(CRITICAL_PARTS), safe: SAFE_LEAVES, surfaces: CHAT_SURFACES, strictSafe: false, partRequired: false, positionable: new Set(POSITIONABLE), minimums: { ...SHARED_MINIMUMS }, maximums: { ...SHARED_MAXIMUMS }, settable: CHAT_SETTABLE, colours: [], opaque: SHARED_OPAQUE, pairs: [...SHARED_PAIRS, ['--color-on-accent', '--nexus-accent', 4.5, 'the accent fill']], reach: new Set(REACH_CHAT), chains: CHAT_CHAINS, sheets: CHAT_SHEETS, privatePrefix: PRIVATE_PREFIX, app: APP, controls: new Set(REACH_CHAT) }
 
 // chat's registry is used as is; any other registry gets chat's names and the shared defaults under its own
 const effective = (reg?: RegistryInput | null): Registry => {
     if (!reg || reg === CHAT_REGISTRY) return CHAT_REGISTRY
     const controls = new Set([...REACH_CHAT, ...(reg.controls || [])])
     const reach = new Set([...controls, ...(reg.reach || [])])
-    return { controls, critical: new Set([...CRITICAL_PARTS, ...(reg.critical || [])]), safe: new Set([...SAFE_LEAVES, ...(reg.safe || [])].filter((p) => !reach.has(p) && !ESCAPE_ANCESTORS.has(p))), reach, surfaces: reg.surfaces || CHAT_SURFACES, strictSafe: !!reg.strictSafe, positionable: new Set([...POSITIONABLE, ...(reg.positionable || [])]),
+    return { controls, critical: new Set([...CRITICAL_PARTS, ...(reg.critical || [])]), safe: new Set([...SAFE_LEAVES, ...(reg.safe || [])].filter((p) => !reach.has(p) && !ESCAPE_ANCESTORS.has(p))), reach, surfaces: reg.surfaces || CHAT_SURFACES, strictSafe: !!reg.strictSafe, partRequired: !!reg.partRequired, positionable: new Set([...POSITIONABLE, ...(reg.positionable || [])]),
         minimums: { ...SHARED_MINIMUMS, ...(reg.minimums || {}) }, maximums: { ...SHARED_MAXIMUMS, ...(reg.maximums || {}) }, app: reg.tokens ? new Map([...APP, ...reg.tokens]) : APP,
         fixedWidth: new Set([...CHAT_FIXED_WIDTH, ...(reg.fixedWidth || [])]), settable: [...CHAT_SETTABLE, ...(reg.settable || [])], colours: reg.colours || [], transparentOk: reg.transparentOk || [], opaque: [...new Set([...SHARED_OPAQUE, ...(reg.opaque || [])])], pairs: [...SHARED_PAIRS, ...(reg.pairs || [])], same: reg.same || [], chains: [...CHAT_CHAINS, ...(reg.chains || [])], sheets: [...CHAT_SHEETS, ...(reg.sheets || [])], privatePrefix: reg.privatePrefix === undefined ? PRIVATE_PREFIX : reg.privatePrefix }
 }
@@ -296,6 +299,8 @@ type Tier = 'root' | 'safe' | 'reach'
 interface Analysis {
     why: string[]
     ok: boolean
+    /** Every compound of the selector matched the pack-selector grammar. */
+    parsed: boolean
     tier?: Tier
     rootOnly?: boolean
     sp?: string[]
@@ -305,7 +310,7 @@ interface Analysis {
 function analyse(sel: string, reg: Registry = CHAT_REGISTRY): Analysis {
     const why: string[] = []
     const parts = compounds(sel)
-    if (!parts.length) return { why: ['empty selector'], ok: false }
+    if (!parts.length) return { why: ['empty selector'], ok: false, parsed: false }
     const attrs: Attr[] = []
     let syntax = true
     let subject: Subject | null = null
@@ -334,7 +339,24 @@ function analyse(sel: string, reg: Registry = CHAT_REGISTRY): Analysis {
     // a CONTROL (DD-243): a reach-tier part that is a key control (navigation, Tasks, Stop, composer, Send, Apply, Undo/Redo, the failed-save chip). It is restyled, never hidden or moved (the reach allowlist), but it holds no
     // critical text, so its colours are judged as a pair of its own (text on its fill, 4.5:1), not against the danger text of a dialog.
     const control = tier === 'reach' && sp.length > 0 && sp.every((p) => reg.controls.has(p))
-    return { why, ok: syntax && why.length === 0, tier, rootOnly, sp, control, pseudo: subj ? subj.pseudo : '' }
+    return { why, ok: syntax && why.length === 0, parsed: syntax, tier, rootOnly, sp, control, pseudo: subj ? subj.pseudo : '' }
+}
+// The part-value rule (settings and home, reg.partRequired): every compound names a part by a non-empty [data-part] value, except a root compound (:root / html), which may only be an ancestor; the one exemption is a lone root-tier compound (a.rootOnly, which lintOnce keeps to custom properties). A valueless or empty [data-part] is refused anywhere. It
+// reads the grammar result: an unparseable selector keeps its single "not allowed in a pack selector" reason. It never gates a.ok, so the declaration checks (DD-242, DD-265) still run and keep their own reasons.
+// A rule that carries only helper --pack-* declarations on a part-less selector never reaches this rule (the helpers are inlined first and judged at every read site on named parts through DD-258).
+const PART_VALUE_WHY = 'every compound of the selector must name a part by value: [data-part="..."] with a non-empty value (MC-1586)'
+function partValueWhy(sel: string, a: Analysis, reg: Registry): string {
+    if (!reg.partRequired || !a.parsed || a.rootOnly) return ''
+    const cs = compounds(sel)
+    for (const c of cs) {
+        const m = COMPOUND.exec(c)
+        if (!m) return ''
+        const parts = [...m[2].matchAll(/\[data-part(?:="([^"\]]*)")?\]/g)].map((x) => x[1])
+        if (parts.some((v) => !v)) return PART_VALUE_WHY
+        if (!m[1] && !parts.length) return PART_VALUE_WHY
+    }
+    const last = COMPOUND.exec(cs[cs.length - 1])
+    return last && last[1] ? PART_VALUE_WHY : ''
 }
 /** The tier the engine gives one selector in a registry (root, safe or reach), including the safe context of a user or system message. */
 export function selectorTier(sel: string, registry?: RegistryInput): 'root' | 'safe' | 'reach' | undefined {
@@ -359,8 +381,10 @@ export function isPackSettable(name: string, registry?: RegistryInput): boolean 
     return settableTest({ ...r, isBounded: VALUES.isBounded })(name)
 }
 export function lintSelector(sel: string, reg?: RegistryInput): string[] {
-    const a = analyse(sel, effective(reg))
-    return a.why
+    const r = effective(reg)
+    const a = analyse(sel, r)
+    const pv = partValueWhy(sel, a, r)
+    return pv ? [...a.why, pv] : a.why
 }
 
 // ---- declarations
@@ -923,6 +947,8 @@ function lintOnce(css: string, name: string, reg: Registry, skipStructure: boole
         for (const sel of sels) {
             const a = analyse(sel, reg)
             for (const w of a.why) fail(sel, d.prop, w)
+            const pv = partValueWhy(sel, a, reg)
+            if (pv) fail(sel, d.prop, pv)
             if (!a.ok) continue
             if (a.tier === 'root') {
                 if (!d.prop.startsWith('--') && d.prop !== 'color-scheme') fail(sel, d.prop, 'only custom properties (and color-scheme) may be set on the root or on a root attribute')

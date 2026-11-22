@@ -173,6 +173,8 @@ function applyDelta(delta: Delta): Promise<boolean> {
                 if (base === null) {
                     // The stored bytes changed under this page into something unreadable: keep them, hold in memory.
                     state.mode = 'unwritable'
+                    // Grants loaded earlier no longer reflect the stored bytes: fail closed rather than keep matching them.
+                    state.grants = emptyMap()
                 } else {
                     const next = cloneGrants(base)
                     delta(next)

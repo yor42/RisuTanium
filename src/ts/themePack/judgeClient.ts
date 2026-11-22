@@ -49,7 +49,8 @@ function readErrors(value: unknown): LintError[] | null {
         if (!isRecord(item) || typeof item.selector !== 'string' || typeof item.prop !== 'string' || typeof item.why !== 'string') {
             return null
         }
-        errors.push({ selector: item.selector, prop: item.prop, why: item.why })
+        const rule = item.rule === 'contrast' || item.rule === 'readability' || item.rule === 'layout' ? item.rule : undefined
+        errors.push(rule === undefined ? { selector: item.selector, prop: item.prop, why: item.why } : { selector: item.selector, prop: item.prop, why: item.why, rule })
     }
     return errors
 }

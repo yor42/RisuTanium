@@ -17,7 +17,7 @@ import { isAndroidTransport } from "src/ts/storage/tauriByteTransport";
 import { sleep } from "src/ts/util";
 import { registeredCustomPluginMCPs } from "./pluginmcp";
 import type { RunSubject } from "../chatOrigin";
-import type { ToolLoopState } from "../request/toolLoop";
+import { reportToolStep, type ToolLoopState, type ToolStepOutcome } from "../request/toolLoop";
 import { authorizeToolCall } from "./toolAuthorize";
 
 export type MCPToolWithURL = MCPTool & {
@@ -440,11 +440,56 @@ async function callOnClient(url:string, client:MCPClientInstance, methodName:str
 export async function callMCPTool(methodName:string, args:any, ctx?:MCPCallContext):Promise<RPCToolCallContent[]> {
     const subject = ctx?.subject;
     const mcpURL = ctx?.mcpURL;
-    const refusal = await authorizeToolCall(methodName, args, { subject, mcpURL, toolLoop: ctx?.toolLoop });
+    const toolLoop = ctx?.toolLoop;
+    // A refusal, denial or stop before dispatch is reported by the authorization; an authorized call is reported
+    // here, once, after it ends.
+    const refusal = await authorizeToolCall(methodName, args, { subject, mcpURL, toolLoop });
     if(refusal) {
         return refusal;
     }
-    return await dispatchToClient(mcpURL, methodName, args, subject, ctx?.toolLoop);
+    let result:RPCToolCallContent[];
+    try {
+        result = await dispatchToClient(mcpURL, methodName, args, subject, toolLoop);
+    } catch(error) {
+        reportToolStep(toolLoop, methodName, args, 'error');
+        throw error;
+    }
+    reportToolStep(toolLoop, methodName, args, dispatchOutcome(methodName, result, toolLoop));
+    return result;
+}
+
+function stoppedBeforeText(methodName:string):string {
+    return `Stopped before ${methodName} ran.`;
+}
+
+/** Whether a result is the failure a client or the dispatch produces: an `Error...` or `Unknown tool:` text, the not-found text, or a workspace `{"error": ...}` answer. */
+function isErrorResult(methodName:string, result:RPCToolCallContent[]):boolean {
+    // A client may answer with nothing at all; that is not a failure this check can name.
+    const first = result?.[0];
+    if(!first || first.type !== 'text') {
+        return false;
+    }
+    const text = first.text;
+    if(/^Error\b/.test(text) || text.startsWith('Unknown tool:') || text === `Tool ${methodName} not found on any MCP`) {
+        return true;
+    }
+    if(text.startsWith('{')) {
+        try {
+            const parsed:unknown = JSON.parse(text);
+            return !!parsed && typeof parsed === 'object' && typeof (parsed as Record<string, unknown>).error === 'string';
+        } catch {
+            return false;
+        }
+    }
+    return false;
+}
+
+function dispatchOutcome(methodName:string, result:RPCToolCallContent[], toolLoop:ToolLoopState | undefined):ToolStepOutcome {
+    const first = result?.[0];
+    if(toolLoop?.signal?.aborted === true || (first?.type === 'text' && first.text === stoppedBeforeText(methodName))) {
+        return 'stopped';
+    }
+    return isErrorResult(methodName, result) ? 'error' : 'ran';
 }
 
 /**
@@ -461,7 +506,7 @@ async function dispatchToClient(mcpURL:string | undefined, methodName:string, ar
         const ensured = await beginMCPActivity(urls, selectionUrls, owners, [mcpURL]);
         const routed = ensured.find(([url]) => url === mcpURL);
         if(toolLoop?.signal?.aborted === true) {
-            return [{ type: 'text', text: `Stopped before ${methodName} ran.` }]
+            return [{ type: 'text', text: stoppedBeforeText(methodName) }]
         }
         if(routed) {
             return await callOnClient(mcpURL, routed[1], methodName, args, { subject, toolLoop });

@@ -2,7 +2,7 @@
    Loaded after ../theme/nexus-tokens.css and before the Studio stylesheets. Shared Deep Nexus names (--nexus-*, --font, --color-surface-sheet, --color-surface-toast, --color-warning, --radius-field, --radius-sheet ...) are USED here and never redefined.
    Everything Studio adds is prefixed --studio-. The role tokens are the contract a pack sets; the ladders underneath are internal and the number in a ladder name is its Deep Nexus pixel value, so a pack must not set them.
    The shared block holds the names every Studio surface uses: one name, one meaning. */
-:root {
+:root, [data-own-scheme] {
   /* ---- shared names ---- */
   --studio-space-1: 4px; --studio-space-2: 6px; --studio-space-3: 8px; --studio-space-4: 12px; --studio-space-5: 16px; --studio-space-6: 20px; --studio-space-7: 24px; --studio-space-8: 32px;
   --studio-radius-1: 8px; --studio-radius-2: 12px; --studio-radius-3: 16px; --studio-radius-pill: 999px;
@@ -321,7 +321,7 @@
   /* ---- ladder: scale factors ---- */
   --studio-scale-press: 0.96;
 }
-html.rm, html.nexus-low-power { --studio-dur-fast: 0s; }
-html.rm { --studio-dur-quick: 0s; --studio-dur-base: 0s; }   /* reduced motion removes the animation (0 s), it does not shorten it; a pack that sets --chat-motion cannot bring it back */
-html.nexus-low-power { --studio-dur-base: min(calc(200ms * var(--chat-motion, 1)), 120ms); }
-@media (prefers-reduced-motion: reduce) { :root:not(.rm-off) { --studio-dur-quick: 0s; --studio-dur-base: 0s; } }
+html.rm, html.nexus-low-power, html.rm [data-own-scheme], html.nexus-low-power [data-own-scheme] { --studio-dur-fast: 0s; }
+html.rm, html.rm [data-own-scheme] { --studio-dur-quick: 0s; --studio-dur-base: 0s; }   /* reduced motion removes the animation (0 s), it does not shorten it; a pack that sets --chat-motion cannot bring it back */
+html.nexus-low-power, html.nexus-low-power [data-own-scheme] { --studio-dur-base: min(calc(200ms * var(--chat-motion, 1)), 120ms); }
+@media (prefers-reduced-motion: reduce) { :root:not(.rm-off), :root:not(.rm-off) [data-own-scheme] { --studio-dur-quick: 0s; --studio-dur-base: 0s; } }

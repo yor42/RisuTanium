@@ -7,11 +7,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const h = vi.hoisted(() => ({
     request: vi.fn(),
     desktop: true,
+    android: false,
     models: {} as Record<string, { id: string, format: number }>,
 }))
 
 vi.mock('../../request/request', () => ({ requestChatDataMain: h.request }))
-vi.mock('../../../storage/tauriByteTransport', () => ({ isDesktopTransport: () => h.desktop }))
+vi.mock('../../../storage/tauriByteTransport', () => ({ isDesktopTransport: () => h.desktop, isAndroidTransport: () => h.android }))
 vi.mock('../../../stores.svelte', () => ({ DBState: { db: {} } }))
 vi.mock('../../../model/modellist', async () => {
     const types = await import('../../../model/types')
@@ -57,6 +58,7 @@ function streamOf(chunks: Array<Record<string, string>>, hold?: Promise<void>): 
 beforeEach(async () => {
     h.request.mockReset()
     h.desktop = true
+    h.android = false
     h.models = {}
     DBState.db = { taskPresets: [preset()], customAPIFormat: LLMFormat.OpenAICompatible, useInstructPrompt: false } as never
     setPageStorageMode({ kind: 'store2' })
@@ -283,10 +285,14 @@ describe('refusals', () => {
 })
 
 describe('the page gate', () => {
-    test('only the desktop app on a store2 page may use Utility', () => {
+    test('only the desktop or Android app on a store2 page may use Utility', () => {
         expect(utilityAvailable()).toBe(true)
 
         h.desktop = false
+        h.android = true
+        expect(utilityAvailable()).toBe(true)
+
+        h.android = false
         expect(utilityAvailable()).toBe(false)
 
         h.desktop = true
@@ -298,6 +304,7 @@ describe('the page gate', () => {
 
     test('a send outside the gate makes no request', async () => {
         h.desktop = false
+        h.android = false
 
         await sendUtility('p1', 'hello')
 

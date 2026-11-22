@@ -381,16 +381,16 @@ describe('the acceptance sheets stay accepted (T0a-7, GUARD)', () => {
     })
 })
 
-// R20: Home and Settings run neither Rule S nor Rule SCOPE, so a selector whose subject names no part is not measured there (the reader attributes a declaration only to named parts). v1 neither applies nor judges those sheets; this is the tripwire
-// that must flip, with these rows refused in Home and Settings, before a build applies either area.
-describe('R20 residue, not a claim: an area may be applied only once these rows are refused there (GUARD)', () => {
+// R20: Home and Settings run neither Rule S nor Rule SCOPE, so a selector whose subject names no part is not measured there (the reader attributes a declaration only to named parts). The part-value rule closes that gap in the lint: these rows are
+// refused in Home and Settings as they are in chat and Studio, which is the condition for a build to apply either area.
+describe('R20 residue closed by the part-value rule: these rows are refused in every area (GUARD)', () => {
     it.each([
         ['H1 a valueless data-part with padding-inline', 'home', '[data-part]{padding-inline:60px}'],
         ['H3 a valueless data-part with margin-inline', 'home', '[data-part]{margin-inline:60px}'],
         ['H6 a subject with no data-part with margin-inline', 'home', '[data-x="y"]{margin-inline:60px}'],
         ['S1 a valueless data-part with padding-inline', 'settings', '[data-part]{padding-inline:60px}'],
-    ] as const)('%s is accepted in %s and refused in chat and Studio', (_name, area, css) => {
-        accepted(area, css)
+    ] as const)('%s is refused in %s with the part-value reason, and in chat and Studio', (_name, area, css) => {
+        refused(area, css, /must name a part by value/)
         refused('chat', css)
         refused('studio', css)
     })

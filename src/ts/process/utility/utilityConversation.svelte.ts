@@ -2,16 +2,16 @@ import { language } from 'src/lang'
 import { getModelInfo, LLMFormat } from '../../model/modellist'
 import type { Database } from '../../storage/database.svelte'
 import { getPageStorageMode } from '../../storage/pageStorageMode'
-import { isDesktopTransport } from '../../storage/tauriByteTransport'
+import { isAndroidTransport, isDesktopTransport } from '../../storage/tauriByteTransport'
 import { DBState } from '../../stores.svelte'
 import { requestChatDataMain, type requestDataResponse } from '../request/request'
 import type { TaskPreset } from './taskPreset'
 import { WORKSPACE_TOOLS } from '../mcp/workspaceclient'
 import { suppressInterceptorsFor } from '../request/interceptorSuppression'
-import { advertisedToolKey, newToolLoop, type ToolLoopState } from '../request/toolLoop'
+import { advertisedToolKey, newToolLoop, type ToolLoopState, type ToolStep } from '../request/toolLoop'
 import { assembleUtilityPrompt, type UtilityPromptTurn } from './utilityPrompt'
 import { abortUtilityRun, startUtilityRun, type UtilityRun } from './utilityRuns.svelte'
-import { buildWorkspaceInstructions } from './workspace/instructionSources'
+import { buildWorkspaceInstructions, type WorkspaceInstructions } from './workspace/instructionSources'
 import { hasWorkspace } from './workspace/workspaceModel.svelte'
 
 /**
@@ -44,7 +44,14 @@ export interface UtilityConversationState {
     presetName: string | null
     /** The one workspace this conversation picked, or null for none (no workspace tools, streamed). */
     workspaceId: string | null
+    /** The tool steps of the current run, in call order. Emptied when a turn is sent and by New. */
+    steps: ToolStep[]
+    /** Which instruction files fed the current run (no text), or null when it has no workspace or has not read them yet. Cleared with steps. */
+    instructions: InstructionSummary | null
 }
+
+/** The files a run's instructions came from: WorkspaceInstructions without the text itself. */
+export type InstructionSummary = Omit<WorkspaceInstructions, 'text'>
 
 const CONVERSATION_ID = 'utility'
 const WORKSPACE_URL = 'internal:workspace'
@@ -54,7 +61,32 @@ export const utilityConversation: UtilityConversationState = $state({
     runId: null,
     presetName: null,
     workspaceId: null,
+    steps: [],
+    instructions: null,
 })
+
+/** The tool steps of the current (or last) turn's run; a reader outside this module goes through this accessor. */
+export function getUtilitySteps(): readonly ToolStep[] {
+    return utilityConversation.steps
+}
+
+/** The instruction sources of the current (or last) turn's run, or null. */
+export function getUtilityInstructions(): InstructionSummary | null {
+    return utilityConversation.instructions
+}
+
+/**
+ * The workspace this conversation picked, or null. Every reader and writer outside this module goes through this pair, so
+ * where the choice is stored can change in one place.
+ */
+export function getUtilityWorkspace(): string | null {
+    return utilityConversation.workspaceId
+}
+
+/** Whether the choice can no longer change: the conversation has turns or a run is live. Only New unlocks it. */
+export function isUtilityWorkspaceLocked(): boolean {
+    return utilityConversation.turns.length > 0 || utilityConversation.runId !== null
+}
 
 /**
  * Picks the workspace (or none) of the conversation. A conversation keeps one choice: once it has turns, only New
@@ -64,7 +96,7 @@ export function setUtilityWorkspace(workspaceId: string | null): boolean {
     if (utilityConversation.workspaceId === workspaceId) {
         return true
     }
-    if (utilityConversation.turns.length > 0 || utilityConversation.runId !== null) {
+    if (isUtilityWorkspaceLocked()) {
         return false
     }
     utilityConversation.workspaceId = workspaceId
@@ -80,11 +112,11 @@ export const UTILITY_FORMATS: readonly number[] = [
 ]
 
 /**
- * Whether this page may use Utility: the desktop app, on a page whose profile is a writable store2 tree. Android,
- * hosted web, Node and read-only pages are all refused, because a task preset is saved only by store2.
+ * Whether this page may use Utility: the desktop or Android app, on a page whose profile is a writable store2
+ * tree. Hosted web, Node and read-only pages are all refused, because a task preset is saved only by store2.
  */
 export function utilityAvailable(): boolean {
-    return isDesktopTransport() && getPageStorageMode().kind === 'store2'
+    return (isDesktopTransport() || isAndroidTransport()) && getPageStorageMode().kind === 'store2'
 }
 
 /**
@@ -181,10 +213,11 @@ async function settleTurn(result: requestDataResponse, turn: UtilityTurn, signal
  * Sends `text` to the task preset `presetId`. A refusal or a failure is shown on the assistant turn, never raised and
  * never put in the shared alert store. Resolves when the run has ended.
  */
-export async function sendUtility(presetId: string, text: string, workspaceId: string | null = utilityConversation.workspaceId): Promise<void> {
+export async function sendUtility(presetId: string, text: string): Promise<void> {
     if (utilityConversation.runId !== null) {
         return
     }
+    const workspaceId = getUtilityWorkspace()
     const db = DBState.db
     const found = db.taskPresets?.find((candidate) => candidate.id === presetId)
     // Copy the fields now: a later edit or deletion of the preset does not change this send.
@@ -199,6 +232,8 @@ export async function sendUtility(presetId: string, text: string, workspaceId: s
     const prior: UtilityPromptTurn[] = utilityConversation.turns
         .filter((turn) => turn.content !== '')
         .map((turn) => ({ role: turn.role, content: turn.content }))
+    utilityConversation.steps = []
+    utilityConversation.instructions = null
     utilityConversation.turns.push({ role: 'user', content: text })
     utilityConversation.turns.push({ role: 'assistant', content: '', state: 'streaming' })
     const turn = utilityConversation.turns[utilityConversation.turns.length - 1]
@@ -218,7 +253,7 @@ export async function sendUtility(presetId: string, text: string, workspaceId: s
         return
     }
     if (workspaceId !== null && !hasWorkspace(workspaceId)) {
-        failedTurn(turn, 'The workspace of this conversation no longer exists.')
+        failedTurn(turn, language.utility.failureWorkspaceGone)
         return
     }
     const run: UtilityRun | null = startUtilityRun(CONVERSATION_ID)
@@ -237,12 +272,25 @@ export async function sendUtility(presetId: string, text: string, workspaceId: s
             tools = WORKSPACE_TOOLS.map((tool) => ({ ...tool, mcpURL: WORKSPACE_URL }))
             toolLoop = newToolLoop(run.signal)
             toolLoop.workspace = { id: workspaceId }
+            // A step of a run that New replaced or a later turn superseded can no longer reach the list.
+            toolLoop.onStep = (step) => {
+                if (utilityConversation.runId === run.id) {
+                    utilityConversation.steps.push(step)
+                }
+            }
             // Plugin body interceptors never see a request that offers workspace tools: file text and tool arguments
             // stay away from plugins. Registered only here, so a run without a workspace keeps its interceptors.
             suppressInterceptorsFor(run.signal)
             toolLoop.advertised = new Set(tools.map((tool) => advertisedToolKey(tool.name, WORKSPACE_URL)))
         }
-        const instructions = workspaceId === null ? '' : (await buildWorkspaceInstructions(workspaceId)).text
+        let instructions = ''
+        if (workspaceId !== null) {
+            const built = await buildWorkspaceInstructions(workspaceId)
+            instructions = built.text
+            if (utilityConversation.runId === run.id) {
+                utilityConversation.instructions = { truncated: built.truncated, damaged: built.damaged, agentsPaths: built.agentsPaths, skills: built.skills }
+            }
+        }
         const result = await requestChatDataMain({
             formated: assembleUtilityPrompt(preset, [...prior, { role: 'user', content: text }], instructions),
             bias: {},
@@ -296,5 +344,7 @@ export async function newUtilityConversation(confirmDiscard: () => Promise<boole
     utilityConversation.runId = null
     utilityConversation.presetName = null
     utilityConversation.workspaceId = null
+    utilityConversation.steps = []
+    utilityConversation.instructions = null
     return true
 }

@@ -1,4 +1,5 @@
 import { get } from "svelte/store";
+import { untrack } from "svelte";
 import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
 import { isLite } from "../lite";
 import { CustomCSSStore, DBState, SafeModeStore } from "../stores.svelte";
@@ -7,6 +8,8 @@ import { nexusColorScheme } from "./nexusColorScheme";
 import { deriveSchemeRoles } from "./schemeRoles";
 import { ColorSchemeTypeStore } from "./surfaceTone";
 import { packSafe } from "../themePack/packSafeFlag.svelte";
+import { ownColours } from "../themePack/ownColours.svelte";
+import { cr, over, parseConcrete, toHex, type Rgba } from "../themePack/colour";
 
 export interface ColorScheme{
     bgcolor: string;
@@ -333,7 +336,7 @@ export function setPackSchemeProvider(provider: (() => ColorScheme | null) | nul
  * never written here. Under `theme-pack` the applied pack's default paints live, and the stored
  * copy is the fallback before the pack is read, in Safe Mode, with a missing or broken pack, on a
  * downgrade and upstream. Custom, unknown and prototype names fall back to the saved copy, and lite
- * mode always reports the lite scheme. In pack safe mode the pack scheme name paints the scheme turning the pack off would
+ * mode always reports the lite scheme. In pack safe mode, and while Settings is open under own colours, the pack scheme name paints the scheme turning the pack off would
  * restore, before any live provider. The result may be a shared table object: callers must not
  * mutate it and must clone it before handing it out.
  */
@@ -344,7 +347,7 @@ export function effectiveColorScheme(db: SchemeSource): ColorScheme{
     if(typeof db.colorSchemeName === 'string' && Object.hasOwn(colorShemes, db.colorSchemeName)){
         return colorShemes[db.colorSchemeName as keyof typeof colorShemes]
     }
-    if(db.colorSchemeName === PACK_SCHEME_NAME && packSafe.on){
+    if(db.colorSchemeName === PACK_SCHEME_NAME && (packSafe.on || (ownColours.settingsOpen && ownColours.on))){
         return schemeWithoutPack(db).colorScheme
     }
     if(db.colorSchemeName === PACK_SCHEME_NAME){
@@ -393,7 +396,89 @@ export function leavePackScheme(): void{
     delete DBState.db.themePackSchemeSnapshot
 }
 
+/** The scheme the applied pack paints: its live default, else the stored copy. It never consults safe mode or own colours. */
+function packPaintedScheme(db: SchemeSource): ColorScheme{
+    return packSchemeProvider?.() ?? db.colorScheme ?? defaultColorScheme
+}
+
+const OWN_COLOUR_FLOOR = 4.5
+
+/** A colour read opaque: a translucent one is composited over black, as an opaque backdrop would show it. Null when unreadable. */
+function opaqueColour(text: string): Rgba | null{
+    const parsed = parseConcrete(text)
+    return parsed === null ? null : over(parsed, [0, 0, 0, 1])
+}
+
+/**
+ * True when both text colours reach the contrast floor on both backgrounds. A colour that cannot be read makes the
+ * scheme unreadable. darkbutton is not a text background of the escape controls and is not checked.
+ */
+export function schemeReadable(scheme: ColorScheme): boolean{
+    const texts = [opaqueColour(scheme.textcolor), opaqueColour(scheme.textcolor2)]
+    const grounds = [opaqueColour(scheme.bgcolor), opaqueColour(scheme.darkbg)]
+    for(const ground of grounds){
+        for(const text of texts){
+            if(text === null || ground === null || cr(text, ground) < OWN_COLOUR_FLOOR){
+                return false
+            }
+        }
+    }
+    return true
+}
+
+/**
+ * Whether the own colours are wanted: only under the pack scheme outside lite and pack safe mode, and then when the pack's
+ * painted scheme is unreadable or the judge's verdict flagged a live pack. Throws on nothing it can read; the caller fails closed.
+ */
+function ownColoursWanted(db: SchemeSource): boolean{
+    if(db.colorSchemeName !== PACK_SCHEME_NAME || get(isLite) || packSafe.on){
+        return false
+    }
+    return !schemeReadable(packPaintedScheme(db)) || (ownColours.verdict && packSchemeProvider?.() != null)
+}
+
+function opaqueHex(text: string): string{
+    const parsed = opaqueColour(text)
+    return parsed === null ? text : toHex(parsed)
+}
+
+/** The 27 root custom properties of the scheme with the three backdrop colours opaque, as an island re-declares them. */
+function ownSchemeVars(scheme: ColorScheme): Record<string, string>{
+    const roles = deriveSchemeRoles(scheme)
+    const vars: Record<string, string> = {
+        "--risu-theme-bgcolor": opaqueHex(scheme.bgcolor),
+        "--risu-theme-darkbg": opaqueHex(scheme.darkbg),
+        "--risu-theme-borderc": scheme.borderc,
+        "--risu-theme-selected": scheme.selected,
+        "--risu-theme-draculared": scheme.draculared,
+        "--risu-theme-textcolor": scheme.textcolor,
+        "--risu-theme-textcolor2": scheme.textcolor2,
+        "--risu-theme-darkborderc": scheme.darkBorderc,
+        "--risu-theme-darkbutton": opaqueHex(scheme.darkbutton),
+    }
+    for(const [name, value] of Object.entries(roles)){
+        vars[`--risu-theme-role-${name}`] = value
+    }
+    return vars
+}
+
 export function updateColorScheme(){
+    // The trigger is computed first and on its own: a throw here fails closed and never stops the paint below.
+    let on: boolean
+    try {
+        on = ownColoursWanted(getDatabase())
+    } catch (error) {
+        console.error(error)
+        on = DBState.db?.colorSchemeName === PACK_SCHEME_NAME
+    }
+    ownColours.on = on
+    if(on){
+        try {
+            ownColours.vars = ownSchemeVars(schemeWithoutPack(getDatabase()).colorScheme)
+        } catch (error) {
+            console.error(error)
+        }
+    }
     try {
         let db = getDatabase()
 
@@ -433,6 +518,30 @@ export function updateColorScheme(){
         // The colour applied above, after the lite override; also reached at boot.
         syncSystemBars(colorScheme.bgcolor)
     } catch (error) {}
+}
+
+/**
+ * Records that Settings opened or closed and, only when the own colours are on, repaints so the root paints the scheme
+ * that edge selects. Everything runs untracked: a reactive caller subscribes to nothing the repaint reads, so a database
+ * edit never re-runs it. A repeated state does nothing, which keeps the repaint to the two edges. A throw in the repaint
+ * is logged and never escapes the caller.
+ */
+export function setSettingsOwnColours(open: boolean): void{
+    untrack(() => {
+        if(ownColours.settingsOpen === open){
+            return
+        }
+        ownColours.settingsOpen = open
+        if(!ownColours.on){
+            return
+        }
+        try {
+            updateColorScheme()
+            updateTextThemeAndCSS()
+        } catch (error) {
+            console.error(error)
+        }
+    })
 }
 
 export function changeColorSchemeType(type: 'light'|'dark'){

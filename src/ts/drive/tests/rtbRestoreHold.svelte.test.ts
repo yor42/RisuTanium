@@ -224,6 +224,7 @@ describe('acquireRestoreHold', () => {
         const busy = noLocks.busy.beginBusy('backupLoad')
         expect((await noLocks.hold.acquireRestoreHold(busy)).kind).toBe('declined')
         expect(confirmTexts(noLocks)).toEqual([language.restoreNoLockWarningConfirm])
+        expect(noLocks.alert.alertConfirm).toHaveBeenCalledWith(language.restoreNoLockWarningConfirm, { ownScheme: 'saveGuard' })
         expect(await writeLockIsFree(noLocks)).toBe(true)
         busy.end()
         worlds.parkAll()
@@ -257,6 +258,7 @@ describe('the unsaved-edits guard (T14)', () => {
         }
         expect(await result.hold.guard.check()).toBe(true)
         expect(confirmTexts(page)).toEqual([language.store2RestoreUnsavedConfirm])
+        expect(page.alert.alertConfirm).toHaveBeenCalledWith(language.store2RestoreUnsavedConfirm, { ownScheme: 'saveGuard' })
         expect(await result.hold.guard.check()).toBe(true)
         expect(confirmTexts(page)).toHaveLength(1)
         page.db.mainPrompt = 'edited again'

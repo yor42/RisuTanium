@@ -20,6 +20,7 @@ import type { AreaSheetJudgement } from './index'
 import { intakePack, readVerifiedFile, type AppliedArea, type IntakeRefusal, type VerifiedPack } from './intake'
 import { readJudgement, type JudgeJob, type JudgeResults, type JudgeSession } from './judgeClient'
 import { LIGHT_BASE_JUDGE_PREFIX, wantsLightBase } from './lightBase'
+import { triggersOwnColours } from './ownColours.svelte'
 import { packDefaultScheme } from './packColours'
 import { PACK_ARCHIVE_KEY } from './packRefs'
 import { hasNoDeclarations, shapeOnlySheet, shapeTokenNames } from './shapeMode'
@@ -40,9 +41,12 @@ export interface PreparedElement {
     readonly shapeText: string | null
     readonly base: SchemeTone | null
 }
-/** `elements` holds every screen's applied text; `defaultScheme` comes from the chat sheet alone. */
+/**
+ * `elements` holds every screen's applied text; `defaultScheme` comes from the chat sheet alone. `ownColourTrigger` is
+ * present, and true, only when a judged sheet carries a contrast or readability warning; absent means no trigger.
+ */
 export type Prepared =
-    | { ok: true; blobs: readonly string[]; skippedAreas: readonly string[]; defaultScheme: ColorScheme | null; elements: readonly PreparedElement[] }
+    | { ok: true; blobs: readonly string[]; skippedAreas: readonly string[]; defaultScheme: ColorScheme | null; elements: readonly PreparedElement[]; ownColourTrigger?: true }
     | { ok: false; reason: BrokenReason; refusals?: readonly IntakeRefusal[] }
 type Stale = { ok: false; stale: true }
 
@@ -178,6 +182,11 @@ function baseOf(light: AreaSheetJudgement | null): SchemeTone {
     return light?.result?.ok === true ? 'light' : 'dark'
 }
 
+/** True when the judgement that will be painted carries a warning that triggers the own colours. */
+function judgementTriggers(judged: AreaSheetJudgement | null): boolean {
+    return judged !== null && triggersOwnColours(judged.warnings)
+}
+
 /**
  * The text shape mode applies. The allowlisted subset of the judged sheet is itself judged, and its own canonical text
  * (with the same blob substitution) is what applies, so judged is applied for this variant too. A refused or unanswered
@@ -275,6 +284,7 @@ async function prepareBuiltin(pack: BuiltinPack, session: JudgeSession, isCurren
     return {
         ok: true, blobs: [], skippedAreas: [], defaultScheme: packDefaultScheme(chat.canonical, base),
         elements: [{ area: 'chat', text: chatText, shapeText, base }],
+        ...(judgementTriggers(chat) ? { ownColourTrigger: true as const } : {}),
     }
 }
 
@@ -378,8 +388,11 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
     }
     const elements: PreparedElement[] = []
     let defaultScheme: ColorScheme | null = null
+    let ownColourTrigger = judgementTriggers(studio)
     if (chat !== null && chatText !== null) {
         const base = baseOf(variants.light)
+        // The colours painted come from the light variant when the pack's light base applies, else from the chat sheet.
+        ownColourTrigger = judgementTriggers(base === 'light' ? variants.light : chat) || ownColourTrigger
         defaultScheme = packDefaultScheme(chat.canonical, base)
         elements.push({ area: 'chat', text: textOrNull(chatText), shapeText: prepareShapeText(chat, chatText, (raw) => urlOfRaw.get(raw), variants.shape), base })
     }
@@ -388,7 +401,7 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
     if (studioText !== null) {
         elements.push({ area: 'studio', text: studioText, shapeText: studioText, base: null })
     }
-    return { ok: true, blobs: [...minted], skippedAreas: pack.skippedAreas, defaultScheme, elements }
+    return { ok: true, blobs: [...minted], skippedAreas: pack.skippedAreas, defaultScheme, elements, ...(ownColourTrigger ? { ownColourTrigger: true as const } : {}) }
 }
 
 /**

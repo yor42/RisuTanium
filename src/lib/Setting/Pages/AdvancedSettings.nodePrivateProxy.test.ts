@@ -29,6 +29,10 @@ vi.mock(import('src/ts/storage/nodeStorage'), () => ({
     nodeServerPrivateProxyEnabled: h.enabled,
 }) as unknown as typeof import('src/ts/storage/nodeStorage'))
 
+vi.mock(import('./Advanced/WorkspaceToolGrants.svelte'), () => ({
+    default: () => undefined,
+}) as unknown as typeof import('./Advanced/WorkspaceToolGrants.svelte'))
+
 vi.mock(import('../SettingRenderer.svelte'), () => ({
     default: () => undefined,
 }) as unknown as typeof import('../SettingRenderer.svelte'))

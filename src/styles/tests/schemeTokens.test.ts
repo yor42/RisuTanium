@@ -222,7 +222,7 @@ describe('TB7: the derived roles are read only by the token files and the classi
     }
 
     // pattern-tokens.css reads the roles only through --nexus-canvas, so it names none.
-    test('--risu-theme-role- appears only in the Nexus and chat token files, the classic focus ring rules, colorschemeCore.ts and schemeRoles.ts', () => {
+    test('--risu-theme-role- appears only in the Nexus and chat token files, the own-scheme island rules, the classic focus ring rules, colorschemeCore.ts and schemeRoles.ts', () => {
         const files: string[] = []
         walk(path.join(REPO_ROOT, 'src'), files)
         const users = files
@@ -233,6 +233,7 @@ describe('TB7: the derived roles are read only by the token files and the classi
             'src/styles.css',
             'src/styles/chat-tokens.css',
             'src/styles/nexus-tokens.css',
+            'src/styles/own-scheme.css',
             'src/ts/chatShell/cardEffects.css',
             'src/ts/gui/colorschemeCore.ts',
             'src/ts/gui/schemeRoles.ts',

@@ -45,6 +45,7 @@
     import { holdModalLayer } from "../Nexus/pattern/modalLayers.svelte";
     import ShellSidebar from "../ChatShell/sidebar/ShellSidebar.svelte";
     import { showHomeLanding } from "../UI/Home/homeView.svelte";
+    import { ownScheme } from "../UI/ownScheme.svelte";
     import { homeChrome } from "../UI/Home/homeChrome.svelte";
   let sideBarMode = $state(0);
   let editMode = $state(false);
@@ -264,6 +265,7 @@
 <button
   data-part="rail-settings"
   data-part-critical
+  use:ownScheme={'escape'}
   class="flex items-center justify-center py-2 flex-col gap-1 w-full"
   class:text-textcolor2={!$settingsOpen}
   onclick={() => {

@@ -1,6 +1,7 @@
 import { language } from 'src/lang'
 import { fillLang } from 'src/lang/fill'
 import type { RPCToolCallContent } from '../mcp/mcplib'
+import { escapeBidiControls } from '../mcp/bidiEscape'
 import type { RequestDataArgumentExtended, requestDataResponse } from './request'
 
 /** The most tool rounds one user turn may spend, across every loop, retry, fallback and nested call. */
@@ -24,10 +25,70 @@ export type ToolLoopState = {
      * set is refused; a run that does not set it is bounded by the provider's own advertised-name check.
      */
     advertised?: ReadonlySet<string>
+    /**
+     * Receives one `ToolStep` per tool call the run decides, on every path: a call that ran, was denied, refused or
+     * stopped, and one whose decision threw. Set only by a caller that shows the steps; `reportToolStep` is the only
+     * caller and swallows anything the hook throws.
+     */
+    onStep?: (step: ToolStep) => void
 }
 
 export type ToolLoopWorkspace = {
     readonly id: string
+}
+
+/** How a tool call ended: it `ran` (was let through to run), the user `denied` it, the loop `refused` it, it failed with an `error`, or the run was `stopped`. */
+export type ToolStepOutcome = 'ran' | 'denied' | 'refused' | 'error' | 'stopped'
+
+/** One tool call of a run: its name, a short plain-text summary of its arguments and how it ended. */
+export type ToolStep = {
+    readonly name: string
+    readonly summary: string
+    readonly outcome: ToolStepOutcome
+}
+
+/** The longest argument summary a step keeps, in code points. */
+export const TOOL_STEP_SUMMARY_MAX = 120
+
+/**
+ * A short plain-text summary of a call's arguments: the path arguments of a file tool (`from` to `to` for a move),
+ * otherwise the compact JSON, cut to `TOOL_STEP_SUMMARY_MAX` code points. It only reads the arguments and never throws.
+ */
+export function summarizeToolArgs(args: unknown): string {
+    let summary = ''
+    try {
+        const record = args && typeof args === 'object' ? args as Record<string, unknown> : {}
+        const text = (key: string) => typeof record[key] === 'string' ? record[key] as string : ''
+        if(text('from') !== '' || text('to') !== ''){
+            summary = `${text('from')} -> ${text('to')}`
+        }
+        else if(text('path') !== ''){
+            summary = text('path')
+        }
+        else{
+            summary = JSON.stringify(args) ?? ''
+        }
+    }
+    catch{
+        summary = ''
+    }
+    const escaped = escapeBidiControls(summary)
+    const points = Array.from(escaped)
+    return points.length > TOOL_STEP_SUMMARY_MAX ? `${points.slice(0, TOOL_STEP_SUMMARY_MAX).join('')}...` : escaped
+}
+
+/** Gives the run's step hook one step. A run without a hook ignores it, and a hook that throws never reaches the loop. */
+export function reportToolStep(state: ToolLoopState | undefined, name: string, args: unknown, outcome: ToolStepOutcome): void {
+    const hook = state?.onStep
+    if(!hook){
+        return
+    }
+    try{
+        hook({ name: escapeBidiControls(name), summary: summarizeToolArgs(args), outcome })
+    }
+    catch{
+        // A display hook must not change what the run does.
+    }
 }
 
 /** The key under which a run's advertised tool is recorded and looked up. */

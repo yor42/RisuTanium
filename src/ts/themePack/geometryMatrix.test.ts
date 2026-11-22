@@ -126,6 +126,9 @@ const ROW_SPECS: Spec[] = READER_ROWS.flatMap((row) => formsOf(row).map((n) => (
 type Placement = 'one block' | 'a block per declaration' | '@media' | 'a state' | 'a root attribute' | 'a selector list' | 'a selector list, own first' | 'one list, two chain parts' | 'last declaration in @media' | 'safe context'
 const PLACEMENTS: readonly Placement[] = ['one block', 'a block per declaration', '@media', 'a state', 'a root attribute', 'a selector list', 'a selector list, own first', 'one list, two chain parts', 'last declaration in @media', 'safe context']
 const SUFFIXES = ['', '!important', ' !important', ' !IMPORTANT'] as const
+// The safe tier comes from any data-role="user"|"system" attribute in the selector. The part-value rule refuses the part-less spelling in Home and Settings, but the same residue stays reachable there through an ancestor that names a part
+// (the chat message article carries data-role), so the safe-context placement uses the named spelling in every area; `bare` is the part-less spelling, which chat and Studio judge and Home and Settings refuse with the part-value reason.
+const SAFE_ANCESTOR = { named: '[data-part="chat-message"][data-role="user"] ', bare: '[data-role="user"] ' }
 // `second` is the family's other chain part: the placement that names both parts of a chain in one selector list puts the declarations on both.
 const place = (placement: Placement, part: string, peer: string, second: string, decls: string[]): string => {
     const s = `[data-part="${part}"]`
@@ -139,7 +142,7 @@ const place = (placement: Placement, part: string, peer: string, second: string,
         case 'a selector list, own first': return `${s},[data-part="${peer}"]{${decls.join(';')}}`
         case 'one list, two chain parts': return `${s},[data-part="${second}"]{${decls.join(';')}}`
         case 'last declaration in @media': return decls.length > 1 ? `${s}{${decls.slice(0, -1).join(';')}}@media (min-width:1px){${s}{${decls[decls.length - 1]}}}` : `@media (min-width:1px){${s}{${decls.join(';')}}}`
-        case 'safe context': return `[data-role="user"] ${s}{${decls.join(';')}}`
+        case 'safe context': return `${SAFE_ANCESTOR.named}${s}{${decls.join(';')}}`
     }
 }
 
@@ -446,20 +449,32 @@ const SAFE_CONTEXT_SNAPSHOT: Record<ThemeArea, { refused: Record<string, string[
         unjudged: ['settings-dialog-backdrop', 'settings-dialog'], paint: true,
     },
 }
+// Home and Settings carry the named-part spelling (the part-less one is refused there by the part-value rule); chat and Studio keep the part-less spelling their own rules judge.
+const safeAncestor = (area: ThemeArea): string => (area === 'home' || area === 'settings' ? SAFE_ANCESTOR.named : SAFE_ANCESTOR.bare)
 describe('T-2s: the safe-context admissions on chain parts are the recorded ones', () => {
     it.each(AREAS)('%s', (area) => {
         const { judged, unjudged } = partsOfArea(area)
         const refused: Record<string, string[]> = {}
         for (const part of judged) {
-            const names = SAFE_CONTEXT_CANDIDATES.filter(([name, value]) => !lintAreaPack(area, `[data-role="user"] [data-part="${part}"]{${name}:${value}}`, 'probe').ok).map(([name]) => name)
+            const names = SAFE_CONTEXT_CANDIDATES.filter(([name, value]) => !lintAreaPack(area, `${safeAncestor(area)}[data-part="${part}"]{${name}:${value}}`, 'probe').ok).map(([name]) => name)
             const key = [...new Set(names)].join(' ')
             refused[key] = [...(refused[key] ?? []), part]
         }
-        const paint = PAINT_CANDIDATES.every((declaration) => lintAreaPack(area, `[data-role="user"] [data-part="chat-send"]{${declaration}}`, 'probe').ok)
+        const paint = PAINT_CANDIDATES.every((declaration) => lintAreaPack(area, `${safeAncestor(area)}[data-part="chat-send"]{${declaration}}`, 'probe').ok)
         expect({ refused, unjudged, paint }).toEqual(SAFE_CONTEXT_SNAPSHOT[area])
     })
 })
 
+// The residue tracked above is not closed by the part-value rule: the part-less spelling is refused in Home and Settings with the part-value reason, and the named-part spelling still reaches the safe tier there.
+describe('T-2s: the part-less safe-context spelling in Home and Settings (the part-value rule)', () => {
+    it.each(['home', 'settings'] as const)('%s refuses the part-less spelling with the part-value reason and still admits the named-part spelling', (area) => {
+        const bare = lintAreaPack(area, `${SAFE_ANCESTOR.bare}[data-part="chat-message-text"]{width:120px}`, 'probe')
+        expect(bare.ok).toBe(false)
+        expect(bare.errors.some((e) => /must name a part by value/.test(e.why))).toBe(true)
+        const named = lintAreaPack(area, `${SAFE_ANCESTOR.named}[data-part="chat-message-text"]{width:120px}`, 'probe')
+        expect(named.ok, JSON.stringify(named.errors)).toBe(true)
+    })
+})
 // ---- T-1p: the two sides of a single-slot reader row are told apart by verdict
 // Each row's side is read from its CSS property name, written here, and never from READER_ROWS slots: the expectation must not follow the table under test, or a wrong slot would move the test's own reads with it.
 // A box with a on one side and b on the other counts both; a reader that swaps a side drops b, and one that widens a row to both sides counts the larger value twice. The within cases are built in both orientations so

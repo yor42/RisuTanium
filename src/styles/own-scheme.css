@@ -1,0 +1,113 @@
+/*
+  The own-scheme island (ownScheme.svelte.ts). An element carrying data-own-scheme paints the app's own colours instead of an
+  applied theme pack's. The action sets the own --risu-theme-* values inline on the element; this file makes every name that
+  derives from them resolve again on that element, because a var() reference is substituted where it is declared and the
+  descendants inherit the substituted value. The token files carry the other half: each root block there also matches
+  [data-own-scheme]. Excluded on purpose: the pack-base blocks (they restore the pack's fixed base) and --chat-motion (written inline on the root).
+  Imported after the token files, so it follows Tailwind's own theme layer.
+*/
+@layer theme {
+  [data-own-scheme] {
+    --color-bgcolor: var(--risu-theme-bgcolor);
+    --color-darkbg: var(--risu-theme-darkbg);
+    --color-borderc: var(--risu-theme-borderc);
+    --color-selected: var(--risu-theme-selected);
+    --color-draculared: var(--risu-theme-draculared);
+    --color-textcolor: var(--risu-theme-textcolor);
+    --color-textcolor2: var(--risu-theme-textcolor2);
+    --color-darkborderc: var(--risu-theme-darkborderc);
+    --color-darkbutton: var(--risu-theme-darkbutton);
+    --color-primary-50: var(--risu-theme-primary-50);
+    --color-primary-100: var(--risu-theme-primary-100);
+    --color-primary-200: var(--risu-theme-primary-200);
+    --color-primary-300: var(--risu-theme-primary-300);
+    --color-primary-400: var(--risu-theme-primary-400);
+    --color-primary-500: var(--risu-theme-primary-500);
+    --color-primary-600: var(--risu-theme-primary-600);
+    --color-primary-700: var(--risu-theme-primary-700);
+    --color-primary-800: var(--risu-theme-primary-800);
+    --color-primary-900: var(--risu-theme-primary-900);
+    --color-secondary-50: var(--risu-theme-secondary-50);
+    --color-secondary-100: var(--risu-theme-secondary-100);
+    --color-secondary-200: var(--risu-theme-secondary-200);
+    --color-secondary-300: var(--risu-theme-secondary-300);
+    --color-secondary-400: var(--risu-theme-secondary-400);
+    --color-secondary-500: var(--risu-theme-secondary-500);
+    --color-secondary-600: var(--risu-theme-secondary-600);
+    --color-secondary-700: var(--risu-theme-secondary-700);
+    --color-secondary-800: var(--risu-theme-secondary-800);
+    --color-secondary-900: var(--risu-theme-secondary-900);
+    --color-danger-50: var(--risu-theme-danger-50);
+    --color-danger-100: var(--risu-theme-danger-100);
+    --color-danger-200: var(--risu-theme-danger-200);
+    --color-danger-300: var(--risu-theme-danger-300);
+    --color-danger-400: var(--risu-theme-danger-400);
+    --color-danger-500: var(--risu-theme-danger-500);
+    --color-danger-600: var(--risu-theme-danger-600);
+    --color-danger-700: var(--risu-theme-danger-700);
+    --color-danger-800: var(--risu-theme-danger-800);
+    --color-danger-900: var(--risu-theme-danger-900);
+    --color-neutral-50: var(--risu-theme-neutral-50);
+    --color-neutral-100: var(--risu-theme-neutral-100);
+    --color-neutral-200: var(--risu-theme-neutral-200);
+    --color-neutral-300: var(--risu-theme-neutral-300);
+    --color-neutral-400: var(--risu-theme-neutral-400);
+    --color-neutral-500: var(--risu-theme-neutral-500);
+    --color-neutral-600: var(--risu-theme-neutral-600);
+    --color-neutral-700: var(--risu-theme-neutral-700);
+    --color-neutral-800: var(--risu-theme-neutral-800);
+    --color-neutral-900: var(--risu-theme-neutral-900);
+    --color-success-50: var(--risu-theme-success-50);
+    --color-success-100: var(--risu-theme-success-100);
+    --color-success-200: var(--risu-theme-success-200);
+    --color-success-300: var(--risu-theme-success-300);
+    --color-success-400: var(--risu-theme-success-400);
+    --color-success-500: var(--risu-theme-success-500);
+    --color-success-600: var(--risu-theme-success-600);
+    --color-success-700: var(--risu-theme-success-700);
+    --color-success-800: var(--risu-theme-success-800);
+    --color-success-900: var(--risu-theme-success-900);
+    --width-4xl: var(--container-4xl);
+    --color-nexus-canvas: var(--nexus-canvas);
+    --color-nexus-bloom: var(--nexus-canvas-bloom);
+    --color-nexus-text: var(--nexus-text);
+    --color-nexus-text-secondary: var(--nexus-text-secondary);
+    --color-nexus-text-muted: var(--nexus-text-muted);
+    --color-nexus-accent: var(--nexus-accent);
+    --color-nexus-ring: var(--nexus-ring);
+    --color-nexus-core-from: var(--nexus-core-from);
+    --color-nexus-core-to: var(--nexus-core-to);
+    --color-nexus-warm: var(--nexus-warm);
+    --color-nexus-warm-from: var(--nexus-warm-from);
+    --color-nexus-warm-to: var(--nexus-warm-to);
+    --color-nexus-danger: var(--nexus-danger);
+    --blur-nexus: var(--nexus-blur);
+    --ease-nexus: var(--nexus-ease);
+    --animate-nexus-enter: var(--nexus-animate-enter);
+    --animate-nexus-breathe: var(--nexus-animate-breathe);
+  }
+}
+
+/* Inherited text properties a pack can set on an ancestor are pinned to the own scheme. The font is not pinned here: the
+   unlayered `* { font-family: var(--risu-font-family) }` in styles.css already gives every island element the app font. */
+@layer base {
+  [data-own-scheme] {
+    color: var(--risu-theme-textcolor);
+    text-shadow: none;
+    caret-color: auto;
+    accent-color: auto;
+    scrollbar-color: auto;
+    color-scheme: var(--risu-theme-role-color-scheme, dark);
+  }
+}
+
+/* The opaque backdrop of an escape control: nothing of the pack's surface shows through it. */
+[data-own-scheme="escape"] {
+  background-color: var(--risu-theme-bgcolor);
+}
+
+/* An escape control is small and sits on its own backdrop, so the focus ring is drawn inside it where it cannot be clipped. */
+:is([data-own-scheme="escape"], [data-own-scheme="escape"] *):focus-visible {
+  outline: 2px solid var(--risu-theme-role-focus-ring, #6f7fc8);
+  outline-offset: -2px;
+}

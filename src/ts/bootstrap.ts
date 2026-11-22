@@ -860,6 +860,7 @@ function startNativeReply(): void {
             type: 'parkedReply',
             msg: language.parkedReplyTitle,
             parkedReply: { name: reply.name, text: reply.text },
+            ownScheme: 'saveGuard',
         })
         return answer === 'discard' ? 'discard' : 'later'
     })
