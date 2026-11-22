@@ -3770,6 +3770,7 @@ export const languageSpanish = {
     "packEscapeTurnOff": "Desactivar paquete de tema",
     "packEscapeDismiss": "Cerrar",
     "packSafeModeNotice": "El paquete de tema está desactivado en esta sesión",
+    "packTurnedOffNotice": "El paquete de tema se ha desactivado",
     "themePackBroken": (name: string, reason: string) => `El paquete de tema "${name}" no se aplicó: ${reason}. Se conserva; quítalo aquí si ya no lo necesitas.`,
     "themePackBrokenFiles": "sus archivos están dañados o faltan",
     "themePackBrokenRefused": "no superó la comprobación",

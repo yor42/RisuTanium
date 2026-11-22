@@ -316,6 +316,7 @@ export function keepAliveHost(): KeepAliveHostObject | undefined {
             updateState: (json: string) => call('updateState', [json]),
             stopAfterWithOutcome: (ms: number, json: string) => call('stopAfterWithOutcome', [ms, json]),
             requestOpenTarget: () => call('requestOpenTarget', []),
+            requestLaunchOptions: () => call('requestLaunchOptions', []),
         }
     }
     return legacy

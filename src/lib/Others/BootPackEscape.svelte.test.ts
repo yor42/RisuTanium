@@ -45,7 +45,7 @@ vi.mock('src/ts/themePack/turnOff', () => ({ turnOffThemePack: h.turnOff, regist
 import { language } from 'src/lang'
 import { loadedStore } from 'src/ts/stores.svelte'
 import { PACK_SCHEME_NAME } from 'src/ts/gui/colorscheme'
-import { enterPackSafeMode, offerBootEscape, resetPackSafeModeForTests } from 'src/ts/themePack/packSafeMode.svelte'
+import { enterPackSafeMode, leavePackSafeMode, offerBootEscape, resetPackSafeModeForTests, setBannerTouchExploration } from 'src/ts/themePack/packSafeMode.svelte'
 import BootPackEscape from './BootPackEscape.svelte'
 
 const USER = { bgcolor: '#101820', darkbg: '#0a1016', borderc: '#445566', selected: '#223344', draculared: '#ff5555', textcolor: '#e0e8f0', textcolor2: '#a0a8b0', darkBorderc: '#334455', darkbutton: '#203040', type: 'dark' }
@@ -240,6 +240,120 @@ describe('TA-11: the tap', () => {
         action(target, 'turn-off')!.click()
         flushSync()
         expect(h.turnOff).toHaveBeenCalledTimes(1)
+        expect(root(target)).toBeNull()
+    })
+})
+
+function liveRegion(target: HTMLElement): HTMLElement | null {
+    return target.querySelector<HTMLElement>('[role="status"]')
+}
+
+describe('the live region announces the result', () => {
+    test('is polite, present before any tap and empty, and outside the banner root', () => {
+        offerBootEscape(h.db)
+        const target = mountBanner()
+        flushSync()
+        const region = liveRegion(target)!
+        expect(region).not.toBeNull()
+        expect(region.getAttribute('aria-live')).toBe('polite')
+        expect(region.textContent).toBe('')
+        expect(root(target)!.contains(region)).toBe(false)
+    })
+
+    test('after a successful turn-off the banner is gone and the region says the pack turned off, not that it is off for the session', () => {
+        offerBootEscape(h.db)
+        const target = mountBanner()
+        flushSync()
+        action(target, 'turn-off')!.click()
+        flushSync()
+        expect(root(target)).toBeNull()
+        expect(liveRegion(target)!.textContent).toBe(language.packTurnedOffNotice)
+        expect(liveRegion(target)!.textContent).not.toBe(language.packSafeModeNotice)
+    })
+
+    test('leaving safe mode empties the region', () => {
+        offerBootEscape(h.db)
+        const target = mountBanner()
+        flushSync()
+        enterPackSafeMode('shortcut')
+        flushSync()
+        expect(liveRegion(target)!.textContent).toBe(language.packSafeModeNotice)
+        leavePackSafeMode()
+        flushSync()
+        expect(liveRegion(target)!.textContent).toBe('')
+    })
+
+    test('a read-only page, which keeps the notice, announces it too', () => {
+        h.readOnly = true
+        offerBootEscape(h.db)
+        const target = mountBanner()
+        flushSync()
+        action(target, 'turn-off')!.click()
+        flushSync()
+        expect(liveRegion(target)!.textContent).toBe(language.packSafeModeNotice)
+    })
+
+    test('the shortcut entering safe mode live is announced', () => {
+        offerBootEscape(h.db)
+        const target = mountBanner()
+        flushSync()
+        enterPackSafeMode('shortcut')
+        flushSync()
+        expect(liveRegion(target)!.textContent).toBe(language.packSafeModeNotice)
+    })
+})
+
+describe('touch exploration keeps the offer up', () => {
+    test('with it on at the start the offer stays long after loadedStore, until Dismiss', () => {
+        setBannerTouchExploration(true)
+        offerBootEscape(h.db)
+        const target = mountBanner()
+        loadedStore.set(true)
+        flushSync()
+        vi.advanceTimersByTime(120_000)
+        flushSync()
+        expect(root(target)).not.toBeNull()
+        action(target, 'dismiss')!.click()
+        flushSync()
+        expect(root(target)).toBeNull()
+    })
+
+    test('the answer arriving after the offer showed cancels the pending hide', () => {
+        offerBootEscape(h.db)
+        const target = mountBanner()
+        loadedStore.set(true)
+        flushSync()
+        vi.advanceTimersByTime(3_000)
+        flushSync()
+        setBannerTouchExploration(true)
+        flushSync()
+        vi.advanceTimersByTime(120_000)
+        flushSync()
+        expect(root(target)).not.toBeNull()
+    })
+
+    test('without it the offer hides after 5 s as before, and an answer of false changes nothing', () => {
+        setBannerTouchExploration(false)
+        offerBootEscape(h.db)
+        const target = mountBanner()
+        loadedStore.set(true)
+        flushSync()
+        vi.advanceTimersByTime(4_900)
+        flushSync()
+        expect(root(target)).not.toBeNull()
+        vi.advanceTimersByTime(200)
+        flushSync()
+        expect(root(target)).toBeNull()
+    })
+
+    test('with it on, a turn-off still removes the banner', () => {
+        setBannerTouchExploration(true)
+        offerBootEscape(h.db)
+        const target = mountBanner()
+        loadedStore.set(true)
+        flushSync()
+        action(target, 'turn-off')!.click()
+        flushSync()
         expect(root(target)).toBeNull()
     })
 })

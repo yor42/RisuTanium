@@ -3812,6 +3812,7 @@ export const languageChineseTraditional = {
     "packEscapeTurnOff": '關閉主題包',
     "packEscapeDismiss": '關閉',
     "packSafeModeNotice": '本次工作階段已關閉主題包',
+    "packTurnedOffNotice": '主題包已關閉',
     "themePackBroken": (name: string, reason: string) => `主題包「${name}」未套用：${reason}。它仍被保留；若不再需要，請在此處移除。`,
     "themePackBrokenFiles": '其檔案已損毀或遺失',
     "themePackBrokenRefused": '它未通過檢查',

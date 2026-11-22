@@ -3909,6 +3909,7 @@ export const languageJapanese = {
     packEscapeTurnOff: "テーマパックをオフにする",
     packEscapeDismiss: "閉じる",
     packSafeModeNotice: "このセッションではテーマパックはオフです",
+    packTurnedOffNotice: "テーマパックをオフにしました",
     themePackBroken: (name: string, reason: string) => `テーマパック「${name}」は適用されませんでした: ${reason}。パックは保持されています。不要な場合はここで削除してください。`,
     themePackBrokenFiles: "ファイルが破損しているか、見つかりません",
     themePackBrokenRefused: "チェックに合格しませんでした",

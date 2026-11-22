@@ -47,8 +47,14 @@ export interface KeepAliveHostLaunch {
     requestOpenTarget(): unknown
 }
 
+/** The launch options: the same host object also tells the page how the app was started and whether TalkBack is on. */
+export interface KeepAliveHostLaunchOptions {
+    /** Asks for the launch options; the host answers through `window.__risuTaniumLaunchOptions`. */
+    requestLaunchOptions(): unknown
+}
+
 /** Whatever subset of the keep-alive host methods the host provides. */
-export type KeepAliveHostObject = Partial<KeepAliveHost & KeepAliveHostV2 & KeepAliveHostLaunch>
+export type KeepAliveHostObject = Partial<KeepAliveHost & KeepAliveHostV2 & KeepAliveHostLaunch & KeepAliveHostLaunchOptions>
 
 declare global {
     interface Window {

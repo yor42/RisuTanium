@@ -3908,6 +3908,7 @@ export const languageEnglish = {
     packEscapeTurnOff: 'Turn off theme pack',
     packEscapeDismiss: 'Dismiss',
     packSafeModeNotice: 'Theme pack is off for this session',
+    packTurnedOffNotice: 'Theme pack turned off',
     themePackBroken: (name: string, reason: string) => `The theme pack "${name}" was not applied: ${reason}. It is kept; remove it here if you no longer need it.`,
     themePackBrokenFiles: 'its files are damaged or missing',
     themePackBrokenRefused: 'it did not pass the check',
