@@ -48,13 +48,18 @@ export function geminiReadRuleOf(
     },
     db: { jsonSchemaEnabled?: boolean, streamGeminiThoughts?: boolean },
 ): GeminiReadRule {
+    const model = arg.modelInfo
+    if (!model) {
+        // Every Gemini request resolves its model before it reads a reply; a rule without one could not name its signatures.
+        throw new Error('A Gemini read rule needs the request model')
+    }
     return {
         extractJson: arg.extractJson ? arg.extractJson : null,
         jsonSchema: Boolean(db.jsonSchemaEnabled || arg.schema),
         streamThoughts: db.streamGeminiThoughts === true,
         saveSignatures: arg.saveSignatures ?? false,
-        signatureSource: arg.modelInfo.internalID || arg.modelInfo.id,
-        signatureFormat: arg.modelInfo.format,
+        signatureSource: model.internalID || model.id,
+        signatureFormat: model.format,
     }
 }
 

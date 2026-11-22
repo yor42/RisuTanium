@@ -160,6 +160,22 @@ describe('the interrupted note is a mount prop of Chat', () => {
         expect(mountsAt(1).map((entry) => [entry.interrupted, entry.replyRunning])).toEqual([[false, true], [true, false]])
     })
 
+    test('a running reply upgraded to the same text re-mounts without the running note', () => {
+        resetRunningRepliesForTests()
+        setRunningReplies([{ key: 'reply-1', target: null }])
+        const { chat } = mountChats('off', [
+            { role: 'user', data: 'Hi' },
+            { role: 'char', data: 'Whole', chatId: 'reply-1', interrupted: true },
+        ])
+        expect(mountsAt(1).map((entry) => [entry.interrupted, entry.replyRunning])).toEqual([[false, true]])
+
+        // A complete upgrade whose text equals the saved partial only drops the flag; the key is still in the map until the pass ends.
+        delete chat.message[1].interrupted
+        flushSync()
+
+        expect(mountsAt(1).map((entry) => [entry.interrupted, entry.replyRunning])).toEqual([[false, true], [false, false]])
+    })
+
     test.each(['off', 'balanced', 'strong'] as const)('a continue of a flagged reply hides the note while it streams and after it ends (%s mode)', (mode) => {
         const { chat } = mountChats(mode, [
             { role: 'user', data: 'Hi' },
