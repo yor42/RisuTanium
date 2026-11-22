@@ -63,13 +63,14 @@ export function parseAndroidRelease(text: string): AndroidRelease | null {
     if (!isIntegerIn(size, 1, ANDROID_RELEASE_APK_MAX_BYTES)) {
         return null
     }
-    if (notes !== undefined && typeof notes !== 'string') {
+    const notesText = notes === undefined ? '' : notes
+    if (typeof notesText !== 'string') {
         return null
     }
     if (typeof url !== 'string' || url.length < 1 || url.length > ANDROID_RELEASE_URL_MAX) {
         return null
     }
-    return { version, versionCode, notes: notes ?? '', url, size }
+    return { version, versionCode, notes: notesText, url, size }
 }
 
 /** A byte count for the person, in decimal units: `280.0 MB`. */
