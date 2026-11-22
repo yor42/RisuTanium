@@ -88,12 +88,12 @@ export const CHAT_SHEET_TERMS = (p) => [{ px: 24 }, { text: { chars: p.title, si
 export const CHAT_SHEET_REF = { title: 16, body: 40, nBtn: 3 };
 export const CHAT_SHEETS = [{ name: 'chat critical sheet', terms: CHAT_SHEET_TERMS(CHAT_SHEET_REF), fixed: [{ px: 24 }, { text: { chars: CHAT_SHEET_REF.title, size: '--font-size-lg', lead: 1.5, hfixed: 32 } }], cap: 384 }];
 export const CHAT_FIXED_WIDTH = ['chat-sheet', 'chat-sheet-body'];
-export const CHAT_REGISTRY = { fixedWidth: new Set(CHAT_FIXED_WIDTH), critical: new Set(CRITICAL_PARTS), safe: SAFE_LEAVES, surfaces: CHAT_SURFACES, strictSafe: false, positionable: new Set(POSITIONABLE), minimums: { ...SHARED_MINIMUMS }, maximums: { ...SHARED_MAXIMUMS }, settable: CHAT_SETTABLE, colours: [], opaque: SHARED_OPAQUE, pairs: [...SHARED_PAIRS, ['--color-on-accent', '--nexus-accent', 4.5, 'the accent fill']], reach: REACH_CHAT, chains: CHAT_CHAINS, sheets: CHAT_SHEETS, privatePrefix: PRIVATE_PREFIX };
+export const CHAT_REGISTRY = { fixedWidth: new Set(CHAT_FIXED_WIDTH), critical: new Set(CRITICAL_PARTS), safe: SAFE_LEAVES, surfaces: CHAT_SURFACES, strictSafe: false, partRequired: false, positionable: new Set(POSITIONABLE), minimums: { ...SHARED_MINIMUMS }, maximums: { ...SHARED_MAXIMUMS }, settable: CHAT_SETTABLE, colours: [], opaque: SHARED_OPAQUE, pairs: [...SHARED_PAIRS, ['--color-on-accent', '--nexus-accent', 4.5, 'the accent fill']], reach: REACH_CHAT, chains: CHAT_CHAINS, sheets: CHAT_SHEETS, privatePrefix: PRIVATE_PREFIX };
 const effective = (reg) => {
   if (!reg || reg === CHAT_REGISTRY) return CHAT_REGISTRY;
   const controls = new Set([...REACH_CHAT, ...(reg.controls || [])]);
   const reach = new Set([...controls, ...(reg.reach || [])]);
-  return { controls, critical: new Set([...CRITICAL_PARTS, ...(reg.critical || [])]), safe: new Set([...SAFE_LEAVES, ...(reg.safe || [])].filter((p) => !reach.has(p) && !ESCAPE_ANCESTORS.has(p))), reach, surfaces: reg.surfaces || CHAT_SURFACES, strictSafe: !!reg.strictSafe, positionable: new Set([...POSITIONABLE, ...(reg.positionable || [])]),
+  return { controls, critical: new Set([...CRITICAL_PARTS, ...(reg.critical || [])]), safe: new Set([...SAFE_LEAVES, ...(reg.safe || [])].filter((p) => !reach.has(p) && !ESCAPE_ANCESTORS.has(p))), reach, surfaces: reg.surfaces || CHAT_SURFACES, strictSafe: !!reg.strictSafe, partRequired: !!reg.partRequired, positionable: new Set([...POSITIONABLE, ...(reg.positionable || [])]),
     minimums: { ...SHARED_MINIMUMS, ...(reg.minimums || {}) }, maximums: { ...SHARED_MAXIMUMS, ...(reg.maximums || {}) }, app: reg.tokens ? new Map([...APP, ...reg.tokens]) : APP,
     fixedWidth: new Set([...CHAT_FIXED_WIDTH, ...(reg.fixedWidth || [])]), settable: [...CHAT_SETTABLE, ...(reg.settable || [])], colours: reg.colours || [], transparentOk: reg.transparentOk || [], opaque: [...new Set([...SHARED_OPAQUE, ...(reg.opaque || [])])], pairs: [...SHARED_PAIRS, ...(reg.pairs || [])], same: reg.same || [], chains: [...CHAT_CHAINS, ...(reg.chains || [])], sheets: [...CHAT_SHEETS, ...(reg.sheets || [])], privatePrefix: reg.privatePrefix === undefined ? PRIVATE_PREFIX : reg.privatePrefix };
 };
@@ -144,7 +144,7 @@ export function tokenCheck(css, T0 = APP) {
 function compounds(sel) { const out = []; let cur = '', depth = 0; for (const ch of sel.trim()) { if (ch === '[') depth++; if (ch === ']') depth--; if (depth === 0 && /[\s>+~]/.test(ch)) { if (cur) out.push(cur); cur = ''; } else cur += ch; } if (cur) out.push(cur); return out; }
 const COMPOUND = /^(:root|html)?((?:\[data-[\w-]+(?:="[^"\]]*")?\])*)((?::hover|:focus-within|:focus-visible)*)$/;
 function analyse(sel, reg = CHAT_REGISTRY) {
-  const why = []; const parts = compounds(sel); if (!parts.length) return { why: ['empty selector'], ok: false };
+  const why = []; const parts = compounds(sel); if (!parts.length) return { why: ['empty selector'], ok: false, parsed: false };
   const attrs = []; let syntax = true; let subject = null;
   parts.forEach((c, i) => {
     const m = COMPOUND.exec(c); if (!m || (!m[1] && !m[2])) { syntax = false; why.push(`not allowed in a pack selector: ${c}`); return; }
@@ -159,7 +159,24 @@ function analyse(sel, reg = CHAT_REGISTRY) {
   // a CONTROL (DD-243): a reach-tier part that is a key control (navigation, Tasks, Stop, composer, Send, Apply, Undo/Redo, the failed-save chip). It is restyled, never hidden or moved (the reach allowlist), but it holds no
   // critical text, so its colours are judged as a pair of its own (text on its fill, 4.5:1), not against the danger text of a dialog.
   const control = tier === 'reach' && sp.length > 0 && sp.every((p) => reg.controls.has(p));
-  return { why, ok: syntax && why.length === 0, tier, rootOnly, sp, control, pseudo: subject ? subject.pseudo : '' };
+  return { why, ok: syntax && why.length === 0, parsed: syntax, tier, rootOnly, sp, control, pseudo: subject ? subject.pseudo : '' };
+}
+// The part-value rule (settings and home, reg.partRequired): every compound names a part by a non-empty [data-part] value, except a root compound (:root / html), which may only be an ancestor; the one exemption is a lone root-tier compound (a.rootOnly, which lintOnce keeps to custom properties). A valueless or empty [data-part] is refused anywhere. It
+// reads the grammar result: an unparseable selector keeps its single "not allowed in a pack selector" reason. It never gates a.ok, so the declaration checks (DD-242, DD-265) still run and keep their own reasons.
+// A rule that carries only helper --pack-* declarations on a part-less selector never reaches this rule (the helpers are inlined first and judged at every read site on named parts through DD-258).
+const PART_VALUE_WHY = 'every compound of the selector must name a part by value: [data-part="..."] with a non-empty value (MC-1586)';
+function partValueWhy(sel, a, reg) {
+  if (!reg.partRequired || !a.parsed || a.rootOnly) return '';
+  const cs = compounds(sel);
+  for (const c of cs) {
+    const m = COMPOUND.exec(c);
+    if (!m) return '';
+    const parts = [...m[2].matchAll(/\[data-part(?:="([^"\]]*)")?\]/g)].map((x) => x[1]);
+    if (parts.some((v) => !v)) return PART_VALUE_WHY;
+    if (!m[1] && !parts.length) return PART_VALUE_WHY;
+  }
+  const last = COMPOUND.exec(cs[cs.length - 1]);
+  return last && last[1] ? PART_VALUE_WHY : '';
 }
 // DD-243: a rule in a focus state (:focus-visible, :focus-within) may add to the indication but not take it away: no outline at all (see lintPack), and no border or shadow that is none or fully transparent
 const colourWords = (v) => [...v.matchAll(/#[0-9a-f]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|\b[a-z]+\b/g)].map((m) => parseConcrete(m[0])).filter(Boolean);
@@ -172,7 +189,7 @@ function focusLoss(prop, value, T) {
 }
 // DD-242: is this custom property pack-settable under the registry? (used by the regression fuzz)
 export function isPackSettable(name, registry) { const r = effective(registry); return settableTest({ ...r, isBounded: VALUES.isBounded })(name); }
-export function lintSelector(sel, reg) { const a = analyse(sel, effective(reg)); return a.why; }
+export function lintSelector(sel, reg) { const r = effective(reg); const a = analyse(sel, r); const pv = partValueWhy(sel, a, r); return pv ? [...a.why, pv] : a.why; }
 
 // ---- declarations
 const GLOBAL_PROPS = /^(z-index|animation(-[\w-]+)?|transition(-[\w-]+)?|will-change|filter|backdrop-filter|mix-blend-mode|transform(-[\w-]+)?|translate|scale|rotate|perspective|zoom|content|contain(-[\w-]+)?|container(-[\w-]+)?|direction|unicode-bidi|writing-mode|isolation|all|offset(-[\w-]+)?|clip-path|mask(-[\w-]+)?|-webkit-mask(-[\w-]+)?)$/;
@@ -434,6 +451,7 @@ function lintOnce(css, name, reg, skipStructure) {
     for (const sel of sels) {
       const a = analyse(sel, reg);
       for (const w of a.why) fail(sel, d.prop, w);
+      const pv = partValueWhy(sel, a, reg); if (pv) fail(sel, d.prop, pv);
       if (!a.ok) continue;
       if (a.tier === 'root') { if (!d.prop.startsWith('--') && d.prop !== 'color-scheme') fail(sel, d.prop, 'only custom properties (and color-scheme) may be set on the root or on a root attribute'); continue; }
       if (d.prop.startsWith('--')) { fail(sel, d.prop, 'a token may only be set on :root or html[data-input] / html[data-layout]'); continue; }

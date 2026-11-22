@@ -39,6 +39,8 @@ const areasOf = (area: ThemeArea | 'all'): readonly ThemeArea[] => (area === 'al
 // parts is refused as a Studio sheet, and a selector that names no part is refused in both.
 const SCOPE_STUDIO_PART = /is not a part of the studio screen/
 const SCOPE_NO_PART = /names no part/
+// The part-value rule (settings and home): its own reason, never the chat and Studio Rule SCOPE text.
+const SCOPE_PART_VALUE = /must name a part by value/
 const namesChatPartInStudio = (area: ThemeArea, css: string): boolean => area === 'studio' && /data-part="chat-/.test(css)
 
 // Helper variables: a hostile pack that chains through --x, --a ... is also judged with those names listed, so the
@@ -120,7 +122,7 @@ const PRIV: [string, string, boolean, RegExp?][] = [
     ['a private variable set on a part (inlined as one more value, judged wherever it is read)', '[data-part="chat-send"]{--pack-a:1px}', true],
     ['a part-scoped private value that reaches a ceiling', '[data-part="chat-send"]{--pack-a:900px}:root{--header-height:var(--pack-a)}', false, /critical maximum/],
     ['an unlisted name that only looks private', ':root{--packs-x:#fff}', false, /not a pack-settable/],
-    ['background through a private variable on a kind selector', ':root{--pack-b:#fff}[data-kind="restore"]{background:var(--pack-b)}', false, /names no part/],
+    ['background through a private variable on a kind selector', ':root{--pack-b:#fff}[data-kind="restore"]{background:var(--pack-b)}', false, /background on a selector that names no part/],
     ['outline through a private variable', ':root{--pack-o:none}[data-part="chat-message-name"]{outline:var(--pack-o)}', false, /outlines/],
     ['display through a private variable on Send', ':root{--pack-d:none}[data-part="chat-send"]{display:var(--pack-d)}', false, /allowlist/],
     ['a text colour through a private variable on a reach part', ':root{--pack-c:#0e0f2b}[data-part="chat-list-row"]{color:var(--pack-c)}', false, /text colour that is/],
@@ -297,6 +299,7 @@ describe('4b private variables, studio fix round, reach packs, ceilings and chai
         for (const [n, css] of [['colour and radius on a kind selector', '[data-kind="peer"]{border-color:#f8f8f2;border-radius:12px;color:#fff}'], ['a width of auto or 100% on a sheet root', '[data-part="studio-sheet-root"]{width:100%;max-width:none}']] as Named[]) {
             if (/sheet root/.test(n) && a !== 'studio') continue
             if (/kind selector/.test(n) && (a === 'chat' || a === 'studio')) it(`${a}: ${n} is refused (it names no part, MC-1586)`, () => { expectRejected(lint(a, css, n), SCOPE_NO_PART) })
+            else if (/kind selector/.test(n)) it(`${a}: ${n} is refused (the part-value rule, MC-1586)`, () => { expectRejected(lint(a, css, n), SCOPE_PART_VALUE) })
             else it(`${a}: ${n} is accepted`, () => { expectAccepted(lint(a, css, n)) })
         }
     }
