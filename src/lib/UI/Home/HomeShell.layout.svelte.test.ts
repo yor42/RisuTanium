@@ -14,7 +14,7 @@
  * `window.innerWidth`, set per test.
  */
 
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, mount, tick, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi, onTestFinished } from 'vitest'
 import { language } from 'src/lang'
@@ -68,6 +68,7 @@ vi.mock('./HomeLibrary.svelte', () => ({ default: (_anchor: Comment) => {} }))
 //#endregion
 
 import HomeShell from './HomeShell.svelte'
+import HomeShellKeyHarness from './HomeShellKeyHarness.svelte'
 import { openHomeLibrary, startHomeView } from './homeView.svelte'
 import { DBState, OpenRealmStore, sideBarStore } from 'src/ts/stores.svelte'
 
@@ -551,6 +552,142 @@ describe('HomeShell phone chrome', () => {
         resizeTo(360)
         expect(menuButtonOf(root)).not.toBeNull()
         expect(get(sideBarStore)).toBe(false)
+    })
+})
+
+describe('HomeShell page-level holds', () => {
+    /** Mounts without a flush, so a read right after is not separated from the mount by an effect run. */
+    function mountRaw(width: number): { target: HTMLElement; instance: unknown } {
+        setViewportWidth(width)
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mountedTargets.push(target)
+        const instance = mount(HomeShell, { target })
+        mountedInstances.push(instance)
+        return { target, instance }
+    }
+
+    /** Unmounts one tracked instance and drops it from the list, so `afterEach` does not unmount it twice. */
+    async function unmountTracked(instance: unknown): Promise<void> {
+        const index = mountedInstances.indexOf(instance)
+        if (index >= 0) mountedInstances.splice(index, 1)
+        await unmount(instance as never)
+    }
+
+    async function chromeOf(): Promise<NonNullable<Awaited<ReturnType<typeof loadHomeChrome>>>['homeChrome']> {
+        const chrome = await loadHomeChrome()
+        expect(chrome).not.toBeNull()
+        return chrome!.homeChrome
+    }
+
+    test('S5-R3: the landing flag is set at mount in every band, survives the Realm view and clears on unmount', async () => {
+        const homeChrome = await chromeOf()
+        for (const width of [360, 900, 1400]) {
+            const { instance } = mountRaw(width)
+            try {
+                expect(homeChrome.landing, `width ${width}`).toBe(true)
+            } finally {
+                await unmountTracked(instance)
+            }
+            expect(homeChrome.landing, `width ${width} after unmount`).toBe(false)
+        }
+
+        const { instance } = mountRaw(1400)
+        try {
+            flushSync()
+            OpenRealmStore.set(true)
+            flushSync()
+            expect(homeChrome.landing).toBe(true)
+            OpenRealmStore.set(false)
+            flushSync()
+            expect(homeChrome.landing).toBe(true)
+        } finally {
+            await unmountTracked(instance)
+        }
+        expect(homeChrome.landing).toBe(false)
+    })
+
+    test('S5-R4: a shell mounted beside another keeps the landing flag when the first one is unmounted', async () => {
+        const homeChrome = await chromeOf()
+        const a = mountRaw(1400)
+        const b = mountRaw(1400)
+        try {
+            flushSync()
+            expect(homeChrome.landing).toBe(true)
+            await unmountTracked(a.instance)
+            expect(homeChrome.landing).toBe(true)
+        } finally {
+            await unmountTracked(b.instance)
+        }
+        expect(homeChrome.landing).toBe(false)
+    })
+
+    test('S5-R6: a shell mounted beside another keeps the phone drawer flag when the first one is unmounted', async () => {
+        const homeChrome = await chromeOf()
+        const a = mountRaw(360)
+        const b = mountRaw(360)
+        try {
+            flushSync()
+            expect(homeChrome.phoneDrawer).toBe(true)
+            await unmountTracked(a.instance)
+            expect(homeChrome.phoneDrawer).toBe(true)
+        } finally {
+            await unmountTracked(b.instance)
+        }
+        expect(homeChrome.phoneDrawer).toBe(false)
+    })
+
+    /**
+     * Mounts the harness (the `{#key}` block shape of App.svelte), bumps the key and returns the
+     * landing nodes before and after, so the new shell is built before the old one is destroyed.
+     */
+    async function remountThroughKey(width: number): Promise<{ before: HTMLElement | null; after: HTMLElement | null; target: HTMLElement; instance: unknown }> {
+        setViewportWidth(width)
+        const props = $state({ epoch: 0 })
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mountedTargets.push(target)
+        const instance = mount(HomeShellKeyHarness, { target, props })
+        mountedInstances.push(instance)
+        flushSync()
+        const before = landingOf(target)
+        props.epoch = 1
+        flushSync()
+        if (before?.isConnected) {
+            await tick()
+            flushSync()
+        }
+        return { before, after: landingOf(target), target, instance }
+    }
+
+    test('S5-R5a: the phone drawer flag stays true across a keyed remount of the shell', async () => {
+        const homeChrome = await chromeOf()
+        setViewportWidth(360)
+        const { before, after, target, instance } = await remountThroughKey(360)
+        try {
+            expect(before).not.toBeNull()
+            expect(after).not.toBeNull()
+            expect(after).not.toBe(before)
+            expect(after!.isConnected).toBe(true)
+            expect(target.querySelectorAll('[data-part="home-landing"]').length).toBe(1)
+            expect(homeChrome.phoneDrawer).toBe(true)
+        } finally {
+            await unmountTracked(instance)
+        }
+        expect(homeChrome.phoneDrawer).toBe(false)
+    })
+
+    test('S5-R5b: the landing flag stays true across a keyed remount of the shell', async () => {
+        const homeChrome = await chromeOf()
+        const { before, after, target, instance } = await remountThroughKey(1400)
+        try {
+            expect(after).not.toBe(before)
+            expect(target.querySelectorAll('[data-part="home-landing"]').length).toBe(1)
+            expect(homeChrome.landing).toBe(true)
+        } finally {
+            await unmountTracked(instance)
+        }
+        expect(homeChrome.landing).toBe(false)
     })
 })
 

@@ -78,6 +78,7 @@ import * as shellSwitchModule from '../../ts/chatShell/shellSwitch.svelte'
 import { resetBackHandlersForTests } from '../../ts/backHandlers'
 import { panelFollowView } from './panelGestureBinding'
 import Sidebar from './Sidebar.svelte'
+import { homeChrome } from '../UI/Home/homeChrome.svelte'
 
 const shellFlag = (shellSwitchModule as unknown as { shellFlag: { eligible: boolean } }).shellFlag
 
@@ -112,6 +113,7 @@ afterEach(() => {
     flushSync()
     container.remove()
     resetBackHandlersForTests()
+    homeChrome.landing = false
     vi.restoreAllMocks()
 })
 
@@ -128,6 +130,14 @@ describe('shell mode replaces the rail and the old tab bar', () => {
         mountSidebar()
         expect(container.querySelector('[data-rail-root]')).toBeNull()
         expect(container.querySelector('[data-part="chat-sidebar"]')).not.toBeNull()
+    })
+
+    test('S5-U1: shell mode wins over the Home look, so there is no rail and the panel lacks the Home class', () => {
+        homeChrome.landing = true
+        mountSidebar()
+        expect(container.querySelector('[data-rail-root]')).toBeNull()
+        const panel = container.querySelector('.setting-area') as HTMLElement
+        expect(panel.classList.contains('home-landing-panel')).toBe(false)
     })
 
     test('guard: TB2 not eligible keeps the rail and the old panel, with no shell sidebar', () => {

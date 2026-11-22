@@ -45,6 +45,7 @@
     import { holdModalLayer } from "../Nexus/pattern/modalLayers.svelte";
     import ShellSidebar from "../ChatShell/sidebar/ShellSidebar.svelte";
     import { showHomeLanding } from "../UI/Home/homeView.svelte";
+    import { homeChrome } from "../UI/Home/homeChrome.svelte";
   let sideBarMode = $state(0);
   let editMode = $state(false);
   let menuMode = $state(0);
@@ -78,6 +79,8 @@
   let viewportWidth = $state(window.innerWidth);
   let panelEl: HTMLDivElement | undefined = $state();
   const shellMode = $derived(shellEligible());
+  // The Home look applies while a Home shell is mounted, and never in shell mode, which has no rail.
+  const homeLook = $derived(homeChrome.landing && !shellMode);
   const shellOverlay = $derived(shellMode && $DynamicGUI);
   const shellDocked = $derived(shellMode && !$DynamicGUI);
   const followMode = $derived(shellOverlay && viewportWidth < WIDE_LAYOUT_MIN_PX);
@@ -238,6 +241,7 @@
   style={railStyle}
   class:hidden={hidden}
   class:flex={!hidden}
+  class:home-landing-rail={homeLook}
 >
 <button
   class="flex items-center justify-center py-2 flex-col gap-1 w-full mt-4"
@@ -317,6 +321,7 @@
   style={railStyle}
   class:hidden={hidden}
   class:flex={!hidden}
+  class:home-landing-rail={homeLook}
 >
   {#if !DBState.db.hamburgerButtonBottom}
   <button
@@ -327,9 +332,9 @@
       menuMode = 1 - menuMode;
     }}><ListIcon aria-hidden="true" />
   </button>
-  <div class="mt-2 border-b border-b-selected w-full relative text-white ">
+  <div data-rail-menu-wrap class="mt-2 border-b border-b-selected w-full relative text-white ">
     {#if menuMode === 1}
-      <div class="absolute w-20 min-w-20 flex border-b-selected border-b bg-bgcolor flex-col items-center pt-2 rounded-b-md z-20 pb-2">
+      <div data-rail-menu class="absolute w-20 min-w-20 flex border-b-selected border-b bg-bgcolor flex-col items-center pt-2 rounded-b-md z-20 pb-2">
         <div data-part="rail-settings" class="contents">
           <BarIcon
           label={language.settings}
@@ -393,9 +398,9 @@
   {/if}
   <SidebarRail {reseter} {sideBarMode} />
   {#if DBState.db.hamburgerButtonBottom}
-  <div class="border-t border-t-selected w-full relative text-white ">
+  <div data-rail-menu-wrap class="border-t border-t-selected w-full relative text-white ">
     {#if menuMode === 1}
-      <div class="absolute bottom-full w-20 min-w-20 flex border-t-selected border-t bg-bgcolor flex-col items-center pt-2 rounded-t-md z-20 pb-2">
+      <div data-rail-menu class="absolute bottom-full w-20 min-w-20 flex border-t-selected border-t bg-bgcolor flex-col items-center pt-2 rounded-t-md z-20 pb-2">
         <div data-part="rail-settings" class="contents">
           <BarIcon
           label={language.settings}
@@ -494,6 +499,7 @@
   class:dynamic-sidebar={$DynamicGUI}
   class:hidden={hidden}
   class:flex={!hidden}
+  class:home-landing-panel={homeLook}
   onanimationend={() => {
     if($sideBarClosing){
       $sideBarClosing = false
@@ -522,10 +528,12 @@
     <ShellSidebar {openGrid} {reseter} />
   {:else if sideBarMode === 0}
     {#if $selectedCharID < 0 || $settingsOpen}
+      {#if !homeLook}
       <div>
         <h1 class="text-xl">{language.sidebarWelcome}</h1>
         <span class="text-xs text-textcolor2">{language.sidebarWelcomeHint}</span>
       </div>
+      {/if}
     {:else if DBState.db.characters[$selectedCharID]?.chaId === '§playground'}
       <SideChatList bind:chara={ DBState.db.characters[$selectedCharID]} />
     {:else}
@@ -759,5 +767,80 @@
     .follow-in, .follow-out, .follow-dark-in, .follow-dark-out {
       animation-duration: 120ms;
     }
+  }
+
+  /* Home look: a flush darkbg rail with hairline edges. Every rule descends from a Home-only root class,
+     and colours are scheme names only; the geometry reads the Home tokens. */
+  /* The root and panel rules sit in :where() so they stay at one class of specificity and a user's
+     custom CSS on `.rs-sidebar` still wins. */
+  :where(.home-landing-rail) {
+    background-color: var(--risu-theme-darkbg);
+    box-shadow: none;
+    border-inline-end: var(--home-hairline) solid var(--risu-theme-darkborderc);
+  }
+  :where(.home-landing-panel) {
+    border-inline-end: var(--home-hairline) solid var(--risu-theme-darkborderc);
+  }
+  .home-landing-rail button[aria-expanded] {
+    background-color: var(--risu-theme-darkbutton);
+    color: var(--risu-theme-textcolor);
+    border-radius: var(--home-control-radius);
+  }
+  .home-landing-rail button[aria-expanded]:hover {
+    background-color: var(--risu-theme-selected);
+  }
+  .home-landing-rail > button:not([aria-expanded]) {
+    border-radius: var(--home-control-radius);
+    margin-inline: var(--home-space-2);
+    width: calc(100% - 2 * var(--home-space-2));
+  }
+  .home-landing-rail > button:not([aria-expanded]):hover {
+    background-color: var(--risu-theme-darkbutton);
+  }
+  .home-landing-rail [data-rail-menu-wrap] {
+    border-color: var(--risu-theme-darkborderc);
+    color: var(--risu-theme-textcolor);
+  }
+  .home-landing-rail [data-rail-menu] {
+    background-color: var(--risu-theme-darkbg);
+    border-style: solid;
+    border-color: var(--risu-theme-darkborderc);
+    border-width: 0;
+    border-inline-width: var(--home-hairline);
+    border-block-end-width: var(--home-hairline);
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+    border-end-start-radius: var(--home-radius-4);
+    border-end-end-radius: var(--home-radius-4);
+    padding: var(--home-space-4);
+  }
+  .home-landing-rail [data-rail-menu].border-t {
+    border-block-end-width: 0;
+    border-block-start-width: var(--home-hairline);
+    border-start-start-radius: var(--home-radius-4);
+    border-start-end-radius: var(--home-radius-4);
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+  .home-landing-rail [data-rail-menu] :global(.ico) {
+    background-color: var(--risu-theme-darkbutton);
+    border-radius: var(--home-control-radius);
+    box-shadow: none;
+  }
+  .home-landing-rail [data-rail-menu] :global(.ico:hover) {
+    background-color: var(--risu-theme-selected);
+  }
+  .home-landing-rail button:focus-visible,
+  .home-landing-rail [data-rail-menu] :global(.ico:focus-visible) {
+    outline: 2px solid var(--risu-theme-textcolor);
+    outline-offset: 0;
+  }
+  :global(html.rm) .home-landing-rail button[aria-expanded],
+  :global(html.rm) .home-landing-rail [data-rail-menu] :global(.ico),
+  :global(html[data-low-power]) .home-landing-rail button[aria-expanded],
+  :global(html[data-low-power]) .home-landing-rail [data-rail-menu] :global(.ico),
+  :global(html.nexus-low-power) .home-landing-rail button[aria-expanded],
+  :global(html.nexus-low-power) .home-landing-rail [data-rail-menu] :global(.ico) {
+    transition: none;
   }
 </style>

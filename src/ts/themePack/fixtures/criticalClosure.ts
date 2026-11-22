@@ -456,6 +456,7 @@ export const TEST_ONLY_COMPONENTS: readonly string[] = [
     'src/lib/Setting/Pages/Display/ThemePackRowStub.svelte',
     'src/lib/SettingsShell/PersonasShellPage.testHost.svelte',
     'src/lib/SettingsShell/SettingsShell.testHost.svelte',
+    'src/lib/UI/Home/HomeShellKeyHarness.svelte',
     'src/lib/UI/Windowed/WindowedSegment.harness.test.svelte',
 ]
 
