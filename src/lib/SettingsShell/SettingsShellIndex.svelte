@@ -59,22 +59,43 @@
         {#each pages as page, at (page.id)}
             {@const Icon = ICONS[page.id]}
             <li>
-                <button
-                    type="button"
-                    bind:this={entries[at]}
-                    class="flex w-full items-center gap-3 px-3 min-h-12 rounded-md text-left hover:text-textcolor hover:bg-darkbutton"
-                    class:bg-selected={selected === page.id}
-                    class:text-textcolor={selected === page.id}
-                    class:text-textcolor2={selected !== page.id}
-                    data-part="settings-index-entry"
-                    data-page={page.id}
-                    aria-current={selected === page.id ? 'page' : undefined}
-                    onclick={() => onselect(page.id)}
-                    onkeydown={(event) => onkeydown(event, at)}
-                >
-                    <Icon aria-hidden="true" />
-                    <span>{settingsLabel(page.labelKey)}</span>
-                </button>
+                {#if page.id === 'display'}
+                    <!-- The Display entry leads to the Theme pack row, so it is an escape control: a literal element a pack cannot name. -->
+                    <button
+                        type="button"
+                        bind:this={entries[at]}
+                        class="flex w-full items-center gap-3 px-3 min-h-12 rounded-md text-left hover:text-textcolor hover:bg-darkbutton"
+                        class:bg-selected={selected === page.id}
+                        class:text-textcolor={selected === page.id}
+                        class:text-textcolor2={selected !== page.id}
+                        data-part="settings-index-display"
+                        data-part-critical
+                        data-page={page.id}
+                        aria-current={selected === page.id ? 'page' : undefined}
+                        onclick={() => onselect(page.id)}
+                        onkeydown={(event) => onkeydown(event, at)}
+                    >
+                        <PaletteIcon aria-hidden="true" />
+                        <span>{settingsLabel(page.labelKey)}</span>
+                    </button>
+                {:else}
+                    <button
+                        type="button"
+                        bind:this={entries[at]}
+                        class="flex w-full items-center gap-3 px-3 min-h-12 rounded-md text-left hover:text-textcolor hover:bg-darkbutton"
+                        class:bg-selected={selected === page.id}
+                        class:text-textcolor={selected === page.id}
+                        class:text-textcolor2={selected !== page.id}
+                        data-part="settings-index-entry"
+                        data-page={page.id}
+                        aria-current={selected === page.id ? 'page' : undefined}
+                        onclick={() => onselect(page.id)}
+                        onkeydown={(event) => onkeydown(event, at)}
+                    >
+                        <Icon aria-hidden="true" />
+                        <span>{settingsLabel(page.labelKey)}</span>
+                    </button>
+                {/if}
             </li>
         {/each}
     </ul>

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { flushSync, untrack } from 'svelte'
     import { get } from 'svelte/store'
-    import { XIcon } from '@lucide/svelte'
+    import { SettingsIcon, XIcon } from '@lucide/svelte'
     import { language } from 'src/lang'
     import { backCloseHandler, registerBackHandler } from 'src/ts/backHandlers'
     import { settingsOpen } from 'src/ts/stores.svelte'
@@ -25,6 +25,9 @@
     const token = {}
     const headingId = $derived(`${id}-heading`)
     const items = $derived(homeDrawerItems())
+    // Settings is an escape control (a protected part), so it is rendered as its own literal element after the loop.
+    const listed = $derived(items.filter((item) => item.id !== 'settings'))
+    const settingsItem = $derived(items.find((item) => item.id === 'settings'))
 
     let layer = $state<HTMLElement>()
     let panel = $state<HTMLElement>()
@@ -147,7 +150,7 @@
             </button>
         </div>
         <nav aria-label={language.menu} class="flex flex-col pb-2">
-            {#each items as item (item.id)}
+            {#each listed as item (item.id)}
                 <button
                     type="button"
                     data-part="home-drawer-item"
@@ -163,6 +166,19 @@
                     <span class="min-w-0 break-words">{item.label}</span>
                 </button>
             {/each}
+            {#if settingsItem}
+                {@const settings = settingsItem}
+                <button
+                    type="button"
+                    data-part="home-drawer-settings"
+                    data-part-critical
+                    class="flex min-h-11 w-full items-center gap-3 px-4 py-2 text-start text-textcolor2 hover:bg-selected/50"
+                    onclick={() => choose(settings)}
+                >
+                    <SettingsIcon size={20} aria-hidden="true" />
+                    <span class="min-w-0 break-words">{settings.label}</span>
+                </button>
+            {/if}
         </nav>
     </div>
 </div>

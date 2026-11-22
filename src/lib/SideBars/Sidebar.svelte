@@ -258,6 +258,8 @@
   <span class="text-xs">{language.home}</span>
 </button>
 <button
+  data-part="rail-settings"
+  data-part-critical
   class="flex items-center justify-center py-2 flex-col gap-1 w-full"
   class:text-textcolor2={!$settingsOpen}
   onclick={() => {
@@ -328,18 +330,20 @@
   <div class="mt-2 border-b border-b-selected w-full relative text-white ">
     {#if menuMode === 1}
       <div class="absolute w-20 min-w-20 flex border-b-selected border-b bg-bgcolor flex-col items-center pt-2 rounded-b-md z-20 pb-2">
-        <BarIcon
-        label={language.settings}
-        onClick={() => {
-          if ($settingsOpen) {
-            reseter();
-            settingsOpen.set(false);
-          } else {
-            reseter();
-            settingsOpen.set(true);
-          }
-        }}><Settings aria-hidden="true" /></BarIcon
-      >
+        <div data-part="rail-settings" class="contents">
+          <BarIcon
+          label={language.settings}
+          onClick={() => {
+            if ($settingsOpen) {
+              reseter();
+              settingsOpen.set(false);
+            } else {
+              reseter();
+              settingsOpen.set(true);
+            }
+          }}><Settings aria-hidden="true" /></BarIcon
+          >
+        </div>
       <div class="mt-2"></div>
       <BarIcon
         label={language.home}
@@ -392,18 +396,20 @@
   <div class="border-t border-t-selected w-full relative text-white ">
     {#if menuMode === 1}
       <div class="absolute bottom-full w-20 min-w-20 flex border-t-selected border-t bg-bgcolor flex-col items-center pt-2 rounded-t-md z-20 pb-2">
-        <BarIcon
-        label={language.settings}
-        onClick={() => {
-          if ($settingsOpen) {
-            reseter();
-            settingsOpen.set(false);
-          } else {
-            reseter();
-            settingsOpen.set(true);
-          }
-        }}><Settings aria-hidden="true" /></BarIcon
-      >
+        <div data-part="rail-settings" class="contents">
+          <BarIcon
+          label={language.settings}
+          onClick={() => {
+            if ($settingsOpen) {
+              reseter();
+              settingsOpen.set(false);
+            } else {
+              reseter();
+              settingsOpen.set(true);
+            }
+          }}><Settings aria-hidden="true" /></BarIcon
+          >
+        </div>
       <div class="mt-2"></div>
       <BarIcon
         label={language.home}

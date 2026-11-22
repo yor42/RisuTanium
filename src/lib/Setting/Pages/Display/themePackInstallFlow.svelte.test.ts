@@ -57,6 +57,8 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
         read: async (key: string) => ({ bytes: world.files.get(key) ?? null }),
     }),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
+// The pack safe-mode module reads the light colour module directly, so it is stubbed like the colour module.
+vi.mock(import('src/ts/gui/colorschemeCore'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorschemeCore'))
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
     return { DBState: state } as unknown as typeof import('src/ts/stores.svelte')
