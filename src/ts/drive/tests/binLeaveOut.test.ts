@@ -27,7 +27,7 @@ describe('binLeaveOutSummary', () => {
             chatDrafts: { drafts: 4, hintChats: 1 },
         })
         expect(summary.map((entry) => entry.kind)).toEqual(['alternatives', 'forkChatData', 'taskPresets', 'themePacks', 'usageStats', 'chroMemory', 'chatDrafts'])
-        expect(summary.slice(0, 6).map((entry) => entry.count)).toEqual([1, 1, 2, 1, 1, 1])
+        expect(summary.slice(0, 6).map((entry) => 'count' in entry ? entry.count : undefined)).toEqual([1, 1, 2, 1, 1, 1])
         expect(summary[6]).toEqual({ kind: 'chatDrafts', drafts: 4, hintChats: 1 })
         const forkChat = summary[1]
         expect(forkChat.kind === 'forkChatData' && forkChat.kinds).toEqual(['interruptedNote', 'hideNames'])
@@ -40,7 +40,7 @@ describe('binLeaveOutSummary', () => {
 
     test('a chat that holds alternatives and another kind counts under both, as the two prompts counted it', () => {
         const summary = binLeaveOutSummary({ ...NONE, chats: [label('a', ['alternatives', 'hideNames'])] })
-        expect(summary.map((entry) => [entry.kind, entry.count])).toEqual([['alternatives', 1], ['forkChatData', 1]])
+        expect(summary.map((entry) => [entry.kind, 'count' in entry ? entry.count : undefined])).toEqual([['alternatives', 1], ['forkChatData', 1]])
         const forkChat = summary[1]
         expect(forkChat.kind === 'forkChatData' && forkChat.kinds).toEqual(['hideNames'])
     })
