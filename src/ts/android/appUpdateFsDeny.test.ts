@@ -35,6 +35,12 @@ describe('the page fs scope keeps out of the update folder', () => {
         expect(fsScope?.deny).toContain(pattern)
     })
 
+    // file:///proc/self/fd/<n> reaches the update file while it downloads, without the scope (MC-3611). A handle
+    // opened that way stays harmless only while the page has no command that writes through a held handle.
+    test.each(['fs:allow-write', 'fs:allow-ftruncate', 'fs:write-all', 'fs:allow-truncate'])('grants no handle-write permission %s', (permission) => {
+        expect(capability.permissions).not.toContain(permission)
+    })
+
     test('the denied folder is the one the native side writes to', () => {
         const paths = readFileSync(resolve(__dirname, '../../../src-tauri/gen/android/app/src/main/res/xml/file_paths.xml'), 'utf8')
         expect(paths).toContain('<cache-path name="app_update" path="app-update/" />')
