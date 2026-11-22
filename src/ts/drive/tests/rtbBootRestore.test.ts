@@ -83,6 +83,8 @@ interface Options {
     releaseTrueRejects?: boolean
     /** Leaves `clearAlert` to the shell's own, which reads and writes the alert store of the mocked stores module. */
     realClearAlert?: boolean
+    /** The result the gate's stageKeys returns. */
+    staged?: SideRestoreResult | null
 }
 
 interface Rig {
@@ -92,6 +94,8 @@ interface Rig {
     waits: string[]
     notices: string[]
     planInputs: RestorePlanInput[]
+    /** The staged argument of every `applySides` call. */
+    stagedSeen: (SideRestoreResult | null)[]
     run(): Promise<BootImportEnd | typeof PENDING>
 }
 
@@ -103,6 +107,7 @@ function rig(options: Options = {}): Rig {
     const waits: string[] = []
     const notices: string[] = []
     const planInputs: RestorePlanInput[] = []
+    const stagedSeen: (SideRestoreResult | null)[] = []
     let busyCalls = 0
     const hold = {
         busy: {},
@@ -146,7 +151,8 @@ function rig(options: Options = {}): Rig {
         reread: async () => { log.push('reread'); return { kind: 'ok', frames: new Map() } },
         planRestore: (input) => { log.push('plan'); planInputs.push(input); return { newUnits: 1, build: () => { throw new Error('not built') } } },
         clearGrants: async () => { log.push('gate:clear-grants') },
-        applySides: async () => { log.push('sides'); return [] },
+        stageKeys: async () => { log.push('gate:stage-keys'); return options.staged ?? null },
+        applySides: async (_plan, staged) => { log.push('sides'); stagedSeen.push(staged); return [] },
         notice: async (text) => { log.push('notice'); notices.push(text) },
         error: (text) => { log.push('error'); errors.push(text) },
         waitAlert: async () => { log.push('wait-alert') },
@@ -163,7 +169,7 @@ function rig(options: Options = {}): Rig {
         delete deps.clearAlert
     }
     return {
-        log, releases, errors, waits, notices, planInputs,
+        log, releases, errors, waits, notices, planInputs, stagedSeen,
         run: () => Promise.race([
             runRtbBootRestore(picked, target, deps),
             new Promise<typeof PENDING>((resolve) => { setTimeout(() => resolve(PENDING), 30) }),
@@ -176,7 +182,7 @@ describe('the order of a successful restore (T-S1)', () => {
         const r = rig()
         expect(await r.run()).toBe(PENDING)
         expect(r.log).toEqual(['busy', 'settled', 'read-only', 'busy-check', 'hold', 'verify', 'copy', 'reread', 'plan', 'wait:installing', 'keep', 'snapshot',
-            'gate:busy-check', 'gate:clear-grants', 'commit-start', 'mark', 'sides', 'wait:reloading', 'release:true', 'mark-reload', 'reload'])
+            'gate:busy-check', 'gate:clear-grants', 'gate:stage-keys', 'commit-start', 'mark', 'sides', 'wait:reloading', 'release:true', 'mark-reload', 'reload'])
         expect(r.planInputs).toHaveLength(1)
         expect(r.planInputs[0].target).toEqual({ legacyKeep: null, req: [] })
         expect(r.errors).toEqual([])
@@ -186,10 +192,24 @@ describe('the order of a successful restore (T-S1)', () => {
         const r = rig({ entry: 'exit' })
         expect(await r.run()).toEqual(finished(INSTALLED))
         expect(r.log).toEqual(['busy', 'settled', 'read-only', 'busy-check', 'hold', 'verify', 'copy', 'reread', 'plan', 'wait:installing', 'keep', 'snapshot',
-            'gate:busy-check', 'gate:clear-grants', 'commit-start', 'mark', 'sides', 'release:false', 'clear-alert', 'busy-end'])
+            'gate:busy-check', 'gate:clear-grants', 'gate:stage-keys', 'commit-start', 'mark', 'sides', 'release:false', 'clear-alert', 'busy-end'])
     })
 })
 
+describe('a settings-only file (T13)', () => {
+    const SETTINGS_END = { kind: 'settings', settings: { values: [] }, file: { name: 'a.rtb', size: 1, lastModified: 1 } } as unknown as RtbVerifyEnd
+
+    test('is refused with the hint and ends cancelled: nothing is copied, planned or installed, the hold is released false (guard; M7 fails it)', async () => {
+        const r = rig({ deps: { verify: async () => { return SETTINGS_END } } })
+        expect(await r.run()).toEqual(CANCELLED)
+        expect(r.errors).toEqual([language.rtbRestoreSettingsAtStart])
+        for (const step of ['copy', 'reread', 'plan', 'keep', 'snapshot', 'commit-start', 'mark', 'sides']) {
+            expect(r.log, step).not.toContain(step)
+        }
+        expect(r.releases).toEqual([false])
+        expect(r.log.at(-1)).toBe('busy-end')
+    })
+})
 describe('the gate (T-S2)', () => {
     test('a busy refusal at the gate ends cancelled before the marker, with the copied-kept message and no grant cleared (M5, M21)', async () => {
         const r = rig({ busy: [false, true] })
@@ -198,6 +218,25 @@ describe('the gate (T-S2)', () => {
         expect(r.log).not.toContain('commit-start')
         expect(r.log).not.toContain('gate:clear-grants')
         expect(r.errors).toEqual([withCopiedKept(language.backupLoadWorkInProgress)])
+    })
+
+    test('G7: the connection keys are staged inside the gate after the busy re-check and the grant clear, and a busy refusal stages nothing (guard of a new rule; this rig runs its installer gate even for a blocked keep listing, which production never does)', async () => {
+        const refused = rig({ busy: [false, true] })
+        expect(await refused.run()).toEqual(CANCELLED)
+        expect(refused.log).not.toContain('gate:stage-keys')
+
+        const passed = rig({ entry: 'exit' })
+        await passed.run()
+        const gate = passed.log.filter((step) => step.startsWith('gate:'))
+        expect(gate).toEqual(['gate:busy-check', 'gate:clear-grants', 'gate:stage-keys'])
+        expect(passed.log.indexOf('gate:stage-keys')).toBeLessThan(passed.log.indexOf('commit-start'))
+    })
+
+    test('G7b: the result the gate staged is the one the after-install side restore receives, so it is not applied twice (guard of a new rule)', async () => {
+        const staged: SideRestoreResult = { id: 'side.connection-keys', status: 'ok', written: 2, skipped: [] }
+        const r = rig({ entry: 'exit', staged })
+        await r.run()
+        expect(r.stagedSeen).toEqual([staged])
     })
 })
 

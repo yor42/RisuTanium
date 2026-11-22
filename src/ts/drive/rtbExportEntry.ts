@@ -13,7 +13,9 @@ import { language } from 'src/lang'
 import { isTauri } from 'src/ts/platform'
 import { alertClear, alertConfirm, alertError, alertNormal } from '../alert'
 import { shownPromptNames } from './backupUpstreamSizes'
+import { exportKeysLateText } from './exportKeys'
 import type { ExportTaskStepDef } from '../exportTask'
+import { exportSettingsRtb, type SettingsRtbResult } from './rtbSettingsExport'
 import {
     exportRtb, rtbExportRefusal,
     type RtbExportCard, type RtbExportOptions, type RtbExportProgress, type RtbExportRefusal, type RtbExportReport, type RtbExportResult, type RtbStep,
@@ -84,6 +86,9 @@ export function rtbSavedNotice(report: RtbExportReport, isTauriPage: boolean): s
     if (sides.length > 0) {
         paragraphs.push(language.rtbExportSideLeftOut(sides.length))
     }
+    if (report.keysLeftOutLate.length > 0) {
+        paragraphs.push(exportKeysLateText(report.keysLeftOutLate))
+    }
     if (paragraphs.length > 0) {
         parts.push(language.backupDataLeftOut, ...paragraphs)
     }
@@ -109,7 +114,7 @@ function rtbExportCard(isTauriPage: boolean): RtbExportCard {
             failedHeadline: language.backupTaskFailed,
         },
         // A report ends on the notice that names what the file lacks; a clean save ends on the done card.
-        savedEnding: (report) => report.unsavedExcluded || report.omitted.length > 0 || report.oldInlayStoreUnlisted
+        savedEnding: (report) => report.unsavedExcluded || report.omitted.length > 0 || report.oldInlayStoreUnlisted || report.keysLeftOutLate.length > 0
             ? { notice: rtbSavedNotice(report, isTauriPage) }
             : { summary: [isTauriPage ? language.rtbExportSaved : language.exportDownloadStarted] },
     }
@@ -153,5 +158,45 @@ export async function startRtbExport(deps: RtbEntryDeps = liveRtbEntryDeps(), op
         return result
     } finally {
         inFlight = false
+    }
+}
+
+let settingsInFlight = false
+
+export interface SettingsRtbEntryDeps {
+    run(options: Parameters<typeof exportSettingsRtb>[0]): Promise<SettingsRtbResult>
+    isTauri: boolean
+}
+
+/**
+ * The settings-only entry: the run's task card carries every ending, as for the full export. Nothing is asked first,
+ * because the file holds no data of any other kind, and a failure or a cancel is reported by the shell. Resolves to
+ * `null` when a start is already in flight.
+ */
+export async function startSettingsRtbExport(deps: SettingsRtbEntryDeps = { run: exportSettingsRtb, isTauri }, options: { password?: string } = {}): Promise<SettingsRtbResult | null> {
+    if (settingsInFlight) {
+        return null
+    }
+    settingsInFlight = true
+    try {
+        return await deps.run({
+            progressText: rtbProgressText,
+            card: {
+                def: {
+                    title: language.rtbSettingsExportTaskTitle,
+                    steps: [
+                        { id: 'prepare', label: language.exportStepPrepare },
+                        { id: 'side', label: language.rtbStepSide },
+                        { id: 'finish', label: language.exportStepWrite },
+                    ],
+                    doneHeadline: language.backupTaskDone,
+                    failedHeadline: language.backupTaskFailed,
+                },
+                summary: [deps.isTauri ? language.rtbExportSaved : language.exportDownloadStarted],
+            },
+            password: options.password,
+        })
+    } finally {
+        settingsInFlight = false
     }
 }

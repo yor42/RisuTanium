@@ -193,7 +193,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     getDbBackups: getDbBackupsMock,
     buildAssetKeepSet: vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })),
     getBasename: (p: string) => p.split('/').pop(),
-    setUsingSw: vi.fn(),
     checkCharOrder: vi.fn(),
     getUncleanablesSync: vi.fn((): string[] => []),
     AppendableBuffer: class {
@@ -205,7 +204,8 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     fetchNative: vi.fn(async () => new Response(null, { status: 404 })),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
-const { encodeRisuSaveLegacy, RisuSaveEncoder, decodeRisuSave } = await import('src/ts/storage/risuSave')
+const { encodeRisuSaveLegacy, decodeRisuSave } = await import('src/ts/storage/risuSave')
+const { RisuSaveEncoder } = await import('src/ts/storage/tests/risuSaveEncoder')
 
 function baseDb(extra: Record<string, unknown> = {}): Record<string, unknown> {
     return {

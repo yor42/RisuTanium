@@ -201,7 +201,10 @@ afterEach(async () => {
 const PERSONA_ICONS = ['assets/persona0.webp', 'assets/persona1.webp', 'assets/persona2.webp', 'assets/persona3.webp']
 const USER_ICON = 'assets/userIcon.webp'
 
-function installPersonaDb(): void {
+// Ten icons under the 8 MiB threshold that together pass the 64 MiB queue budget.
+const SMALL_PERSONA_ICONS = Array.from({ length: 10 }, (_, index) => `assets/smallPersona${index}.webp`)
+
+function installPersonaDb(icons: string[] = PERSONA_ICONS): void {
     DBState.db = {
         username: 'me',
         userNote: '',
@@ -209,7 +212,7 @@ function installPersonaDb(): void {
         userIcon: USER_ICON,
         selectedPersona: 0,
         hideAllImages: false,
-        personas: PERSONA_ICONS.map((icon, index) => ({ name: `persona${index}`, icon, personaPrompt: '', note: '' })),
+        personas: icons.map((icon, index) => ({ name: `persona${index}`, icon, personaPrompt: '', note: '' })),
     } as unknown as Database
 }
 
@@ -266,6 +269,31 @@ describe('PersonaSettings icons on Android', () => {
         expect(personaBoxes(target)[1].getAttribute('style')).toContain(urlOf('assets/persona1b.webp'))
         expect(personaBoxes(target)[0].getAttribute('style')).toContain(urlOf(PERSONA_ICONS[0]))
         expect(loadedSources()).not.toContain(urlOf(PERSONA_ICONS[1]))
+    })
+
+    test('(R) ten 7 MiB persona icons (70 MiB) stay within 64 MiB in flight, and all paint in the end', async () => {
+        installPersonaDb(SMALL_PERSONA_ICONS)
+        seedSizes(SMALL_PERSONA_ICONS, 7)
+        seedSizes([USER_ICON], 1)
+        const target = show(PersonaSettings)
+        await settleReads()
+        const exposedEverySize = (): number => exposedBytes(document.body)
+        expect(exposedEverySize()).toBeLessThanOrEqual(WHOLE_READ_BUDGET_BYTES)
+
+        for (let guard = 0; guard < 40 && FakeImage.all.some((image) => !image.settled); guard++) {
+            FakeImage.all.find((image) => !image.settled)!.fire('load')
+            await settleReads()
+            expect(exposedEverySize()).toBeLessThanOrEqual(WHOLE_READ_BUDGET_BYTES)
+        }
+        SMALL_PERSONA_ICONS.forEach((icon, index) => {
+            expect(personaBoxes(target)[index].getAttribute('style')).toContain(urlOf(icon))
+        })
+        // The user icon is a single image, not a list row: it keeps the 8 MiB rule and loads without a queued read.
+        expect(userBox(target)!.getAttribute('style')).toContain(urlOf(USER_ICON))
+        expect(loadedSources()).not.toContain(urlOf(USER_ICON))
+
+        await unmountAll()
+        expect(heldQueuedWholeReadsForTest()).toBe(0)
     })
 
     test('(G) T17 off Android the icons paint at once with two-argument calls and no Image', async () => {

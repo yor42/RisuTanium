@@ -230,6 +230,72 @@ describe('refusals decided before any prompt', () => {
         expect(h.approvals).toHaveLength(1)
         expect(textOf(result)).toBe('Denied by the user: workspace_write')
     })
+
+    test('a workspace writer prompt leads with the file it changes, even behind a long text', async () => {
+        h.answer = async () => 'deny'
+        const toolLoop = newToolLoop(null)
+        toolLoop.workspace = { id: 'ws-1' }
+        const text = 'x'.repeat(5000)
+
+        await mcp.callMCPTool('write_file', { text, path: 'notes/a.md' }, { mcpURL: 'internal:workspace', toolLoop })
+        await mcp.callMCPTool('move_file', { from: 'a.md', to: 'b.md' }, { mcpURL: 'internal:workspace', toolLoop })
+        await mcp.callMCPTool('delete_file', { path: 'a.md' }, { mcpURL: 'internal:workspace', toolLoop })
+
+        expect(h.approvals.map(a => a.kind)).toEqual(['mutating', 'mutating', 'mutating'])
+        expect(h.approvals[0].summary.startsWith('write workspace file (notes/a.md), replacing its whole content if it already exists: write_file(')).toBe(true)
+        expect(h.approvals[1].summary.startsWith('move workspace file (a.md) to (b.md)')).toBe(true)
+        expect(h.approvals[2].summary).toContain('delete workspace file (a.md)')
+    })
+
+    test('a move that overwrites names the file it deletes first, even behind a very long from path', async () => {
+        h.answer = async () => 'deny'
+        const toolLoop = newToolLoop(null)
+        toolLoop.workspace = { id: 'ws-1' }
+        const from = `${Array.from({ length: 8 }, () => 'd'.repeat(101)).join('/')}/x.md`
+
+        await mcp.callMCPTool('move_file', { from, to: 'AGENTS.md', overwrite: true }, { mcpURL: 'internal:workspace', toolLoop })
+        await mcp.callMCPTool('move_file', { from: 'a.md', to: 'b.md', overwrite: true }, { mcpURL: 'internal:workspace', toolLoop })
+        await mcp.callMCPTool('move_file', { from: 'a.md', to: 'b.md' }, { mcpURL: 'internal:workspace', toolLoop })
+
+        const [long, short, plain] = h.approvals.map(a => a.summary)
+        expect(long.length).toBeLessThanOrEqual(803)
+        expect(long.startsWith('DELETE and replace workspace file (AGENTS.md) if it exists, which cannot be undone')).toBe(true)
+        expect(long).toContain('x.md')
+        expect(short.startsWith('DELETE and replace workspace file (b.md) if it exists, which cannot be undone')).toBe(true)
+        expect(plain).not.toContain('DELETE')
+    })
+
+    test('a truthy non-boolean overwrite gets no delete warning, matching the tool, which refuses it', async () => {
+        h.answer = async () => 'deny'
+        const toolLoop = newToolLoop(null)
+        toolLoop.workspace = { id: 'ws-1' }
+
+        await mcp.callMCPTool('move_file', { from: 'a.md', to: 'b.md', overwrite: 'true' }, { mcpURL: 'internal:workspace', toolLoop })
+
+        expect(h.approvals[0].summary.startsWith('move workspace file (a.md) to (b.md)')).toBe(true)
+    })
+
+    test('a long path in an action line keeps its start and its file name', async () => {
+        h.answer = async () => 'deny'
+        const toolLoop = newToolLoop(null)
+        toolLoop.workspace = { id: 'ws-1' }
+        const path = `start/${'m'.repeat(500)}/end.md`
+
+        await mcp.callMCPTool('delete_file', { path }, { mcpURL: 'internal:workspace', toolLoop })
+
+        expect(h.approvals[0].summary.startsWith('delete workspace file (start/')).toBe(true)
+        expect(h.approvals[0].summary).toContain('/end.md), which cannot be undone')
+    })
+
+    test('a workspace read runs without a prompt and a workspace writer in the same run prompts', async () => {
+        const toolLoop = newToolLoop(null)
+        toolLoop.workspace = { id: 'ws-1' }
+
+        await mcp.callMCPTool('read_file', { path: 'a.md' }, { mcpURL: 'internal:workspace', toolLoop })
+        expect(h.approvals).toEqual([])
+        await mcp.callMCPTool('edit_file', { path: 'a.md', old_text: 'a', new_text: 'b' }, { mcpURL: 'internal:workspace', toolLoop })
+        expect(h.approvals).toHaveLength(1)
+    })
 })
 
 describe('Stop', () => {

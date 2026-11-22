@@ -16,6 +16,14 @@ export const STORE2_ID = 'store2'
 export const ASSETS_ID = 'assets'
 export const INLAYS_ID = 'inlays'
 
+/**
+ * The reserved row id of a settings-only file. A file with this row holds no store2, assets or inlays row, so a
+ * reader that does not know it refuses the file at the section table.
+ */
+export const SETTINGS_ID = 'settings'
+export const SETTINGS_PREFIX = 'settings/'
+export const SETTINGS_DATA_ENTRY = 'settings/data.jsonl'
+
 /** The three required rows and the prefix each owns at `v` 1. */
 export const RESERVED_ROW_PREFIX: Readonly<Record<string, string>> = {
     [STORE2_ID]: 'u/',
@@ -23,13 +31,22 @@ export const RESERVED_ROW_PREFIX: Readonly<Record<string, string>> = {
     [INLAYS_ID]: 'i/',
 }
 
-const SIDE_NAMES = ['iris', 'google-search', 'hypa-vector', 'plugin-safe', 'plugin-safe-ls', 'plugin-permissions', 'mcp-tool-calls', 'ui-prefs'] as const
+const SIDE_NAMES = ['iris', 'google-search', 'hypa-vector', 'plugin-safe', 'plugin-safe-ls', 'plugin-permissions', 'mcp-tool-calls', 'ui-prefs', 'connection-keys'] as const
 
-/** The eight optional side sections of version 1 (`side.<name>`, prefix `s/<name>/`). */
+/** The nine optional side sections of version 1 (`side.<name>`, prefix `s/<name>/`). */
 export const SIDE_SECTION_IDS: readonly string[] = SIDE_NAMES.map((name) => `side.${name}`)
 
-/** The id of one of the eight version 1 side sections. */
+/** The id of one of the nine version 1 side sections. */
 export type SideSectionId = `side.${typeof SIDE_NAMES[number]}`
+
+/**
+ * The section of Keystore-wrapped connection keys. It is built from the live connections, not read from a
+ * store, and is written only when it has lines: a file without wrapped keys has no row and no entry.
+ */
+export const CONNECTION_KEYS_ID = 'side.connection-keys'
+
+/** The side sections read from a store on export (every one but the connection keys). */
+export type StoreSideSectionId = Exclude<SideSectionId, typeof CONNECTION_KEYS_ID>
 
 const SIDE_NAME_SET: ReadonlySet<string> = new Set<string>(SIDE_NAMES)
 
@@ -107,6 +124,9 @@ export function checkKnownEntryName(rowId: string, name: string): string | null 
     }
     if (rowId === INLAYS_ID) {
         return parseInlayEntryName(name) === null ? 'the name is not i/<enc>.meta or i/<enc>.body' : null
+    }
+    if (rowId === SETTINGS_ID) {
+        return name === SETTINGS_DATA_ENTRY ? null : `the name is not ${SETTINGS_DATA_ENTRY}`
     }
     const data = sideDataName(rowId)
     if (data !== null) {

@@ -49,7 +49,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     writeFile: vi.fn(), exists: vi.fn(async () => false), mkdir: vi.fn(), readFile: vi.fn(), BaseDirectory: { AppData: 0 },
 }))
 
-import { RisuSaveEncoder, RisuSaveReadError, decodeRisuSave, type toSaveType } from 'src/ts/storage/risuSave'
+import { RisuSaveReadError, decodeRisuSave, type toSaveType } from 'src/ts/storage/risuSave'
+import { RisuSaveEncoder } from 'src/ts/storage/tests/risuSaveEncoder'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { createMemoryBackend } from 'src/ts/storage/store2/backend'

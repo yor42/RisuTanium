@@ -87,6 +87,16 @@
     const NO_MESSAGE_TYPES = new Set<alertData['type']>(['select', 'selectChar', 'requestdata', 'addchar', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'chatOptions', 'peerConflicts', 'parkedReply'])
     // Viewers the person closes themselves: the head carries a named close, and Escape and Back close them as well.
     const CLOSE_BUTTON_TYPES = new Set<alertData['type']>(['requestdata', 'hypaV2', 'requestlogs', 'branches'])
+    // How each alert type is drawn. `message` types draw into the critical message dialog, `tool` types into the tool dialog,
+    // and `excluded` types never reach the dialog markup. A new alert type does not compile until it is listed here, and a type that
+    // is not a tool defaults to the critical message dialog.
+    const ALERT_BRANCH = {
+        error: 'message', normal: 'message', none: 'excluded', ask: 'message', wait: 'message', selectChar: 'tool',
+        input: 'message', toast: 'excluded', wait2: 'message', markdown: 'message', select: 'message',
+        tos: 'message', cardexport: 'tool', requestdata: 'tool', addchar: 'tool', hypaV2: 'tool', selectModule: 'excluded',
+        chatOptions: 'tool', pukmakkurit: 'excluded', branches: 'tool', progress: 'message', pluginconfirm: 'message', requestlogs: 'tool',
+        staleAccountNotice: 'message', patternSelect: 'message', patternInput: 'message', peerConflicts: 'message', parkedReply: 'message', updateOffer: 'tool', presetBundle: 'message',
+    } satisfies Record<alertData['type'], 'message' | 'tool' | 'excluded'>
 
     // The headline of a dialog that has one. A tool dialog is named by it, so every tool dialog that moves into the shared box adds its case here.
     function headingOf(a: alertData): string | null {
@@ -496,54 +506,19 @@
     </div>
 {/snippet}
 
-{#snippet alertView(a: alertData, slot: 'held' | 'live')}
-{#if a.type !== 'none' &&  a.type !== 'toast' && a.type !== 'selectModule' && a.type !== 'pukmakkurit'}
+{#snippet messageDialog(a: alertData, slot: 'held' | 'live')}
     {@const severity = severityOf(a.type)}
     {@const heading = headingOf(a)}
     {@const headingId = `${uid}-${slot}-heading`}
     {@const messageId = `${uid}-${slot}-message`}
     {@const bodyId = `${uid}-${slot}-body`}
-    {@const hasMessage = a.type === 'select' ? a.msg.startsWith('__DISPLAY__') : !NO_MESSAGE_TYPES.has(a.type)}
     {@const waiting = a.type === 'wait' || a.type === 'wait2'}
-    <!-- The two prompts draw their own title inside the body and name the dialog by it (it carries headingId). -->
-    {@const titledByBody = a.type === 'peerConflicts' || a.type === 'parkedReply'}
-    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined}>
-        <div data-part="pattern-scrim" aria-hidden="true"></div>
-        <div
-            data-part="pattern-dialog"
-            class="break-any"
-            tabindex="-1"
-            data-alert-box
-            data-alert-size={WIDE_TYPES.has(a.type) ? 'wide' : undefined}
-            role={ALERT_DIALOG_TYPES.has(a.type) ? 'alertdialog' : 'dialog'}
-            aria-modal="true"
-            aria-labelledby={heading !== null || titledByBody ? headingId : hasMessage ? messageId : bodyId}
-            aria-describedby={heading !== null && hasMessage ? messageId : undefined}
-        >
-        <div data-part="pattern-warn-root" data-alert-root data-alert-headed={heading !== null ? '' : undefined} data-form="sheet" data-pattern-severity={severity} data-alert-kind={waiting || a.type === 'progress' ? 'wait' : undefined}>
+        <div data-part="pattern-warn-root" data-part-critical data-alert-root data-alert-headed={heading !== null ? '' : undefined} data-form="sheet" data-pattern-severity={severity} data-alert-kind={waiting || a.type === 'progress' ? 'wait' : undefined}>
             <!-- The severity tint paints under the mark and the headline only; the body sits on the plain surface. -->
             <div data-part="pattern-alert-head">
                 <span data-part="pattern-warn-mark" aria-hidden="true"><PatternWarnMark {severity} /></span>
                 {#if heading !== null}
                     <h2 id={headingId} data-part="pattern-warn-headline">{heading}</h2>
-                {/if}
-                {#if CLOSE_BUTTON_TYPES.has(a.type)}
-                    <button type="button" data-part="pattern-alert-close" aria-label={language.uiCommon.close} onclick={() => {
-                        alertStore.set({
-                            type: 'none',
-                            msg: ''
-                        })
-                    }}><XIcon size={20} /></button>
-                {:else if a.type === 'cardexport'}
-                    <button type="button" data-part="pattern-alert-close" aria-label={language.uiCommon.close} onclick={() => {
-                        alertStore.set({
-                            type: 'none',
-                            msg: JSON.stringify({
-                                type: 'cancel',
-                                type2: cardExportType2
-                            })
-                        })
-                    }}><XIcon size={20} /></button>
                 {/if}
             </div>
             <div id={bodyId} data-part="pattern-alert-body">
@@ -590,77 +565,11 @@
                 <ParkedReplyPrompt name={a.parkedReply?.name ?? ''} text={a.parkedReply?.text ?? ''} title={a.msg} titleId={headingId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
                 }} />
-            {:else if a.type === 'cardexport'}
-                <div data-part="pattern-alert-stack">
-                    <span data-part="pattern-alert-field-label">{language.type}</span>
-                    <div data-part="pattern-alert-tiles">
-                        {#if a.submsg === 'preset'}
-                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
-                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {cardExportType = ''}}>Risupreset</button>
-                        {:else if a.submsg === 'module'}
-                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
-                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {cardExportType = ''}}>RisuM</button>
-                        {:else}
-                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
-                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {
-                                cardExportType = ''
-                                cardExportType2 = 'charxJpeg'
-                            }}>Character Card V3</button>
-                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'ccv2'} aria-pressed={cardExportType === 'ccv2'} onclick={() => {cardExportType = 'ccv2'}}>Character Card V2</button>
-                        {/if}
-                    </div>
-                    {#if cardExportType === ''}
-                        {#if a.submsg === 'module'}
-                            <p data-part="pattern-alert-note">{language.risuMDesc}</p>
-                        {:else if a.submsg === 'preset'}
-                            <p data-part="pattern-alert-note">{language.risupresetDesc}</p>
-                            {#if cardExportType2 === 'preset' && (currentPresetOf(DBState.db)?.image || currentPresetOf(DBState.db)?.regex?.length > 0)}
-                                <p data-part="pattern-alert-warning"><span data-part="pattern-alert-warning-mark" aria-hidden="true">!</span>{language.alertComp.realmShareNotice}</p>
-                            {/if}
-                        {:else}
-                            <p data-part="pattern-alert-note">{language.ccv3Desc}</p>
-                            {#if cardExportType2 !== 'charx' && cardExportType2 !== 'charxJpeg' && isCharacterHasAssets(DBState.db.characters[$selectedCharID])}
-                                <p data-part="pattern-alert-warning"><span data-part="pattern-alert-warning-mark" aria-hidden="true">!</span>{language.notCharxWarn}</p>
-                            {/if}
-                        {/if}
-                    {:else if cardExportType === 'json'}
-                        <p data-part="pattern-alert-note">{language.jsonDesc}</p>
-                    {:else if cardExportType === 'ccv2'}
-                        <p data-part="pattern-alert-note">{language.ccv2Desc}</p>
-                        <p data-part="pattern-alert-warning"><span data-part="pattern-alert-warning-mark" aria-hidden="true">!</span>{language.v2Warning}</p>
-                    {:else}
-                        <p data-part="pattern-alert-note">{language.realmDesc}</p>
-                    {/if}
-                    {#if a.submsg === '' && cardExportType === ''}
-                        <span id="{uid}-export-format" data-part="pattern-alert-field-label">{language.format}</span>
-                        <SelectInput bind:value={cardExportType2} labelId="{uid}-export-format">
-                            <OptionInput value="charx">CHARX</OptionInput>
-                            <OptionInput value="charxJpeg">CHARX-JPEG</OptionInput>
-                            <OptionInput value="">PNG</OptionInput>
-                            <OptionInput value="json">JSON</OptionInput>
-                        </SelectInput>
-                    {/if}
-                </div>
-                <div data-part="pattern-warn-actions" data-count="1">
-                    <button type="button" class="pattern-button" data-variant="confirm" onclick={() => {
-                        alertStore.set({
-                            type: 'none',
-                            msg: JSON.stringify({
-                                type: cardExportType,
-                                type2: cardExportType2
-                            })
-                        })
-                    }}>{cardExportType === 'realm' ? language.shareCloud : language.export}</button>
-                </div>
-            {:else if a.type === 'updateOffer'}
-                <UpdateOfferPrompt offer={a.updateOffer ?? { currentVersion: '', version: '', notes: '' }} {messageId} onanswer={(message) => {
-                    alertStore.set({ type: 'none', msg: message })
-                }} />
             {:else if a.type === 'presetBundle'}
                 <PresetBundlePrompt view={a.presetBundle ?? { rows: [], existingNames: [] }} {messageId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
                 }} />
-            {:else if a.type !== 'select' && a.type !== 'selectChar' && a.type !== 'requestdata' && a.type !== 'addchar' && a.type !== 'hypaV2' && a.type !== 'requestlogs' && a.type !== 'chatOptions' && a.type !== 'branches'}
+            {:else if a.type !== 'select'}
                 <span id={messageId} data-part="pattern-alert-message">{displayAlertText(a, $busyRefusalLine)}</span>
                 {#if a.submsg && a.type !== 'progress'}
                     <span data-part="pattern-warn-detail">{a.submsg}</span>
@@ -848,7 +757,113 @@
                         {/each}
                     </datalist>
                 {/if}
-            {:else if a.type === 'selectChar'}
+            {/if}
+            </div>
+        </div>
+{/snippet}
+
+{#snippet toolDialog(a: alertData, slot: 'held' | 'live')}
+    {@const severity = severityOf(a.type)}
+    {@const heading = headingOf(a)}
+    {@const headingId = `${uid}-${slot}-heading`}
+    {@const messageId = `${uid}-${slot}-message`}
+    {@const bodyId = `${uid}-${slot}-body`}
+    {@const waiting = a.type === 'wait' || a.type === 'wait2'}
+        <div data-part="pattern-warn-root" data-alert-root data-alert-headed={heading !== null ? '' : undefined} data-form="sheet" data-pattern-severity={severity} data-alert-kind={waiting || a.type === 'progress' ? 'wait' : undefined}>
+            <!-- The severity tint paints under the mark and the headline only; the body sits on the plain surface. -->
+            <div data-part="pattern-alert-head">
+                <span data-part="pattern-warn-mark" aria-hidden="true"><PatternWarnMark {severity} /></span>
+                {#if heading !== null}
+                    <h2 id={headingId} data-part="pattern-warn-headline">{heading}</h2>
+                {/if}
+                {#if CLOSE_BUTTON_TYPES.has(a.type)}
+                    <button type="button" data-part="pattern-alert-close" aria-label={language.uiCommon.close} onclick={() => {
+                        alertStore.set({
+                            type: 'none',
+                            msg: ''
+                        })
+                    }}><XIcon size={20} /></button>
+                {:else if a.type === 'cardexport'}
+                    <button type="button" data-part="pattern-alert-close" aria-label={language.uiCommon.close} onclick={() => {
+                        alertStore.set({
+                            type: 'none',
+                            msg: JSON.stringify({
+                                type: 'cancel',
+                                type2: cardExportType2
+                            })
+                        })
+                    }}><XIcon size={20} /></button>
+                {/if}
+            </div>
+            <div id={bodyId} data-part="pattern-alert-body">
+            {#if a.type === 'cardexport'}
+                <div data-part="pattern-alert-stack">
+                    <span data-part="pattern-alert-field-label">{language.type}</span>
+                    <div data-part="pattern-alert-tiles">
+                        {#if a.submsg === 'preset'}
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {cardExportType = ''}}>Risupreset</button>
+                        {:else if a.submsg === 'module'}
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {cardExportType = ''}}>RisuM</button>
+                        {:else}
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {
+                                cardExportType = ''
+                                cardExportType2 = 'charxJpeg'
+                            }}>Character Card V3</button>
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'ccv2'} aria-pressed={cardExportType === 'ccv2'} onclick={() => {cardExportType = 'ccv2'}}>Character Card V2</button>
+                        {/if}
+                    </div>
+                    {#if cardExportType === ''}
+                        {#if a.submsg === 'module'}
+                            <p data-part="pattern-alert-note">{language.risuMDesc}</p>
+                        {:else if a.submsg === 'preset'}
+                            <p data-part="pattern-alert-note">{language.risupresetDesc}</p>
+                            {#if cardExportType2 === 'preset' && (currentPresetOf(DBState.db)?.image || currentPresetOf(DBState.db)?.regex?.length > 0)}
+                                <p data-part="pattern-alert-warning"><span data-part="pattern-alert-warning-mark" aria-hidden="true">!</span>{language.alertComp.realmShareNotice}</p>
+                            {/if}
+                        {:else}
+                            <p data-part="pattern-alert-note">{language.ccv3Desc}</p>
+                            {#if cardExportType2 !== 'charx' && cardExportType2 !== 'charxJpeg' && isCharacterHasAssets(DBState.db.characters[$selectedCharID])}
+                                <p data-part="pattern-alert-warning"><span data-part="pattern-alert-warning-mark" aria-hidden="true">!</span>{language.notCharxWarn}</p>
+                            {/if}
+                        {/if}
+                    {:else if cardExportType === 'json'}
+                        <p data-part="pattern-alert-note">{language.jsonDesc}</p>
+                    {:else if cardExportType === 'ccv2'}
+                        <p data-part="pattern-alert-note">{language.ccv2Desc}</p>
+                        <p data-part="pattern-alert-warning"><span data-part="pattern-alert-warning-mark" aria-hidden="true">!</span>{language.v2Warning}</p>
+                    {:else}
+                        <p data-part="pattern-alert-note">{language.realmDesc}</p>
+                    {/if}
+                    {#if a.submsg === '' && cardExportType === ''}
+                        <span id="{uid}-export-format" data-part="pattern-alert-field-label">{language.format}</span>
+                        <SelectInput bind:value={cardExportType2} labelId="{uid}-export-format">
+                            <OptionInput value="charx">CHARX</OptionInput>
+                            <OptionInput value="charxJpeg">CHARX-JPEG</OptionInput>
+                            <OptionInput value="">PNG</OptionInput>
+                            <OptionInput value="json">JSON</OptionInput>
+                        </SelectInput>
+                    {/if}
+                </div>
+                <div data-part="pattern-warn-actions" data-count="1">
+                    <button type="button" class="pattern-button" data-variant="confirm" onclick={() => {
+                        alertStore.set({
+                            type: 'none',
+                            msg: JSON.stringify({
+                                type: cardExportType,
+                                type2: cardExportType2
+                            })
+                        })
+                    }}>{cardExportType === 'realm' ? language.shareCloud : language.export}</button>
+                </div>
+            {:else if a.type === 'updateOffer'}
+                <UpdateOfferPrompt offer={a.updateOffer ?? { currentVersion: '', version: '', notes: '' }} {messageId} onanswer={(message) => {
+                    alertStore.set({ type: 'none', msg: message })
+                }} />
+            {/if}
+            {#if a.type === 'selectChar'}
                 <div data-part="pattern-alert-chars">
                     {#each DBState.db.characters as char, i (i)}
                         {#if char.type !== 'group' && !char.trashTime && !isHiddenSystemCharacter(char)}
@@ -1254,6 +1269,35 @@
             {/if}
             </div>
         </div>
+{/snippet}
+
+{#snippet alertView(a: alertData, slot: 'held' | 'live')}
+{#if a.type !== 'none' &&  a.type !== 'toast' && a.type !== 'selectModule' && a.type !== 'pukmakkurit'}
+    {@const heading = headingOf(a)}
+    {@const headingId = `${uid}-${slot}-heading`}
+    {@const messageId = `${uid}-${slot}-message`}
+    {@const bodyId = `${uid}-${slot}-body`}
+    {@const hasMessage = a.type === 'select' ? a.msg.startsWith('__DISPLAY__') : !NO_MESSAGE_TYPES.has(a.type)}
+    <!-- The two prompts draw their own title inside the body and name the dialog by it (it carries headingId). -->
+    {@const titledByBody = a.type === 'peerConflicts' || a.type === 'parkedReply'}
+    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined}>
+        <div data-part="pattern-scrim" aria-hidden="true"></div>
+        <div
+            data-part="pattern-dialog"
+            class="break-any"
+            tabindex="-1"
+            data-alert-box
+            data-alert-size={WIDE_TYPES.has(a.type) ? 'wide' : undefined}
+            role={ALERT_DIALOG_TYPES.has(a.type) ? 'alertdialog' : 'dialog'}
+            aria-modal="true"
+            aria-labelledby={heading !== null || titledByBody ? headingId : hasMessage ? messageId : bodyId}
+            aria-describedby={heading !== null && hasMessage ? messageId : undefined}
+        >
+        {#if ALERT_BRANCH[a.type] === 'tool'}
+            {@render toolDialog(a, slot)}
+        {:else}
+            {@render messageDialog(a, slot)}
+        {/if}
         </div>
     </div>
 

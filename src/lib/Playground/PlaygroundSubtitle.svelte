@@ -28,6 +28,7 @@
 <script lang="ts">
     import { language } from "src/lang";
     import { SecretRefError } from "src/ts/secretRef";
+    import { VaultKeyUnavailableError } from "src/ts/connections/keyVaultStore.svelte";
     import { currentKey } from "src/ts/process/request/secretKey";
     import { fillLang } from "src/lang/fill";
     import TextInput from "../UI/GUI/TextInput.svelte";
@@ -327,7 +328,7 @@
             try {
                 outputText = await requestOpenAITranscription(requestFile, await currentKey('openAIKey', DBState.db))
             } catch (error) {
-                if(error instanceof SecretRefError){
+                if(error instanceof SecretRefError || error instanceof VaultKeyUnavailableError){
                     alertError(error.message)
                     outputText = ''
                     return

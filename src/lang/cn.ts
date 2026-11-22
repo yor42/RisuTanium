@@ -350,6 +350,9 @@ export const languageChinese = {
     "settingsShellDataScopePartial": "不含角色资源",
     "settingsShellDataScopePartialHint": "保存数据、头像图片、用户和角色（Persona）图标、背景，以及文件夹和预设图片。表情图片、附加资源、语音文件、聊天图片和其他媒体不会被保存。",
     "settingsShellDataScopeBinOnly": "只有 .bin 备份可以省略角色资源。",
+    "settingsShellDataScopeSettings": "仅设置",
+    "settingsShellDataScopeSettingsHint": "保存你的设置、机器人预设、记忆预设和界面偏好设置。不会保存 API 密钥、连接、聊天、角色、模块或任何其他数据，因此不能替代完整备份。",
+    "settingsShellDataScopeRtbOnly": "只有 .rtb 备份可以单独保存设置。",
     "settingsShellDataStart": "开始",
     "settingsShellDataEncrypt": "使用密码加密",
     "settingsShellDataEncryptAgain": "请再次输入密码",
@@ -730,6 +733,7 @@ export const languageChinese = {
     "backupTaskTitle": "正在保存备份",
     "backupTaskPartialTitle": "正在保存部分备份",
     "rtbExportTaskTitle": "正在保存 .rtb 备份",
+    "rtbSettingsExportTaskTitle": "正在保存仅含设置的 .rtb 备份",
     "backupStepCollect": "收集数据",
     "backupStepSizes": "检查大小",
     "backupStepInlays": "添加聊天图片、视频和音频",
@@ -913,9 +917,8 @@ export const languageChinese = {
         "hordeNotPossible": "无法生成回复。",
         "hordeNotPossibleWith": "无法生成回复：{message}",
         "hordeNoGenerations": "任务已完成，但没有生成任何结果",
-        "webCryptoUnavailable": "此环境中无法使用 Web Crypto API。请确保您使用的是 HTTPS。",
         "vertexInvalidClientEmail": "Vertex 客户端邮箱无效。必须包含 gserviceaccount.com",
-        "vertexInvalidPrivateKey": "Vertex 私钥无效。必须包含正确的密钥标记。",
+        "vertexInvalidPrivateKey": "Vertex 私钥无效。请粘贴服务账号 JSON 中完整的 private_key 值，包括 BEGIN 和 END PRIVATE KEY 行。",
         "googleTokenRefreshFailed": "刷新 Google 访问令牌失败：{error}",
         "googleNoAccessToken": "响应中没有 Google 访问令牌",
         "googleEmptyResponse": "收到空响应：{response}",
@@ -3643,6 +3646,7 @@ export const languageChinese = {
         `有 ${items.length} 个项目达到或超过 4 GiB，超出了备份文件单个条目所能容纳的大小，因此它们的内容不在备份中（角色只保留一个占位符）：\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `此备份中有 ${count} 个项目大于 100 MiB。上游 RisuAI Node 服务器无法恢复如此大的项目，因此在那里恢复此备份时会跳过它们；本应用和其他平台则可以恢复。是否创建包含这些项目的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "backupSizesUncheckedConfirm": '无法检查此备份中资源的大小。大于 100 MiB 的项目无法由上游 RisuAI Node 服务器恢复，但这类项目可能在未被列出名称的情况下被包含进来；而达到或超过 4 GiB 的项目会使备份在中途停止。是否仍要创建备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `有 ${count} 个任务预设仅保存在此设备上，而备份文件中没有存放它们的位置，因此它们将不会包含在此备份中。它们仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -4102,7 +4106,11 @@ export const languageChinese = {
         `RisuTanium 无法保存预设 ${name}：它的数据无效，可能是插件修改了它。其他所有内容仍会正常保存，但在问题解决之前，对预设的更改不会被保存，如果在此之前关闭或刷新标签页，这些更改将丢失。最后一次保存的预设会保留。`,
     "saveLoadoutsHeldNotice": (name: string) =>
         `RisuTanium 无法保存配置组包 ${name}：它的数据无效，可能是插件修改了它。其他所有内容仍会正常保存，但在问题解决之前，对配置组包的更改不会被保存，如果在此之前关闭或刷新标签页，这些更改将丢失。最后一次保存的配置组包会保留。`,
+    "savePluginsHeldNotice": (name: string) =>
+        `RisuTanium 无法保存插件 ${name}：它的数据无效，可能是插件修改了它。其他所有内容仍会正常保存，但在问题解决之前，对插件的更改不会被保存，如果在此之前关闭或刷新标签页，这些更改将丢失。最后一次保存的插件会保留。`,
     "saveItemModuleLabel": (name: string) => `模块“${name}”`,
+    "saveItemWorkspaceLabel": (name: string) => `工作区“${name}”`,
+    "saveItemWorkspaceFileLabel": (path: string) => `工作区文件“${path}”`,
     "saveItemSettingLabel": (field: string) => `设置“${field}”`,
     "saveItemPluginDataLabel": (key: string) => `插件数据“${key}”`,
     "saveItemStaticsLabel": "使用统计",
@@ -4111,6 +4119,18 @@ export const languageChinese = {
         `RisuTanium 排除了 ${count} 个不是有效数据的人设。这可能是插件写入的。`,
     "personaListEmptyNotice": `人设列表中没有剩余的可用人设，因此 RisuTanium 根据你的用户名和图标添加了一个人设并将其选中。`,
     "personaSelectionMissingNotice": `所选人设不在人设列表中，因此 RisuTanium 根据你当前的用户名、图标、人设提示词和备注添加了一个人设并将其选中。`,
+    "vaultKeepPlainNotice": `RisuTanium 无法使用此设备的安全存储保护你的连接密钥，因此这些密钥目前仍以明文保存。每次启动以及每次修改密钥时都会重试。`,
+    "vaultNeedsReentryNotice": (names: string) =>
+        `此设备无法读取以下项目已保存的密钥：${names}。请为每一项重新输入密钥。在你重新输入之前，旧的已保存密钥不会被改动。`,
+    "vaultNeedsReentryLabel": `需要重新输入密钥`,
+    "vaultKeyTemporarilyUnavailable": `暂时无法读取已保存的密钥，请稍后再试。`,
+    "vaultKeyTemporarilyUnavailableHint": `密钥暂时不可用；解密后会显示。`,
+    "vaultExportUnreadableKeys": (names: string) =>
+        `此设备无法读取以下项目已保存的密钥:${names}。备份中这些密钥将为空,此设备上已保存的密钥保持不变。是否在不含这些密钥的情况下创建备份?`,
+    "vaultExportKeysUnavailableNow": (names: string) =>
+        `以下项目已保存的密钥目前无法读取,因此备份中这些密钥将为空:${names}。是否在不含这些密钥的情况下创建备份?`,
+    "vaultExportKeysLeftOutLate": (names: string) =>
+        `写入备份时无法读取以下连接密钥,因此备份中这些密钥为空:${names}。`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `RisuTanium 修复角色列表后已加载此备份：${[
             dropped > 0 ? `${dropped} 个不是角色的条目已被排除` : '',
@@ -4228,7 +4248,12 @@ export const languageChinese = {
     "rtbRestoreLineOmittedEntries": (names: string[]) => `- 创建备份时未包含的数据：${names.join(', ')}`,
     "rtbRestoreLineSideNotRestored": (names: string[]) => `- 保留在此设备上、未被恢复的数据：${names.join(', ')}`,
     "rtbRestoreLineSideFailed": (names: string[]) => `- 保留在此设备上、未能完整写入的数据：${names.join(', ')}`,
-    "rtbRestoreSideNames": { iris: "Iris 对话", googleSearch: "Google 搜索密钥", hypaVector: "记忆检索数据", pluginSafe: "插件数据", pluginSafeLs: "插件设置", pluginPermissions: "插件权限", mcpToolCalls: "MCP 工具调用", uiPrefs: "界面偏好设置" },
+    "rtbRestoreSideNames": { iris: "Iris 对话", googleSearch: "Google 搜索密钥", hypaVector: "记忆检索数据", pluginSafe: "插件数据", pluginSafeLs: "插件设置", pluginPermissions: "插件权限", mcpToolCalls: "MCP 工具调用", uiPrefs: "界面偏好设置", connectionKeys: "连接密钥" },
+    "rtbRestoreSettingsConfirm": (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
+        `要还原此备份中的设置吗？${fields} 项设置、${presets} 个机器人预设、${memoryPresets} 个记忆预设和 ${translatorPresets} 个新的翻译器预设将合并到此设备。备份中没有的设置保持不变。角色、聊天、密钥和连接不会被改动。${dropped > 0 ? ` 备份中有 ${dropped} 个值无法使用，将被跳过。` : ''} 完成后应用会重新加载。`,
+    "rtbRestoreSettingsDone": "设置已还原。应用现在将重新加载。",
+    "rtbRestoreSettingsNotSaved": "设置已应用，但暂时无法保存。稍后会保存，但界面偏好设置未被应用。请再次还原该备份以应用它们。",
+    "rtbRestoreSettingsAtStart": "此备份只包含设置，因此无法建立新的配置文件。未还原任何内容。请先在此处还原完整备份，然后在“数据”页面还原设置备份。",
     "backupFileNotRecognized": "此文件不是此应用可恢复的备份（上游 RisuAI 的 .bin 或 RisuTanium 的 .rtb 备份），或者文件不完整。未恢复任何内容。您当前的数据没有更改。",
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>

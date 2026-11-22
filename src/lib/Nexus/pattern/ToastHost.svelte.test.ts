@@ -17,7 +17,7 @@ vi.mock('../../../ts/alertBack', () => ({ closeDialogForBack: () => { } }))
 import { language } from '../../../lang'
 import { dispatchBack, installBackGuard, registerBackHandler } from '../../../ts/backHandlers'
 import type { UndoAction, UndoOutcome } from '../../../ts/toast/toastHost.svelte'
-import { addNode, clock, focusFrom, host, installToastHarness, mouse, ok, origin, part, postUndo, registerToastHostFocusSuite, settle, setVisibility, show, showCovered, toastElements } from './ToastHost.scenarios.test-helpers.svelte'
+import { addNode, clock, dismissOf, focusFrom, host, installToastHarness, mouse, ok, origin, part, postUndo, registerToastHostFocusSuite, settle, setVisibility, show, showCovered, toastElements, visualOf } from './ToastHost.scenarios.test-helpers.svelte'
 
 installToastHarness()
 
@@ -183,12 +183,12 @@ describe('markup and suspension', () => {
         postUndo()
         flushSync()
         for (const toast of toastElements()) {
-            expect(part(toast, 'toast-dismiss').getAttribute('aria-label')).toBe(language.uiCommon.close)
+            expect(dismissOf(toast).getAttribute('aria-label')).toBe(language.uiCommon.close)
         }
         clock.advance(3_600_000)
         flushSync()
         expect(toastElements()).toHaveLength(1)
-        part<HTMLButtonElement>(toastElements()[0], 'toast-dismiss').click()
+        dismissOf(toastElements()[0]).click()
         flushSync()
         expect(toastElements()).toHaveLength(0)
     })
@@ -228,20 +228,25 @@ describe('markup and suspension', () => {
         expect(host.visible).toHaveLength(0)
     })
 
-    test('TC10 data-parts and kinds; critical only while Undo is offered; aria-disabled while pending; no inline colour', async () => {
+    test('TC10 data-parts and kinds; the Undo toast alone is critical; aria-disabled while pending; no inline colour', async () => {
         show()
         let release!: (outcome: UndoOutcome) => void
         const slow: UndoAction = { id: 's', run: () => new Promise<UndoOutcome>((resolve) => { release = resolve }), failedText: 'FAILED' }
         const id = postUndo(slow)
         host.post({ kind: 'warning', text: 'Careful', sub: 'detail' })
         flushSync()
-        const [undoToast, warning] = toastElements()
+        const [undoWrapper, warningWrapper] = toastElements()
+        const undoToast = visualOf(undoWrapper)
+        const warning = visualOf(warningWrapper)
+        expect(undoToast.dataset.part).toBe('toast-undo')
         expect(undoToast.dataset.kind).toBe('undo')
         expect(undoToast.hasAttribute('data-part-critical')).toBe(true)
+        expect(warning.dataset.part).toBe('toast')
         expect(warning.dataset.kind).toBe('warning')
         expect(warning.hasAttribute('data-part-critical')).toBe(false)
+        expect(part(warning, 'toast-text').textContent).toBe('Careful')
         expect(part(warning, 'toast-sub').textContent).toBe('detail')
-        expect(part(undoToast, 'toast-text').textContent).toBe('Removed')
+        expect(part(undoToast, 'toast-undo-text').textContent).toBe('Removed')
         const action = part<HTMLButtonElement>(undoToast, 'toast-action')
         expect(action.getAttribute('aria-disabled')).toBeNull()
         void host.activate(id)
@@ -249,12 +254,45 @@ describe('markup and suspension', () => {
         expect(part(toastElements()[0], 'toast-action').getAttribute('aria-disabled')).toBe('true')
         release({ ok: true, text: 'Restored' })
         await settle()
-        const outcome = toastElements()[0]
+        const outcome = visualOf(toastElements()[0])
+        expect(outcome.dataset.part).toBe('toast')
         expect(outcome.dataset.kind).toBe('success')
         expect(outcome.hasAttribute('data-part-critical')).toBe(false)
         for (const toast of toastElements()) {
             expect(toast.getAttribute('style')).toBeNull()
         }
+    })
+
+    test('A4 the wrapper that carries the entrance animation and the pointer handlers is the same node across the Undo outcome', async () => {
+        show()
+        const id = postUndo(ok())
+        flushSync()
+        const [wrapper] = toastElements()
+        expect(wrapper.classList.contains('toast')).toBe(true)
+        expect(wrapper.hasAttribute('data-part')).toBe(false)
+        void host.activate(id)
+        await settle()
+        expect(toastElements()[0]).toBe(wrapper)
+        expect(wrapper.isConnected).toBe(true)
+        expect(visualOf(wrapper).dataset.part).toBe('toast')
+        mouse('pointerenter', wrapper)
+        expect(host.holds().hover).toBe(true)
+    })
+
+    test('A13 focus on the Undo toast Dismiss while the action is pending returns to the origin when the outcome replaces it, never to body', async () => {
+        show()
+        let release!: (outcome: UndoOutcome) => void
+        const slow: UndoAction = { id: 's', run: () => new Promise<UndoOutcome>((resolve) => { release = resolve }), failedText: 'FAILED' }
+        const id = postUndo(slow)
+        flushSync()
+        const dismiss = part<HTMLButtonElement>(toastElements()[0], 'toast-undo-dismiss')
+        focusFrom(origin, dismiss)
+        void host.activate(id)
+        flushSync()
+        release({ ok: true, text: 'Restored' })
+        await settle()
+        expect(dismiss.isConnected).toBe(false)
+        expect(document.activeElement).toBe(origin)
     })
 })
 

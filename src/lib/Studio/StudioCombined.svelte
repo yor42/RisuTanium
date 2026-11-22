@@ -23,7 +23,8 @@
     import { language } from '../../lang'
     import { buildMergedView, type MergedRow } from '../../ts/studio/mergedView'
     import type { OwnerModel } from '../../ts/studio/ownerModel'
-    import { selectStudioNode } from '../../ts/studio/studioScreen.svelte'
+    import { afterFlush } from '../../ts/afterFlush'
+    import { openStudioListRow, studioScreen, takeStudioListReveal } from '../../ts/studio/studioScreen.svelte'
     import { createWindowHost } from '../../ts/windowing/windowHost.svelte'
     import WindowedSegment from '../UI/Windowed/WindowedSegment.svelte'
     import { itemLabelOf, kindLabelOf } from './TreeRow.svelte'
@@ -49,6 +50,24 @@
     let listRoot = $state<HTMLElement | null>(null)
     const windowHost = createWindowHost({ root: () => listRoot })
     onDestroy(() => windowHost.dispose())
+
+    // Back from an entry opened here shows the list again: the row that opened it is scrolled into the band and focused,
+    // once the segment holds the rows. A row that is no longer in the list spends the request with nothing to show.
+    $effect(() => {
+        const rowId = studioScreen.revealListRow
+        if (rowId === null || listRoot === null) return
+        if (!rowByKey.has(rowId)) {
+            takeStudioListReveal(rowId)
+            return
+        }
+        let live = true
+        void afterFlush().then(() => live ? windowHost.reveal(rowId) : null).then((wrapper) => {
+            if (!live) return
+            takeStudioListReveal(rowId)
+            wrapper?.querySelector<HTMLElement>('[data-part="studio-combined-row"]')?.focus()
+        })
+        return () => { live = false }
+    })
 
     // The toggles view reads the owners' texts and the app's other owners, which the other kinds do not need: it is
     // loaded when the toggles kind is first shown.
@@ -94,7 +113,7 @@
                         data-item-id={row.item.id}
                         data-numbered={row.ordinal !== null}
                         class="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded px-2 text-start hover:bg-selected"
-                        onclick={() => selectStudioNode(row.ownerKey, kind, row.item.id)}
+                        onclick={() => openStudioListRow({ ownerKey: combinedKeyOf(kind), kind }, row.ownerKey, row.item.id)}
                     >
                         <span data-part="studio-combined-ordinal" class="w-10 shrink-0 text-end text-xs text-textcolor2">{row.ordinal ?? row.position}</span>
                         <span class="min-w-0 flex-1 truncate">{itemLabelOf(row.item)}</span>

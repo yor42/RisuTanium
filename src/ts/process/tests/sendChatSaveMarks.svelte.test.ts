@@ -220,7 +220,8 @@ import { sendChat, doingChat } from '../index.svelte'
 import { risuChatParser } from '../scripts'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { MESSAGE_CHUNK_SIZE, registerDbChangeEffects } from '../../storage/dbChangeEffects.svelte'
-import { RisuSaveEncoder, decodeRisuSave } from '../../storage/risuSave'
+import { decodeRisuSave } from '../../storage/risuSave'
+import { RisuSaveEncoder } from '../../storage/tests/risuSaveEncoder'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from '../../storage/characterSaveMarks'
 
 //#region fixtures

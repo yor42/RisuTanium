@@ -729,7 +729,7 @@ describe('the stages\' card deps', () => {
             const busy = page.busy.beginBusy('backupLoad')
             const picked = pickedOf(bytes)
             const prepared = await page.plan.prepareRtbRestore(picked, busy, { saveBoundMs: 3000, deps: { confirmScale: async () => true } })
-            if (prepared.kind !== 'ready') { throw new Error(`prepare ended ${prepared.outcome}`) }
+            if (prepared.kind !== 'ready') { throw new Error(`prepare ended ${prepared.kind === 'ended' ? prepared.outcome : prepared.kind}`) }
             const order: string[] = []
             commitBox.ran = false
             const end = await page.install.installRtbRestore(prepared.plan, prepared.hold, {
@@ -765,7 +765,7 @@ describe('the stages\' card deps', () => {
         }
         const hold = { release: async (keep: boolean) => { log.push(`release:${keep}`) } }
 
-        await page.finish.finishRtbRestore(plan, hold, { flushed: false, facts }, deps)
+        await page.finish.finishRtbRestore(plan, hold, { flushed: false, facts, staged: null }, deps)
 
         const firstLeave = log.indexOf('leave')
         expect(firstLeave).toBeGreaterThanOrEqual(0)
@@ -783,7 +783,7 @@ describe('the stages\' card deps', () => {
         const log: string[] = []
         const hold = { release: async (keep: boolean) => { log.push(`release:${keep}`) } }
 
-        await page.finish.finishRtbRestore(plan, hold, { flushed: true, facts }, {
+        await page.finish.finishRtbRestore(plan, hold, { flushed: true, facts, staged: null }, {
             wait: (text) => { log.push(`wait:${text}`) },
             leave: () => { throw new Error('the card broke') },
             markReload: () => { log.push('mark') },

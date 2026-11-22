@@ -26,7 +26,7 @@ const platformBox = vi.hoisted(() => {
     return { isTauri: false }
 })
 const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[], opened: 0, useBlobFallback: false }))
-const sizedBox = vi.hoisted(() => ({ items: [] as Array<{ key: string, size: number }>, batchReads: [] as string[][], available: true }))
+const sizedBox = vi.hoisted(() => ({ items: [] as Array<{ key: string, size: number }>, batchReads: [] as string[][], available: true, listingFails: false }))
 const webFiles = vi.hoisted(() => new Map<string, Uint8Array>())
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as unknown as Database))
 const alertConfirmMock = vi.hoisted(() => vi.fn(async (_message: string) => true))
@@ -100,7 +100,12 @@ vi.mock('src/ts/storage/tauriAssetBatch', async (importOriginal) => ({
     ...(await importOriginal<typeof import('src/ts/storage/tauriAssetBatch')>()),
     isAssetBatchAvailable: () => sizedBox.available,
     isAssetBatchReadAvailable: () => sizedBox.available,
-    listAssetsSized: async () => sizedBox.items.map((item) => ({ ...item })),
+    listAssetsSized: async () => {
+        if (sizedBox.listingFails) {
+            throw new Error('the sized listing command failed')
+        }
+        return sizedBox.items.map((item) => ({ ...item }))
+    },
     readAssetBatch: async (keys: readonly string[]) => {
         sizedBox.batchReads.push([...keys])
         return keys.map((key) => ({ status: 'ok' as const, bytes: new TextEncoder().encode(`bytes of ${key}`) }))
@@ -319,6 +324,8 @@ function entryNames(): string[] {
 
 const upstreamPrompts = (): string[] => alertConfirmMock.mock.calls.map((c) => String(c[0])).filter((text) => text.includes(UPSTREAM_PROMPT))
 const fourGibPrompts = (): string[] => alertConfirmMock.mock.calls.map((c) => String(c[0])).filter((text) => text.includes(FOUR_GIB_PROMPT))
+const UNCHECKED_PROMPT = 'could not be checked'
+const uncheckedPrompts = (): string[] => alertConfirmMock.mock.calls.map((c) => String(c[0])).filter((text) => text.includes(UNCHECKED_PROMPT))
 
 function databaseWith(fields: Record<string, unknown>): Database {
     return { characters: [], personas: [], characterOrder: [], botPresets: [], ...fields } as unknown as Database
@@ -378,6 +385,7 @@ beforeEach(() => {
     sizedBox.items = []
     sizedBox.batchReads.length = 0
     sizedBox.available = true
+    sizedBox.listingFails = false
     webFiles.clear()
     storeReads.length = 0
     alertConfirmMock.mockReset().mockImplementation(async () => true)
@@ -600,6 +608,123 @@ describe('SavePartialLocalBackup', () => {
         await SavePartialLocalBackup()
 
         expect(upstreamPrompts()).toEqual([])
+    })
+})
+
+/**
+ * The desktop and Android apps size assets only from the sized listing (#451, MC-223): when that command fails, the
+ * export falls back to the unsized listing and neither size prompt can name anything, so it asks before the writer
+ * opens whether to continue without the check.
+ */
+describe('a failed sized listing on the desktop and Android apps', () => {
+    beforeEach(() => {
+        injectStore('tauri')
+        getDatabaseMock.mockImplementation(() => databaseWith({ userIcon: 'assets/icon' }))
+        listAssets(['assets/icon', 150 * MIB], ['assets/small', 10])
+        sizedBox.listingFails = true
+    })
+
+    test('reproducer: a full export asks once, before the writer opens, and confirming writes every asset', async () => {
+        let openedAtPrompt = -1
+        alertConfirmMock.mockImplementation(async (message: string) => {
+            if (message.includes(UNCHECKED_PROMPT)) {
+                openedAtPrompt = backupSink.opened
+            }
+            return true
+        })
+
+        const outcome = await SaveLocalBackup()
+
+        expect(uncheckedPrompts()).toHaveLength(1)
+        expect(openedAtPrompt).toBe(0)
+        expect(upstreamPrompts()).toEqual([])
+        expect(outcome).toMatchObject({ status: 'saved' })
+        expect(entryNames()).toEqual(expect.arrayContaining(['icon', 'small', 'database.risudat']))
+    })
+
+    test('reproducer: declining a full export ends it as declined with no writer, no file and no asset read', async () => {
+        alertConfirmMock.mockImplementation(async (message: string) => !message.includes(UNCHECKED_PROMPT))
+
+        const outcome = await SaveLocalBackup()
+
+        expect(outcome).toEqual({ status: 'declined', cause: 'oversize-declined' })
+        expect(backupSink.opened).toBe(0)
+        expect(backupSink.writes).toEqual([])
+        expect(storeReads.filter((key) => key.startsWith('assets/'))).toEqual([])
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: a partial export asks once before the writer opens, and declining writes nothing', async () => {
+        let openedAtPrompt = -1
+        alertConfirmMock.mockImplementation(async (message: string) => {
+            if (message.includes(UNCHECKED_PROMPT)) {
+                openedAtPrompt = backupSink.opened
+                return false
+            }
+            return true
+        })
+
+        const outcome = await SavePartialLocalBackup()
+
+        expect(uncheckedPrompts()).toHaveLength(1)
+        expect(openedAtPrompt).toBe(0)
+        expect(outcome).toEqual({ status: 'declined', cause: 'oversize-declined' })
+        expect(backupSink.writes).toEqual([])
+    })
+
+    test('guard: a listing that answers asks nothing about unchecked sizes, in a full or a partial export', async () => {
+        sizedBox.listingFails = false
+        listAssets(['assets/icon', 10])
+
+        await SaveLocalBackup()
+        await SavePartialLocalBackup()
+
+        expect(uncheckedPrompts()).toEqual([])
+    })
+
+    test('reproducer: a desktop page whose batch commands are unavailable lists no sizes and is asked too', async () => {
+        sizedBox.listingFails = false
+        sizedBox.available = false
+        alertConfirmMock.mockImplementation(async (message: string) => !message.includes(UNCHECKED_PROMPT))
+
+        const outcome = await SaveLocalBackup()
+
+        expect(uncheckedPrompts()).toHaveLength(1)
+        expect(outcome).toEqual({ status: 'declined', cause: 'oversize-declined' })
+        expect(backupSink.writes).toEqual([])
+    })
+
+    test('guard: a Node page is never asked, even where the batch commands report available, in a full or a partial export', async () => {
+        injectStore('node')
+        plantAssets(['assets/icon', 10])
+        const store = await getAppStore()
+        store.listSized = async () => []
+
+        await SaveLocalBackup()
+        await SavePartialLocalBackup()
+
+        expect(uncheckedPrompts()).toEqual([])
+    })
+})
+
+describe('SavePartialLocalBackup, Node store', () => {
+    test('guard: a referenced profile image above 100 MiB comes from the server listing and is named before the writer opens', async () => {
+        injectStore('node')
+        getDatabaseMock.mockImplementation(() => databaseWith({ userIcon: 'assets/icon' }))
+        plantAssets(['assets/icon', 150 * MIB], ['assets/unreferenced', 200 * MIB])
+        const store = await getAppStore()
+        const listSized = vi.fn(async () => [{ key: 'assets/icon', size: 150 * MIB }, { key: 'assets/unreferenced', size: 200 * MIB }])
+        store.listSized = listSized
+        alertConfirmMock.mockImplementation(async (message: string) => !message.includes(UPSTREAM_PROMPT))
+
+        const outcome = await SavePartialLocalBackup()
+
+        expect(listSized).toHaveBeenCalledExactlyOnceWith('assets/', LIMIT)
+        expect(upstreamPrompts()).toHaveLength(1)
+        expect(upstreamPrompts()[0]).toContain("'User Icon' from User Settings (150.0 MiB)")
+        expect(upstreamPrompts()[0]).not.toContain('unreferenced')
+        expect(outcome).toEqual({ status: 'declined', cause: 'oversize-declined' })
+        expect(backupSink.writes).toEqual([])
     })
 })
 

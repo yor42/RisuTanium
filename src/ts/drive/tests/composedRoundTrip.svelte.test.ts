@@ -312,7 +312,9 @@ async function roundTrip(file: string, mode: 'inline' | 'stub' = 'inline', rewri
         exportedUnitBodies: new Map([...exportedUnits].map(([key, unit]) => [key, unit.value])),
         assets: new Map(entries.filter((entry) => entry.name !== 'database.risudat' && getColdStorageBackupKey(entry.name) === null).map((entry) => [entry.name, entry.data])),
         errors: [...importErrors, ...vi.mocked(alert.alertError).mock.calls.map((call) => call[0])],
-        confirms: vi.mocked(alert.alertConfirm).mock.calls.map((call) => String(call[0])),
+        // The files-kind world has no sized listing command, so every export asks the unchecked-sizes question; it is
+        // pinned in `backupUpstreamWarning.test.ts` and left out of the count here.
+        confirms: vi.mocked(alert.alertConfirm).mock.calls.map((call) => String(call[0])).filter((text) => text !== language.backupSizesUncheckedConfirm),
         notices: outcome.notices ?? [],
     }
 }

@@ -350,6 +350,9 @@ export const languageVietnamese = {
     settingsShellDataScopePartial: "Không gồm tài sản nhân vật",
     settingsShellDataScopePartialHint: "Lưu dữ liệu, ảnh hồ sơ, biểu tượng người dùng và persona, hình nền, cùng ảnh của thư mục và bộ cài đặt sẵn. Ảnh cảm xúc, tài sản bổ sung, tệp giọng nói, ảnh trong cuộc trò chuyện và các phương tiện khác không được lưu.",
     settingsShellDataScopeBinOnly: "Chỉ bản sao lưu .bin mới có thể bỏ qua tài sản nhân vật.",
+    settingsShellDataScopeSettings: "Chỉ cài đặt",
+    settingsShellDataScopeSettingsHint: "Lưu cài đặt, bộ cài đặt sẵn của bot, bộ cài đặt sẵn của bộ nhớ và tùy chọn giao diện. Không lưu khóa API, kết nối, cuộc trò chuyện, nhân vật, mô-đun hay bất kỳ dữ liệu nào khác, nên không thể thay thế bản sao lưu đầy đủ.",
+    settingsShellDataScopeRtbOnly: "Chỉ bản sao lưu .rtb mới có thể lưu riêng cài đặt.",
     settingsShellDataStart: "Bắt đầu",
     settingsShellDataEncrypt: "Mã hóa bằng mật khẩu",
     settingsShellDataEncryptAgain: "Hãy nhập lại mật khẩu",
@@ -730,6 +733,7 @@ export const languageVietnamese = {
     backupTaskTitle: "Đang lưu bản sao lưu",
     backupTaskPartialTitle: "Đang lưu bản sao lưu một phần",
     rtbExportTaskTitle: "Đang lưu bản sao lưu .rtb",
+    rtbSettingsExportTaskTitle: "Đang lưu bản sao lưu .rtb chỉ có cài đặt",
     backupStepCollect: "Thu thập dữ liệu",
     backupStepSizes: "Kiểm tra kích thước",
     backupStepInlays: "Thêm hình ảnh, video và âm thanh trong trò chuyện",
@@ -913,9 +917,8 @@ export const languageVietnamese = {
         "hordeNotPossible": "Không thể tạo phản hồi.",
         "hordeNotPossibleWith": "Không thể tạo phản hồi: {message}",
         "hordeNoGenerations": "Đã hoàn tất nhưng không có kết quả nào được tạo ra",
-        "webCryptoUnavailable": "Web Crypto API không khả dụng trong môi trường này. Vui lòng đảm bảo bạn đang dùng HTTPS.",
         "vertexInvalidClientEmail": "Email máy khách Vertex không hợp lệ. Phải chứa gserviceaccount.com",
-        "vertexInvalidPrivateKey": "Khóa riêng tư Vertex không hợp lệ. Phải chứa các dấu hiệu khóa hợp lệ.",
+        "vertexInvalidPrivateKey": "Khóa riêng tư Vertex không hợp lệ. Hãy dán toàn bộ giá trị private_key từ JSON của tài khoản dịch vụ, bao gồm các dòng BEGIN và END PRIVATE KEY.",
         "googleTokenRefreshFailed": "Làm mới mã truy cập Google không thành công: {error}",
         "googleNoAccessToken": "Không có mã truy cập Google trong phản hồi",
         "googleEmptyResponse": "Nhận được phản hồi trống: {response}",
@@ -3643,6 +3646,7 @@ export const languageVietnamese = {
         `${items.length} mục có dung lượng từ 4 GiB trở lên, vượt quá mức mà một mục trong tệp sao lưu có thể chứa, nên nội dung của chúng không có trong bản sao lưu (nhân vật chỉ giữ lại một phần giữ chỗ):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} mục trong bản sao lưu này lớn hơn 100 MiB. Máy chủ Node RisuAI upstream không thể khôi phục mục lớn như vậy, nên sẽ bỏ qua chúng khi bản sao lưu này được khôi phục ở đó; ứng dụng này và các nền tảng khác thì khôi phục được. Bạn có muốn tạo bản sao lưu có bao gồm chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
+    "backupSizesUncheckedConfirm": 'Không thể kiểm tra kích thước của các tài nguyên (asset) trong bản sao lưu này. Một mục lớn hơn 100 MiB, mà máy chủ Node RisuAI upstream không thể khôi phục, có thể được đưa vào mà không được nêu tên, và một mục từ 4 GiB trở lên sẽ khiến quá trình sao lưu dừng giữa chừng. Vẫn tạo bản sao lưu? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} cài đặt trước tác vụ chỉ được lưu trên thiết bị này, và tệp sao lưu không có chỗ chứa chúng, nên chúng sẽ bị bỏ qua khỏi bản sao lưu này. Chúng vẫn ở trong ứng dụng này; chỉ bản sao lưu không có chúng. Bạn có muốn tạo bản sao lưu không có chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -4101,7 +4105,11 @@ export const languageVietnamese = {
         `RisuTanium không thể lưu preset ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với preset sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các preset đã lưu gần nhất vẫn được giữ.`,
     saveLoadoutsHeldNotice: (name: string) =>
         `RisuTanium không thể lưu Loadout ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với Loadout sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các Loadout đã lưu gần nhất vẫn được giữ.`,
+    savePluginsHeldNotice: (name: string) =>
+        `RisuTanium không thể lưu plugin ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với plugin sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các plugin đã lưu gần nhất vẫn được giữ.`,
     saveItemModuleLabel: (name: string) => `module "${name}"`,
+    saveItemWorkspaceLabel: (name: string) => `không gian làm việc "${name}"`,
+    saveItemWorkspaceFileLabel: (path: string) => `tệp không gian làm việc "${path}"`,
     saveItemSettingLabel: (field: string) => `cài đặt "${field}"`,
     saveItemPluginDataLabel: (key: string) => `dữ liệu plugin "${key}"`,
     saveItemStaticsLabel: "thống kê sử dụng",
@@ -4110,6 +4118,18 @@ export const languageVietnamese = {
         `RisuTanium đã loại bỏ ${count} persona không phải dữ liệu hợp lệ. Có thể một plugin đã ghi chúng.`,
     personaListEmptyNotice: `Không còn persona nào dùng được trong danh sách persona, nên RisuTanium đã thêm một persona từ tên người dùng và biểu tượng của bạn rồi chọn nó.`,
     personaSelectionMissingNotice: `Persona đã chọn không có trong danh sách persona, nên RisuTanium đã thêm một persona từ tên người dùng, biểu tượng, lời nhắc persona và ghi chú hiện tại của bạn rồi chọn nó.`,
+    vaultKeepPlainNotice: `RisuTanium không thể bảo vệ các khóa kết nối của bạn bằng bộ nhớ bảo mật của thiết bị này, nên hiện tại các khóa vẫn được lưu dưới dạng văn bản thuần. Ứng dụng sẽ thử lại mỗi lần khởi động và mỗi khi bạn đổi khóa.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `Thiết bị này không thể đọc khóa đã lưu của: ${names}. Hãy nhập lại khóa cho từng mục. Khóa đã lưu trước đó được giữ nguyên cho đến khi bạn nhập lại.`,
+    vaultNeedsReentryLabel: `Cần nhập lại khóa`,
+    vaultKeyTemporarilyUnavailable: `Hiện chưa thể đọc khóa đã lưu. Hãy thử lại sau giây lát.`,
+    vaultKeyTemporarilyUnavailableHint: `Khóa tạm thời không khả dụng; khóa sẽ hiển thị sau khi được giải mã.`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `Thiết bị này không thể đọc khóa đã lưu của: ${names}. Bản sao lưu sẽ chứa các khóa đó ở dạng trống, còn các khóa đã lưu trên thiết bị này vẫn giữ nguyên. Tạo bản sao lưu mà không có chúng?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `Hiện không thể đọc khóa đã lưu của: ${names}, nên bản sao lưu sẽ chứa các khóa đó ở dạng trống. Tạo bản sao lưu mà không có chúng?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `Không thể đọc các khóa kết nối này khi ghi bản sao lưu, nên bản sao lưu chứa chúng ở dạng trống: ${names}.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `Bản sao lưu đã được tải sau khi RisuTanium sửa danh sách nhân vật: ${[
             dropped > 0 ? `${dropped} mục không phải nhân vật đã bị loại bỏ` : '',
@@ -4227,7 +4247,12 @@ export const languageVietnamese = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- Dữ liệu mà bản sao lưu đã được tạo mà không có: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng chưa được khôi phục: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng không thể ghi đầy đủ: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "cuộc trò chuyện Iris", googleSearch: "khóa tìm kiếm Google", hypaVector: "dữ liệu tìm kiếm bộ nhớ", pluginSafe: "dữ liệu plugin", pluginSafeLs: "cài đặt plugin", pluginPermissions: "quyền của plugin", mcpToolCalls: "lệnh gọi công cụ MCP", uiPrefs: "tùy chọn giao diện" },
+    rtbRestoreSideNames: { iris: "cuộc trò chuyện Iris", googleSearch: "khóa tìm kiếm Google", hypaVector: "dữ liệu tìm kiếm bộ nhớ", pluginSafe: "dữ liệu plugin", pluginSafeLs: "cài đặt plugin", pluginPermissions: "quyền của plugin", mcpToolCalls: "lệnh gọi công cụ MCP", uiPrefs: "tùy chọn giao diện", connectionKeys: "khóa kết nối" },
+    rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
+        `Khôi phục cài đặt trong bản sao lưu này? ${fields} cài đặt, ${presets} bộ cài đặt sẵn của bot, ${memoryPresets} bộ cài đặt sẵn của bộ nhớ và ${translatorPresets} bộ cài đặt sẵn của trình dịch mới sẽ được gộp vào thiết bị này. Cài đặt mà bản sao lưu không có sẽ được giữ nguyên. Nhân vật, cuộc trò chuyện, khóa và kết nối không bị động đến.${dropped > 0 ? ` ${dropped} giá trị trong bản sao lưu không thể dùng và bị bỏ qua.` : ''} Sau đó ứng dụng sẽ tải lại.`,
+    rtbRestoreSettingsDone: "Đã khôi phục cài đặt. Ứng dụng sẽ tải lại ngay bây giờ.",
+    rtbRestoreSettingsNotSaved: "Cài đặt đã được áp dụng nhưng chưa thể lưu. Chúng sẽ được lưu sau, nhưng tùy chọn giao diện chưa được áp dụng. Hãy khôi phục lại bản sao lưu để áp dụng chúng.",
+    rtbRestoreSettingsAtStart: "Bản sao lưu này chỉ chứa cài đặt nên không thể thiết lập hồ sơ mới. Chưa có gì được khôi phục. Hãy khôi phục một bản sao lưu đầy đủ tại đây trước, sau đó khôi phục bản sao lưu cài đặt từ trang Dữ liệu.",
     backupFileNotRecognized: "Tệp này không phải là bản sao lưu mà ứng dụng này có thể khôi phục (.bin của RisuAI thượng nguồn hoặc bản sao lưu .rtb của RisuTanium), hoặc bị cắt cụt. Không có gì được khôi phục. Dữ liệu hiện tại của bạn không bị thay đổi.",
     coldStorageCleanupDateUnknown: "không rõ ngày",
     coldStorageCleanupKeptConfirm: (dates: string) =>

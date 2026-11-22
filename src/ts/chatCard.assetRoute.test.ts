@@ -19,8 +19,8 @@ describe('classifyImageSrc for the Node asset route', () => {
         expect(classifyImageSrc('/api/assets-list', env)).toEqual({ kind: 'drop' })
     })
 
-    test('guard: a service-worker image is still local', () => {
-        expect(classifyImageSrc('/sw/img/6162', env)).toEqual({ kind: 'local', src: '/sw/img/6162' })
+    test('guard: a former image path on this origin is dropped like any other unknown path', () => {
+        expect(classifyImageSrc('/sw/img/6162', env)).toEqual({ kind: 'drop' })
     })
 
     test('guard: an asset route path on another origin is treated as an outside address', () => {

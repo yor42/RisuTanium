@@ -1794,6 +1794,7 @@
                         class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0"
                         data-part="library-back"
                         onclick={() => endGrid()}
+                        aria-label={language.settingsPage.back}
                         title={language.settingsPage.back}
                     >
                         <ArrowLeft size={20} />

@@ -34,7 +34,8 @@
         return import('../../ts/media/charImageLookups').then(({ createCharImageLookups }) => {
             if (gone) return null
             lookups ??= createCharImageLookups()
-            return lookups.get(slot, icon, 'css')
+            // Every row of the sheet is a list row: small icons that together pass the budget still wait in the queue.
+            return lookups.get(slot, icon, 'css', { everySize: true })
         })
     }
     const initialOf = (name: string): string => Array.from(name.trim())[0]?.toUpperCase() ?? ''

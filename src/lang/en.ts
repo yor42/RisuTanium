@@ -350,6 +350,9 @@ export const languageEnglish = {
     settingsShellDataScopePartial: 'Without character assets',
     settingsShellDataScopePartialHint: 'Saves the data, profile images, user and persona icons, backgrounds, and folder and preset images. Emotion images, additional assets, voice files, chat images and other media are not saved.',
     settingsShellDataScopeBinOnly: 'Only a .bin backup can leave out character assets.',
+    settingsShellDataScopeSettings: 'Settings only',
+    settingsShellDataScopeSettingsHint: 'Saves your settings, bot presets, memory presets and the interface preferences. It does not save API keys, connections, chats, characters, modules or any other data, so it cannot replace a full backup.',
+    settingsShellDataScopeRtbOnly: 'Only a .rtb backup can save the settings alone.',
     settingsShellDataStart: 'Start',
     settingsShellDataEncrypt: 'Encrypt with a password',
     settingsShellDataEncryptAgain: 'Type the password again',
@@ -730,6 +733,7 @@ export const languageEnglish = {
     backupTaskTitle: 'Saving a backup',
     backupTaskPartialTitle: 'Saving a partial backup',
     rtbExportTaskTitle: 'Saving an .rtb backup',
+    rtbSettingsExportTaskTitle: 'Saving a settings-only .rtb backup',
     backupStepCollect: 'Collect data',
     backupStepSizes: 'Check sizes',
     backupStepInlays: 'Add chat images, video and audio',
@@ -918,9 +922,8 @@ export const languageEnglish = {
         hordeNotPossible: "Response not possible.",
         hordeNotPossibleWith: "Response not possible: {message}",
         hordeNoGenerations: "No Generations when done",
-        webCryptoUnavailable: "Web Crypto API is not available in this environment. Please ensure you are using HTTPS.",
         vertexInvalidClientEmail: "Invalid Vertex client email. Must include gserviceaccount.com",
-        vertexInvalidPrivateKey: "Invalid Vertex private key. Must include proper key markers.",
+        vertexInvalidPrivateKey: "Invalid Vertex private key. Paste the complete private_key value from the service account JSON, including the BEGIN and END PRIVATE KEY lines.",
         googleTokenRefreshFailed: "Failed to refresh google access token: {error}",
         googleNoAccessToken: "No google access token in the response",
         googleEmptyResponse: "Got empty response: {response}",
@@ -3784,6 +3787,7 @@ export const languageEnglish = {
         `${items.length} item(s) are 4 GiB or more, which is more than one entry of a backup file can hold, so their content is not in the backup (a character keeps only a placeholder):\n\n${items.join('\n')}`,
     backupUpstreamOversizeConfirm: (count: number, names: string[]) =>
         `${count} item(s) in this backup are larger than 100 MiB. An upstream RisuAI Node server cannot restore an item that large, so it would skip them when this backup is restored there; this app and the other platforms restore them. Create the backup with them included? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupSizesUncheckedConfirm: 'The sizes of the assets in this backup could not be checked. An item over 100 MiB, which an upstream RisuAI Node server cannot restore, may be included without being named, and an item of 4 GiB or more would stop the backup partway. Create the backup anyway? If you decline, no backup file is created. Nothing has been written yet.',
     backupTaskPresetsConfirm: (count: number, names: string[]) =>
         `${count} task preset(s) are saved on this device only, and a backup file has no place for them, so they would be left out of this backup. They stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupThemePacksConfirm: (count: number, names: string[]) =>
@@ -4245,7 +4249,11 @@ export const languageEnglish = {
         `RisuTanium cannot save the preset ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to presets are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved presets are kept.`,
     saveLoadoutsHeldNotice: (name: string) =>
         `RisuTanium cannot save the loadout ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to loadouts are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved loadouts are kept.`,
+    savePluginsHeldNotice: (name: string) =>
+        `RisuTanium cannot save the plugin ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to plugins are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved plugins are kept.`,
     saveItemModuleLabel: (name: string) => `the module "${name}"`,
+    saveItemWorkspaceLabel: (name: string) => `the workspace "${name}"`,
+    saveItemWorkspaceFileLabel: (path: string) => `the workspace file "${path}"`,
     saveItemSettingLabel: (field: string) => `the setting "${field}"`,
     saveItemPluginDataLabel: (key: string) => `the plugin data "${key}"`,
     saveItemStaticsLabel: "the usage statistics",
@@ -4254,6 +4262,18 @@ export const languageEnglish = {
         `RisuTanium left out ${count} persona${count === 1 ? '' : 's'} that ${count === 1 ? 'was' : 'were'} not valid data. A plugin may have written ${count === 1 ? 'it' : 'them'}.`,
     personaListEmptyNotice: `No usable persona was left in the persona list, so RisuTanium added one from your user name and icon and selected it.`,
     personaSelectionMissingNotice: `The selected persona was missing from the persona list, so RisuTanium added one from your current user name, icon, persona prompt and note and selected it.`,
+    vaultKeepPlainNotice: `RisuTanium could not protect your connection keys with this device's secure storage, so they stay saved as plain text for now. It tries again at every start and whenever you change a key.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `This device cannot read the saved key of: ${names}. Enter the key again for each of them. The old saved key is left untouched until you do.`,
+    vaultNeedsReentryLabel: `Key must be entered again`,
+    vaultKeyTemporarilyUnavailable: `The saved key cannot be read right now. Try again in a moment.`,
+    vaultKeyTemporarilyUnavailableHint: `Key temporarily unavailable; it will appear once decrypted.`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `This device cannot read the saved key of: ${names}. The backup would carry those keys empty, and the saved keys on this device stay untouched. Create the backup without them?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `The saved key of: ${names} cannot be read right now, so the backup would carry those keys empty. Create the backup without them?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `These connection keys could not be read while the backup was written, so it carries them empty: ${names}.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `The backup was loaded after RisuTanium repaired its character list: ${[
             dropped > 0 ? `${dropped} entr${dropped === 1 ? 'y that is' : 'ies that are'} not a character ${dropped === 1 ? 'was' : 'were'} left out` : '',
@@ -4372,7 +4392,12 @@ export const languageEnglish = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- Data the backup was made without: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Data kept on this device that was not restored: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Data kept on this device that could not be written completely: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "Iris conversations", googleSearch: "Google search key", hypaVector: "memory search data", pluginSafe: "plugin data", pluginSafeLs: "plugin settings", pluginPermissions: "plugin permissions", mcpToolCalls: "MCP tool calls", uiPrefs: "interface preferences" },
+    rtbRestoreSideNames: { iris: "Iris conversations", googleSearch: "Google search key", hypaVector: "memory search data", pluginSafe: "plugin data", pluginSafeLs: "plugin settings", pluginPermissions: "plugin permissions", mcpToolCalls: "MCP tool calls", uiPrefs: "interface preferences", connectionKeys: "connection keys" },
+    rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
+        `Restore the settings in this backup? ${fields} setting(s), ${presets} bot preset(s), ${memoryPresets} memory preset(s) and ${translatorPresets} new translator preset(s) will be merged into this device. A setting the backup lacks stays as it is. Characters, chats, keys and connections are not touched.${dropped > 0 ? ` ${dropped} value(s) in the backup cannot be used and are skipped.` : ''} The app reloads afterwards.`,
+    rtbRestoreSettingsDone: "The settings were restored. The app reloads now.",
+    rtbRestoreSettingsNotSaved: "The settings were applied but could not be saved yet. They are saved later, but the interface preferences were not applied. Restore the backup again to apply them.",
+    rtbRestoreSettingsAtStart: "This backup holds settings only, so it cannot set up a new profile. Nothing was restored. Restore a full backup here first, then restore the settings backup from the Data page.",
     backupFileNotRecognized: "This file is not a backup this app can restore (an upstream RisuAI .bin or a RisuTanium .rtb backup), or it is cut short. Nothing was restored. Your current data was not changed.",
     coldStorageCleanupDateUnknown: "date unknown",
     coldStorageCleanupKeptConfirm: (dates: string) =>

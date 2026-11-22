@@ -1,8 +1,9 @@
 // Test-only census of the parts a screen's critical elements enclose, and of the parts that enclose them. An element
 // carrying `data-part-critical` protects every `data-part` at or under it: through `{@render x()}` of a snippet defined in
 // the same file, through a component element to its imported `.svelte` file (recursively), and through the component's own
-// children, which lie lexically inside its tag. A name that cannot be read statically under a marked root, a component
-// that cannot be resolved and a `{@render}` of anything but a local snippet are census problems: a critical subtree must
+// children, which lie lexically inside its tag. A named import from `@lucide/svelte` is a leaf: it spreads its props onto its own
+// `<svg>`, so it counts only while it carries no `data-*` attribute and no spread. A name that cannot be read statically under a marked
+// root, a component that cannot be resolved and a `{@render}` of anything but a local snippet are census problems: a critical subtree must
 // use literal names. Popups reuse this scan.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
@@ -36,8 +37,12 @@ interface ParsedFile {
     readonly file: string
     readonly ast: AstNode
     readonly imports: ReadonlyMap<string, string>
+    /** Local names of named imports, with the module they come from. */
+    readonly namedImports: ReadonlyMap<string, string>
     readonly snippets: ReadonlyMap<string, AstNode>
 }
+
+const LUCIDE = '@lucide/svelte'
 
 export type SourceReader = (file: string) => string | null
 
@@ -79,6 +84,7 @@ function parseFile(file: string, read: SourceReader): ParsedFile | null {
     const ast = object(parse(source, { modern: true }))
     if (ast === null) return null
     const imports = new Map<string, string>()
+    const namedImports = new Map<string, string>()
     const snippets = new Map<string, AstNode>()
     for (const statement of list(object(object(ast.instance)?.content)?.body)) {
         const node = object(statement)
@@ -88,6 +94,7 @@ function parseFile(file: string, read: SourceReader): ParsedFile | null {
             const spec = object(specifier)
             const local = nameOfIdentifier(spec?.local)
             if (spec?.type === 'ImportDefaultSpecifier' && local !== null) imports.set(local, from)
+            if (spec?.type === 'ImportSpecifier' && local !== null) namedImports.set(local, from)
         }
     }
     walkNodes(ast.fragment, (node) => {
@@ -97,7 +104,7 @@ function parseFile(file: string, read: SourceReader): ParsedFile | null {
         }
         return true
     })
-    return { file, ast, imports, snippets }
+    return { file, ast, imports, namedImports, snippets }
 }
 
 function attributeOf(element: AstNode, name: string): AstNode | null {
@@ -147,6 +154,14 @@ export function censusOfFiles(files: readonly string[], read: SourceReader = rea
                     problems.push(`${file.file}: an element with a spread attribute under a critical root`)
                 }
             } else if (node.type === 'Component') {
+                if (typeof node.name === 'string' && file.namedImports.get(node.name) === LUCIDE) {
+                    const carriesPart = list(node.attributes).some((attribute) => {
+                        const item = object(attribute)
+                        return item?.type === 'SpreadAttribute' || (item?.type === 'Attribute' && typeof item.name === 'string' && item.name.startsWith('data-'))
+                    })
+                    if (carriesPart) problems.push(`${file.file}: a lucide icon with data-* or a spread under a critical root`)
+                    return true
+                }
                 const target = typeof node.name === 'string' ? resolveComponent(file, node.name) : null
                 const child = target === null ? null : parsed(target)
                 if (target === null || child === null) {
@@ -188,6 +203,70 @@ export function censusOfFiles(files: readonly string[], read: SourceReader = rea
     return { roots, names: [...names].sort(), problems }
 }
 
+export interface PartCensus {
+    /** Every literal `data-part` of the given files, sorted. Dynamic names are not counted. */
+    readonly parts: readonly string[]
+    /** Parts that are, or hold at any depth, an interactive element, sorted. */
+    readonly interactive: readonly string[]
+    /** Parts found outside every marked subtree of their own file, sorted. */
+    readonly outsideRoots: readonly string[]
+}
+
+const INTERACTIVE_TAGS = new Set(['button', 'input', 'select', 'textarea', 'a', 'label'])
+const INTERACTIVE_ROLES = new Set(['button', 'link', 'checkbox', 'switch', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'radio', 'slider', 'spinbutton', 'textbox', 'combobox', 'listbox', 'searchbox', 'treeitem', 'gridcell'])
+
+/** An element, component or directive that can take input, or whose content cannot be read as inert. */
+function isInteractive(node: AstNode, file: ParsedFile): boolean {
+    if (node.type === 'RegularElement') {
+        if (typeof node.name === 'string' && INTERACTIVE_TAGS.has(node.name)) return true
+        return list(node.attributes).some((attribute) => {
+            const item = object(attribute)
+            if (item === null) return false
+            if (item.type === 'SpreadAttribute' || item.type === 'BindDirective' || item.type === 'OnDirective') return true
+            if (item.type !== 'Attribute' || typeof item.name !== 'string') return false
+            if (item.name.startsWith('on') || item.name === 'tabindex') return true
+            if (item.name !== 'role') return false
+            const role = literalPart(item)
+            return role === null || INTERACTIVE_ROLES.has(role)
+        })
+    }
+    if (node.type === 'Component') return !(typeof node.name === 'string' && file.namedImports.get(node.name) === LUCIDE)
+    return node.type === 'SvelteComponent' || node.type === 'SvelteElement' || node.type === 'SvelteSelf' || node.type === 'RenderTag'
+}
+
+/** The literal parts of the files, which of them take or hold input, and which sit outside every marked subtree. */
+export function censusOfParts(files: readonly string[], read: SourceReader = readFromDisk): PartCensus {
+    const parts = new Set<string>()
+    const interactive = new Set<string>()
+    const outside = new Set<string>()
+    for (const file of files) {
+        const own = parseFile(file, read)
+        if (own === null) continue
+        walkNodes(own.ast.fragment, (node) => {
+            if (node.type !== 'RegularElement') return true
+            const part = attributeOf(node, 'data-part')
+            const literal = part === null ? null : literalPart(part)
+            if (literal === null) return true
+            parts.add(literal)
+            let holds = false
+            walkNodes(node, (inner) => {
+                if (isInteractive(inner, own)) holds = true
+                return true
+            })
+            if (holds) interactive.add(literal)
+            return true
+        })
+        walkNodes(own.ast.fragment, (node) => {
+            if (node.type !== 'RegularElement') return true
+            if (attributeOf(node, 'data-part-critical') !== null) return false
+            const part = attributeOf(node, 'data-part')
+            const literal = part === null ? null : literalPart(part)
+            if (literal !== null) outside.add(literal)
+            return true
+        })
+    }
+    return { parts: [...parts].sort(), interactive: [...interactive].sort(), outsideRoots: [...outside].sort() }
+}
 interface Frame { readonly node: AstNode }
 
 /**

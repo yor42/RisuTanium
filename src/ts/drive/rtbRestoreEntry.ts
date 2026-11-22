@@ -9,6 +9,8 @@ import { installRtbRestore, type RtbInstallCause, type RtbInstallEnd } from './r
 import { acquireRestoreHold } from './rtbRestoreHold'
 import { prepareRtbRestore, type PickedRtb, type RtbPrepareCause, type RtbPrepareDeps, type RtbPrepareEnd } from './rtbRestorePlan'
 import { askRtbPassword } from './rtbSealedOpen'
+import { applySettingsRestore } from './rtbSettingsRestore'
+import type { VerifiedSettings } from './rtb/rtbVerify'
 import { cardRestoreProgress, rtbCardDef, type RestoreProgress } from './restoreProgress'
 import { saveFirst } from './storeRestore'
 
@@ -52,6 +54,8 @@ export interface RtbRestoreDeps {
     install(plan: Extract<RtbPrepareEnd, { kind: 'ready' }>['plan'], hold: Extract<RtbPrepareEnd, { kind: 'ready' }>['hold']): Promise<RtbInstallEnd>
     finish(plan: Extract<RtbPrepareEnd, { kind: 'ready' }>['plan'], hold: Extract<RtbPrepareEnd, { kind: 'ready' }>['hold'], landed: Extract<RtbInstallEnd, { kind: 'landed' }>): Promise<void>
     wait(text: string): void
+    /** The apply of a settings-only file; the only step that follows a `settings` preparation. */
+    applySettings(settings: VerifiedSettings, run: RtbRunOptions): Promise<{ outcome: OperationOutcome }>
 }
 
 /** The preparation's calls on the card: named steps instead of wait dialogs, and the password prompt stands the card aside. */
@@ -83,6 +87,7 @@ function realRestoreDeps(progress: RestoreProgress | null): RtbRestoreDeps {
             ? finishRtbRestore(plan, hold, landed)
             : finishRtbRestore(plan, hold, landed, { leave: () => progress.leave() }),
         wait: alertWait,
+        applySettings: (settings, run) => applySettingsRestore(settings, run),
     }
 }
 
@@ -114,6 +119,13 @@ export async function runRtbRestore(picked: PickedRtb, options: Partial<RtbResto
                     progress?.cancelled()
                 }
                 return { outcome: prep.outcome, cause: prep.cause }
+            }
+            if (prep.kind === 'settings') {
+                // A settings-only file installs and finishes nothing: it goes to its own apply, which asks its own confirmation.
+                leaveCard()
+                // The card is gone by now, so the apply shows its own waits (`card` is not passed on).
+                const applied = await deps.applySettings(prep.settings, { firstRun: run.firstRun })
+                return { outcome: applied.outcome, cause: null }
             }
             // The preparation has locked Cancel: the copy is the first write.
             progress?.phase('copy', null)

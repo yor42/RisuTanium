@@ -82,7 +82,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0 },
 }))
 
-import { RisuSaveEncoder, decodeRisuSave, listEncodedBlocks, salvageRisuSave } from '../risuSave'
+import { decodeRisuSave, listEncodedBlocks, salvageRisuSave } from '../risuSave'
+import { RisuSaveEncoder } from './risuSaveEncoder'
 import type { toSaveType } from '../risuSave'
 import type { Database } from '../database.svelte'
 import type { JsonValue } from '../blockFrame'

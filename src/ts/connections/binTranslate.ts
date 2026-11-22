@@ -3,7 +3,7 @@ import {
     cloneConnection, isRecord, isWellFormedConnection, ownedConnection, presetProxyConnection, slotConnection,
     storedConnections, str,
 } from './connections'
-import { connectionKey } from './keyAccess'
+import type { ExportKeyReader } from './keyVaultStore.svelte'
 import { GLOBAL_ROWS } from './slotTable'
 
 function pickOwn(source: Record<string, unknown>, props: readonly string[]): Record<string, unknown> {
@@ -57,15 +57,16 @@ export function keyStateOf(plain: StoredDatabase): StoredDatabase {
 
 /**
  * Writes upstream's legacy fields into `plain` from the migrated projection and drops the store and
- * every reference, so a `.bin` is upstream-shaped. Keys are read only from the projection's own
- * connection copies; `plain` receives new objects and arrays and no existing nested object is
+ * every reference, so a `.bin` is upstream-shaped. Keys are read from the projection's own
+ * connection copies through `keys`, a synchronous reader keyed by envelope: the export's writer is
+ * already open, so no vault call may happen here. `plain` receives new objects and arrays and no existing nested object is
  * assigned into. Where the projection has no resolvable connection (a skipped or failed store), its
  * legacy value is kept.
  */
-export async function writeLegacyFromConnections(state: StoredDatabase, plain: StoredDatabase): Promise<void> {
+export function writeLegacyFromConnections(state: StoredDatabase, plain: StoredDatabase, keys: ExportKeyReader): void {
     for (const row of GLOBAL_ROWS) {
         const conn = slotConnection(state, row.slot)
-        const value = conn ? await connectionKey(conn) : row.legacyGet(state)
+        const value = conn ? keys.keyOf(conn) : row.legacyGet(state)
         if (value === '' && row.legacyGet(plain) === '') {
             continue
         }
@@ -77,7 +78,7 @@ export async function writeLegacyFromConnections(state: StoredDatabase, plain: S
     for (const conn of storedConnections(state)) {
         if (conn.provider.startsWith('oaicomp:') && !seen.has(conn.provider)) {
             seen.add(conn.provider)
-            oaiComp[conn.provider.slice('oaicomp:'.length)] = await connectionKey(conn)
+            oaiComp[conn.provider.slice('oaicomp:'.length)] = keys.keyOf(conn)
         }
     }
     if (seen.size > 0 || isRecord(plain.OaiCompAPIKeys)) {
@@ -86,7 +87,7 @@ export async function writeLegacyFromConnections(state: StoredDatabase, plain: S
 
     const rootConn = ownedConnection(state, { slot: 'proxyKey' })
     const rootUrl = rootConn ? rootConn.url ?? '' : str(state.forceReplaceUrl)
-    const rootKey = rootConn ? await connectionKey(rootConn) : str(state.proxyKey)
+    const rootKey = rootConn ? keys.keyOf(rootConn) : str(state.proxyKey)
     if (rootUrl !== '' || str(plain.forceReplaceUrl) !== '') {
         plain.forceReplaceUrl = rootUrl
     }
@@ -107,7 +108,7 @@ export async function writeLegacyFromConnections(state: StoredDatabase, plain: S
             const legacy = isRecord(stateModel) ? stateModel : {}
             const copy = {
                 ...model,
-                key: conn ? await connectionKey(conn) : str(legacy.key),
+                key: conn ? keys.keyOf(conn) : str(legacy.key),
                 url: conn ? conn.url ?? '' : str(legacy.url),
             }
             delete copy.connectionId
@@ -132,7 +133,7 @@ export async function writeLegacyFromConnections(state: StoredDatabase, plain: S
             // an empty one wipes it, so a field is written only when it carries a value or the preset already owned it.
             const computed = {
                 forceReplaceUrl: conn ? conn.url ?? '' : str(legacy.forceReplaceUrl),
-                proxyKey: conn ? await connectionKey(conn) : str(legacy.proxyKey),
+                proxyKey: conn ? keys.keyOf(conn) : str(legacy.proxyKey),
                 openAIKey: '',
             }
             for (const field of ['forceReplaceUrl', 'proxyKey', 'openAIKey'] as const) {

@@ -11,7 +11,7 @@
     import { PlusIcon, TrashIcon, ArrowUp, ArrowDown } from "@lucide/svelte";
     import type { LLMFlags, LLMFormat, LLMTokenizer } from "src/ts/model/types";
     import { v4 } from "uuid";
-    import { customModelUrlValue, setCustomModelUrl, setSlotKey, slotEditorValue } from "src/ts/connections/slotEditor";
+    import { customModelUrlValue, setCustomModelUrl, setSlotKey, slotEditorValue, slotKeyTemporarilyUnavailable } from "src/ts/connections/slotEditor";
 
     const uid = $props.id();
     let openedModels = $state(new Set<string>());
@@ -135,7 +135,7 @@
                 <OptionInput value="18">OpenAIResponseAPI</OptionInput>
             </SelectInput>
             <span class="text-textcolor" id="{uid}-key-{index}">{language.proxyAPIKey}</span>
-            <KeyListInput labelId="{uid}-key-{index}" size={"sm"} bind:value={() => slotEditorValue(DBState.db, `customModels:${model.id}`), (v) => { void setSlotKey(DBState.db, `customModels:${model.id}`, v) }}/>
+            <KeyListInput labelId="{uid}-key-{index}" size={"sm"} unavailable={slotKeyTemporarilyUnavailable(DBState.db, `customModels:${model.id}`)} bind:value={() => slotEditorValue(DBState.db, `customModels:${model.id}`), (v) => { void setSlotKey(DBState.db, `customModels:${model.id}`, v) }}/>
             <span class="text-textcolor" id="{uid}-params-{index}">{language.additionalParams}</span>
             <TextAreaInput labelId="{uid}-params-{index}" bind:value={DBState.db.customModels[index].params} placeholder={`temperature=0.7
     max_tokens=2000

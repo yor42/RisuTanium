@@ -237,7 +237,7 @@ async function prepare(page: Page, deps: Partial<RtbPrepareDeps> = {}): Promise<
 
 function readyOf(end: RtbPrepareEnd) {
     if (end.kind !== 'ready') {
-        throw new Error(`the preparation ended ${end.outcome} ${end.cause}`)
+        throw new Error(`the preparation ended ${end.kind === 'ended' ? `${end.outcome} ${end.cause}` : end.kind}`)
     }
     return end
 }

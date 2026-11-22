@@ -170,7 +170,7 @@ async function restoreOf(bytes: Uint8Array, calls: Calls) {
 
 function okOf(end: Awaited<ReturnType<typeof restoreOf>>) {
     if (end.kind !== 'ok') {
-        throw new Error(`the restore ended ${end.outcome} (${end.cause})`)
+        throw new Error(`the restore ended ${end.kind === 'ended' ? `${end.outcome} (${end.cause})` : end.kind}`)
     }
     return end.verified
 }
@@ -502,7 +502,7 @@ describe('S.1: a damaged chunk met by the side restore after the commit (T33)', 
         const notices: string[] = []
         const releases: boolean[] = []
         const log: string[] = []
-        const landed: RtbFinishLanded = { flushed: true, facts: { assetsWritten: 0, assetsPresent: 0, skippedAssets: [], inlays: { written: 0, skipped: [], changed: false } } }
+        const landed: RtbFinishLanded = { flushed: true, facts: { assetsWritten: 0, assetsPresent: 0, skippedAssets: [], inlays: { written: 0, skipped: [], changed: false } }, staged: null }
         await finishRtbRestore(plan, { release: async (keep) => { releases.push(keep) } }, landed, {
             sideBackends: fakes.backends,
             notice: async (text) => { notices.push(text) },

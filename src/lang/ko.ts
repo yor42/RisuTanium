@@ -350,6 +350,9 @@ export const languageKorean = {
     settingsShellDataScopePartial: "캐릭터 에셋 제외",
     settingsShellDataScopePartialHint: "데이터, 프로필 이미지, 사용자 및 페르소나 아이콘, 배경, 폴더 및 프리셋 이미지를 저장합니다. 감정 이미지, 추가 에셋, 음성 파일, 채팅 이미지와 기타 미디어는 저장되지 않습니다.",
     settingsShellDataScopeBinOnly: ".bin 백업에서만 캐릭터 에셋을 제외할 수 있습니다.",
+    settingsShellDataScopeSettings: "설정만",
+    settingsShellDataScopeSettingsHint: "설정, 봇 프리셋, 메모리 프리셋과 인터페이스 설정을 저장합니다. API 키, 연결, 채팅, 캐릭터, 모듈 및 그 외 데이터는 저장하지 않으므로 전체 백업을 대체할 수 없습니다.",
+    settingsShellDataScopeRtbOnly: ".rtb 백업에서만 설정만 따로 저장할 수 있습니다.",
     settingsShellDataStart: "시작",
     settingsShellDataEncrypt: "비밀번호로 암호화",
     settingsShellDataEncryptAgain: "비밀번호를 다시 입력하세요",
@@ -730,6 +733,7 @@ export const languageKorean = {
     backupTaskTitle: "백업 저장 중",
     backupTaskPartialTitle: "부분 백업 저장 중",
     rtbExportTaskTitle: ".rtb 백업 저장 중",
+    rtbSettingsExportTaskTitle: "설정 전용 .rtb 백업 저장 중",
     backupStepCollect: "데이터 수집",
     backupStepSizes: "크기 확인",
     backupStepInlays: "채팅 이미지, 영상, 오디오 추가",
@@ -913,9 +917,8 @@ export const languageKorean = {
         "hordeNotPossible": "응답을 생성할 수 없습니다.",
         "hordeNotPossibleWith": "응답을 생성할 수 없습니다: {message}",
         "hordeNoGenerations": "작업이 완료되었지만 생성된 결과가 없습니다",
-        "webCryptoUnavailable": "이 환경에서는 Web Crypto API를 사용할 수 없습니다. HTTPS를 사용하고 있는지 확인해 주세요.",
         "vertexInvalidClientEmail": "Vertex 클라이언트 이메일이 올바르지 않습니다. gserviceaccount.com이 포함되어야 합니다.",
-        "vertexInvalidPrivateKey": "Vertex 개인 키가 올바르지 않습니다. 올바른 키 마커가 포함되어야 합니다.",
+        "vertexInvalidPrivateKey": "Vertex 개인 키가 올바르지 않습니다. 서비스 계정 JSON의 private_key 값 전체를 BEGIN 및 END PRIVATE KEY 줄까지 포함해서 붙여넣어 주세요.",
         "googleTokenRefreshFailed": "Google 액세스 토큰 갱신에 실패했습니다: {error}",
         "googleNoAccessToken": "응답에 Google 액세스 토큰이 없습니다",
         "googleEmptyResponse": "빈 응답을 받았습니다: {response}",
@@ -3642,6 +3645,7 @@ export const languageKorean = {
         `${items.length}개 항목이 4 GiB 이상이라 백업 파일의 항목 하나에 담을 수 있는 크기를 넘으므로 해당 내용은 백업에 들어 있지 않습니다(캐릭터에는 자리 표시자만 남습니다):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `이 백업의 항목 ${count}개가 100 MiB보다 큽니다. 업스트림 RisuAI Node 서버는 이만큼 큰 항목을 복원할 수 없어, 이 백업을 그곳에서 복원하면 해당 항목을 건너뜁니다. 이 앱과 다른 플랫폼에서는 복원됩니다. 해당 항목을 포함하여 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupSizesUncheckedConfirm": '이 백업에 포함된 에셋의 크기를 확인하지 못했습니다. 100 MiB보다 큰 항목은 업스트림 RisuAI Node 서버에서 복원할 수 없는데, 그런 항목이 이름이 표시되지 않은 채 포함되어 있을 수 있으며, 4 GiB 이상인 항목이 있으면 백업이 도중에 중단됩니다. 그래도 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `작업 프리셋 ${count}개는 이 기기에만 저장되어 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다. 작업 프리셋은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -4102,7 +4106,11 @@ export const languageKorean = {
         `RisuTanium이 프리셋 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 프리셋 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 프리셋은 유지됩니다.`,
     saveLoadoutsHeldNotice: (name: string) =>
         `RisuTanium이 로드아웃 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 로드아웃 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 로드아웃은 유지됩니다.`,
+    savePluginsHeldNotice: (name: string) =>
+        `RisuTanium이 플러그인 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 플러그인 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 플러그인은 유지됩니다.`,
     saveItemModuleLabel: (name: string) => `모듈 "${name}"`,
+    saveItemWorkspaceLabel: (name: string) => `워크스페이스 "${name}"`,
+    saveItemWorkspaceFileLabel: (path: string) => `워크스페이스 파일 "${path}"`,
     saveItemSettingLabel: (field: string) => `설정 "${field}"`,
     saveItemPluginDataLabel: (key: string) => `플러그인 데이터 "${key}"`,
     saveItemStaticsLabel: "사용 통계",
@@ -4111,6 +4119,18 @@ export const languageKorean = {
         `RisuTanium이 유효하지 않은 데이터인 페르소나 ${count}개를 제외했습니다. 플러그인이 기록했을 수 있습니다.`,
     personaListEmptyNotice: `페르소나 목록에 사용할 수 있는 페르소나가 남아 있지 않아, RisuTanium이 사용자 이름과 아이콘으로 페르소나를 하나 추가하고 선택했습니다.`,
     personaSelectionMissingNotice: `선택한 페르소나가 페르소나 목록에 없어, RisuTanium이 현재 사용자 이름, 아이콘, 페르소나 프롬프트, 노트로 페르소나를 하나 추가하고 선택했습니다.`,
+    vaultKeepPlainNotice: `RisuTanium이 이 기기의 보안 저장소로 연결 키를 보호하지 못해, 지금은 키가 일반 텍스트로 저장되어 있습니다. 앱을 시작할 때마다, 그리고 키를 바꿀 때마다 다시 시도합니다.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `이 기기에서 다음 항목의 저장된 키를 읽을 수 없습니다: ${names}. 각 항목의 키를 다시 입력하세요. 다시 입력하기 전까지 이전에 저장된 키는 그대로 유지됩니다.`,
+    vaultNeedsReentryLabel: `키 다시 입력 필요`,
+    vaultKeyTemporarilyUnavailable: `저장된 키를 지금은 읽을 수 없습니다. 잠시 후 다시 시도하세요.`,
+    vaultKeyTemporarilyUnavailableHint: `키를 일시적으로 사용할 수 없습니다. 복호화되면 표시됩니다.`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `이 기기에서 다음 항목의 저장된 키를 읽을 수 없습니다: ${names}. 백업에는 해당 키가 빈 값으로 담기며, 이 기기에 저장된 키는 그대로 유지됩니다. 해당 키 없이 백업을 만드시겠습니까?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `다음 항목의 저장된 키를 지금은 읽을 수 없어 백업에 해당 키가 빈 값으로 담깁니다: ${names}. 해당 키 없이 백업을 만드시겠습니까?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `백업을 쓰는 동안 다음 연결 키를 읽을 수 없어 빈 값으로 담겼습니다: ${names}.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `RisuTanium이 캐릭터 목록을 복구한 뒤 백업을 불러왔습니다: ${[
             dropped > 0 ? `캐릭터가 아닌 항목 ${dropped}개를 제외했습니다` : '',
@@ -4228,7 +4248,12 @@ export const languageKorean = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- 백업을 만들 때 제외된 데이터: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- 이 기기에 보관 중이며 복원되지 않은 데이터: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- 이 기기에 보관 중이며 완전히 기록하지 못한 데이터: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "Iris 대화", googleSearch: "Google 검색 키", hypaVector: "기억 검색 데이터", pluginSafe: "플러그인 데이터", pluginSafeLs: "플러그인 설정", pluginPermissions: "플러그인 권한", mcpToolCalls: "MCP 도구 호출", uiPrefs: "인터페이스 설정" },
+    rtbRestoreSideNames: { iris: "Iris 대화", googleSearch: "Google 검색 키", hypaVector: "기억 검색 데이터", pluginSafe: "플러그인 데이터", pluginSafeLs: "플러그인 설정", pluginPermissions: "플러그인 권한", mcpToolCalls: "MCP 도구 호출", uiPrefs: "인터페이스 설정", connectionKeys: "연결 키" },
+    rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
+        `이 백업의 설정을 복원할까요? 설정 ${fields}개, 봇 프리셋 ${presets}개, 메모리 프리셋 ${memoryPresets}개, 새 번역기 프리셋 ${translatorPresets}개가 이 기기에 병합됩니다. 백업에 없는 설정은 그대로 유지됩니다. 캐릭터, 채팅, 키, 연결은 건드리지 않습니다.${dropped > 0 ? ` 백업 안의 값 ${dropped}개는 사용할 수 없어 건너뜁니다.` : ''} 이후 앱이 다시 로드됩니다.`,
+    rtbRestoreSettingsDone: "설정을 복원했습니다. 앱을 지금 다시 로드합니다.",
+    rtbRestoreSettingsNotSaved: "설정을 적용했지만 아직 저장하지 못했습니다. 나중에 저장되지만 인터페이스 설정은 적용되지 않았습니다. 적용하려면 백업을 다시 복원하세요.",
+    rtbRestoreSettingsAtStart: "이 백업에는 설정만 들어 있어 새 프로필을 설정할 수 없습니다. 복원된 것은 없습니다. 먼저 여기서 전체 백업을 복원한 뒤 데이터 페이지에서 설정 백업을 복원하세요.",
     backupFileNotRecognized: "이 파일은 이 앱에서 복원할 수 있는 백업(업스트림 RisuAI .bin 또는 RisuTanium .rtb 백업)이 아니거나, 끝부분이 잘려 있습니다. 아무것도 복원되지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
     coldStorageCleanupDateUnknown: "날짜 알 수 없음",
     coldStorageCleanupKeptConfirm: (dates: string) =>
