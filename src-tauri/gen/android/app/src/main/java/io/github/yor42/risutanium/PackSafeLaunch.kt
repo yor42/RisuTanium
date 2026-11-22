@@ -4,7 +4,7 @@ import android.content.Intent
 
 // The launcher shortcut "Start without theme pack". Plain Kotlin besides the Intent flag constants,
 // which the compiler inlines, so the rules run in JVM tests; PackSafeLaunchActivity and MainActivity
-// apply them. MainActivity is exported, so any app can send the action: the effect is the same as the
+// apply them. MainActivity and the trampoline are exported, so any app can send the action: the effect is the same as the
 // shortcut's (the page turns the theme pack off for this session, nothing is written), and the page
 // validates the answer again.
 

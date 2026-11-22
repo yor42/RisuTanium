@@ -138,6 +138,7 @@ describe('TA2-3: the shortcut configuration (static, over the repository files)'
         expect(trampoline).toContain('android:taskAffinity=""')
         expect(trampoline).toContain('android:excludeFromRecents="true"')
         expect(trampoline).toContain('android:noHistory="true"')
+        expect(trampoline).toContain('android:exported="true"')
         const main = manifest.slice(manifest.indexOf('android:name=".MainActivity"'), manifest.indexOf('</activity>'))
         expect(main).toContain('<meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />')
     })
