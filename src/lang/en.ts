@@ -117,6 +117,8 @@ export const languageEnglish = {
     chatShellFlipRefusedDraft: 'Send or clear the message you are typing before switching the chat screen.',
     chatShellFlipRefusedUploading: 'A file is still uploading. Try again when it finishes.',
     chatShellPreviewLabel: 'New chat screen (preview)',
+    uiSoundsLabel: 'UI sounds',
+    uiSoundsDesc: 'Short sounds when you send, get a reply, hit an error, see a notice, undo, or flip a setting.',
     chatShellOnThisDevice: 'On this device',
     chatShellOnThisDeviceHelp: 'Other devices keep their own setting.',
     settingsShellPreviewLabel: 'New Settings screen (preview)',
