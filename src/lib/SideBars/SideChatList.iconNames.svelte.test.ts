@@ -118,9 +118,9 @@ afterEach(async () => {
 const folderActions = (target: HTMLElement) =>
     Array.from(target.querySelectorAll('[data-risu-chat-folder-idx="0"] > button > div > div[role="button"]'))
 const folderChatActions = (target: HTMLElement) =>
-    Array.from(target.querySelectorAll('[data-risu-chat-folder-idx="0"] [data-risu-chat-idx="0"] div[role="button"]'))
+    Array.from(target.querySelectorAll('[data-risu-chat-folder-idx="0"] [data-risu-chat-idx="0"] div[role="button"]:not([data-part="reply-writing-badge"])'))
 const looseChatActions = (target: HTMLElement) =>
-    Array.from(target.querySelectorAll('[data-risu-chat-idx="1"] div[role="button"]'))
+    Array.from(target.querySelectorAll('[data-risu-chat-idx="1"] div[role="button"]:not([data-part="reply-writing-badge"])'))
 const bottomButtons = (target: HTMLElement) =>
     Array.from(target.querySelectorAll('div.border-t.border-selected button'))
 
@@ -139,6 +139,7 @@ describe('SideChatList accessible names', () => {
         const chatNames = [language.chatOptions, language.othersUi.editMode, language.chatShellExportChat, language.chatShellDeleteChat]
         expect(folderChatActions(target).map(controlName)).toEqual(chatNames)
         expect(looseChatActions(target).map(controlName)).toEqual(chatNames)
+        expect(controlName(target.querySelector('[data-risu-chat-idx="1"] [data-part="reply-writing-badge"]')!)).toBe(language.chatStopReplyFor('loose chat'))
         expect(bottomButtons(target).map(controlName)).toEqual([
             language.chatShellExportAllChats, language.chatShellImportChat, language.othersUi.editMode,
             language.chatShellBranches, language.bookmarks, language.chatShellNewFolder,

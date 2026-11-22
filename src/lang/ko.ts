@@ -532,6 +532,7 @@ export const languageKorean = {
     chatWritingBadge: "답변 작성 중",
     chatNewReplyDot: "새 답변",
     chatReplyErrorDot: "답변이 끝나지 않았습니다",
+    chatStopReplyFor: (name: string) => `답변 중지: ${name}`,
     replyNotificationsSetting: "답변 알림",
     replyNotificationsHelp: "보고 있지 않은 채팅에서 답변이 끝나면 알림을 받습니다.",
     replyNotificationsBlocked: "Android 설정에서 RisuTanium의 알림이 꺼져 있습니다. 스위치를 눌러 설정을 여세요.",

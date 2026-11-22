@@ -532,6 +532,7 @@ export const languageGerman = {
     "chatWritingBadge": "Antwort wird geschrieben",
     "chatNewReplyDot": "Neue Antwort",
     "chatReplyErrorDot": "Antwort nicht abgeschlossen",
+    "chatStopReplyFor": (name: string) => `Antwort für ${name} stoppen`,
     "replyNotificationsSetting": "Antwortbenachrichtigungen",
     "replyNotificationsHelp": "Erhalte eine Benachrichtigung, wenn in einem Chat, den du gerade nicht ansiehst, eine Antwort fertig ist.",
     "replyNotificationsBlocked": "Benachrichtigungen für RisuTanium sind in den Android-Einstellungen ausgeschaltet. Tippe auf den Schalter, um sie zu öffnen.",

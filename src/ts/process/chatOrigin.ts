@@ -1085,6 +1085,22 @@ export function isGeneratingIn(target: { chaId: string, chatId?: string }): bool
 }
 
 /**
+ * The distinct chat ids of the `reply` sends registered as owned by `chaId`
+ * (same owner-level match as `isGeneratingIn`: a group's turn lists for the
+ * group, never for the member it speaks as). Reactive.
+ */
+export function generatingChatIdsIn(chaId: string): string[] {
+    readReplyVersion()
+    const ids = new Set<string>()
+    for (const registration of registrations) {
+        if (registration.kind === 'reply' && ownedBy(registration, { chaId })) {
+            ids.add(registration.chatId)
+        }
+    }
+    return [...ids]
+}
+
+/**
  * True while a `reply` or a `preview` send is registered as owned by `target`.
  * Reactive; same owner-level match as `isGeneratingIn`.
  */
@@ -1118,6 +1134,17 @@ export function stopWorkIn(target: { chaId: string, chatId?: string }): void {
         } catch (error) {
             console.error(error)
         }
+    }
+}
+
+/**
+ * Stops every chat of `chaId` that is writing a reply, each by its own chat id
+ * through `stopWorkIn`, so it stays correct with several chats writing at once
+ * and never touches the chat on screen.
+ */
+export function stopRepliesOf(chaId: string): void {
+    for (const chatId of generatingChatIdsIn(chaId)) {
+        stopWorkIn({ chaId, chatId })
     }
 }
 

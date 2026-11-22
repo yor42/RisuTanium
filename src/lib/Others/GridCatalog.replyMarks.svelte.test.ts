@@ -243,8 +243,13 @@ function partsOfTile(root: HTMLElement, name: string): string[] {
     return Array.from(avatar.parentElement.querySelectorAll('[data-part^="reply-"]')).map((el) => el.getAttribute('data-part') ?? '')
 }
 
-function startWriting(chaId: string, chatId: string): WorkHandle {
-    const handle = registerWork({ chaId, chatId }, undefined, 'reply')
+/** The Stop buttons the writing badge became, by accessible name, anywhere under `root`. */
+function stopButtons(root: HTMLElement, name: string): HTMLButtonElement[] {
+    return Array.from(root.querySelectorAll<HTMLButtonElement>('button[data-part="reply-writing-badge"]')).filter((b) => b.getAttribute('aria-label') === language.chatStopReplyFor(name))
+}
+
+function startWriting(chaId: string, chatId: string, stop?: () => void): WorkHandle {
+    const handle = registerWork({ chaId, chatId }, stop, 'reply')
     handles.push(handle)
     flushSync()
     return handle
@@ -269,7 +274,9 @@ describe('the Simple and List rows (T20)', () => {
         expect(partsOfRow(root, 'Ann')).toEqual(['reply-new-dot'])
         expect(partsOfRow(root, 'Bob')).toEqual(['reply-error-dot'])
         expect(partsOfRow(root, 'Cy')).toEqual([])
-        expect(partsOfRow(root, 'Dee')).toEqual(['reply-writing-badge'])
+        expect(partsOfRow(root, 'Dee')).toEqual([])
+        expect(stopButtons(root, 'Dee').length).toBe(1)
+        expect(stopButtons(root, 'Ann').length).toBe(0)
     })
 
     test('reproducer (T20): the indicators follow the field and the registry after the mount', () => {
@@ -282,13 +289,46 @@ describe('the Simple and List rows (T20)', () => {
         expect(partsOfRow(root, 'Ann')).toEqual(['reply-new-dot'])
 
         const handle = startWriting('a', 'a-chat-0')
-        expect(partsOfRow(root, 'Ann')).toEqual(['reply-writing-badge', 'reply-new-dot'])
+        expect(partsOfRow(root, 'Ann')).toEqual(['reply-new-dot'])
+        expect(stopButtons(root, 'Ann').length).toBe(1)
 
         handle.end()
         flushSync()
+        expect(stopButtons(root, 'Ann').length).toBe(0)
         delete DBState.db.characters[0].chats[0].unseenReply
         flushSync()
         expect(partsOfRow(root, 'Ann')).toEqual([])
+    })
+
+    test.each([['Simple', null], ['List', language.list]] as Array<[string, string | null]>)('reproducer (#449): %s: the badge stops every writing chat of its character and no other, outside the row\'s open handler and name button', (_view, label) => {
+        DBState.db = buildDb([
+            makeCharacter('x', 'Xan', [undefined, undefined]),
+            makeCharacter('y', 'Yin'),
+        ])
+        const root = mountComponent()
+        if (label) {
+            openView(root, label)
+        }
+        const x1 = vi.fn()
+        const x2 = vi.fn()
+        const y1 = vi.fn()
+        startWriting('x', 'x-chat-0', x1)
+        startWriting('x', 'x-chat-1', x2)
+        startWriting('y', 'y-chat-0', y1)
+        let reached = false
+        document.body.addEventListener('click', () => { reached = true }, { once: true })
+
+        const [stop] = stopButtons(root, 'Xan')
+        expect(stopButtons(root, 'Xan').length).toBe(1)
+        expect(stop.closest('[data-part="character-name-row"]')).toBeNull()
+        expect(stop.closest('button:not([data-part="reply-writing-badge"])')).toBeNull()
+        stop.click()
+        flushSync()
+
+        expect(x1).toHaveBeenCalledTimes(1)
+        expect(x2).toHaveBeenCalledTimes(1)
+        expect(y1).not.toHaveBeenCalled()
+        expect(reached).toBe(false)
     })
 
     test('reproducer (T20): across a character\'s chats the red dot wins over the blue one', () => {
@@ -305,7 +345,8 @@ describe('the Simple and List rows (T20)', () => {
         expect(root.querySelector('[data-part="reply-new-dot"]')?.getAttribute('aria-label')).toBe(language.chatNewReplyDot)
         expect(root.querySelector('[data-part="reply-error-dot"]')?.getAttribute('aria-label')).toBe(language.chatReplyErrorDot)
         const badge = root.querySelector('[data-part="reply-writing-badge"]')
-        expect(badge?.getAttribute('aria-label')).toBe(language.chatWritingBadge)
+        expect(badge?.tagName).toBe('BUTTON')
+        expect(badge?.getAttribute('aria-label')).toBe(language.chatStopReplyFor('Bob'))
         expect(badge?.hasAttribute('aria-busy')).toBe(false)
     })
 
@@ -339,6 +380,32 @@ describe('the Grid tile (T20)', () => {
         expect(partsOfTile(root, 'Bob')).toEqual(['reply-error-dot'])
         expect(partsOfTile(root, 'Cy')).toEqual([])
         expect(partsOfTile(root, 'Dee')).toEqual(['reply-writing-badge'])
+    })
+
+    test('reproducer (#449): the tile badge stops every writing chat of its character and no other, without picking the tile', () => {
+        DBState.db = buildDb([
+            makeCharacter('x', 'Xan', [undefined, undefined]),
+            makeCharacter('y', 'Yin'),
+        ])
+        const root = mountComponent()
+        openView(root, language.grid)
+        const x1 = vi.fn()
+        const x2 = vi.fn()
+        const y1 = vi.fn()
+        startWriting('x', 'x-chat-0', x1)
+        startWriting('x', 'x-chat-1', x2)
+        startWriting('y', 'y-chat-0', y1)
+        let reached = false
+        document.body.addEventListener('click', () => { reached = true }, { once: true })
+
+        expect(stopButtons(root, 'Xan').length).toBe(1)
+        stopButtons(root, 'Xan')[0].click()
+        flushSync()
+
+        expect(x1).toHaveBeenCalledTimes(1)
+        expect(x2).toHaveBeenCalledTimes(1)
+        expect(y1).not.toHaveBeenCalled()
+        expect(reached).toBe(false)
     })
 
     test('reproducer (T20): the tile shows red if any chat is red, else blue if any is blue, and follows a clear', () => {
