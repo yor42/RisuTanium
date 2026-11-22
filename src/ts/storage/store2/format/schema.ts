@@ -70,7 +70,7 @@ export const KNOWN_FIELDS = {
     commitPin: ['key', 'reason'],
     commitStaging: ['owner', 'prefix', 'startedAt', 'label'],
     manifest: ['fmt', 'req', 'seq', 'createdAt', 'shardCount', 'shards', 'fixed'],
-    manifestFixed: ['config', 'configAl', 'il', 'statics', 'order', 'loadouts', 'moduleIndex', 'moduleBuckets', 'presets', 'taskPresets', 'plugins', 'pluginStorage', 'workspaces', 'legacyKeep'],
+    manifestFixed: ['config', 'configAl', 'il', 'statics', 'order', 'loadouts', 'moduleIndex', 'moduleBuckets', 'presets', 'taskPresets', 'plugins', 'pluginStorage', 'workspaces', 'chatDrafts', 'legacyKeep'],
     manifestPluginStorage: ['buckets', 'refs'],
     manifestLegacyKeep: ['unit', 'v', 'files'],
     manifestLegacyKeepFile: ['key', 'status'],
@@ -409,6 +409,9 @@ function readManifest(raw: JsonObject): Manifest {
         if (workspaces.length > 0) {
             fixed.workspaces = workspaces
         }
+    }
+    if (fixedRaw.chatDrafts !== undefined) {
+        fixed.chatDrafts = readTailedRef(fixedRaw.chatDrafts, 'fixed.chatDrafts')
     }
     return {
         ...extras(raw, KNOWN_FIELDS.manifest),
@@ -837,7 +840,7 @@ export function parseWorkspace(value: JsonValue): Parsed<WorkspaceRecord> {
     })
 }
 
-/** Types 4, 5, 6, 9, 11 to 14, 16 to 18, 26, 29: a plain object with a numeric `v` this build knows. */
+/** Types 4, 5, 6, 9, 11 to 14, 16 to 18, 26, 29, 30: a plain object with a numeric `v` this build knows. */
 export function parseContentBody(value: JsonValue): Parsed<ContentBody> {
     return plain(() => {
         const raw = obj(value, 'unit body')

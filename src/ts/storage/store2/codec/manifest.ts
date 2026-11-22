@@ -1,4 +1,4 @@
-import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, REQ_MODULE_BUCKETS, REQ_TASK_PRESETS, REQ_WORKSPACES, unionReq, type ListRef, type Manifest, type Ref } from '../format'
+import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, REQ_CHAT_DRAFTS, REQ_MODULE_BUCKETS, REQ_TASK_PRESETS, REQ_WORKSPACES, unionReq, type ListRef, type Manifest, type Ref } from '../format'
 import { sameJsonValue } from './normalize'
 import { PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 
@@ -34,6 +34,8 @@ export interface ManifestParts {
     pluginStorageRefs: Ref[]
     /** One Ref per utility workspace record; a non-empty list adds the `utility-workspaces` token, which a later write never lowers. */
     workspaces?: Ref[]
+    /** The type 30 unit of unsent message edits and hint flags; its presence adds the `chat-drafts` token, which a later write never lowers. */
+    chatDrafts?: Ref
 }
 
 /**
@@ -87,6 +89,7 @@ export function buildManifest(parts: ManifestParts): Manifest {
         req: unionReq(
             MANIFEST_REQ, parts.chatAlt ? [REQ_CHAT_ALT] : [], hasTaskPresets ? [REQ_TASK_PRESETS] : [],
             parts.moduleBuckets?.length ? [REQ_MODULE_BUCKETS] : [], hasWorkspaces ? [REQ_WORKSPACES] : [],
+            parts.chatDrafts !== undefined ? [REQ_CHAT_DRAFTS] : [],
         ),
         seq: parts.seq,
         createdAt: parts.createdAt,
@@ -114,6 +117,9 @@ export function buildManifest(parts: ManifestParts): Manifest {
     }
     if (hasWorkspaces && parts.workspaces !== undefined) {
         manifest.fixed.workspaces = parts.workspaces
+    }
+    if (parts.chatDrafts !== undefined) {
+        manifest.fixed.chatDrafts = parts.chatDrafts
     }
     return manifest
 }

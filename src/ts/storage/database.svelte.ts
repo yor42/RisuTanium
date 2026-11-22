@@ -926,6 +926,11 @@ export interface Database{
      * A file read back with a damaged unit has no `text` and keeps its recorded `size`.
      */
     utilityWorkspaces?:UtilityWorkspace[]
+    /**
+     * Unsent message edits and the long-chat hint's "already shown" flags, one entry per chat, kept as one whole store2 unit.
+     * Absent when there are none; a fork-only field that no `.bin` carries.
+     */
+    chatDrafts?:ChatDraftEntry[]
     /** Installed theme packs, read only through `readPackRecord`. Absent until the first install; a fork-only field that no `.bin` carries. */
     themePacks?:unknown[]
     /** The active theme pack's record id, or a built-in theme's `builtin:<slug>`. Absent until a pack is activated; fork-only, never in a `.bin`. */
@@ -1733,6 +1738,28 @@ export interface UtilityWorkspace{
     name:string
     createdAt:number
     files:UtilityWorkspaceFile[]
+}
+
+/**
+ * One unsent message edit. `m` is `id:<message chatId>` or `idx:<message index>`; `bh` is the first 128 bits of SHA-256, as
+ * 32 lowercase hex characters, over the UTF-8 bytes of the message text the edit started from; `at` is the capture time
+ * in milliseconds. Open to extra keys: a field this build does not know is kept.
+ */
+export interface PersistedEditDraft{
+    m:string
+    text:string
+    bh:string
+    at:number
+    [extra:string]:unknown
+}
+
+/** One chat's unsent edits and hint flag, keyed by the character's `chaId` and the chat's id. Open to extra keys. */
+export interface ChatDraftEntry{
+    cha:string
+    chat:string
+    shown?:true
+    drafts?:PersistedEditDraft[]
+    [extra:string]:unknown
 }
 
 export interface botPreset{

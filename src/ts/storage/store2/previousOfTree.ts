@@ -232,6 +232,7 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
     register('il:config', UNIT_TYPE.inlayList, fixed.il)
     const staticsBytes = register('statics', UNIT_TYPE.statics, fixed.statics)
     const loadoutsBytes = register('loadouts', UNIT_TYPE.loadouts, fixed.loadouts)
+    const chatDraftsBytes = fixed.chatDrafts === undefined ? undefined : register('chatDrafts', UNIT_TYPE.chatDrafts, fixed.chatDrafts)
     const presetBytes = fixed.presets.map((ref, index) => register(`preset:${index}`, UNIT_TYPE.preset, ref))
     fixed.taskPresets?.forEach((ref, index) => register(`taskPreset:${index}`, UNIT_TYPE.taskPreset, ref))
 
@@ -309,6 +310,15 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
         const items = (loadouts.value.body as ContentBody).items
         if (Array.isArray(items)) {
             objects.loadouts = items
+        }
+    }
+    // The draft unit is fail-open: a body that is missing or does not parse leaves it unknown, and a later draft fault then
+    // falls back to the previous unit itself.
+    const chatDrafts = chatDraftsBytes === undefined ? null : readUnit(chatDraftsBytes, UNIT_TYPE.chatDrafts)
+    if (chatDrafts !== null && (chatDrafts.status === 'ok' || chatDrafts.status === 'stale')) {
+        const chats = (chatDrafts.value.body as ContentBody).chats
+        if (Array.isArray(chats)) {
+            objects.chatDrafts = chats
         }
     }
     const presets: JsonObject[] = []
