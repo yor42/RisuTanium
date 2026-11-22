@@ -2674,7 +2674,6 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     let nativeReplyGrant: ReturnType<typeof issueNativeReplyGrant> | undefined = undefined
     if(nativeReplyEligible({
         androidTransport: isAndroidTransport(),
-        streaming: DBState.db.useStreaming,
         singleCharacter: nowChatroom.type === 'character',
         isContinue: arg.continue === true,
         isPreview: arg.preview === true,

@@ -2557,6 +2557,16 @@ interface StreamedFetchErrorData {
 }
 
 /**
+ * The event of an owned request the native side stopped: it carries the record's stamp and ends no pump by itself.
+ * @interface
+ */
+interface StreamedFetchStoppedData {
+    type: 'stopped',
+    id: string,
+    reply?: unknown
+}
+
+/**
  * The first event of an owned request: whether the native side opened the reply's record.
  * @interface
  */
@@ -2572,7 +2582,7 @@ interface StreamedFetchOwnerData {
  * Type representing a streamed fetch chunk.
  * @typedef {StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData | StreamedFetchOwnerData} StreamedFetchChunk
  */
-type StreamedFetchChunk = StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData | StreamedFetchOwnerData
+type StreamedFetchChunk = StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData | StreamedFetchOwnerData | StreamedFetchStoppedData
 
 /**
  * Interface representing a streamed fetch plugin.
@@ -2987,6 +2997,7 @@ export async function fetchNative(url: string, arg: {
             const stamp = parseReplyStamp(value)
             if (probe && stamp !== null) {
                 probe.stamp = stamp
+                probe.onStamp?.(stamp)
             }
         }
         // True once a terminal signal (end, error event or failed command) arrived; the first one wins.
@@ -3187,6 +3198,10 @@ export async function fetchNative(url: string, arg: {
                                 if (data.type === 'error') {
                                     noteStamp(data.reply)
                                     failNative(data.body)
+                                }
+                                // Only noted: the page's own abort ends the pump, as it does for an unowned stream.
+                                if (data.type === 'stopped') {
+                                    noteStamp(data.reply)
                                 }
                                 await Promise.resolve()
                                 continue
