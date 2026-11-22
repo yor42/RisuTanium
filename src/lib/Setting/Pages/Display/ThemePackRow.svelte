@@ -118,7 +118,7 @@
     }
 </script>
 
-<div class="flex flex-col" bind:this={root} data-part="theme-pack-row">
+<div class="flex flex-col" bind:this={root} data-part="theme-pack-row" data-part-critical>
     <span class="text-textcolor mt-4">{language.themePackRowTitle}</span>
     <p class="text-sm text-textcolor2 mt-1" data-part="theme-pack-help">{help}</p>
 
