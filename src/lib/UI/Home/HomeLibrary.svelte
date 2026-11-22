@@ -39,7 +39,6 @@
         border-color: transparent;
         border-radius: var(--home-control-radius);
         box-shadow: none;
-        color: var(--nexus-text-secondary);
     }
     :global(.home-library [data-part="library-views"] button:hover) {
         background: var(--nexus-surface-raised);
