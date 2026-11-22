@@ -1,7 +1,7 @@
-import { encodeReplyBlob, encodeStreamReplyBlob, REPLY_BLOB_PAGE_VERSION, type ReplyBlobBase } from './blob'
+import { encodeReplyBlob, encodeStreamReplyBlob, REPLY_BLOB_PAGE_VERSION, type ReplyBlobBase, type StreamParseContext } from './blob'
 import { newNoticeToken } from './notice'
 import { holdInflight, noteBound } from './pageState'
-import type { OpenAIParseContext, OpenAIStreamParseContext } from '../process/request/openAI/chatBodyParse'
+import type { OpenAIParseContext } from '../process/request/openAI/chatBodyParse'
 
 /**
  * The right to own one reply's record. A send that qualifies is issued a grant; the request that is allowed to use it
@@ -79,7 +79,7 @@ export class NativeReplyGrant {
     static bindStream(
         grant: NativeReplyGrant,
         expectedKey: string,
-        parse: OpenAIStreamParseContext,
+        parse: StreamParseContext,
         usage: StreamUsageFacts,
     ): NativeReplyOwner | null {
         return NativeReplyGrant.#bindWith(grant, expectedKey, (base) => {
@@ -152,7 +152,7 @@ export function bindGrant(grant: unknown, parse: OpenAIParseContext): NativeRepl
 export function bindStreamGrant(
     grant: unknown,
     expectedKey: string | undefined,
-    parse: OpenAIStreamParseContext,
+    parse: StreamParseContext,
     usage: StreamUsageFacts,
 ): NativeReplyOwner | null {
     if (!NativeReplyGrant.is(grant) || expectedKey === undefined) {

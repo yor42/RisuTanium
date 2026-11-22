@@ -564,6 +564,19 @@ export function reformater(formated:OpenAIChat[],modelInfo:LLMModel|LLMFlags[]){
     return formated
 }
 
+/**
+ * Whether a request of this format may keep the send's native-reply grant. The OpenAI-compatible chat request owns a
+ * reply streamed or not; the other formats own only a streamed one, because a non-stream reply of theirs has no
+ * recorded reader (MC-3556). Every variant that reaches a shared request function under its own format (Anthropic
+ * legacy, Bedrock, NanoGPT, Mistral, Ollama) is refused, so a record is never replayed with another format's reader.
+ */
+export function formatOwnsReply(format:LLMFormat, streaming:boolean):boolean {
+    if(format === LLMFormat.OpenAICompatible){
+        return true
+    }
+    return streaming && format === LLMFormat.OpenAIResponseAPI
+}
+
 
 /**
  * A credential that is a `${NAME}` reference and cannot be read ends this model's attempt: no
@@ -643,9 +656,8 @@ async function requestChatDataByFormat(arg:requestDataArgument, model:ModelModeE
 
     targ.replyUsageModelKey = usageModelKey(targ.aiModel, db)
     const format = targ.modelInfo.format
-    // Only the OpenAI-compatible chat request owns a reply, streamed or not. The format is read after the reverse proxy
-    // chose its own.
-    if(format !== LLMFormat.OpenAICompatible){
+    // The format is read after the reverse proxy chose its own.
+    if(!formatOwnsReply(format, targ.useStreaming)){
         targ.nativeReplyGrant = undefined
     }
 
