@@ -657,6 +657,10 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
     if (before?.presets !== undefined) {
         objects.presets = before.presets
     }
+    // The record extras hold no Ref, so the rekey leaves them as the plan made them.
+    if (before?.workspaces !== undefined) {
+        objects.workspaces = before.workspaces
+    }
     return {
         manifestKey: units[units.length - 1].key,
         manifest,
@@ -757,7 +761,7 @@ export interface StreamedFinish {
      * without a content index; with one it can be larger by parents whose equal-content children took stored keys in
      * another claim order. */
     count: number
-    /** The units of the whole stream that took a stored key by content (none without a content index); they are in no `count`. */
+    /** The units of the whole stream that took a stored key by content (none without a content index), and the stored workspace-file units it carried by their own Ref; they are in no `count`. */
     reused: number
 }
 
@@ -840,7 +844,7 @@ export function createStreamedEncode(
                 // The keep of the base this attempt replaces, not the one the build planned with.
                 built.manifest.body = { ...built.manifest.body, fixed: { ...built.manifest.body.fixed, legacyKeep: context.legacyKeep } }
             }
-            return { built, count: written + built.units.length + 1, reused: encoder.sink.reused }
+            return { built, count: written + built.units.length + 1, reused: encoder.sink.reused + encoder.carried.size }
         },
     }
 }

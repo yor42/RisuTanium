@@ -264,11 +264,18 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
 
     // A workspace record is a parent like a plugin-storage bucket: one that was not read or does not parse is refused, and its
     // files are registered under the ids it names, each with a digest only when its bytes read and match its Ref.
+    const workspaceExtras = new Map<string, JsonObject>()
     for (const ref of fixed.workspaces ?? []) {
         const bytes = checkedBytes(source, ref)
         const parsed = bytes === undefined ? null : readUnit(bytes, UNIT_TYPE.workspace)
         const record = parsed !== null && (parsed.status === 'ok' || parsed.status === 'stale') ? parsed.value.body as WorkspaceRecord : undefined
         registerWorkspaceUnits(ref, record, register)
+        if (record !== undefined) {
+            const { v: _v, ws: _ws, files: _files, ...extras } = record
+            if (Object.keys(extras).length > 0) {
+                workspaceExtras.set(String(record.ws.id), extras as JsonObject)
+            }
+        }
     }
 
     const handles = moduleHandles(moduleIndex)
@@ -288,6 +295,9 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
     const entities = entityIdsOf(order, entries)
 
     const objects: PreviousObjects = { manifest, shards, moduleIndex, order }
+    if (workspaceExtras.size > 0) {
+        objects.workspaces = workspaceExtras
+    }
     // The statics body and the preset bodies are kept only when every unit was read and parses: a partial list is no base.
     const statics = staticsBytes === undefined ? null : readUnit(staticsBytes, UNIT_TYPE.statics)
     if (statics !== null && (statics.status === 'ok' || statics.status === 'stale')) {

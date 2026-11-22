@@ -280,8 +280,8 @@ describe.each<[Damage]>([['flip'], ['missing']])('new behaviour: the fallback ta
         expect(result.items.map(item => item.key).sort()).toEqual([...damagedKeys].sort())
         for (const item of result.items) {
             expect(item.name).toBe('Leaf A')
-            if (item.kind === 'task-preset') {
-                throw new Error('A character fixture raised a task preset flag.')
+            if (item.kind === 'task-preset' || item.kind === 'workspace-file') {
+                throw new Error('A character fixture raised a task preset or workspace file flag.')
             }
             expect(item.chaId).toBe(A_CHA_ID)
             expect(item.why).toBe(how === 'flip' ? 'damaged' : 'missing')
@@ -407,5 +407,35 @@ describe('new behaviour: the flags drive the fallback and nothing else does', ()
         expect(first.data).toBe(`[Cold storage data could not be loaded. Key: ${world.keys.xChunks[0]}]`)
         expect(matchColdStorageLoadErrorKey(first.data)).toBe(world.keys.xChunks[0])
         expect(first).toEqual({ time: NOW, data: first.data, role: 'char' })
+    })
+})
+
+describe('new behaviour: workspace files in the fallback', () => {
+    test('only the flagged workspace-file keys are placeholders; task-preset and character flags are not, and the item has no character name', () => {
+        const flagged: FlaggedLeaf[] = [
+            { kind: 'workspace-file', wsId: 'w1', path: 'a.md', key: 'k-file', why: 'damaged' },
+            { kind: 'task-preset', position: 0, key: 'k-preset', why: 'missing' },
+        ]
+        const fallback = createLeafFallback(flagged, () => NOW)
+        expect([...fallback.placeholderWorkspaceFiles]).toEqual(['k-file'])
+        expect([...fallback.skipTaskPresets]).toEqual(['k-preset'])
+        expect(fallback.items()[0]).toEqual({ kind: 'workspace-file', wsId: 'w1', path: 'a.md', key: 'k-file', why: 'damaged', name: '' })
+    })
+
+    test('an unflagged damaged workspace file still throws CodecAssembleError: only a flag excuses it', async () => {
+        const memory = createMemoryBackend()
+        const source = dbWithCharacters([], { utilityWorkspaces: [{ id: 'w1', name: 'W', createdAt: 1, files: [{ id: 'f1', path: 'a.md', text: 'rules', size: 5, mtime: 1 }] }] })
+        const seeded = await seedTree(memory, JSON.parse(JSON.stringify(source)) as Database, testEnv(createClock(), 4242), fakeLists)
+        const key = seeded.tree.units.find(unit => unit.identity === 'wsf:w1:f1')?.key as string
+        const bytes = new Uint8Array(memory.snapshot().get(key) as Uint8Array)
+        bytes[FRAME_HEADER_BYTES + 1] ^= 0xff
+        memory.poke(key, bytes)
+        const read = await readTreeBytes(memory, seeded.manifestKey)
+        if (read.status !== 'ok') {
+            throw new Error('The read is not ok.')
+        }
+        expect(() => assembleDatabase(read.tree.manifest, read.tree.source, { character: createLeafFallback([], () => NOW).character })).toThrow(CodecAssembleError)
+        const flagged = createLeafFallback(read.flagged, () => NOW)
+        expect(() => assembleDatabase(read.tree.manifest, read.tree.source, { character: flagged.character, placeholderWorkspaceFiles: flagged.placeholderWorkspaceFiles })).not.toThrow()
     })
 })

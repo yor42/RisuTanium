@@ -365,12 +365,14 @@ export const languageEnglish = {
     settingsShellDataLeaveOutForkChat: (count: number, kinds: string) => `Data only this app uses in ${count} chat(s): ${kinds}`,
     settingsShellDataLeaveOutAppData: (items: string) => `This app's own data: ${items}`,
     settingsShellDataLeaveOutTaskPresets: (count: number) => `${count} task preset(s)`,
+    settingsShellDataLeaveOutWorkspaces: (count: number) => `${count} utility workspace(s)`,
     settingsShellDataLeaveOutThemePacks: (count: number) => `${count} theme pack(s)`,
     settingsShellDataLeaveOutUsage: 'usage statistics and the model prices you entered',
     settingsShellDataLeaveOutNamed: (kind: string, names: string[], more: number) => `${kind}: ${names.join(', ')}${more > 0 ? ` and ${more} more` : ''}`,
     settingsShellDataKindAlternatives: 'Alternative replies',
     settingsShellDataKindForkChat: 'Chat data only this app uses',
     settingsShellDataKindTaskPresets: 'Task presets',
+    settingsShellDataKindWorkspaces: 'Utility workspaces',
     settingsShellDataKindThemePacks: 'Theme packs',
     settingsShellDataKindChroMemory: 'ChroMemory settings',
     settingsShellDataKindUsage: 'Usage statistics and model prices',
@@ -3790,6 +3792,8 @@ export const languageEnglish = {
     backupSizesUncheckedConfirm: 'The sizes of the assets in this backup could not be checked. An item over 100 MiB, which an upstream RisuAI Node server cannot restore, may be included without being named, and an item of 4 GiB or more would stop the backup partway. Create the backup anyway? If you decline, no backup file is created. Nothing has been written yet.',
     backupTaskPresetsConfirm: (count: number, names: string[]) =>
         `${count} task preset(s) are saved on this device only, and a backup file has no place for them, so they would be left out of this backup. They stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupWorkspacesConfirm: (count: number, names: string[]) =>
+        `${count} utility workspace(s) are saved on this device and in .rtb backups only, and a .bin backup file has no place for them, so they would be left out of this backup. They stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupThemePacksConfirm: (count: number, names: string[]) =>
         `${count} theme pack(s) are saved on this device only, and a backup file has no place for them or their files, so they would be left out of this backup. They stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupChroMemoryConfirm: 'A .bin backup has no place for your ChroMemory choice or its settings, so this backup leaves them out. This device keeps them, and .rtb backups include them. Create the backup without them?',
@@ -4885,6 +4889,8 @@ export const languageEnglish = {
         flaggedChatAltLine: (chat: string, state: string) => `${chat}: its alternative replies are ${state}; the conversation itself is intact`,
         flaggedTaskPresetsHeading: "Task presets",
         flaggedTaskPresetLine: (position: number, state: string) => `task preset ${position}: ${state}; it is left out of the opened profile`,
+        flaggedWorkspaceHeading: (id: string) => `Workspace (id ${id})`,
+        flaggedWorkspaceFileLine: (path: string, state: string) => `${path}: ${state}; its text is unavailable until you restore it, and the stored file is kept as it is`,
         foreignTitle: "An unfinished operation is recorded",
         foreignBody: (operation: string, when: string) => `An operation recorded in your storage (${operation}, started ${when}) never finished. If another RisuTanium window or tab is still running it, wait for it. Clearing the record never deletes your saved data.`,
         foreignWait: "Wait",

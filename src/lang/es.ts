@@ -365,12 +365,14 @@ export const languageSpanish = {
     settingsShellDataLeaveOutForkChat: (count: number, kinds: string) => `Datos que solo usa esta aplicación en ${count} chat(s): ${kinds}`,
     settingsShellDataLeaveOutAppData: (items: string) => `Datos propios de esta aplicación: ${items}`,
     settingsShellDataLeaveOutTaskPresets: (count: number) => `${count} preajuste(s) de tareas`,
+    settingsShellDataLeaveOutWorkspaces: (count: number) => `${count} espacio(s) de trabajo de utilidad`,
     settingsShellDataLeaveOutThemePacks: (count: number) => `${count} paquete(s) de temas`,
     settingsShellDataLeaveOutUsage: "estadísticas de uso y los precios de modelos que introdujiste",
     settingsShellDataLeaveOutNamed: (kind: string, names: string[], more: number) => `${kind}: ${names.join(', ')}${more > 0 ? ` y ${more} más` : ''}`,
     settingsShellDataKindAlternatives: "Respuestas alternativas",
     settingsShellDataKindForkChat: "Datos de chat que solo usa esta aplicación",
     settingsShellDataKindTaskPresets: "Preajustes de tareas",
+    settingsShellDataKindWorkspaces: "Espacios de trabajo de utilidad",
     settingsShellDataKindThemePacks: "Paquetes de temas",
     settingsShellDataKindChroMemory: "Ajustes de ChroMemory",
     settingsShellDataKindUsage: "Estadísticas de uso y precios de modelos",
@@ -3651,6 +3653,8 @@ export const languageSpanish = {
     "backupSizesUncheckedConfirm": 'No se pudo comprobar el tamaño de los recursos de esta copia de seguridad. Un elemento de más de 100 MiB, que un servidor Node de RisuAI upstream no puede restaurar, puede estar incluido sin que se mencione su nombre, y un elemento de 4 GiB o más detendría la copia a mitad de proceso. ¿Crear la copia de seguridad de todos modos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} preset(s) de tarea se guardan solo en este dispositivo, y un archivo de copia de seguridad no tiene lugar para ellos, así que se omitirían de esta copia. Permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "backupWorkspacesConfirm": (count: number, names: string[]) =>
+        `${count} espacio(s) de trabajo de utilidad se guardan solo en este dispositivo y en las copias .rtb, y un archivo de copia de seguridad .bin no tiene lugar para ellos, así que se omitirían de esta copia. Permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `${count} paquete(s) de tema se guardan solo en este dispositivo, y un archivo de copia de seguridad no tiene lugar para ellos ni para sus archivos, así que se omitirían de esta copia. Permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupChroMemoryConfirm": "Una copia de seguridad .bin no tiene dónde guardar la opción de ChroMemory ni sus ajustes, así que esta copia los deja fuera. Este dispositivo los conserva, y las copias .rtb los incluyen. ¿Crear la copia sin ellos?",
@@ -4738,6 +4742,8 @@ export const languageSpanish = {
         flaggedChatAltLine: (chat: string, state: string) => `${chat}: respuestas alternativas: ${state}; la conversación en sí está intacta`,
         flaggedTaskPresetsHeading: "Presets de tarea",
         flaggedTaskPresetLine: (position: number, state: string) => `preset de tarea ${position}: ${state}; se deja fuera del perfil abierto`,
+        flaggedWorkspaceHeading: (id: string) => `Espacio de trabajo (id ${id})`,
+        flaggedWorkspaceFileLine: (path: string, state: string) => `${path}: ${state}; su texto no está disponible hasta que lo restaures, y el archivo almacenado se conserva tal cual`,
         foreignTitle: "Hay una operación sin terminar registrada",
         foreignBody: (operation: string, when: string) => `Una operación registrada en tu almacenamiento (${operation}, iniciada ${when}) nunca terminó. Si otra ventana o pestaña de RisuTanium aún la está ejecutando, espera. Borrar el registro nunca elimina tus datos guardados.`,
         foreignWait: "Esperar",

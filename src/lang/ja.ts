@@ -365,12 +365,14 @@ export const languageJapanese = {
     settingsShellDataLeaveOutForkChat: (count: number, kinds: string) => `${count} 件のチャットにある、このアプリだけが使うデータ：${kinds}`,
     settingsShellDataLeaveOutAppData: (items: string) => `このアプリ自身のデータ：${items}`,
     settingsShellDataLeaveOutTaskPresets: (count: number) => `タスクプリセット ${count} 件`,
+    settingsShellDataLeaveOutWorkspaces: (count: number) => `ユーティリティのワークスペース ${count} 件`,
     settingsShellDataLeaveOutThemePacks: (count: number) => `テーマパック ${count} 件`,
     settingsShellDataLeaveOutUsage: "使用統計と、入力したモデル価格",
     settingsShellDataLeaveOutNamed: (kind: string, names: string[], more: number) => `${kind}：${names.join(', ')}${more > 0 ? ` ほか ${more} 件` : ''}`,
     settingsShellDataKindAlternatives: "代替の返信",
     settingsShellDataKindForkChat: "このアプリだけが使うチャットデータ",
     settingsShellDataKindTaskPresets: "タスクプリセット",
+    settingsShellDataKindWorkspaces: "ユーティリティのワークスペース",
     settingsShellDataKindThemePacks: "テーマパック",
     settingsShellDataKindChroMemory: "ChroMemory 設定",
     settingsShellDataKindUsage: "使用統計とモデル価格",
@@ -3790,6 +3792,8 @@ export const languageJapanese = {
     backupSizesUncheckedConfirm: 'このバックアップ内のアセットのサイズを確認できませんでした。アップストリームのRisuAI Nodeサーバーが復元できない100 MiBを超える項目が、名前が示されないまま含まれている可能性があり、4 GiB以上の項目があるとバックアップは途中で停止します。それでもバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。',
     backupTaskPresetsConfirm: (count: number, names: string[]) =>
         `${count}件のタスクプリセットはこのデバイスにのみ保存されており、バックアップファイルには保存できる場所がないため、このバックアップから除外されます。タスクプリセットはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
+    backupWorkspacesConfirm: (count: number, names: string[]) =>
+        `${count}件のユーティリティのワークスペースはこのデバイスと .rtb バックアップにのみ保存されており、.bin バックアップファイルには保存できる場所がないため、このバックアップから除外されます。ワークスペースはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
     backupThemePacksConfirm: (count: number, names: string[]) =>
         `${count}件のテーマパックはこのデバイスにのみ保存されており、バックアップファイルにはそれらとそのファイルを保存できる場所がないため、このバックアップから除外されます。テーマパックはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
     backupChroMemoryConfirm: ".bin バックアップには ChroMemory の選択とその設定を保存する場所がないため、このバックアップではそれらが除外されます。この端末には残り、.rtb バックアップには含まれます。それらを含めずにバックアップを作成しますか？",
@@ -4886,6 +4890,8 @@ export const languageJapanese = {
         flaggedChatAltLine: (chat: string, state: string) => `${chat}: 代替の返信が${state}しています。会話自体は無事です`,
         flaggedTaskPresetsHeading: "タスクプリセット",
         flaggedTaskPresetLine: (position: number, state: string) => `タスクプリセット ${position}: ${state}。開いたプロファイルからは除外されます`,
+        flaggedWorkspaceHeading: (id: string) => `ワークスペース (ID ${id})`,
+        flaggedWorkspaceFileLine: (path: string, state: string) => `${path}: ${state}。復元するまでそのテキストは利用できず、保存されているファイルはそのまま保持されます`,
         foreignTitle: "未完了の操作が記録されています",
         foreignBody: (operation: string, when: string) => `ストレージに記録された操作（${operation}、${when}に開始）が完了していません。別のRisuTaniumウィンドウまたはタブでまだ実行中の場合は、完了するまでお待ちください。記録を消去しても、保存されたデータが削除されることはありません。`,
         foreignWait: "待機",

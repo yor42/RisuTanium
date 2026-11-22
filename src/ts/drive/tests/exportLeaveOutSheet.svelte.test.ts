@@ -321,13 +321,18 @@ afterAll(() => {
 const decoder = new TextDecoder()
 const NOW = 1_700_000_000_000
 
-type Kind = 'alternatives' | 'interrupted' | 'presets' | 'packs' | 'usage' | 'chroMemory'
+type Kind = 'alternatives' | 'interrupted' | 'presets' | 'packs' | 'usage' | 'chroMemory' | 'workspaces'
 // ChroMemory is not in this list: the five-kind rows below pin the original kinds, and the ChroMemory rows add it on top.
 const ALL_KINDS: readonly Kind[] = ['alternatives', 'interrupted', 'presets', 'packs', 'usage']
 
 const PRESETS = [
     { id: 'task-0', name: 'Summarize notes', instructions: 'PRESETMARK one', model: 'm' },
     { id: 'task-1', name: 'Translate', instructions: 'PRESETMARK two', model: 'm' },
+]
+
+const WORKSPACES = [
+    { id: 'w1', name: 'Notes space', createdAt: 1, files: [{ id: 'f1', path: 'AGENTS.md', text: 'rules', size: 5, mtime: 5 }] },
+    { id: 'w2', name: 'Second space', createdAt: 2, files: [] },
 ]
 
 /** A stored theme pack's shape, with a short archive string (msgpackr under Node refuses a longer one). */
@@ -410,6 +415,7 @@ async function pageOf(kinds: readonly Kind[]): Promise<Database> {
         ...(kinds.includes('packs') ? { themePacks: [PACK], activeThemePack: PACK.id } : {}),
         ...(kinds.includes('usage') ? { statics: { ...(base.statics as Obj | undefined), ...USAGE_STATICS } } : {}),
         ...(kinds.includes('chroMemory') ? { ltmEngine: true, ltmSettings: { budgetTokens: 1800, future: 1 } } : {}),
+        ...(kinds.includes('workspaces') ? { utilityWorkspaces: WORKSPACES } : {}),
     }
     const fixture = { ...base, ...extras } as unknown as Database
     const seeded = await seedTree(memory, JSON.parse(JSON.stringify(fixture)) as Database, env, fakeLists)
@@ -686,6 +692,45 @@ describe.each([
         expect(outcome).toMatchObject({ status: 'saved' })
         expect(askLeaveOut).toHaveBeenCalledTimes(1)
         expect(forkPrompts()).toEqual(['chroMemory'])
+    }, 180_000)
+})
+
+describe.each([
+    ['SaveLocalBackup', full],
+    ['SavePartialLocalBackup', partial],
+])('%s with askLeaveOut over a page that holds utility workspaces only', (_name, run) => {
+    test('T21 reproducer: the sheet summary names every workspace before any writer opens, and answering true writes a file without them', async () => {
+        await pageOf(['workspaces'])
+        let summary: readonly BinLeaveOutEntry[] = []
+        let chunksAtAsk = -1
+        const askLeaveOut = vi.fn(async (given: readonly BinLeaveOutEntry[]) => {
+            summary = given
+            chunksAtAsk = sink.chunks.length
+            return true
+        })
+
+        const outcome = await run({ askLeaveOut }, { assetsExplained: true })
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        expect(summary).toEqual([{ kind: 'workspaces', count: 2, names: ['Notes space', 'Second space'] }])
+        expect(chunksAtAsk).toBe(0)
+        expect(askLeaveOut).toHaveBeenCalledTimes(1)
+        expect(forkPrompts()).toEqual([])
+        const database = await databaseOf(sink.closedFile as Uint8Array)
+        expect(Object.hasOwn(database, 'utilityWorkspaces')).toBe(false)
+    }, 180_000)
+
+    test('T21 reproducer: declining the sheet writes nothing', async () => {
+        await pageOf(['workspaces'])
+        const askLeaveOut = vi.fn(async () => false)
+
+        const outcome = await run({ askLeaveOut }, { assetsExplained: true })
+
+        expect(outcome).toEqual({ status: 'declined', cause: 'incomplete-data-declined' })
+        expect(askLeaveOut).toHaveBeenCalledTimes(1)
+        expect(sink.chunks).toEqual([])
+        expect(sink.closedFile).toBeNull()
+        expect(saveDialogMock).not.toHaveBeenCalled()
     }, 180_000)
 })
 

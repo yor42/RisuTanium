@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
-    carryUnknownFields, KNOWN_FIELDS, randomId26, UNIT_TYPE,
+    carryUnknownFields, KNOWN_FIELDS, keyOfTail, parseStore2Key, randomId26, UNIT_TYPE,
     type ChatEntry, type ContentBody, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType, type WorkspaceRecord,
 } from '../format'
 import {
@@ -196,6 +196,8 @@ export class Encoder {
     chatAlt = false
     /** The items of the database this encode could not read and went on without; the scoped encode reports them. */
     readonly skippedItems: SkippedItem[] = []
+    /** The record extras `emitWorkspaces` wrote, by workspace id; `finishTree` puts them in the index objects. */
+    readonly workspaceExtras = new Map<string, JsonObject>()
     /**
      * A preset list, a plugin list or a plugin-data value was carried from the previous encoding instead of being read, so the config
      * inlay list cannot be derived exactly: `finishTree` writes the overflow body, which keeps the sweep from deleting
@@ -779,6 +781,35 @@ export function normalizeWorkspaces(db: Database, skip: boolean): NormalizedWork
 }
 
 /**
+ * The stored type 29 unit a file entry without `text` names by its own `ref` field, or undefined when the field is not a
+ * well-formed Ref to a unit key. An import has no previous encoding; the importer reads the page's own manifest and
+ * sets this field on a file the boot flagged, so the damaged unit stays named. A file with text overwrites the field.
+ */
+function storedWorkspaceFileOf(value: JsonValue | undefined): ReusableUnit | undefined {
+    if (!Array.isArray(value) || value.length < 3) {
+        return undefined
+    }
+    const [tail, bytes, crc] = value
+    if (typeof tail !== 'string' || typeof bytes !== 'number' || typeof crc !== 'number') {
+        return undefined
+    }
+    const key = keyOfTail(tail)
+    if (parseStore2Key(key)?.shape !== 'unit') {
+        return undefined
+    }
+    return { key, type: UNIT_TYPE.workspaceFile, ref: [tail, bytes, crc] }
+}
+
+/** The previous record's top-level fields beside the known ones, recorded for this encode's index; undefined when none. */
+function keepWorkspaceExtras(id: string, encoder: Encoder): JsonObject | undefined {
+    const extras = encoder.previous?.objects?.workspaces?.get(id)
+    if (extras !== undefined) {
+        encoder.workspaceExtras.set(id, extras)
+    }
+    return extras
+}
+
+/**
  * One type 29 unit per file, then the workspace's type 28 record over their Refs (`putParent`; children precede their
  * parent in the units). A file is keyed by its own id, so a rename or move rewrites only the record. A file with
  * `text` goes through the workspace memo. A file without it (damaged at boot) is never written empty: the previous
@@ -800,6 +831,9 @@ export function emitWorkspaces(normalized: NormalizedWorkspaces, encoder: Encode
                 return []
             }
             encoder.carried.set(`ws:${item.id}`, held)
+            // The carried record body still holds its extras; the next previous encoding must name them too, or a later
+            // save of the readable workspace would write the record without them.
+            keepWorkspaceExtras(item.id, encoder)
             const prefix = `wsf:${item.id}:`
             for (const [identity, unit] of units) {
                 if (identity.startsWith(prefix) && unit.type === UNIT_TYPE.workspaceFile) {
@@ -812,7 +846,7 @@ export function emitWorkspaces(normalized: NormalizedWorkspaces, encoder: Encode
         const files = item.files.flatMap((file): WorkspaceRecord['files'][number][] => {
             const identity = `wsf:${item.id}:${file.id}`
             if (file.text === undefined) {
-                const held = encoder.previous?.units.get(identity)
+                const held = encoder.previous?.units.get(identity) ?? storedWorkspaceFileOf(file.fields.ref)
                 if (held !== undefined && held.type === UNIT_TYPE.workspaceFile) {
                     encoder.carried.set(identity, held)
                     return [{ ...file.fields, ref: refTuple(held.ref) } as WorkspaceRecord['files'][number]]
@@ -828,7 +862,9 @@ export function emitWorkspaces(normalized: NormalizedWorkspaces, encoder: Encode
             const unit = encoder.putText(identity, UNIT_TYPE.workspaceFile, file.text, body)
             return [{ ...file.fields, ref: refTuple(unit.ref) } as WorkspaceRecord['files'][number]]
         })
-        const record: WorkspaceRecord = { v: 1, ws: item.ws, files }
+        // The previous record's other top-level fields are put back beneath the known ones, which always win.
+        const extras = keepWorkspaceExtras(item.id, encoder)
+        const record: WorkspaceRecord = { ...extras, v: 1, ws: item.ws, files }
         return [refTuple(encoder.putParent(`ws:${item.id}`, UNIT_TYPE.workspace, record).ref)]
     })
 }
@@ -1639,6 +1675,7 @@ export function finishTree(
                 manifest, shards: shardBodies, moduleIndex: moduleSet.body, config, statics: { ...staticsBody }, order: { ...orderBody }, loadouts: loadoutItems,
                 // A carried preset list keeps the bodies of the encoding it was carried from; one that held none holds none.
                 ...(presetBodies === undefined ? {} : { presets: presetBodies }),
+                ...(encoder.workspaceExtras.size === 0 ? {} : { workspaces: encoder.workspaceExtras }),
             },
         },
     }
