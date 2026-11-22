@@ -121,7 +121,7 @@ async function startPage(db: Database): Promise<Page> {
     return { w, k }
 }
 
-const storedIds = async (k: Store2Kit): Promise<unknown[]> => (await k.saved()).characters.map((c) => (c as Entry).chaId)
+const storedIds = async (k: Store2Kit): Promise<unknown[]> => (await k.saved()).characters.map((c) => c.chaId)
 
 describe('the boot purge of expired trash, over the real save loop on a store2 session', () => {
     test('(G) the purged character is gone from the store once the boot settles, and nothing more is written', async () => {

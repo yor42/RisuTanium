@@ -350,7 +350,7 @@ describe('new behaviour: the full-reload flag and the module flag reach the enco
                     return { status: 'refused', reason: 'marker-present', detail: 'x' } as CommitResult
                 }
                 const result = await kit.committer.commit(read, request)
-                storedByFirst = (await kit.saved()).characters.map((c) => (c as Entry).chaId)
+                storedByFirst = (await kit.saved()).characters.map((c) => c.chaId)
                 return result
             }])
             const loop = runLoop(kit, db)
@@ -364,7 +364,7 @@ describe('new behaviour: the full-reload flag and the module flag reach the enco
                 expect(storedByFirst).toContain(removedId)
             }
             const stored = await kit.saved()
-            expect(stored.characters.map((c) => (c as Entry).chaId)).not.toContain(removedId)
+            expect(stored.characters.map((c) => c.chaId)).not.toContain(removedId)
             expect(stored.characters).toHaveLength(3)
             expect(stored.characters[1]).toMatchObject({ personality: 'edited before the removal' })
             healthy(loop)
