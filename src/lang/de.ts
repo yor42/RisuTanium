@@ -365,12 +365,14 @@ export const languageGerman = {
     "settingsShellDataLeaveOutForkChat": (count: number, kinds: string) => `Daten, die nur diese App verwendet, in ${count} Chat(s): ${kinds}`,
     "settingsShellDataLeaveOutAppData": (items: string) => `Eigene Daten dieser App: ${items}`,
     "settingsShellDataLeaveOutTaskPresets": (count: number) => `${count} Aufgaben-Preset(s)`,
+    "settingsShellDataLeaveOutWorkspaces": (count: number) => `${count} Dienstprogramm-Arbeitsbereich(e)`,
     "settingsShellDataLeaveOutThemePacks": (count: number) => `${count} Theme-Paket(e)`,
     "settingsShellDataLeaveOutUsage": "Nutzungsstatistiken und die von dir eingegebenen Modellpreise",
     "settingsShellDataLeaveOutNamed": (kind: string, names: string[], more: number) => `${kind}: ${names.join(', ')}${more > 0 ? ` und ${more} weitere` : ''}`,
     "settingsShellDataKindAlternatives": "Alternative Antworten",
     "settingsShellDataKindForkChat": "Chat-Daten, die nur diese App verwendet",
     "settingsShellDataKindTaskPresets": "Aufgaben-Presets",
+    "settingsShellDataKindWorkspaces": "Dienstprogramm-Arbeitsbereiche",
     "settingsShellDataKindThemePacks": "Theme-Pakete",
     "settingsShellDataKindChroMemory": "ChroMemory-Einstellungen",
     "settingsShellDataKindUsage": "Nutzungsstatistiken und Modellpreise",
@@ -3651,6 +3653,8 @@ export const languageGerman = {
         `${count} Element(e) in diesem Backup sind größer als 100 MiB. Ein Upstream-RisuAI-Node-Server kann ein so großes Element nicht wiederherstellen und würde es daher überspringen, wenn dieses Backup dort wiederhergestellt wird; diese App und die anderen Plattformen stellen es wieder her. Das Backup mit diesen Elementen erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} Aufgaben-Voreinstellung(en) sind nur auf diesem Gerät gespeichert, und eine Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "backupWorkspacesConfirm": (count: number, names: string[]) =>
+        `${count} Dienstprogramm-Arbeitsbereich(e) sind nur auf diesem Gerät und in .rtb-Backups gespeichert, und eine .bin-Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `${count} Design-Paket(e) sind nur auf diesem Gerät gespeichert, und eine Backup-Datei hat keinen Platz dafür oder für ihre Dateien, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupChroMemoryConfirm": "Ein .bin-Backup hat keinen Platz für die ChroMemory-Auswahl oder ihre Einstellungen, daher lässt dieses Backup sie weg. Dieses Gerät behält sie, und .rtb-Backups enthalten sie. Das Backup ohne sie erstellen?",
@@ -4739,6 +4743,8 @@ export const languageGerman = {
         "flaggedChatAltLine": (chat: string, state: string) => `${chat}: Die alternativen Antworten sind ${state}; die Unterhaltung selbst ist unversehrt`,
         "flaggedTaskPresetsHeading": "Aufgaben-Voreinstellungen",
         "flaggedTaskPresetLine": (position: number, state: string) => `Aufgaben-Voreinstellung ${position}: ${state}; sie wird aus dem geöffneten Profil ausgelassen`,
+        "flaggedWorkspaceHeading": (id: string) => `Arbeitsbereich (ID ${id})`,
+        "flaggedWorkspaceFileLine": (path: string, state: string) => `${path}: ${state}; sein Text ist nicht verfügbar, bis Sie ihn wiederherstellen, und die gespeicherte Datei bleibt unverändert`,
         "foreignTitle": "Ein unvollendeter Vorgang ist vermerkt",
         "foreignBody": (operation: string, when: string) => `Ein in Ihrem Speicher vermerkter Vorgang (${operation}, gestartet ${when}) wurde nie abgeschlossen. Wenn ein anderes RisuTanium-Fenster oder ein anderer Tab ihn noch ausführt, warten Sie. Das Löschen des Vermerks löscht niemals Ihre gespeicherten Daten.`,
         "foreignWait": "Warten",

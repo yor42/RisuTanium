@@ -365,12 +365,14 @@ export const languageChineseTraditional = {
     "settingsShellDataLeaveOutForkChat": (count: number, kinds: string) => `${count} 個聊天中僅此應用程式使用的資料：${kinds}`,
     "settingsShellDataLeaveOutAppData": (items: string) => `此應用程式自身的資料：${items}`,
     "settingsShellDataLeaveOutTaskPresets": (count: number) => `${count} 個任務預設集`,
+    "settingsShellDataLeaveOutWorkspaces": (count: number) => `${count} 個工具工作區`,
     "settingsShellDataLeaveOutThemePacks": (count: number) => `${count} 個主題包`,
     "settingsShellDataLeaveOutUsage": "使用統計以及你輸入的模型價格",
     "settingsShellDataLeaveOutNamed": (kind: string, names: string[], more: number) => `${kind}：${names.join(', ')}${more > 0 ? `，另有 ${more} 項` : ''}`,
     "settingsShellDataKindAlternatives": "備選回覆",
     "settingsShellDataKindForkChat": "僅此應用程式使用的聊天資料",
     "settingsShellDataKindTaskPresets": "任務預設集",
+    "settingsShellDataKindWorkspaces": "工具工作區",
     "settingsShellDataKindThemePacks": "主題包",
     "settingsShellDataKindChroMemory": "ChroMemory 設定",
     "settingsShellDataKindUsage": "使用統計與模型價格",
@@ -3694,6 +3696,8 @@ export const languageChineseTraditional = {
         `此備份中有 ${count} 個項目大於 100 MiB。上游 RisuAI Node 伺服器無法復原如此大的項目，因此在那裡復原此備份時會略過它們；本應用程式和其他平台則可以復原。是否建立包含這些項目的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `有 ${count} 個任務預設集僅儲存在此裝置上，而備份檔案中沒有存放它們的位置，因此它們將不會包含在此備份中。它們仍保留在本應用程式中，只是備份裡沒有。是否建立不含它們的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "backupWorkspacesConfirm": (count: number, names: string[]) =>
+        `有 ${count} 個工具工作區僅儲存在此裝置和 .rtb 備份中，而 .bin 備份檔案中沒有存放它們的位置，因此它們將不會包含在此備份中。它們仍保留在本應用程式中，只是備份裡沒有。是否建立不含它們的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `有 ${count} 個主題包僅儲存在此裝置上，而備份檔案中沒有存放它們及其檔案的位置，因此它們將不會包含在此備份中。它們仍保留在本應用程式中，只是備份裡沒有。是否建立不含它們的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "backupChroMemoryConfirm": ".bin 備份中沒有存放 ChroMemory 選項及其設定的位置，因此此備份不會包含它們。它們仍保留在此裝置上，.rtb 備份則會包含它們。是否建立不含它們的備份？",
@@ -4760,6 +4764,8 @@ export const languageChineseTraditional = {
         "flaggedChatAltLine": (chat: string, state: string) => `${chat}：其備選回覆${state}；對話本身完好`,
         "flaggedTaskPresetsHeading": "任務預設集",
         "flaggedTaskPresetLine": (position: number, state: string) => `任務預設集 ${position}：${state}；它已從開啟的設定檔中排除`,
+        "flaggedWorkspaceHeading": (id: string) => `工作區（ID ${id}）`,
+        "flaggedWorkspaceFileLine": (path: string, state: string) => `${path}：${state}；在你還原之前其文字無法使用，已儲存的檔案保持原樣`,
         "foreignTitle": "有一項未完成的操作記錄",
         "foreignBody": (operation: string, when: string) => `您的儲存空間中記錄了一項從未完成的操作（${operation}，開始於 ${when}）。如果其他 RisuTanium 視窗或分頁仍在執行它，請等待。清除該記錄絕不會刪除您已儲存的資料。`,
         "foreignWait": "等待",

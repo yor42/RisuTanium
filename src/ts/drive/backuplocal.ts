@@ -271,6 +271,8 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     migrateConnections(keyState)
     // A `.bin` carries no task presets (the export confirm names them first); the key is removed, not set to undefined.
     delete plain.taskPresets
+    // Utility workspaces live in the store and `.rtb` only; a `.bin` carries none (the export confirm names them first).
+    delete plain.utilityWorkspaces
     // Installed theme packs and the active pack id are fork-only and device-local, and their files are never exported
     // (the export confirm names the packs first); both keys are removed, not set to undefined.
     delete plain.themePacks
@@ -809,6 +811,23 @@ async function confirmOmitTaskPresets(session: ExportSession, labels: readonly s
     return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupTaskPresetsConfirm(labels.length, shownPromptNames(labels))))
 }
 
+/** The labels of the utility workspaces a `.bin` leaves out: each workspace's name, or its position when it has no readable name. */
+function workspaceLabels(db: Database): string[] {
+    const workspaces: unknown[] = Array.isArray(db.utilityWorkspaces) ? db.utilityWorkspaces : []
+    return workspaces.map((workspace, index) => {
+        const name = typeof workspace === 'object' && workspace !== null ? (workspace as { name?: unknown }).name : undefined
+        return typeof name === 'string' && name.trim() !== '' ? name : `#${index + 1}`
+    })
+}
+
+/**
+ * Asks, before the writer opens, whether to create the backup without the named utility workspaces (a `.bin` has no place
+ * for them). `true` when there are none or the person confirms; declining writes nothing.
+ */
+async function confirmOmitWorkspaces(session: ExportSession, labels: readonly string[]): Promise<boolean> {
+    return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupWorkspacesConfirm(labels.length, shownPromptNames(labels))))
+}
+
 /** The labels of the theme packs a `.bin` leaves out: each entry's name, or its position when it has no readable name. */
 function themePackLabels(db: Database): string[] {
     const packs: unknown[] = Array.isArray(db.themePacks) ? db.themePacks : []
@@ -860,6 +879,7 @@ async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupEx
     const perKind = async (): Promise<boolean> => await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))
         && await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))
         && await confirmOmitTaskPresets(session, taskPresetLabels(db))
+        && await confirmOmitWorkspaces(session, workspaceLabels(db))
         && await confirmOmitThemePacks(session, themePackLabels(db))
         && await confirmOmitUsageStats(session, hasUsageData(db))
         && await confirmOmitChroMemory(session, chroMemoryLeftOut(db))
@@ -867,7 +887,7 @@ async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupEx
     if (ask === undefined) {
         return await perKind()
     }
-    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db) })
+    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), workspaces: workspaceLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db) })
     if (summary.length === 0) {
         return true
     }

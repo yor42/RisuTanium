@@ -365,12 +365,14 @@ export const languageKorean = {
     settingsShellDataLeaveOutForkChat: (count: number, kinds: string) => `채팅 ${count}개의 이 앱 전용 데이터: ${kinds}`,
     settingsShellDataLeaveOutAppData: (items: string) => `이 앱 자체 데이터: ${items}`,
     settingsShellDataLeaveOutTaskPresets: (count: number) => `작업 프리셋 ${count}개`,
+    settingsShellDataLeaveOutWorkspaces: (count: number) => `유틸리티 워크스페이스 ${count}개`,
     settingsShellDataLeaveOutThemePacks: (count: number) => `테마 팩 ${count}개`,
     settingsShellDataLeaveOutUsage: "사용 통계와 직접 입력한 모델 가격",
     settingsShellDataLeaveOutNamed: (kind: string, names: string[], more: number) => `${kind}: ${names.join(', ')}${more > 0 ? ` 외 ${more}개` : ''}`,
     settingsShellDataKindAlternatives: "다른 답변",
     settingsShellDataKindForkChat: "이 앱 전용 채팅 데이터",
     settingsShellDataKindTaskPresets: "작업 프리셋",
+    settingsShellDataKindWorkspaces: "유틸리티 워크스페이스",
     settingsShellDataKindThemePacks: "테마 팩",
     settingsShellDataKindChroMemory: "ChroMemory 설정",
     settingsShellDataKindUsage: "사용 통계 및 모델 가격",
@@ -3648,6 +3650,8 @@ export const languageKorean = {
         `이 백업의 항목 ${count}개가 100 MiB보다 큽니다. 업스트림 RisuAI Node 서버는 이만큼 큰 항목을 복원할 수 없어, 이 백업을 그곳에서 복원하면 해당 항목을 건너뜁니다. 이 앱과 다른 플랫폼에서는 복원됩니다. 해당 항목을 포함하여 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `작업 프리셋 ${count}개는 이 기기에만 저장되어 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다. 작업 프리셋은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupWorkspacesConfirm": (count: number, names: string[]) =>
+        `유틸리티 워크스페이스 ${count}개는 이 기기와 .rtb 백업에만 저장되며, .bin 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다. 워크스페이스는 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `테마 팩 ${count}개는 이 기기에만 저장되어 있으며, 백업 파일에는 이와 그 파일을 담을 공간이 없어 이 백업에서 제외됩니다. 테마 팩은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupChroMemoryConfirm": ".bin 백업에는 ChroMemory 선택과 그 설정을 담을 자리가 없어서, 이 백업에서는 둘 다 빠져요. 이 기기에는 그대로 남아 있고, .rtb 백업에는 포함돼요. 이들 없이 백업을 만들까요?",
@@ -4716,6 +4720,8 @@ export const languageKorean = {
         flaggedChatAltLine: (chat: string, state: string) => `${chat}: 다른 답변 ${state}, 대화 자체는 온전합니다`,
         flaggedTaskPresetsHeading: "작업 프리셋",
         flaggedTaskPresetLine: (position: number, state: string) => `작업 프리셋 ${position}: ${state}; 열린 프로필에서 제외됩니다`,
+        flaggedWorkspaceHeading: (id: string) => `워크스페이스 (ID ${id})`,
+        flaggedWorkspaceFileLine: (path: string, state: string) => `${path}: ${state}; 복원하기 전까지 텍스트를 사용할 수 없으며, 저장된 파일은 그대로 유지됩니다`,
         foreignTitle: "완료되지 않은 작업이 기록되어 있습니다",
         foreignBody: (operation: string, when: string) => `저장소에 기록된 작업(${operation}, ${when}에 시작)이 끝나지 않았습니다. 다른 RisuTanium 창이나 탭에서 아직 실행 중이라면 끝날 때까지 기다리세요. 기록을 지워도 저장된 데이터는 절대 삭제되지 않습니다.`,
         foreignWait: "기다리기",

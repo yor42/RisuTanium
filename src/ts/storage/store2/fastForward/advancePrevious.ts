@@ -187,5 +187,9 @@ export function advancePrevious(old: PreviousEncoding, target: StoredTree, optio
     if (presetsKnown) {
         objects.presets = presets
     }
+    // The workspace records are those of the old encoding (the check above proved them unchanged), so are their extras.
+    if (objectsBefore.workspaces !== undefined) {
+        objects.workspaces = objectsBefore.workspaces
+    }
     return { units, entities, objects }
 }
