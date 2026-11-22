@@ -378,6 +378,81 @@ describe('importZipIntoWorkspace', () => {
     })
 })
 
+describe('a workspace that changes while the collision question is open', () => {
+    beforeEach(() => {
+        counter = 0
+        seed({ 'a.txt': 'old' })
+    })
+
+    function addDuringQuestion(path: string, body: string): (collisions: readonly string[]) => Promise<CollisionChoice> {
+        return async () => {
+            DBState.db.utilityWorkspaces![0].files.push({ id: `late-${path}`, path, text: body, size: encoder.encode(body).length, mtime: 1 })
+            return 'replace'
+        }
+    }
+
+    test('(R) T11: a path created during the question is not replaced unasked', async () => {
+        const zip = zipSync({ 'a.txt': text('new'), 'b.txt': text('new') })
+        const result = await importZipIntoWorkspace('w', zip, addDuringQuestion('b.txt', 'mine'), env)
+        expect(result).toMatchObject({ ok: false, reason: 'changed' })
+        expect(readText('w', 'b.txt')).toEqual({ state: 'ok', text: 'mine' })
+        expect(readText('w', 'a.txt')).toEqual({ state: 'ok', text: 'old' })
+    })
+
+    test('(R) T11: a case variant created during the question is refused by name, not reported as a cap overrun', async () => {
+        const zip = zipSync({ 'a.txt': text('new'), 'b.txt': text('new') })
+        const result = await importZipIntoWorkspace('w', zip, addDuringQuestion('B.txt', 'mine'), env)
+        expect(result).toMatchObject({ ok: true, written: ['a.txt'] })
+        expect(result.ok && result.refused.map(entry => [entry.name, entry.reason])).toEqual([['b.txt', 'collides-with-existing']])
+        expect(readText('w', 'B.txt')).toEqual({ state: 'ok', text: 'mine' })
+        expect(readText('w', 'b.txt')).toEqual({ state: 'missing' })
+    })
+
+    test('(G) a collision path removed during the question is simply written', async () => {
+        const zip = zipSync({ 'a.txt': text('new') })
+        const result = await importZipIntoWorkspace('w', zip, async () => {
+            DBState.db.utilityWorkspaces![0].files.splice(0, 1)
+            return 'replace'
+        }, env)
+        expect(result).toMatchObject({ ok: true, written: ['a.txt'] })
+        expect(readText('w', 'a.txt')).toEqual({ state: 'ok', text: 'new' })
+    })
+
+    test('(R) T11: a workspace deleted during the question reports no-workspace', async () => {
+        const zip = zipSync({ 'a.txt': text('new') })
+        const result = await importZipIntoWorkspace('w', zip, async () => {
+            DBState.db.utilityWorkspaces = []
+            return 'replace'
+        }, env)
+        expect(result).toMatchObject({ ok: false, reason: 'no-workspace' })
+    })
+})
+
+describe('entry checksum', () => {
+    test('(R) T11: a stored entry whose bytes no longer match its CRC-32 is refused as damaged and the others stay', () => {
+        const zip = zipSync({ 'a.txt': [text('hello'), { level: 0 }], 'b.txt': text('fine') })
+        const at = zip.findIndex((_byte, index) => String.fromCharCode(...zip.subarray(index, index + 5)) === 'hello')
+        const altered = zip.slice()
+        altered[at + 4] = 'p'.charCodeAt(0)
+        const plan = planZipImport(altered, [])
+        expect(names(plan)).toEqual({ accepted: ['b.txt'], refused: [['a.txt', 'damaged']] })
+    })
+
+    test('(R) T11: a deflated entry that inflates to other bytes than its CRC-32 is refused', () => {
+        const zip = patchEntries(zipSync({ 'a.txt': text('hello world'), 'b.txt': text('fine') }), (entry, view) => {
+            if (entry.name === 'a.txt') {
+                view.setUint32(entry.declaredSizeAt - 8, 0x12345678, true)
+            }
+        })
+        expect(names(planZipImport(zip, []))).toEqual({ accepted: ['b.txt'], refused: [['a.txt', 'damaged']] })
+    })
+
+    test('(G) the checksum of an archive the real producer wrote matches, including empty and non-ASCII entries', () => {
+        const zip = zipSync({ 'e.txt': new Uint8Array(0), 'k.txt': text('한글 ok'), 'c.txt': [text('stored'), { level: 0 }] })
+        expect(names(planZipImport(zip, []))).toEqual({ accepted: ['e.txt', 'k.txt', 'c.txt'], refused: [] })
+    })
+})
+
 describe('exportWorkspaceZip', () => {
     test('exports every text file and round-trips through the import', async () => {
         seed({ 'a.txt': 'one', 'dir/b.md': '둘 two' })

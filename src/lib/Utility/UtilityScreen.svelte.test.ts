@@ -284,6 +284,45 @@ describe('sending, stopping and errors', () => {
     })
 })
 
+describe('workspaces on the screen', () => {
+    test('(R) the screen carries the picker, and Manage workspaces opens and closes the manager', () => {
+        const root = open(UtilityScreen)
+        expect(root.querySelector('[data-testid="workspace-picker"]')).not.toBeNull()
+        expect(root.querySelector('[data-testid="workspace-manager"]')).toBeNull()
+
+        buttonWithText(root, language.utility.workspaces.manage).click()
+        flushSync()
+        expect(root.querySelector('[data-testid="workspace-manager"]')).not.toBeNull()
+
+        buttonWithText(root, language.utility.workspaces.doneManaging).click()
+        flushSync()
+        expect(root.querySelector('[data-testid="workspace-manager"]')).toBeNull()
+    })
+
+    test('(R) a picked workspace reaches the request, locks after the first turn and New unlocks it', async () => {
+        DBState.db.utilityWorkspaces = [{ id: 'w1', name: 'Notes', createdAt: 1, files: [] }]
+        h.request.mockResolvedValue({ type: 'success', result: 'fixed' })
+        const root = open(UtilityScreen)
+        const picker = root.querySelectorAll<HTMLSelectElement>('[data-testid="workspace-picker"] select')[0]
+        picker.value = 'w1'
+        picker.dispatchEvent(new Event('change', { bubbles: true }))
+        flushSync()
+
+        await pickAndSend(root, 'hello')
+        await vi.waitFor(() => expect(utilityConversation.runId).toBeNull())
+        flushSync()
+
+        expect(h.request.mock.calls[0][0].toolLoop.workspace).toEqual({ id: 'w1' })
+        expect(root.querySelector('[data-testid="workspace-picker"] select')).toBeNull()
+        expect(root.querySelector('[data-testid="workspace-picker-locked"]')).not.toBeNull()
+
+        buttonWithText(root, language.utility.newConversation).click()
+        await vi.waitFor(() => expect(utilityConversation.turns).toHaveLength(0))
+        flushSync()
+        expect(root.querySelector<HTMLSelectElement>('[data-testid="workspace-picker"] select')?.value).toBe('')
+    })
+})
+
 describe('New, Copy and Save', () => {
     test('(R) New asks first when there are turns, and clears them when confirmed', async () => {
         h.request.mockResolvedValue({ type: 'success', result: 'fixed' })
