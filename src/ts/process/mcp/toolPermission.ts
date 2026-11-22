@@ -80,7 +80,10 @@ const INTERNAL_TOOLS: Readonly<Record<string, InternalTable>> = {
     'internal:dice': {
         free: ['rollDice'],
     },
-    'internal:workspace': {},
+    'internal:workspace': {
+        read: ['list_files', 'read_file', 'search_files'],
+        mutating: ['write_file', 'edit_file', 'delete_file', 'move_file'],
+    },
 }
 
 /** The URLs of the built-in clients that have a classification table. */

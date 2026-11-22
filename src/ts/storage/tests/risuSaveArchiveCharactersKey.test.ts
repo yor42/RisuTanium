@@ -74,7 +74,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-import { RisuSaveEncoder, decodeRisuSave, encodeRisuSaveLegacy } from '../risuSave'
+import { decodeRisuSave, encodeRisuSaveLegacy } from '../risuSave'
+import { RisuSaveEncoder } from './risuSaveEncoder'
 import type { Database } from '../database.svelte'
 
 /** The root fields under test. */

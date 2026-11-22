@@ -104,7 +104,7 @@ function toastAction(): HTMLButtonElement | null {
 }
 
 function toastTexts(): string[] {
-    return Array.from(document.querySelectorAll('[data-part="toast-text"]')).map((n) => n.textContent ?? '')
+    return Array.from(document.querySelectorAll('[data-part="toast-text"], [data-part="toast-undo-text"]')).map((n) => n.textContent ?? '')
 }
 
 function ids(): string[] {

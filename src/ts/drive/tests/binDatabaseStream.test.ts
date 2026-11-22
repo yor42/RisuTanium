@@ -62,9 +62,10 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 }))
 
 import {
-    RisuSaveEncoder, decodeRisuSave, encodeRisuSaveCompressionStream, encodeRisuSaveLegacy, salvageRisuSave,
+    decodeRisuSave, encodeRisuSaveCompressionStream, encodeRisuSaveLegacy, salvageRisuSave,
     type SalvageOmittedBlock, type toSaveType,
 } from 'src/ts/storage/risuSave'
+import { RisuSaveEncoder } from 'src/ts/storage/tests/risuSaveEncoder'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { crc32 } from 'src/ts/storage/blockFrame'
 import { BinFileChangedError } from 'src/ts/storage/store2/legacy/binReader'

@@ -755,6 +755,23 @@ async function confirmUpstreamOversize(session: ExportSession, items: readonly s
 }
 
 /**
+ * The desktop and Android apps size a backup's assets only from the sized listing, so when that command fails neither
+ * size prompt can name anything (MC-223); that includes a page whose batch commands were marked unavailable, where no
+ * listing is attempted. Asks, before the writer opens, whether to create the backup without the check. `true` where the
+ * listing answered or the store is not the files store (a Node page asks its own server); declining writes nothing.
+ */
+async function confirmUncheckedSizes(session: ExportSession, sized: readonly SizedAssetKey[] | null): Promise<boolean> {
+    let filesStore = false
+    try {
+        filesStore = await getAppStoreKind() === 'tauri'
+    } catch {
+        filesStore = false
+    }
+    const unchecked = sized === null && filesStore
+    return await confirmDuringExport(session, unchecked, async () => !unchecked || await alertConfirm(language.backupSizesUncheckedConfirm))
+}
+
+/**
  * Asks, before the writer opens, whether to create the backup with the alternative replies of the named chats written
  * as extra chats where a conversation continued from them, and left out otherwise (a `.bin` has no place for them). Each
  * line says what that chat's alternatives become and the size the extra chats add. `true` when there are none or the
@@ -1064,6 +1081,9 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     // Before the left-out prompt, so no pack file is named in it and none is written; the upstream-oversize prompt filters pack keys itself.
     let listing = withoutPackAssets(await listAssetsForBackup(store))
     noteImportPhase(`export listed, ${listing.keys.length} assets`)
+    if (!await confirmUncheckedSizes(session, listing.sized)) {
+        return { status: 'declined', cause: 'oversize-declined' }
+    }
 
     // Before the writer opens, name everything a backup entry cannot hold and ask. Assets are sized only where the
     // sized listing answers (the desktop and Android apps); the units and stub entries are sized from the bytes already in memory. Declining
@@ -1445,7 +1465,11 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
 
     // The profile images named above are judged by key from the same sources as a full backup; a partial backup writes
     // no inlays. The prompt comes before the writer opens, as in a full backup.
-    const upstreamOversize = await upstreamOversizeNames(session, store, { keys: [], sized: await sizedListingOrNull() }, assetKeys, assetMap)
+    const sized = await sizedListingOrNull()
+    if (!await confirmUncheckedSizes(session, sized)) {
+        return { status: 'declined', cause: 'oversize-declined' }
+    }
+    const upstreamOversize = await upstreamOversizeNames(session, store, { keys: [], sized }, assetKeys, assetMap)
     if (!await confirmUpstreamOversize(session, upstreamOversize)) {
         return { status: 'declined', cause: 'oversize-declined' }
     }

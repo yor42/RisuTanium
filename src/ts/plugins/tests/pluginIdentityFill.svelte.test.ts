@@ -119,7 +119,8 @@ vi.mock(import('../apiV3/transpiler'), () => ({
 
 import { getV2PluginAPIs } from '../plugins.svelte'
 import { DBState } from '../../stores.svelte'
-import { RisuSaveEncoder, decodeRisuSave } from '../../storage/risuSave'
+import { decodeRisuSave } from '../../storage/risuSave'
+import { RisuSaveEncoder } from '../../storage/tests/risuSaveEncoder'
 import type { toSaveType } from '../../storage/risuSave'
 import * as chatIdsModule from '../../process/chatIds'
 

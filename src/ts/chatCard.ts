@@ -169,7 +169,7 @@ function parseUrl(value: string, origin: string): URL | null {
 
 /**
  * Decides what the card does with an image address:
- *  - local: `data:`, `blob:`, an app image (`/sw/img/` or the Node server's
+ *  - local: `data:`, `blob:`, an app image (the Node server's
  *    `/api/asset/` on this origin) and, only in the desktop app, its asset
  *    addresses; these may be fetched and embedded;
  *  - outside: any other absolute http(s) address; it is kept as written and
@@ -198,7 +198,7 @@ export function classifyImageSrc(src: string, env: Pick<CardEnv, 'origin' | 'isT
                 return env.isTauri && url.port === '' ? { kind: 'local', src: trimmed } : { kind: 'drop' }
             }
             if(url.origin === env.origin){
-                return url.pathname.startsWith('/sw/img/') || url.pathname.startsWith('/api/asset/')
+                return url.pathname.startsWith('/api/asset/')
                     ? { kind: 'local', src: trimmed }
                     : { kind: 'drop' }
             }

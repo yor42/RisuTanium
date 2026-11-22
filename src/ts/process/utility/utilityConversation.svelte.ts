@@ -6,16 +6,22 @@ import { isDesktopTransport } from '../../storage/tauriByteTransport'
 import { DBState } from '../../stores.svelte'
 import { requestChatDataMain, type requestDataResponse } from '../request/request'
 import type { TaskPreset } from './taskPreset'
+import { WORKSPACE_TOOLS } from '../mcp/workspaceclient'
+import { advertisedToolKey, newToolLoop, type ToolLoopState } from '../request/toolLoop'
 import { assembleUtilityPrompt, type UtilityPromptTurn } from './utilityPrompt'
 import { abortUtilityRun, startUtilityRun, type UtilityRun } from './utilityRuns.svelte'
+import { buildWorkspaceInstructions } from './workspace/instructionSources'
+import { hasWorkspace } from './workspace/workspaceModel.svelte'
 
 /**
  * The single in-memory Utility conversation. It is lost on reload and is never written to the database. A send builds
  * its request from the preset and the turns alone and calls `requestChatDataMain` with a pinned model, so no chat,
  * character, persona, lorebook or trigger can reach the body. Calling `requestChatDataMain` directly skips the before and
  * after request hooks, and `blockPlugins` refuses plugin model providers. V3 body interceptors with the replacer grant
- * still see and can replace the body. Tools are not advertised (`tools: []`), but on the non-streaming Anthropic path a
- * tool result can still be appended to the body.
+ * still see and can replace the body, with or without a workspace. Without a workspace, tools are not advertised
+ * (`tools: []`) and the reply streams, but on the non-streaming Anthropic path a tool result can still be appended to
+ * the body. A conversation that has picked a workspace advertises only the workspace tools, fixed before any workspace
+ * text is read, and is not streamed. The workspace id lives in this state and is never read from a model's output.
  */
 
 export type UtilityTurnState = 'streaming' | 'done' | 'stopped' | 'failed'
@@ -35,15 +41,34 @@ export interface UtilityConversationState {
     runId: string | null
     /** The name of the preset the last send found, for the message when it is gone. */
     presetName: string | null
+    /** The one workspace this conversation picked, or null for none (no workspace tools, streamed). */
+    workspaceId: string | null
 }
 
 const CONVERSATION_ID = 'utility'
+const WORKSPACE_URL = 'internal:workspace'
 
 export const utilityConversation: UtilityConversationState = $state({
     turns: [],
     runId: null,
     presetName: null,
+    workspaceId: null,
 })
+
+/**
+ * Picks the workspace (or none) of the conversation. A conversation keeps one choice: once it has turns, only New
+ * changes it. Returns whether the choice was applied.
+ */
+export function setUtilityWorkspace(workspaceId: string | null): boolean {
+    if (utilityConversation.workspaceId === workspaceId) {
+        return true
+    }
+    if (utilityConversation.turns.length > 0 || utilityConversation.runId !== null) {
+        return false
+    }
+    utilityConversation.workspaceId = workspaceId
+    return true
+}
 
 /** The formats a per-request temperature and the schema switch are honoured for. */
 const ALLOWED_FORMATS: readonly number[] = [
@@ -155,7 +180,7 @@ async function settleTurn(result: requestDataResponse, turn: UtilityTurn, signal
  * Sends `text` to the task preset `presetId`. A refusal or a failure is shown on the assistant turn, never raised and
  * never put in the shared alert store. Resolves when the run has ended.
  */
-export async function sendUtility(presetId: string, text: string): Promise<void> {
+export async function sendUtility(presetId: string, text: string, workspaceId: string | null = utilityConversation.workspaceId): Promise<void> {
     if (utilityConversation.runId !== null) {
         return
     }
@@ -191,6 +216,10 @@ export async function sendUtility(presetId: string, text: string): Promise<void>
         failedTurn(turn, refusal)
         return
     }
+    if (workspaceId !== null && !hasWorkspace(workspaceId)) {
+        failedTurn(turn, 'The workspace of this conversation no longer exists.')
+        return
+    }
     const run: UtilityRun | null = startUtilityRun(CONVERSATION_ID)
     if (run === null) {
         failedTurn(turn, language.utility.failureRunInProgress)
@@ -199,13 +228,25 @@ export async function sendUtility(presetId: string, text: string): Promise<void>
     utilityConversation.runId = run.id
 
     try {
+        // The tool set and the loop's workspace binding are fixed here, before any workspace text is read: instruction
+        // text can neither add a tool nor change what the run may call.
+        let tools: Array<(typeof WORKSPACE_TOOLS)[number] & { mcpURL: string }> = []
+        let toolLoop: ToolLoopState | undefined
+        if (workspaceId !== null) {
+            tools = WORKSPACE_TOOLS.map((tool) => ({ ...tool, mcpURL: WORKSPACE_URL }))
+            toolLoop = newToolLoop(run.signal)
+            toolLoop.workspace = { id: workspaceId }
+            toolLoop.advertised = new Set(tools.map((tool) => advertisedToolKey(tool.name, WORKSPACE_URL)))
+        }
+        const instructions = workspaceId === null ? '' : (await buildWorkspaceInstructions(workspaceId)).text
         const result = await requestChatDataMain({
-            formated: assembleUtilityPrompt(preset, [...prior, { role: 'user', content: text }]),
+            formated: assembleUtilityPrompt(preset, [...prior, { role: 'user', content: text }], instructions),
             bias: {},
             staticModel: preset.model,
-            tools: [],
+            tools,
+            ...(toolLoop === undefined ? {} : { toolLoop }),
             noMultiGen: true,
-            useStreaming: true,
+            useStreaming: workspaceId === null,
             maxTokens: preset.maxTokens,
             temperatureOverride: preset.temperature,
             extractJson: '',
@@ -250,5 +291,6 @@ export async function newUtilityConversation(confirmDiscard: () => Promise<boole
     utilityConversation.turns = []
     utilityConversation.runId = null
     utilityConversation.presetName = null
+    utilityConversation.workspaceId = null
     return true
 }

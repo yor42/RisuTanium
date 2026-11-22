@@ -45,7 +45,7 @@
     }
 </script>
 
-<div data-part="pattern-alert-stack" data-parked-reply>
+<div data-part="pattern-alert-stack" data-part-critical data-parked-reply>
     <p id={titleId} data-part="pattern-alert-title">{title}</p>
     <p data-part="pattern-alert-text">{fillLang(language.parkedReplyBody, { name })}</p>
     <div data-part="pattern-alert-reply" data-parked-reply-text>{text}</div>

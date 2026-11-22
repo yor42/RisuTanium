@@ -923,9 +923,8 @@ export const languageJapanese = {
         hordeNotPossible: "応答できません。",
         hordeNotPossibleWith: "応答できません：{message}",
         hordeNoGenerations: "完了時に生成結果がありませんでした",
-        webCryptoUnavailable: "この環境ではWeb Crypto APIが利用できません。HTTPSを使用していることをご確認ください。",
         vertexInvalidClientEmail: "無効なVertexクライアントのメールアドレスです。gserviceaccount.comを含める必要があります。",
-        vertexInvalidPrivateKey: "無効なVertex秘密鍵です。適切なキーマーカーを含める必要があります。",
+        vertexInvalidPrivateKey: "無効なVertex秘密鍵です。サービスアカウントJSONのprivate_keyの値全体を、BEGIN行とEND PRIVATE KEY行を含めて貼り付けてください。",
         googleTokenRefreshFailed: "Googleアクセストークンの更新に失敗しました：{error}",
         googleNoAccessToken: "応答にGoogleアクセストークンが含まれていません",
         googleEmptyResponse: "空の応答を受信しました：{response}",
@@ -3788,6 +3787,7 @@ export const languageJapanese = {
         `${items.length}件の項目が4 GiB以上あり、バックアップファイルの1エントリに収まる容量を超えているため、それらの内容はバックアップに含まれていません（キャラクターにはプレースホルダーのみが残ります）：\n\n${items.join('\n')}`,
     backupUpstreamOversizeConfirm: (count: number, names: string[]) =>
         `このバックアップ内の${count}件の項目が100 MiBを超えています。アップストリームのRisuAI Nodeサーバーはこれほど大きな項目を復元できないため、そちらでこのバックアップを復元するとそれらはスキップされます。このアプリや他のプラットフォームでは復元可能です。これらを含めてバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
+    backupSizesUncheckedConfirm: 'このバックアップ内のアセットのサイズを確認できませんでした。アップストリームのRisuAI Nodeサーバーが復元できない100 MiBを超える項目が、名前が示されないまま含まれている可能性があり、4 GiB以上の項目があるとバックアップは途中で停止します。それでもバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。',
     backupTaskPresetsConfirm: (count: number, names: string[]) =>
         `${count}件のタスクプリセットはこのデバイスにのみ保存されており、バックアップファイルには保存できる場所がないため、このバックアップから除外されます。タスクプリセットはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
     backupThemePacksConfirm: (count: number, names: string[]) =>

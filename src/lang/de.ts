@@ -917,9 +917,8 @@ export const languageGerman = {
         "hordeNotPossible": "Antwort nicht möglich.",
         "hordeNotPossibleWith": "Antwort nicht möglich: {message}",
         "hordeNoGenerations": "Vorgang abgeschlossen, aber es wurden keine Ergebnisse generiert",
-        "webCryptoUnavailable": "Die Web Crypto API ist in dieser Umgebung nicht verfügbar. Bitte stellen Sie sicher, dass Sie HTTPS verwenden.",
         "vertexInvalidClientEmail": "Ungültige Vertex-Client-E-Mail-Adresse. Sie muss gserviceaccount.com enthalten",
-        "vertexInvalidPrivateKey": "Ungültiger privater Vertex-Schlüssel. Er muss die korrekten Schlüsselmarkierungen enthalten.",
+        "vertexInvalidPrivateKey": "Ungültiger privater Vertex-Schlüssel. Fügen Sie den vollständigen private_key-Wert aus der JSON-Datei des Dienstkontos ein, einschließlich der Zeilen BEGIN und END PRIVATE KEY.",
         "googleTokenRefreshFailed": "Aktualisierung des Google-Zugriffstokens fehlgeschlagen: {error}",
         "googleNoAccessToken": "Kein Google-Zugriffstoken in der Antwort",
         "googleEmptyResponse": "Leere Antwort erhalten: {response}",
@@ -3649,6 +3648,7 @@ export const languageGerman = {
         `${items.length} Element(e) sind 4 GiB oder größer, was mehr ist, als ein einzelner Eintrag einer Backup-Datei fassen kann, daher ist ihr Inhalt nicht im Backup enthalten (ein Charakter behält nur einen Platzhalter):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} Element(e) in diesem Backup sind größer als 100 MiB. Ein Upstream-RisuAI-Node-Server kann ein so großes Element nicht wiederherstellen und würde es daher überspringen, wenn dieses Backup dort wiederhergestellt wird; diese App und die anderen Plattformen stellen es wieder her. Das Backup mit diesen Elementen erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "backupSizesUncheckedConfirm": 'Die Größen der Assets in diesem Backup konnten nicht geprüft werden. Ein Element, das größer als 100 MiB ist und das ein Upstream-RisuAI-Node-Server nicht wiederherstellen kann, kann enthalten sein, ohne namentlich genannt zu werden, und ein Element von 4 GiB oder mehr würde das Backup mittendrin abbrechen. Das Backup trotzdem erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} Aufgaben-Voreinstellung(en) sind nur auf diesem Gerät gespeichert, und eine Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>

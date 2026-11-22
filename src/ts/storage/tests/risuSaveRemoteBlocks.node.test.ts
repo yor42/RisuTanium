@@ -124,13 +124,17 @@ async function loadRisuSave() {
     return await import('src/ts/storage/risuSave')
 }
 
+async function loadRisuSaveEncoder() {
+    return await import('src/ts/storage/tests/risuSaveEncoder')
+}
+
 function bytesOf(character: TestCharacter): Uint8Array {
     return new TextEncoder().encode(JSON.stringify(character))
 }
 
 /** A save whose character `b` is only a REMOTE pointer, as `pointer` says. */
 async function saveWithPointer(pointer: Record<string, unknown>): Promise<Uint8Array> {
-    const { RisuSaveEncoder } = await loadRisuSave()
+    const { RisuSaveEncoder } = await loadRisuSaveEncoder()
     const root = { formatversion: 999, __directory: ['preset', 'plugins', 'a', 'b', 'config'] }
     const save = await composeSave(new RisuSaveEncoder(), [
         { name: 'root', type: BLOCK.ROOT, data: JSON.stringify(root) },
@@ -159,7 +163,8 @@ afterEach(() => {
 describe('the encoder on the Node server', () => {
     test('with Remote Saving on in the live database, init and set send no write and no listing request and keep every character inline', async () => {
         const characters = ['alpha', 'bravo', 'charlie'].map((id) => characterOf(`s16-${id}`, `${id} content`))
-        const { RisuSaveEncoder, RisuSaveType } = await loadRisuSave()
+        const { RisuSaveType } = await loadRisuSave()
+        const { RisuSaveEncoder } = await loadRisuSaveEncoder()
         const encoder = new RisuSaveEncoder()
 
         await encoder.init(dbOf(...characters), { compression: false })

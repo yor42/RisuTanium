@@ -42,7 +42,6 @@ vi.mock(
 vi.mock(import('../../globalApi.svelte'), () => ({
   aiWatermarkingLawApplies: () => false,
   getFileSrc: vi.fn(),
-  setUsingSw: vi.fn(),
   // AV-4 (Report 16, `Agents/Reports/16-av4-list-avatar-thumbnails-plan.md`):
   // avatarThumb.ts imports readImage eagerly at module load, through
   // characters.ts's own import graph.
@@ -123,7 +122,7 @@ describe('AV-3 getFileSrcCached', () => {
   test('T10 (guard): a short URL result is served from fileSrcCache on the second render', async () => {
     const name = 't10asset'
     const path = 'some/t10-asset.png'
-    vi.mocked(getFileSrc).mockResolvedValue('/sw/img/t10')
+    vi.mocked(getFileSrc).mockResolvedValue('/api/asset/t10')
     const char = makeCharWithAsset(name, path)
     resetAssetsCache((char as { additionalAssets: string[][] }).additionalAssets, [], [])
 

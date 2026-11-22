@@ -659,7 +659,7 @@ describe('getFileSrc', () => {
         expect(handle.read).toHaveBeenCalledTimes(2)
     })
 
-    test('guard: without a service worker a missing asset gives the empty data URL', async () => {
+    test('guard: a missing asset gives the empty data URL', async () => {
         const { api, appStore } = await loadWorld()
         appStore.injectAppStore((await mapStore()).store)
 
@@ -673,7 +673,7 @@ describe('getFileSrc', () => {
         expect(await api.getFileSrc('')).toBe('data:image/png;base64,')
     })
 
-    test('on the Node server without a service worker an assets key gets the asset route URL and no byte is read', async () => {
+    test('on the Node server an assets key gets the asset route URL and no byte is read', async () => {
         useNode()
         const server = new FakeNodeServer()
         vi.stubGlobal('fetch', server.fetch)

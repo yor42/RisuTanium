@@ -922,9 +922,8 @@ export const languageEnglish = {
         hordeNotPossible: "Response not possible.",
         hordeNotPossibleWith: "Response not possible: {message}",
         hordeNoGenerations: "No Generations when done",
-        webCryptoUnavailable: "Web Crypto API is not available in this environment. Please ensure you are using HTTPS.",
         vertexInvalidClientEmail: "Invalid Vertex client email. Must include gserviceaccount.com",
-        vertexInvalidPrivateKey: "Invalid Vertex private key. Must include proper key markers.",
+        vertexInvalidPrivateKey: "Invalid Vertex private key. Paste the complete private_key value from the service account JSON, including the BEGIN and END PRIVATE KEY lines.",
         googleTokenRefreshFailed: "Failed to refresh google access token: {error}",
         googleNoAccessToken: "No google access token in the response",
         googleEmptyResponse: "Got empty response: {response}",
@@ -3788,6 +3787,7 @@ export const languageEnglish = {
         `${items.length} item(s) are 4 GiB or more, which is more than one entry of a backup file can hold, so their content is not in the backup (a character keeps only a placeholder):\n\n${items.join('\n')}`,
     backupUpstreamOversizeConfirm: (count: number, names: string[]) =>
         `${count} item(s) in this backup are larger than 100 MiB. An upstream RisuAI Node server cannot restore an item that large, so it would skip them when this backup is restored there; this app and the other platforms restore them. Create the backup with them included? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupSizesUncheckedConfirm: 'The sizes of the assets in this backup could not be checked. An item over 100 MiB, which an upstream RisuAI Node server cannot restore, may be included without being named, and an item of 4 GiB or more would stop the backup partway. Create the backup anyway? If you decline, no backup file is created. Nothing has been written yet.',
     backupTaskPresetsConfirm: (count: number, names: string[]) =>
         `${count} task preset(s) are saved on this device only, and a backup file has no place for them, so they would be left out of this backup. They stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupThemePacksConfirm: (count: number, names: string[]) =>
