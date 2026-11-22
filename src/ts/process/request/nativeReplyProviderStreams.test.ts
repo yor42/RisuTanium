@@ -8,7 +8,7 @@
  * (copied: each suite mocks its own graph). `fetchNative` is a mock that takes the owner the way the real one does, so
  * nothing here says anything about native behaviour.
  */
-import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import '../../polyfill'
@@ -32,6 +32,7 @@ const h = vi.hoisted(() => ({
     log: [] as string[],
     rules: [] as unknown[],
     respRules: [] as unknown[],
+    gemRules: [] as unknown[],
     beforeRequest: new Set<(formated: unknown, model: string) => unknown>(),
     sleepGate: undefined as ((ms: number) => Promise<void>) | undefined,
 }))
@@ -50,7 +51,7 @@ vi.mock('../../stores.svelte', () => ({
     CharEmotion: writable({}), selectedCharID: writable(-1), selIdState: { selId: 0 },
     CurrentTriggerIdStore: writable(null), ReloadChatPointer: writable({}), ReloadGUIPointer: writable(0),
     HideIconStore: writable(false), moduleBackgroundEmbedding: writable(''),
-    bodyIntercepterStore: writable(null),
+    bodyIntercepterStore: [],
 }))
 vi.mock('../../alert', () => ({
     alertError: vi.fn(), alertToast: vi.fn(), alertInput: vi.fn(async () => ''), alertNormal: vi.fn(), alertSelect: vi.fn(async () => ''),
@@ -81,6 +82,16 @@ vi.mock('./openAI/responsesStreamTransform', async (importOriginal) => {
         responsesStreamTransform: (rule: Parameters<typeof actual.responsesStreamTransform>[0], io: Parameters<typeof actual.responsesStreamTransform>[1]) => {
             h.respRules.push(rule)
             return actual.responsesStreamTransform(rule, io)
+        },
+    }
+})
+vi.mock('./geminiStreamTransform', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('./geminiStreamTransform')>()
+    return {
+        ...actual,
+        geminiStreamTransform: (rule: Parameters<typeof actual.geminiStreamTransform>[0], io: Parameters<typeof actual.geminiStreamTransform>[1]) => {
+            h.gemRules.push(rule)
+            return actual.geminiStreamTransform(rule, io)
         },
     }
 })
@@ -194,6 +205,7 @@ beforeEach(() => {
     h.log.length = 0
     h.rules.length = 0
     h.respRules.length = 0
+    h.gemRules.length = 0
     h.beforeRequest.clear()
     h.sleepGate = undefined
     consume.mockReset()
@@ -266,6 +278,10 @@ describe('N1: formatOwnsReply', () => {
         expect(formatOwnsReply(LLMFormat.OpenAIResponseAPI, false)).toBe(false)
         expect(formatOwnsReply(LLMFormat.Anthropic, true)).toBe(true)
         expect(formatOwnsReply(LLMFormat.Anthropic, false)).toBe(false)
+        expect(formatOwnsReply(LLMFormat.GoogleCloud, true)).toBe(true)
+        expect(formatOwnsReply(LLMFormat.GoogleCloud, false)).toBe(false)
+        expect(formatOwnsReply(LLMFormat.VertexAIGemini, true)).toBe(true)
+        expect(formatOwnsReply(LLMFormat.VertexAIGemini, false)).toBe(false)
         for (const format of [LLMFormat.AnthropicLegacy, LLMFormat.AWSBedrockClaude, LLMFormat.NanoGPTMessages, LLMFormat.NanoGPTResponses, LLMFormat.Mistral, LLMFormat.NanoGPT, LLMFormat.Ollama]) {
             expect(formatOwnsReply(format, true), String(format)).toBe(false)
             expect(formatOwnsReply(format, false), String(format)).toBe(false)
@@ -716,5 +732,286 @@ describe('O: an overload refetch retires the first record before the unowned ret
 
         expect(announcedBeforeRetire).toBe(true)
         expect(takeAnnounced([KEY])).toBe(false)
+    })
+})
+
+// ---- Gemini (S4c) ----
+
+const GEMINI_MODEL = 'gemini-3.8-flash'
+const VERTEX_MODEL = 'gemini-3.8-flash-vertex'
+type GeminiPartFixture = { text?: string, thought?: boolean, thoughtSignature?: string, functionCall?: { name: string, args: Record<string, unknown> } }
+const geminiLine = (parts: GeminiPartFixture[], usage = true) => `data: ${JSON.stringify({
+    candidates: [{ content: { role: 'model', parts } }],
+    ...(usage ? { usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 1, totalTokenCount: 8 } } : {}),
+})}\n\n`
+const sseResponse = (text: string) => new Response(text, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+const geminiSse = (text = 'hi') => sseResponse(geminiLine([{ text }]))
+const geminiToolSse = () => sseResponse(geminiLine([{ functionCall: { name: 'f', args: {} } }]))
+
+function installGemini(extra: Record<string, unknown> = {}, model = GEMINI_MODEL): void {
+    installDb({ aiModel: model, subModel: model, google: { accessToken: 'gk', projectId: 'proj' }, vertexAccessTokenExpires: Date.now() + 3_600_000, vertexAccessToken: 'vt', ...extra })
+}
+
+describe('Gemini (S4c)', () => {
+    let textify: ReturnType<typeof vi.mocked<typeof import('../../globalApi.svelte').textifyReadableStream>>
+    beforeAll(async () => {
+        textify = vi.mocked((await import('../../globalApi.svelte')).textifyReadableStream)
+    })
+    // The failed-head rows read the real body, as the transport's textify does.
+    beforeEach(() => {
+        textify.mockImplementation(async (body) => new Response(body).text())
+    })
+    afterEach(() => {
+        textify.mockImplementation(async () => '')
+    })
+
+    describe('B3/B4: a streaming Gemini request binds a stream blob of its own kind', () => {
+        test('B3: GoogleCloud binds gemini-stream with the rule of the request and the usage context', async () => {
+            installGemini()
+            script(() => geminiSse())
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+            expect(out.type).toBe('streaming')
+            expect(calls).toHaveLength(1)
+            expect(heldReply(KEY)?.bound).toBe(true)
+            const blob = JSON.parse(calls[0].taken!.blob) as { parse: Record<string, unknown>, usage: { modelKey: string, inputEstimate: number } }
+            expect(blob.parse).toEqual({
+                kind: 'gemini-stream', extractJson: null, jsonSchema: false, streamThoughts: false, saveSignatures: false,
+                signatureSource: GEMINI_MODEL, signatureFormat: LLMFormat.GoogleCloud,
+            })
+            expect(blob.usage).toEqual({ modelKey: GEMINI_MODEL, inputEstimate: 7 })
+            expect(calls[0].probe).toBeDefined()
+            expect(await drain(out)).toBe('hi')
+        })
+
+        test('B4: Vertex binds gemini-stream with the Vertex signature format', async () => {
+            installGemini({}, VERTEX_MODEL)
+            script(() => geminiSse())
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+            expect(out.type).toBe('streaming')
+            expect(calls).toHaveLength(1)
+            expect(heldReply(KEY)?.bound).toBe(true)
+            const blob = JSON.parse(calls[0].taken!.blob) as { parse: Record<string, unknown> }
+            expect(blob.parse).toMatchObject({ kind: 'gemini-stream', signatureFormat: LLMFormat.VertexAIGemini })
+            expect(calls[0].probe).toBeDefined()
+        })
+    })
+
+    describe('N2/N4 (Gemini): requests that never own leave the grant unbound', () => {
+        test('a non-stream Gemini request', async () => {
+            installGemini()
+            await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase), useStreaming: false })
+            expect(heldReply(KEY)?.bound).toBe(false)
+            expect(calls.every((call) => call.taken === null)).toBe(true)
+        })
+
+        test('N4: image output turns streaming off after the strip: no request carries an owner and settle drops the key without a consume', async () => {
+            installGemini()
+            await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase), imageResponse: true })
+            expect(calls.every((call) => call.taken === null)).toBe(true)
+            expect(heldReply(KEY)?.bound).toBe(false)
+            await settleNativeReplyInflight(KEY)
+            expect(consume).not.toHaveBeenCalled()
+        })
+    })
+
+    describe('C1 (Gemini): the live read and the tool wrap use the rule of the blob', () => {
+        test('the transform gets the blob rule, and a thoughts switch flipped after the bind changes neither', async () => {
+            installGemini()
+            script((call) => {
+                expect(call.taken).not.toBeNull()
+                ;(DBState.db as unknown as Record<string, unknown>).streamGeminiThoughts = true
+                return sseResponse(geminiLine([{ text: 'x' }, { text: 'T', thought: true }]))
+            })
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+            const text = await drain(out)
+
+            const stored = (JSON.parse(calls[0].taken!.blob) as { parse: Record<string, unknown> }).parse
+            expect(stored.streamThoughts).toBe(false)
+            expect(h.gemRules).toHaveLength(1)
+            const { kind, ...fields } = stored
+            expect(kind).toBe('gemini-stream')
+            expect(h.gemRules[0]).toEqual(fields)
+            expect(text).toBe('<Thoughts>\n\nT\n\n</Thoughts>\n\nx')
+        })
+
+        test('a JSON-schema switch flipped after the bind does not change the extraction', async () => {
+            installGemini({ jsonSchemaEnabled: true, jsonSchema: '{"type":"object"}' })
+            script((call) => {
+                expect(call.taken).not.toBeNull()
+                ;(DBState.db as unknown as Record<string, unknown>).jsonSchemaEnabled = false
+                return geminiSse('{"text":"x"}')
+            })
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase), extractJson: 'text' })
+            const text = await drain(out)
+
+            const stored = (JSON.parse(calls[0].taken!.blob) as { parse: Record<string, unknown> }).parse
+            expect(stored).toMatchObject({ extractJson: 'text', jsonSchema: true })
+            expect(text).toBe('x')
+        })
+    })
+
+    describe('F (Gemini): a failed head is retired before any retry, and an announced one ends the turn', () => {
+        test('F1: 429 unannounced, then 200: consume is logged between the fetches and the retry is unowned', async () => {
+            installGemini({ requestRetrys: 1 })
+            script((call, n) => {
+                if (n === 1) {
+                    stamp(call, { key: KEY, outcome: 'done', stored: true, status: 429 })
+                    return new Response('slow down', { status: 429 })
+                }
+                return geminiSse()
+            })
+
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+            expect(out.type).toBe('streaming')
+            expect(calls).toHaveLength(2)
+            expect(calls[0].taken).not.toBeNull()
+            expect(calls[1].taken).toBeNull()
+            expect(h.log).toEqual(['fetch', 'consume', 'fetch'])
+            expect(heldReply(KEY)).toBeUndefined()
+        })
+
+        test('F2: an announced 429 gives one request and ends the turn', async () => {
+            installGemini({ requestRetrys: 2 })
+            script((call) => {
+                stamp(call, { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 })
+                return new Response('slow down', { status: 429 })
+            })
+
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+            expect(out).toMatchObject({ type: 'fail', endsTurn: true })
+            expect(calls).toHaveLength(1)
+            expect(consume).toHaveBeenCalledTimes(1)
+        })
+
+        test('F4: an unannounced RESOURCE_EXHAUSTED is retired before the fallback request, which is unowned', async () => {
+            installGemini({ antiServerOverloads: true })
+            script((call, n) => {
+                if (n === 1) {
+                    stamp(call, { key: KEY, outcome: 'done', stored: true, status: 429 })
+                    return new Response('{"error":{"status":"RESOURCE_EXHAUSTED"}}', { status: 429 })
+                }
+                return geminiSse()
+            })
+
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+            expect(out.type).toBe('streaming')
+            expect(calls).toHaveLength(2)
+            expect(calls[0].taken).not.toBeNull()
+            expect(calls[1].taken).toBeNull()
+            expect(h.log).toEqual(['fetch', 'consume', 'fetch'])
+        })
+
+        test('F4: an announced RESOURCE_EXHAUSTED ends the turn without the fallback request', async () => {
+            installGemini({ antiServerOverloads: true })
+            // A second request answers 200, so a fallback that recurses ends the loop instead of repeating the 429 forever.
+            script((call, n) => {
+                if (n > 1) {
+                    return geminiSse()
+                }
+                stamp(call, { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 })
+                return new Response('{"error":{"status":"RESOURCE_EXHAUSTED"}}', { status: 429 })
+            })
+
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+            expect(out).toMatchObject({ type: 'fail', endsTurn: true })
+            expect(calls).toHaveLength(1)
+            expect(consume).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    describe('H (Gemini): a throw or a Stop is the page ending its read', () => {
+        test('H1: a throw after the owner was taken notes pageEnded, abandons once, and settle consumes without a reconcile', async () => {
+            installGemini()
+            script((call) => {
+                stamp(call, { key: KEY, outcome: 'failed', stored: false })
+                throw new Error('connection refused')
+            })
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+            expect(out.type).toBe('threw')
+            expect(heldReply(KEY)?.pageEnded).toBe(true)
+            expect(calls[0].abandon).toHaveBeenCalledTimes(1)
+
+            await settleNativeReplyInflight(KEY)
+            expect(consume).toHaveBeenCalledWith(KEY)
+            expect(trigger).not.toHaveBeenCalled()
+        })
+    })
+
+    describe('W2: a tool round on an owned Gemini stream retires the record before the follow-up request', () => {
+        test('a stream whose final emission holds a function call', async () => {
+            installGemini()
+            script((_call, n) => (n === 1 ? geminiToolSse() : geminiSse()))
+
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+            await drain(out)
+
+            expect(calls).toHaveLength(2)
+            expect(calls[0].taken).not.toBeNull()
+            expect(calls[1].taken).toBeNull()
+            expect(h.log).toEqual(['fetch', 'consume', 'fetch'])
+        })
+
+        test('a stream with no function call consumes nothing while the request runs', async () => {
+            installGemini()
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+            await drain(out)
+            expect(consume).not.toHaveBeenCalled()
+        })
+    })
+
+    describe('G5: the live path keeps its fire-and-forget signature writes on an owned stream', () => {
+        const signed = () => sseResponse(geminiLine([{ text: 'a', thoughtSignature: 'sigA' }], false) + geminiLine([{ text: 'b', thoughtSignature: 'sigB' }]))
+        const written = async () => {
+            const saved = vi.mocked((await import('../files/inlays')).saveInlayedSignature)
+            return saved.mock.calls.map(([, signature]) => signature)
+        }
+
+        test('the owned run writes the same signatures as the unowned run, and the stream never waits on a write', async () => {
+            const saved = vi.mocked((await import('../files/inlays')).saveInlayedSignature)
+            installGemini()
+            saved.mockReset()
+            saved.mockImplementation(async () => '')
+            script(() => signed())
+            await drain(await ask({ saveSignatures: true }))
+            const unowned = await written()
+            expect(unowned.length).toBeGreaterThan(0)
+
+            saved.mockReset()
+            saved.mockImplementation(() => new Promise<string>(() => {}))
+            script(() => signed())
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase), saveSignatures: true })
+            expect(calls[calls.length - 1].taken).not.toBeNull()
+            await drain(out)
+            expect(await written()).toEqual(unowned)
+        })
+    })
+
+    describe('K1: two owned requests of different formats never retire each other', () => {
+        test("retiring an Anthropic reply's failed head leaves the Gemini held entry as it was", async () => {
+            const grantA = issueNativeReplyGrant(KEY, parseBase)
+            const grantB = issueNativeReplyGrant(OTHER, parseBase)
+            installGemini()
+            script(() => geminiSse())
+            await ask({ nativeReplyGrant: grantB, chatId: OTHER })
+            const before = structuredClone(heldReply(OTHER))
+            expect(before?.bound).toBe(true)
+
+            installClaude()
+            script((call) => {
+                stamp(call, { key: KEY, outcome: 'done', stored: true, status: 500 })
+                return new Response('x', { status: 500 })
+            })
+            await ask({ nativeReplyGrant: grantA, chatId: KEY })
+
+            expect(consume).toHaveBeenCalledTimes(1)
+            expect(consume).toHaveBeenCalledWith(KEY)
+            expect(heldReply(OTHER)).toEqual(before)
+        })
     })
 })
