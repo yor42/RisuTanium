@@ -27,7 +27,14 @@ const base: ReplyBlobBase = {
     generationInfo: { generationId: K1 }, promptInfo: {}, escape: false, requestedMs: 1,
 }
 const rule = { deepSeekThinkingOutput: false, extractJson: null, jsonSchema: false, multiGen: false }
-const streamBlobText = encodeStreamReplyBlob(base, { kind: 'openai-chat-stream', ...rule }, { modelKey: 'gpt-4o', inputEstimate: 120 })
+// Inlined in the producer's key order so the file loads on a build without the stream producer; the producer's output is
+// checked against it inside a test.
+const streamBlobText = JSON.stringify({
+    format: 'risu-native-reply-blob', target: { chaId: base.target.chaId, chatId: base.target.chatId },
+    targetName: base.targetName, saying: base.saying, generationInfo: base.generationInfo, promptInfo: base.promptInfo,
+    parse: { kind: 'openai-chat-stream', ...rule }, usage: { modelKey: 'gpt-4o', inputEstimate: 120 },
+    escape: base.escape, requestedMs: base.requestedMs,
+})
 const chatBlobText = encodeReplyBlob(base, { kind: 'openai-chat', ...rule })
 
 function listing(extra: Partial<ReplyListing> = {}): ReplyListing {
@@ -123,6 +130,10 @@ async function pass(r: Rig, times = 1): Promise<void> {
 beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     setChat([{ data: 'hi' }])
+})
+
+test('the inlined stream blob is what the producer writes', () => {
+    expect(encodeStreamReplyBlob(base, { kind: 'openai-chat-stream', ...rule }, { modelKey: 'gpt-4o', inputEstimate: 120 })).toBe(streamBlobText)
 })
 
 describe('a finished stream record', () => {
