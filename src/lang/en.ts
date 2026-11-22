@@ -52,6 +52,7 @@ export const languageEnglish = {
     chatShellBookmarksFirst: (count: number) => `Showing the first ${count.toLocaleString()}`,
     chatShellGoBack: 'Go back',
     chatShellJumpedBack: 'Moved. "Go back" returns to where you were.',
+    longChatLine: (count: string) => `Long chat · ${count} messages`,
     chatShellJumpDateAfterLast: 'No messages on or after that day',
     chatShellJumpEditorOpen: 'Close the message you are editing to go there',
     chatShellScrubberBubble: (position: string, total: string) => `${position} / ${total}`,

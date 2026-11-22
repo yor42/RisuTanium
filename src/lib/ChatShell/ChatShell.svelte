@@ -7,7 +7,7 @@
     import { get } from 'svelte/store'
     import { DBState, alertStore, selIdState, sideBarStore } from '../../ts/stores.svelte'
     import { language } from '../../lang'
-    import { appDateFormat } from '../../ts/appIntl.svelte'
+    import { appDateFormat, appIntlTag } from '../../ts/appIntl.svelte'
     import { postToast } from '../../ts/toast/toastHost.svelte'
     import type SendFailureCardComponent from './SendFailureCard.svelte'
     import type NotificationsOffNoticeComponent from '../ChatScreens/NotificationsOffNotice.svelte'
@@ -42,6 +42,9 @@
     import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
     import { isLongJump, latestButtonVisible, type JumpOptions, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
     import { createReturnChip, type ReturnChipState } from '../../ts/chatShell/returnChip'
+    import { createLongChatHint, type LongChatHintState } from '../../ts/chatShell/longChatHint'
+    import { isLongChatHintShown, markLongChatHintShown } from '../../ts/chatDraftStore'
+    import LongChatHint from './LongChatHint.svelte'
     import { installFindKey, installJumpSheetKey, installTranscriptEndKey } from '../../ts/chatShell/shellJumpKeys'
     import { DEFAULT_FILTERS, createFindSession, sameFingerprint, searchFingerprint, type FindSession, type FindSessionState, type SearchFingerprint } from '../../ts/chatShell/findSession'
     import { createFindRun, type FindRun } from '../../ts/chatShell/findRun'
@@ -383,8 +386,8 @@
     }
 
     onMount(() => {
-        const stop = readerIntent.subscribe((event) => chip.readerMoved(event.distance))
-        return () => { stop(); chip.hide() }
+        const stop = readerIntent.subscribe((event) => { chip.readerMoved(event.distance); hint.dismiss() })
+        return () => { stop(); chip.hide(); hint.dismiss() }
     })
 
     $effect(() => {
@@ -392,6 +395,45 @@
         if (!state.origin) return
         const length = shownChat?.message.length ?? 0
         if (chatKeyNow() !== state.chatKey || length - 1 < state.origin.index) chip.hide()
+    })
+
+    // The long-chat hint: once per chat, over the transcript, never in its layout. The reader's first move, the search bar, a sheet,
+    // 8 s or another chat takes it away. Its "shown" flag is read and written untracked, so the effect below never depends on it.
+    let hintState = $state.raw<LongChatHintState>({ count: null })
+    const hint = createLongChatHint({
+        setTimer: (callback, ms) => window.setTimeout(callback, ms),
+        clearTimer: (id) => window.clearTimeout(id),
+        read: isLongChatHintShown,
+        write: markLongChatHintShown,
+        onChange: () => { hintState = hint.state },
+    })
+    function hintLine(count: number): string {
+        return language.longChatLine(new Intl.NumberFormat(appIntlTag()).format(count))
+    }
+    // Plain variables on purpose: the effect below must depend on the shown chat and the pending switch only.
+    let hintSeenChat: Chat | undefined
+    let hintRan = false
+    $effect(() => {
+        const chat = shownChat
+        const pending = switchPending
+        untrack(() => {
+            const previous = hintSeenChat
+            const ran = hintRan
+            hintSeenChat = chat
+            hintRan = true
+            if (pending || !chat || character?.type !== 'character') {
+                hint.dismiss()
+                return
+            }
+            const count = chat.message.length
+            if (!hint.open({ cha: character.chaId, chat: chat.id, slot: character.chatPage }, count)) return
+            // A chat change is announced as one string with the chat-opened text; the first mount has none, so the hint speaks alone.
+            if (ran && previous !== chat) announcement = `${language.chatShellChatOpened(chat.name ?? '')} ${hintLine(count)}`
+            else void say(hintLine(count))
+        })
+    })
+    $effect(() => {
+        if (scrubBlockedByState || findOpen) hint.dismiss()
     })
 
     function openJump(active: Element | null): void {
@@ -1080,6 +1122,7 @@
     <div bind:this={jumpHost} class="jump-host">
         {#if Scrubber}{#key chatKeyNow()}<Scrubber count={shownChat?.message.length ?? 0} fraction={scrubFraction} visible={scrubVisible} trackInteractive={scrubInteractive} formatter={scrubFormatter} label={scrubLabel} timeAt={(index) => shownChat?.message[index]?.time} onrelease={(index) => void jumpAndOffer(index, { focus: false })} onpage={scrubPage} onhover={setScrubHover} ondrag={scrubDrag} onwheel={scrubWheel} />{/key}{/if}
         {#if ReturnChip && chipState.origin}<ReturnChip onreturn={() => void returnFromChip()} onhold={(kind, on) => chip.hold(kind, on)} />{/if}
+        {#if hintState.count !== null}<LongChatHint line={hintLine(hintState.count)} />{/if}
         {#if ShellFloatingButtons}<ShellFloatingButtons visible={latestButtonVisible({ atBottom, far: farFromLatest, unread, count: newCount })} count={newCount} onclick={jumpFromButton} />{/if}
     </div>
     <div bind:this={composer} data-part="chat-composer-host" inert={switchPending ? true : undefined}>
