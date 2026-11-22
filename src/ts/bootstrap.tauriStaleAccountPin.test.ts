@@ -135,6 +135,13 @@ vi.mock(import('src/ts/gui/colorscheme'), () => ({
     updateTextThemeAndCSS: vi.fn(),
 }) as unknown as typeof import('src/ts/gui/colorscheme'))
 
+// The pack safe-mode module reads the light colour module directly, so it needs the same stand-ins.
+vi.mock(import('src/ts/gui/colorschemeCore'), async (importOriginal) => ({
+    ...(await importOriginal()),
+    updateColorScheme: vi.fn(),
+    updateTextThemeAndCSS: vi.fn(),
+}) as unknown as typeof import('src/ts/gui/colorschemeCore'))
+
 vi.mock(import('src/ts/observer.svelte'), () => ({
     startObserveDom: vi.fn(),
 }) as unknown as typeof import('src/ts/observer.svelte'))

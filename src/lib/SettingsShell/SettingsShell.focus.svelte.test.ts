@@ -214,8 +214,8 @@ describe('T7 phone drill-in focus, before the first frame', () => {
         settingsOpen.set(true)
         const target = mountHost()
         await settle()
-        const display = target.querySelector<HTMLButtonElement>('[data-part="settings-index-entry"][data-page="display"]')!
-        expect(document.activeElement).toBe(target.querySelector('[data-part="settings-index-entry"]'))
+        const display = target.querySelector<HTMLButtonElement>('[data-part="settings-index-display"]')!
+        expect(document.activeElement).toBe(target.querySelector('[data-part="settings-index-entry"], [data-part="settings-index-display"]'))
 
         installFrameQueue()
         display.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))

@@ -15,6 +15,7 @@ import { COLOUR_READY_AREAS } from 'src/ts/themePack/colourReady'
 import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome, type PackTileColours, type PackVerifyIcon } from 'src/ts/themePack/install'
 import { APPLIED_AREAS, intakePackBytes, type IntakeRefusal, type IntakeResult, type VerifiedPack } from 'src/ts/themePack/intake'
 import { createJudgeClient } from 'src/ts/themePack/judgeClient'
+import { leavePackSafeMode } from 'src/ts/themePack/packSafeMode.svelte'
 import type { PackTile } from 'src/ts/themePack/manifest'
 import { checkPackIcon } from 'src/ts/themePack/packIcon'
 import { listThemePacks } from 'src/ts/themePack/packRecord'
@@ -401,6 +402,8 @@ export function selectThemePack(id: string | undefined, deps?: Partial<InstallFl
         publish(errorMessage(language.themePackBusy), d.notify)
         return 'busy'
     }
+    // After the busy check: a refused pick keeps pack safe mode, so the pack the user is escaping stays off.
+    leavePackSafeMode()
     installFlowState.outcome = null
     if (id === undefined) {
         cancelPackSchemeRequest()
