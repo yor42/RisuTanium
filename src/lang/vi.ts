@@ -4105,7 +4105,11 @@ export const languageVietnamese = {
         `RisuTanium không thể lưu preset ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với preset sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các preset đã lưu gần nhất vẫn được giữ.`,
     saveLoadoutsHeldNotice: (name: string) =>
         `RisuTanium không thể lưu Loadout ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với Loadout sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các Loadout đã lưu gần nhất vẫn được giữ.`,
+    savePluginsHeldNotice: (name: string) =>
+        `RisuTanium không thể lưu plugin ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với plugin sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các plugin đã lưu gần nhất vẫn được giữ.`,
     saveItemModuleLabel: (name: string) => `module "${name}"`,
+    saveItemWorkspaceLabel: (name: string) => `không gian làm việc "${name}"`,
+    saveItemWorkspaceFileLabel: (path: string) => `tệp không gian làm việc "${path}"`,
     saveItemSettingLabel: (field: string) => `cài đặt "${field}"`,
     saveItemPluginDataLabel: (key: string) => `dữ liệu plugin "${key}"`,
     saveItemStaticsLabel: "thống kê sử dụng",

@@ -4106,7 +4106,11 @@ export const languageChinese = {
         `RisuTanium 无法保存预设 ${name}：它的数据无效，可能是插件修改了它。其他所有内容仍会正常保存，但在问题解决之前，对预设的更改不会被保存，如果在此之前关闭或刷新标签页，这些更改将丢失。最后一次保存的预设会保留。`,
     "saveLoadoutsHeldNotice": (name: string) =>
         `RisuTanium 无法保存配置组包 ${name}：它的数据无效，可能是插件修改了它。其他所有内容仍会正常保存，但在问题解决之前，对配置组包的更改不会被保存，如果在此之前关闭或刷新标签页，这些更改将丢失。最后一次保存的配置组包会保留。`,
+    "savePluginsHeldNotice": (name: string) =>
+        `RisuTanium 无法保存插件 ${name}：它的数据无效，可能是插件修改了它。其他所有内容仍会正常保存，但在问题解决之前，对插件的更改不会被保存，如果在此之前关闭或刷新标签页，这些更改将丢失。最后一次保存的插件会保留。`,
     "saveItemModuleLabel": (name: string) => `模块“${name}”`,
+    "saveItemWorkspaceLabel": (name: string) => `工作区“${name}”`,
+    "saveItemWorkspaceFileLabel": (path: string) => `工作区文件“${path}”`,
     "saveItemSettingLabel": (field: string) => `设置“${field}”`,
     "saveItemPluginDataLabel": (key: string) => `插件数据“${key}”`,
     "saveItemStaticsLabel": "使用统计",

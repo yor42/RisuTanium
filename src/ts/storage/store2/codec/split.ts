@@ -197,7 +197,7 @@ export class Encoder {
     /** The items of the database this encode could not read and went on without; the scoped encode reports them. */
     readonly skippedItems: SkippedItem[] = []
     /**
-     * A preset list or a plugin-data value was carried from the previous encoding instead of being read, so the config
+     * A preset list, a plugin list or a plugin-data value was carried from the previous encoding instead of being read, so the config
      * inlay list cannot be derived exactly: `finishTree` writes the overflow body, which keeps the sweep from deleting
      * an inlay the carried part may still use.
      */
@@ -209,7 +209,7 @@ export class Encoder {
     declare readonly split: SplitRecorder | undefined
 
     /**
-     * `skipItems`: a module, preset list, loadouts list, statics, character order, setting or plugin-data key whose data
+     * `skipItems`: a module, preset list, plugin list, workspace, loadouts list, statics, character order, setting or plugin-data key whose data
      * cannot be read as plain JSON is gone without, as the front, fixed-field and module encodes describe; off, such a
      * fault fails the pass as it always did.
      */
@@ -454,35 +454,134 @@ export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder)
     return entry
 }
 
-/** The plugins of both lists as plain JSON, in list order, each with its position in its own list. */
+/** A plugin list one of whose plugins could not be read: the first fault, and every faulted plugin's name for the notice. */
+interface PluginListFault {
+    readonly cause: unknown
+    readonly labels: string[]
+}
+
+/**
+ * The plugins of both lists as plain JSON, in list order, each with its position in its own list. A list in `faults`
+ * holds a plugin that is a fault of the data; its readable plugins are still in `items`, and the emit does not write them.
+ */
 export interface NormalizedPlugins {
     readonly items: readonly { list: PluginList, index: number, object: JsonObject }[]
+    readonly faults: ReadonlyMap<PluginList, PluginListFault>
 }
 
-/** Reads the plugins out of the live database; nothing here touches an `Encoder`. A fault is never skipped. */
-export function normalizePlugins(db: Database): NormalizedPlugins {
+/** The notice name of a live plugin: its quoted `displayName`, else `name`, else null; a throwing read is null. */
+function guardedPluginName(value: unknown): string | null {
+    try {
+        if (typeof value !== 'object' || value === null) {
+            return null
+        }
+        const { displayName, name } = value as { displayName?: unknown, name?: unknown }
+        if (typeof displayName === 'string' && displayName !== '') {
+            return displayName
+        }
+        return typeof name === 'string' && name !== '' ? name : null
+    } catch {
+        return null
+    }
+}
+
+/**
+ * Reads the plugins out of the live database; nothing here touches an `Encoder`. With `skip`, a plugin that is a fault of
+ * the data is recorded under its list and the rest of the list is still read; otherwise the first fault fails here.
+ */
+export function normalizePlugins(db: Database, skip: boolean): NormalizedPlugins {
     const items: { list: PluginList, index: number, object: JsonObject }[] = []
+    const faults = new Map<PluginList, PluginListFault>()
     for (const list of PLUGIN_LISTS) {
         listOrEmpty((db as unknown as Record<PluginList, unknown>)[list], list).forEach((plugin, index) => {
-            items.push({ list, index, object: plainObject(plugin, `${list}[${index}]`) })
+            try {
+                items.push({ list, index, object: plainObject(plugin, `${list}[${index}]`) })
+            } catch (error) {
+                if (!skip || !isSkippableFault(error)) {
+                    throw error
+                }
+                const fault = faults.get(list) ?? { cause: error, labels: [] }
+                fault.labels.push(quoted(guardedPluginName(plugin) ?? `${list}[${index}]`))
+                faults.set(list, fault)
+            }
         })
     }
-    return { items }
+    return { items, faults }
 }
 
+/**
+ * The previous encoding's plugins of the list `held`, taken as the previous manifest names them: each manifest plugin
+ * ref is attributed to the one list whose previous unit at the next position of that list it names (by ref head and
+ * type), and the units of `held` go into `encoder.carried` so the next acknowledged encoding still holds them. The other
+ * list's units are never carried. Null when there is no previous manifest, or a ref matches both lists or neither: a
+ * partial or invented list is never written, and the boundary never comes from the live lists. An acknowledged empty list
+ * is carried as the empty list.
+ */
+function carriedPluginRefs(encoder: Encoder, held: PluginList): Ref[] | null {
+    const previous = encoder.previous
+    const manifest = previous?.objects?.manifest
+    if (previous === null || manifest === undefined) {
+        return null
+    }
+    const counters: Record<PluginList, number> = { plugins: 0, pluginV2: 0 }
+    const refs: Ref[] = []
+    const found: [string, ReusableUnit][] = []
+    for (const named of manifest.fixed.plugins) {
+        const ref = refTuple(named)
+        const matches = PLUGIN_LISTS.flatMap((list) => {
+            const identity = `plugin:${list}:${counters[list]}`
+            const unit = previousUnitByHead(previous, identity, UNIT_TYPE.plugin, ref)
+            return unit === undefined ? [] : [{ list, identity, unit }]
+        })
+        if (matches.length !== 1) {
+            return null
+        }
+        const [{ list, identity, unit }] = matches
+        counters[list]++
+        if (list === held) {
+            refs.push(ref)
+            found.push([identity, unit])
+        }
+    }
+    for (const [identity, unit] of found) {
+        encoder.carried.set(identity, unit)
+    }
+    return refs
+}
+
+/**
+ * Puts the plugins of each list in list order, or carries the previous list when a plugin of it could not be read: the
+ * whole list is held (a plugin's position is its identity, so a shifted list cannot be saved in part), and the live
+ * list's other plugins are not written. Without a carry the first fault is thrown.
+ */
 export function emitPlugins(normalized: NormalizedPlugins, encoder: Encoder): { refs: Ref[], plain: JsonObject[] } {
     const refs: Ref[] = []
     const plain: JsonObject[] = []
-    for (const { list, index, object } of normalized.items) {
-        plain.push(object)
-        const body: PluginBody = { v: 1, list, plugin: object }
-        refs.push(refTuple(encoder.put(`plugin:${list}:${index}`, UNIT_TYPE.plugin, body).ref))
+    for (const list of PLUGIN_LISTS) {
+        const fault = normalized.faults.get(list)
+        if (fault !== undefined) {
+            const held = carriedPluginRefs(encoder, list)
+            if (held === null) {
+                throw fault.cause
+            }
+            refs.push(...held)
+            encoder.skippedItems.push({ scope: 'plugins', key: list, label: fault.labels.join(', '), saved: true, cause: fault.cause })
+            encoder.inlayOwnerCarried = true
+            continue
+        }
+        for (const item of normalized.items) {
+            if (item.list === list) {
+                plain.push(item.object)
+                const body: PluginBody = { v: 1, list, plugin: item.object }
+                refs.push(refTuple(encoder.put(`plugin:${list}:${item.index}`, UNIT_TYPE.plugin, body).ref))
+            }
+        }
     }
     return { refs, plain }
 }
 
 export function encodePlugins(db: Database, encoder: Encoder): { refs: Ref[], plain: JsonObject[] } {
-    return emitPlugins(normalizePlugins(db), encoder)
+    return emitPlugins(normalizePlugins(db, false), encoder)
 }
 
 /** The plugin storage as plain JSON; a key whose value could not be read is in `faults` and in no other part. */
@@ -576,19 +675,30 @@ export function encodePluginStorage(db: Database, encoder: Encoder): { refs: Ref
     return emitPluginStorage(normalizePluginStorage(db, false), encoder)
 }
 
-/** The utility workspaces as plain JSON: each workspace's own fields apart from its files, and its files with their text. */
-export interface NormalizedWorkspaces {
-    readonly items: readonly {
+/** A workspace the pass could read: its own fields apart from its files, and its files with their text. */
+interface ReadWorkspace {
+    id: string
+    /** The workspace's fields except `files`; unknown fields stay. */
+    ws: JsonObject
+    files: readonly {
         id: string
-        /** The workspace's fields except `files`; unknown fields stay. */
-        ws: JsonObject
-        files: readonly {
-            id: string
-            /** The file's record fields except `text`: `id`, `path`, `size`, `mtime` and any field this build does not know. */
-            fields: JsonObject
-            text: string | undefined
-        }[]
+        /** The file's record fields except `text`: `id`, `path`, `size`, `mtime` and any field this build does not know. */
+        fields: JsonObject
+        text: string | undefined
     }[]
+}
+
+/** A workspace, a file of it included, that is a fault of the data: it has a valid unique id and is held whole or left out. */
+interface FaultedWorkspace {
+    readonly id: string
+    /** What a notice calls it: the quoted name, else the quoted id. */
+    readonly label: string
+    readonly cause: unknown
+}
+
+/** The utility workspaces as plain JSON, in list order; a workspace that could not be read is a `FaultedWorkspace` in its position. */
+export interface NormalizedWorkspaces {
+    readonly items: readonly (ReadWorkspace | FaultedWorkspace)[]
 }
 
 /** An id that names a unit identity (`ws:<id>`, `wsf:<id>:<id>`): a non-empty string that holds no `:`, so an identity splits one way. */
@@ -599,16 +709,41 @@ function workspaceIdOf(value: unknown, where: string): string {
     return value
 }
 
+/** The id of a live workspace when it is a valid identity part (`workspaceIdOf`'s rules); null when it is not or the read throws. */
+function guardedWorkspaceId(value: unknown): string | null {
+    try {
+        const id = typeof value === 'object' && value !== null ? (value as { id?: unknown }).id : undefined
+        return typeof id === 'string' && id !== '' && !id.includes(':') ? id : null
+    } catch {
+        return null
+    }
+}
+
 /**
- * Reads the workspaces out of the live database; nothing here touches an `Encoder`, and a fault is never skipped: a
- * workspace that cannot be read fails the pass, as a plugin does. A file without `text` is legal here (the boot read
- * gives a damaged file none); the emit decides what happens to it.
+ * Reads the workspaces out of the live database; nothing here touches an `Encoder`. With `skip`, a workspace that is a
+ * fault of the data (its own fields, or any file including the text) is recorded in its position when its id is valid
+ * and not repeated; a workspace whose id cannot be read, or that repeats an id, still fails the pass, as does every
+ * field check on a readable workspace. A file without `text` is legal here (the boot read gives a damaged file none);
+ * the emit decides what happens to it.
  */
-export function normalizeWorkspaces(db: Database): NormalizedWorkspaces {
+export function normalizeWorkspaces(db: Database, skip: boolean): NormalizedWorkspaces {
     const seen = new Set<string>()
-    const items = listOrEmpty(db.utilityWorkspaces, 'utilityWorkspaces').map((value, index) => {
+    const items = listOrEmpty(db.utilityWorkspaces, 'utilityWorkspaces').map((value, index): ReadWorkspace | FaultedWorkspace => {
         const where = `utilityWorkspaces[${index}]`
-        const plain = plainObject(value, where)
+        let plain: JsonObject
+        try {
+            plain = plainObject(value, where)
+        } catch (error) {
+            const faulted = skip && isSkippableFault(error) ? guardedWorkspaceId(value) : null
+            if (faulted === null) {
+                throw error
+            }
+            if (seen.has(faulted)) {
+                throw new CodecInputError(`${where} repeats the workspace id ${faulted}.`)
+            }
+            seen.add(faulted)
+            return { id: faulted, label: quoted(guardedName(value) ?? faulted), cause: error }
+        }
         const id = workspaceIdOf(plain.id, where)
         if (seen.has(id)) {
             throw new CodecInputError(`${where} repeats the workspace id ${id}.`)
@@ -649,9 +784,31 @@ export function normalizeWorkspaces(db: Database): NormalizedWorkspaces {
  * `text` goes through the workspace memo. A file without it (damaged at boot) is never written empty: the previous
  * encoding's type 29 unit under its key is carried and its Ref kept in the record. With no such unit the file is left
  * out and reported in `skippedItems` when the pass skips items; any other pass fails, as a plugin value does.
+ *
+ * A workspace that could not be read is held whole: the previous encoding's `ws:<id>` record and every `wsf:<id>:` file
+ * unit go into `encoder.carried` and the record's Ref stays in the list (a per-file carry would need the previous record
+ * body, which the previous encoding does not hold). One the previous encoding never held is left out and reported as
+ * never saved.
  */
 export function emitWorkspaces(normalized: NormalizedWorkspaces, encoder: Encoder): Ref[] {
-    return normalized.items.map((item) => {
+    return normalized.items.flatMap((item): Ref[] => {
+        if ('cause' in item) {
+            const units = encoder.previous?.units
+            const held = units?.get(`ws:${item.id}`)
+            if (units === undefined || held === undefined || held.type !== UNIT_TYPE.workspace) {
+                encoder.skippedItems.push({ scope: 'workspaces', key: `ws:${item.id}`, label: item.label, saved: false, cause: item.cause })
+                return []
+            }
+            encoder.carried.set(`ws:${item.id}`, held)
+            const prefix = `wsf:${item.id}:`
+            for (const [identity, unit] of units) {
+                if (identity.startsWith(prefix) && unit.type === UNIT_TYPE.workspaceFile) {
+                    encoder.carried.set(identity, unit)
+                }
+            }
+            encoder.skippedItems.push({ scope: 'workspaces', key: `ws:${item.id}`, label: item.label, saved: true, cause: item.cause })
+            return [refTuple(held.ref)]
+        }
         const files = item.files.flatMap((file): WorkspaceRecord['files'][number][] => {
             const identity = `wsf:${item.id}:${file.id}`
             if (file.text === undefined) {
@@ -672,7 +829,7 @@ export function emitWorkspaces(normalized: NormalizedWorkspaces, encoder: Encode
             return [{ ...file.fields, ref: refTuple(unit.ref) } as WorkspaceRecord['files'][number]]
         })
         const record: WorkspaceRecord = { v: 1, ws: item.ws, files }
-        return refTuple(encoder.putParent(`ws:${item.id}`, UNIT_TYPE.workspace, record).ref)
+        return [refTuple(encoder.putParent(`ws:${item.id}`, UNIT_TYPE.workspace, record).ref)]
     })
 }
 
@@ -1086,9 +1243,9 @@ function normalizeFront(db: Database, encoder: Encoder): NormalizedFront {
     const skip = encoder.skipItems && encoder.previous !== null
     const presets = normalizePresets(db.botPresets, 'botPresets', skip)
     const taskPresets = normalizePresets(db.taskPresets ?? [], 'taskPresets', skip)
-    const plugins = normalizePlugins(db)
+    const plugins = normalizePlugins(db, skip)
     const pluginStorage = normalizePluginStorage(db, skip)
-    const workspaces = normalizeWorkspaces(db)
+    const workspaces = normalizeWorkspaces(db, skip)
     return { presets, taskPresets, plugins, pluginStorage, workspaces }
 }
 

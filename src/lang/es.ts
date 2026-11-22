@@ -4108,7 +4108,11 @@ export const languageSpanish = {
         `RisuTanium no puede guardar el preset ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los presets no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos presets guardados.`,
     saveLoadoutsHeldNotice: (name: string) =>
         `RisuTanium no puede guardar el loadout ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los loadouts no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos loadouts guardados.`,
+    savePluginsHeldNotice: (name: string) =>
+        `RisuTanium no puede guardar el plugin ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los plugins no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos plugins guardados.`,
     saveItemModuleLabel: (name: string) => `el módulo "${name}"`,
+    saveItemWorkspaceLabel: (name: string) => `el espacio de trabajo "${name}"`,
+    saveItemWorkspaceFileLabel: (path: string) => `el archivo del espacio de trabajo "${path}"`,
     saveItemSettingLabel: (field: string) => `el ajuste "${field}"`,
     saveItemPluginDataLabel: (key: string) => `los datos de plugin "${key}"`,
     saveItemStaticsLabel: "las estadísticas de uso",

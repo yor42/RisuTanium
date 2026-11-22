@@ -4150,7 +4150,11 @@ export const languageChineseTraditional = {
         `RisuTanium 無法儲存預設 ${name}：它的資料無效，可能是外掛修改了它。其他所有內容仍會正常儲存，但在問題解決之前，對預設的變更不會被儲存，如果在此之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的預設會保留。`,
     "saveLoadoutsHeldNotice": (name: string) =>
         `RisuTanium 無法儲存設定組合 ${name}：它的資料無效，可能是外掛修改了它。其他所有內容仍會正常儲存，但在問題解決之前，對設定組合的變更不會被儲存，如果在此之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的設定組合會保留。`,
+    "savePluginsHeldNotice": (name: string) =>
+        `RisuTanium 無法儲存外掛 ${name}：它的資料無效，可能是外掛修改了它。其他所有內容仍會正常儲存，但在問題解決之前，對外掛的變更不會被儲存，如果在此之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的外掛會保留。`,
     "saveItemModuleLabel": (name: string) => `模組「${name}」`,
+    "saveItemWorkspaceLabel": (name: string) => `工作區「${name}」`,
+    "saveItemWorkspaceFileLabel": (path: string) => `工作區檔案「${path}」`,
     "saveItemSettingLabel": (field: string) => `設定「${field}」`,
     "saveItemPluginDataLabel": (key: string) => `外掛資料「${key}」`,
     "saveItemStaticsLabel": "使用統計",

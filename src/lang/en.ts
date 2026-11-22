@@ -4249,7 +4249,11 @@ export const languageEnglish = {
         `RisuTanium cannot save the preset ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to presets are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved presets are kept.`,
     saveLoadoutsHeldNotice: (name: string) =>
         `RisuTanium cannot save the loadout ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to loadouts are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved loadouts are kept.`,
+    savePluginsHeldNotice: (name: string) =>
+        `RisuTanium cannot save the plugin ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to plugins are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved plugins are kept.`,
     saveItemModuleLabel: (name: string) => `the module "${name}"`,
+    saveItemWorkspaceLabel: (name: string) => `the workspace "${name}"`,
+    saveItemWorkspaceFileLabel: (path: string) => `the workspace file "${path}"`,
     saveItemSettingLabel: (field: string) => `the setting "${field}"`,
     saveItemPluginDataLabel: (key: string) => `the plugin data "${key}"`,
     saveItemStaticsLabel: "the usage statistics",
