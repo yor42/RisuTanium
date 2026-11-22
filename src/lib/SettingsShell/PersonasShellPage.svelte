@@ -422,7 +422,7 @@
                             onkeydown={(event) => onCardKeydown(event, row.persona)}
                         >
                             {#if row.persona.icon}
-                                {#await warnOnReject('PersonasShellPage: persona icon rejected', lookups.get('persona:' + row.key, row.persona.icon, 'css'))}
+                                {#await warnOnReject('PersonasShellPage: persona icon rejected', lookups.get('persona:' + row.key, row.persona.icon, 'css', { everySize: true }))}
                                     <span class="rounded-md h-14 w-14 shrink-0 bg-textcolor2"></span>
                                 {:then im}
                                     <span class="rounded-md h-14 w-14 shrink-0 bg-textcolor2" style={im}></span>

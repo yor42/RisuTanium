@@ -216,7 +216,17 @@ export function flaggedLists(items: readonly FlaggedItem[]): BootList[] {
     const groups = new Map<string, FlaggedGroup>()
     // A task preset belongs to no character and has no readable name: it is named by its position in the saved list.
     const taskPresets = new Map<number, Set<FlaggedState>>()
+    // A workspace file belongs to no character: it is named by its workspace's id and its path.
+    const workspaceFiles = new Map<string, Map<string, Set<FlaggedState>>>()
     for (const item of items) {
+        if (item.kind === 'workspace-file') {
+            const files = workspaceFiles.get(item.wsId) ?? new Map<string, Set<FlaggedState>>()
+            const states = files.get(item.path) ?? new Set<FlaggedState>()
+            states.add(item.why)
+            files.set(item.path, states)
+            workspaceFiles.set(item.wsId, files)
+            continue
+        }
         if (item.kind === 'task-preset') {
             const states = taskPresets.get(item.position) ?? new Set<FlaggedState>()
             states.add(item.why)
@@ -257,6 +267,12 @@ export function flaggedLists(items: readonly FlaggedItem[]): BootList[] {
         lists.push({
             heading: text.flaggedTaskPresetsHeading,
             items: [...taskPresets].map(([position, states]) => text.flaggedTaskPresetLine(position + 1, flaggedStateText(states))),
+        })
+    }
+    for (const [wsId, files] of workspaceFiles) {
+        lists.push({
+            heading: text.flaggedWorkspaceHeading(wsId),
+            items: [...files].map(([path, states]) => text.flaggedWorkspaceFileLine(path, flaggedStateText(states))),
         })
     }
     return lists

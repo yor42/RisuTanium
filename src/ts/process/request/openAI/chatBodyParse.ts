@@ -18,6 +18,12 @@ export interface OpenAIParseContext {
     multiGen: boolean
 }
 
+/** The fields of the parse context a stream is read with; the stream transform reads nothing else of the request. */
+export type OpenAIChatReadRule = Pick<OpenAIParseContext, 'deepSeekThinkingOutput' | 'extractJson' | 'jsonSchema' | 'multiGen'>
+
+/** The parse context of a recorded OpenAI-compatible chat stream: the same rule under its own kind. */
+export type OpenAIStreamParseContext = OpenAIChatReadRule & { kind: 'openai-chat-stream' }
+
 interface OpenAIChoice {
     text?: string
     reasoning_content?: string

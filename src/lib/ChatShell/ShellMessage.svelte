@@ -106,7 +106,7 @@
     import { getCharImage } from '../../ts/characters'
     import { isAndroidTransport } from '../../ts/storage/tauriByteTransport'
     import { getModelInfo } from '../../ts/model/modellist'
-    import { onDestroy, onMount, untrack } from 'svelte'
+    import { onDestroy, onMount, tick, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
 
     interface Props {
@@ -227,6 +227,25 @@
             const enabled = control !== null && !(control instanceof HTMLButtonElement && control.disabled) && control.getAttribute('aria-disabled') !== 'true'
             asShellFocus(() => (enabled ? control : article).focus({ preventScroll: true }))
         }
+    })
+    // At stream end the finished body replaces the streaming view and removes whatever inside it held focus (the code chip).
+    // The body branch follows `streamBody`, which only this effect changes, so the focus check always sees the streaming
+    // view still in place; the message then takes the focus unless it already went elsewhere.
+    let streamBody = $state(untrack(() => streaming))
+    $effect.pre(() => {
+        const next = streaming
+        const ended = untrack(() => streamBody) && !next
+        const body = untrack(() => bodyRoot)
+        const active = document.activeElement
+        const held = ended && body !== null && active !== null && active !== body && body.contains(active)
+        streamBody = next
+        if (!held) return
+        void tick().then(() => {
+            const row = article
+            const now = document.activeElement
+            if (destroyed || !row?.isConnected || (now && now !== document.body && now.isConnected)) return
+            asShellFocus(() => row.focus({ preventScroll: true }))
+        })
     })
     // A row that replaced a stepped sibling at the same position reserves the sibling's height until its own body has rendered.
     onMount(() => {
@@ -858,9 +877,9 @@
                 {/if}
             {:else if firstMessage && (message.data === '' || message.data === '{{blank}}' || message.data === '{{none}}')}
                 {language.noMessage}
-            {:else if streaming && renderWhenComplete}
+            {:else if streamBody && renderWhenComplete}
                 <div data-part="chat-stream-placeholder">{language.chatShellWritingCount(message.data.length)}</div>
-            {:else if streaming}
+            {:else if streamBody}
                 <StreamingView text={message.data} {modelShortName} {character} parseContext={{ chatID: idx, cbsConditions: cbsConditions(), displayOptions: buildDisplayParseOptions({ chara: name, chatID: idx, firstmsg: firstMessage, chatRole: chat?.message?.[idx]?.role ?? null }) }} />
             {:else}
                 <ChatBody {character} {firstMessage} {idx} {msgDisplay} {name} role={message.role}

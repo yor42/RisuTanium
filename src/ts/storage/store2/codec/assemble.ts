@@ -225,22 +225,24 @@ function assemblePluginStorage(manifest: Manifest, source: UnitSource): JsonObje
 
 /**
  * The workspaces the manifest names, each record with its files' text read back in: a record field this build does not
- * know and a file field it does not know come back with it. Strict: a missing or damaged record or file throws.
+ * know and a file field it does not know come back with it. Strict: a missing or damaged record or file throws,
+ * except a file the boot flagged (`placeholders`): it keeps its entry and gets no `text`, without being read.
  */
-function assembleWorkspaces(manifest: Manifest, source: UnitSource): JsonObject[] {
+function assembleWorkspaces(manifest: Manifest, source: UnitSource, placeholders?: ReadonlySet<string>): JsonObject[] {
     return (manifest.fixed.workspaces ?? []).map((ref, index) => {
         const where = `workspace ${index}`
         const record = readChecked(source, ref, UNIT_TYPE.workspace, where) as WorkspaceRecord
         const files = record.files.map((entry, fileIndex) => {
             const fileWhere = `${where} file ${fileIndex}`
-            const text = readStringField(readContent(source, entry.ref, UNIT_TYPE.workspaceFile, fileWhere), 'text', fileWhere)
             const file: JsonObject = {}
             for (const [key, value] of Object.entries(entry)) {
                 if (key !== 'ref') {
                     defineOwn(file, key, value as JsonValue)
                 }
             }
-            defineOwn(file, 'text', text)
+            if (placeholders?.has(keyOfRef(entry.ref)) !== true) {
+                defineOwn(file, 'text', readStringField(readContent(source, entry.ref, UNIT_TYPE.workspaceFile, fileWhere), 'text', fileWhere))
+            }
             return file
         })
         const workspace: JsonObject = {}
@@ -265,6 +267,11 @@ export interface AssembleOptions {
      * flags and the unit is not read. Only the boot passes it; every other caller stays strict and throws on such a unit.
      */
     skipChatDrafts?: boolean
+    /**
+     * Keys of workspace-file units the boot flagged: their entries come back without `text` and their bytes are not read.
+     * Only the boot fallback passes it; every other caller stays strict.
+     */
+    placeholderWorkspaceFiles?: ReadonlySet<string>
 }
 
 /** The database the manifest and its units describe. Characters come back in `characters` order, fully loaded. */
@@ -290,7 +297,7 @@ export function assembleDatabase(manifest: Manifest, source: UnitSource, options
         defineOwn(database, 'taskPresets', taskPresets)
     }
     // Defined only when the manifest names a workspace, like the task presets above.
-    const workspaces = assembleWorkspaces(manifest, source)
+    const workspaces = assembleWorkspaces(manifest, source, options.placeholderWorkspaceFiles)
     if (workspaces.length > 0) {
         defineOwn(database, 'utilityWorkspaces', workspaces)
     }

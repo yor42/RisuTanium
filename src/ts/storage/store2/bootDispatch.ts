@@ -316,6 +316,8 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 skipTaskPresets: fallback?.skipTaskPresets,
                 // A dropped draft unit is neither read nor replaced by the boot: the next pass writes a manifest without its Ref, and its bytes stay under their write-once key.
                 skipChatDrafts: read.dropped?.some(unit => unit.type === UNIT_TYPE.chatDrafts) === true,
+                // A flagged workspace file keeps its entry without text, so the next pass carries its earlier unit and the ref stays in the record.
+                placeholderWorkspaceFiles: fallback?.placeholderWorkspaceFiles,
             })
             previous = previousOfTree(read.tree)
         } catch (error) {

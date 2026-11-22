@@ -7,11 +7,15 @@ import { getCurrentChat, getCurrentCharacter } from '../storage/database.svelte'
 import type { RisuModule } from './modules'
 import { hasModuleStubs, moduleListOf, moduleLoadFailedText, moduleRefIdsOf, unloadedModulesOf } from './moduleRefList'
 import { holdModuleGuiBumps } from './moduleGuiBump'
+import { setDisplayModuleRefSource } from './moduleDisplayRefs'
 import { isModuleStub } from '../storage/moduleStub'
 
 // Brings in the bodies of the module stubs a run references. Nothing here may import process/modules at run time
 // (see moduleRefList), and no closeless cover (a wait or progress notice without a cancel) may be held across an
 // acquireModule await: a lorebook question can keep a load pending until the person answers.
+
+// The loader announces an install only when the displayed origin references it; this is the read it uses.
+setDisplayModuleRefSource(() => moduleRefIdsOf())
 
 /**
  * One or more referenced modules did not load. `names` holds every failing module, in reference order; `slots` holds

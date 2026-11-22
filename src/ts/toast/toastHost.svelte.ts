@@ -46,10 +46,15 @@ export interface ToastClock {
     after(ms: number, run: () => void): () => void
 }
 
+/** The sound a toast makes; the host maps it to a file elsewhere. */
+export type ToastCue = 'info' | 'success' | 'warning' | 'error' | 'undo'
+
 export interface PlainToastInit {
     kind?: ToastKind
     text: string
     sub?: string
+    /** The cue played when the toast becomes visible: the kind's own when omitted, none when null. */
+    cue?: ToastCue | null
 }
 
 /** `ok` must be literally true and `text` a non-blank string for the host to show success. */
@@ -200,6 +205,8 @@ interface Entry {
     actionLabel?: string
     action?: UndoAction
     pending: boolean
+    /** Played once when the entry becomes visible; null is silent. */
+    cue: ToastCue | null
     /** Milliseconds still to run; null for a toast with no timer (warning, error). */
     remaining: number | null
     /** Clock reading when the running timer started; null while the timer is not running. */
@@ -286,7 +293,7 @@ const realClock: ToastClock = {
     },
 }
 
-export function createToastHost(opts: { clock?: ToastClock, config?: Partial<ToastConfig> } = {}): ToastHost {
+export function createToastHost(opts: { clock?: ToastClock, config?: Partial<ToastConfig>, sound?: (cue: ToastCue) => void } = {}): ToastHost {
     const clock = opts.clock ?? realClock
     const cfg: ToastConfig = { ...DEFAULT_TOAST_CONFIG, ...opts.config }
     if (!(cfg.stickyCap >= 1) || !(cfg.stickyCap < cfg.maxVisible)) {
@@ -467,10 +474,23 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         return entries.filter((entry) => isSticky(entry.kind)).length
     }
 
+    /** A sound that fails never disturbs the toast. */
+    function playCue(cue: ToastCue | null): void {
+        if (cue === null || opts.sound === undefined) {
+            return
+        }
+        try {
+            opts.sound(cue)
+        } catch (error) {
+            recordCaughtError('toast.sound', error)
+        }
+    }
+
     function show(entry: Entry): void {
         entry.remaining = durationFor(entry.kind)
         entries = [...entries, entry]
         announceShown(entry)
+        playCue(entry.cue)
     }
 
     /** Queue release: shows each queued entry that admission allows without evicting, oldest first. */
@@ -535,11 +555,12 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         return false
     }
 
-    function newEntry(kind: Entry['kind'], text: string, sub: unknown): Entry {
+    function newEntry(kind: Entry['kind'], text: string, sub: unknown, cue: ToastCue | null): Entry {
         const entry: Entry = {
             id: nextId,
             kind,
             text,
+            cue,
             pending: false,
             remaining: null,
             startedAt: null,
@@ -569,7 +590,8 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
             if (isBlank(init.text)) {
                 return refuse('text')
             }
-            const entry = newEntry(init.kind ?? 'info', init.text, init.sub)
+            const kind = init.kind ?? 'info'
+            const entry = newEntry(kind, init.text, init.sub, init.cue === undefined ? kind : init.cue)
             // A queued toast changes nothing visible until it is released.
             if (admit(entry)) {
                 publishAfterAdmission()
@@ -595,7 +617,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
             if (isBlank(init.action.id)) {
                 return refuse('action.id')
             }
-            const entry = newEntry('undo', init.text, init.sub)
+            const entry = newEntry('undo', init.text, init.sub, null)
             entry.actionLabel = init.actionLabel
             entry.action = init.action
             admit(entry)
@@ -876,6 +898,9 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         }
         const text = outcome !== null ? outcome.text : action.failedText
         queueAnnouncement('polite', text)
+        // Keyed on the run's own outcome, before the early return for a toast that ended while the run was pending; a late
+        // settlement never reaches here, so it stays silent.
+        playCue(outcome !== null && outcome.ok ? 'undo' : 'warning')
 
         if (!entries.includes(entry)) {
             flushAnnouncements()
@@ -1032,7 +1057,20 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
     }
 }
 
-export const toastHost: ToastHost = createToastHost()
+// The singleton plays through a sink the view installs, so this module reaches no window, storage or audio at import.
+let soundSink: ((cue: ToastCue) => void) | null = null
+
+/** Installs (or clears, with null) where the singleton host sends its cues; the view owns the lifetime. */
+export function setToastSoundSink(sink: ((cue: ToastCue) => void) | null): void {
+    soundSink = sink
+}
+
+/** The sink currently installed, so a view clears it only while it is still its own. */
+export function currentToastSoundSink(): ((cue: ToastCue) => void) | null {
+    return soundSink
+}
+
+export const toastHost: ToastHost = createToastHost({ sound: (cue) => soundSink?.(cue) })
 
 export const postToast = (init: PlainToastInit): ToastId => toastHost.post(init)
 export const postUndoToast = (init: UndoToastInit): ToastId => toastHost.postUndo(init)

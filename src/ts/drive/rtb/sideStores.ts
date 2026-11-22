@@ -24,7 +24,9 @@
  * its own store (`safe_plugin_*`, or the `UI_PREFS_KEYS` allowlist).
  */
 import localforage from 'localforage'
-import { SIDE_SECTION_IDS, type SideSectionId } from './entryNames'
+import { acceptStagedLine } from '../../connections/restoredKeys'
+import { wrapForStaging } from '../../connections/keyVaultStore.svelte'
+import { CONNECTION_KEYS_ID, SIDE_SECTION_IDS, type SideSectionId, type StoreSideSectionId } from './entryNames'
 import type { SideAction } from './sideDecision'
 import type { SideInput, SideRecord } from './rtbWriter'
 import { SideLineSplitter, type NumberedSideLine } from './sideStream'
@@ -35,6 +37,7 @@ import {
     MCP_TOOL_CALLS_STORE,
     PLUGIN_PERMISSIONS_STORE,
     PLUGIN_SAFE_STORE,
+    RESTORED_KEYS_STORE,
     SAFE_PLUGIN_LS_PREFIX,
     UI_PREFS_KEYS,
     type ForageStoreConfig,
@@ -45,17 +48,24 @@ import type { BodySink } from './zip64Reader'
 export interface SideBackends {
     forage(config: ForageStoreConfig): LocalForage
     local(): Storage
+    /**
+     * Wraps a restored key for this device so its staging record can hold the envelope; null when this page has no
+     * working vault. Absent means no vault: the record then holds the plain.
+     */
+    stageWrap?(plain: string): Promise<string | null>
 }
 
 export const defaultSideBackends: SideBackends = {
     forage: (config) => localforage.createInstance(config),
     local: () => localStorage,
+    stageWrap: wrapForStaging,
 }
 
 type StoreKind =
     | { kind: 'forage', config: ForageStoreConfig }
     | { kind: 'safe-ls' }
     | { kind: 'ui-prefs' }
+    | { kind: 'staging' }
 
 const STORE_KINDS: Readonly<Record<SideSectionId, StoreKind>> = {
     'side.iris': { kind: 'forage', config: IRIS_STORE },
@@ -66,6 +76,7 @@ const STORE_KINDS: Readonly<Record<SideSectionId, StoreKind>> = {
     'side.plugin-permissions': { kind: 'forage', config: PLUGIN_PERMISSIONS_STORE },
     'side.mcp-tool-calls': { kind: 'forage', config: MCP_TOOL_CALLS_STORE },
     'side.ui-prefs': { kind: 'ui-prefs' },
+    'side.connection-keys': { kind: 'staging' },
 }
 
 const UI_PREFS_SET: ReadonlySet<string> = new Set(UI_PREFS_KEYS)
@@ -130,8 +141,11 @@ function sorted(keys: readonly string[]): string[] {
 }
 
 /** One store as the writer's input; `unreadable` when it cannot be probed. */
-export async function readSideStore(id: SideSectionId, backends: SideBackends = defaultSideBackends): Promise<SideInput> {
+export async function readSideStore(id: StoreSideSectionId, backends: SideBackends = defaultSideBackends): Promise<SideInput> {
     const spec = STORE_KINDS[id]
+    if (spec.kind === 'staging') {
+        return { unreadable: true }
+    }
     try {
         if (spec.kind === 'forage') {
             const store = backends.forage(spec.config)
@@ -153,10 +167,13 @@ export async function readSideStore(id: SideSectionId, backends: SideBackends = 
     }
 }
 
-/** Every side store, by section id. */
-export async function readSideStores(backends: SideBackends = defaultSideBackends): Promise<Record<SideSectionId, SideInput>> {
-    const out = {} as Record<SideSectionId, SideInput>
+/** Every side store, by section id. The connection keys are not a store: the export builds that section from the live connections. */
+export async function readSideStores(backends: SideBackends = defaultSideBackends): Promise<Record<StoreSideSectionId, SideInput>> {
+    const out = {} as Record<StoreSideSectionId, SideInput>
     for (const id of SIDE_SECTION_IDS as readonly SideSectionId[]) {
+        if (id === CONNECTION_KEYS_ID) {
+            continue
+        }
         out[id] = await readSideStore(id, backends)
     }
     return out
@@ -175,7 +192,9 @@ export interface SideSkip {
 
 /**
  * `malformed`: the store was not touched (pass 1, or a conflict; a plugin-permissions conflict still clears the grants, MC-2047).
- * `changed`: pass 2 failed after the store was cleared; `written` records were written.
+ * `changed`: pass 2 failed after the store was cleared; `written` records were written. The connection-keys staging
+ * store is not cleared by a restore: there `changed` and `write-failed` with `phase: 'write'` mean `written` file
+ * records were added over the existing ones.
  * `write-failed`: the store itself failed. For `phase: 'clear'`, plugin-safe-ls and
  * ui-prefs clear key by key, so the failure may have removed some keys; the other
  * stores clear in one operation and are unchanged.
@@ -206,6 +225,11 @@ type Accepted =
     | { kind: 'bad', reason: string }
 
 interface StoreOps {
+    /**
+     * Whether a restore clears the store between the passes. The connection-keys staging store is staged before the
+     * commit and only ever adds records; its clear is the `absent`/`newer` action, which runs after the commit.
+     */
+    clearsBeforeRestore: boolean
     clear(): Promise<void>
     accept(key: string, value: unknown): Accepted
     write(key: string, value: unknown): Promise<void>
@@ -222,6 +246,7 @@ function opsFor(id: SideSectionId, backends: SideBackends): StoreOps {
             return instance
         }
         return {
+            clearsBeforeRestore: true,
             clear: () => store().clear(),
             accept: (key, value) => ({ kind: 'write', key, value }),
             write: async (key, value) => {
@@ -231,6 +256,7 @@ function opsFor(id: SideSectionId, backends: SideBackends): StoreOps {
     }
     if (spec.kind === 'safe-ls') {
         return {
+            clearsBeforeRestore: true,
             clear: async () => {
                 const storage = backends.local()
                 for (const key of localKeys(storage).filter((candidate) => candidate.startsWith(SAFE_PLUGIN_LS_PREFIX))) {
@@ -245,7 +271,39 @@ function opsFor(id: SideSectionId, backends: SideBackends): StoreOps {
             },
         }
     }
+    if (spec.kind === 'staging') {
+        let instance: LocalForage | null = null
+        const store = (): LocalForage => {
+            instance ??= backends.forage(RESTORED_KEYS_STORE)
+            return instance
+        }
+        // After the first failed wrap in one run the vault is not asked again: the remaining lines are staged as plain.
+        let wrapStopped = false
+        return {
+            clearsBeforeRestore: false,
+            clear: () => store().clear(),
+            // The record is keyed by the envelope the restored database holds; the wrap is async, so it runs in write.
+            accept: (key, value) => {
+                const line = acceptStagedLine(value)
+                return line === null
+                    ? { kind: 'bad', reason: `the connection key line of key ${JSON.stringify(key)} has no envelope or plain` }
+                    : { kind: 'write', key: line.e, value: { id: key, p: line.p } }
+            },
+            write: async (envelope, value) => {
+                const line = value as { id: string, p: string }
+                let wrapped: string | null = null
+                if (!wrapStopped && backends.stageWrap !== undefined) {
+                    wrapped = await backends.stageWrap(line.p)
+                    if (wrapped === null) {
+                        wrapStopped = true
+                    }
+                }
+                await store().setItem(envelope, wrapped === null ? { id: line.id, p: line.p } : { id: line.id, w: wrapped })
+            },
+        }
+    }
     return {
+        clearsBeforeRestore: true,
         clear: async () => {
             const storage = backends.local()
             for (const key of UI_PREFS_KEYS) {
@@ -366,10 +424,12 @@ async function restoreSection(id: SideSectionId, body: SideBodyReader, ops: Stor
         return { id, status: 'malformed', reason: stop.reason, line: stop.line, conflict: false }
     }
 
-    try {
-        await ops.clear()
-    } catch (error) {
-        return { id, status: 'write-failed', phase: 'clear', written: 0, key: null, message: messageOf(error) }
+    if (ops.clearsBeforeRestore) {
+        try {
+            await ops.clear()
+        } catch (error) {
+            return { id, status: 'write-failed', phase: 'clear', written: 0, key: null, message: messageOf(error) }
+        }
     }
 
     // Pass 2: re-validate every line before writing it.

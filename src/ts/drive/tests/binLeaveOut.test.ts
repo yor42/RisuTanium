@@ -10,7 +10,7 @@ function label(key: string, kinds: ForkOnlyKind[], branches?: ForkOnlyChatLabel[
     return { key, text: `Char / ${key}`, kinds, ...(branches !== undefined ? { branches } : {}) }
 }
 
-const NONE: BinLeaveOutInput = { chats: [], taskPresets: [], themePacks: [], usageStats: false, chroMemory: false, chatDrafts: { drafts: 0, hintChats: 0 } }
+const NONE: BinLeaveOutInput = { chats: [], taskPresets: [], workspaces: [], themePacks: [], usageStats: false, chroMemory: false, chatDrafts: { drafts: 0, hintChats: 0 } }
 
 describe('binLeaveOutSummary', () => {
     test('nothing to leave out gives an empty list', () => {
@@ -21,14 +21,15 @@ describe('binLeaveOutSummary', () => {
         const summary = binLeaveOutSummary({
             chats: [label('a', ['alternatives'], { chats: 2, omitted: 1, bytes: 10 }), label('b', ['interruptedNote', 'hideNames'])],
             taskPresets: ['One', 'Two'],
+            workspaces: ['Notes', 'Drafts', 'Misc'],
             themePacks: ['Pack'],
             usageStats: true,
             chroMemory: true,
             chatDrafts: { drafts: 4, hintChats: 1 },
         })
-        expect(summary.map((entry) => entry.kind)).toEqual(['alternatives', 'forkChatData', 'taskPresets', 'themePacks', 'usageStats', 'chroMemory', 'chatDrafts'])
-        expect(summary.slice(0, 6).map((entry) => 'count' in entry ? entry.count : undefined)).toEqual([1, 1, 2, 1, 1, 1])
-        expect(summary[6]).toEqual({ kind: 'chatDrafts', drafts: 4, hintChats: 1 })
+        expect(summary.map((entry) => entry.kind)).toEqual(['alternatives', 'forkChatData', 'taskPresets', 'workspaces', 'themePacks', 'usageStats', 'chroMemory', 'chatDrafts'])
+        expect(summary.slice(0, 7).map((entry) => 'count' in entry ? entry.count : undefined)).toEqual([1, 1, 2, 3, 1, 1, 1])
+        expect(summary[7]).toEqual({ kind: 'chatDrafts', drafts: 4, hintChats: 1 })
         const forkChat = summary[1]
         expect(forkChat.kind === 'forkChatData' && forkChat.kinds).toEqual(['interruptedNote', 'hideNames'])
     })
@@ -63,6 +64,17 @@ describe('binLeaveOutSummary', () => {
         expect(binLeaveOutSummary({ ...NONE, chroMemory: false })).toEqual([])
     })
 
+    test('S6a reproducer: workspaces are listed with their names between task presets and theme packs, and only when the profile holds some', () => {
+        const summary = binLeaveOutSummary({ ...NONE, taskPresets: ['One'], workspaces: ['Notes'], themePacks: ['Pack'] })
+        expect(summary).toEqual([
+            { kind: 'taskPresets', count: 1, names: ['One'] },
+            { kind: 'workspaces', count: 1, names: ['Notes'] },
+            { kind: 'themePacks', count: 1, names: ['Pack'] },
+        ])
+        // guard: passes before and after
+        expect(binLeaveOutSummary({ ...NONE, workspaces: [] })).toEqual([])
+    })
+
     test('the extra chats written add up over the chats that hold alternatives', () => {
         const summary = binLeaveOutSummary({
             ...NONE,
@@ -81,7 +93,7 @@ describe('binLeaveOutSummary', () => {
     })
 
     test('the input is not changed', () => {
-        const input: BinLeaveOutInput = { chats: [label('a', ['alternatives', 'hideNames'])], taskPresets: ['One'], themePacks: [], usageStats: false, chroMemory: false, chatDrafts: { drafts: 0, hintChats: 0 } }
+        const input: BinLeaveOutInput = { chats: [label('a', ['alternatives', 'hideNames'])], taskPresets: ['One'], workspaces: ['Notes'], themePacks: [], usageStats: false, chroMemory: false, chatDrafts: { drafts: 0, hintChats: 0 } }
         const before = JSON.stringify(input)
         binLeaveOutSummary(input)
         expect(JSON.stringify(input)).toBe(before)

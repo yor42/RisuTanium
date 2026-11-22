@@ -52,10 +52,12 @@ export interface EncodeScope {
      */
     skipUnsavableCharacters?: boolean
     /**
-     * A module, a preset list, the loadouts list, the statics, the character order, a settings field or a plugin-data
-     * key whose data cannot be read as plain JSON is skipped instead of failing the pass: its last saved copy is carried
-     * when `previous` holds it, and it is reported in `skippedItems`. A fault with no saved copy to fall back on and a
-     * plugin of either plugin list still fail the pass. Only the save encoder sets it.
+     * A module, a preset list, a plugin list, a utility workspace, the loadouts list, the statics, the character order,
+     * a settings field or a plugin-data key whose data cannot be read as plain JSON is skipped instead of failing the
+     * pass: its last saved copy is carried when `previous` holds it, and it is reported in `skippedItems`. A module, a
+     * settings field, a plugin-data key, a workspace or a workspace file with no saved copy of its own is left out and
+     * reported as never saved; a list or whole-object kind (presets, plugins, loadouts, statics, character order) with
+     * nothing in `previous` to carry from fails the pass. Only the save encoder sets it.
      */
     skipUnsavableItems?: boolean
     /** Measurement builds only: the recorder the pass's hooks write into. Set by the save encoder under `MEASURE`, never read back. */
@@ -363,7 +365,7 @@ interface ScopedParts {
     owners: ReadonlyMap<string, string>
     /** The names (else ids) of the module stubs carried from the previous encoding. */
     modules: readonly string[]
-    /** The modules, preset lists, loadouts, statics, character order, settings fields and plugin-data keys the pass went on without. */
+    /** The modules, preset lists, plugin lists, workspaces, loadouts, statics, character order, settings fields and plugin-data keys the pass went on without. */
     skippedItems: readonly SkippedItem[]
 }
 
@@ -658,6 +660,10 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
     if (before?.presets !== undefined) {
         objects.presets = before.presets
     }
+    // The record extras hold no Ref, so the rekey leaves them as the plan made them.
+    if (before?.workspaces !== undefined) {
+        objects.workspaces = before.workspaces
+    }
     return {
         manifestKey: units[units.length - 1].key,
         manifest,
@@ -692,7 +698,7 @@ export interface ScopedPlan {
         /** The quoted names of the items carried from the previous encoding because their live data could not be read; absent means none. */
         items?: readonly string[]
     }
-    /** The modules, preset lists, loadouts, statics, character order, settings fields and plugin-data keys the pass could not read and went on without (only under `skipUnsavableItems`). */
+    /** The modules, preset lists, plugin lists, workspaces, loadouts, statics, character order, settings fields and plugin-data keys the pass could not read and went on without (only under `skipUnsavableItems`). */
     skippedItems: readonly SkippedItem[]
     /** The pass encoded the modules (`scope.modules`); false means it carried them whole, so it said nothing about any module. */
     modulesEncoded: boolean
@@ -758,7 +764,7 @@ export interface StreamedFinish {
      * without a content index; with one it can be larger by parents whose equal-content children took stored keys in
      * another claim order. */
     count: number
-    /** The units of the whole stream that took a stored key by content (none without a content index); they are in no `count`. */
+    /** The units of the whole stream that took a stored key by content (none without a content index), and the stored workspace-file units it carried by their own Ref; they are in no `count`. */
     reused: number
 }
 
@@ -841,7 +847,7 @@ export function createStreamedEncode(
                 // The keep of the base this attempt replaces, not the one the build planned with.
                 built.manifest.body = { ...built.manifest.body, fixed: { ...built.manifest.body.fixed, legacyKeep: context.legacyKeep } }
             }
-            return { built, count: written + built.units.length + 1, reused: encoder.sink.reused }
+            return { built, count: written + built.units.length + 1, reused: encoder.sink.reused + encoder.carried.size }
         },
     }
 }

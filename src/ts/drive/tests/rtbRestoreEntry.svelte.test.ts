@@ -41,7 +41,7 @@ const plan = { kind: 'rtb-page' } as RestorePlan
 const hold = { lock: 'write-lock' } as RestoreHold
 const ready: RtbPrepareEnd = { kind: 'ready', plan, hold }
 const facts = { assetsWritten: 0, assetsPresent: 0, skippedAssets: [], inlays: { written: 0, skipped: [], changed: false } }
-const landed: RtbInstallEnd = { kind: 'landed', flushed: true, facts }
+const landed: RtbInstallEnd = { kind: 'landed', flushed: true, facts, staged: null }
 
 beforeEach(() => {
     resetAssetDeleteHoldForTests()

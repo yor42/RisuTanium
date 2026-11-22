@@ -267,6 +267,38 @@ describe('T-A8: isCharacterUnsavable follows the latest pass', () => {
         expect(page.w.api.isSaveClean()).toBe(false)
     })
 
+    test('N1 reproducer: a plugin list that cannot be saved gets the held-plugins notice, not the plugin data one, and the page is clean after the fix', async () => {
+        const page = await startPage()
+        await settled(page.w)
+        const { alertToast } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const notice = language.savePluginsHeldNotice('"Plugin 99"')
+        const dataNotice = language.saveItemUnsavedNotice(language.saveItemPluginDataLabel('pluginV2'))
+        const shown = (text: string): number => vi.mocked(alertToast).mock.calls.filter(([toast]) => toast === text).length
+        expect(page.w.api.isSaveClean()).toBe(true)
+
+        await nextCommit(page.w, () => {
+            ;(page.db.pluginV2 as Entry[])[0].broken = unreadable()
+            characters(page.db)[2].personality = 'edited next to the held plugins'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(() => shown(notice) >= 1, 'the held-plugins notice', 6000)
+        expect(shown(dataNotice)).toBe(0)
+        expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited next to the held plugins' })
+        expect(page.w.api.isSaveClean()).toBe(false)
+
+        await nextCommit(page.w, () => {
+            ;(page.db.pluginV2 as Entry[])[0].broken = 1
+            characters(page.db)[3].personality = 'edited after the fix'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[3].chaId))
+            page.flush()
+        }, false)
+        await until(() => page.w.api.isSaveClean(), 'a clean page after the fix', 6000)
+        expect(shown(notice)).toBe(1)
+        expect(((await page.k.saved()).pluginV2 as unknown as Entry[])[0]).toMatchObject({ broken: 1 })
+    })
+
     test('P5 guard (new rule): saved draft edits that can no longer be saved keep their last saved set and get the unsaved draft notice', async () => {
         const page = await startPage()
         await settled(page.w)
@@ -292,6 +324,44 @@ describe('T-A8: isCharacterUnsavable follows the latest pass', () => {
         expect((await page.k.saved()).chatDrafts).toEqual([good])
         expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited next to the unsaved drafts' })
         expect(page.w.api.isSaveClean()).toBe(false)
+    })
+
+    test('N2 reproducer: a workspace that cannot be saved and a workspace file with no text get the workspace labels, never the plugin data one', async () => {
+        const page = await startPage()
+        await settled(page.w)
+        const { alertToast } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const shown = (text: string): number => vi.mocked(alertToast).mock.calls.filter(([toast]) => toast === text).length
+        const file = (id: string, path: string): Entry => ({ id, path, text: 'alpha', size: 5, mtime: 1_700_000_000_000 })
+
+        await nextCommit(page.w, () => {
+            page.db.utilityWorkspaces = [{ id: 'w1', name: 'Notes', createdAt: 1, files: [file('f1', 'a.md')] }]
+            characters(page.db)[2].personality = 'edited with the workspace'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await settled(page.w)
+
+        const unsaved = language.saveItemUnsavedNotice(language.saveItemWorkspaceLabel('Notes'))
+        await nextCommit(page.w, () => {
+            ;((page.db.utilityWorkspaces as Entry[])[0].files as Entry[])[0].broken = unreadable()
+            characters(page.db)[3].personality = 'edited next to the held workspace'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[3].chaId))
+            page.flush()
+        }, false)
+        await until(() => shown(unsaved) >= 1, 'the workspace notice', 6000)
+        expect(shown(language.saveItemUnsavedNotice(language.saveItemPluginDataLabel('ws:w1')))).toBe(0)
+
+        const fileNotice = language.saveItemNeverSavedNotice(language.saveItemWorkspaceFileLabel('x.md'))
+        await nextCommit(page.w, () => {
+            const { text: _text, ...noText } = file('f1', 'x.md')
+            ;(page.db.utilityWorkspaces as Entry[]).push({ id: 'w2', name: 'Second', createdAt: 2, files: [noText] })
+            characters(page.db)[2].personality = 'edited next to the file with no text'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(() => shown(fileNotice) >= 1, 'the workspace file notice', 6000)
+        expect(shown(language.saveItemNeverSavedNotice(language.saveItemPluginDataLabel('wsf:w2:f1')))).toBe(0)
     })
 
     test('a task preset list that cannot be saved gets the task preset notice, not the bot preset one', async () => {

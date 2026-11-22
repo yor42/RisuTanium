@@ -502,7 +502,7 @@ describe('S.1: a damaged chunk met by the side restore after the commit (T33)', 
         const notices: string[] = []
         const releases: boolean[] = []
         const log: string[] = []
-        const landed: RtbFinishLanded = { flushed: true, facts: { assetsWritten: 0, assetsPresent: 0, skippedAssets: [], inlays: { written: 0, skipped: [], changed: false } } }
+        const landed: RtbFinishLanded = { flushed: true, facts: { assetsWritten: 0, assetsPresent: 0, skippedAssets: [], inlays: { written: 0, skipped: [], changed: false } }, staged: null }
         await finishRtbRestore(plan, { release: async (keep) => { releases.push(keep) } }, landed, {
             sideBackends: fakes.backends,
             notice: async (text) => { notices.push(text) },

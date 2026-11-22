@@ -16,6 +16,7 @@ export type BinLeaveOutEntry =
     /** Chats that lose a kind of fork-only data other than alternatives. `kinds` are those kinds in table order. */
     | { kind: 'forkChatData', count: number, labels: readonly ForkOnlyChatLabel[], kinds: readonly ForkOnlyKind[] }
     | { kind: 'taskPresets', count: number, names: readonly string[] }
+    | { kind: 'workspaces', count: number, names: readonly string[] }
     | { kind: 'themePacks', count: number, names: readonly string[] }
     | { kind: 'usageStats', count: 1 }
     | { kind: 'chroMemory', count: 1 }
@@ -26,6 +27,7 @@ export interface BinLeaveOutInput {
     /** Every chat that loses fork-only data, as the export labelled them. */
     chats: readonly ForkOnlyChatLabel[]
     taskPresets: readonly string[]
+    workspaces: readonly string[]
     themePacks: readonly string[]
     usageStats: boolean
     chroMemory: boolean
@@ -52,6 +54,9 @@ export function binLeaveOutSummary(input: BinLeaveOutInput): BinLeaveOutEntry[] 
     }
     if (input.taskPresets.length > 0) {
         summary.push({ kind: 'taskPresets', count: input.taskPresets.length, names: input.taskPresets })
+    }
+    if (input.workspaces.length > 0) {
+        summary.push({ kind: 'workspaces', count: input.workspaces.length, names: input.workspaces })
     }
     if (input.themePacks.length > 0) {
         summary.push({ kind: 'themePacks', count: input.themePacks.length, names: input.themePacks })

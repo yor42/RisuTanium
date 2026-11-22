@@ -18,6 +18,13 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 
+// A vault that returns the synthetic key for any envelope and never answers a wrap, so a typed key stays pending.
+vi.mock('src/ts/android/keyVault', () => ({
+    unwrapKey: vi.fn(async () => ({ ok: true, value: 'sk-test-WRAPPED0000wxyz' })),
+    wrapKey: vi.fn(() => new Promise(() => {})),
+    watchdogFired: () => false,
+}))
+
 vi.mock('localforage', () => ({
     default: {
         createInstance: () => ({
@@ -214,6 +221,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import { addFetchLog, fetchNative, getFetchLogs, getRequestLog, globalFetch } from 'src/ts/globalApi.svelte'
 import { resetSecretRefState } from 'src/ts/secretRef'
+import { setConnectionKey } from 'src/ts/connections/keyAccess'
+import { installVaultHost, resetVaultStoreForTest, unwrapAllForBoot, type VaultHost } from 'src/ts/connections/keyVaultStore.svelte'
 
 const K1 = 'sk-test-SYNTHETIC0000abcd'
 const K2 = 'AIzaSYNTHETIC00000000wxyz'
@@ -486,6 +495,40 @@ describe('request log credential redaction', () => {
         expect(log.body).not.toContain(KQ)
         expect(log.body).not.toContain(K1)
         expect(log.body).toBe('note [redacted …abcd] and [redacted …abcd] end')
+    })
+
+    test('T31 a wrapped key that only memory knows, readable or still pending, is redacted from a logged body and header', async () => {
+        const conns = [
+            { id: 'conn-1', name: 'n', provider: 'openai' as const, key: '', keyWrapped: 'ENVELOPE' },
+            { id: 'conn-2', name: 'm', provider: 'anthropic' as const, key: '' },
+        ]
+        dbState.db = { connections: conns }
+        const host: VaultHost = {
+            platform: 'vault',
+            findConnection: (id) => conns.find((conn) => conn.id === id),
+            listConnections: () => conns,
+            requestSaveNow: () => {},
+            markBootWrite: () => {},
+            isReadOnlyPage: () => false,
+            notify: { keepPlain: () => {}, wrapped: () => {}, reentry: () => {} },
+            messages: { keyUnavailable: () => 'unavailable' },
+        }
+        resetVaultStoreForTest()
+        installVaultHost(host)
+        await unwrapAllForBoot()
+        void setConnectionKey(conns[1], 'sk-test-PENDING0000mnop')
+        addFetchLog({
+            body: 'a sk-test-WRAPPED0000wxyz b sk-test-PENDING0000mnop c',
+            headers: { 'X-Echo': 'sk-test-WRAPPED0000wxyz' },
+            response: 'ok',
+            success: true,
+            url: 'https://api.example.invalid/v1',
+        })
+        const [log] = getFetchLogs()
+        expect(log.body).not.toContain('WRAPPED0000')
+        expect(log.body).not.toContain('PENDING0000')
+        expect(log.header).not.toContain('WRAPPED0000')
+        resetVaultStoreForTest()
     })
 
     test('G7b guard: additionalParams values and the Vertex PEM are not matched by value', () => {

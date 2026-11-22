@@ -32,6 +32,7 @@
   --home-radius-3: 8px;
   --home-radius-4: 10px;
   --home-radius-5: 12px;
+  --home-control-radius: var(--home-radius-3);
   --home-radius-7: 18px;
   --home-card-radius: var(--home-radius-7);
   --home-hairline: 1px;
@@ -69,6 +70,7 @@
   --home-ink-2: var(--nexus-text-secondary);
   --home-ink-3: var(--nexus-text-muted);
   --home-accent-solid: var(--nexus-accent);
+  --home-select-bar: var(--home-accent-solid);
   --home-accent-fill: var(--color-accent-tint-strong);
   --home-danger-solid: var(--nexus-danger);
 }

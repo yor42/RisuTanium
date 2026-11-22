@@ -130,6 +130,7 @@ describe('the ui-prefs owners write allowlisted keys (T15, guard)', () => {
 
     test('each write function writes exactly its key, and the key is in the allowlist', async () => {
         const haptics = await import('src/ts/chatShell/haptics')
+        const uiSounds = await import('src/ts/uiSound/uiSoundPrefs')
         const device = await import('src/ts/chatShell/deviceSettings')
         const slots = await import('src/ts/chatShell/actionSlots')
         const motion = await import('src/ts/chatShell/motionPrefs.svelte')
@@ -141,6 +142,7 @@ describe('the ui-prefs owners write allowlisted keys (T15, guard)', () => {
         const settings = await import('src/ts/settingsShell/settingsShellSwitch.svelte')
         const writes: [string, () => void][] = [
             ['risuChatShell.haptics', () => haptics.writeHaptics(true)],
+            ['risutanium.uiSounds', () => uiSounds.writeUiSounds(false)],
             ['risuChatShell.enterMode', () => device.writeEnterMode('send')],
             ['risuChatShell.chatSort', () => device.writeChatSort('manual')],
             ['risuChatShell.actionSlots', () => slots.writeSlots({ order: ['copy', 'edit'], pinned: ['edit'] })],

@@ -31,6 +31,7 @@ import ReplyNotificationsToggle from 'src/lib/Setting/Pages/Display/ReplyNotific
 import ChatShellPreviewToggle from 'src/lib/Setting/Pages/Display/ChatShellPreviewToggle.svelte';
 import SettingsShellPreviewToggle from 'src/lib/Setting/Pages/Display/SettingsShellPreviewToggle.svelte';
 import StudioSwitchToggle from 'src/lib/Setting/Pages/Display/StudioSwitchToggle.svelte';
+import UiSoundsRow from 'src/lib/SettingsShell/display/UiSoundsRow.svelte';
 // The loader is the only static import: the row, the install flow and the theme pack runtime load on first mount.
 import ThemePackRowLoader from 'src/lib/Setting/Pages/Display/ThemePackRowLoader.svelte';
 
@@ -55,6 +56,7 @@ export const customComponents: Record<string, Component<any>> = {
     'ChatShellPreviewToggle': ChatShellPreviewToggle,
     'SettingsShellPreviewToggle': SettingsShellPreviewToggle,
     'StudioSwitchToggle': StudioSwitchToggle,
+    'UiSoundsRow': UiSoundsRow,
     'ThemePackRow': ThemePackRowLoader,
     // Add more as we migrate complex settings
 } as const;

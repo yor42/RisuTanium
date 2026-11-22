@@ -42,6 +42,8 @@ export type FlaggedLeaf =
     | { kind: 'character-part', chaId: string, part: CharacterPart, key: string, why: 'missing' | 'damaged' }
     /** A task preset's unit; `position` is its place in the manifest's list. Its name is unreadable, so the position names it. */
     | { kind: 'task-preset', position: number, key: string, why: 'missing' | 'damaged' }
+    /** A workspace file's unit, named by its workspace's id and the file's path in the record. The record itself is never flagged. */
+    | { kind: 'workspace-file', wsId: string, path: string, key: string, why: 'missing' | 'damaged' }
 
 export type TreeBytesRead =
     /** `newerLists` holds the readable lists above this build's version: never flagged, and the profile opens. */
@@ -317,11 +319,16 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
             second.push({ ref: entry.ref, type: UNIT_TYPE.pluginStorageValue, role: fixed, count: null })
         }
     }
-    // The files a workspace record names; a record that did not check names none, and its own finding stands.
+    // The files a workspace record names; a record that did not check names none, and its own finding stands. A file is a
+    // leaf: a damaged one is flagged, and the open leaves it without text.
     for (const ref of manifest.fixed.workspaces ?? []) {
         const record = first.bodies.get(keyOfRef(ref)) as WorkspaceRecord | undefined
+        const wsId = String(record?.ws.id)
         for (const file of record?.files ?? []) {
-            second.push({ ref: file.ref, type: UNIT_TYPE.workspaceFile, role: fixed, count: null })
+            second.push({
+                ref: file.ref, type: UNIT_TYPE.workspaceFile, count: null,
+                role: { kind: 'leaf', flag: (key, why): FlaggedLeaf => ({ kind: 'workspace-file', wsId, path: file.path, key, why }) },
+            })
         }
     }
     const shards = manifest.shards.map(ref => first.bodies.get(keyOfRef(ref)) as Shard | undefined)

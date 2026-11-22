@@ -8,7 +8,9 @@
  * a chat, it acts only when the page has unsaved edits or pending drafts. A
  * pending draft is an unsaved edit: a hide writes it and saves it. A page with
  * neither unsaved edits nor pending drafts is never made dirty by a hide, so a
- * hide never changes what a peer tab's commit or a parked loop sees. The save is best
+ * hide never changes what a peer tab's commit or a parked loop sees. One other
+ * exception: a leave flush that moves an unsaved edit held outside the database
+ * into it (the vault's pending keys) requests the save itself. The save is best
  * effort, not durable: the asynchronous write may not finish if the page is
  * killed right away.
  *
@@ -39,7 +41,7 @@ export interface SaveOnHideDeps {
     saveNow: () => void
     /** Asks the idle net to verdict every resident at its next turn; it marks nothing and never dirties the page. */
     sweepNet?: () => void
-    /** Flushes other persisted kinds' pending debounces; it marks nothing and never dirties the page. */
+    /** Flushes other persisted kinds' pending debounces; it marks nothing and never dirties the page, except that a flush moving an unsaved edit held outside the database into it requests the save itself. */
     leaveFlush?: () => void
     /** Writes pending unsent message edits into the profile; true when it changed the profile, which makes the page dirty. */
     draftFlush?: () => boolean
@@ -53,7 +55,9 @@ const leaveFlushes = new Set<() => void>()
 
 /**
  * Adds a function that the page's leave rule runs on every hide, `pagehide` and Back flush. It must mark
- * nothing and never dirty the page. Returns the remover; production never calls it, tests do.
+ * nothing and never dirty the page, with one exception: a flush that moves an unsaved edit held outside the
+ * database into it (the vault's pending keys) requests the save itself, because the change effects run after
+ * the flush returns. A page with no unsaved edit is still never dirtied by a hide. Returns the remover.
  */
 export function registerLeaveFlush(fn: () => void): () => void {
     leaveFlushes.add(fn)

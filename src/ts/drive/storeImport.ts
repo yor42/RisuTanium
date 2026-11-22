@@ -5,12 +5,13 @@ import { language } from 'src/lang'
 import { getDatabase, type Database } from '../storage/database.svelte'
 import { describeOmitted } from './describeOmitted'
 import { decodeRisuSave, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from '../storage/risuSave'
-import { Store2StalePageError } from '../storage/store2/backend/errors'
+import { Store2BackendError, Store2StalePageError } from '../storage/store2/backend/errors'
 import type { Store2Backend, Store2Read } from '../storage/store2/backend/types'
 import { getStore2BootSession } from '../storage/store2/bootActive'
 import { Store2BulkAbortError, type AbandonResult, type Committer, type StreamContext, type StreamedCommitRequest } from '../storage/store2/commit'
 import { clearAbandonedMarker } from '../storage/store2/abandonedMarker'
 import { classifyCommitRead } from '../storage/store2/commitKey'
+import { keyOfRef, readUnit, UNIT_TYPE, type Manifest, type Ref, type WorkspaceRecord } from '../storage/store2/format'
 import type { Staging } from '../storage/store2/owner'
 import { createListDerivation } from '../storage/store2/lists'
 import type { BaseContentIndex } from '../storage/store2/baseContent'
@@ -641,6 +642,57 @@ function markerGone(cleared: AbandonResult | null | undefined): boolean {
 }
 
 /**
+ * The page's workspaces with the stored Ref set on every file that has no `text` (a file the boot flagged damaged), taken
+ * from the same workspace and file id in the manifest `baseContent` names (the one the import's carry claims, so the refs and
+ * the carry can never come from two reads of the commit key). The import plans with no previous
+ * encoding, so the `ref` field is how the encoder keeps the damaged unit named by the imported tree instead of refusing
+ * the import (data a build cannot read is kept). A file the base does not name stays without `ref` and the encoder then
+ * refuses it; any read problem returns the workspaces unchanged. Nothing is read when every file has its text.
+ */
+async function withStoredFileRefs(target: Pick<Store2ImportRequest['target'], 'backend'>, workspaces: JsonObject[], baseContent: () => Promise<BaseContentIndex>): Promise<JsonObject[]> {
+    const lacksText = (entry: JsonValue): boolean => isJsonObject(entry) && typeof entry.text !== 'string'
+    if (!workspaces.some(workspace => Array.isArray(workspace.files) && workspace.files.some(lacksText))) {
+        return workspaces
+    }
+    try {
+        const manifestKey = (await baseContent()).from
+        if (manifestKey === null) {
+            return workspaces
+        }
+        const manifestBytes = (await target.backend.readUnits([manifestKey])).get(manifestKey)
+        const manifestUnit = manifestBytes === undefined ? null : readUnit(manifestBytes, UNIT_TYPE.manifest)
+        if (manifestUnit === null || (manifestUnit.status !== 'ok' && manifestUnit.status !== 'stale')) {
+            return workspaces
+        }
+        const keys = ((manifestUnit.value.body as Manifest).fixed.workspaces ?? []).map(ref => keyOfRef(ref))
+        const stored = keys.length === 0 ? new Map<string, Uint8Array>() : await target.backend.readUnits(keys)
+        const refs = new Map<string, Ref>()
+        for (const key of keys) {
+            const bytes = stored.get(key)
+            const unit = bytes === undefined ? null : readUnit(bytes, UNIT_TYPE.workspace)
+            if (unit === null || (unit.status !== 'ok' && unit.status !== 'stale')) {
+                continue
+            }
+            const record = unit.value.body as WorkspaceRecord
+            for (const entry of record.files) {
+                refs.set(`${String(record.ws.id)}:${entry.id}`, entry.ref)
+            }
+        }
+        return workspaces.map(workspace => ({
+            ...workspace,
+            files: Array.isArray(workspace.files) ? workspace.files.map((entry) => {
+                const held = lacksText(entry) && isJsonObject(entry) ? refs.get(`${String(workspace.id)}:${String(entry.id)}`) : undefined
+                return held === undefined || !isJsonObject(entry) ? entry : { ...entry, ref: [...held] }
+            }) : workspace.files,
+        }))
+    } catch (error) {
+        if (error instanceof Store2BackendError) {
+            return workspaces
+        }
+        throw error
+    }
+}
+/**
  * The page's installed theme packs and active pack id as the import keeps them: plain values read through the reactive
  * proxy (a copy that does not follow later edits, with every key kept), the list only when the page holds one and the id
  * only when it is a string. Each is independent of the other.
@@ -726,7 +778,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
     // included). Taken once: every attempt imports the same list.
     const taskPresets = importableTaskPresets(getDatabase().taskPresets)
     // The same for the utility workspaces: a `.bin` leaves them out, so the profile keeps the page's own, by value.
-    const utilityWorkspaces = pageWorkspaces(getDatabase())
+    const pageWorkspaceList = pageWorkspaces(getDatabase())
     // The same for the installed theme packs and the active pack id: neither is in a `.bin`, so the profile keeps the
     // page's own, by value (a copy that is structured-cloneable and does not follow later edits).
     const { themePacks, activeThemePack } = pageThemePacks(getDatabase())
@@ -747,6 +799,15 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
     const stream = committer.commitStreamed === undefined ? undefined : request.stream
     for (let attempt = 1; ; attempt++) {
         const lists = getActiveStore2Save()?.lists ?? createListDerivation()
+        // One index per attempt, read when first asked: the streamed prepare asks before P1b, and a file it hands back to the
+        // whole path reuses that same index.
+        let index: Promise<BaseContentIndex> | null = null
+        const baseContent = (): Promise<BaseContentIndex> => {
+            index ??= indexOfCommitKey({ committer, backend: request.target.backend }, { yieldFn: request.yieldToMain ?? yieldToEventLoop })
+            return index
+        }
+        // A file the boot flagged damaged has no text: its stored unit is named again from this attempt's base, never dropped.
+        const utilityWorkspaces = await withStoredFileRefs({ backend: request.target.backend }, pageWorkspaceList, baseContent)
         const hooks: ImportHooks = {
             onPhase: (phase) => noteImportPhase(`${phase}, attempt ${attempt}`),
             async confirmIncomplete(items) {
@@ -761,13 +822,6 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                 accepted = items
                 return true
             },
-        }
-        // One index per attempt, read when first asked: the streamed prepare asks before P1b, and a file it hands back to the
-        // whole path reuses that same index.
-        let index: Promise<BaseContentIndex> | null = null
-        const baseContent = (): Promise<BaseContentIndex> => {
-            index ??= indexOfCommitKey({ committer, backend: request.target.backend }, { yieldFn: request.yieldToMain ?? yieldToEventLoop })
-            return index
         }
         const streamRequest = stream === undefined
             ? null

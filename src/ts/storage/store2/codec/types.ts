@@ -88,12 +88,16 @@ export class ModuleSetUnsavableError extends CodecInputError {
 }
 
 /** What an item the pass went on without belongs to; the label of a `moduleSet` item is made by the save loop. */
-export type SkippedItemScope = 'module' | 'moduleSet' | 'presets' | 'taskPresets' | 'settings' | 'pluginData' | 'loadouts' | 'statics' | 'characterOrder' | 'workspaces' | 'chatDrafts'
+export type SkippedItemScope = 'module' | 'moduleSet' | 'presets' | 'taskPresets' | 'plugins' | 'settings' | 'pluginData' | 'loadouts' | 'statics' | 'characterOrder' | 'workspaces' | 'chatDrafts'
 
 /** A part of the database a pass could not read as plain JSON and went on without. */
 export interface SkippedItem {
     scope: SkippedItemScope
-    /** The stable name of the item inside its scope: a module id, `presets`, `taskPresets`, `loadouts`, `statics`, `characterOrder`, a settings field or a plugin-data key. */
+    /**
+     * The stable name of the item inside its scope: a module id, `presets`, `taskPresets`, a plugin list name
+     * (`plugins` or `pluginV2`), `loadouts`, `statics`, `characterOrder`, a settings field or a plugin-data key. For a
+     * workspace, `ws:<id>` (the whole workspace) or `wsf:<id>:<fileId>` (a file with no text and no saved unit).
+     */
     key: string
     /** What a notice calls the item: the raw name, quoted. */
     label: string
@@ -194,6 +198,12 @@ export interface PreviousObjects {
      * merged from it.
      */
     presets?: readonly JsonObject[]
+    /**
+     * The top-level fields of each workspace record (type 28) beside `v`, `ws` and `files`, by workspace id, for the
+     * records that have any. In memory only (never written): a field a newer build wrote is put back on the record the
+     * next encode writes for the same workspace id; a workspace the encode no longer writes loses its entry.
+     */
+    workspaces?: ReadonlyMap<string, JsonObject>
 }
 
 /**

@@ -168,10 +168,8 @@ afterEach(async () => {
     mounted = []
 })
 
-// The back button: not a value control, so outside #334. The search field is named, so it is not listed.
-const KNOWN_UNNAMED: string[] = [
-    '<button class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0" svg="lucide-icon lucide lucide-arrow-left">',
-]
+// Every control in the grid view carries an accessible name, the icon-only back button included.
+const KNOWN_UNNAMED: string[] = []
 
 describe('GridCatalog value-control names', { timeout: 60_000 }, () => {
     test('regression reproducer: the sort select is named by its inner text span, not by the wrapping label', async () => {
@@ -198,5 +196,35 @@ describe('GridCatalog value-control names', { timeout: 60_000 }, () => {
         expect(fieldNameProblems(target, [{ name: language.othersUi.sortLabel }])).toEqual([])
         expect(unnamedControls(target, { fields: true, values: true })).toEqual(KNOWN_UNNAMED)
         expect(controlName(target.querySelector('input[type=text]')!)).toBe(language.search)
+    })
+
+    test('regression reproducer: TalkBack hears a name at the back button and the search field', async () => {
+        DBState.db = {
+            formatversion: 5,
+            botPresetsId: 0,
+            botPresets: [],
+            modules: [],
+            loadouts: [],
+            plugins: [],
+            pluginCustomStorage: {},
+            characterOrder: ['a'],
+            characters: [makeCharacter('a', 'Alice')],
+            hideAllImages: false,
+        } as unknown as Database
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const app = mount(GridCatalog, { target, props: {} }) as Record<string, unknown>
+        mounted.push({ target, app })
+        await settle()
+
+        // An icon-only button with only a title is announced as a bare "button" by Android WebView TalkBack.
+        const back = target.querySelector<HTMLButtonElement>('[data-part="library-back"]')!
+        expect(back.getAttribute('aria-label')).toBe(language.settingsPage.back)
+
+        // TalkBack speaks only aria-describedby in a text field's own stop, so the description must resolve to the name.
+        const search = target.querySelector<HTMLInputElement>('input[type=text]')!
+        const describedIds = (search.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean)
+        const spoken = describedIds.map((id) => document.getElementById(id)?.textContent?.trim() ?? '').join(' ')
+        expect(spoken).toBe(language.search)
     })
 })

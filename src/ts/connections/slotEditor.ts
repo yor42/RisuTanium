@@ -4,7 +4,7 @@ import {
     isMalformedStore, isRecord, nextConnectionId, ownedConnection, proxyName, providerLabel, slotConnection,
     storedConnections, uniqueName, type Connection, type ConnectionProvider, type ConnectionSlot, type GlobalSlot,
 } from './connections'
-import { connectionKeyForUi, setConnectionKey } from './keyAccess'
+import { connectionKeyForUi, connectionKeyTemporarilyUnavailable, setConnectionKey } from './keyAccess'
 
 /*
  * The writers behind the settings fields. A setter edits the connection its owner resolves to; with
@@ -19,6 +19,12 @@ export function slotEditorValue(db: Database, slot: ConnectionSlot): string {
     return conn ? connectionKeyForUi(conn) : ''
 }
 
+/** Whether the slot's saved key is wrapped and not decrypted yet, so its field shows empty with a hint. Sync and reactive. */
+export function slotKeyTemporarilyUnavailable(db: Database, slot: ConnectionSlot): boolean {
+    const conn = slotConnection(db, slot)
+    return conn !== undefined && connectionKeyTemporarilyUnavailable(conn)
+}
+
 /** The URL text of the working proxy. */
 export function proxyUrlValue(db: Database): string {
     return ownedConnection(db, { slot: 'proxyKey' })?.url ?? ''
@@ -30,7 +36,7 @@ export function customModelUrlValue(db: Database, modelId: string): string {
 }
 
 /** Appends a connection and returns the stored element, which may be a reactive proxy. */
-function appendConnection(db: Database, conn: Connection): Connection {
+export function appendConnection(db: Database, conn: Connection): Connection {
     db.connections = [...storedConnections(db), conn]
     return storedConnections(db).find((item) => item.id === conn.id) ?? conn
 }

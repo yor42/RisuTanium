@@ -185,15 +185,16 @@ describe('FV1: frontVerdictOf is the fixed-group comparison with every resident 
         expect(await f.encoder.frontVerdictOf(asDatabase(live))).not.toBe('clean')
     })
 
-    test('a plugin that cannot be read is unknown and no fault escapes', async () => {
-        // A plugin of either list is outside skip-and-keep: its fault still fails the plan, so the verdict is unknown.
+    test('a plugin that cannot be read keeps the saved list, so the front is dirty and no fault escapes', async () => {
+        // A plugin list is skip-and-keep, as the statics are: the plan holds the acknowledged list and reports a skipped
+        // item, so the verdict is never clean.
         vi.spyOn(console, 'error').mockImplementation(() => { })
         const f = fixture()
         const live = f.live()
         const cycle: Obj = {}
         cycle.self = cycle
         ;(live.pluginV2 as Obj[])[0].cycle = cycle
-        expect(await f.encoder.frontVerdictOf(asDatabase(live))).toBe('unknown')
+        expect(await f.encoder.frontVerdictOf(asDatabase(live))).toBe('dirty')
     })
 
     test('statics with a throwing toJSON keep the saved copy, so the front is dirty and no fault escapes', async () => {

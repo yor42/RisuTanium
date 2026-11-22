@@ -76,6 +76,7 @@ import { assertNoSecretRef, redactResolved } from "./secretRef";
 import { compileKnownSecrets, redactLogField, REVEAL_MIN_LENGTH, type FetchLogField, type KnownSecrets } from "./requestLogRedact";
 import { secretFieldValues } from "./shareStrip";
 import { splitKeys } from "./process/request/keyRing";
+import { vaultKnownPlaintexts } from "./connections/keyVaultStore.svelte";
 import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
@@ -125,6 +126,14 @@ function currentKnownSecrets(): KnownSecrets {
         const fields = secretFieldValues(db, 'database', (entry) => entry.field !== 'additionalParams' && entry.field !== 'vertexPrivateKey')
         for (const field of fields) {
             for (const line of splitKeys(field)) {
+                const trimmed = line.trim()
+                if (trimmed.length >= REVEAL_MIN_LENGTH) {
+                    values.add(trimmed)
+                }
+            }
+        }
+        for (const plain of vaultKnownPlaintexts()) {
+            for (const line of splitKeys(plain)) {
                 const trimmed = line.trim()
                 if (trimmed.length >= REVEAL_MIN_LENGTH) {
                     values.add(trimmed)
@@ -756,7 +765,9 @@ export function isCharacterUnsavable(chaId: string): boolean {
  * Does nothing in a read-only page and before the loop's real scheduler is
  * live; marks made then are saved by the ordinary debounce. The request counts
  * as a mark and marks the page dirty, so the hide path asks only while
- * `hasUnsavedSaveMarks()` is true or a chat is in flight. A loop parked or holding keeps its state
+ * `hasUnsavedSaveMarks()` is true or a chat is in flight, with one exception: a leave flush that moves an
+ * unsaved edit held outside the database into it (the vault's pending keys) requests the save itself. A page
+ * with no unsaved edit is still never dirtied by a hide. A loop parked or holding keeps its state
  * apart from that mark.
  */
 export function requestSaveNow(): void {
@@ -1171,16 +1182,22 @@ function unsavableItemNotice(item: SkippedItem): string {
         if (item.scope === 'loadouts') {
             return language.saveLoadoutsHeldNotice(item.label)
         }
+        if (item.scope === 'plugins') {
+            return language.savePluginsHeldNotice(item.label)
+        }
+        const workspaceLabel = item.key.startsWith('wsf:') ? language.saveItemWorkspaceFileLabel : language.saveItemWorkspaceLabel
         const what = item.scope === 'module'
             ? language.saveItemModuleLabel(item.label.slice(1, -1))
-            : item.scope === 'settings'
-                ? language.saveItemSettingLabel(item.key)
-                : item.scope === 'statics'
-                    ? language.saveItemStaticsLabel
-                    : item.scope === 'characterOrder'
-                        ? language.saveItemCharacterOrderLabel
-                        : item.scope === 'chatDrafts'
-                            ? language.saveItemChatDraftsLabel
+            : item.scope === 'workspaces'
+                ? workspaceLabel(item.label.slice(1, -1))
+                : item.scope === 'settings'
+                    ? language.saveItemSettingLabel(item.key)
+                    : item.scope === 'statics'
+                        ? language.saveItemStaticsLabel
+                        : item.scope === 'characterOrder'
+                            ? language.saveItemCharacterOrderLabel
+                            : item.scope === 'chatDrafts'
+                                ? language.saveItemChatDraftsLabel
                             : language.saveItemPluginDataLabel(item.key)
         return item.saved ? language.saveItemUnsavedNotice(what) : language.saveItemNeverSavedNotice(what)
     } catch {
