@@ -82,7 +82,7 @@
             {#if persona.icon === ''}
                 <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" class:ring-3={i === DBState.db.selectedPersona}></div>
             {:else}
-                {#await warnOnReject('PersonaSettings: persona icon rejected', lookups.get('persona:' + i, persona.icon, 'css'))}
+                {#await warnOnReject('PersonaSettings: persona icon rejected', lookups.get('persona:' + i, persona.icon, 'css', { everySize: true }))}
                     <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" class:ring-3={i === DBState.db.selectedPersona}></div>
                 {:then im} 
                     <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" style={im} class:ring-3={i === DBState.db.selectedPersona}></div>

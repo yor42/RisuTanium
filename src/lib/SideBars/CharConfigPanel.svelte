@@ -356,7 +356,7 @@
                 <div class="text-center">{language.talkness}</div>
                 <div class="text-center">{language.active}</div>
                 {#each (DBState.db.characters[$selectedCharID] as groupChat).characters as char, i}
-                    {#await warnOnReject('CharConfig: group member icon rejected', lookups.get('member:' + i, findCharacterbyId(char).image, 'css'))}
+                    {#await warnOnReject('CharConfig: group member icon rejected', lookups.get('member:' + i, findCharacterbyId(char).image, 'css', { everySize: true }))}
                         <BarIcon label={language.remove} onClick={() => {
                             rmCharFromGroup(i)
                         }}>
@@ -504,7 +504,7 @@
                                 iconRemoveMode = false
                             }
                         }}>
-                            {#await warnOnReject('CharConfig: additional asset icon rejected', lookups.get('asset:' + i, assets.uri, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css'))}
+                            {#await warnOnReject('CharConfig: additional asset icon rejected', lookups.get('asset:' + i, assets.uri, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css', { everySize: true }))}
                                 <div
                                     class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer hover:ring-3 transition-shadow"
                                     class:ring-draculared={iconRemoveMode} class:ring-3={iconRemoveMode}

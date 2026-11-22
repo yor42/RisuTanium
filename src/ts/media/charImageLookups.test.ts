@@ -225,6 +225,24 @@ describe('on Android', () => {
         expect(track(lateIf as Promise<string | null>).state).toBe('pending')
     })
 
+    test('(R) a list row asks getCharImage to queue every size; other slots pass the signal alone', () => {
+        lookups.get('row', 'assets/a.webp', 'css', { everySize: true })
+        lookups.get('single', 'assets/b.webp', 'css')
+        lookups.getIf('rowIf', true, 'assets/c.webp', 'css', '', { everySize: true })
+        expect(calls[0].args[2]).toEqual({ signal: calls[0].signal, queueEverySize: true })
+        expect(calls[1].args[2]).toEqual({ signal: calls[1].signal })
+        expect(calls[2].args[2]).toEqual({ signal: calls[2].signal, queueEverySize: true })
+    })
+
+    test('(U) everySize is part of the key, so switching it starts a new read and aborts the old hold', () => {
+        lookups.get('s', 'assets/a.webp', 'css')
+        lookups.get('s', 'assets/a.webp', 'css', { everySize: true })
+        lookups.get('s', 'assets/a.webp', 'css', { everySize: true })
+        expect(calls).toHaveLength(2)
+        expect(calls[0].signal!.aborted).toBe(true)
+        expect(calls[1].signal!.aborted).toBe(false)
+    })
+
     test('T7 two owners with different keys on one slot abort each other, so the loser follows the winner (the hazard U1 forbids)', async () => {
         const first = track(lookups.get('shared', 'assets/a.webp', 'plain'))
         const second = track(lookups.get('shared', 'assets/b.webp', 'plain'))
@@ -249,6 +267,12 @@ describe('off Android', () => {
             ['assets/a.webp', 'thumb'],
             ['assets/b.webp', 'plain'],
         ])
+    })
+
+    test('(G) everySize changes nothing off Android: still the two-argument call', () => {
+        lookups.get('s', 'assets/a.webp', 'css', { everySize: true })
+        lookups.getIf('t', true, 'assets/b.webp', 'css', '', { everySize: true })
+        expect(calls.map((call) => call.args)).toEqual([['assets/a.webp', 'css'], ['assets/b.webp', 'css']])
     })
 
     test('T7 getIf false makes no call and returns the empty value; getIf true is the two-argument call', () => {

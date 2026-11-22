@@ -33,14 +33,19 @@ import { DBState } from '../stores.svelte'
 
 type CharImageType = Parameters<typeof getCharImage>[1]
 
+/** How a slot reads. `everySize`: the slot is a row of a list, so its whole read waits in the queue whatever its size. */
+export interface CharImageLookupOptions {
+    everySize?: boolean
+}
+
 export interface CharImageLookups {
     /** The image for `loc` in this slot; the same promise while the slot keeps its key. */
-    get(slot: string, loc: string, type: CharImageType): Promise<string | null>
+    get(slot: string, loc: string, type: CharImageType, options?: CharImageLookupOptions): Promise<string | null>
     /**
      * `get` while `use` is true. When false it releases the slot (the old hold aborts, followers adopt
      * `empty`), makes no `getCharImage` call, and returns `empty` itself.
      */
-    getIf(slot: string, use: boolean, loc: string, type: CharImageType, empty: string | null): Promise<string | null> | string | null
+    getIf(slot: string, use: boolean, loc: string, type: CharImageType, empty: string | null, options?: CharImageLookupOptions): Promise<string | null> | string | null
     /** Aborts every hold. Promises that have not settled stay pending, and no later call starts a read. */
     dispose(): void
 }
@@ -58,7 +63,7 @@ function isResolvedImage(result: string | null | ThumbAborted): result is string
     return result === null || typeof result === 'string'
 }
 
-// Key of the entry that getIf(false) leaves behind; it cannot collide with `hideAllImages|type|loc`.
+// Key of the entry that getIf(false) leaves behind; it cannot collide with `hideAllImages|everySize|type|loc`.
 const RELEASED_KEY = 'released'
 
 /** Creates lookups with no component lifecycle; the owner must call `dispose`. Components use `useCharImageLookups`. */
@@ -76,7 +81,7 @@ export function createCharImageLookups(): CharImageLookups {
         return entry
     }
 
-    function startEntry(slot: string, key: string, loc: string, type: CharImageType): SlotEntry {
+    function startEntry(slot: string, key: string, loc: string, type: CharImageType, everySize: boolean): SlotEntry {
         const controller = new AbortController()
         let resolveEntry!: (value: string | null | Promise<string | null>) => void
         let rejectEntry!: (reason: unknown) => void
@@ -87,7 +92,7 @@ export function createCharImageLookups(): CharImageLookups {
         const entry: SlotEntry = { key, controller, promise, adopt: (outcome) => resolveEntry(outcome) }
         // getCharImage for the new key is called before the old hold is aborted, so a shared thumbnail task
         // keeps at least one waiter.
-        const lookup = Promise.resolve(getCharImage(loc, type, { signal: controller.signal }))
+        const lookup = Promise.resolve(getCharImage(loc, type, everySize ? { signal: controller.signal, queueEverySize: true } : { signal: controller.signal }))
         replace(slot, entry)
         lookup.then((result) => {
             if (isResolvedImage(result)) {
@@ -107,24 +112,25 @@ export function createCharImageLookups(): CharImageLookups {
         return replace(slot, { key: RELEASED_KEY, controller: null, promise: outcome, adopt: () => {} })
     }
 
-    function get(slot: string, loc: string, type: CharImageType): Promise<string | null> {
+    function get(slot: string, loc: string, type: CharImageType, options: CharImageLookupOptions = {}): Promise<string | null> {
         if (!isAndroidTransport()) {
             return Promise.resolve(getCharImage(loc, type))
         }
         if (disposed) {
             return new Promise<string | null>(() => {})
         }
-        const key = `${DBState.db?.hideAllImages ? 1 : 0}|${type}|${loc}`
+        const everySize = options.everySize === true
+        const key = `${DBState.db?.hideAllImages ? 1 : 0}|${everySize ? 1 : 0}|${type}|${loc}`
         const current = slots.get(slot)
         if (current !== undefined && current.key === key) {
             return current.promise
         }
-        return startEntry(slot, key, loc, type).promise
+        return startEntry(slot, key, loc, type, everySize).promise
     }
 
-    function getIf(slot: string, use: boolean, loc: string, type: CharImageType, empty: string | null): Promise<string | null> | string | null {
+    function getIf(slot: string, use: boolean, loc: string, type: CharImageType, empty: string | null, options: CharImageLookupOptions = {}): Promise<string | null> | string | null {
         if (use) {
-            return get(slot, loc, type)
+            return get(slot, loc, type, options)
         }
         if (isAndroidTransport() && !disposed) {
             const current = slots.get(slot)

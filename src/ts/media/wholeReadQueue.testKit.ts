@@ -142,7 +142,7 @@ type MirrorType = 'plain' | 'css' | 'contain' | 'lgcss' | 'thumb' | 'thumbcss'
  * results and queue the same reads, so this copy cannot drift unnoticed.
  */
 export function createMirroredGetCharImage(hideAllImages: () => boolean) {
-    return async function mirroredGetCharImage(loc: string, type: MirrorType, options?: { signal?: AbortSignal, onWholeReadQueued?: () => void }): Promise<string | null | ThumbAborted> {
+    return async function mirroredGetCharImage(loc: string, type: MirrorType, options?: { signal?: AbortSignal, onWholeReadQueued?: () => void, queueEverySize?: boolean }): Promise<string | null | ThumbAborted> {
         const wrapType = type === 'thumb' ? 'plain' : type === 'thumbcss' ? 'css' : type
         if (hideAllImages()) {
             return wrapType === 'plain' ? '/none.webp' : ''
@@ -155,7 +155,7 @@ export function createMirroredGetCharImage(hideAllImages: () => boolean) {
         }
         const filesrc = await androidFileSrc(loc)
         if (filesrc && options?.signal) {
-            const outcome = await awaitQueuedWholeRead(filesrc, options.signal)
+            const outcome = await awaitQueuedWholeRead(filesrc, options.signal, { everySize: options.queueEverySize === true })
             if (outcome === 'aborted') {
                 return THUMB_ABORTED
             }
