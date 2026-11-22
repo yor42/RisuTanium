@@ -268,3 +268,54 @@ describe('an inlay restored from a source-backed file', () => {
         expect(asSource).toEqual(asFile)
     })
 })
+
+describe('the byte line of the inlay restore (R2, MC-3635)', () => {
+    /** A store that takes Blobs and reports each write in four equal steps, as the Tauri store does. */
+    function reportingStore(): MemoryByteStore {
+        const base = createMemoryByteStore({ blobs: true })
+        const inner = base.writeBlob!.bind(base)
+        base.writeBlob = async (key, blob, condition, onProgress) => {
+            for (let n = 1; n <= 4; n++) {
+                onProgress?.(Math.floor(blob.size * n / 4), blob.size)
+            }
+            return await inner(key, blob, condition)
+        }
+        return base
+    }
+
+    test('R2: onBytes totals the whole inlays\' lengths, moves during the write, never goes back and ends at the total (reproducer: no onBytes report on base)', async () => {
+        const first = await inlayParts('bytes-a', BODIES)
+        const second = await inlayParts('bytes-b', [new Uint8Array(9).fill(3)])
+        const laidFirst = lay(first.parts)
+        const laidSecond = lay(second.parts)
+        const collector = new InlayRestoreCollector(1024)
+        await collect(new File([laidFirst.bytes as unknown as Uint8Array<ArrayBuffer>], 'a.bin'), laidFirst, first.parts, first.hash, collector)
+        await collect(binFileOfSource(recordingSource(laidSecond.bytes).source), laidSecond, second.parts, second.hash, collector)
+        const reports: [number, number][] = []
+
+        const result = await collector.finish(reportingStore(), (done, total) => { reports.push([done, total]) })
+
+        expect(result).toEqual({ written: 2, skipped: [], changed: false })
+        const total = first.body.length + second.body.length
+        expect(reports.length).toBeGreaterThan(2)
+        expect(reports.every(([, t]) => t === total)).toBe(true)
+        const values = reports.map(([done]) => done)
+        expect(values).toEqual([...values].sort((a, b) => a - b))
+        expect(values[values.length - 1]).toBe(total)
+        // The first inlay (10 bytes) is whole at 10: some report lands strictly inside its second half.
+        expect(values.some((done) => done > 5 && done < 10)).toBe(true)
+    })
+
+    test('an inlay that is skipped adds nothing to the total, and no report follows a stop on a changed file (guard: passes before and after the reports exist only where the change is)', async () => {
+        const made = await inlayParts('bytes-skip', BODIES)
+        const laid = lay(made.parts)
+        const collector = new InlayRestoreCollector(5)
+        await collect(new File([laid.bytes as unknown as Uint8Array<ArrayBuffer>], 'a.bin'), laid, made.parts, made.hash, collector)
+        const reports: [number, number][] = []
+
+        const result = await collector.finish(reportingStore(), (done, total) => { reports.push([done, total]) })
+
+        expect(result.written).toBe(0)
+        expect(reports.every(([done, total]) => done <= total)).toBe(true)
+    })
+})

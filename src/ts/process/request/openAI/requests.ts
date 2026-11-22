@@ -21,7 +21,9 @@ import { buildUserContents } from './chatContents'
 import type { OpenAIChatExtra, OpenAIChatFull, ToolCall } from './types'
 import { openAIParseContextOf, parseOpenAIChatBody, processOpenAIChatText, type OpenAIChatBody } from './chatBodyParse'
 import { openAIChatStreamTransform } from './chatStreamTransform'
-import { bindGrant } from 'src/ts/nativeReply/grant'
+import { bindGrant, bindStreamGrant } from 'src/ts/nativeReply/grant'
+import { isAnnouncedFailure, knowledgeOfStamp } from 'src/ts/nativeReply/ownedBody'
+import { createStreamProbe, endOwnedRead, retireOwnedStream } from 'src/ts/nativeReply/ownedStream'
 
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
 import { leaseRequestKey, limitedField, sendArgKey, sendKeyLine } from '../secretKey'
@@ -631,47 +633,81 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
                 })
             }
         }
-        const da = await fetchNative(replacerURL, {
-            body: JSON.stringify(body),
-            method: "POST",
-            headers: headers,
-            signal: arg.abortSignal,
-            chatId: arg.chatId,
-            interceptor: 'openai_streaming',
-            networkRoute: streamingLocalNetworkOptions.networkRoute,
-            requestTimeoutMs: streamingLocalNetworkOptions.requestTimeoutMs
-        })
-
-        if(da.status !== 200){
-            return {
-                type: "fail",
-                result: await textifyReadableStream(da.body),
-                keyLimited: limitedField(arg, da.status)
-            }
+        // One rule for the stored blob and the live read: the record is replayed exactly as this request reads it.
+        const rule = openAIParseContextOf(arg, db)
+        const owner = bindStreamGrant(arg.nativeReplyGrant, arg.chatId, {
+            kind: 'openai-chat-stream',
+            deepSeekThinkingOutput: rule.deepSeekThinkingOutput,
+            extractJson: rule.extractJson,
+            jsonSchema: rule.jsonSchema,
+            multiGen: rule.multiGen,
+        }, { modelKey: arg.replyUsageModelKey ?? '', inputEstimate: arg.usageInputEstimate })
+        const probe = owner ? createStreamProbe(owner.key) : undefined
+        if(owner){
+            // Stop and a chat delete reach the request through this signal, also before the consumer pushes.
+            arg.abortSignal?.addEventListener('abort', () => endOwnedRead(owner.key), { once: true })
         }
+        // Everything up to the hand-off is covered: a throw here means the page stopped reading the owned request.
+        try {
+            const da = await fetchNative(replacerURL, {
+                body: JSON.stringify(body),
+                method: "POST",
+                headers: headers,
+                signal: arg.abortSignal,
+                chatId: arg.chatId,
+                interceptor: 'openai_streaming',
+                networkRoute: streamingLocalNetworkOptions.networkRoute,
+                requestTimeoutMs: streamingLocalNetworkOptions.requestTimeoutMs,
+                nativeReply: owner,
+                pumpProbe: probe,
+            })
 
-        if (!da.headers.get('Content-Type').includes('text/event-stream')){
-            return {
-                type: "fail",
-                result: await textifyReadableStream(da.body)
+            const failedHead = async (extra: { keyLimited?: ReturnType<typeof limitedField> }): Promise<requestDataResponse> => {
+                const result = await textifyReadableStream(da.body)
+                if(!owner){
+                    return { type: "fail", result, ...extra }
+                }
+                // The attempt is over and its record is not the reply: it is removed before any retry pushes.
+                await retireOwnedStream(owner.key)
+                const stamp = probe?.stamp ?? null
+                if(stamp !== null && isAnnouncedFailure(stamp, knowledgeOfStamp(stamp, da.status))){
+                    return { type: "fail", result, ...extra, endsTurn: true }
+                }
+                return { type: "fail", result, ...extra }
             }
-        }
 
-        addFetchLog({
-            body: body,
-            response: "Streaming",
-            success: true,
-            url: replacerURL,
-            status: da.status,
-        })
+            if(da.status !== 200){
+                return await failedHead({ keyLimited: limitedField(arg, da.status) })
+            }
 
-        const transtream = getTranStream(arg)
+            if (!da.headers.get('Content-Type').includes('text/event-stream')){
+                return await failedHead({})
+            }
 
-        da.body.pipeTo(transtream.writable).catch(() => {})
+            addFetchLog({
+                body: body,
+                response: "Streaming",
+                success: true,
+                url: replacerURL,
+                status: da.status,
+            })
 
-        return {
-            type: 'streaming',
-            result: wrapToolStream(transtream.readable, body, headers, replacerURL, arg, streamingLocalNetworkOptions)
+            const transtream = openAIChatStreamTransform(rule, {
+                subject: arg.subject,
+                onUsage: (usage) => arg.usageMeter?.report(usage),
+            })
+
+            da.body.pipeTo(transtream.writable).catch(() => {})
+
+            return {
+                type: 'streaming',
+                result: wrapToolStream(transtream.readable, body, headers, replacerURL, arg, streamingLocalNetworkOptions)
+            }
+        } catch (error) {
+            if(owner){
+                endOwnedRead(owner.key)
+            }
+            throw error
         }
     }
 

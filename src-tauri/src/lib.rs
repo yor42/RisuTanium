@@ -518,6 +518,8 @@ fn cancel_streamed_fetch(id: String, registry: tauri::State<'_, streamed_fetch::
 }
 
 // This app has one window; another webview's load would cancel its live streams.
+// A request whose reply record is open is spared: it has no reader on the new
+// page, so it runs to its end into its record (the notification Stop still stops it).
 #[tauri::command]
 fn cancel_all_streamed_fetch(registry: tauri::State<'_, streamed_fetch::FetchRegistry>) {
     registry.cancel_all();

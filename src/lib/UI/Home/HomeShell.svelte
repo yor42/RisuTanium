@@ -12,7 +12,7 @@
     import HomeDrawer from './HomeDrawer.svelte'
     import HomeStoryShelf from './HomeStoryShelf.svelte'
     import HomeTopBar from './HomeTopBar.svelte'
-    import { homeChrome } from './homeChrome.svelte'
+    import { holdHomeChrome } from './homeChrome.svelte'
     import { hasLibraryContent, liveCharacterCount } from './homeEmpties'
     import { homeBand } from './homeLayout'
     import { freezeStories, resolveFrozen } from './homeStories'
@@ -49,18 +49,21 @@
     const libraryHeadingId = `${uid}-home-library`
 
     // Runs before the first render and on every change, so the sidebar arrow never shows for a
-    // frame on the phone landing. The flag clears when the landing is left and on unmount. Arriving
-    // on the phone landing closes a legacy sidebar overlay that was already open: it is not modal
-    // here, and the arrow that reopens it is gone. `sideBarStore` is read only here, at that point.
+    // frame on the phone landing. The shell holds the flag only while the phone landing shows; leaving
+    // the landing and unmounting release it, and a release never clears the hold of a shell built
+    // before this one was destroyed. The release-then-rehold on a re-run is intended: do not turn it
+    // into a write-only-on-change. Arriving on the phone landing closes a legacy sidebar overlay that
+    // was already open: it is not modal here, and the arrow that reopens it is gone. `sideBarStore` is
+    // read only here, at that point.
     $effect.pre(() => {
-        homeChrome.phoneDrawer = phoneLanding
-        if (phoneLanding) {
-            sideBarStore.set(false)
-        }
-        return () => {
-            homeChrome.phoneDrawer = false
-        }
+        if (!phoneLanding) return
+        sideBarStore.set(false)
+        return holdHomeChrome('phoneDrawer')
     })
+
+    // The sidebar's Home look holds for the shell's whole life, Realm view included. It reads nothing,
+    // so it runs once before the first render and releases on destroy.
+    $effect.pre(() => holdHomeChrome('landing'))
 
     // The drawer goes with the phone landing: a resize out of the band and the Realm view both end it, so it
     // never comes back by itself.

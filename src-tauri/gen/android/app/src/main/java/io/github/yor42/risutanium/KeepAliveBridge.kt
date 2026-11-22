@@ -21,7 +21,8 @@ import org.json.JSONObject
 class KeepAliveBridge(
   private val appContext: Context,
   private val requestPermission: () -> Unit,
-  private val answerOpenTarget: () -> Unit
+  private val answerOpenTarget: () -> Unit,
+  private val answerLaunchOptions: () -> Unit
 ) {
   private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -150,6 +151,19 @@ class KeepAliveBridge(
         answerOpenTarget()
       } catch (error: Exception) {
         Log.w(TAG, "open target answer failed", error)
+      }
+    }
+  }
+
+  // The page asks for the launch options; the activity answers through the page's hook and forgets
+  // the shortcut's request, so each launch is delivered once.
+  @JavascriptInterface
+  fun requestLaunchOptions() {
+    mainHandler.post {
+      try {
+        answerLaunchOptions()
+      } catch (error: Exception) {
+        Log.w(TAG, "launch options answer failed", error)
       }
     }
   }

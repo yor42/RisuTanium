@@ -202,6 +202,16 @@ function reading(state: CopyState, readOfEntry: number): void {
     state.deps.bytes(Math.min(state.doneBytes + readOfEntry, state.totalBytes), state.totalBytes)
 }
 
+/** A chunk of an inlay body was written: the second half of its share of the line, never past the inlay's bytes. */
+function writing(state: CopyState, bodySize: number, written: number, total: number): void {
+    if (total <= 0) {
+        return
+    }
+    const readHalf = Math.floor(bodySize / 2)
+    const share = Math.floor(Math.min(written, total) * (bodySize - readHalf) / total)
+    reading(state, readHalf + share)
+}
+
 /**
  * A chunk of a sealed file failed authentication during the copy: the bytes on disk are not the ones that were sealed. It
  * stops like a corrupt entry with the damaged text (MC-2531).
@@ -439,7 +449,8 @@ async function copyInlay(state: CopyState, pair: InlayPair, ordinal: number): Pr
         const read = await readEntry(plan.source, plan.index, bodyIndex[0], (chunk) => {
             pieces.push(new Blob([chunk.slice()]))
             readOfBody += chunk.length
-            reading(state, readOfBody)
+            // The inlay's share of the line moves half while the body is read and half while it is written.
+            reading(state, Math.floor(readOfBody / 2))
         })
         if (read.ok === false) {
             return corruptEntry(read.finding)
@@ -458,7 +469,7 @@ async function copyInlay(state: CopyState, pair: InlayPair, ordinal: number): Pr
     try {
         const textRepr = fields.repr === 'blob' ? undefined : fields.repr
         await withInlayLock(pair.id, async () => {
-            await writeAppInlay(state.store, pair.id, { ...fields.fields, data: body }, { textRepr })
+            await writeAppInlay(state.store, pair.id, { ...fields.fields, data: body }, { textRepr, onProgress: (written, total) => writing(state, pair.bodySize, written, total) })
         })
         state.inlaysWritten++
     } catch (error) {

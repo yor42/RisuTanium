@@ -45,8 +45,8 @@ import { isLite } from 'src/ts/lite'
 import { defaultColorScheme, effectiveColorScheme, PACK_SCHEME_NAME, updateColorScheme } from 'src/ts/gui/colorscheme'
 import { packSafe } from './packSafeFlag.svelte'
 import {
-    bannerPalette, bootThemePackStep, dismissPackBanner, enterPackSafeMode, leavePackSafeMode, offerBootEscape, packBanner,
-    resetPackSafeModeForTests, tapTurnOff,
+    bannerAccess, bannerPalette, bootThemePackStep, dismissPackBanner, enterPackSafeMode, leavePackSafeMode, offerBootEscape,
+    packAnnouncement, packBanner, resetPackSafeModeForTests, setBannerTouchExploration, tapTurnOff,
 } from './packSafeMode.svelte'
 
 const USER = { bgcolor: '#101820', darkbg: '#0a1016', borderc: '#445566', selected: '#223344', draculared: '#ff5555', textcolor: '#e0e8f0', textcolor2: '#a0a8b0', darkBorderc: '#334455', darkbutton: '#203040', type: 'dark' } as const
@@ -259,6 +259,57 @@ describe('TA-11: the banner state', () => {
         expect(h.turnOff).toHaveBeenCalledTimes(1)
         expect(packSafe.on).toBe(false)
         expect(packBanner.mode).toBe('hidden')
+    })
+})
+
+describe('the banner access state and the announcement flag', () => {
+    it('touch exploration takes only a boolean and is reset by the test seam', () => {
+        expect(bannerAccess.touchExploration).toBe(false)
+        setBannerTouchExploration('true')
+        setBannerTouchExploration(1)
+        setBannerTouchExploration(null)
+        expect(bannerAccess.touchExploration).toBe(false)
+        setBannerTouchExploration(true)
+        expect(bannerAccess.touchExploration).toBe(true)
+        setBannerTouchExploration(undefined)
+        expect(bannerAccess.touchExploration).toBe(true)
+        setBannerTouchExploration(false)
+        expect(bannerAccess.touchExploration).toBe(false)
+        setBannerTouchExploration(true)
+        resetPackSafeModeForTests()
+        expect(bannerAccess.touchExploration).toBe(false)
+    })
+
+    it('entering safe mode, by a tap or by the shortcut, sets the announcement flag; offering alone does not', () => {
+        offerBootEscape(h.db)
+        expect(packAnnouncement.off).toBe(false)
+        enterPackSafeMode('shortcut')
+        expect(packAnnouncement.off).toBe(true)
+        resetPackSafeModeForTests()
+        expect(packAnnouncement.off).toBe(false)
+        offerBootEscape(h.db)
+        h.readOnly = true
+        tapTurnOff()
+        expect(packAnnouncement.off).toBe(true)
+        expect(packAnnouncement.turnedOff).toBe(false)
+    })
+
+    it('a saved turn-off announces the permanent wording and not the session-only flag', () => {
+        offerBootEscape(h.db)
+        tapTurnOff()
+        expect(h.turnOff).toHaveBeenCalled()
+        expect(packAnnouncement.turnedOff).toBe(true)
+        expect(packAnnouncement.off).toBe(false)
+    })
+
+    it('leaving safe mode clears the announcement so a later entry announces again', () => {
+        enterPackSafeMode('shortcut')
+        packAnnouncement.turnedOff = true
+        leavePackSafeMode()
+        expect(packAnnouncement.off).toBe(false)
+        expect(packAnnouncement.turnedOff).toBe(false)
+        enterPackSafeMode('shortcut')
+        expect(packAnnouncement.off).toBe(true)
     })
 })
 

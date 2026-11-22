@@ -2,7 +2,7 @@ import { v4 } from 'uuid'
 import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database, character, groupChat } from '../../database.svelte'
 import {
-    assembleChatEntry, assembleCharacter, characterBodyMatches, configFields, DERIVED_COLD_FIELDS, ENTRY_MOVED_FIELDS, freshEntry, isColdStub, isJsonObject,
+    assembleChatEntry, assembleCharacter, characterBodyMatches, chatDraftsBody, configFields, DERIVED_COLD_FIELDS, ENTRY_MOVED_FIELDS, freshEntry, isColdStub, isJsonObject,
     LORE_FIELDS, overlayStub, pickFields, plainObject, readCheckedUnit, readObjectField, sameJsonValue, SCRIPT_FIELDS, stubFromEntry, toPlainJson,
     unitDigest, VOLATILE_CHARACTER_FIELDS, VOLATILE_CHAT_FIELDS,
     type FreshEntry, type ListDerivation, type PreviousEncoding, type VerdictOptions,
@@ -1110,6 +1110,41 @@ export function prepareFastForward(input: PrepareInput): Prepared {
             steps.push(fieldStep(db, 'loadouts', items))
             guard.push({ kind: 'unit', identity: 'loadouts', digest: heldDigest })
         }
+    }
+
+    // Chat drafts, one whole set: take theirs when this page's set is the base's, keep mine when theirs is the base's, park
+    // when both changed. An absent unit is an empty set. Entries not yet flushed are not in `db` and are not "mine".
+    if (old.units.get('chatDrafts')?.key !== next.units.get('chatDrafts')?.key) {
+        const baseHeld = old.units.has('chatDrafts')
+        let theirsItems: JsonValue[] = []
+        if (target.manifest.fixed.chatDrafts !== undefined) {
+            const bytes = checkedBytes(target.source, target.manifest.fixed.chatDrafts)
+            const parsed = bytes === undefined ? null : readUnit(bytes, UNIT_TYPE.chatDrafts)
+            const chats = parsed !== null && (parsed.status === 'ok' || parsed.status === 'stale') ? (parsed.value.body as ContentBody).chats : undefined
+            if (!Array.isArray(chats)) {
+                return parked('chat-drafts')
+            }
+            theirsItems = chats
+        }
+        let mineItems: JsonValue[]
+        try {
+            mineItems = (Array.isArray(db.chatDrafts) ? db.chatDrafts : []).map(item => toPlainJson(item) ?? null)
+        } catch {
+            return parked('chat-drafts')
+        }
+        const heldDigest = old.units.get('chatDrafts')?.digest
+        const mineUnchanged = baseHeld
+            ? heldDigest !== undefined && unitDigest(encodeUnit(UNIT_TYPE.chatDrafts, chatDraftsBody(mineItems))) === heldDigest
+            : mineItems.length === 0
+        if (!mineUnchanged) {
+            return parked('chat-drafts')
+        }
+        const taken = theirsItems.length === 0 ? undefined : theirsItems
+        steps.push(fieldStep(db, 'chatDrafts', taken))
+        // With a base unit the stale writer is caught by digest. Without one no digest was ever held, so the live field is compared.
+        guard.push(baseHeld && heldDigest !== undefined
+            ? { kind: 'unit', identity: 'chatDrafts', digest: heldDigest }
+            : { kind: 'field', path: 'chatDrafts', before: undefined, expected: taken })
     }
     // The order: characterOrder by its own rule, membership in its domain.
     const baseEntries = entriesOf(old)

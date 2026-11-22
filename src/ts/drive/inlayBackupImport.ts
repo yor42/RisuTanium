@@ -152,9 +152,41 @@ export class InlayRestoreCollector {
         return 'ok'
     }
 
-    /** Writes every inlay whose parts are all here and consistent, one at a time. */
-    async finish(store: ByteStore): Promise<InlayRestoreResult> {
+    /** The groups `finish` will write: whole, storable and not skipped. */
+    private writable(): { group: InlayGroup, header: InlayEntryHeader }[] {
+        const found: { group: InlayGroup, header: InlayEntryHeader }[] = []
+        for (const group of this.groups.values()) {
+            const header = group.header
+            if (group.skip === null && header !== null && isWhole(group, header) && inlayMetaKey(header.id) !== null) {
+                found.push({ group, header })
+            }
+        }
+        return found
+    }
+
+    /**
+     * Writes every inlay whose parts are all here and consistent, one at a time. `onBytes`, when given, receives the bytes
+     * handled out of the sum of the lengths of the inlays to be written: each inlay's share moves half while its parts are
+     * read and half while its body is written. The values never go back and never pass the total.
+     */
+    async finish(store: ByteStore, onBytes?: (done: number, total: number) => void): Promise<InlayRestoreResult> {
         const result: InlayRestoreResult = { written: 0, skipped: [], changed: false }
+        const total = onBytes === undefined ? 0 : this.writable().reduce((sum, item) => sum + item.header.len, 0)
+        let before = 0
+        let last = 0
+        // A report never throws into the restore it reports on.
+        const report = (done: number): void => {
+            if (onBytes === undefined) {
+                return
+            }
+            const next = Math.max(last, Math.min(done, total))
+            last = next
+            try {
+                onBytes(next, total)
+            } catch (error) {
+                console.error(error)
+            }
+        }
         for (const group of this.groups.values()) {
             if (group.skip !== null) {
                 result.skipped.push(group.skip)
@@ -169,8 +201,11 @@ export class InlayRestoreCollector {
                 result.skipped.push({ label: header.id, reason: 'notStored' })
                 continue
             }
-            const outcome = await this.writeGroup(store, group, header)
+            const base = before
+            const outcome = await this.writeGroup(store, group, header, onBytes === undefined ? undefined : (inside) => report(base + inside))
+            before += header.len
             if (outcome === 'written') {
+                report(before)
                 result.written++
             } else if (outcome === 'changed') {
                 result.changed = true
@@ -182,19 +217,23 @@ export class InlayRestoreCollector {
         return result
     }
 
-    private async writeGroup(store: ByteStore, group: InlayGroup, header: InlayEntryHeader): Promise<'written' | 'changed' | 'refused'> {
+    /** `inside` receives the bytes of this inlay handled so far: its first half while read, its second half while written. */
+    private async writeGroup(store: ByteStore, group: InlayGroup, header: InlayEntryHeader, inside?: (done: number) => void): Promise<'written' | 'changed' | 'refused'> {
         const slices: BinSlice[] = []
         for (let index = 0; index < header.parts; index++) {
             slices.push(group.parts.get(index)!)
         }
         const type = header.repr === 'blob' ? header.mime : ''
+        const readHalf = Math.floor(header.len / 2)
         let body: Blob
         if (slices.every((slice): slice is BinSlice & Blob => slice instanceof Blob)) {
             body = new Blob(slices, { type })
+            inside?.(readHalf)
         } else {
             // A source-backed part is read here, one at a time, and kept as a Blob of its own, so the heap never holds more
             // than one part of this inlay. A part that cannot be read, or comes back short, means the file changed.
             const pieces: Blob[] = []
+            let readSoFar = 0
             try {
                 for (const slice of slices) {
                     const bytes = await slice.arrayBuffer()
@@ -203,6 +242,8 @@ export class InlayRestoreCollector {
                         return 'changed'
                     }
                     pieces.push(new Blob([bytes]))
+                    readSoFar += bytes.byteLength
+                    inside?.(Math.floor(readSoFar / 2))
                 }
             } catch (error) {
                 console.error(error)
@@ -214,7 +255,14 @@ export class InlayRestoreCollector {
             // A text inlay's bytes travel as the Blob they arrived in; the record keeps its repr, so it reads back as a string.
             const textRepr = header.repr === 'blob' ? undefined : header.repr
             await withInlayLock(header.id, async () => {
-                await writeAppInlay(store, header.id, { ...header.fields, data: body }, { textRepr })
+                await writeAppInlay(store, header.id, { ...header.fields, data: body }, {
+                    textRepr,
+                    onProgress: inside === undefined || header.len <= 0 ? undefined : (written, size) => {
+                        if (size > 0) {
+                            inside(readHalf + Math.floor(Math.min(written, size) * (header.len - readHalf) / size))
+                        }
+                    },
+                })
             })
             return 'written'
         } catch (error) {
@@ -282,6 +330,6 @@ export async function listOversizedInlays(file: BinFile, entries: readonly Backu
 }
 
 /** Writes what `collector` holds into the page's app store. */
-export async function restoreCollectedInlays(collector: InlayRestoreCollector): Promise<InlayRestoreResult> {
-    return await collector.finish(await getAppStore())
+export async function restoreCollectedInlays(collector: InlayRestoreCollector, onBytes?: (done: number, total: number) => void): Promise<InlayRestoreResult> {
+    return await collector.finish(await getAppStore(), onBytes)
 }

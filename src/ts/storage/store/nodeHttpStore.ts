@@ -1320,7 +1320,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             }
         },
 
-        async writeBlob(key: string, blob: Blob, condition: StoreCondition): Promise<WriteResult> {
+        async writeBlob(key: string, blob: Blob, condition: StoreCondition, onProgress?: (doneBytes: number, totalBytes: number) => void): Promise<WriteResult> {
             const reason = nodeAddressableViolation(key) ?? nodeCreatableViolation(key) ?? nodeAssetRouteViolation(key)
             if (reason !== null) {
                 throw new StoreInvalidKeyError(key, reason)
@@ -1335,7 +1335,14 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             const writer = createValueWriter(key)
             try {
                 for (let start = 0; start < blob.size; start += pieceBytes) {
-                    await writer.write(new Uint8Array(await blob.slice(start, start + pieceBytes).arrayBuffer()))
+                    const slice = new Uint8Array(await blob.slice(start, start + pieceBytes).arrayBuffer())
+                    await writer.write(slice)
+                    // A progress callback never ends or alters a write: an error it throws is dropped here.
+                    try {
+                        onProgress?.(start + slice.length, blob.size)
+                    } catch {
+                        // Ignored by design.
+                    }
                 }
                 return await writer.finish()
             } catch (error) {
