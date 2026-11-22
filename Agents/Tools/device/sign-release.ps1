@@ -166,7 +166,7 @@ function Invoke-ReleaseBuild([string]$Repo, [string]$BuildOut, [string]$ScratchD
         $envMap = Get-ReleaseBuildEnvironment $CargoDir
         $pnpm = $PnpmPath
         if (-not $pnpm) { $pnpm = (Get-Command pnpm.cmd -CommandType Application | Select-Object -First 1).Source }
-        $argv = @('tauri', 'android', 'build', '--apk', 'true', '--target', $BuildTarget)
+        $argv = @('tauri', 'android', 'build', '--apk', '--target', $BuildTarget)
         $null = & $RunCheckPath -CheckId 'sign-release' -OutDir $BuildOut -MaxSeconds $Cap -FilePath $pnpm -ArgumentList $argv `
             -WorkingDirectory $Repo -BuildKind release -Environment $envMap -ArtifactPath $apkPath -RepoRoot $Repo -KillLingering
         $code = $LASTEXITCODE

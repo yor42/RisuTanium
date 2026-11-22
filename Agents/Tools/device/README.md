@@ -101,7 +101,7 @@ pwsh -NoProfile -File Agents\Tools\device\Run-Check.ps1 -CheckId demo -OutDir $e
 
 `-OutDir` (required), `-Kind debug|release` (default `debug`), `-MaxSeconds 1500`, `-CleanBuild`, `-Config`, `-Target aarch64`,
 `-BuildEnv` (hashtable merged over `JAVA_HOME`, `ANDROID_NDK_HOME`, `CARGO_TARGET_DIR`), `-RepoRoot`, `-ScratchRoot`.
-Runs `pnpm tauri android build [--debug] --apk true --target <Target> [--config <Config>]`. Needs the pinned JDK 21 and the
+Runs `pnpm tauri android build [--debug] --apk --target <Target> [--config <Config>]`. Needs the pinned JDK 21 and the
 `NDK_HOME` environment variable; a missing prerequisite is a recorded `fail`. A held build lock for that kind refuses the run
 instead of waiting. A release build reports whether `keystore.properties` exists (existence only; the content is never read). A preflight (after the
 JDK and `NDK_HOME` checks, before any lock or build) fails with a recorded `fail` when `-RepoRoot` lacks the gitignored generated
