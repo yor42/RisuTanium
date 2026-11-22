@@ -35,7 +35,7 @@ Routing is native first (MC-2748): a fresh native Sonnet reviewer or coder by de
 ## Follow-up policy (MC-2745)
 
 1. The reviewer gives every finding one class (MC-2745 names the classes; the definitions are derived from the governance proposal). Blocks-merge and fix-in-this-PR findings are SUBSTANTIVE; known-limitation applies to EDITORIAL or non-blocking findings, and to a SUBSTANTIVE finding only with a recorded maintainer acceptance:
-   - **blocks-merge**: data loss, security, OS break or softlock, or a failed acceptance row;
+   - **blocks-merge**: data loss, security, OS break or softlock, or a failed acceptance row (for what a theme pack can do, only as [Theme-pack findings](#theme-pack-findings-mc-3638) says);
    - **fix-in-this-PR**: small, or adjacent to the touched code;
    - **known-limitation**: one line in the PR body.
 2. Reviewers never file issues. The owning session decides what becomes an issue.
@@ -56,6 +56,27 @@ Stage risky work (derived from lane practice): split a risky tail into separatel
 At the second substantive rejection, reconsider the mechanism: check whether the rejections come from the subsystem's structure rather than one edge case, and if so the designer writes a short rewrite alternative beside the patch path (`MC-697`). At the third, senior-advisor weighs the rewrite against the patch. A rewrite must be bounded (one subsystem with a named interface, callers keep their contract, stored format unchanged or changed only under MC-175, MC-223 or MC-350, size estimated in files and lines) and wins only if it removes the failure class, costs about the same as or less than continued patching and keeps all working behaviour. It needs senior-advisor challenge plus maintainer approval, then a fresh Gate 1 with the reject streak reset; the old tests stay as compatibility guards and each earlier rejection finding becomes a reproducer the rewrite must pass. Three consecutive substantive `[REJECT]` rounds, across plan and implementation gates, require senior-advisor before a fourth revision. `[EDITORIAL]` neither counts nor breaks the streak. Do not patch indefinitely to satisfy one edge case without revisiting the shared cause or asking the maintainer about a product constraint.
 
 Every Gate 1 verdict carries an advisory "Simpler path" section (`MC-777`): whether the complexity or the rejection comes from the subsystem's structure, and whether a bounded rewrite or a simpler mechanism would remove the failure class ("None found" is valid). A substantiated structural finding lets the orchestrator ask for the `MC-697` rewrite alternative at any rejection, not only the second.
+
+### Theme-pack findings (MC-3638)
+
+A theme pack is untrusted data the user chose to run. A finding about what a pack can do is blocks-merge only if it shows one of these invariants broken:
+
+1. pack content runs code;
+2. a network request leaves the app;
+3. data is written outside the pack's own records (derived exception: the scheme switch);
+4. intake is unbounded (derived: in bytes, entries or parse time; render cost is not part of this);
+5. safe start fails (derived: after a cold "Start without theme pack" launch the pack still applies, Theme pack settings opened in that launch cannot turn it off or remove it, or pack-authored effects remain after it is off).
+
+Anything else a pack can do, including hiding, covering or restyling any control, prompt or notice, is a known-limitation: one line in the PR body, with no new guard and no question to the maintainer per finding. MC-3638 is the recorded acceptance that the follow-up policy asks for. Data-loss prompts and the save-failure notice are included: their merged own-colour protection stays frozen as best-effort (MC-3639).
+
+Derived from MC-3638:
+
+- A blocking finding carries a reproducer. For invariants 1 to 3 that is an observed execution, request or write, and probing is free. Invariants 4 and 5 use one fixed corpus plus device rows.
+- A softlock caused by a pack blocks only under invariant 5. A pack that hides or breaks Theme pack settings while it is on is a known-limitation as long as safe start works.
+- A known-limitation under this rule is labelled EDITORIAL and does not change the review token.
+- Plans carry no acceptance row about all packs outside the five invariants. Existing protections are tested by examples.
+- Reviewers and designers propose no new invariant or protected part for a known-limitation.
+- Ordinary bugs, compatibility and test defects in theme-pack code are reviewed as usual.
 
 ## CI ownership (MC-2014, MC-2036, MC-2240)
 

@@ -5,11 +5,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { APP_THEME_NAMES, TAILWIND_DEFAULT_NAMES, allowedTokenNames, declaredTokenNames, isColourSchemeInlineName, reservedNameReason } from './appThemeNames'
+import { APP_THEME_NAMES, SETTINGS_STACKING_TOKENS, TAILWIND_DEFAULT_NAMES, allowedTokenNames, stackingNameReason, declaredTokenNames, isColourSchemeInlineName, reservedNameReason } from './appThemeNames'
 import { effective, isPackSettable } from './engine'
 import { lintAreaPack, type ThemeArea } from './index'
+import { scopePass } from './scope'
+import { shapeTokenNames } from './shapeMode'
 import { HOME_REGISTRY } from './registries/home'
-import { REG5B } from './registries/settings5b'
+import { REG5B, SETTINGS_LINT_REGISTRY } from './registries/settings5b'
 import { STUDIO_REGISTRY } from './registries/studio'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
@@ -80,12 +82,14 @@ describe('T0a-14: the reserved name lists equal the files they were generated fr
     })
 })
 
+const registryOf = (area: 'chat' | 'studio' | 'settings') => (area === 'studio' ? STUDIO_REGISTRY : area === 'settings' ? SETTINGS_LINT_REGISTRY : undefined)
+
 describe('A_tok: the tokens a stylesheet of the area may declare', () => {
-    for (const area of ['chat', 'studio'] as const) {
+    for (const area of ['chat', 'studio', 'settings'] as const) {
         it(`${area}: declared, pack-settable and not reserved`, () => {
             const allowed = allowedTokenNames(area)
             const declared = new Set(declaredTokenNames(area))
-            const bounded = new Set(Object.keys(effective(area === 'studio' ? STUDIO_REGISTRY : undefined).minimums).concat(Object.keys(effective(area === 'studio' ? STUDIO_REGISTRY : undefined).maximums)))
+            const bounded = new Set(Object.keys(effective(registryOf(area)).minimums).concat(Object.keys(effective(registryOf(area)).maximums)))
             expect(allowed.size).toBeGreaterThan(150)
             for (const n of allowed) {
                 expect(declared.has(n) || bounded.has(n), `${n} is declared by the area's token files or bounded by its registry`).toBe(true)
@@ -180,16 +184,98 @@ describe('S2: the app shape tokens in the reserved and allowed name sets', () =>
 
 // S41A-G1: A_tok is the per-name derivation through the unchanged isPackSettable oracle. Each order runs on a fresh module graph, so a
 // settable test shared across areas cannot hide behind the order of the tests in this file. Compatibility guard: passes before and after.
+// Settings alone excludes the two stacking tokens from A_tok (MC-3422); the derivation below subtracts them for that area only.
+const stackingTokensOf = (area: string): ReadonlySet<string> => (area === 'settings' ? SETTINGS_STACKING_TOKENS : new Set<string>())
 describe('S41A-G1: A_tok equals the per-name isPackSettable derivation, in either area order', () => {
-    it.each([['chat', 'studio'], ['studio', 'chat']] as const)('%s then %s', async (first, second) => {
+    it.each([['chat', 'studio'], ['studio', 'chat'], ['settings', 'chat'], ['chat', 'settings']] as const)('%s then %s', async (first, second) => {
         vi.resetModules()
         const names = await import('./appThemeNames')
         for (const area of [first, second]) {
-            const registry = area === 'studio' ? STUDIO_REGISTRY : undefined
+            const registry = registryOf(area)
             const bounded = effective(registry)
             const candidates = [...declaredTokenNames(area), ...Object.keys(bounded.minimums), ...Object.keys(bounded.maximums)]
-            const expected = [...new Set(candidates.filter((name) => isPackSettable(name, registry) && !reservedNameReason(name)))].sort()
+            const expected = [...new Set(candidates.filter((name) => isPackSettable(name, registry) && !reservedNameReason(name) && !stackingTokensOf(area).has(name)))].sort()
             expect([...names.allowedTokenNames(area)].sort(), area).toEqual(expected)
         }
+    })
+})
+
+// C11 (S3a-3): admitting theme/pattern-tokens.css into the settings app token files adds exactly these 119 names to A_tok(settings): 77
+// `--pattern-*` and the 42 `--warning-*`/`--task-*` motion timings. `--pattern-focus-width` and `--pattern-focus-offset` are admitted
+// earlier, through the registry bounds, and the two stacking tokens are excluded (MC-3422). Chat and Studio gain nothing.
+const PATTERN_FILE_NAMES: readonly string[] = [
+    '--pattern-ack-size', '--pattern-action-basis', '--pattern-bullet-inset', '--pattern-bullet-size', '--pattern-bullet-top',
+    '--pattern-count-width', '--pattern-dim-opacity', '--pattern-disabled-opacity', '--pattern-ease', '--pattern-fail-sweep-opacity',
+    '--pattern-fill-confirm', '--pattern-fill-danger', '--pattern-icon-size', '--pattern-line-min', '--pattern-list-indent', '--pattern-on-accent',
+    '--pattern-on-danger', '--pattern-pill-radius', '--pattern-ring-width', '--pattern-skip-edge', '--pattern-skip-edge-width', '--pattern-step-dot',
+    '--pattern-step-dot-now', '--pattern-step-icon-size', '--pattern-step-ring-width', '--pattern-surface', '--pattern-surface-toast',
+    '--pattern-task-bar-fail', '--pattern-task-bar-fill', '--pattern-task-bar-fill-end', '--pattern-task-bar-fill-from',
+    '--pattern-task-bar-fill-to', '--pattern-task-bar-height', '--pattern-task-bar-height-compact', '--pattern-task-bar-sweep',
+    '--pattern-task-bar-track', '--pattern-task-count-size', '--pattern-task-mark-size', '--pattern-task-mark-size-compact',
+    '--pattern-task-step-gap', '--pattern-tick-gap', '--pattern-tint-blocked', '--pattern-tint-caution', '--pattern-tint-confirm',
+    '--pattern-tint-danger', '--pattern-tint-notice', '--pattern-toast-gap', '--pattern-toast-shadow', '--pattern-toast-width',
+    '--pattern-warn-action-height', '--pattern-warn-action-radius', '--pattern-warn-body-leading', '--pattern-warn-body-size',
+    '--pattern-warn-edge-blocked', '--pattern-warn-edge-caution', '--pattern-warn-edge-confirm', '--pattern-warn-edge-danger',
+    '--pattern-warn-edge-notice', '--pattern-warn-edge-width', '--pattern-warn-gap', '--pattern-warn-headline-leading',
+    '--pattern-warn-headline-size', '--pattern-warn-headline-weight', '--pattern-warn-mark-size', '--pattern-warn-mark-size-banner',
+    '--pattern-warn-padding', '--pattern-warn-radius', '--pattern-warn-rgb-blocked', '--pattern-warn-rgb-caution', '--pattern-warn-rgb-confirm',
+    '--pattern-warn-rgb-danger', '--pattern-warn-rgb-notice', '--pattern-warn-scrim', '--pattern-warn-shadow', '--pattern-warn-tint-alpha',
+    '--pattern-warn-width', '--pattern-weight-strong', '--task-badge-delay', '--task-badge-dur', '--task-badge-scale-from', '--task-count-interval',
+    '--task-fill-dur', '--task-fill-ease', '--task-hold-period', '--task-mark-dwell', '--task-result-delay', '--task-result-distance',
+    '--task-result-enter-dur', '--task-result-row-delay', '--task-result-row-stagger', '--task-state-dur', '--task-step-enter-distance',
+    '--task-step-enter-dur', '--task-step-stagger', '--task-step-stagger-max', '--task-sweep-period', '--task-tick-dur', '--task-tick-scale-from',
+    '--task-toast-distance', '--task-toast-done-hold', '--task-toast-enter-dur', '--task-toast-overlap', '--warning-arm-delay',
+    '--warning-bullet-delay', '--warning-bullet-distance', '--warning-bullet-dur', '--warning-bullet-stagger', '--warning-detail-dur',
+    '--warning-glyph-delay', '--warning-glyph-dur', '--warning-glyph-scale-from', '--warning-halo-delay', '--warning-halo-dur',
+    '--warning-halo-opacity', '--warning-halo-scale-to', '--warning-press-dur', '--warning-press-scale', '--warning-swap-in-dur',
+    '--warning-swap-out-dur',
+]
+
+describe('C11: the pattern token file in the settings token set', () => {
+    const withoutFile = (): Set<string> => {
+        const files = ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'settings/theme-tokens.css'] as const
+        const declared = files.flatMap((file) => declaredIn(read(`docs/design/${file}`)))
+        const bounded = effective(SETTINGS_LINT_REGISTRY)
+        const candidates = [...declared, ...Object.keys(bounded.minimums), ...Object.keys(bounded.maximums)]
+        return new Set(candidates.filter((name) => isPackSettable(name, SETTINGS_LINT_REGISTRY) && !reservedNameReason(name)))
+    }
+
+    it('the delta is the pinned 119 names, the focus tokens were already admitted and the z names are not in it', () => {
+        const before = withoutFile()
+        const delta = [...allowedTokenNames('settings')].filter((name) => !before.has(name)).sort()
+        expect(delta).toEqual([...PATTERN_FILE_NAMES].sort())
+        expect(delta).toHaveLength(119)
+        expect(before.has('--pattern-focus-width') && before.has('--pattern-focus-offset')).toBe(true)
+        for (const name of SETTINGS_STACKING_TOKENS) expect(allowedTokenNames('settings').has(name), name).toBe(false)
+    })
+
+    it('the file declares the stacking tokens, so only the exclusion keeps them out (reproducer for the exclusion)', () => {
+        const declared = new Set(declaredTokenNames('settings'))
+        for (const name of SETTINGS_STACKING_TOKENS) {
+            expect(declared.has(name), name).toBe(true)
+            expect(isPackSettable(name, SETTINGS_LINT_REGISTRY), name).toBe(true)
+            expect(stackingNameReason('settings', name), name).toMatch(/MC-3422/)
+            expect(scopePass('settings', `:root{${name}:-1}`, []).some((e) => /MC-3422/.test(e.why)), name).toBe(true)
+            expect(lintAreaPack('settings', `:root{${name}:-1}`, 'z').ok, name).toBe(false)
+        }
+    })
+
+    it('chat and studio keep their token sets: the exclusion is settings-only and the file is declared by no other area', () => {
+        expect(stackingNameReason('chat', '--pattern-z-layer')).toBe('')
+        expect(stackingNameReason('studio', '--pattern-z-layer')).toBe('')
+        for (const name of PATTERN_FILE_NAMES) {
+            expect(allowedTokenNames('chat').has(name), name).toBe(false)
+            expect(allowedTokenNames('studio').has(name), name).toBe(false)
+        }
+    })
+
+    it('C8: the settings shape token list is a subset of A_tok(settings) and holds no settings, pattern, warning or task token', () => {
+        const allowed = allowedTokenNames('settings')
+        for (const name of shapeTokenNames('settings')) {
+            expect(allowed.has(name), name).toBe(true)
+            expect(/^--(settings|pattern|warning|task)-/.test(name), name).toBe(false)
+        }
+        // the list is the chat list intersected with A_tok(settings): nothing the settings area would refuse is kept
+        expect([...shapeTokenNames('settings')].sort()).toEqual([...shapeTokenNames('chat')].filter((name) => allowed.has(name)).sort())
     })
 })

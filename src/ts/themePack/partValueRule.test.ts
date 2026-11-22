@@ -65,7 +65,9 @@ describe('the part-value rule refuses a compound without a named part, in settin
                 expect(got.whys.some((w) => REASON.test(w)), JSON.stringify(got.whys)).toBe(true)
             })
         }
-        for (const [name, css] of ACCEPTED) {
+        for (const [name, written] of ACCEPTED) {
+            // Settings is an applied area, so its stylesheets may name only settings parts.
+            const css = area === 'settings' ? written.replaceAll('home-story', 'settings-row') : written
             it(`${area}: ${name} stays accepted (GUARD, passes before and after)`, () => {
                 const want = portReasons(area, css)
                 expect(want.ok, JSON.stringify(want.whys)).toBe(true)

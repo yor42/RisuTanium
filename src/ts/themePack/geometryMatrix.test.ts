@@ -128,7 +128,7 @@ const PLACEMENTS: readonly Placement[] = ['one block', 'a block per declaration'
 const SUFFIXES = ['', '!important', ' !important', ' !IMPORTANT'] as const
 // The safe tier comes from any data-role="user"|"system" attribute in the selector. The part-value rule refuses the part-less spelling in Home and Settings, but the same residue stays reachable there through an ancestor that names a part
 // (the chat message article carries data-role), so the safe-context placement uses the named spelling in every area; `bare` is the part-less spelling, which chat and Studio judge and Home and Settings refuse with the part-value reason.
-const SAFE_ANCESTOR = { named: '[data-part="chat-message"][data-role="user"] ', bare: '[data-role="user"] ' }
+const SAFE_ANCESTOR = { named: '[data-part="chat-message"][data-role="user"] ', bare: '[data-role="user"] ', settings: '[data-part="settings-row"][data-role="user"] ' }
 // `second` is the family's other chain part: the placement that names both parts of a chain in one selector list puts the declarations on both.
 const place = (placement: Placement, part: string, peer: string, second: string, decls: string[]): string => {
     const s = `[data-part="${part}"]`
@@ -411,7 +411,7 @@ describe('T-2: a name the reach tier refuses is refused on every chain part of e
             for (const [name, value] of REACH_REFUSED) if (!lintAreaPack(area, `[data-part="${part}"]{${name}:${value}}`, 'probe').errors.some((e) => e.prop === name)) misses.push(`${area} ${part} ${name}`)
         }
         expect(misses).toEqual([])
-        expect(kept.length).toBe(48)
+        expect(kept.length).toBe(40)
     })
 
     it('every vendor alias of the family is refused as unmeasurable on a chain part, in the plain and the safe-context forms', () => {
@@ -429,11 +429,11 @@ describe('T-2: a name the reach tier refuses is refused on every chain part of e
 const SAFE_CONTEXT_CANDIDATES: [string, string][] = [['width', '120px'], ['max-width', '200px'], ['min-width', '10px'], ['min-inline-size', '10px'], ['max-inline-size', '200px'], ['flex-basis', '50px'], ['flex', '1'], ['display', 'grid'], ['display', 'inline-block'],
     ['grid-template-columns', '1fr 1fr'], ['text-indent', '4px'], ['column-count', '2'], ['box-sizing', 'border-box'], ['position', 'static'], ['font-size', '14px'], ['word-spacing', '1px'], ['letter-spacing', '1px'], ['gap', '4px'], ['column-gap', '4px'],
     ['justify-content', 'center'], ['align-items', 'center'], ['aspect-ratio', '1/1'], ['overflow', 'hidden'], ['list-style-position', 'inside'], ['white-space', 'nowrap'], ['box-shadow', '0 0 0 1px #000000'], ['text-shadow', '0 0 1px #000000'], ['height', '20px'], ['max-height', '40px'],
-    // the reader never sees the -moz- aliases (the family rule matches -webkit- only): chat and Studio refuse them through the property allow-list, and Home's safe-context form admits them (R19, R20)
+    // the reader never sees the -moz- aliases (the family rule matches -webkit- only): chat, Studio and Settings refuse them through the property allow-list, and Home's safe-context form admits them (R19, R20)
     ['-moz-padding-start', '48px'], ['-moz-padding-end', '48px'], ['-moz-margin-start', '48px'], ['-moz-margin-end', '48px'], ['-moz-border-start', '16px solid #000000'], ['-moz-border-end', '16px solid #000000']]
 const PAINT_CANDIDATES = ['opacity:0.5', 'fill:#000000', 'stroke:#000000', 'background-clip:padding-box']
 const WIDTH_NAMES = 'width max-width min-width min-inline-size max-inline-size'
-// refused in chat and Studio by the property allow-list, admitted in Home and Settings
+// refused in chat, Studio and Settings by the property allow-list, admitted in Home
 const MOZ_ALIASES = '-moz-padding-start -moz-padding-end -moz-margin-start -moz-margin-end -moz-border-start -moz-border-end'
 const CHAT_TRANSCRIPT = ['chat-shell', 'chat-transcript', 'chat-message', 'chat-message-stage', 'chat-message-body', 'chat-message-text']
 // per area: the candidate names refused in the safe-context form (the rest are admitted), with the chain parts that share that refusal; and the parts the area's own pass refuses even in the plain form
@@ -445,12 +445,14 @@ const SAFE_CONTEXT_SNAPSHOT: Record<ThemeArea, { refused: Record<string, string[
         unjudged: [...CHAT_TRANSCRIPT, 'chat-sheet', 'chat-sheet-body'], paint: false,
     },
     settings: {
-        refused: { '': [...CHAT_TRANSCRIPT, 'settings-page', 'settings-page-body', 'settings-section', 'settings-rows', 'settings-row', 'settings-preset-card', 'settings-connection-list', 'settings-connection-card', 'settings-connection-card-main'], [WIDTH_NAMES]: ['chat-sheet', 'chat-sheet-body'] },
-        unjudged: ['settings-dialog-backdrop', 'settings-dialog'], paint: true,
+        refused: { [`column-count ${MOZ_ALIASES}`]: ['settings-page', 'settings-page-body', 'settings-section', 'settings-rows', 'settings-row', 'settings-preset-card', 'settings-connection-list', 'settings-connection-card', 'settings-connection-card-main'] },
+        unjudged: [...CHAT_TRANSCRIPT, 'chat-sheet', 'chat-sheet-body', 'settings-dialog-backdrop', 'settings-dialog'], paint: true,
     },
 }
 // Home and Settings carry the named-part spelling (the part-less one is refused there by the part-value rule); chat and Studio keep the part-less spelling their own rules judge.
-const safeAncestor = (area: ThemeArea): string => (area === 'home' || area === 'settings' ? SAFE_ANCESTOR.named : SAFE_ANCESTOR.bare)
+const safeAncestor = (area: ThemeArea): string => (area === 'settings' ? SAFE_ANCESTOR.settings : area === 'home' ? SAFE_ANCESTOR.named : SAFE_ANCESTOR.bare)
+// A part the area's own pass admits for the paint probe (Settings names only its own parts since it is an applied area).
+const paintPart = (area: ThemeArea): string => (area === 'settings' ? 'settings-row' : 'chat-send')
 describe('T-2s: the safe-context admissions on chain parts are the recorded ones', () => {
     it.each(AREAS)('%s', (area) => {
         const { judged, unjudged } = partsOfArea(area)
@@ -460,7 +462,7 @@ describe('T-2s: the safe-context admissions on chain parts are the recorded ones
             const key = [...new Set(names)].join(' ')
             refused[key] = [...(refused[key] ?? []), part]
         }
-        const paint = PAINT_CANDIDATES.every((declaration) => lintAreaPack(area, `${safeAncestor(area)}[data-part="chat-send"]{${declaration}}`, 'probe').ok)
+        const paint = PAINT_CANDIDATES.every((declaration) => lintAreaPack(area, `${safeAncestor(area)}[data-part="${paintPart(area)}"]{${declaration}}`, 'probe').ok)
         expect({ refused, unjudged, paint }).toEqual(SAFE_CONTEXT_SNAPSHOT[area])
     })
 })
@@ -468,10 +470,11 @@ describe('T-2s: the safe-context admissions on chain parts are the recorded ones
 // The residue tracked above is not closed by the part-value rule: the part-less spelling is refused in Home and Settings with the part-value reason, and the named-part spelling still reaches the safe tier there.
 describe('T-2s: the part-less safe-context spelling in Home and Settings (the part-value rule)', () => {
     it.each(['home', 'settings'] as const)('%s refuses the part-less spelling with the part-value reason and still admits the named-part spelling', (area) => {
-        const bare = lintAreaPack(area, `${SAFE_ANCESTOR.bare}[data-part="chat-message-text"]{width:120px}`, 'probe')
+        const subject = area === 'settings' ? 'settings-row' : 'chat-message-text'
+        const bare = lintAreaPack(area, `${SAFE_ANCESTOR.bare}[data-part="${subject}"]{width:120px}`, 'probe')
         expect(bare.ok).toBe(false)
         expect(bare.errors.some((e) => /must name a part by value/.test(e.why))).toBe(true)
-        const named = lintAreaPack(area, `${SAFE_ANCESTOR.named}[data-part="chat-message-text"]{width:120px}`, 'probe')
+        const named = lintAreaPack(area, `${safeAncestor(area)}[data-part="${subject}"]{width:120px}`, 'probe')
         expect(named.ok, JSON.stringify(named.errors)).toBe(true)
     })
 })
