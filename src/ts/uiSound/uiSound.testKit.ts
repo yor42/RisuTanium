@@ -72,6 +72,17 @@ export async function flushMicrotasks(): Promise<void> {
     for (let i = 0; i < 20; i++) await Promise.resolve()
 }
 
+/**
+ * Makes the facade ready like a page after its first tap: creates and resumes the context and decodes the active pack, so
+ * a cue played afterwards starts at once. Call after `installFakeAudio()`, in a DOM environment.
+ */
+export async function warmUiSounds(): Promise<void> {
+    const facade = await import('./uiSound')
+    facade.installUiSoundUnlock()
+    window.dispatchEvent(new Event('pointerdown'))
+    await flushMicrotasks()
+}
+
 export function installFakeAudio(): FakeAudio {
     const scope = globalThis as Record<string, unknown>
     const previous = { AudioContext: scope.AudioContext, webkitAudioContext: scope.webkitAudioContext, fetch: scope.fetch }

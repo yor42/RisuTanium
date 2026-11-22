@@ -2,12 +2,13 @@ import { get } from 'svelte/store'
 import { DBState, selectedCharID } from '../stores.svelte'
 import type { Message, character, Chat, groupChat } from '../storage/database.svelte'
 import { doingChat, sendChat } from './index.svelte'
-import { hasChimedFor, hasSilencedFor } from './replyNotice'
+import { hasChimedFor, hasFailedFor, hasSilencedFor, replySoundFor } from './replyNotice'
 import type { SendChatOriginHint } from './index.svelte'
 import { sleep } from '../util'
 import { language } from '../../lang'
 import { alertError } from '../alert'
 import sendSound from '../../etc/send.mp3'
+import { playUiSound } from '../uiSound/uiSound'
 import { sendCharacterMessage } from './sendCharacterMessage'
 import { processMultiCommand } from './command'
 import { ensureModulesOrAlert } from './moduleEnsure'
@@ -329,6 +330,7 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     // puts the values back and closes the window and the lock. A listener
     // that also throws when the finally unregisters the draft is not covered.
     let outcome: 'appended' | 'commandHandled' | 'refused' = 'refused'
+    let messageLanded = false
     try {
         registerDraft(inflightDraftKey, COMPOSER_DRAFT_KIND)
 
@@ -391,6 +393,7 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
                 const appendSayNothing = (chat: Chat) => {
                     if(chat.message.length === 0 || chat.message[chat.message.length - 1].role !== 'user'){
                         chat.message.push({ role: 'user', data: '*says nothing*' })
+                        messageLanded = true
                     }
                 }
                 if(status === 'ambiguous'){
@@ -410,6 +413,7 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
             // rather than a few microtask turns later.
             await sendCharacterMessage(workHandle, char as character, startChat, workingText, controller.signal, () => {
                 outcome = 'appended'
+                messageLanded = true
                 clearInflightIfCurrent(record)
                 unregisterDraft(inflightDraftKey)
             })
@@ -435,10 +439,15 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
                 writeAt(workHandle.origin, (ctx) => { ctx.chat.message.push(message) })
             }
             outcome = 'appended'
+            messageLanded = true
         }
 
         if(outcome !== 'appended'){
             return
+        }
+        // The cue says a user message landed: an empty send that pushed nothing still generates a reply but makes no send sound.
+        if(messageLanded){
+            playUiSound('send')
         }
 
         // Past this point a busy-button click aborts generation (the
@@ -812,12 +821,23 @@ export async function sendChatMain(target: GenerationTarget, continued: boolean 
         console.error(error)
         alertError(error)
     }
-    // A reply that finished off screen already sounded once in `announceReply`, whichever channel carried the sound. A failed
-    // or stopped reply plays no sound at all.
-    const silent = threw || controller.signal.aborted || hasSilencedFor(controller.signal)
-    if(DBState.db.playMessage && !hasChimedFor(controller.signal) && !silent){
+    // A reply that finished off screen already sounded once in `announceReply`, whichever channel carried the sound. A stopped
+    // reply plays nothing; a failed one plays only the error cue; the chime and the receive cue never both play for one reply.
+    const sound = replySoundFor({
+        completed,
+        threw,
+        aborted: controller.signal.aborted,
+        failed: hasFailedFor(controller.signal),
+        silenced: hasSilencedFor(controller.signal),
+        chimed: hasChimedFor(controller.signal),
+        playMessage: !!DBState.db.playMessage,
+    })
+    if(sound === 'chime'){
         const audio = new Audio(sendSound);
         audio.play().catch(() => {});
+    }
+    else if(sound === 'receive' || sound === 'error'){
+        playUiSound(sound)
     }
     return completed
 }
