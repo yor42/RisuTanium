@@ -1,7 +1,7 @@
 // The persistent turn-off of the active theme pack: the one write the pack escape makes. It imports only leaves (the scheme
 // restore, the id writer and the boot window), never install.ts, the driver, the apply core or the judge client, so the
 // banner path stays light and works when the driver chunk failed to load.
-import { leavePackScheme } from '../gui/colorscheme'
+import { leavePackScheme } from '../gui/colorschemeCore'
 import { markBootWrite } from '../bootWindow'
 import { setActiveThemePack } from './activeThemePackId'
 

@@ -10,7 +10,7 @@ import { getPageStorageMode } from '../storage/pageStorageMode'
 import {
     defaultColorScheme, effectiveColorScheme, PACK_SCHEME_NAME, schemeWithoutPack, updateColorScheme, updateTextThemeAndCSS,
     type ColorScheme, type SchemeSource,
-} from '../gui/colorscheme'
+} from '../gui/colorschemeCore'
 import { over, parseConcrete, toHex, type Rgba } from './colour'
 import { packSafe, type PackSafeSource } from './packSafeFlag.svelte'
 import { registerPackRequestCanceller, turnOffThemePack } from './turnOff'
