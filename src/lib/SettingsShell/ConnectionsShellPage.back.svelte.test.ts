@@ -67,7 +67,7 @@ function mountPage(): void {
 }
 
 function detailOpen(): boolean {
-    return document.querySelector('[data-part="connection-detail"]') !== null
+    return document.querySelector('[data-part="settings-connection-detail"]') !== null
 }
 
 function dialogOpen(): boolean {
@@ -77,7 +77,7 @@ function dialogOpen(): boolean {
 async function openDeleteDialog(): Promise<void> {
     document.querySelector<HTMLElement>('[data-connection-open="conn-1"]')!.click()
     await settle()
-    document.querySelector<HTMLElement>('[data-part="connection-delete"]')!.click()
+    document.querySelector<HTMLElement>('[data-part="settings-connection-delete"]')!.click()
     await settle()
 }
 
@@ -126,11 +126,11 @@ describe('T29 legacy host Back (A11)', () => {
 
     test('Back on the add flow returns to the list and stores nothing', async () => {
         mountPage()
-        document.querySelector<HTMLElement>('[data-part="connection-add-open"]')!.click()
+        document.querySelector<HTMLElement>('[data-part="settings-connection-add-open"]')!.click()
         await settle()
         expect(dispatchBack()).toBe(true)
         await settle()
-        expect(document.querySelector('[data-part="connection-add"]')).toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-add"]')).toBeNull()
         expect(get(SettingsMenuIndex)).toBe(18)
         expect(DBState.db.connections?.length).toBe(1)
     })

@@ -46,11 +46,11 @@
 {#if shown}
     <div class="flex flex-col relative" class:rounded-md={arrived} class:ring-2={arrived} class:ring-selected={arrived} data-setting-row={id} data-dimmed={dimmed ? 'true' : undefined} data-arrived={arrived ? 'true' : undefined} data-changed={changed ? 'true' : undefined}>
         {#if changed}
-            <span class="absolute -left-3 top-3 size-2 rounded-full bg-selected border border-borderc" role="img" aria-label={language.settingsShellChangedFromDefault} title={language.settingsShellChangedFromDefault} data-part="setting-row-dot"></span>
+            <span class="absolute -left-3 top-3 size-2 rounded-full bg-selected border border-borderc" role="img" aria-label={language.settingsShellChangedFromDefault} title={language.settingsShellChangedFromDefault} data-part="settings-row-dot"></span>
         {/if}
         {#if note !== undefined}
             {#if item}<span class="text-textcolor mt-4">{getLabel(item)}</span>{/if}
-            <p class="text-sm text-textcolor2 mt-1" data-part="setting-row-note">{note}</p>
+            <p class="text-sm text-textcolor2 mt-1" data-part="settings-row-note">{note}</p>
         {:else if item}
             {@const Control = settingRegistry[item.type]}
             <div class:opacity-60={dimmed}>
@@ -62,19 +62,19 @@
             </div>
         {/if}
         {#if ends}
-            <div class="flex justify-between text-xs text-textcolor2 -mt-3 mb-2" data-part="setting-row-ends" aria-hidden="true">
+            <div class="flex justify-between text-xs text-textcolor2 -mt-3 mb-2" data-part="settings-row-ends" aria-hidden="true">
                 <span>{settingsLabel(ends.startKey)}</span>
                 <span>{settingsLabel(ends.endKey)}</span>
             </div>
         {/if}
         {#if hintKey}
-            <p class="text-xs text-textcolor2 mb-2" data-part="setting-row-hint">{settingsLabel(hintKey)}</p>
+            <p class="text-xs text-textcolor2 mb-2" data-part="settings-row-hint">{settingsLabel(hintKey)}</p>
         {/if}
         {#if dimmed && dim}
-            <p class="text-sm text-textcolor2 mt-1" data-part="setting-row-reason">{settingsLabel(dim.reasonKeyOf?.() ?? dim.reasonKey)}</p>
+            <p class="text-sm text-textcolor2 mt-1" data-part="settings-row-reason">{settingsLabel(dim.reasonKeyOf?.() ?? dim.reasonKey)}</p>
             {#if dim.jump}
                 {@const jump = dim.jump}
-                <button type="button" class="self-start min-h-11 px-1 text-sm text-textcolor2 underline hover:text-textcolor" data-part="setting-row-jump" onclick={() => SettingsMenuIndex.set(jump.index)}>{settingsLabel(jump.labelKey)}</button>
+                <button type="button" class="self-start min-h-11 px-1 text-sm text-textcolor2 underline hover:text-textcolor" data-part="settings-row-jump" onclick={() => SettingsMenuIndex.set(jump.index)}>{settingsLabel(jump.labelKey)}</button>
             {/if}
         {/if}
     </div>

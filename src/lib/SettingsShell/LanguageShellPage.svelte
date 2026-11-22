@@ -15,6 +15,6 @@
     }
 </script>
 
-<div data-part="language-page">
+<div data-part="settings-language-page">
     <ShellSectionsPage bind:this={sectionsPage} sections={LANGUAGE_SHELL_SECTIONS} {components} />
 </div>

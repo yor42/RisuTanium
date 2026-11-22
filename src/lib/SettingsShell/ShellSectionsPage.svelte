@@ -89,9 +89,9 @@
                             {:else}
                                 {@const jump = row}
                                 <div class="flex flex-col" data-setting-row={jump.id}>
-                                    <button type="button" class="self-start min-h-11 pr-1 text-left text-textcolor underline hover:text-textcolor2" data-part="setting-row-jump" onclick={() => SettingsMenuIndex.set(jump.index)}>{settingsLabel(jump.labelKey)}</button>
+                                    <button type="button" class="self-start min-h-11 pr-1 text-left text-textcolor underline hover:text-textcolor2" data-part="settings-row-jump" onclick={() => SettingsMenuIndex.set(jump.index)}>{settingsLabel(jump.labelKey)}</button>
                                     {#if jump.hintKey}
-                                        <p class="text-xs text-textcolor2 mb-2" data-part="setting-row-hint">{settingsLabel(jump.hintKey)}</p>
+                                        <p class="text-xs text-textcolor2 mb-2" data-part="settings-row-hint">{settingsLabel(jump.hintKey)}</p>
                                     {/if}
                                 </div>
                             {/if}

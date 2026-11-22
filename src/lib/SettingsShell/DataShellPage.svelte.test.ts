@@ -102,7 +102,7 @@ function show(index = 0): HTMLElement {
 const rowButton = (id: string) => document.querySelector<HTMLButtonElement>(`[data-setting-row="${id}"] button`)
 const dialog = () => document.querySelector<HTMLElement>('[data-part="pattern-dialog"]')
 const radio = (name: string, value: string) => document.querySelector<HTMLInputElement>(`input[type="radio"][name$="-${name}"][value="${value}"]`)!
-const start = () => document.querySelector<HTMLButtonElement>('[data-part="data-chooser-start"]')!
+const start = () => document.querySelector<HTMLButtonElement>('[data-part="settings-data-chooser-start"]')!
 
 async function openChooser(): Promise<void> {
     rowButton('data.backup')!.click()
@@ -141,10 +141,10 @@ afterEach(() => {
 describe('the page', () => {
     test('S1-R6: three sections in order and the four action rows', () => {
         const target = show()
-        expect(target.querySelector('[data-part="data-page"]')).not.toBeNull()
+        expect(target.querySelector('[data-part="settings-data-page"]')).not.toBeNull()
         const headings = [...target.querySelectorAll('[data-part="settings-section-heading"]')].map((el) => el.textContent?.trim())
         expect(headings).toEqual([language.settingsShellDataBackup, language.settingsShellDataTransfer, language.settingsShellDataStorage])
-        expect(target.querySelectorAll('[data-part="data-action"]')).toHaveLength(5)
+        expect(target.querySelectorAll('[data-part="settings-data-action"]')).toHaveLength(5)
         for (const id of ['data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset', 'data.cleanUp', 'acc.goCharacterOnImport', 'adv.coldstorage']) {
             expect(target.querySelector(`[data-setting-row="${id}"]`), id).not.toBeNull()
         }
@@ -154,7 +154,7 @@ describe('the page', () => {
         offer.cleanUp = false
         const target = show()
         expect(target.querySelector('[data-setting-row="data.cleanUp"]')).toBeNull()
-        expect(target.querySelectorAll('[data-part="data-action"]')).toHaveLength(4)
+        expect(target.querySelectorAll('[data-part="settings-data-action"]')).toHaveLength(4)
     })
 })
 
@@ -261,9 +261,9 @@ describe('the backup chooser', () => {
         expect((engines.startRtb.mock.calls[0][1] as { password?: string }).password).toBeUndefined()
     })
 
-    const tickBox = () => document.querySelector<HTMLInputElement>('[data-part="data-chooser-encrypt-toggle"]')!
-    const password1 = () => document.querySelector<HTMLInputElement>('[data-part="data-chooser-password"]')!
-    const password2 = () => document.querySelector<HTMLInputElement>('[data-part="data-chooser-password-again"]')!
+    const tickBox = () => document.querySelector<HTMLInputElement>('[data-part="settings-data-chooser-encrypt-toggle"]')!
+    const password1 = () => document.querySelector<HTMLInputElement>('[data-part="settings-data-chooser-password"]')!
+    const password2 = () => document.querySelector<HTMLInputElement>('[data-part="settings-data-chooser-password-again"]')!
 
     async function typePassword(text: string): Promise<void> {
         for (const field of [password1(), password2()]) {
@@ -332,7 +332,7 @@ describe('the backup chooser', () => {
         show()
         await openAndTick()
         await typePassword(TOKEN)
-        document.querySelector<HTMLButtonElement>('[data-part="data-chooser-cancel"]')!.click()
+        document.querySelector<HTMLButtonElement>('[data-part="settings-data-chooser-cancel"]')!.click()
         await settle()
         expect(dialog()).toBeNull()
         expect(engines.startRtb).not.toHaveBeenCalled()
@@ -370,7 +370,7 @@ describe('the backup chooser', () => {
     test('S1-R9: Cancel starts nothing and removes the dialog', async () => {
         show()
         await openChooser()
-        document.querySelector<HTMLButtonElement>('[data-part="data-chooser-cancel"]')!.click()
+        document.querySelector<HTMLButtonElement>('[data-part="settings-data-chooser-cancel"]')!.click()
         await settle()
         expectNothingStarted()
     })
@@ -479,7 +479,7 @@ describe('the leave-out sheet', () => {
 
     const sheet = () => document.querySelector<HTMLElement>('[data-pattern-severity="caution"]')
     const press = (part: string) => document.querySelector<HTMLButtonElement>(`[data-part="${part}"]`)!.click()
-    const resultLine = () => document.querySelector<HTMLElement>('[data-part="data-backup-result"]')
+    const resultLine = () => document.querySelector<HTMLElement>('[data-part="settings-data-backup-result"]')
 
     async function reachSheet(): Promise<void> {
         show()

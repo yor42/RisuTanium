@@ -73,7 +73,7 @@
     const reason = $derived(keyStateText(hint, needsKey, language.connectionsKeyMissingReason))
 </script>
 
-<li class="rounded-md border border-darkborderc bg-darkbg min-w-0" data-part="connection-card">
+<li class="rounded-md border border-darkborderc bg-darkbg min-w-0" data-part="settings-connection-card">
     <button
         type="button"
         class="flex w-full items-start gap-3 min-h-11 p-3 rounded-md text-left text-textcolor risu-focus-ring active:bg-selected"
@@ -82,13 +82,13 @@
     >
         <Icon class="shrink-0 mt-0.5 text-textcolor2" size={20} aria-hidden="true" />
         <span class="flex flex-col gap-1 min-w-0 grow">
-            <span class="font-semibold truncate" data-part="connection-name">{conn.name}</span>
+            <span class="font-semibold truncate" data-part="settings-connection-name">{conn.name}</span>
             <span class="text-sm text-textcolor2 truncate">{providerLabel(conn.provider)}</span>
             {#if usedLine !== ''}
-                <span class="text-xs text-textcolor2" data-part="connection-used">{usedLine}</span>
+                <span class="text-xs text-textcolor2" data-part="settings-connection-used">{usedLine}</span>
             {/if}
             {#if chip !== ''}
-                <span class="inline-flex items-center gap-1 self-start max-w-full px-3 py-1 rounded-full bg-darkbutton text-textcolor text-sm font-mono" data-part="connection-chip">
+                <span class="inline-flex items-center gap-1 self-start max-w-full px-3 py-1 rounded-full bg-darkbutton text-textcolor text-sm font-mono" data-part="settings-connection-chip">
                     {#if hint.kind === 'ref'}
                         <VariableIcon class="shrink-0" size={14} aria-hidden="true" />
                     {:else}
@@ -98,7 +98,7 @@
                 </span>
             {/if}
             {#if reason !== ''}
-                <span class="flex items-center gap-1 text-sm text-draculared" data-part="connection-alert">
+                <span class="flex items-center gap-1 text-sm text-draculared" data-part="settings-connection-alert">
                     <CircleAlertIcon class="shrink-0" size={14} aria-hidden="true" />
                     <span>{reason}</span>
                 </span>

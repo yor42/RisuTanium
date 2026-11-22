@@ -113,7 +113,7 @@ describe('the switch (T27b)', () => {
     test('new API: it labels itself and explains itself', () => {
         const target = show()
         expect(target.textContent).toContain(language.replyNotificationsSetting)
-        expect(target.querySelector('[data-part="reply-notifications-help"]')?.textContent).toBe(language.replyNotificationsHelp)
+        expect(target.querySelector('[data-part="settings-reply-notifications-help"]')?.textContent).toBe(language.replyNotificationsHelp)
     })
 
     test('new API: turning it on asks the host to enable, turning it off asks it to disable', () => {
@@ -144,11 +144,11 @@ describe('the switch (T27b)', () => {
 
     test('new API: opted in but blocked in the system settings shows off with the status line, and a tap asks the host again', () => {
         const target = show()
-        expect(target.querySelector('[data-part="reply-notifications-status"]')).toBeNull()
+        expect(target.querySelector('[data-part="settings-reply-notifications-status"]')).toBeNull()
 
         reportState(true, false)
         expect(box(target).checked).toBe(false)
-        expect(target.querySelector('[data-part="reply-notifications-status"]')?.textContent).toBe(language.replyNotificationsBlocked)
+        expect(target.querySelector('[data-part="settings-reply-notifications-status"]')?.textContent).toBe(language.replyNotificationsBlocked)
 
         box(target).click()
         flushSync()
@@ -156,14 +156,14 @@ describe('the switch (T27b)', () => {
         expect(box(target).checked).toBe(false)
 
         reportState(true, true)
-        expect(target.querySelector('[data-part="reply-notifications-status"]')).toBeNull()
+        expect(target.querySelector('[data-part="settings-reply-notifications-status"]')).toBeNull()
         expect(box(target).checked).toBe(true)
     })
 })
 
 describe('the app-level notifications-off line (DD-009)', () => {
-    const line = (target: HTMLElement) => target.querySelector<HTMLElement>('[data-part="notifications-off-line"]')
-    const status = (target: HTMLElement) => target.querySelector('[data-part="reply-notifications-status"]')
+    const line = (target: HTMLElement) => target.querySelector<HTMLElement>('[data-part="settings-notifications-off-line"]')
+    const status = (target: HTMLElement) => target.querySelector('[data-part="settings-reply-notifications-status"]')
     const openButton = (target: HTMLElement) => line(target)?.querySelector<HTMLButtonElement>('button[data-action="open-settings"]')
 
     test('P3: app notifications off shows the line and [Open settings], whatever the reply switch says', () => {

@@ -79,31 +79,31 @@
 </script>
 
 <PatternDialog labelId={headingId} announce={language.settingsShellDataMakeBackup} cancelSafe={true} oncancel={() => answer(null)} {trigger} {background}>
-    <div data-part="data-chooser-root">
-        <h2 id={headingId} data-part="data-chooser-heading">{language.settingsShellDataMakeBackup}</h2>
+    <div data-part="settings-data-chooser-root" data-part-critical>
+        <h2 id={headingId} data-part="settings-data-chooser-heading">{language.settingsShellDataMakeBackup}</h2>
 
-        <fieldset data-part="data-chooser-format">
+        <fieldset data-part="settings-data-chooser-format">
             <legend>{language.settingsShellDataFormat}</legend>
             <label>
                 <input type="radio" name="{uid}-format" value="rtb" aria-label={language.settingsShellDataFormatRtb} data-pattern-initial bind:group={format} />
                 <span>{language.settingsShellDataFormatRtb}</span>
             </label>
             <p>{language.settingsShellDataFormatRtbHint}</p>
-            <div data-part="data-chooser-encrypt">
+            <div data-part="settings-data-chooser-encrypt">
                 <label>
-                    <input type="checkbox" data-part="data-chooser-encrypt-toggle" aria-label={language.settingsShellDataEncrypt} disabled={format !== 'rtb'} bind:checked={encrypt} />
+                    <input type="checkbox" data-part="settings-data-chooser-encrypt-toggle" aria-label={language.settingsShellDataEncrypt} disabled={format !== 'rtb'} bind:checked={encrypt} />
                     <span>{language.settingsShellDataEncrypt}</span>
                 </label>
                 {#if slow}
-                    <p data-part="data-chooser-encrypt-slow">{language.settingsShellDataEncryptSlow}</p>
+                    <p data-part="settings-data-chooser-encrypt-slow">{language.settingsShellDataEncryptSlow}</p>
                 {/if}
                 {#if format === 'rtb' && encrypt}
-                    <label data-part="data-chooser-password-label">
+                    <label data-part="settings-data-chooser-password-label">
                         <span id={passwordLabelId}>{language.rtbRestorePasswordLabel}</span>
                         <input
                             bind:this={firstField}
                             bind:value={first}
-                            data-part="data-chooser-password"
+                            data-part="settings-data-chooser-password"
                             type={shown ? 'text' : 'password'}
                             autocomplete="off"
                             autocapitalize="off"
@@ -114,12 +114,12 @@
                             aria-describedby={problem === 'unusable' ? `${passwordLabelId} ${problemId}` : passwordLabelId}
                         />
                     </label>
-                    <label data-part="data-chooser-password-label">
+                    <label data-part="settings-data-chooser-password-label">
                         <span id={passwordAgainLabelId}>{language.settingsShellDataEncryptAgain}</span>
                         <input
                             bind:this={secondField}
                             bind:value={second}
-                            data-part="data-chooser-password-again"
+                            data-part="settings-data-chooser-password-again"
                             type={shown ? 'text' : 'password'}
                             autocomplete="off"
                             autocapitalize="off"
@@ -131,12 +131,12 @@
                         />
                     </label>
                     <label>
-                        <input type="checkbox" data-part="data-chooser-password-show" aria-label={language.rtbRestorePasswordShow} bind:checked={shown} />
+                        <input type="checkbox" data-part="settings-data-chooser-password-show" aria-label={language.rtbRestorePasswordShow} bind:checked={shown} />
                         <span>{language.rtbRestorePasswordShow}</span>
                     </label>
-                    <p data-part="data-chooser-encrypt-warning">{language.settingsShellDataEncryptWarning}</p>
+                    <p data-part="settings-data-chooser-encrypt-warning">{language.settingsShellDataEncryptWarning}</p>
                     {#if problem !== null}
-                        <p id={problemId} data-part="data-chooser-password-problem">{problem === 'unusable' ? language.rtbRestorePasswordUnusable : language.settingsShellDataEncryptMismatch}</p>
+                        <p id={problemId} data-part="settings-data-chooser-password-problem">{problem === 'unusable' ? language.rtbRestorePasswordUnusable : language.settingsShellDataEncryptMismatch}</p>
                     {/if}
                 {/if}
             </div>
@@ -147,7 +147,7 @@
             <p>{language.settingsShellDataFormatBinHint}</p>
         </fieldset>
 
-        <fieldset data-part="data-chooser-scope">
+        <fieldset data-part="settings-data-chooser-scope">
             <legend>{language.settingsShellDataScope}</legend>
             <label>
                 <input type="radio" name="{uid}-scope" value="full" aria-label={language.settingsShellDataScopeFull} bind:group={scope} />
@@ -159,7 +159,7 @@
                     <span>{language.settingsShellDataScopeSettings}</span>
                 </label>
                 {#if scope === 'settings'}
-                    <p data-part="data-chooser-scope-note">{language.settingsShellDataScopeSettingsHint}</p>
+                    <p data-part="settings-data-chooser-scope-note">{language.settingsShellDataScopeSettingsHint}</p>
                 {/if}
             {:else}
                 <label>
@@ -167,37 +167,37 @@
                     <span>{language.settingsShellDataScopePartial}</span>
                 </label>
                 {#if scope === 'partial'}
-                    <p data-part="data-chooser-scope-note">{language.settingsShellDataScopePartialHint}</p>
+                    <p data-part="settings-data-chooser-scope-note">{language.settingsShellDataScopePartialHint}</p>
                 {/if}
-                <p data-part="data-chooser-scope-note">{language.settingsShellDataScopeRtbOnly}</p>
+                <p data-part="settings-data-chooser-scope-note">{language.settingsShellDataScopeRtbOnly}</p>
             {/if}
         </fieldset>
 
-        <div data-part="data-chooser-actions">
-            <button type="button" class="pattern-button" data-part="data-chooser-cancel" onclick={() => answer(null)}>{language.cancel}</button>
-            <button type="button" class="pattern-button" data-part="data-chooser-start" data-variant="confirm" onclick={start}>{language.settingsShellDataStart}</button>
+        <div data-part="settings-data-chooser-actions">
+            <button type="button" class="pattern-button" data-part="settings-data-chooser-cancel" onclick={() => answer(null)}>{language.cancel}</button>
+            <button type="button" class="pattern-button" data-part="settings-data-chooser-start" data-variant="confirm" onclick={start}>{language.settingsShellDataStart}</button>
         </div>
     </div>
 </PatternDialog>
 
 <style>
-    [data-part="data-chooser-root"] { display: grid; gap: var(--pattern-warn-gap, 0.75rem); padding: var(--pattern-warn-padding, 1rem); color: var(--nexus-text); font-family: var(--font); }
-    [data-part="data-chooser-heading"] { margin: 0; font-size: 1.05rem; font-weight: 600; overflow-wrap: anywhere; }
+    [data-part="settings-data-chooser-root"] { display: grid; gap: var(--pattern-warn-gap, 0.75rem); padding: var(--pattern-warn-padding, 1rem); color: var(--nexus-text); font-family: var(--font); }
+    [data-part="settings-data-chooser-heading"] { margin: 0; font-size: 1.05rem; font-weight: 600; overflow-wrap: anywhere; }
     fieldset { display: grid; gap: 0.25rem; margin: 0; padding: 0; border: 0; min-width: 0; }
     legend { padding: 0; margin-bottom: 0.25rem; font-weight: 600; }
     label { display: flex; align-items: center; gap: 0.5rem; min-height: var(--nexus-touch, 2.75rem); }
     input[type="radio"] { width: 1.25rem; height: 1.25rem; flex: none; accent-color: var(--pattern-fill-confirm); }
     p { margin: 0 0 0.5rem 1.75rem; color: var(--nexus-text-secondary); overflow-wrap: anywhere; }
-    [data-part="data-chooser-scope-note"] { margin-left: 0; }
-    [data-part="data-chooser-encrypt"] { display: grid; gap: 0.25rem; margin-left: 1.75rem; min-width: 0; }
-    [data-part="data-chooser-encrypt"] p { margin: 0 0 0.25rem 0; }
-    [data-part="data-chooser-encrypt"] input[type="checkbox"] { width: 1.25rem; height: 1.25rem; flex: none; accent-color: var(--pattern-fill-confirm); }
-    [data-part="data-chooser-password-label"] { display: grid; gap: 0.25rem; align-items: stretch; color: var(--nexus-text-secondary); }
-    [data-part="data-chooser-password-label"] > input { min-height: var(--nexus-touch, 2.75rem); padding: 0 0.75rem; color: var(--nexus-text); background: var(--nexus-surface-flat); border: 1px solid var(--nexus-field-border); border-radius: var(--radius-field); font: inherit; }
-    [data-part="data-chooser-password-label"] > input[aria-invalid="true"] { border-color: var(--pattern-fill-danger, currentColor); }
-    [data-part="data-chooser-password-label"] > input:focus-visible { outline: var(--nexus-focus-ring-width, 2px) solid var(--nexus-ring); outline-offset: var(--nexus-focus-ring-offset, 2px); }
-    [data-part="data-chooser-password-problem"] { color: var(--nexus-text); font-weight: 600; }
+    [data-part="settings-data-chooser-scope-note"] { margin-left: 0; }
+    [data-part="settings-data-chooser-encrypt"] { display: grid; gap: 0.25rem; margin-left: 1.75rem; min-width: 0; }
+    [data-part="settings-data-chooser-encrypt"] p { margin: 0 0 0.25rem 0; }
+    [data-part="settings-data-chooser-encrypt"] input[type="checkbox"] { width: 1.25rem; height: 1.25rem; flex: none; accent-color: var(--pattern-fill-confirm); }
+    [data-part="settings-data-chooser-password-label"] { display: grid; gap: 0.25rem; align-items: stretch; color: var(--nexus-text-secondary); }
+    [data-part="settings-data-chooser-password-label"] > input { min-height: var(--nexus-touch, 2.75rem); padding: 0 0.75rem; color: var(--nexus-text); background: var(--nexus-surface-flat); border: 1px solid var(--nexus-field-border); border-radius: var(--radius-field); font: inherit; }
+    [data-part="settings-data-chooser-password-label"] > input[aria-invalid="true"] { border-color: var(--pattern-fill-danger, currentColor); }
+    [data-part="settings-data-chooser-password-label"] > input:focus-visible { outline: var(--nexus-focus-ring-width, 2px) solid var(--nexus-ring); outline-offset: var(--nexus-focus-ring-offset, 2px); }
+    [data-part="settings-data-chooser-password-problem"] { color: var(--nexus-text); font-weight: 600; }
     fieldset:disabled { opacity: 0.7; }
-    [data-part="data-chooser-actions"] { display: flex; gap: var(--pattern-warn-gap, 0.75rem); justify-content: flex-end; }
-    [data-part="data-chooser-actions"] > :global(.pattern-button) { flex: 1 1 0; }
+    [data-part="settings-data-chooser-actions"] { display: flex; gap: var(--pattern-warn-gap, 0.75rem); justify-content: flex-end; }
+    [data-part="settings-data-chooser-actions"] > :global(.pattern-button) { flex: 1 1 0; }
 </style>

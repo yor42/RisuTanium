@@ -54,8 +54,8 @@ describe('UiSoundsRow', () => {
         const root = await render()
         expect(boxOf(root)!.checked).toBe(true)
         expect(boxOf(root)!.getAttribute('aria-label')).toBe(language.uiSoundsLabel)
-        expect(root.querySelector('[data-part="device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
-        expect(root.querySelector('[data-part="ui-sounds-help"]')!.textContent).toBe(language.uiSoundsDesc)
+        expect(root.querySelector('[data-part="settings-device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
+        expect(root.querySelector('[data-part="settings-ui-sounds-help"]')!.textContent).toBe(language.uiSoundsDesc)
     })
 
     // Guards: the switch ignoring a stored "off" at mount.
@@ -100,9 +100,9 @@ describe('UiSoundsRow', () => {
         window.__risuTaniumAccessibility = { touchExploration: () => true }
         try {
             const muted = await render()
-            expect(muted.querySelector('[data-part="ui-sounds-talkback"]')!.textContent).toBe(language.uiSoundsTalkBackMuted)
+            expect(muted.querySelector('[data-part="settings-ui-sounds-talkback"]')!.textContent).toBe(language.uiSoundsTalkBackMuted)
             window.__risuTaniumAccessibility = { touchExploration: () => false }
-            expect((await render()).querySelector('[data-part="ui-sounds-talkback"]')).toBeNull()
+            expect((await render()).querySelector('[data-part="settings-ui-sounds-talkback"]')).toBeNull()
         } finally {
             delete window.__risuTaniumAccessibility
         }

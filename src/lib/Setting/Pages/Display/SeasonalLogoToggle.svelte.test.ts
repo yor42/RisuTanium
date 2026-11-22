@@ -38,7 +38,7 @@ describe('SeasonalLogoToggle', () => {
         const root = render()
         expect(boxOf(root).checked).toBe(true)
         expect(boxOf(root).getAttribute('aria-label')).toBe(language.seasonalLogoSetting)
-        expect(root.querySelector('[data-part="seasonal-logo-help"]')!.textContent).toBe(language.seasonalLogoHelp)
+        expect(root.querySelector('[data-part="settings-seasonal-logo-help"]')!.textContent).toBe(language.seasonalLogoHelp)
     })
 
     // Guards: the switch not writing the device-local key (the choice would be lost on reload) or writing it inverted.

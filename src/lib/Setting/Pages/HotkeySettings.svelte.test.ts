@@ -11,6 +11,7 @@
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { lintAreaPack } from 'src/ts/themePack'
 
 //#region module mocks
 
@@ -491,6 +492,16 @@ describe('menu, resets, duplicates and notes (A6, A7, A9)', () => {
         expect(stored('presets')).toMatchObject({ key: 'h', ctrl: true })
     })
 
+    test('the duplicate warning is a part a pack cannot hide (MC-3249: a warning is restyled, never hidden)', () => {
+        freshProfile({ hotkeys: [{ key: 'h', ctrl: true, action: 'presets' }] })
+        const target = show()
+        const part = target.querySelector('[data-hotkey-dup-banner]')!.getAttribute('data-part')!
+        expect(part).toBe('settings-hotkey-dup-warning')
+        const verdict = lintAreaPack('settings', `[data-part="${part}"]{display:none}`)
+        expect(verdict.ok).toBe(false)
+        expect(verdict.errors.length).toBeGreaterThan(0)
+    })
+
     test('dead actions are hidden and the log row carries the browser note', () => {
         const target = show()
         expect(rowOf(target, 'toggleVoice')).toBeNull()
@@ -504,7 +515,7 @@ describe('phones (A8)', () => {
     test('at 412 px with no fine pointer the list is read-only until a Ctrl keydown', () => {
         setWidth(412)
         const target = show()
-        expect(target.querySelector('[data-part="settings-hotkey-banner"]')!.textContent).toBe(language.settingsShellHkPhone)
+        expect(target.querySelector('[data-part="settings-hotkey-readonly-note"]')!.textContent).toBe(language.settingsShellHkPhone)
         expect(rowOf(target, 'home')!.textContent).toContain('H')
         expect(target.querySelector('[data-part="settings-hotkey-chord"]')).toBeNull()
         expect(target.querySelector('[data-hotkey-reset-all]')).toBeNull()

@@ -171,7 +171,7 @@
         clearPick = "all";
         cleared = true;
         // A clear-all removes the clear controls, which would drop focus to the page; it moves to the notice.
-        void tick().then(() => document.querySelector<HTMLElement>('[data-part="usage-cleared"]')?.focus());
+        void tick().then(() => document.querySelector<HTMLElement>('[data-part="settings-usage-cleared"]')?.focus());
     }
 </script>
 
@@ -197,10 +197,10 @@
 {#if !ready}
     <!-- Prices are not resolved yet; nothing is shown rather than a price from the wrong source. -->
 {:else if empty}
-    <p class="text-textcolor2 mb-4" data-part="usage-empty">{language.usageStats.empty}</p>
+    <p class="text-textcolor2 mb-4" data-part="settings-usage-empty">{language.usageStats.empty}</p>
 {:else}
     <div class="overflow-x-auto mb-6">
-        <table class="w-full text-sm text-left" data-part="usage-months">
+        <table class="w-full text-sm text-left" data-part="settings-usage-months">
             <caption class="sr-only">{language.usageStats.title}</caption>
             <thead>
                 <tr class="border-b border-darkborderc text-textcolor2">
@@ -226,7 +226,7 @@
                     </tr>
                 {/each}
                 {#if view.overflow.present}
-                    <tr class="border-b border-darkborderc/50" data-part="usage-overflow">
+                    <tr class="border-b border-darkborderc/50" data-part="settings-usage-overflow">
                         <th scope="row" class="py-1 pr-2 font-normal">{language.usageStats.overflow}{@render estimatedTag(view.overflow.estimated)}</th>
                         <td class="py-1 px-2 text-right tabular-nums">{number(view.overflow.requests)}</td>
                         <td class="py-1 px-2 text-right tabular-nums">{number(view.overflow.input)}</td>
@@ -251,7 +251,7 @@
         </label>
 
         <div class="overflow-x-auto mb-6">
-            <table class="w-full text-sm text-left" data-part="usage-models">
+            <table class="w-full text-sm text-left" data-part="settings-usage-models">
                 <caption class="text-left text-lg font-semibold mb-1">{language.usageStats.byModel}</caption>
                 <thead>
                     <tr class="border-b border-darkborderc text-textcolor2">
@@ -287,7 +287,7 @@
                             </td>
                         </tr>
                         {#if editing === row.modelKey}
-                            <tr class="border-b border-darkborderc/50" data-part="usage-price-editor">
+                            <tr class="border-b border-darkborderc/50" data-part="settings-usage-price-editor">
                                 <td colspan="8" class="py-2">
                                     <div class="flex flex-col gap-2 max-w-md">
                                         {#each PRICE_FIELDS as field (field.kind)}
@@ -297,7 +297,7 @@
                                             </div>
                                         {/each}
                                         {#if invalid}
-                                            <p class="text-draculared" role="alert" data-part="usage-price-invalid">{language.usageStats.priceInvalid}</p>
+                                            <p class="text-draculared" role="alert" data-part="settings-usage-price-invalid">{language.usageStats.priceInvalid}</p>
                                         {/if}
                                         <div class="flex gap-2 flex-wrap">
                                             <Button size="sm" onclick={() => savePrice(row.modelKey)}>{language.usageStats.priceSave}</Button>
@@ -329,7 +329,7 @@
         </div>
 
         <div class="overflow-x-auto mb-6">
-            <table class="w-full text-sm text-left" data-part="usage-purposes">
+            <table class="w-full text-sm text-left" data-part="settings-usage-purposes">
                 <caption class="text-left text-lg font-semibold mb-1">{language.usageStats.byPurpose}</caption>
                 <thead>
                     <tr class="border-b border-darkborderc text-textcolor2">
@@ -374,7 +374,7 @@
 {/if}
 
 {#if ready}
-    <section aria-labelledby="usage-manage-title" data-part="usage-manage" class="mb-6">
+    <section aria-labelledby="usage-manage-title" data-part="settings-usage-manage" class="mb-6">
         <h3 id="usage-manage-title" class="text-lg font-semibold mb-1">{language.usageStats.manageTitle}</h3>
 
         <label class="flex flex-col gap-1 mb-2 max-w-xs">
@@ -389,7 +389,7 @@
         <p id="usage-retention-help" class="text-textcolor2 text-sm mb-4">{language.usageStats.retentionHelp}</p>
 
         {#if !empty}
-            <div data-part="usage-clear" class="flex flex-col gap-2 mb-2 max-w-xs">
+            <div data-part="settings-usage-clear" class="flex flex-col gap-2 mb-2 max-w-xs">
                 <label class="flex flex-col gap-1">
                     <span id="usage-clear-label" class="text-textcolor2">{language.usageStats.clearScopeLabel}</span>
                     <SelectInput labelId="usage-clear-label" bind:value={clearPick} onchange={() => { cleared = false }}>
@@ -405,10 +405,10 @@
             </div>
         {/if}
         {#if cleared}
-            <p class="text-textcolor2 text-sm" role="status" tabindex="-1" data-part="usage-cleared">{language.usageStats.clearedNotice}</p>
+            <p class="text-textcolor2 text-sm" role="status" tabindex="-1" data-part="settings-usage-cleared">{language.usageStats.clearedNotice}</p>
         {/if}
     </section>
 {/if}
 
-<p class="text-textcolor2 text-sm mb-2" data-part="usage-note">{language.usageStats.note}</p>
-<p class="text-textcolor2 text-sm mb-2" data-part="usage-price-source">{language.usageStats.priceSource}</p>
+<p class="text-textcolor2 text-sm mb-2" data-part="settings-usage-note">{language.usageStats.note}</p>
+<p class="text-textcolor2 text-sm mb-2" data-part="settings-usage-price-source">{language.usageStats.priceSource}</p>

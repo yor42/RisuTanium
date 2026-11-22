@@ -204,7 +204,7 @@ describe('the Language page at index 10', () => {
         const lineIn = tables.map((table) => table.settingsShellLangPending ?? languageEnglish.settingsShellLangPending)
         expect(lineIn).toContain(statusText(target))
         expect(statusText(target)).not.toBe('')
-        expect(target.querySelector('[data-part="language-pending"] button')).toBeNull()
+        expect(target.querySelector('[data-part="settings-language-pending"] button')).toBeNull()
         expect(maybeRow(target, 'lang.translatorType')).toBeNull()
         DBState.db.translator = 'ko'
         await settle()

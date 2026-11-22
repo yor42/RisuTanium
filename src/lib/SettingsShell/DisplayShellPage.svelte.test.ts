@@ -428,11 +428,11 @@ describe('dependent rows (T-B9)', () => {
         const { target } = showPage()
         await settle()
         expect(dimmed(target, 'display.blockquoteStyling')).toBe(false)
-        expect(row(target, 'display.blockquoteStyling').querySelector('[data-part="setting-row-reason"]')).toBeNull()
+        expect(row(target, 'display.blockquoteStyling').querySelector('[data-part="settings-row-reason"]')).toBeNull()
         DBState.db.unformatQuotes = true
         await settle()
         expect(dimmed(target, 'display.blockquoteStyling')).toBe(true)
-        expect(row(target, 'display.blockquoteStyling').querySelector('[data-part="setting-row-reason"]')!.textContent).toBe(language.settingsShellBlockquoteDimmed)
+        expect(row(target, 'display.blockquoteStyling').querySelector('[data-part="settings-row-reason"]')!.textContent).toBe(language.settingsShellBlockquoteDimmed)
         expect(row(target, 'display.blockquoteStyling').querySelector('input[type="checkbox"]')).not.toBeNull()
     })
 
@@ -444,9 +444,9 @@ describe('dependent rows (T-B9)', () => {
         DBState.db.swipe = false
         await settle()
         expect(dimmed(target, 'display.showFirstMessagePages')).toBe(true)
-        expect(row(target, 'display.showFirstMessagePages').querySelector('[data-part="setting-row-reason"]')!.textContent).toBe(language.settingsShellFirstPagesDimmed)
+        expect(row(target, 'display.showFirstMessagePages').querySelector('[data-part="settings-row-reason"]')!.textContent).toBe(language.settingsShellFirstPagesDimmed)
         SettingsMenuIndex.set(3)
-        row(target, 'display.showFirstMessagePages').querySelector<HTMLButtonElement>('[data-part="setting-row-jump"]')!.click()
+        row(target, 'display.showFirstMessagePages').querySelector<HTMLButtonElement>('[data-part="settings-row-jump"]')!.click()
         expect(get(SettingsMenuIndex)).toBe(11)
     })
 })
@@ -504,12 +504,12 @@ describe('chat display rows', () => {
         const boxes = ['display.leadingDoubleQuote', 'display.trailingDoubleQuote', 'display.leadingSingleQuote', 'display.trailingSingleQuote']
             .map((id) => row(target, id).querySelector<HTMLInputElement>('input')!)
         expect(boxes.map((box) => box.value)).toEqual(['“', '”', '‘', '’'])
-        expect(target.querySelector('[data-part="quote-preview"]')!.textContent).toContain(language.settingsShellQuotePreview('“', '”', '‘', '’'))
+        expect(target.querySelector('[data-part="settings-quote-preview"]')!.textContent).toContain(language.settingsShellQuotePreview('“', '”', '‘', '’'))
         boxes[0].value = '<<'
         boxes[0].dispatchEvent(new Event('input', { bubbles: true }))
         await settle()
         expect(DBState.db.customQuotesData).toEqual(['<<', '”', '‘', '’'])
-        expect(target.querySelector('[data-part="quote-preview"]')!.textContent).toContain(language.settingsShellQuotePreview('<<', '”', '‘', '’'))
+        expect(target.querySelector('[data-part="settings-quote-preview"]')!.textContent).toContain(language.settingsShellQuotePreview('<<', '”', '‘', '’'))
     })
 
     test('the dead memory-limit fields are neither rows nor in the way, and their values stay', async () => {
@@ -533,13 +533,13 @@ describe('chat display rows', () => {
         await settle()
         const closeRow = row(phone.target, 'display.settingsCloseButtonSize')
         expect(closeRow.querySelector('[role="slider"]')).toBeNull()
-        expect(closeRow.querySelector('[data-part="setting-row-note"]')!.textContent).toBe(language.settingsShellCloseButtonPhone)
+        expect(closeRow.querySelector('[data-part="settings-row-note"]')!.textContent).toBe(language.settingsShellCloseButtonPhone)
     })
 
     test('the notification row is on the page with its status line', async () => {
         const { target } = showPage()
         await settle()
-        expect(row(target, 'display.notification').querySelector('[data-part="notification-status"]')).not.toBeNull()
+        expect(row(target, 'display.notification').querySelector('[data-part="settings-notification-status"]')).not.toBeNull()
     })
 })
 
@@ -589,7 +589,7 @@ describe('device motion rows (CHORE-585, MC-1529)', () => {
     }
 
     function reason(target: HTMLElement): string | null {
-        return row(target, 'display.animationSpeed').querySelector('[data-part="setting-row-reason"]')?.textContent ?? null
+        return row(target, 'display.animationSpeed').querySelector('[data-part="settings-row-reason"]')?.textContent ?? null
     }
 
     // The motion preferences module is transformed once here, outside any per-case hook clock.
@@ -616,9 +616,9 @@ describe('device motion rows (CHORE-585, MC-1529)', () => {
         const ids = [...target.querySelectorAll<HTMLElement>('[data-section="display.motion"] [data-setting-row]')].map((el) => el.dataset.settingRow)
         expect(ids).toEqual(['display.lowPower', 'display.reduceCardEffects', 'display.reducedMotion', 'display.animationSpeed'])
         expect(row(target, 'display.lowPower').textContent).toContain(language.settingsShellLowPower)
-        expect(row(target, 'display.lowPower').querySelector('[data-part="device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
+        expect(row(target, 'display.lowPower').querySelector('[data-part="settings-device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
         expect(choice(target, 'system').checked).toBe(true)
-        expect(row(target, 'display.reducedMotion').querySelector('[data-part="device-chip"]')).toBeNull()
+        expect(row(target, 'display.reducedMotion').querySelector('[data-part="settings-device-chip"]')).toBeNull()
     })
 
     test('the switches write this device only: storage and the root marks change, the profile does not', async () => {
@@ -654,7 +654,7 @@ describe('device motion rows (CHORE-585, MC-1529)', () => {
         const before = dbSnapshot()
         const { target } = showPage()
         await settle()
-        expect(row(target, 'display.seasonalLogo').querySelector('[data-part="device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
+        expect(row(target, 'display.seasonalLogo').querySelector('[data-part="settings-device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
         expect(checkbox(target, 'display.seasonalLogo').checked).toBe(true)
         checkbox(target, 'display.seasonalLogo').click()
         await settle()
@@ -675,7 +675,7 @@ describe('device motion rows (CHORE-585, MC-1529)', () => {
         const rowEl = row(target, 'display.reduceCardEffects')
         expect(rowEl.textContent).toContain(language.settingsShellReduceCardEffects)
         expect(rowEl.textContent).toContain(language.settingsShellReduceCardEffectsDesc)
-        expect(rowEl.querySelector('[data-part="device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
+        expect(rowEl.querySelector('[data-part="settings-device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
         expect(checkbox(target, 'display.reduceCardEffects').checked).toBe(false)
         expect(root.hasAttribute('data-card-effects-off')).toBe(false)
         checkbox(target, 'display.reduceCardEffects').click()
@@ -695,7 +695,7 @@ describe('device motion rows (CHORE-585, MC-1529)', () => {
     test('under low power the reduce card effects switch stays enabled, keeps its value and names low power', async () => {
         const { target } = showPage()
         await settle()
-        const note = () => row(target, 'display.reduceCardEffects').querySelector('[data-part="reduce-card-effects-by-low-power"]')
+        const note = () => row(target, 'display.reduceCardEffects').querySelector('[data-part="settings-reduce-card-effects-by-low-power"]')
         expect(note()).toBeNull()
         checkbox(target, 'display.reduceCardEffects').click()
         await settle()

@@ -19,6 +19,6 @@
     }
 </script>
 
-<div data-part="input-page">
+<div data-part="settings-input-page">
     <ShellSectionsPage bind:this={sectionsPage} sections={INPUT_SHELL_SECTIONS} {components} {touch} />
 </div>

@@ -227,7 +227,7 @@ afterEach(() => {
 })
 
 function dot(target: HTMLElement, id: string): Element | null {
-    return displayRow(target, id)?.querySelector('[data-part="setting-row-dot"]') ?? null
+    return displayRow(target, id)?.querySelector('[data-part="settings-row-dot"]') ?? null
 }
 
 describe('T-A11 the changed-from-default dot', () => {
