@@ -3800,6 +3800,7 @@ export const languageChinese = {
     "packEscapeTurnOff": "关闭主题包",
     "packEscapeDismiss": "关闭",
     "packSafeModeNotice": "本次会话中主题包已关闭",
+    "packTurnedOffNotice": "主题包已关闭",
     "themePackBroken": (name: string, reason: string) => `主题包“${name}”未被应用：${reason}。它已被保留；如果不再需要，可在此处将其移除。`,
     "themePackBrokenFiles": "其文件已损坏或缺失",
     "themePackBrokenRefused": "它未通过检查",

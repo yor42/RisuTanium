@@ -3799,6 +3799,7 @@ export const languageVietnamese = {
     "packEscapeTurnOff": "Tắt gói chủ đề",
     "packEscapeDismiss": "Đóng",
     "packSafeModeNotice": "Gói chủ đề đã tắt trong phiên này",
+    "packTurnedOffNotice": "Gói chủ đề đã được tắt",
     "themePackBroken": (name: string, reason: string) => `Gói chủ đề \"${name}\" chưa được áp dụng: ${reason}. Gói vẫn được giữ lại; hãy xóa nó tại đây nếu bạn không cần nữa.`,
     "themePackBrokenFiles": "các tệp của nó bị hỏng hoặc thiếu",
     "themePackBrokenRefused": "nó không vượt qua bước kiểm tra",

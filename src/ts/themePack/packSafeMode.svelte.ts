@@ -25,6 +25,20 @@ export type BannerMode = 'hidden' | 'offer' | 'notice'
  */
 export const packBanner: { mode: BannerMode, canTurnOff: boolean } = $state({ mode: 'hidden', canTurnOff: true })
 
+/**
+ * What the banner needs from the host besides the mode. `touchExploration` is true while a screen reader's touch exploration
+ * is on: its focus is not DOM focus, so the focus pause cannot hold, and the offer stays until Dismiss or turn-off instead of
+ * hiding on a timer. The host's answer can arrive after the offer shows, so the banner reads it reactively.
+ */
+export const bannerAccess: { touchExploration: boolean } = $state({ touchExploration: false })
+
+/**
+ * Set once pack safe mode has been entered in this page load, so the banner's live region announces the result. The region
+ * outlives the banner, which is removed after a successful turn-off. `off` is the session-only result; `turnedOff` is the
+ * saved turn-off, which is permanent and so has its own sentence. Leaving safe mode clears both.
+ */
+export const packAnnouncement: { off: boolean, turnedOff: boolean } = $state({ off: false, turnedOff: false })
+
 let offered = false
 
 function repaint(): void {
@@ -49,9 +63,17 @@ function showNotice(): void {
 export function enterPackSafeMode(source: PackSafeSource): void {
     packSafe.on = true
     packSafe.source = source
+    packAnnouncement.off = true
     repaint()
     if (packBanner.mode === 'offer') {
         showNotice()
+    }
+}
+
+/** The host's touch-exploration state; only a boolean counts. */
+export function setBannerTouchExploration(enabled: unknown): void {
+    if (typeof enabled === 'boolean') {
+        bannerAccess.touchExploration = enabled
     }
 }
 
@@ -59,6 +81,8 @@ export function enterPackSafeMode(source: PackSafeSource): void {
 export function leavePackSafeMode(): void {
     packSafe.on = false
     packSafe.source = null
+    packAnnouncement.off = false
+    packAnnouncement.turnedOff = false
     repaint()
 }
 
@@ -105,6 +129,7 @@ export function tapTurnOff(): void {
     }
     turnOffThemePack()
     leavePackSafeMode()
+    packAnnouncement.turnedOff = true
     dismissPackBanner()
 }
 
@@ -173,4 +198,7 @@ export function resetPackSafeModeForTests(): void {
     packBanner.canTurnOff = true
     packSafe.on = false
     packSafe.source = null
+    bannerAccess.touchExploration = false
+    packAnnouncement.off = false
+    packAnnouncement.turnedOff = false
 }

@@ -3805,6 +3805,7 @@ export const languageGerman = {
     "packEscapeTurnOff": "Design-Paket ausschalten",
     "packEscapeDismiss": "Schließen",
     "packSafeModeNotice": "Das Design-Paket ist für diese Sitzung ausgeschaltet",
+    "packTurnedOffNotice": "Das Design-Paket wurde ausgeschaltet",
     "themePackBroken": (name: string, reason: string) =>
         `Das Design-Paket „${name}“ wurde nicht angewendet: ${reason}. Es bleibt gespeichert; entfernen Sie es hier, wenn Sie es nicht mehr brauchen.`,
     "themePackBrokenFiles": "seine Dateien sind beschädigt oder fehlen",

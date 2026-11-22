@@ -2,4 +2,6 @@
     <string name="keepalive_channel_name">백그라운드 작업</string>
     <string name="reply_channel_name">답변 알림</string>
     <string name="reply_channel_description">보고 있지 않은 채팅에서 답변이 끝났습니다.</string>
+    <string name="shortcut_no_pack_short">테마 팩 없이</string>
+    <string name="shortcut_no_pack_long">테마 팩 없이 시작</string>
 </resources>

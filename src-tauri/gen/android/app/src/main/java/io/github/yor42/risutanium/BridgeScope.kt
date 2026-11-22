@@ -65,6 +65,8 @@ sealed class BridgeCommand {
   object KeepAliveRequestNotificationPermissionOnce : BridgeCommand()
   // The page asks for the chat a notification tap named; the answer goes to its hook.
   object KeepAliveRequestOpenTarget : BridgeCommand()
+  // The page asks for the launch options (the shortcut's pack-safe request, the touch-exploration state); the answer goes to its hook.
+  object KeepAliveRequestLaunchOptions : BridgeCommand()
   data class OpenedFilesTake(val id: Int) : BridgeCommand()
   // A take that has an id but a wrong argument list: it is answered with an empty reply.
   data class OpenedFilesMalformedTake(val id: Int) : BridgeCommand()
@@ -193,6 +195,8 @@ private fun keepAliveCommand(method: String, args: List<Any?>): BridgeCommand? {
       return if (args.isEmpty()) BridgeCommand.KeepAliveRequestNotificationPermissionOnce else null
     "requestOpenTarget" ->
       return if (args.isEmpty()) BridgeCommand.KeepAliveRequestOpenTarget else null
+    "requestLaunchOptions" ->
+      return if (args.isEmpty()) BridgeCommand.KeepAliveRequestLaunchOptions else null
     "stopAfter" -> {
       if (args.size != 1) return null
       val ms = intArg(args[0]) ?: return null

@@ -52,6 +52,7 @@
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <!-- tauri-file-associations. AUTO-GENERATED. DO NOT REMOVE. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -93,6 +94,15 @@
             
             <!-- tauri-file-associations. AUTO-GENERATED. DO NOT REMOVE. -->
         </activity>
+
+        <!-- The launcher shortcut's target: forwards to MainActivity with the pack-safe action and finishes. Exported so every launcher and Android version may start it; it adds no reach, because MainActivity is exported and accepts the same action. Keep it self-closing: the build inserts the generated file intent-filters before every closing activity tag. -->
+        <activity
+            android:name=".PackSafeLaunchActivity"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="true" />
 
         <service
             android:name=".KeepAliveService"

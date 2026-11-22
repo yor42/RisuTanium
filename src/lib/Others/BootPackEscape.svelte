@@ -5,9 +5,10 @@
     // unlayered `*` rule sets from the reserved font setting.
     import { language } from 'src/lang'
     import { DBState, loadedStore } from 'src/ts/stores.svelte'
-    import { bannerPalette, dismissPackBanner, packBanner, tapTurnOff } from 'src/ts/themePack/packSafeMode.svelte'
+    import { bannerAccess, bannerPalette, dismissPackBanner, packAnnouncement, packBanner, tapTurnOff } from 'src/ts/themePack/packSafeMode.svelte'
 
-    // The offer stays until this long after the app shows, unless it holds focus or the pointer.
+    // The offer stays until this long after the app shows, unless it holds focus or the pointer. With touch exploration on it
+    // stays until Dismiss or turn-off: the screen reader's focus is not DOM focus, so the focus pause cannot hold.
     const OFFER_SHOWN_MS = 5000
 
     let held = $state(false)
@@ -17,7 +18,7 @@
     const palette = $derived(bannerPalette(DBState.db))
 
     $effect(() => {
-        if (!$loadedStore || packBanner.mode !== 'offer' || held) {
+        if (!$loadedStore || packBanner.mode !== 'offer' || held || bannerAccess.touchExploration) {
             return
         }
         const timer = setTimeout(dismissPackBanner, OFFER_SHOWN_MS)
@@ -28,6 +29,23 @@
         held = focusWithin || pointerWithin
     }
 </script>
+
+<!-- The live region is always present, so it announces the result even after the banner is removed (a successful turn-off).
+     It is visually hidden with inline literals only. -->
+<div
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+    style:position="absolute"
+    style:width="1px"
+    style:height="1px"
+    style:margin="-1px"
+    style:padding="0px"
+    style:overflow="hidden"
+    style:clip="rect(0, 0, 0, 0)"
+    style:white-space="nowrap"
+    style:border="0px"
+>{packAnnouncement.turnedOff ? language.packTurnedOffNotice : packAnnouncement.off ? language.packSafeModeNotice : ''}</div>
 
 {#if packBanner.mode !== 'hidden'}
     <div
