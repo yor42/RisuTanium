@@ -69,8 +69,27 @@ export function addNode<K extends 'button' | 'input'>(tag: K): HTMLElementTagNam
     return node
 }
 
+/** The stable wrappers of the plain toast list: the node that keeps the entrance animation and the pointer handlers across an Undo outcome. */
 export function toastElements(): HTMLElement[] {
-    return [...document.querySelectorAll<HTMLElement>('[data-part="toast"]')]
+    return [...document.querySelectorAll<HTMLElement>('[data-part="toast-host"] > .toast')]
+}
+
+/** The part-bearing element inside a wrapper: `toast` for a plain toast, `toast-undo` while an action is offered. */
+export function visualOf(wrapper: HTMLElement): HTMLElement {
+    const found = wrapper.querySelector<HTMLElement>('[data-part="toast"], [data-part="toast-undo"]')
+    if (found === null) {
+        throw new Error('missing toast visual')
+    }
+    return found
+}
+
+/** The Dismiss of a wrapper, whichever branch it shows: `toast-dismiss` or, while an action is offered, `toast-undo-dismiss`. */
+export function dismissOf(wrapper: HTMLElement): HTMLButtonElement {
+    const found = wrapper.querySelector<HTMLButtonElement>('[data-part="toast-dismiss"], [data-part="toast-undo-dismiss"]')
+    if (found === null) {
+        throw new Error('missing toast dismiss')
+    }
+    return found
 }
 
 export function part<T extends HTMLElement = HTMLElement>(toast: HTMLElement, name: string): T {
@@ -154,7 +173,7 @@ export function registerToastHostFocusSuite(): void {
             expect(host.holds().focus).toBe(true)
             clock.advance(60_000)
             expect(host.visible).toHaveLength(3)
-            for (const button of document.querySelectorAll<HTMLButtonElement>('[data-part="toast-action"], [data-part="toast-dismiss"]')) {
+            for (const button of document.querySelectorAll<HTMLButtonElement>('[data-part="toast-action"], [data-part="toast-dismiss"], [data-part="toast-undo-dismiss"]')) {
                 expect(button.tagName).toBe('BUTTON')
                 expect(button.hasAttribute('tabindex') && Number(button.getAttribute('tabindex')) < 0).toBe(false)
             }
