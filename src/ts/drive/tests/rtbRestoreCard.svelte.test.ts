@@ -729,7 +729,7 @@ describe('the stages\' card deps', () => {
             const busy = page.busy.beginBusy('backupLoad')
             const picked = pickedOf(bytes)
             const prepared = await page.plan.prepareRtbRestore(picked, busy, { saveBoundMs: 3000, deps: { confirmScale: async () => true } })
-            if (prepared.kind !== 'ready') { throw new Error(`prepare ended ${prepared.outcome}`) }
+            if (prepared.kind !== 'ready') { throw new Error(`prepare ended ${prepared.kind === 'ended' ? prepared.outcome : prepared.kind}`) }
             const order: string[] = []
             commitBox.ran = false
             const end = await page.install.installRtbRestore(prepared.plan, prepared.hold, {

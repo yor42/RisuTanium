@@ -88,6 +88,7 @@ const UPSTREAM_WORDING_KEYS = ['realmDesc', 'risupresetDesc', 'risuMDesc', 'save
 // Keys that name upstream or its domains by design.
 const UPSTREAM_NAMING_KEYS = [
     'backupUpstreamOversizeConfirm',
+    'backupSizesUncheckedConfirm',
     'staleAccountProfileNotice',
     'upstreamAgreementPromptBefore',
     'upstreamConsentPlaceholder',

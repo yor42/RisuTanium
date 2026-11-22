@@ -350,6 +350,9 @@ export const languageSpanish = {
     settingsShellDataScopePartial: "Sin activos de personajes",
     settingsShellDataScopePartialHint: "Guarda los datos, las imágenes de perfil, los iconos de usuario y de persona, los fondos, y las imágenes de carpetas y preajustes. Las imágenes de emociones, los activos adicionales, los archivos de voz, las imágenes de chat y otros medios no se guardan.",
     settingsShellDataScopeBinOnly: "Solo un respaldo .bin puede omitir los activos de personajes.",
+    settingsShellDataScopeSettings: "Solo ajustes",
+    settingsShellDataScopeSettingsHint: "Guarda tus ajustes, los preajustes de bots, los preajustes de memoria y las preferencias de la interfaz. No guarda claves de API, conexiones, chats, personajes, módulos ni ningún otro dato, por lo que no puede sustituir un respaldo completo.",
+    settingsShellDataScopeRtbOnly: "Solo un respaldo .rtb puede guardar los ajustes por separado.",
     settingsShellDataStart: "Iniciar",
     settingsShellDataEncrypt: "Cifrar con una contraseña",
     settingsShellDataEncryptAgain: "Escribe la contraseña otra vez",
@@ -730,6 +733,7 @@ export const languageSpanish = {
     backupTaskTitle: "Guardando un respaldo",
     backupTaskPartialTitle: "Guardando un respaldo parcial",
     rtbExportTaskTitle: "Guardando un respaldo .rtb",
+    rtbSettingsExportTaskTitle: "Guardando un respaldo .rtb solo de ajustes",
     backupStepCollect: "Recopilar datos",
     backupStepSizes: "Comprobar tamaños",
     backupStepInlays: "Añadir imágenes, vídeo y audio del chat",
@@ -913,9 +917,8 @@ export const languageSpanish = {
         "hordeNotPossible": "No es posible generar la respuesta.",
         "hordeNotPossibleWith": "No es posible generar la respuesta: {message}",
         "hordeNoGenerations": "Proceso terminado, pero no se generó ningún resultado",
-        "webCryptoUnavailable": "La Web Crypto API no está disponible en este entorno. Asegúrate de estar usando HTTPS.",
         "vertexInvalidClientEmail": "Correo electrónico de cliente de Vertex no válido. Debe incluir gserviceaccount.com",
-        "vertexInvalidPrivateKey": "Clave privada de Vertex no válida. Debe incluir los marcadores de clave correctos.",
+        "vertexInvalidPrivateKey": "Clave privada de Vertex no válida. Pega el valor completo de private_key del JSON de la cuenta de servicio, incluidas las líneas BEGIN y END PRIVATE KEY.",
         "googleTokenRefreshFailed": "No se pudo actualizar el token de acceso de Google: {error}",
         "googleNoAccessToken": "No hay token de acceso de Google en la respuesta",
         "googleEmptyResponse": "Se recibió una respuesta vacía: {response}",
@@ -3645,6 +3648,7 @@ export const languageSpanish = {
         `${items.length} elemento(s) ocupan 4 GiB o más, que es más de lo que cabe en una sola entrada de un archivo de copia de seguridad, por lo que su contenido no está en la copia de seguridad (un personaje conserva solo un marcador de posición):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} elemento(s) de esta copia de seguridad superan los 100 MiB. Un servidor Node de RisuAI upstream no puede restaurar un elemento tan grande, por lo que los omitiría al restaurar esta copia allí; esta aplicación y las demás plataformas sí los restauran. ¿Crear la copia de seguridad con ellos incluidos? Si lo rechazas, no se crea ningún archivo de copia de seguridad. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "backupSizesUncheckedConfirm": 'No se pudo comprobar el tamaño de los recursos de esta copia de seguridad. Un elemento de más de 100 MiB, que un servidor Node de RisuAI upstream no puede restaurar, puede estar incluido sin que se mencione su nombre, y un elemento de 4 GiB o más detendría la copia a mitad de proceso. ¿Crear la copia de seguridad de todos modos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} preset(s) de tarea se guardan solo en este dispositivo, y un archivo de copia de seguridad no tiene lugar para ellos, así que se omitirían de esta copia. Permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -4231,6 +4235,11 @@ export const languageSpanish = {
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Datos guardados en este dispositivo que no se restauraron: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Datos guardados en este dispositivo que no se pudieron escribir por completo: ${names.join(', ')}`,
     rtbRestoreSideNames: { iris: "conversaciones de Iris", googleSearch: "clave de búsqueda de Google", hypaVector: "datos de búsqueda de memoria", pluginSafe: "datos de plugins", pluginSafeLs: "ajustes de plugins", pluginPermissions: "permisos de plugins", mcpToolCalls: "llamadas a herramientas MCP", uiPrefs: "preferencias de la interfaz" },
+    rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
+        `¿Restaurar los ajustes de este respaldo? Se combinarán en este dispositivo ${fields} ajuste(s), ${presets} preajuste(s) de bots, ${memoryPresets} preajuste(s) de memoria y ${translatorPresets} preajuste(s) nuevo(s) de traductor. Un ajuste que falte en el respaldo se queda como está. No se tocan personajes, chats, claves ni conexiones.${dropped > 0 ? ` ${dropped} valor(es) del respaldo no se pueden usar y se omiten.` : ''} Después la aplicación se recarga.`,
+    rtbRestoreSettingsDone: "Los ajustes se restauraron. La aplicación se recarga ahora.",
+    rtbRestoreSettingsNotSaved: "Los ajustes se aplicaron, pero todavía no se pudieron guardar. Se guardarán más tarde, pero las preferencias de la interfaz no se aplicaron. Restaura el respaldo de nuevo para aplicarlas.",
+    rtbRestoreSettingsAtStart: "Este respaldo solo contiene ajustes, por lo que no puede configurar un perfil nuevo. No se restauró nada. Restaura aquí primero un respaldo completo y luego restaura el respaldo de ajustes desde la página Datos.",
     backupFileNotRecognized: "Este archivo no es un respaldo que esta aplicación pueda restaurar (un .bin de RisuAI upstream o un respaldo .rtb de RisuTanium), o está cortado. No se restauró nada. Tus datos actuales no se cambiaron.",
     coldStorageCleanupDateUnknown: "fecha desconocida",
     coldStorageCleanupKeptConfirm: (dates: string) =>

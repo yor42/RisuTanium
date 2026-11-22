@@ -84,7 +84,7 @@ function makeInput(over: Partial<CardInput> = {}): CardInput {
         avatarPath: '',
         theme,
         parseBody: async () => '<p>hello</p>',
-        resolveAvatarSrc: async (path: string) => `/sw/img/${path}`,
+        resolveAvatarSrc: async (path: string) => `/api/asset/${path}`,
         ...over,
     }
 }
@@ -130,8 +130,8 @@ describe('classifyImageSrc', () => {
     test.each([
         ['data:image/png;base64,AAAA', plain],
         ['blob:http://localhost:3000/3f2a', plain],
-        ['/sw/img/ab', plain],
-        [`${ORIGIN}/sw/img/ab`, plain],
+        ['/api/asset/ab', plain],
+        [`${ORIGIN}/api/asset/ab`, plain],
         ['asset://localhost/x', tauri],
         ['http://asset.localhost/x', tauri],
         ['https://asset.localhost/x', tauri],
@@ -150,6 +150,8 @@ describe('classifyImageSrc', () => {
         ['/api/read?x', plain],
         ['/hub-proxy/x', plain],
         ['/none.webp', plain],
+        ['/sw/img/ab', plain],
+        [`${ORIGIN}/sw/img/ab`, plain],
         ['http://localhost:3000.evil.com/', plain],
         ['javascript:alert(1)', plain],
         ['ftp://x.example/a', plain],
@@ -337,7 +339,7 @@ describe('rebuildBody', () => {
     test('a body image from an outside host keeps its address; a local or other image is left out', () => {
         const out = body(`
             <img src="https://x.example/a.png" alt="A">
-            <img src="data:image/png;base64,AAAA"><img src="/sw/img/ab"><img src="blob:http://localhost:3000/3f2a">
+            <img src="data:image/png;base64,AAAA"><img src="/api/asset/ab"><img src="blob:http://localhost:3000/3f2a">
             <img src="/proxy2?url=https://x.example/b.png"><img src="relative.png"><img>`)
 
         const images = Array.from(out.querySelectorAll('img'))
@@ -520,15 +522,15 @@ const kinds = (reports: CardReport[]) => reports.map((report) => report.kind)
 describe('the card build: images', () => {
     test('an outside body image keeps its address, a local one is encoded and embedded, another one is dropped, and the card itself fetches nothing', async () => {
         const h = harness()
-        h.tap({}, { input: { parseBody: async () => '<p>a <img src="https://x.example/a.png"><img src="/sw/img/ab"><img src="/proxy2?url=https://x.example/b.png"><img src="data:image/png;base64,AAAA"></p>' } })
+        h.tap({}, { input: { parseBody: async () => '<p>a <img src="https://x.example/a.png"><img src="/api/asset/ab"><img src="/proxy2?url=https://x.example/b.png"><img src="data:image/png;base64,AAAA"></p>' } })
         await flush()
 
         const html = await writtenHtml()
         expect(html).toContain('https://x.example/a.png')
-        expect(html).not.toContain('/sw/img/ab')
+        expect(html).not.toContain('/api/asset/ab')
         expect(html).not.toContain('/proxy2')
         expect(html).not.toContain('data:image/png')
-        expect(vi.mocked(h.env.encodeAvatar).mock.calls.map(([src]) => src)).toEqual([`${ORIGIN}/sw/img/ab`, 'data:image/png;base64,AAAA'])
+        expect(vi.mocked(h.env.encodeAvatar).mock.calls.map(([src]) => src)).toEqual([`${ORIGIN}/api/asset/ab`, 'data:image/png;base64,AAAA'])
         expect(fetchStub).not.toHaveBeenCalled()
     })
 
@@ -538,7 +540,7 @@ describe('the card build: images', () => {
         await flush()
         expect(local.env.encodeAvatar).toHaveBeenCalledTimes(1)
         const [src, options] = vi.mocked(local.env.encodeAvatar).mock.calls[0]
-        expect(src).toBe('/sw/img/origavatar')
+        expect(src).toBe('/api/asset/origavatar')
         expect(options.maxSide).toBe(160)
         expect(options.background).toBe(theme.background)
         expect(await writtenHtml()).toContain(AVATAR)
@@ -662,7 +664,7 @@ function pendingEncoder(stubborn = false): PendingEncoder {
 
 const sources = (encode: Mock<EncodeAvatar>) => encode.mock.calls.map(([src]) => src)
 const occurrences = (text: string, part: string) => text.split(part).length - 1
-const imgs = (count: number) => Array.from({ length: count }, (_, i) => `<img src="/sw/img/p${i}" alt="alt-${i}" style="max-width:100%">`).join('')
+const imgs = (count: number) => Array.from({ length: count }, (_, i) => `<img src="/api/asset/p${i}" alt="alt-${i}" style="max-width:100%">`).join('')
 const bodyOf = (inner: string) => async () => `<p>${inner}</p>`
 /** What one embedded IMG<n> adds to a card whose images are measured src-less. */
 const slotCost = (n: number) => utf8Bytes(` src="${IMG(n)}"`)
@@ -695,16 +697,16 @@ describe('the card build: body images', () => {
     test('a local body image is encoded at max side 160 and embedded in place with its alt and no address', async () => {
         const encode = numberedEncoder()
         const h = harness({ encodeAvatar: encode })
-        h.tap({}, { input: { parseBody: async () => '<p>a <img src="/sw/img/6162" alt="smile"> b</p>' } })
+        h.tap({}, { input: { parseBody: async () => '<p>a <img src="/api/asset/6162" alt="smile"> b</p>' } })
         await flush()
 
-        expect(sources(encode)).toEqual([`${ORIGIN}/sw/img/6162`])
+        expect(sources(encode)).toEqual([`${ORIGIN}/api/asset/6162`])
         expect(encode.mock.calls[0][1].maxSide).toBe(160)
         expect(encode.mock.calls[0][1].background).toBe(theme.background)
         const html = await writtenHtml()
         expect(html).toContain(`src="${IMG(1)}"`)
         expect(html).toContain('alt="smile"')
-        expect(html).not.toContain('/sw/img/6162')
+        expect(html).not.toContain('/api/asset/6162')
         expect(kinds(h.reports)).toEqual(['loading', 'copied'])
     })
 
@@ -712,7 +714,7 @@ describe('the card build: body images', () => {
         const encode = numberedEncoder()
         const h = harness({ encodeAvatar: encode, isTauri: true })
         h.tap({}, { input: { parseBody: async () => `<p>
-            <img src="/sw/img/x"><img src="sw/img/x"><img src="/api/asset/abc?risu-auth=t">
+            <img src="/api/asset/x"><img src="api/asset/x"><img src="/api/asset/abc?risu-auth=t">
             <img src="data:image/png;base64,AAAA">
             <div class="risu-inlay-image"><img src="blob:http://localhost:3000/u"/></div>
             <img src="http://asset.localhost/inlays%2Fb-x.t"/>
@@ -720,7 +722,7 @@ describe('the card build: body images', () => {
         await flush()
 
         expect(sources(encode)).toEqual([
-            `${ORIGIN}/sw/img/x`,
+            `${ORIGIN}/api/asset/x`,
             `${ORIGIN}/api/asset/abc?risu-auth=t`,
             'data:image/png;base64,AAAA',
             'blob:http://localhost:3000/u',
@@ -746,8 +748,8 @@ describe('the card build: body images', () => {
     test('guard: an image inside a closed details or a display:none block, or hidden itself, is never encoded', async () => {
         const encode = numberedEncoder()
         const h = harness({ encodeAvatar: encode })
-        h.tap({}, { input: { parseBody: async () => `<p>shown</p><details><summary>s</summary><img src="/sw/img/a"></details>
-            <div style="display:none"><img src="/sw/img/b"></div><img hidden src="/sw/img/c">` } })
+        h.tap({}, { input: { parseBody: async () => `<p>shown</p><details><summary>s</summary><img src="/api/asset/a"></details>
+            <div style="display:none"><img src="/api/asset/b"></div><img hidden src="/api/asset/c">` } })
         await flush()
 
         expect(encode).not.toHaveBeenCalled()
@@ -757,7 +759,7 @@ describe('the card build: body images', () => {
     test('the same address twice is encoded once and embedded twice', async () => {
         const encode = numberedEncoder()
         const h = harness({ encodeAvatar: encode })
-        h.tap({}, { input: { parseBody: async () => '<p><img src="/sw/img/a"><img src="/sw/img/a"></p>' } })
+        h.tap({}, { input: { parseBody: async () => '<p><img src="/api/asset/a"><img src="/api/asset/a"></p>' } })
         await flush()
 
         expect(encode).toHaveBeenCalledTimes(1)
@@ -771,7 +773,7 @@ describe('the card build: body images', () => {
         h.tap({}, { input: { parseBody: bodyOf(imgs(10)) } })
         await flush()
 
-        expect(sources(encode)).toEqual(Array.from({ length: 8 }, (_, i) => `${ORIGIN}/sw/img/p${i}`))
+        expect(sources(encode)).toEqual(Array.from({ length: 8 }, (_, i) => `${ORIGIN}/api/asset/p${i}`))
         const html = await writtenHtml()
         expect(html).toContain(`src="${IMG(8)}"`)
         expect(html).not.toContain('alt-8')
@@ -866,7 +868,7 @@ describe('the card build: body images', () => {
         const encode = numberedEncoder()
         const h = harness({ encodeAvatar: encode })
         h.tap({}, { text: 'plain words', input: { parseBody: () => new Promise<string>((resolve) => {
-            setTimeout(() => resolve('<p>BODYTEXT <img src="/sw/img/a"></p>'), 2100)
+            setTimeout(() => resolve('<p>BODYTEXT <img src="/api/asset/a"></p>'), 2100)
         }) } })
         await vi.advanceTimersByTimeAsync(2101)
         await flush()
@@ -897,11 +899,11 @@ describe('the card build: body images', () => {
         const h = harness({ encodeAvatar: pending.encode })
         h.tap({}, { input: { avatarPath: 'p', parseBody: bodyOf(imgs(2)) } })
         await flush()
-        expect(sources(pending.encode)).toEqual(['/sw/img/p'])
+        expect(sources(pending.encode)).toEqual(['/api/asset/p'])
 
         pending.settle(0, IMG(1))
         await flush()
-        expect(sources(pending.encode)).toEqual(['/sw/img/p', `${ORIGIN}/sw/img/p0`])
+        expect(sources(pending.encode)).toEqual(['/api/asset/p', `${ORIGIN}/api/asset/p0`])
 
         pending.settle(1, IMG(2))
         await flush()
@@ -917,7 +919,7 @@ describe('the card build: body images', () => {
         const createElementNS = vi.spyOn(document, 'createElementNS')
         try {
             const h = harness()
-            h.tap({}, { input: { avatarPath: 'p', parseBody: async () => '<p>x <img src="/sw/img/a"></p>' } })
+            h.tap({}, { input: { avatarPath: 'p', parseBody: async () => '<p>x <img src="/api/asset/a"></p>' } })
             await flush()
 
             expect(createElement).not.toHaveBeenCalled()
@@ -945,12 +947,12 @@ describe('the card build: body images', () => {
 
     test('an image the admission refuses is never encoded and the others are embedded', async () => {
         const encode = numberedEncoder()
-        const admit = vi.fn<CardEnv['admitImageRead']>(async (src) => src.endsWith('/sw/img/b') ? null : { release() {} })
+        const admit = vi.fn<CardEnv['admitImageRead']>(async (src) => src.endsWith('/api/asset/b') ? null : { release() {} })
         const h = harness({ encodeAvatar: encode, admitImageRead: admit })
-        h.tap({}, { input: { parseBody: async () => '<p><img src="/sw/img/a" alt="A"><img src="/sw/img/b" alt="B"></p>' } })
+        h.tap({}, { input: { parseBody: async () => '<p><img src="/api/asset/a" alt="A"><img src="/api/asset/b" alt="B"></p>' } })
         await flush()
 
-        expect(sources(encode)).toEqual([`${ORIGIN}/sw/img/a`])
+        expect(sources(encode)).toEqual([`${ORIGIN}/api/asset/a`])
         const html = await writtenHtml()
         expect(html).toContain(`src="${IMG(1)}"`)
         expect(html).not.toContain('alt="B"')

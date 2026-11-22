@@ -32,7 +32,7 @@
     }
 </script>
 
-<div class="flex flex-col gap-3 text-left" data-preset-bundle>
+<div class="flex flex-col gap-3 text-left" data-part="pattern-alert-bundle" data-part-critical data-preset-bundle>
     <p id={messageId} class="m-0 text-xl font-semibold text-textcolor">{language.presetBundleCount(view.rows.length)}</p>
     <p class="m-0 flex items-start gap-2 text-sm text-textcolor2">
         <ShieldCheckIcon size={18} class="shrink-0 mt-0.5" aria-hidden="true" />

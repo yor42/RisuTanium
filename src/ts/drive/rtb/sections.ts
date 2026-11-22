@@ -13,6 +13,8 @@ import {
     ASSETS_ID,
     INLAYS_ID,
     RESERVED_ROW_PREFIX,
+    SETTINGS_ID,
+    SETTINGS_PREFIX,
     SIDE_SECTION_IDS,
     STORE2_ID,
     checkKnownEntryName,
@@ -55,7 +57,7 @@ function isCount(value: unknown): value is number {
 
 /** Whether this reader knows the row: its id at `v` 1. */
 export function isKnownRow(row: SectionRow): boolean {
-    return row.v === KNOWN_ROW_VERSION && (RESERVED_IDS.includes(row.id) || sidePrefix(row.id) !== null)
+    return row.v === KNOWN_ROW_VERSION && (RESERVED_IDS.includes(row.id) || row.id === SETTINGS_ID || sidePrefix(row.id) !== null)
 }
 
 function damaged(reason: string): SectionTableResult {
@@ -112,17 +114,41 @@ function prefixProblem(rows: readonly SectionRow[]): string | null {
     return null
 }
 
+/**
+ * The rules of the `settings` row, which is reserved for settings-only files: it stands alone among the required rows,
+ * so no reader that lacks it can take the file for a whole backup. The rules key on the id, whatever the version, so
+ * a later version of the row is still reported as newer and never as a whole backup.
+ */
+function settingsRowProblem(rows: readonly SectionRow[], settings: SectionRow): string | null {
+    if (!settings.required) {
+        return `the section ${SETTINGS_ID} is marked optional`
+    }
+    if (settings.v === KNOWN_ROW_VERSION && settings.prefix !== SETTINGS_PREFIX) {
+        return `the section ${SETTINGS_ID} is not at its prefix ${SETTINGS_PREFIX}`
+    }
+    const beside = RESERVED_IDS.find((id) => rows.some((candidate) => candidate.id === id))
+    return beside === undefined ? null : `the section ${beside} sits beside the settings-only section ${SETTINGS_ID}`
+}
+
 function ruleProblem(rows: readonly SectionRow[]): string | null {
-    for (const id of RESERVED_IDS) {
-        const row = rows.find((candidate) => candidate.id === id)
-        if (!row) {
-            return `the required section ${id} is missing`
+    const settings = rows.find((candidate) => candidate.id === SETTINGS_ID)
+    if (settings !== undefined) {
+        const problem = settingsRowProblem(rows, settings)
+        if (problem !== null) {
+            return problem
         }
-        if (!row.required) {
-            return `the section ${id} is marked optional`
-        }
-        if (row.v === KNOWN_ROW_VERSION && row.prefix !== RESERVED_ROW_PREFIX[id]) {
-            return `the section ${id} is not at its prefix ${RESERVED_ROW_PREFIX[id]}`
+    } else {
+        for (const id of RESERVED_IDS) {
+            const row = rows.find((candidate) => candidate.id === id)
+            if (!row) {
+                return `the required section ${id} is missing`
+            }
+            if (!row.required) {
+                return `the section ${id} is marked optional`
+            }
+            if (row.v === KNOWN_ROW_VERSION && row.prefix !== RESERVED_ROW_PREFIX[id]) {
+                return `the section ${id} is not at its prefix ${RESERVED_ROW_PREFIX[id]}`
+            }
         }
     }
     for (const row of rows) {

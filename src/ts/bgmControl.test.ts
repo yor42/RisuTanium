@@ -3,11 +3,11 @@ import { parseBgmControl } from './bgmControl'
 
 describe('parseBgmControl', () => {
     test('reads an automatic volume and a plain source', () => {
-        expect(parseBgmControl('bgm___auto___/sw/img/6162')).toEqual({ volume: 0.5, src: '/sw/img/6162' })
+        expect(parseBgmControl('bgm___auto___/api/asset/6162')).toEqual({ volume: 0.5, src: '/api/asset/6162' })
     })
 
     test('reads an explicit volume', () => {
-        expect(parseBgmControl('bgm___0.25___/sw/img/6162')).toEqual({ volume: 0.25, src: '/sw/img/6162' })
+        expect(parseBgmControl('bgm___0.25___/api/asset/6162')).toEqual({ volume: 0.25, src: '/api/asset/6162' })
     })
 
     test('keeps everything after the second separator as the source when the URL itself holds the separator', () => {

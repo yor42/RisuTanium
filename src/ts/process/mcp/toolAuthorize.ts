@@ -81,6 +81,51 @@ export function describeRisuaccessAction(name: string, args: unknown, subject?: 
         .replace('{item}', () => argText(args, entry.item ?? ''))
 }
 
+function actionOf(name: string, args: unknown, url: string, subject?: RunSubject): string | undefined {
+    if(url === 'internal:risuai') {
+        return describeRisuaccessAction(name, args, subject)
+    }
+    return url === 'internal:workspace' ? describeWorkspaceAction(name, args) : undefined
+}
+
+/** What each mutating `internal:workspace` tool does, with `{path}` the file it names (`from` and `to` for a move). */
+const WORKSPACE_ACTIONS: Readonly<Record<string, string>> = {
+    write_file: 'write workspace file ({path}), replacing its whole content if it already exists',
+    edit_file: 'edit workspace file ({path})',
+    delete_file: 'delete workspace file ({path}), which cannot be undone',
+    move_file: 'move workspace file ({from}) to ({to})',
+}
+
+/** A move that replaces its destination leads with the file that will be deleted, before the source path. */
+const WORKSPACE_MOVE_OVERWRITE = 'DELETE and replace workspace file ({to}) if it exists, which cannot be undone, by moving ({from}) onto it'
+
+/** The longest path an action line shows whole; a longer one keeps its start and end so the file name stays visible. */
+const ACTION_PATH_MAX_CHARS = 200
+
+function clipPath(path: string): string {
+    if(path.length <= ACTION_PATH_MAX_CHARS) {
+        return path
+    }
+    const keep = Math.floor((ACTION_PATH_MAX_CHARS - 3) / 2)
+    return `${path.slice(0, keep)}...${path.slice(path.length - keep)}`
+}
+
+/**
+ * The action line of a mutating `internal:workspace` call naming the file it targets, taken from the arguments
+ * alone so it leads the prompt even when a long text argument pushes the path past the summary limit. Undefined
+ * for any other tool.
+ */
+export function describeWorkspaceAction(name: string, args: unknown): string | undefined {
+    let template = Object.hasOwn(WORKSPACE_ACTIONS, name) ? WORKSPACE_ACTIONS[name] : undefined
+    if(!template) {
+        return undefined
+    }
+    if(name === 'move_file' && args && typeof args === 'object' && (args as Record<string, unknown>).overwrite === true) {
+        template = WORKSPACE_MOVE_OVERWRITE
+    }
+    return template.replace(/\{(path|from|to)\}/g, (_, key: string) => clipPath(argText(args, key)))
+}
+
 /**
  * Decides one model-driven tool call before any client is looked up or started. A call with no server, outside
  * the run's advertised set, or to a workspace tool without a bound workspace is refused. `read` and `free`
@@ -113,7 +158,7 @@ export async function authorizeToolCall(name: string, args: unknown, info: ToolC
         tool: name,
         url,
         kind,
-        summary: describeToolCall(name, args, url === 'internal:risuai' ? describeRisuaccessAction(name, args, info.subject) : undefined),
+        summary: describeToolCall(name, args, actionOf(name, args, url, info.subject)),
     }, { signal })
     if(stopped()) {
         return refused(`Stopped before ${name} ran.`)

@@ -58,7 +58,6 @@ vi.mock(
             aiWatermarkingLawApplies: vi.fn(() => false),
             aiLawApplies: vi.fn(() => false),
             hubURL: '',
-            usingSw: false,
             getFetchLogs: vi.fn(() => []),
             getFetchData: vi.fn(() => ({})),
         }) as unknown as typeof import('src/ts/globalApi.svelte'),

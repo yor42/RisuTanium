@@ -350,6 +350,9 @@ export const languageChineseTraditional = {
     "settingsShellDataScopePartial": "不含角色資源",
     "settingsShellDataScopePartialHint": "儲存資料、頭像圖片、使用者與角色（Persona）圖示、背景，以及資料夾與預設集圖片。表情圖片、附加資源、語音檔案、聊天圖片和其他媒體不會被儲存。",
     "settingsShellDataScopeBinOnly": "只有 .bin 備份可以省略角色資源。",
+    "settingsShellDataScopeSettings": "僅設定",
+    "settingsShellDataScopeSettingsHint": "儲存你的設定、機器人預設集、記憶預設集和介面偏好設定。不會儲存 API 金鑰、連線、聊天、角色、模組或任何其他資料，因此不能取代完整備份。",
+    "settingsShellDataScopeRtbOnly": "只有 .rtb 備份可以單獨儲存設定。",
     "settingsShellDataStart": "開始",
     "settingsShellDataEncrypt": "使用密碼加密",
     "settingsShellDataEncryptAgain": "請再次輸入密碼",
@@ -730,6 +733,7 @@ export const languageChineseTraditional = {
     "backupTaskTitle": "正在儲存備份",
     "backupTaskPartialTitle": "正在儲存部分備份",
     "rtbExportTaskTitle": "正在儲存 .rtb 備份",
+    "rtbSettingsExportTaskTitle": "正在儲存僅含設定的 .rtb 備份",
     "backupStepCollect": "收集資料",
     "backupStepSizes": "檢查大小",
     "backupStepInlays": "新增聊天圖片、影片和音訊",
@@ -913,9 +917,8 @@ export const languageChineseTraditional = {
         "hordeNotPossible": "無法產生回應。",
         "hordeNotPossibleWith": "無法產生回應：{message}",
         "hordeNoGenerations": "工作已完成，但沒有產生任何結果",
-        "webCryptoUnavailable": "此環境中無法使用 Web Crypto API。請確保您使用的是 HTTPS。",
         "vertexInvalidClientEmail": "Vertex 用戶端電子郵件無效。必須包含 gserviceaccount.com",
-        "vertexInvalidPrivateKey": "Vertex 私密金鑰無效。必須包含正確的金鑰標記。",
+        "vertexInvalidPrivateKey": "Vertex 私密金鑰無效。請貼上服務帳戶 JSON 中完整的 private_key 值，包括 BEGIN 和 END PRIVATE KEY 行。",
         "googleTokenRefreshFailed": "重新整理 Google 存取權杖失敗：{error}",
         "googleNoAccessToken": "回應中沒有 Google 存取權杖",
         "googleEmptyResponse": "收到空白回應：{response}",
@@ -3688,6 +3691,7 @@ export const languageChineseTraditional = {
         `有 ${items.length} 個項目達到或超過 4 GiB，超出了備份檔案單一項目所能容納的大小，因此它們的內容不在備份中（角色只保留一個預留位置）：\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `此備份中有 ${count} 個項目大於 100 MiB。上游 RisuAI Node 伺服器無法復原如此大的項目，因此在那裡復原此備份時會略過它們；本應用程式和其他平台則可以復原。是否建立包含這些項目的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "backupSizesUncheckedConfirm": '無法檢查此備份中資源的大小。大於 100 MiB 的項目無法由上游 RisuAI Node 伺服器復原，但這類項目可能在未被列出名稱的情況下被包含進來；而達到或超過 4 GiB 的項目會使備份在中途停止。是否仍要建立備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `有 ${count} 個任務預設集僅儲存在此裝置上，而備份檔案中沒有存放它們的位置，因此它們將不會包含在此備份中。它們仍保留在本應用程式中，只是備份裡沒有。是否建立不含它們的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -4273,6 +4277,11 @@ export const languageChineseTraditional = {
     "rtbRestoreLineSideNotRestored": (names: string[]) => `- 保留在此裝置上、未被還原的資料：${names.join(', ')}`,
     "rtbRestoreLineSideFailed": (names: string[]) => `- 保留在此裝置上、未能完整寫入的資料：${names.join(', ')}`,
     "rtbRestoreSideNames": { iris: "Iris 對話", googleSearch: "Google 搜尋金鑰", hypaVector: "記憶搜尋資料", pluginSafe: "外掛資料", pluginSafeLs: "外掛設定", pluginPermissions: "外掛權限", mcpToolCalls: "MCP 工具呼叫", uiPrefs: "介面偏好設定" },
+    "rtbRestoreSettingsConfirm": (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
+        `要還原此備份中的設定嗎？${fields} 項設定、${presets} 個機器人預設集、${memoryPresets} 個記憶預設集和 ${translatorPresets} 個新的翻譯器預設集將合併到此裝置。備份中沒有的設定維持不變。角色、聊天、金鑰和連線不會被更動。${dropped > 0 ? ` 備份中有 ${dropped} 個值無法使用，將被略過。` : ''} 完成後應用程式會重新載入。`,
+    "rtbRestoreSettingsDone": "設定已還原。應用程式現在將重新載入。",
+    "rtbRestoreSettingsNotSaved": "設定已套用，但暫時無法儲存。稍後會儲存，但介面偏好設定未被套用。請再次還原該備份以套用它們。",
+    "rtbRestoreSettingsAtStart": "此備份只包含設定，因此無法建立新的設定檔。未還原任何內容。請先在此處還原完整備份，然後在「資料」頁面還原設定備份。",
     "backupFileNotRecognized": "此檔案不是此應用程式可還原的備份（上游 RisuAI 的 .bin 或 RisuTanium 的 .rtb 備份），或者檔案不完整。未還原任何內容。您目前的資料沒有變更。",
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>

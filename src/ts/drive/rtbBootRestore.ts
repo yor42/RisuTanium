@@ -142,6 +142,11 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         if (verdict.kind === 'ended') {
             return CANCELLED
         }
+        if (verdict.kind === 'settings') {
+            // A settings-only file cannot set up a profile: refused with the hint, nothing is copied, planned or installed.
+            deps.error(language.rtbRestoreSettingsAtStart)
+            return CANCELLED
+        }
         const plan = verdict.verified
 
         copyBegan = true
