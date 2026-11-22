@@ -94,6 +94,7 @@ vi.mock(import('../../../stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
     return {
         DBState: state,
+        ReloadGUIPointer: writable(0),
         selectedCharID: writable(-1),
         hotReloading: writable(false),
         additionalChatMenu: [],
@@ -230,7 +231,8 @@ vi.mock(import('../../../process/ttsHooks'), () => ({
 //#endregion
 
 import { makeRisuaiAPIV3 } from '../v3.svelte'
-import { DBState, selectedCharID } from '../../../stores.svelte'
+import { DBState, ReloadGUIPointer, selectedCharID } from '../../../stores.svelte'
+import { bumpModuleGui } from '../../../process/moduleGuiBump'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE, isModuleStub } from '../../../storage/moduleStub'
 import { registerModuleLoader, unregisterModuleLoader } from '../../../storage/store2/moduleAcquire'
 import { allowedDbKeys } from '../../plugins.svelte'
@@ -393,6 +395,76 @@ describe('getDatabase hands plugins full modules', () => {
         expect(Object.keys(copy)).toEqual(['plugins'])
         expect(loads).toEqual([])
         expect(acquireCount.acquired).toBe(0)
+    })
+})
+
+describe('getDatabase announces its module installs once', () => {
+    /** Installs like the production loader: slot write, then one GUI bump per install. */
+    function installBumpingLoader(): void {
+        registerModuleLoader(async (handle) => {
+            loads.push(handle)
+            const id = handle.slice(0, handle.lastIndexOf('#'))
+            const index = DBState.db.modules.findIndex((m: RisuModule) => m.id === id)
+            DBState.db.modules[index] = structuredClone(bodies.get(id) ?? fullModule(id))
+            bumpModuleGui()
+            return DBState.db.modules[index]
+        })
+    }
+
+    /** Counts pointer sets after subscription; the subscribe call itself is not a set. */
+    function countPointerSets(): { sets: number[], stop: () => void } {
+        const sets: number[] = []
+        let initial = true
+        const stop = ReloadGUIPointer.subscribe((value) => {
+            if (initial) {
+                initial = false
+                return
+            }
+            sets.push(value)
+        })
+        return { sets, stop }
+    }
+
+    test('getdatabase-one-bump-for-many-stubs: materialising several stubs sets the GUI pointer at most once, not once per module', async () => {
+        installDb([stubModule('A'), stubModule('B'), stubModule('C'), stubModule('D'), stubModule('E')])
+        installBumpingLoader()
+        const counter = countPointerSets()
+
+        try {
+            const copy = await api().getDatabase(['modules'])
+
+            expect(modulesOf(copy).map((m) => isModuleStub(m))).toEqual([false, false, false, false, false])
+            expect(loads).toHaveLength(5)
+            expect(counter.sets.length).toBeLessThanOrEqual(1)
+        } finally {
+            counter.stop()
+        }
+    })
+
+    test('getdatabase-one-bump-for-many-stubs: a load failure part way still announces the installs already made, once', async () => {
+        installDb([stubModule('A'), stubModule('B'), stubModule('C')])
+        const loader = vi.fn()
+        registerModuleLoader(async (handle) => {
+            loader(handle)
+            if (handle.startsWith('C#')) {
+                throw new Error('unit for C unreadable')
+            }
+            const id = handle.slice(0, handle.lastIndexOf('#'))
+            const index = DBState.db.modules.findIndex((m: RisuModule) => m.id === id)
+            DBState.db.modules[index] = structuredClone(fullModule(id))
+            bumpModuleGui()
+            return DBState.db.modules[index]
+        })
+        const counter = countPointerSets()
+
+        try {
+            await expect(api().getDatabase(['modules'])).rejects.toThrow(/\(C\)/)
+
+            expect(loader).toHaveBeenCalledTimes(3)
+            expect(counter.sets.length).toBeLessThanOrEqual(1)
+        } finally {
+            counter.stop()
+        }
     })
 })
 
