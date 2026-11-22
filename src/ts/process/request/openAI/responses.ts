@@ -17,6 +17,7 @@ import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from '
 import { limitedField, sendArgKey, sendKeyLine } from '../secretKey'
 import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from '../toolLoop'
 import { parseResponsesUsage } from '../../../usage/usageParse'
+import { bindOwnedStream, endOwnedRead, retireFailedHead, retireOwnedStream } from 'src/ts/nativeReply/ownedStream'
 import { extractResponsesFunctionCalls, extractResponsesTextWith, responsesReadRuleOf, responsesStreamTransform, sanitizeResponsesContinuationItem } from './responsesStreamTransform'
 
 function responseTextContentToString(content:any):string{
@@ -515,7 +516,7 @@ export const __testResponsesAPI = {
     toExternalResponsesBody
 }
 
-function wrapResponsesToolStream(stream:ReadableStream<StreamResponseChunk>, body:any, headers:Record<string,string>, requestURL:string, arg:RequestDataArgumentExtended, networkOptions:LocalNetworkRequestOptions):ReadableStream<StreamResponseChunk>{
+function wrapResponsesToolStream(stream:ReadableStream<StreamResponseChunk>, body:any, headers:Record<string,string>, requestURL:string, arg:RequestDataArgumentExtended, networkOptions:LocalNetworkRequestOptions, ownedKey?:string):ReadableStream<StreamResponseChunk>{
     return new ReadableStream<StreamResponseChunk>({
         async start(controller) {
             const db = getDatabase()
@@ -537,6 +538,10 @@ function wrapResponsesToolStream(stream:ReadableStream<StreamResponseChunk>, bod
                     return
                 }
 
+                if(ownedKey !== undefined){
+                    // Round 1's request has ended and its record is not the reply: it is removed before the follow-up.
+                    await retireOwnedStream(ownedKey)
+                }
                 const round = beginToolRound(arg)
                 if(round !== 'go'){
                     return endStreamForGate(controller, round)
@@ -641,37 +646,65 @@ export async function requestOpenAIResponseAPI(arg:RequestDataArgumentExtended):
 
     if(arg.useStreaming){
         body.stream = true
-        const response = await fetchNative(requestURL, {
-            body: JSON.stringify(toExternalResponsesBody(body)),
-            method: "POST",
-            headers: headers,
-            signal: arg.abortSignal,
-            chatId: arg.chatId,
-            interceptor: 'openai_response_api_streaming',
-            networkRoute: streamingLocalNetworkOptions.networkRoute,
-            requestTimeoutMs: streamingLocalNetworkOptions.requestTimeoutMs
-        })
+        // One rule for the stored blob and the live read: the record is replayed exactly as this request reads it.
+        const rule = responsesReadRuleOf(arg, db)
+        const owned = bindOwnedStream(arg, { kind: 'openai-responses-stream', ...rule })
+        // Everything up to the hand-off is covered: a throw here means the page stopped reading the owned request.
+        try {
+            const response = await fetchNative(requestURL, {
+                body: JSON.stringify(toExternalResponsesBody(body)),
+                method: "POST",
+                headers: headers,
+                signal: arg.abortSignal,
+                chatId: arg.chatId,
+                interceptor: 'openai_response_api_streaming',
+                networkRoute: streamingLocalNetworkOptions.networkRoute,
+                requestTimeoutMs: streamingLocalNetworkOptions.requestTimeoutMs,
+                nativeReply: owned?.owner,
+                pumpProbe: owned?.probe,
+            })
 
-        if(response.status !== 200){
-            return { type: 'fail', result: await textifyReadableStream(response.body), keyLimited: limitedField(arg, response.status) }
-        }
-        if(!response.headers.get('Content-Type')?.includes('text/event-stream')){
-            return { type: 'fail', result: await textifyReadableStream(response.body) }
-        }
+            const failedHead = async (extra: { keyLimited?: ReturnType<typeof limitedField> }): Promise<requestDataResponse> => {
+                const result = await textifyReadableStream(response.body)
+                if(!owned){
+                    return { type: 'fail', result, ...extra }
+                }
+                // The attempt is over and its record is not the reply: it is removed before any retry pushes.
+                if(await retireFailedHead(owned.owner.key, owned.probe, response.status)){
+                    return { type: 'fail', result, ...extra, endsTurn: true }
+                }
+                return { type: 'fail', result, ...extra }
+            }
 
-        addFetchLog({
-            body: toExternalResponsesBody(body),
-            response: "Streaming",
-            success: true,
-            url: requestURL,
-            status: response.status,
-        })
+            if(response.status !== 200){
+                return await failedHead({ keyLimited: limitedField(arg, response.status) })
+            }
+            if(!response.headers.get('Content-Type')?.includes('text/event-stream')){
+                return await failedHead({})
+            }
 
-        const transtream = getResponsesTranStream(arg)
-        response.body.pipeTo(transtream.writable).catch(() => {})
-        return {
-            type: 'streaming',
-            result: wrapResponsesToolStream(transtream.readable, body, headers, requestURL, arg, streamingLocalNetworkOptions)
+            addFetchLog({
+                body: toExternalResponsesBody(body),
+                response: "Streaming",
+                success: true,
+                url: requestURL,
+                status: response.status,
+            })
+
+            const transtream = responsesStreamTransform(rule, {
+                subject: arg.subject,
+                onUsage: (usage) => arg.usageMeter?.report(usage),
+            })
+            response.body.pipeTo(transtream.writable).catch(() => {})
+            return {
+                type: 'streaming',
+                result: wrapResponsesToolStream(transtream.readable, body, headers, requestURL, arg, streamingLocalNetworkOptions, owned?.owner.key)
+            }
+        } catch (error) {
+            if(owned){
+                endOwnedRead(owned.owner.key)
+            }
+            throw error
         }
     }
 
