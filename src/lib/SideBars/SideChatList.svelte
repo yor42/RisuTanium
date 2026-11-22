@@ -21,7 +21,7 @@
     import { getFolderColorLabels, getFolderColorValue } from "./folderColors";
     import Toggles from "./Toggles.svelte";
     import { changeChatTo, createChatCopyName, reorderChatsKeepingCurrent } from "src/ts/globalApi.svelte";
-    import { isGeneratingIn } from "src/ts/process/chatOrigin";
+    import { isGeneratingIn, stopWorkIn } from "src/ts/process/chatOrigin";
     import { replyMarkOf } from "src/ts/process/replyMarks";
 
     interface Props {
@@ -145,7 +145,18 @@
     {@const writing = isGeneratingIn({ chaId: chara.chaId, chatId: chat.id })}
     {@const mark = replyMarkOf(chat)}
     {#if writing}
-        <span data-part="reply-writing-badge" role="img" aria-label={language.chatWritingBadge} class="ml-1 animate-pulse text-textcolor2"><PencilIcon size={14} aria-hidden="true" /></span>
+        <div data-part="reply-writing-badge" role="button" tabindex="0" aria-label={language.chatStopReplyFor(chat.name || language.settingsPage.unnamed)} onkeydown={(e) => {
+            if(e.target !== e.currentTarget){
+                return
+            }
+            if(e.key === 'Enter' || e.key === ' '){
+                e.preventDefault()
+                e.currentTarget.click()
+            }
+        }} class="ml-1 inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-md animate-pulse text-textcolor2 hover:text-textcolor cursor-pointer" onclick={(e) => {
+            e.stopPropagation()
+            stopWorkIn({ chaId: chara.chaId, chatId: chat.id })
+        }}><PencilIcon size={14} aria-hidden="true" /></div>
     {/if}
     {#if mark === 'reply'}
         <span data-part="reply-new-dot" role="img" aria-label={language.chatNewReplyDot} class="ml-1 size-2 shrink-0 rounded-full bg-selected border border-textcolor2"></span>

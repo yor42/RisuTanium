@@ -1,6 +1,8 @@
 <script lang="ts">
     import { language } from 'src/lang'
+    import { fillLang } from 'src/lang/fill'
     import type { UpdateOffer } from 'src/ts/alert'
+    import { formatDownloadSize } from 'src/ts/android/appUpdateRelease'
 
     /**
      * The dialog of an available desktop update. The installed version, the offered version and the release notes come from
@@ -40,8 +42,16 @@
             <div class="whitespace-pre-wrap break-words max-h-[40vh] overflow-y-auto border border-darkborderc rounded-md bg-darkbg text-textcolor text-sm leading-relaxed p-2 risu-focus-ring" role="region" tabindex="0" aria-labelledby={notesLabelId} data-update-notes>{notes}</div>
         {/if}
     </div>
+    {#if offer.download}
+        <div class="flex flex-col gap-1">
+            <div class="text-sm text-textcolor" data-update-size>{fillLang(language.updateDownloadSize, { size: formatDownloadSize(offer.download.sizeBytes) })}</div>
+            {#if offer.download.metered}
+                <div class="text-sm text-textcolor2" data-update-metered>{language.updateMeteredNotice}</div>
+            {/if}
+        </div>
+    {/if}
     <div data-part="pattern-warn-actions" data-count="2">
         <button type="button" class="pattern-button" onclick={() => onanswer('later')}>{language.updateNotNow}</button>
-        <button type="button" class="pattern-button" data-variant="confirm" onclick={() => onanswer('install')}>{language.updateInstall}</button>
+        <button type="button" class="pattern-button" data-variant="confirm" onclick={() => onanswer('install')}>{offer.download ? language.updateDownloadAndInstall : language.updateInstall}</button>
     </div>
 </div>

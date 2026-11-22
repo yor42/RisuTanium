@@ -111,6 +111,20 @@ class MainActivity : TauriActivity() {
       callPage(notificationPermissionResultScript(granted))
     }
 
+  // The update's two system round trips: the installer and the "Install unknown apps" page. Their
+  // results go to the process-wide update service, which settles the request waiting on each.
+  private val updateInstallerLauncher =
+    registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+      AppUpdateService.shared.installerReturned()
+    }
+
+  private val updateSettingsLauncher =
+    registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+      AppUpdateService.shared.settingsReturned()
+    }
+
+  private val updateLaunchers = UpdateLaunchers(updateInstallerLauncher, updateSettingsLauncher)
+
   // A live system day/night switch changes the navigation-bar rule on API 35+; the activity is
   // not recreated (uiMode is in configChanges), so the last colour is applied again.
   // The WebView reads the system font scale only when it is created, and a font change does not
@@ -158,6 +172,12 @@ class MainActivity : TauriActivity() {
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    // The update service comes first: super.onCreate creates the WebView, whose message listener and
+    // page reach it. Every onCreate attaches the launchers and counts as a process start, whatever
+    // savedInstanceState holds; the sweep itself runs once per process.
+    AppUpdateService.init(applicationContext)
+    AppUpdateService.shared.attach(updateLaunchers)
+    AppUpdateService.shared.processStart()
     // Until the bridge mode is decided, the launch intent's force request is the one that counts.
     if (latchedBridgeMode == null) {
       forceLegacyRequested = intent.getBooleanExtra(EXTRA_FORCE_LEGACY_BRIDGES, false)
@@ -272,6 +292,8 @@ class MainActivity : TauriActivity() {
     val previous = liveWebView
     liveWebView = webView
     backWebView = webView
+    // A new page life ends any update attempt of the old page.
+    AppUpdateService.shared.newPage()
     // Until the page paints, the WebView shows the loading screen's colour, so no white or black frame appears.
     webView.setBackgroundColor(ContextCompat.getColor(this, R.color.loading_background))
     hostListener = null
@@ -424,6 +446,12 @@ class MainActivity : TauriActivity() {
     super.onResume()
     pushReplyNotificationsState()
     rereadTouchExploration()
+    AppUpdateService.shared.resumed()
+  }
+
+  override fun onPause() {
+    AppUpdateService.shared.paused()
+    super.onPause()
   }
 
   // Turning the switch on: the opt-in is stored first, the channel is created with its sound, and
@@ -499,6 +527,7 @@ class MainActivity : TauriActivity() {
   // The service never outlives its activity. A recreated activity's page stops it at init when no
   // work is in flight and starts it again when work is.
   override fun onDestroy() {
+    AppUpdateService.shared.detach(updateLaunchers)
     barGate.dispose()
     touchExplorationListener?.let { listener ->
       try {

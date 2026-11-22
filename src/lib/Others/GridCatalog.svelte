@@ -22,6 +22,8 @@
     import CharacterWindow from "./CharacterWindow.svelte";
     import CharListAvatar from "./CharListAvatar.svelte";
     import CharacterNameRow, { replyStateContext, type CharacterReplyState } from "./CharacterNameRow.svelte";
+    import CharacterReplyStop from "./CharacterReplyStop.svelte";
+    import ReplyStopButton from "./ReplyStopButton.svelte";
     import { GRID_ROW_FALLBACK_PX, LIST_ROW_FALLBACK_PX, gridSectionRows, listRows } from "./charListRows";
     import { buildGridEntries, folderTileClass, type GridEntry, type SortMode } from "./charListOrder";
     import { loadGridSort, loadLibraryTab, parseGridSort, saveGridSort, saveLibraryTab } from "./gridMemory";
@@ -51,7 +53,7 @@
     import { recordCaughtError } from "../../ts/caughtErrors";
     import HomeEmptyHero from "../UI/Home/HomeEmptyHero.svelte";
     import { hasLiveCharacter } from "../UI/Home/homeEmpties";
-    import { isGeneratingIn } from "../../ts/process/chatOrigin";
+    import { isGeneratingIn, stopRepliesOf } from "../../ts/process/chatOrigin";
     import { replyMarkOf, type ReplyMarkKind } from "../../ts/process/replyMarks";
     import type { character, groupChat } from "../../ts/storage/database.svelte";
 
@@ -1578,7 +1580,7 @@
         }}>
             <CharListAvatar src={char.image} {visible} busy={openingIndex === index} />
             <div class="flex-1 flex flex-col ml-2 min-w-0">
-                <h4 class="text-textcolor font-bold text-lg mb-1 break-words"><button class="text-start font-bold cursor-pointer rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" aria-busy={openingIndex === index ? 'true' : undefined}><CharacterNameRow chaId={char.chaId} name={char.name || language.settingsPage.unnamed} /></button></h4>
+                <h4 class="text-textcolor font-bold text-lg mb-1 break-words"><button class="text-start font-bold cursor-pointer rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" aria-busy={openingIndex === index ? 'true' : undefined}><CharacterNameRow chaId={char.chaId} name={char.name || language.settingsPage.unnamed} /></button><CharacterReplyStop chaId={char.chaId} name={char.name || language.settingsPage.unnamed} class="ms-1 inline-flex align-middle" /></h4>
                 <CharacterDescription
                     text={parsedDesc['en'] || parsedDesc['xx'] || language.othersUi.noDescription}
                     visible={true}
@@ -1753,7 +1755,7 @@
                 {/if}
                 {@render dropMark(entry.key)}
                 {#if replyState.writing}
-                    <span data-part="reply-writing-badge" role="img" aria-label={language.chatWritingBadge} class="absolute top-0 start-0 flex items-center justify-center rounded-full bg-darkbg/80 p-0.5 text-textcolor2 animate-pulse pointer-events-none"><PencilIcon size={12} /></span>
+                    <ReplyStopButton label={language.chatStopReplyFor(char.name || language.settingsPage.unnamed)} onstop={() => stopRepliesOf(char.chaId)} class="absolute top-0 start-0 bg-darkbg/80" />
                 {/if}
                 {#if replyState.mark === 'reply'}
                     <span data-part="reply-new-dot" role="img" aria-label={language.chatNewReplyDot} class="absolute top-0 end-0 size-3 rounded-full bg-selected border border-textcolor2 pointer-events-none"></span>

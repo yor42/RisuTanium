@@ -7,7 +7,8 @@
     import type { Chat } from "src/ts/storage/database.svelte";
     import { DBState } from "src/ts/stores.svelte";
     import * as composerDrafts from "../../../ts/process/composerDrafts.svelte";
-    import { isGeneratingIn } from "../../../ts/process/chatOrigin";
+    import { isGeneratingIn, stopWorkIn } from "../../../ts/process/chatOrigin";
+    import ReplyStopButton from "../../Others/ReplyStopButton.svelte";
     import { replyMarkOf } from "../../../ts/process/replyMarks";
     import { ROW_HEIGHT, isArchivedChat, previewLine, rowTime } from "../../../ts/chatShell/chatListModel";
     import { createHold, type ListEditing } from "../../../ts/chatShell/chatListEdits";
@@ -185,7 +186,7 @@
             role="treeitem"
             data-part="chat-row"
             data-index={index}
-            class="flex h-full w-full select-none flex-col justify-center gap-0.5 rounded-md {reordering ? 'pe-28' : 'pe-10'} text-start text-textcolor hover:bg-selected cursor-pointer"
+            class="flex h-full w-full select-none flex-col justify-center gap-0.5 rounded-md {reordering ? 'pe-28' : writing ? 'pe-20' : 'pe-10'} text-start text-textcolor hover:bg-selected cursor-pointer"
             class:bg-selected={open}
             style:padding-inline-start={level === 2 ? "1.5rem" : "0.5rem"}
             tabindex={tabbable ? 0 : -1}
@@ -204,7 +205,7 @@
         >
             <span class="flex items-baseline gap-2">
                 <span data-part="chat-row-name" class="grow truncate font-medium">{chat.name || language.settingsPage.unnamed}</span>
-                {#if writing}
+                {#if writing && reordering}
                     <span data-part="reply-writing-badge" role="img" aria-label={language.chatWritingBadge} class="shrink-0 self-center animate-pulse text-textcolor2"><PencilIcon size={14} /></span>
                 {/if}
                 {#if mark === "reply"}
@@ -261,6 +262,15 @@
                 </span>
             </div>
         {:else}
+            {#if writing}
+                <!-- A sibling of the row button, never inside it: a tap stops this chat's reply and does not open the row. -->
+                <ReplyStopButton
+                    label={language.chatStopReplyFor(name)}
+                    onstop={() => stopWorkIn({ chaId, chatId: chat.id })}
+                    class="absolute end-10 top-1/2 size-8 -translate-y-1/2"
+                    tabindex={tabbable ? 0 : -1}
+                />
+            {/if}
             <button
                 bind:this={menuButton}
                 type="button"

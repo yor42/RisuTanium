@@ -528,4 +528,85 @@ class BridgeScopeTest {
     assertFalse(line.contains("Unterminated"))
     assertTrue(line.contains("IllegalArgumentException"))
   }
+
+  private val updateUrl = "https://github.com/yor42/RisuTanium/releases/download/v0.2.0/RisuTanium_0.2.0_android-universal.apk"
+
+  @Test
+  fun anUpdateRequestWithAnIdBecomesItsCommand() {
+    assertEquals(BridgeCommand.AppUpdateCheck(1), toCommand("appUpdate", "check", emptyList(), 1))
+    assertEquals(BridgeCommand.AppUpdateInstallPermission(2), toCommand("appUpdate", "installPermission", emptyList(), 2))
+    assertEquals(BridgeCommand.AppUpdateOpenInstallSettings(3), toCommand("appUpdate", "openInstallSettings", emptyList(), 3))
+    assertEquals(
+      BridgeCommand.AppUpdateInstall(4, updateUrl, 280000000L, 2000L),
+      toCommand("appUpdate", "install", listOf(updateUrl, 280000000, 2000), 4)
+    )
+    // A whole number sent as a double is still a whole number.
+    assertEquals(
+      BridgeCommand.AppUpdateInstall(4, updateUrl, 280000000L, 2000L),
+      toCommand("appUpdate", "install", listOf(updateUrl, 280000000.0, 2000.0), 4)
+    )
+  }
+
+  @Test
+  fun anUpdateRequestWithABadArgumentListAndAnIdIsAnsweredNotDropped() {
+    assertEquals(BridgeCommand.AppUpdateMalformed(5, "check"), toCommand("appUpdate", "check", listOf("x"), 5))
+    assertEquals(BridgeCommand.AppUpdateMalformed(5, "installPermission"), toCommand("appUpdate", "installPermission", listOf(1), 5))
+    assertEquals(BridgeCommand.AppUpdateMalformed(5, "openInstallSettings"), toCommand("appUpdate", "openInstallSettings", listOf(true), 5))
+    assertEquals(BridgeCommand.AppUpdateMalformed(6, "install"), toCommand("appUpdate", "install", emptyList(), 6))
+    assertEquals(BridgeCommand.AppUpdateMalformed(6, "install"), toCommand("appUpdate", "install", listOf(updateUrl, 280000000), 6))
+    assertEquals(BridgeCommand.AppUpdateMalformed(6, "install"), toCommand("appUpdate", "install", listOf(updateUrl, 280000000, 2000, 1), 6))
+  }
+
+  @Test
+  fun anInstallRequestChecksTheTypeAndRangeOfEveryArgument() {
+    val bad = BridgeCommand.AppUpdateMalformed(7, "install")
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(5, 280000000, 2000), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(null, 280000000, 2000), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf("a".repeat(2049), 280000000, 2000), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(updateUrl, 1.5, 2000), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(updateUrl, 280000000, 2000.5), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(updateUrl, "280000000", 2000), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(updateUrl, 280000000, "2000"), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(updateUrl, true, 2000), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(updateUrl, 0, 2000), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(updateUrl, 2000000001L, 2000), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(updateUrl, 280000000, 0), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(updateUrl, 280000000, 2100000001L), 7))
+    assertEquals(bad, toCommand("appUpdate", "install", listOf(updateUrl, Double.NaN, 2000), 7))
+  }
+
+  @Test
+  fun theBoundsOfAnInstallRequestAreInclusive() {
+    assertEquals(
+      BridgeCommand.AppUpdateInstall(8, "a".repeat(2048), 1L, 1L),
+      toCommand("appUpdate", "install", listOf("a".repeat(2048), 1, 1), 8)
+    )
+    assertEquals(
+      BridgeCommand.AppUpdateInstall(8, updateUrl, 2000000000L, 2100000000L),
+      toCommand("appUpdate", "install", listOf(updateUrl, 2000000000L, 2100000000L), 8)
+    )
+  }
+
+  @Test
+  fun anUpdateRequestWithoutAnIntegerIdOrWithAnUnknownMethodIsDropped() {
+    assertNull(toCommand("appUpdate", "check", emptyList(), null))
+    assertNull(toCommand("appUpdate", "check", emptyList(), "1"))
+    assertNull(toCommand("appUpdate", "check", emptyList(), 1.5))
+    assertNull(toCommand("appUpdate", "install", listOf(updateUrl, 280000000, 2000), null))
+    assertNull(toCommand("appUpdate", "install", emptyList(), null))
+    assertNull(toCommand("appUpdate", "installPermission", emptyList(), null))
+    assertNull(toCommand("appUpdate", "openInstallSettings", emptyList(), null))
+    assertNull(toCommand("appUpdate", "download", emptyList(), 1))
+    assertNull(toCommand("appUpdate", "", emptyList(), 1))
+  }
+
+  @Test
+  fun anUpdateCancelTakesNoArgumentsAndNeedsNoId() {
+    assertSame(BridgeCommand.AppUpdateCancel, toCommand("appUpdate", "cancel", emptyList(), null))
+    assertSame(BridgeCommand.AppUpdateCancel, toCommand("appUpdate", "cancel", emptyList(), 9))
+    assertSame(BridgeCommand.AppUpdateCancel, toCommand("appUpdate", "cancel", emptyList(), "not an id"))
+    assertNull(toCommand("appUpdate", "cancel", listOf(1), null))
+    assertNull(toCommand("appUpdate", "cancel", listOf(1), 9))
+    assertNull(toCommand("appUpdate", "cancel", listOf("x"), 9))
+  }
 }
