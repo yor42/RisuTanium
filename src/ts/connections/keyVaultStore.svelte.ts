@@ -125,6 +125,11 @@ function pendingFor(conn: Connection): Pending | undefined {
     return entry !== undefined && matches(conn, entry.expect) ? entry : undefined
 }
 
+/** A typed key is pending on this connection: it is user-owned, and no boot-side writer may change the connection. */
+function hasPendingKey(conn: Connection): boolean {
+    return pendingFor(conn) !== undefined
+}
+
 function platform(): VaultPlatform {
     return host?.platform ?? 'none'
 }
@@ -508,7 +513,7 @@ export function isReferenceOnlyKey(value: string, isRef: (line: string) => boole
 /**
  * Boot step 3, after the store is loaded: wraps every plain, non-reference key (a both-set
  * connection included, the plain key authoritative), verifies it, and swaps only while the
- * connection is unchanged. A failed wrap keeps the plain key, drops a stale envelope and gives
+ * connection is unchanged and no typed key is pending; a pending connection's wrap is posted and its result discarded. A failed wrap keeps the plain key, drops a stale envelope and gives
  * the keep-plain notice. Skipped on a read-only page; a tripped breaker posts nothing.
  */
 export async function wrapPlainKeysAfterLoad(isRef: (line: string) => boolean): Promise<void> {
@@ -538,7 +543,7 @@ export async function wrapPlainKeysAfterLoad(isRef: (line: string) => boolean): 
             breaker = true
         }
         const conn = active.findConnection(item.id)
-        if (conn === undefined || !matches(conn, item.expect)) {
+        if (conn === undefined || !matches(conn, item.expect) || hasPendingKey(conn)) {
             continue
         }
         if (wrapped.ok) {
@@ -683,7 +688,7 @@ export async function wrapForStaging(plain: string): Promise<string | null> {
 /**
  * Boot step 1: applies the staged records of a restore, keyed by the envelope the restored database
  * holds. A carrier is a live connection with that envelope and no plain key (a plain key was typed since
- * and wins). Nothing is cleared here: a crash before the save applies again, and an edit changes the
+ * and wins). A carrier with a pending typed key is skipped and its record kept. Nothing is cleared here: a crash before the save applies again, and an edit changes the
  * envelope so a stale record never lands. Returns the envelopes whose record can be deleted (no carrier,
  * or a record that could not be read).
  */
@@ -702,7 +707,7 @@ export function applyStagedKeys(records: ReadonlyMap<string, StagedKey | null>):
             continue
         }
         for (const conn of carriers) {
-            if (conn.key !== '') {
+            if (conn.key !== '' || hasPendingKey(conn)) {
                 continue
             }
             if ('w' in record) {
@@ -732,7 +737,8 @@ export function applyStagedKeys(records: ReadonlyMap<string, StagedKey | null>):
 
 /**
  * Wraps the plains of staged `{p}` records on `vault`, after the store is loaded. Each swap needs the
- * connection to be unchanged since the step began; a failed wrap keeps the plain key and gives the
+ * connection to be unchanged since the step began and to hold no pending typed key (a carrier with a pending typed key is
+ * skipped and its record kept; its wrap is posted and the result discarded); a failed wrap keeps the plain key and gives the
  * keep-plain notice. A tripped breaker posts nothing: the record stays and the next boot tries again.
  */
 async function wrapStagedKeys(active: VaultHost): Promise<void> {
@@ -755,7 +761,7 @@ async function wrapStagedKeys(active: VaultHost): Promise<void> {
         }
         for (const id of targets) {
             const conn = active.findConnection(id)
-            if (conn === undefined || !matches(conn, { key: '', keyWrapped: item.envelope })) {
+            if (conn === undefined || !matches(conn, { key: '', keyWrapped: item.envelope }) || hasPendingKey(conn)) {
                 continue
             }
             if (wrapped.ok) {

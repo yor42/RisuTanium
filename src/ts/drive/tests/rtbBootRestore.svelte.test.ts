@@ -30,7 +30,7 @@ import { withCopiedKept } from 'src/ts/drive/rtbRestoreCopy'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { inlayFixture, writeRtbFile, type WorldLike } from './rtb/rtbRestoreFixtures'
 import { FakeForage, MemoryByteStore } from './rtb/rtbInstallFixtures'
-import { PLUGIN_PERMISSIONS_STORE, type ForageStoreConfig } from 'src/ts/drive/rtb/sideStoreConfig'
+import { IRIS_STORE, PLUGIN_PERMISSIONS_STORE, RESTORED_KEYS_STORE, type ForageStoreConfig } from 'src/ts/drive/rtb/sideStoreConfig'
 import type { BusyHandle } from 'src/ts/process/memory/busyActions'
 
 vi.setConfig({ testTimeout: 60_000 })
@@ -140,6 +140,23 @@ class LoggedForage extends FakeForage {
     }
 }
 
+/** The connection-key staging store of the current boot: one instance, so its records survive between the calls that open it. */
+class StagingLogged extends FakeForage {
+    override async setItem(key: string, value: unknown): Promise<unknown> {
+        stagingOps.push({ op: `set:${key}`, writesBefore: observedWrites.length })
+        return await super.setItem(key, value)
+    }
+
+    override async clear(): Promise<void> {
+        stagingOps.push({ op: 'clear', writesBefore: observedWrites.length })
+        await super.clear()
+    }
+}
+
+/** Every write to the staging store of the current boot, in order, with the backend call count at that moment. */
+const stagingOps: { op: string, writesBefore: number }[] = []
+let stagingStore = new StagingLogged()
+
 /** Every forage-store clear of the current boot, in order. The side stores of this page are fakes; nothing reaches IndexedDB. */
 const forageClears: { store: string, writesBefore: number }[] = []
 /** The commit backend's call log of the current rig, reads included; its length is what `writesBefore` counts. */
@@ -154,10 +171,12 @@ function grantClears(): { store: string, writesBefore: number }[] {
 async function openBoot(): Promise<Boot> {
     forageClears.length = 0
     observedWrites = []
+    stagingOps.length = 0
+    stagingStore = new StagingLogged()
     vi.doMock('src/ts/drive/rtb/sideStores', async (importOriginal) => ({
         ...await importOriginal<typeof import('src/ts/drive/rtb/sideStores')>(),
         defaultSideBackends: {
-            forage: (config: ForageStoreConfig) => new LoggedForage(config.name) as unknown as LocalForage,
+            forage: (config: ForageStoreConfig) => (config.name === RESTORED_KEYS_STORE.name ? stagingStore : new LoggedForage(config.name)) as unknown as LocalForage,
             local: () => localStorage,
         },
     }))
@@ -373,6 +392,71 @@ describe('the recovery-exit restore of a .rtb (INT2)', () => {
         expect(reload).not.toHaveBeenCalled()
         expect(await lockIsClosed()).toBe(false)
         expect(isBusy()).toBe(false)
+    })
+})
+
+describe('the connection-key staging of the start-up restore (R2, R2b)', () => {
+    const KEY_ENVELOPES = ['SYNTH-ENV-1', 'SYNTH-ENV-2', 'SYNTH-ENV-3']
+
+    /** The producer file with the connection-keys section the real producer lists for three connections (`rtbKeyRecords`). */
+    async function keyFile(k: Store2Kit, withIris = false): Promise<File> {
+        const { rtbKeyRecords } = await import('src/ts/drive/exportKeys')
+        const connections = KEY_ENVELOPES.map((envelope, at) => ({ id: `conn-${at + 1}`, name: `c${at + 1}`, provider: 'openai' as const, key: '', keyWrapped: envelope }))
+        const snapshot = {
+            values: new Map(KEY_ENVELOPES.map((envelope, at) => [envelope, `SYNTH-PLAIN-${at + 1}`] as const)),
+            unreadable: new Set<string>(),
+            unavailableNow: new Set<string>(),
+            unreadableNames: [],
+            unavailableNames: [],
+        }
+        const lines = rtbKeyRecords(connections, snapshot).records
+        const built = await writeRtbFile({
+            world: await worldOfKit(k),
+            sides: {
+                'side.connection-keys': { records: (async function* () { yield* lines })() },
+                ...(withIris ? { 'side.iris': { records: (async function* () { yield { key: 'k1', value: { a: 1 } } })() } } : {}),
+            },
+        })
+        return new File([built.bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.rtb')
+    }
+
+    async function restoreOnExit(withIris = false): Promise<{ rig: BootRig, notices: unknown[] }> {
+        const boot = await openBoot()
+        const file = await keyFile(boot.k, withIris)
+        const rig = await bootRig('exit')
+        vi.spyOn(window.location, 'reload').mockImplementation(() => { })
+        const end = await (await pick(rig.target, file)).ended
+        expect(end.kind === 'finished' && end.result.status).toBe('installed')
+        return { rig, notices: vi.mocked(boot.alert.alertNormalWait).mock.calls.map((call) => call[0]) }
+    }
+
+    test('R2 regression reproducer: every staging record is written before the commit key is written', async () => {
+        const { rig } = await restoreOnExit()
+        const commitAt = rig.writes.indexOf('casCommit')
+
+        expect(commitAt).toBeGreaterThanOrEqual(0)
+        const before = stagingOps.filter((entry) => entry.op.startsWith('set:') && entry.writesBefore <= commitAt).map((entry) => entry.op).sort()
+        expect(before).toEqual(KEY_ENVELOPES.map((envelope) => `set:${envelope}`).sort())
+    })
+
+    test('R2b regression reproducer: no staging write follows the commit and no connection-keys line is named', async () => {
+        const { rig, notices } = await restoreOnExit()
+        const commitAt = rig.writes.indexOf('casCommit')
+
+        expect(commitAt).toBeGreaterThanOrEqual(0)
+        expect(stagingOps.filter((entry) => entry.writesBefore > commitAt)).toEqual([])
+        expect([...stagingStore.data.keys()].sort()).toEqual([...KEY_ENVELOPES].sort())
+        expect(notices.some((text) => typeof text === 'string' && text.includes(language.rtbRestoreSideNames.connectionKeys))).toBe(false)
+    })
+
+    test('G3b: every other side section is still restored after the commit (guard of a new rule)', async () => {
+        const { rig } = await restoreOnExit(true)
+        const commitAt = rig.writes.indexOf('casCommit')
+
+        expect(commitAt).toBeGreaterThanOrEqual(0)
+        const irisClears = forageClears.filter((entry) => entry.store === IRIS_STORE.name)
+        expect(irisClears).toHaveLength(1)
+        expect(irisClears[0].writesBefore).toBeGreaterThan(commitAt)
     })
 })
 

@@ -620,16 +620,55 @@ describe('same-value write is a no-op (#495 D1)', () => {
         expect(fake.dec(conn.keyWrapped as string)).toBe('SYNTH-KEY-5678')
     })
 
-    it('guard: a pending entry whose precondition broke does not make a same-value write redundant', async () => {
+    it('G10 guard: a pending entry whose precondition was broken from outside the store does not make a same-value write redundant', async () => {
         useDb([mkConn({ key: 'SYNTH-OLD-PLAIN' })])
         install('vault')
         fake.s.hold = true
         const conn = db.connections[0]
         void setConnectionKey(conn, 'SYNTH-TYPED-NEW')
         await tick()
-        // Boot step 3 swaps the old plain under the pending entry, so that entry can no longer settle.
+        // A database replace outside the vault store changes the connection under the pending entry, so the entry can no longer settle.
+        conn.key = 'SYNTH-OTHER'
+        void setConnectionKey(conn, 'SYNTH-TYPED-NEW')
+        await releaseHeld()
+        await tick()
+        await tick()
+        expect(conn.key).toBe('')
+        expect(fake.dec(conn.keyWrapped as string)).toBe('SYNTH-TYPED-NEW')
+        expect(connectionKeyForUi(conn)).toBe('SYNTH-TYPED-NEW')
+    })
+})
+
+describe('boot step 3 never replaces a pending typed key (regression reproducers)', () => {
+    const valueOf = (conn: Connection): string => (conn.key !== '' ? conn.key : (conn.keyWrapped ? fake.dec(conn.keyWrapped as string) : ''))
+
+    it('G9d-ii: typed after the old wrap was posted, replies in order', async () => {
+        useDb([mkConn({ key: 'SYNTH-OLD' })])
+        install('vault')
+        fake.s.hold = true
+        const conn = db.connections[0]
         const boot = wrapPlainKeysAfterLoad(() => false)
         await tick()
+        const typed = setConnectionKey(conn, 'SYNTH-TYPED')
+        await tick()
+        await releaseHeld()
+        await boot
+        await typed
+        await tick()
+
+        expect(valueOf(conn)).toBe('SYNTH-TYPED')
+    })
+
+    it('G9d-fc: typed first, the old reply released first', async () => {
+        useDb([mkConn({ key: 'SYNTH-OLD' })])
+        install('vault')
+        fake.s.hold = true
+        const conn = db.connections[0]
+        void setConnectionKey(conn, 'SYNTH-TYPED')
+        await tick()
+        const boot = wrapPlainKeysAfterLoad(() => false)
+        await tick()
+        // The two length checks only guard the release by index: the typed wrap is first, the old wrap second.
         expect(fake.s.held.length).toBe(2)
         fake.s.held.splice(1, 1)[0]()
         await tick()
@@ -637,13 +676,68 @@ describe('same-value write is a no-op (#495 D1)', () => {
         fake.s.held.splice(1, 1)[0]()
         await tick()
         await boot
-        expect(conn.key).toBe('')
-        expect(fake.dec(conn.keyWrapped as string)).toBe('SYNTH-OLD-PLAIN')
-        void setConnectionKey(conn, 'SYNTH-TYPED-NEW')
         await releaseHeld()
         await tick()
         await tick()
-        expect(fake.dec(conn.keyWrapped as string)).toBe('SYNTH-TYPED-NEW')
+
+        expect(conn.key).toBe('')
+        expect(valueOf(conn)).toBe('SYNTH-TYPED')
+    })
+
+    it('G9e: a both-set connection whose old wrap fails first keeps the typed key', async () => {
+        useDb([mkConn({ key: 'SYNTH-OLD', keyWrapped: envelopeOf('SYNTH-OLD') })])
+        install('vault')
+        fake.s.hold = true
+        fake.s.wrapCode = 'other'
+        const conn = db.connections[0]
+        void setConnectionKey(conn, 'SYNTH-TYPED')
+        await tick()
+        const boot = wrapPlainKeysAfterLoad(() => false)
+        await tick()
+        fake.s.held.splice(1, 1)[0]()
+        await tick()
+        await boot
+        await releaseHeld()
+        await tick()
+        await tick()
+
+        expect(valueOf(conn)).toBe('SYNTH-TYPED')
+    })
+
+    it('G9d-i: typed first, replies in order (compatibility guard: passes before and after)', async () => {
+        useDb([mkConn({ key: 'SYNTH-OLD' })])
+        install('vault')
+        fake.s.hold = true
+        const conn = db.connections[0]
+        void setConnectionKey(conn, 'SYNTH-TYPED')
+        await tick()
+        const boot = wrapPlainKeysAfterLoad(() => false)
+        await tick()
+        await releaseHeld()
+        await boot
+        await releaseHeld()
+        await tick()
+
+        expect(conn.key).toBe('')
+        expect(valueOf(conn)).toBe('SYNTH-TYPED')
+    })
+
+    it('G9d-ii-t: typed after the old wrap was posted and every wrap times out (compatibility guard: passes before and after)', async () => {
+        useDb([mkConn({ key: 'SYNTH-OLD' })])
+        install('vault')
+        fake.s.hold = true
+        fake.s.wrapCode = 'timeout'
+        const conn = db.connections[0]
+        const boot = wrapPlainKeysAfterLoad(() => false)
+        await tick()
+        const typed = setConnectionKey(conn, 'SYNTH-TYPED')
+        await tick()
+        await releaseHeld()
+        await boot
+        await typed
+        await tick()
+
+        expect(valueOf(conn)).toBe('SYNTH-TYPED')
     })
 })
 

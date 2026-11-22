@@ -12,7 +12,7 @@ import { defaultSideBackends, type SideRestoreResult } from './rtb/sideStores'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { skippedNoticesOf } from './backuplocal'
 import { copyRtbEntries, landedFactsOf, withCopiedKept, type CopyEnd } from './rtbRestoreCopy'
-import { leftOutLines, realSideDeps, restoreSides } from './rtbRestoreFinish'
+import { leftOutLines, realSideDeps, restoreSides, stageConnectionKeys } from './rtbRestoreFinish'
 import { acquireRestoreHold, type HoldAcquire, type RestoreHold } from './rtbRestoreHold'
 import { clearPluginGrants, rereadUnits } from './rtbRestoreInstall'
 import { realVerifyDeps, verifyAndConfirm, type PickedRtb, type RtbVerifyEnd, type VerifiedRtb } from './rtbRestorePlan'
@@ -31,6 +31,9 @@ import { realVerifyDeps, verifyAndConfirm, type PickedRtb, type RtbVerifyEnd, ty
  *   caller that may open a profile on this page, and a write lock kept closed would make every save of that page wait forever.
  * - Nothing is written to the profile before every question is answered. The busy re-check is the gate (`beforeFirstWrite`),
  *   the last check before the installer call; it never runs inside `build`, where a throw would leave the marker standing.
+ *   The gate then clears the plugin grants and stages `side.connection-keys` (add-only), so every staging record is durable
+ *   before the profile commit can land; every other side section runs after the install landed, and the finish never applies a
+ *   connection-keys `restore`. A staging that fails is named in the notice and does not stop the install.
  *   After the gate returned `true` the installer has been handed control: a throw then ends `reclassify`, and the boot
  *   classifies again. Before it, a throw ends `cancelled`. A gate that returns `true` is not a promise of a profile write: on the
  *   exit entry the installer can still end with no profile write, and the fence may have been written.
@@ -57,7 +60,10 @@ export interface RtbBootDeps {
     reread(plan: RtbBootPlan): ReturnType<typeof rereadUnits>
     planRestore(input: RestorePlanInput): RestoreRequest
     clearGrants(plan: RtbBootPlan): Promise<void>
-    applySides(plan: RtbBootPlan): Promise<SideRestoreResult[]>
+    /** Stages the connection keys inside the gate, before the profile commit can land; never rejects. */
+    stageKeys(plan: RtbBootPlan): Promise<SideRestoreResult | null>
+    /** `staged` is the result `stageKeys` returned: a connection-keys `restore` is not applied again here. */
+    applySides(plan: RtbBootPlan, staged: SideRestoreResult | null): Promise<SideRestoreResult[]>
     /** An OK-only notice, resolved when the person dismisses it. */
     notice(text: string): Promise<void>
     error(text: string): void
@@ -81,7 +87,8 @@ function realBootDeps(): RtbBootDeps {
         reread: (plan) => rereadUnits(plan),
         planRestore,
         clearGrants: (plan) => clearPluginGrants(plan, defaultSideBackends),
-        applySides: (plan) => restoreSides(plan, realSideDeps()),
+        stageKeys: (plan) => stageConnectionKeys(plan, realSideDeps()),
+        applySides: (plan, staged) => restoreSides(plan, realSideDeps(), staged),
         notice: alertNormalWait,
         error: alertError,
         waitAlert,
@@ -120,6 +127,8 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
     let copyBegan = false
     // True once the gate returned `true`: the installer has been handed control.
     let gatePassed = false
+    // The connection-keys staging result of the gate; null when that action is not a `restore`.
+    let staged: SideRestoreResult | null = null
     try {
         const own = deps.beginBusy()
         busy = own
@@ -189,12 +198,14 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         const built = await installBuiltTree.call(target, {
             newUnits: request.newUnits,
             build: request.build,
-            // The last check before the installer call: busy, then the plugin grants (MC-2252).
+            // The last check before the installer call: busy, then the plugin grants (MC-2252), then the connection keys,
+            // staged so every record is durable before the profile commit can land.
             beforeFirstWrite: async () => {
                 if (deps.refuseWhileBusy(own)) {
                     return false
                 }
                 await deps.clearGrants(plan)
+                staged = await deps.stageKeys(plan)
                 gatePassed = true
                 return true
             },
@@ -214,7 +225,7 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         // B11: the side data and the notices. A failure here is logged and never changes the end: the profile landed.
         try {
             const facts = landedFactsOf(copied.facts)
-            const results = await deps.applySides(plan)
+            const results = await deps.applySides(plan, staged)
             for (const notice of skippedNoticesOf(facts.skippedAssets, facts.inlays.skipped, plan.assets.limit)) {
                 await deps.notice(notice)
             }

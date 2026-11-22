@@ -9,7 +9,7 @@ import type { Connection } from '../connections'
 import { connectionHasKey, connectionKeyForUi, connectionNeedsReentry } from '../keyAccess'
 import {
     beginVaultBoot, installVaultHost, resetVaultStoreForTest, unwrapAllForBoot, whenVaultReady, wrapPlainKeysAfterLoad,
-    type VaultHost, type VaultPlatform,
+    writeConnectionKey, type VaultHost, type VaultPlatform,
 } from '../keyVaultStore.svelte'
 import { applyRestoredKeys } from '../restoredKeys'
 import { applySideAction, type SideBackends, type SideBodyReader } from 'src/ts/drive/rtb/sideStores'
@@ -19,7 +19,16 @@ import { RESTORED_KEYS_STORE, type ForageStoreConfig } from 'src/ts/drive/rtb/si
 import type { SideAction } from 'src/ts/drive/rtb/sideDecision'
 
 const fake = vi.hoisted(() => {
-    const s = { wrapFails: false, unwraps: [] as string[], n: 0 }
+    const s = {
+        wrapFails: false,
+        wrapCode: null as string | null,
+        hold: false,
+        held: [] as Array<{ kind: 'wrap' | 'unwrap', arg: string, run: () => void }>,
+        unwraps: [] as string[],
+        // Envelopes whose unwrap fails with the given code, as another device's key would.
+        unwrapCodes: new Map<string, string>(),
+        n: 0,
+    }
     const enc = (plain: string): string => {
         s.n += 1
         return Buffer.concat([
@@ -30,12 +39,20 @@ const fake = vi.hoisted(() => {
         const body = Buffer.from(envelope, 'base64')
         return body.subarray(21, body.length - 16).toString('utf8')
     }
+    // While `hold` is set a call is parked until a test releases it, so the order of the replies is the test's choice.
+    const gate = <T,>(kind: 'wrap' | 'unwrap', arg: string, value: () => T): Promise<T> => (s.hold
+        ? new Promise<T>((resolve) => { s.held.push({ kind, arg, run: () => resolve(value()) }) })
+        : Promise.resolve(value()))
     return {
         s, enc, dec,
-        wrapKey: vi.fn(async (plain: string) => s.wrapFails ? { ok: false as const, code: 'other' } : { ok: true as const, value: enc(plain) }),
+        wrapKey: vi.fn(async (plain: string) => {
+            const code = s.wrapFails ? 'other' : s.wrapCode
+            return gate('wrap', plain, () => code ? { ok: false as const, code } : { ok: true as const, value: enc(plain) })
+        }),
         unwrapKey: vi.fn(async (envelope: string) => {
             s.unwraps.push(envelope)
-            return { ok: true as const, value: dec(envelope) }
+            const code = s.unwrapCodes.get(envelope)
+            return gate('unwrap', envelope, () => (code ? { ok: false as const, code } : { ok: true as const, value: dec(envelope) }))
         }),
         watchdogFired: () => false,
     }
@@ -360,5 +377,411 @@ describe('T25: the boot applies the staged records without losing an edit', () =
 
         expect(ready).toBe(true)
         expect(unwrapped).toBe(false)
+    })
+})
+
+describe('a pending typed key is never replaced by a staged record at boot (regression reproducers)', () => {
+    let list: Connection[]
+    const OWN_ENV = 'SYNTH-OWN-ENV'
+
+    const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
+    /** Releases the held call whose argument is, or decodes to, `plain`, then lets the chain run. */
+    async function releaseFor(plain: string): Promise<void> {
+        const at = fake.s.held.findIndex((item) => (item.kind === 'wrap' ? item.arg : fake.dec(item.arg)) === plain)
+        if (at < 0) {
+            throw new Error(`no held call for ${plain}: ${JSON.stringify(fake.s.held.map((item) => `${item.kind}:${item.arg}`))}`)
+        }
+        fake.s.held.splice(at, 1)[0].run()
+        await tick()
+        await tick()
+    }
+
+    /** Stops holding and releases everything still held, in posting order. */
+    async function releaseAll(): Promise<void> {
+        fake.s.hold = false
+        for (let round = 0; round < 6; round++) {
+            for (const item of fake.s.held.splice(0)) {
+                item.run()
+            }
+            await tick()
+        }
+    }
+
+    function valueOf(conn: Connection): string {
+        return conn.key !== '' ? conn.key : (conn.keyWrapped ? fake.dec(conn.keyWrapped as string) : '')
+    }
+
+    function install(): void {
+        installVaultHost({
+            platform: 'vault',
+            findConnection: (id) => list.find((conn) => conn.id === id),
+            listConnections: () => list,
+            requestSaveNow: () => { },
+            markBootWrite: () => { },
+            isReadOnlyPage: () => false,
+            notify: { keepPlain: () => { }, wrapped: () => { }, reentry: () => { } },
+            messages: { keyUnavailable: () => 'unavailable-text' },
+        })
+    }
+
+    beforeEach(() => {
+        staging = new FakeForage()
+        resetVaultStoreForTest()
+        fake.s.wrapFails = false
+        fake.s.wrapCode = null
+        fake.s.hold = true
+        fake.s.held = []
+        fake.s.unwraps.length = 0
+        fake.s.n = 0
+        fake.wrapKey.mockClear()
+        fake.unwrapKey.mockClear()
+        list = [{ id: 'c4', name: 'c4', provider: 'openai', key: '', keyWrapped: OWN_ENV } as Connection]
+    })
+
+    afterEach(async () => {
+        await releaseAll()
+        fake.s.hold = false
+    })
+
+    it('G9a-ii: typed after the staged wrap was posted, replies in order', async () => {
+        install()
+        staging.data.set(OWN_ENV, { id: 'c4', p: 'SYNTH-OLD' })
+        await applyRestoredKeys(staging as unknown as LocalForage)
+        const afterLoad = wrapPlainKeysAfterLoad(() => false)
+        await tick()
+        const typed = writeConnectionKey(list[0], 'SYNTH-TYPED', false)
+        await tick()
+        await releaseAll()
+        await afterLoad
+        await typed
+
+        expect(valueOf(list[0])).toBe('SYNTH-TYPED')
+        expect(staging.data.has(OWN_ENV)).toBe(true)
+    })
+
+    it('G9a-fc: typed before the staged wrap was posted, the staged reply released first', async () => {
+        install()
+        staging.data.set(OWN_ENV, { id: 'c4', p: 'SYNTH-OLD' })
+        await applyRestoredKeys(staging as unknown as LocalForage)
+        const typed = writeConnectionKey(list[0], 'SYNTH-TYPED', false)
+        await tick()
+        const afterLoad = wrapPlainKeysAfterLoad(() => false)
+        await tick()
+        // Releasing by argument is deliberate: the staged wrap and its verify answer before the typed key's own.
+        await releaseFor('SYNTH-OLD')
+        await releaseFor('SYNTH-OLD')
+        await releaseAll()
+        await afterLoad
+        await typed
+
+        expect(valueOf(list[0])).toBe('SYNTH-TYPED')
+    })
+
+    it('G9a-i: typed first, every reply in order (compatibility guard: passes before and after)', async () => {
+        install()
+        staging.data.set(OWN_ENV, { id: 'c4', p: 'SYNTH-OLD' })
+        await applyRestoredKeys(staging as unknown as LocalForage)
+        const typed = writeConnectionKey(list[0], 'SYNTH-TYPED', false)
+        await tick()
+        const afterLoad = wrapPlainKeysAfterLoad(() => false)
+        await tick()
+        await releaseAll()
+        await afterLoad
+        await typed
+
+        expect(valueOf(list[0])).toBe('SYNTH-TYPED')
+    })
+
+    it('G9b: the staged wrap times out, the typed key still wins and a healthy next boot drops the record', async () => {
+        install()
+        staging.data.set(OWN_ENV, { id: 'c4', p: 'SYNTH-OLD' })
+        await applyRestoredKeys(staging as unknown as LocalForage)
+        fake.s.wrapCode = 'timeout'
+        const afterLoad = wrapPlainKeysAfterLoad(() => false)
+        await tick()
+        const typed = writeConnectionKey(list[0], 'SYNTH-TYPED', false)
+        await tick()
+        await releaseAll()
+        await afterLoad
+        await typed
+
+        expect(valueOf(list[0])).toBe('SYNTH-TYPED')
+        expect(staging.data.has(OWN_ENV)).toBe(true)
+
+        resetVaultStoreForTest()
+        fake.s.wrapCode = null
+        install()
+        await applyRestoredKeys(staging as unknown as LocalForage)
+        expect(staging.data.has(OWN_ENV)).toBe(false)
+        expect(valueOf(list[0])).toBe('SYNTH-TYPED')
+    })
+
+    it('G9c: a late step 1 {w} record does not replace a pending typed key', async () => {
+        install()
+        const typed = writeConnectionKey(list[0], 'SYNTH-TYPED', false)
+        await tick()
+        fake.s.hold = false
+        staging.data.set(OWN_ENV, { id: 'c4', w: fake.enc('SYNTH-OLD') })
+        fake.s.hold = true
+        await applyRestoredKeys(staging as unknown as LocalForage)
+        await releaseAll()
+        await typed
+
+        expect(valueOf(list[0])).toBe('SYNTH-TYPED')
+        expect(staging.data.has(OWN_ENV)).toBe(true)
+    })
+})
+
+describe('a restore that never commits leaves records that only write the carrier\'s own value (R-3 guards)', () => {
+    let list: Connection[]
+    let boots: number
+
+    const P1 = 'SYNTH-P1'
+    const P2 = 'SYNTH-P2'
+    const C2_PLAIN = 'SYNTH-C2-PLAIN'
+
+    const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
+    function install(platform: VaultPlatform): void {
+        installVaultHost({
+            platform,
+            findConnection: (id) => list.find((conn) => conn.id === id),
+            listConnections: () => list,
+            requestSaveNow: () => { },
+            markBootWrite: () => { boots++ },
+            isReadOnlyPage: () => false,
+            notify: { keepPlain: () => { }, wrapped: () => { }, reentry: () => { } },
+            messages: { keyUnavailable: () => 'unavailable-text' },
+        })
+    }
+
+    /** One restore whose staging ran and whose commit never landed: the file's lines become records, as `installRtbRestore` stages them. */
+    async function stageFile(lines: ReadonlyArray<readonly [string, string, string]>, platform: VaultPlatform): Promise<void> {
+        const text = sectionText(lines.map(([id, envelope, plain]) => [id, { e: envelope, p: plain }] as const))
+        const stageWrap = platform === 'vault' ? async (plain: string) => fake.enc(plain) : undefined
+        const result = await applySideAction(KEY_ACTION, readerOf(text), backends(stageWrap))
+        expect(result).toMatchObject({ status: 'ok' })
+    }
+
+    /** The boot order of `vaultBoot` and the after-load wrap. */
+    async function boot(platform: VaultPlatform): Promise<void> {
+        resetVaultStoreForTest()
+        install(platform)
+        await applyRestoredKeys(staging as unknown as LocalForage)
+        await unwrapAllForBoot()
+        await wrapPlainKeysAfterLoad(() => false)
+        await tick()
+    }
+
+    const snapshot = (): Connection[] => JSON.parse(JSON.stringify(list)) as Connection[]
+
+    beforeEach(() => {
+        staging = new FakeForage()
+        configs = []
+        resetVaultStoreForTest()
+        fake.s.wrapFails = false
+        fake.s.wrapCode = null
+        fake.s.hold = false
+        fake.s.held = []
+        fake.s.unwraps.length = 0
+        fake.s.unwrapCodes.clear()
+        fake.s.n = 0
+        fake.wrapKey.mockClear()
+        fake.unwrapKey.mockClear()
+        boots = 0
+    })
+
+    it('G4b: staging adds the file\'s records over the existing ones and removes none (guard of a new rule)', async () => {
+        staging.data.set('SYNTH-ENV-R0', { id: 'x', p: 'SYNTH-R0' })
+
+        await stageFile([['c1', 'SYNTH-ENV-1', P1], ['c9', 'SYNTH-ENV-9', P2]], 'none')
+
+        expect([...staging.data.keys()].sort()).toEqual(['SYNTH-ENV-1', 'SYNTH-ENV-9', 'SYNTH-ENV-R0'])
+        expect(staging.clearCalls).toBe(0)
+    })
+
+    it('G4b-2: restores that never commit never build up, and each boot drops only the records nothing carries (guard of a new rule)', async () => {
+        list = [{ id: 'c1', name: 'c1', provider: 'openai', key: '', keyWrapped: 'SYNTH-ENV-1' } as Connection]
+        staging.data.set('SYNTH-ENV-R0', { id: 'x', p: 'SYNTH-R0' })
+
+        await stageFile([['c1', 'SYNTH-ENV-1', P1], ['c9', 'SYNTH-ENV-9', P2]], 'none')
+        await stageFile([['c1', 'SYNTH-ENV-1', P1], ['c9', 'SYNTH-ENV-9', P2]], 'none')
+        expect([...staging.data.keys()].sort()).toEqual(['SYNTH-ENV-1', 'SYNTH-ENV-9', 'SYNTH-ENV-R0'])
+        await stageFile([['c2', 'SYNTH-ENV-2', P2]], 'none')
+        expect([...staging.data.keys()].sort()).toEqual(['SYNTH-ENV-1', 'SYNTH-ENV-2', 'SYNTH-ENV-9', 'SYNTH-ENV-R0'])
+
+        await boot('none')
+        expect([...staging.data.keys()]).toEqual(['SYNTH-ENV-1'])
+        expect(list[0].key).toBe(P1)
+
+        await boot('none')
+        expect(staging.data.size).toBe(0)
+        expect(list[0].key).toBe(P1)
+    })
+
+    it.each(['vault', 'none'] as const)('G4c-1 (%s): another device\'s records with no carrier here are dropped and change nothing', async (platform) => {
+        list = [{ id: 'c1', name: 'c1', provider: 'openai', key: '', keyWrapped: fake.enc('SYNTH-OWN') } as Connection]
+        const before = snapshot()
+
+        await stageFile([['a1', 'SYNTH-ENV-A1', P1], ['a2', 'SYNTH-ENV-A2', P2]], platform)
+        await boot(platform)
+
+        expect(staging.data.size).toBe(0)
+        expect(list).toEqual(before)
+        expect(boots).toBe(0)
+    })
+
+    it('G4c-2 (vault): a connection that still holds the source device\'s envelope reads the file\'s key after the next boot', async () => {
+        const foreign = fake.enc(P1)
+        fake.s.unwrapCodes.set(foreign, 'unreadable')
+        list = [{ id: 'c1', name: 'c1', provider: 'openai', key: '', keyWrapped: foreign } as Connection]
+        await boot('vault')
+        expect(connectionNeedsReentry(list[0])).toBe(true)
+        boots = 0
+
+        await stageFile([['c1', foreign, P1]], 'vault')
+        await boot('vault')
+
+        expect(connectionKeyForUi(list[0])).toBe(P1)
+        expect(connectionNeedsReentry(list[0])).toBe(false)
+        expect(boots).toBeGreaterThan(0)
+    })
+
+    it('G4c-2 (none): a flagged connection holding the source device\'s envelope reads the file\'s key after the next boot', async () => {
+        const foreign = fake.enc(P1)
+        list = [{ id: 'c1', name: 'c1', provider: 'openai', key: '', keyWrapped: foreign } as Connection]
+        install('none')
+        expect(connectionNeedsReentry(list[0])).toBe(true)
+
+        await stageFile([['c1', foreign, P1]], 'none')
+        await boot('none')
+
+        expect(connectionKeyForUi(list[0])).toBe(P1)
+        expect(connectionNeedsReentry(list[0])).toBe(false)
+        expect(boots).toBeGreaterThan(0)
+    })
+
+    it.each(['vault', 'none', 'android-legacy'] as const)('G4d (%s): the profile\'s own connections keep their keys after a restore that never committed', async (platform) => {
+        const e1 = fake.enc(P1)
+        const e2 = fake.enc('SYNTH-C2-OLD-ENVELOPE-PLAIN')
+        const e3 = fake.enc('SYNTH-C3')
+        list = [
+            { id: 'c1', name: 'c1', provider: 'openai', key: '', keyWrapped: e1 } as Connection,
+            { id: 'c2', name: 'c2', provider: 'openai', key: C2_PLAIN, keyWrapped: e2 } as Connection,
+            { id: 'c3', name: 'c3', provider: 'openai', key: '', keyWrapped: e3 } as Connection,
+        ]
+        const c2Before = { ...list[1] }
+        const c3Before = { ...list[2] }
+
+        await stageFile([['c1', e1, P1], ['c2', e2, P2]], platform)
+        await boot(platform)
+
+        expect(connectionKeyForUi(list[0])).toBe(P1)
+        expect(connectionKeyForUi(list[1])).toBe(C2_PLAIN)
+        if (platform === 'vault') {
+            // The after-load wrap re-wraps a plain key on a both-set connection by design: the plain key is authoritative.
+            expect(list[1].key).toBe('')
+        } else {
+            expect(list[1]).toEqual(c2Before)
+        }
+        if (platform === 'android-legacy') {
+            expect(staging.data.has(e2)).toBe(true)
+        }
+        expect(list[2]).toEqual(c3Before)
+    })
+
+    it('G4d-2 (vault): a key typed after the restore settles to a new envelope, so the next boot drops the record without a write', async () => {
+        const e1 = fake.enc(P1)
+        list = [{ id: 'c1', name: 'c1', provider: 'openai', key: '', keyWrapped: e1 } as Connection]
+        await stageFile([['c1', e1, P1]], 'vault')
+        install('vault')
+        await writeConnectionKey(list[0], 'SYNTH-TYPED', false)
+        const settled = snapshot()
+        expect(settled[0].keyWrapped).not.toBe(e1)
+        boots = 0
+
+        await boot('vault')
+
+        expect(list).toEqual(settled)
+        expect(staging.data.size).toBe(0)
+        expect(boots).toBe(0)
+    })
+
+    it('G4d-2 (android-legacy): a typed key is plain with no envelope, so the next boot drops the record', async () => {
+        const e1 = fake.enc(P1)
+        list = [{ id: 'c1', name: 'c1', provider: 'openai', key: '', keyWrapped: e1 } as Connection]
+        await stageFile([['c1', e1, P1]], 'android-legacy')
+        install('android-legacy')
+        await writeConnectionKey(list[0], 'SYNTH-TYPED', false)
+        expect(list[0].key).toBe('SYNTH-TYPED')
+        expect(Object.hasOwn(list[0], 'keyWrapped')).toBe(false)
+
+        await boot('android-legacy')
+
+        expect(list[0].key).toBe('SYNTH-TYPED')
+        expect(staging.data.size).toBe(0)
+    })
+
+    it('G4d-3 (vault): a tripped breaker keeps the record and leaves the connection alone until a healthy boot applies it once', async () => {
+        const e1 = fake.enc(P1)
+        const eD = fake.enc('SYNTH-D')
+        list = [
+            { id: 'c1', name: 'c1', provider: 'openai', key: '', keyWrapped: e1 } as Connection,
+            { id: 'd', name: 'd', provider: 'openai', key: '', keyWrapped: eD } as Connection,
+        ]
+        const c1Before = { ...list[0] }
+        // A `{p}` record, as after a fail-fast staging; the unread envelope of d makes step 2 time out and trip the breaker.
+        staging.data.set(e1, { id: 'c1', p: P1 })
+        fake.s.unwrapCodes.set(eD, 'timeout')
+
+        await boot('vault')
+        expect(list[0]).toEqual(c1Before)
+        expect(staging.data.has(e1)).toBe(true)
+
+        fake.s.unwrapCodes.clear()
+        await boot('vault')
+        expect(list[0].keyWrapped).not.toBe(e1)
+        expect(connectionKeyForUi(list[0])).toBe(P1)
+        expect(staging.data.has(e1)).toBe(true)
+
+        await boot('vault')
+        expect(staging.data.has(e1)).toBe(false)
+        expect(connectionKeyForUi(list[0])).toBe(P1)
+    })
+})
+
+describe('the staging stops asking the vault after the first failed wrap of one run (G8, G8b)', () => {
+    const text = (): string => sectionText([
+        ['c1', { e: 'SYNTH-ENV-1', p: 'SYNTH-P1' }],
+        ['c2', { e: 'SYNTH-ENV-2', p: 'SYNTH-P2' }],
+        ['c3', { e: 'SYNTH-ENV-3', p: 'SYNTH-P3' }],
+    ])
+
+    beforeEach(() => {
+        staging = new FakeForage()
+        configs = []
+    })
+
+    it('G8: after the first null the rest are staged as plain without a vault call (guard of a new rule)', async () => {
+        const wrap = vi.fn(async (): Promise<string | null> => null)
+
+        const result = await applySideAction(KEY_ACTION, readerOf(text()), backends(wrap))
+
+        expect(result).toMatchObject({ status: 'ok', written: 3 })
+        expect(wrap).toHaveBeenCalledTimes(1)
+        expect([...staging.data.values()]).toEqual([
+            { id: 'c1', p: 'SYNTH-P1' }, { id: 'c2', p: 'SYNTH-P2' }, { id: 'c3', p: 'SYNTH-P3' },
+        ])
+    })
+
+    it('G8b: the next run starts fresh and its first line asks the vault again (guard of a new rule)', async () => {
+        await applySideAction(KEY_ACTION, readerOf(text()), backends(async () => null))
+        const wrap = vi.fn(async (plain: string): Promise<string | null> => `WRAPPED(${plain})`)
+
+        await applySideAction(KEY_ACTION, readerOf(text()), backends(wrap))
+
+        expect(wrap).toHaveBeenCalledTimes(3)
+        expect(staging.data.get('SYNTH-ENV-1')).toEqual({ id: 'c1', w: 'WRAPPED(SYNTH-P1)' })
     })
 })
