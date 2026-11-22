@@ -22,7 +22,7 @@
             placeholder={i === 0 ? placeholder : (i === rows.length - 1 ? language.settingsPage.addAnotherKey : '')}
             aria-label={labelId ? undefined : (i > 0 && i === rows.length - 1 ? language.settingsPage.addAnotherKey : fillLang(language.settingsPage.keyRowLabel, { n: i + 1 }))}
             aria-labelledby={labelId ? labelledBy(row.id, i) : undefined}
-            aria-describedby={labelId ? labelledBy(row.id, i) + ' ' + hintId : hintId}
+            aria-describedby={(labelId ? labelledBy(row.id, i) + ' ' + hintId : hintId) + (unavailable ? ' ' + unavailableId : '')}
             value={row.text}
             {@attach rowEvents(row.id)}
         />
@@ -35,6 +35,9 @@
         {/if}
     {/each}
     <div id={hintId} class="text-textcolor2 text-xs">{language.settingsPage.keySeparatorHint}</div>
+    {#if unavailable}
+        <div id={unavailableId} class="text-textcolor2 text-xs">{language.vaultKeyTemporarilyUnavailableHint}</div>
+    {/if}
 </div>
 
 <script lang="ts">
@@ -53,6 +56,8 @@
         className?: string;
         hideText?: boolean;
         labelId?: string;
+        /** The saved key is wrapped and not decrypted yet; shows a hint under the field. */
+        unavailable?: boolean;
     }
 
     interface Row {
@@ -67,10 +72,12 @@
         marginBottom = false,
         className = '',
         hideText = false,
-        labelId = undefined
+        labelId = undefined,
+        unavailable = false
     }: Props = $props();
 
     const hintId = $props.id()
+    const unavailableId = hintId + '-unavailable'
     const posId = (rowId: number) => hintId + '-pos' + rowId
     const addId = (rowId: number) => hintId + '-add' + rowId
 

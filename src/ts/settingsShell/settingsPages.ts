@@ -2,11 +2,11 @@ import { language } from '../../lang'
 
 /** Stored on the device as the last page shown, so a later rename must map old ids. */
 export type SettingsPageId =
-    | 'models' | 'features' | 'display' | 'input' | 'language'
+    | 'models' | 'connections' | 'features' | 'display' | 'input' | 'language'
     | 'personas' | 'extensions' | 'data' | 'shortcuts' | 'statistics' | 'advanced'
 
 export type SettingsViewId =
-    | 'chatBot' | 'prompt' | 'features' | 'display' | 'input' | 'language'
+    | 'chatBot' | 'prompt' | 'modelsConnections' | 'connections' | 'features' | 'display' | 'input' | 'language'
     | 'personas' | 'plugins' | 'modules' | 'data' | 'shortcuts' | 'statistics' | 'advanced'
 
 export interface SettingsViewEntry {
@@ -34,8 +34,10 @@ const PAGES: readonly SettingsPageEntry[] = [
         views: [
             { id: 'chatBot', legacyIndex: 1, labelKey: 'settingsShellViewChatBot' },
             { id: 'prompt', legacyIndex: 13, labelKey: 'settingsShellViewPrompt' },
+            { id: 'modelsConnections', legacyIndex: 19, labelKey: 'settingsShellViewConnections' },
         ],
     },
+    { id: 'connections', labelKey: 'settingsShellPageConnections', views: single('connections', 18, 'settingsShellPageConnections') },
     { id: 'features', labelKey: 'settingsShellPageFeatures', views: single('features', 2, 'settingsShellPageFeatures') },
     { id: 'display', labelKey: 'settingsShellPageDisplay', views: single('display', 3, 'settingsShellPageDisplay') },
     { id: 'input', labelKey: 'settingsShellPageInput', views: single('input', 11, 'settingsShellPageInput') },

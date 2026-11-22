@@ -9,6 +9,8 @@ declare global {
         __risuTaniumSystemBars?: { setBackground?: (red: number, green: number, blue: number) => unknown }
         /** Android host, separate-object path: the keyboard state. Absent elsewhere. */
         __risuTaniumIme?: { visible?: () => unknown; height?: () => unknown }
+        /** Android host, separate-object path: whether touch exploration (TalkBack) is on. Absent elsewhere. */
+        __risuTaniumAccessibility?: { touchExploration?: () => unknown }
     }
 }
 

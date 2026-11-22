@@ -2,7 +2,8 @@
     import { untrack } from 'svelte'
     import { language } from '../../../lang'
     import { motionPrefs } from '../../../ts/chatShell/motionPrefs.svelte'
-    import { toastHost, type ToastHost, type ToastKind } from '../../../ts/toast/toastHost.svelte'
+    import { installUiSoundUnlock, playUiSound } from '../../../ts/uiSound/uiSound'
+    import { currentToastSoundSink, setToastSoundSink, toastHost, type ToastHost, type ToastKind } from '../../../ts/toast/toastHost.svelte'
     import NexusStatusMark from '../brand/NexusStatusMark.svelte'
     import { modalLayerOpen } from './modalLayers.svelte'
     import './pattern-task-toast.css'
@@ -21,6 +22,23 @@
     // An open focus-trapping overlay holds the timers only; the stack stays visible.
     // svelte-ignore state_referenced_locally
     host.pauseWhile(() => modalLayerOpen())
+
+    // Only the view of the app-wide host carries its cues: a host a harness passes in has no module-level sink, and the sink is
+    // cleared on destroy only while it is still the one this view installed.
+    $effect(() => {
+        if (host !== toastHost) {
+            return
+        }
+        const sink = playUiSound
+        setToastSoundSink(sink)
+        const removeUnlock = installUiSoundUnlock()
+        return () => {
+            removeUnlock()
+            if (currentToastSoundSink() === sink) {
+                setToastSoundSink(null)
+            }
+        }
+    })
 
     // Holds are derived from DOM facts after every host change, never latched: the host never infers one, so no
     // hold can be forgotten or left set. None of this state is reactive; it is read and written only by the

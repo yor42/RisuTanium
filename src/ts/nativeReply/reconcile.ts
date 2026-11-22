@@ -1,10 +1,11 @@
 import { DBState } from '../stores.svelte'
 import { isColdChat } from '../process/coldstorageData'
 import type { RunSubject } from '../process/chatOrigin'
-import { decodeReplyBlob, type ReplyBlob } from './blob'
+import { decodeReplyBlob, isStreamReplyBlob, type ReplyBlob, type StreamReplyBlob } from './blob'
 import type { ParkedReply } from './parkedDialog'
 import { consumeReply, heldReply } from './pageState'
-import type { NativeReplyStore, ReplyListing } from './store'
+import type { NativeReplyStore, ReplyListing, ReplyListingState, ReplyOutcome } from './store'
+import type { UsageMeterState } from '../usage/usageTypes'
 
 /**
  * Places the replies that were recorded while this page could not see them (the page was frozen, killed or reloaded):
@@ -27,11 +28,30 @@ export interface RecoveredReplyInput {
     text: string
 }
 
-/** `applied`: the reply is in the chat and awaits its save. `present`: it was there already. `deferred`: a send is running; the apply reruns after it. */
+/**
+ * What a replayed stream record hands the apply. `complete` is a whole body; otherwise `modelText` is the text of a prefix
+ * of one. `modelText` is untrimmed and unscripted, as the stream's consumer holds it. `meter` carries the usage the replay
+ * found, and `how` is how the usage settles when the reply is written.
+ */
+export interface RecoveredStreamInput {
+    key: string
+    blob: StreamReplyBlob
+    modelText: string
+    complete: boolean
+    outcome: ReplyOutcome | ReplyListingState
+    meter: UsageMeterState
+    how: 'finished' | 'failed'
+}
+
+/**
+ * `applied`: the reply is in the chat and awaits its save. `present`: it was there already; a stream apply marks and holds
+ * it for the save like an applied one, so the reconcile never consumes on it. `deferred`: a send is running; the apply
+ * reruns after it.
+ */
 export type ApplyOutcome = 'applied' | 'present' | 'deferred' | 'failed'
 
 export interface ReconcileDeps {
-    store: Pick<NativeReplyStore, 'list' | 'readBody' | 'park' | 'discard'>
+    store: Pick<NativeReplyStore, 'list' | 'readBody' | 'readBodyBytes' | 'readPartialBytes' | 'park' | 'discard'>
     /** Android, a writable page, first setup done, saving started and the page visible. */
     gate(): boolean
     /** Queues a note the person closes. */
@@ -40,6 +60,12 @@ export interface ReconcileDeps {
     /** The text of a finished body as the live request would have produced it; null when there is none. */
     recoverText(listing: ReplyListing, blob: ReplyBlob, bodyText: string): Promise<string | null>
     apply(input: RecoveredReplyInput): Promise<ApplyOutcome>
+    /** Reads the bytes of a recorded stream through the transform the live request used; `modelText` is empty when they hold no reply. */
+    replayStream(blob: StreamReplyBlob, bytes: Uint8Array, complete: boolean): Promise<{ modelText: string, meter: UsageMeterState }>
+    /** Applies a replayed stream record: upgrades an interrupted message, appends an absent one, or holds a present one. */
+    applyStream(input: RecoveredStreamInput): Promise<ApplyOutcome>
+    /** Settles the usage of a reply that is parked instead of applied; the apply settles its own. */
+    settleUsage(blob: StreamReplyBlob, meter: UsageMeterState, how: 'finished' | 'failed', modelText: string): void
     /** Brings the cold character back; true when it is warm afterwards. */
     restoreCharacter(chaId: string): Promise<boolean>
     preLoadChat(characterIndex: number, chatIndex: number): Promise<unknown>
@@ -131,6 +157,11 @@ export async function recoveredText(
     blob: ReplyBlob,
     tools: RecoverTools,
 ): Promise<string | null> {
+    const parse = blob.parse
+    if (parse.kind !== 'openai-chat') {
+        // A stream record is read by the stream path; its body is never sniffed as a JSON body.
+        return null
+    }
     let data: unknown
     try {
         data = JSON.parse(bodyText)
@@ -148,7 +179,7 @@ export async function recoveredText(
     let text: string
     let single: boolean
     try {
-        const parsed = parseOpenAIChatBody(data, blob.parse, tools.subject)
+        const parsed = parseOpenAIChatBody(data, parse, tools.subject)
         single = parsed.type !== 'multiline'
         text = parsed.type === 'multiline' ? (parsed.result[0]?.[1] ?? '') : parsed.result
     } catch {
@@ -245,6 +276,129 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
         }
     }
 
+    /** The note of a record that ended without a reply the person can read as finished; null for a state that has no end yet. */
+    function endNote(listing: ReplyListing, blob: ReplyBlob): string | null {
+        if (listing.state === 'incomplete' || listing.state === 'dead') {
+            return deps.notes.interrupted(blob.targetName)
+        }
+        if (listing.state !== 'terminal') {
+            return null
+        }
+        switch (listing.outcome) {
+            case 'failed':
+            case 'done':
+                return deps.notes.failedElsewhere(blob.targetName)
+            case 'stopped':
+                return deps.notes.stoppedElsewhere(blob.targetName)
+            default:
+                return null
+        }
+    }
+
+    /**
+     * A stream record: a finished one (`terminal` and `done`) is read from its body, one that did not finish from the raw
+     * bytes kept beside it (`partialBytes`). The bytes are replayed through the live transform and the apply decides what
+     * the chat does with the text. A record whose message exists is consumed only through the save waiter the apply sets
+     * up; these rows consume at once: no text, no body, and a partial whose chat is gone.
+     */
+    async function handleStream(listing: ReplyListing, blob: StreamReplyBlob, items: ParkedReply[]): Promise<void> {
+        const key = listing.key
+        const complete = listing.state === 'terminal' && listing.outcome === 'done'
+        const partial = !complete && (listing.partialBytes ?? 0) > 0
+        const note = endNote(listing, blob)
+        if (!complete && !partial) {
+            if (note !== null) {
+                noteOnce(key, note)
+                await consumeReply(key)
+            }
+            return
+        }
+        let bytes: Uint8Array
+        try {
+            bytes = complete ? await deps.store.readBodyBytes(key) : await deps.store.readPartialBytes(key)
+        } catch (error) {
+            // An IO error is not an answer about the reply: the record is kept.
+            console.error(error)
+            return
+        }
+        // The live request keeps a stream only for status 200, not any 2xx; a partial implies it.
+        const readable = !complete || listing.status === undefined || listing.status === 200
+        let replayed: { modelText: string, meter: UsageMeterState } | null = null
+        if (readable) {
+            try {
+                replayed = await deps.replayStream(blob, bytes, complete)
+            } catch (error) {
+                // A replay that throws never consumes: the record is kept and reported.
+                console.error(error)
+                reportUnreadable(key, 'the stream record cannot be replayed')
+                return
+            }
+        }
+        const text = replayed === null ? '' : replayed.modelText.trim()
+        if (replayed === null || text === '') {
+            if (listing.parked) {
+                reportUnreadable(key, 'the parked reply no longer reads as text')
+                return
+            }
+            if (note !== null) {
+                noteOnce(key, note)
+            }
+            await consumeReply(key)
+            return
+        }
+        if (complete && listing.parked) {
+            await queueParked(listing, blob, text, items)
+            return
+        }
+        const how = listing.outcome === 'failed' ? 'failed' : 'finished'
+        const state = await settleTarget(blob, key)
+        switch (state.kind) {
+            case 'gone':
+            case 'trashed':
+                if (!complete) {
+                    // Rust parks only finished records: the person is told and the record goes.
+                    if (note !== null) {
+                        noteOnce(key, note)
+                    }
+                    await consumeReply(key)
+                    return
+                }
+                try {
+                    await deps.store.park(key)
+                } catch (error) {
+                    console.error(error)
+                    return
+                }
+                await queueParked(listing, blob, text, items)
+                // Once, right after the park: the parked record is never replayed for usage again.
+                deps.settleUsage(blob, replayed.meter, how, replayed.modelText)
+                return
+            case 'present':
+            case 'ok': {
+                const outcome = await deps.applyStream({
+                    key,
+                    blob,
+                    modelText: replayed.modelText,
+                    complete,
+                    outcome: listing.outcome ?? listing.state,
+                    meter: replayed.meter,
+                    how,
+                })
+                if (outcome === 'applied' || outcome === 'present') {
+                    if (!complete && note !== null) {
+                        noteOnce(key, note)
+                    }
+                } else if (outcome === 'failed' && note !== null) {
+                    noteOnce(`apply:${key}`, note)
+                }
+                return
+            }
+            default:
+                // Ambiguous, or still cold after the one try: the record is kept for a later pass.
+                return
+        }
+    }
+
     async function handle(listing: ReplyListing, items: ParkedReply[]): Promise<void> {
         const key = listing.key
         if (listing.state === 'live') {
@@ -268,6 +422,10 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
             return
         }
         const blob = decoded.blob
+        if (isStreamReplyBlob(blob)) {
+            await handleStream(listing, blob, items)
+            return
+        }
         if (listing.state === 'incomplete' || listing.state === 'dead') {
             noteOnce(key, deps.notes.interrupted(blob.targetName))
             await consumeReply(key)

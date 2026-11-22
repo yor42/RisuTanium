@@ -52,6 +52,7 @@ interface VaultCommand {
 sealed class BridgeCommand {
   object SubscribeGestureInset : BridgeCommand()
   object SubscribeIme : BridgeCommand()
+  object SubscribeTouchExploration : BridgeCommand()
   data class SetBackground(val red: Int, val green: Int, val blue: Int) : BridgeCommand()
   data class KeepAliveStart(val title: String, val stopLabel: String) : BridgeCommand()
   data class KeepAliveUpdate(val title: String, val stopLabel: String) : BridgeCommand()
@@ -124,6 +125,7 @@ private fun intArg(value: Any?): Int? {
 fun toCommand(bridge: String, method: String, args: List<Any?>, id: Any?): BridgeCommand? = when (bridge) {
   "gestureInset" -> if (method == "subscribe" && args.isEmpty()) BridgeCommand.SubscribeGestureInset else null
   "ime" -> if (method == "subscribe" && args.isEmpty()) BridgeCommand.SubscribeIme else null
+  "accessibility" -> if (method == "subscribe" && args.isEmpty()) BridgeCommand.SubscribeTouchExploration else null
   "systemBars" -> systemBarsCommand(method, args)
   "keepAlive" -> keepAliveCommand(method, args)
   "replyNotifications" -> replyNotificationsCommand(method, args)
@@ -278,6 +280,11 @@ fun imeSpacePx(imeBottom: Int, barsBottom: Int): Int = maxOf(0, imeBottom - bars
 fun encodeImeEvent(visible: Boolean, heightDp: Double): String {
   val finite = if (heightDp.isFinite() && heightDp > 0.0) heightDp else 0.0
   return "{\"event\":\"ime\",\"visible\":${visible && finite > 0.0},\"height\":$finite}"
+}
+
+// The touch-exploration (TalkBack) state pushed to the page.
+fun encodeTouchExplorationEvent(enabled: Boolean): String {
+  return "{\"event\":\"touchExploration\",\"enabled\":$enabled}"
 }
 
 // takeJson is the JSON array the take produced, embedded as it is. through is the highest batch

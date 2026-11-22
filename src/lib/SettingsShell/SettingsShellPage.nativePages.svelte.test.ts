@@ -105,11 +105,19 @@ vi.mock('../Setting/Pages/PromptSettings.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/Module/ModuleSettings.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/HotkeySettings.svelte', () => ({ default: () => {} }))
 vi.mock('../Others/PluginDefinedIcon.svelte', () => ({ default: () => {} }))
+vi.mock('./ConnectionsShellPage.svelte', () => ({
+    default: (anchor: Comment) => {
+        const marker = document.createElement('div')
+        marker.dataset.part = 'connections-page-stub'
+        anchor.before(marker)
+    },
+}))
 
 //#endregion
 
 import { setDatabase, type Database } from 'src/ts/storage/database.svelte'
 import { DBState } from 'src/ts/stores.svelte'
+import { language } from 'src/lang'
 import SettingsShellPage from './SettingsShellPage.svelte'
 
 const mounted: Array<ReturnType<typeof mount>> = []
@@ -186,5 +194,26 @@ describe('reveal on the native pages', () => {
         await settle()
         expect(await page.reveal('display.lineHeight')).not.toBeNull()
         expect(await page.reveal('acc.sendWithEnter')).toBeNull()
+    })
+})
+
+describe('T22 the Connections page', () => {
+    test.each([18, 19])('index %i renders the Connections page', async (index) => {
+        show(index)
+        await settle()
+        expect(document.querySelectorAll('[data-part="connections-page-stub"]')).toHaveLength(1)
+    })
+
+    test('index 19 sits under the Models heading as the Connections chip', async () => {
+        show(19)
+        await settle()
+        expect(document.querySelector('[data-part="settings-page-heading"]')?.textContent).toBe(language.settingsShellPageModels)
+        expect(document.querySelectorAll('[data-view="modelsConnections"]')).toHaveLength(1)
+    })
+
+    test('index 1 renders no Connections page', async () => {
+        show(1)
+        await settle()
+        expect(document.querySelectorAll('[data-part="connections-page-stub"]')).toHaveLength(0)
     })
 })

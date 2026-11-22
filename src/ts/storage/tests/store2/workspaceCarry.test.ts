@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, test } from 'vitest'
 import {
-    assembleDatabase, CodecInputError, planScopedEncode, previousFrom, unitsToWrite,
+    assembleDatabase, CodecInputError, createStreamedEncode, planScopedEncode, previousFrom, unitsToWrite,
     type EncodedTree, type EncodeScope, type PreviousEncoding, type ReusableUnit, type ScopedPlan,
 } from '../../store2/codec'
 import { createKeyMint, type BuildContext } from '../../store2/commit'
@@ -136,5 +136,40 @@ describe('T3b workspace files without text', () => {
         expect(second.plan.skippedItems).toEqual([])
         expect(unitOf(second.tree, 'wsf:w1:f1').reused).toBe(true)
         expect(unitOf(second.tree, 'wsf:w1:f2').reused).toBe(true)
+    })
+})
+
+describe('T3b a file without text that names its stored unit by its own ref (the import)', () => {
+    async function placeholderOf(ref: unknown): Promise<{ plan: ScopedPlan, record: WorkspaceRecord | undefined }> {
+        const r = rig()
+        const first = await acknowledged(r, dbWith(TWO()))
+        const stored = (ref === 'stored' ? recordOf(first).files[1].ref : ref) as unknown
+        const live = dbWith([file('f1', 'AGENTS.md', 'rules'), { ...file('f2', 'notes/a.md', undefined), ref: stored }])
+        const plan = await planScopedEncode(live, { env: seededEnv(300), lists: fakeLists, seq: 2, createdAt: NOW }, NO_SKIP)
+        const context: BuildContext = { mint: createKeyMint(testEnv(createClock(), 9500), null).mint, seq: 2, now: NOW }
+        const tree = plan.finalize(context)
+        return { plan, record: tree.index.units.has('wsf:w1:f2') ? recordOf(tree, first) : undefined }
+    }
+
+    test('N: the whole plan carries the stored unit, keeps its Ref in the record and counts it as carried', async () => {
+        const { plan, record } = await placeholderOf('stored')
+        expect(record?.files.map(entry => entry.id)).toEqual(['f1', 'f2'])
+        expect(plan.carried.units).toBeGreaterThanOrEqual(1)
+    })
+
+    test('N: the streamed encode counts the carried unit in `reused`, so the import commit names the base it carried from', async () => {
+        const r = rig()
+        const first = await acknowledged(r, dbWith(TWO()))
+        const ref = recordOf(first).files[1].ref
+        const live = dbWith([file('f1', 'AGENTS.md', 'rules'), { ...file('f2', 'notes/a.md', undefined), ref }])
+        const encode = createStreamedEncode(seededEnv(301), fakeLists)
+        const root = { ...live, characters: [] } as unknown as Database
+        const finished = await encode.finish(root)
+        expect(finished.reused).toBe(1)
+    })
+
+    test('G: a ref that is not a well-formed unit Ref carries nothing: the pass fails as for a file with no stored unit', async () => {
+        await expect(placeholderOf(['not a key', 1, 2])).rejects.toBeInstanceOf(CodecInputError)
+        await expect(placeholderOf('nonsense')).rejects.toBeInstanceOf(CodecInputError)
     })
 })

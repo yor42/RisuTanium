@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import type { Database } from '../../database.svelte'
 import { createMemoryBackend, type MemoryBackend } from '../../store2/backend'
-import { assembleDatabase, CodecAssembleError, previousFrom, type EncodedTree } from '../../store2/codec'
+import { assembleDatabase, CodecAssembleError, isWrittenUnit, previousFrom, type EncodedTree } from '../../store2/codec'
 import { encodeUnit, FRAME_HEADER_BYTES, keyOfRef, readUnit, refOfFrame, UNIT_TYPE, type Manifest, type WorkspaceRecord } from '../../store2/format'
 import { previousOfTree, type StoredTree } from '../../store2/previousOfTree'
 import { readTreeBytes } from '../../store2/treeBytes'
@@ -195,14 +195,30 @@ describe('T3 boot: a record whose ids cannot name a unit is refused', () => {
     })
 })
 
-describe('T3 boot: a damaged workspace unit is a fixed-unit finding', () => {
+describe('T3 boot: a damaged workspace record is a fixed-unit finding, a damaged file a flagged leaf', () => {
     const DAMAGES: { name: string, apply: (bytes: Uint8Array) => Uint8Array | null }[] = [
         { name: 'missing', apply: () => null },
         { name: 'a flipped payload byte', apply: bytes => flipped(bytes, FRAME_HEADER_BYTES + 1) },
         { name: 'a changed stored checksum', apply: bytes => flipped(bytes, bytes.length - 1) },
     ]
 
-    for (const identity of ['ws:w1', 'wsf:w1:f2', 'wsf:w2:f3']) {
+    for (const identity of ['wsf:w1:f2', 'wsf:w2:f3']) {
+        for (const damage of DAMAGES) {
+            test(`N: ${identity} ${damage.name} is a flagged workspace-file leaf with the workspace and path, and the read is ok`, async () => {
+                const world = await seedWorld()
+                const key = keyOfIdentity(world, identity)
+                world.memory.poke(key, damage.apply(world.memory.snapshot().get(key) as Uint8Array))
+                const read = await readTreeBytes(world.memory, world.manifestKey)
+                expect(read.status).toBe('ok')
+                if (read.status === 'ok') {
+                    const [wsId, path] = identity === 'wsf:w1:f2' ? ['w1', 'notes/a.md'] : ['w2', 'x.txt']
+                    expect(read.flagged).toEqual([{ kind: 'workspace-file', wsId, path, key, why: damage.name === 'missing' ? 'missing' : 'damaged' }])
+                }
+            })
+        }
+    }
+
+    for (const identity of ['ws:w1']) {
         for (const damage of DAMAGES) {
             test(`N: ${identity} ${damage.name} makes the read structure and names the key`, async () => {
                 const world = await seedWorld()
@@ -241,5 +257,81 @@ describe('T3 boot: a damaged workspace unit is a fixed-unit finding', () => {
         const read = await readTreeBytes(world.memory, world.manifestKey)
         expect(read.status).toBe('ok')
         expect(read.status === 'ok' && read.flagged).toEqual([])
+    })
+})
+
+describe('T3c boot: a workspace record\'s unknown top-level fields are carried to the next record', () => {
+    const FUTURE = { note: 'from a newer build', nested: { n: 1 } }
+
+    /** The stored tree whose record of `w1` also holds `extra` at the top level. */
+    function withExtras(world: World, extra: object): StoredTree {
+        const key = keyOfIdentity(world, 'ws:w1')
+        const record = readUnit(world.stored.source.get(key) as Uint8Array, UNIT_TYPE.workspace)
+        if (record.status !== 'ok') {
+            throw new Error('The record does not read.')
+        }
+        const bytes = encodeUnit(UNIT_TYPE.workspace, { ...extra, ...record.value.body } as WorkspaceRecord)
+        const manifest: Manifest = JSON.parse(JSON.stringify(world.stored.manifest))
+        manifest.fixed.workspaces = (manifest.fixed.workspaces ?? []).map(ref => keyOfRef(ref) === key ? refOfFrame(key, bytes) : ref)
+        return { ...world.stored, manifest, source: { get: (name: string) => name === key ? bytes : world.stored.source.get(name) } }
+    }
+
+    function recordWritten(tree: EncodedTree, identity: string): Obj {
+        const unit = tree.units.find(candidate => candidate.identity === identity)
+        const read = unit === undefined || !isWrittenUnit(unit) ? undefined : readUnit(unit.bytes, UNIT_TYPE.workspace)
+        if (read === undefined || read.status !== 'ok') {
+            throw new Error(`No readable ${identity} record in the tree.`)
+        }
+        return read.value.body as unknown as Obj
+    }
+
+    function edited(world: World, stored: StoredTree): Database {
+        const assembled = assembleDatabase(stored.manifest, stored.source) as unknown as { utilityWorkspaces: { files: Obj[] }[] }
+        assembled.utilityWorkspaces[0].files[1].text = 'edited'
+        return assembled as unknown as Database
+    }
+
+    test('N: the boot previous holds the extras by workspace id, and none for a record without any', async () => {
+        const world = await seedWorld()
+        const previous = previousOfTree(withExtras(world, FUTURE))
+        expect([...(previous.objects?.workspaces ?? new Map()).keys()]).toEqual(['w1'])
+        expect(previous.objects?.workspaces?.get('w1')).toEqual(FUTURE)
+        expect(previousOfTree(world.stored).objects?.workspaces).toBeUndefined()
+    })
+
+    test('N: the record the next pass writes keeps the extras (boot path), and the other workspace gets none', async () => {
+        const world = await seedWorld()
+        const stored = withExtras(world, FUTURE)
+        const next = encodeWith(edited(world, stored), { previous: previousOfTree(stored), seq: 2, env: seededEnv(2) })
+        expect(recordWritten(next, 'ws:w1')).toMatchObject({ v: 1, ...FUTURE })
+        expect([...(previousFrom(next).objects?.workspaces ?? new Map()).keys()]).toEqual(['w1'])
+        expect(previousFrom(next).objects?.workspaces?.get('w1')).toEqual(FUTURE)
+    })
+
+    test('N: an extra named like a known field never overwrites it', async () => {
+        const world = await seedWorld()
+        const previous = previousOfTree(world.stored)
+        previous.objects = { ...previous.objects, workspaces: new Map([['w1', { ...FUTURE, v: 99, ws: { id: 'x' }, files: [] }]]) }
+        const assembled = assembleDatabase(world.stored.manifest, world.stored.source) as unknown as { utilityWorkspaces: { files: Obj[] }[] }
+        assembled.utilityWorkspaces[0].files[1].text = 'edited'
+        const next = encodeWith(assembled as unknown as Database, { previous, seq: 2, env: seededEnv(2) })
+        const record = recordWritten(next, 'ws:w1')
+        expect(record.v).toBe(1)
+        expect((record.ws as Obj).id).toBe('w1')
+        expect((record.files as unknown[]).length).toBe(2)
+        expect(record.note).toBe(FUTURE.note)
+    })
+
+    test('N: a deleted workspace\'s extras do not come back when a workspace of that id is added again', async () => {
+        const world = await seedWorld()
+        const stored = withExtras(world, FUTURE)
+        const fresh = JSON.parse(JSON.stringify(assembleDatabase(stored.manifest, stored.source))) as { utilityWorkspaces: Obj[] }
+        const w1 = fresh.utilityWorkspaces[0]
+        fresh.utilityWorkspaces = fresh.utilityWorkspaces.slice(1)
+        const without = encodeWith(fresh as unknown as Database, { previous: previousOfTree(stored), seq: 2, env: seededEnv(2) })
+        expect(previousFrom(without).objects?.workspaces?.has('w1') ?? false).toBe(false)
+        fresh.utilityWorkspaces = [w1, ...fresh.utilityWorkspaces]
+        const again = encodeWith(fresh as unknown as Database, { previous: previousFrom(without), seq: 3, env: seededEnv(3) })
+        expect(Object.keys(recordWritten(again, 'ws:w1')).sort()).toEqual(['files', 'v', 'ws'])
     })
 })

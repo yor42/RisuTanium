@@ -314,6 +314,28 @@ class BridgeScopeTest {
   }
 
   @Test
+  fun theTouchExplorationSubscribeTakesNoArguments() {
+    assertSame(BridgeCommand.SubscribeTouchExploration, toCommand("accessibility", "subscribe", emptyList(), null))
+    assertNull(toCommand("accessibility", "subscribe", listOf(true), null))
+    assertNull(toCommand("accessibility", "subscribe", listOf(null), null))
+    assertNull(toCommand("accessibility", "touchExploration", emptyList(), null))
+  }
+
+  @Test
+  fun theTouchExplorationEventHasTheAgreedShape() {
+    assertEquals("{\"event\":\"touchExploration\",\"enabled\":true}", encodeTouchExplorationEvent(true))
+    assertEquals("{\"event\":\"touchExploration\",\"enabled\":false}", encodeTouchExplorationEvent(false))
+  }
+
+  @Test
+  fun theTouchExplorationHolderStartsOffAndFollowsTheSystem() {
+    val holder = TouchExplorationHolder()
+    assertFalse(holder.enabled)
+    holder.enabled = true
+    assertTrue(holder.enabled)
+  }
+
+  @Test
   fun theTakeReplyEmbedsTheResultAndCarriesTheSequence() {
     val result = "[[{\"uri\":\"content://x/1\",\"name\":\"a.charx\"}]]"
     assertEquals(

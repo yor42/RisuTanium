@@ -15,6 +15,7 @@ import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import android.view.accessibility.AccessibilityManager
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -39,6 +40,10 @@ class MainActivity : TauriActivity() {
   private val mainHandler = Handler(Looper.getMainLooper())
   private val gestureInsets = GestureInsetHolder()
   private val imeState = ImeStateHolder()
+  private val touchExploration = TouchExplorationHolder()
+
+  // The accessibility listener while it is registered; the manager holds it, so onDestroy removes it.
+  private var touchExplorationListener: AccessibilityManager.TouchExplorationStateChangeListener? = null
   private var lastBarColor = DEFAULT_BAR_COLOR
 
   // The message channel's handler while the channel is in use; main thread only.
@@ -183,6 +188,7 @@ class MainActivity : TauriActivity() {
     window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     onBackPressedDispatcher.addCallback(this, backCallback)
     NativeReplyNotices.install(applicationContext)
+    watchTouchExploration()
 
     // The content frame is the WebView's parent (wry sets the WebView as the content view), so
     // padding it moves and shrinks the page clear of the status bar, the navigation bar and a
@@ -271,6 +277,7 @@ class MainActivity : TauriActivity() {
         APP_ORIGIN,
         gestureInsets,
         imeState,
+        touchExploration,
         SystemBarsBridge(::requestBarColor),
         KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce, ::answerOpenTarget),
         newReplyNotificationsBridge(),
@@ -361,6 +368,7 @@ class MainActivity : TauriActivity() {
   private fun addSeparateHostObjects(webView: WebView) {
     webView.addJavascriptInterface(GestureInsetBridge(gestureInsets), "__risuTaniumGestureInset")
     webView.addJavascriptInterface(ImeBridge(imeState), "__risuTaniumIme")
+    webView.addJavascriptInterface(AccessibilityBridge(touchExploration), "__risuTaniumAccessibility")
     webView.addJavascriptInterface(SystemBarsBridge(::requestBarColor), "__risuTaniumSystemBars")
     webView.addJavascriptInterface(
       KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce, ::answerOpenTarget),
@@ -378,11 +386,41 @@ class MainActivity : TauriActivity() {
     ::openAppNotificationSettings
   )
 
+  // The initial touch-exploration (TalkBack) state, and a listener that keeps the holder and the
+  // page current. A manager that is missing or throws leaves it false, so sounds are never muted
+  // by a failed read.
+  private fun watchTouchExploration() {
+    try {
+      val manager = getSystemService(AccessibilityManager::class.java) ?: return
+      touchExploration.enabled = manager.isTouchExplorationEnabled
+      val listener = AccessibilityManager.TouchExplorationStateChangeListener { enabled ->
+        touchExploration.enabled = enabled
+        hostListener?.pushTouchExploration(enabled)
+      }
+      manager.addTouchExplorationStateChangeListener(listener)
+      touchExplorationListener = listener
+    } catch (error: Exception) {
+      Log.w("MainActivity", "touch exploration state unavailable", error)
+    }
+  }
+
+  private fun rereadTouchExploration() {
+    try {
+      val manager = getSystemService(AccessibilityManager::class.java) ?: return
+      val enabled = manager.isTouchExplorationEnabled
+      touchExploration.enabled = enabled
+      hostListener?.pushTouchExploration(enabled)
+    } catch (error: Exception) {
+      Log.w("MainActivity", "touch exploration state unreadable", error)
+    }
+  }
+
   // The real state is read again on every resume: the user may have changed the system settings
   // while the app was away.
   override fun onResume() {
     super.onResume()
     pushReplyNotificationsState()
+    rereadTouchExploration()
     AppUpdateService.shared.resumed()
   }
 
@@ -466,6 +504,14 @@ class MainActivity : TauriActivity() {
   override fun onDestroy() {
     AppUpdateService.shared.detach(updateLaunchers)
     barGate.dispose()
+    touchExplorationListener?.let { listener ->
+      try {
+        getSystemService(AccessibilityManager::class.java)?.removeTouchExplorationStateChangeListener(listener)
+      } catch (error: Exception) {
+        Log.w("MainActivity", "touch exploration listener not removed", error)
+      }
+    }
+    touchExplorationListener = null
     KeepAliveService.stop(applicationContext)
     super.onDestroy()
   }

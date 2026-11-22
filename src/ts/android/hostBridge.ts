@@ -81,6 +81,7 @@ let bound: HostChannel | null = null
 let detachBound: (() => void) | null = null
 let cachedInset = 0
 let cachedIme: ImeState | null = null
+let cachedTouchExploration: boolean | null = null
 const imeListeners = new Set<(state: ImeState) => void>()
 let nextCallId = initialCallId()
 let pending: PendingCall[] = []
@@ -185,6 +186,12 @@ function onHostMessage(event: HostMessageEvent): void {
         }
         return
     }
+    if (reply.event === 'touchExploration') {
+        if (typeof reply.enabled === 'boolean') {
+            cachedTouchExploration = reply.enabled
+        }
+        return
+    }
     if (typeof reply.id !== 'number') {
         return
     }
@@ -227,6 +234,7 @@ function release(): void {
     detachBound = null
     cachedInset = 0
     cachedIme = null
+    cachedTouchExploration = null
     for (const entry of stale) {
         entry.settle(null)
     }
@@ -250,6 +258,7 @@ function bind(): HostChannel | null {
             detachBound = attach(channel)
             cachedInset = 0
             cachedIme = null
+            cachedTouchExploration = null
             try {
                 send(channel, { bridge: 'gestureInset', method: 'subscribe', args: [] })
             } catch {
@@ -259,6 +268,11 @@ function bind(): HostChannel | null {
                 send(channel, { bridge: 'ime', method: 'subscribe', args: [] })
             } catch {
                 // The keyboard state stays unknown until the host pushes one.
+            }
+            try {
+                send(channel, { bridge: 'accessibility', method: 'subscribe', args: [] })
+            } catch {
+                // Touch exploration stays unknown (never muted) until the host pushes one.
             }
         }
         return channel
@@ -449,6 +463,29 @@ export function hostIme(): HostIme | null {
                 target.removeEventListener('resize', onResize)
             }
         },
+    }
+}
+
+/**
+ * Whether Android touch exploration (TalkBack) is on: over the channel the last pushed value, null
+ * before the host's first push; otherwise the separate object's answer when it is a boolean. Null
+ * means unknown (no host), and the caller then treats it as off.
+ */
+export function hostTouchExploration(): boolean | null {
+    const channel = bind()
+    if (channel) {
+        return cachedTouchExploration
+    }
+    const legacy = window.__risuTaniumAccessibility
+    if (!legacy || typeof legacy.touchExploration !== 'function') {
+        return null
+    }
+    try {
+        // Called as a method: the host bridge object needs its receiver.
+        const enabled: unknown = legacy.touchExploration()
+        return typeof enabled === 'boolean' ? enabled : null
+    } catch {
+        return null
     }
 }
 
