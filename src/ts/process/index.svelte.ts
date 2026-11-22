@@ -62,6 +62,7 @@ import { hasModuleStubs } from "./moduleRefList";
 import { getSaveMarkCount, readImage } from "../globalApi.svelte";
 import { issueNativeReplyGrant, nativeReplyEligible } from "../nativeReply/grant";
 import { holdRecoveredReply, noteReplyPushed, ownsPushedReply, requestReconcile, settleNativeReplyInflight, takeAnnounced } from "../nativeReply/pageState";
+import { endOwnedRead, forgetOwnedStream, settleOwnedStreamEnd } from "../nativeReply/ownedStream";
 import type { ApplyOutcome, RecoveredReplyInput, RecoveredStreamInput } from "../nativeReply/reconcile";
 import { settleRecoveredUsage } from "../usage/usageCapture";
 import { pluginV2 } from "../plugins/plugins.svelte";
@@ -494,8 +495,25 @@ function settleReplyKeys(signal: AbortSignal): void {
     }
     replyKeysOfUnit.delete(signal)
     for(const key of keys){
+        forgetOwnedStream(key)
         settleNativeReplyInflight(key).catch((error) => console.error(error))
     }
+}
+
+/**
+ * Whether a send's unit already owns this chat, so a recovered reply cannot be placed now. Today the flag is global; the
+ * per-chat unit check replaces this body in one place.
+ */
+function recoveredApplyBlocked(origin: Origin): boolean {
+    void origin
+    return get(doingChat)
+}
+
+/** Records that a recovered reply waited for a unit: the send's end asks the reconcile to run again. */
+function deferRecoveredApply(origin: Origin): 'deferred' {
+    void origin
+    recoveredApplyDeferred = true
+    return 'deferred'
 }
 
 /** After the unit released the flag: a recovered reply that waited for it is placed by a new reconcile pass. */
@@ -518,11 +536,10 @@ function rerunDeferredApply(): void {
  */
 export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<ApplyOutcome> {
     const { key, blob, text } = input
-    if(get(doingChat)){
-        recoveredApplyDeferred = true
-        return 'deferred'
-    }
     const origin: Origin = { chaId: blob.target.chaId, chatId: blob.target.chatId }
+    if(recoveredApplyBlocked(origin)){
+        return deferRecoveredApply(origin)
+    }
     const subject = createSendSubject(origin)
     const entryCtx = subject.resolve()
     if(!entryCtx || entryCtx.owner.type !== 'character'){
@@ -621,11 +638,10 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
  */
 export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Promise<ApplyOutcome> {
     const { key, blob, modelText, complete, meter, how } = input
-    if(get(doingChat)){
-        recoveredApplyDeferred = true
-        return 'deferred'
-    }
     const origin: Origin = { chaId: blob.target.chaId, chatId: blob.target.chatId }
+    if(recoveredApplyBlocked(origin)){
+        return deferRecoveredApply(origin)
+    }
     const subject = createSendSubject(origin)
     const entryCtx = subject.resolve()
     if(!entryCtx || entryCtx.owner.type !== 'character'){
@@ -2674,7 +2690,6 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     let nativeReplyGrant: ReturnType<typeof issueNativeReplyGrant> | undefined = undefined
     if(nativeReplyEligible({
         androidTransport: isAndroidTransport(),
-        streaming: DBState.db.useStreaming,
         singleCharacter: nowChatroom.type === 'character',
         isContinue: arg.continue === true,
         isPreview: arg.preview === true,
@@ -2755,6 +2770,10 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         const reader = req.result.getReader()
         const streamCtx = subject.resolve()
         if(!streamCtx){
+            // The reader's cancel never reaches the native request, so it is ended here.
+            if(nativeReplyGrant){
+                endOwnedRead(generationId)
+            }
             void reader.cancel().catch(() => {})
             return endGone()
         }
@@ -2996,6 +3015,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 const endedReply = streamsIntoReply ? resolveReply() : null
                 if(endedReply){
                     delete endedReply.ctx.chat.message[endedReply.index].interrupted
+                }
+                // After `delete interrupted`: the mark and the waiter's target follow it, so the commit that covers the
+                // target holds the settled reply. Before the hidden flush below, whose save then covers the mark.
+                if(nativeReplyGrant){
+                    settleOwnedStreamEnd(generationId, endedReply ? { chaId: origin.chaId, saveMarkCount: getSaveMarkCount } : null)
                 }
                 const streamEndCtx = subject.resolve()
                 if(streamEndCtx){

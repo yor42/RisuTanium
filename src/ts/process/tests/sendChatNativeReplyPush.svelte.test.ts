@@ -364,7 +364,7 @@ describe('sendChat: the live push of an owned send', () => {
         expect(noteReplyPushed).not.toHaveBeenCalled()
     })
 
-    test('a streaming send on Android is ineligible and never notes a push', async () => {
+    test('a streaming send on Android never notes the non-stream push', async () => {
         await sendOnce({ android: true, useStreaming: true })
         expect(noteReplyPushed).not.toHaveBeenCalled()
     })

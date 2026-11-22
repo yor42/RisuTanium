@@ -1,7 +1,7 @@
-import { encodeReplyBlob, REPLY_BLOB_PAGE_VERSION, type ReplyBlobBase } from './blob'
+import { encodeReplyBlob, encodeStreamReplyBlob, REPLY_BLOB_PAGE_VERSION, type ReplyBlobBase } from './blob'
 import { newNoticeToken } from './notice'
 import { holdInflight, noteBound } from './pageState'
-import type { OpenAIParseContext } from '../process/request/openAI/chatBodyParse'
+import type { OpenAIParseContext, OpenAIStreamParseContext } from '../process/request/openAI/chatBodyParse'
 
 /**
  * The right to own one reply's record. A send that qualifies is issued a grant; the request that is allowed to use it
@@ -13,7 +13,6 @@ import type { OpenAIParseContext } from '../process/request/openAI/chatBodyParse
 /** What the send knows when it asks for ownership; every one of these must hold. */
 export interface NativeReplyFacts {
     androidTransport: boolean
-    streaming: boolean
     /** The owner is a single character: a group chat never owns. */
     singleCharacter: boolean
     isContinue: boolean
@@ -23,11 +22,16 @@ export interface NativeReplyFacts {
 
 export function nativeReplyEligible(facts: NativeReplyFacts): boolean {
     return facts.androidTransport
-        && !facts.streaming
         && facts.singleCharacter
         && !facts.isContinue
         && !facts.isPreview
         && !facts.isPromptPreview
+}
+
+/** The usage context a stream request binds; the estimate is the send's own and may be missing, which refuses the bind. */
+export interface StreamUsageFacts {
+    modelKey: string
+    inputEstimate: number | undefined
 }
 
 /** What `streamed_fetch` receives as `replyOwner`. */
@@ -65,13 +69,43 @@ export class NativeReplyGrant {
 
     /** Binds once; null when the grant was bound before or the blob cannot be built. */
     static bind(grant: NativeReplyGrant, parse: OpenAIParseContext): NativeReplyOwner | null {
+        return NativeReplyGrant.#bindWith(grant, null, (base) => encodeReplyBlob(base, parse))
+    }
+
+    /**
+     * Binds once, and only for the request of `expectedKey`: another reply's request leaves the grant unbound and still
+     * usable by its own. Null also when the grant was bound before or the stream blob cannot be built.
+     */
+    static bindStream(
+        grant: NativeReplyGrant,
+        expectedKey: string,
+        parse: OpenAIStreamParseContext,
+        usage: StreamUsageFacts,
+    ): NativeReplyOwner | null {
+        return NativeReplyGrant.#bindWith(grant, expectedKey, (base) => {
+            if (usage.inputEstimate === undefined) {
+                throw new Error('the stream reply has no input estimate')
+            }
+            return encodeStreamReplyBlob(base, parse, { modelKey: usage.modelKey, inputEstimate: usage.inputEstimate })
+        })
+    }
+
+    /** The order is the contract: a bound grant, then a foreign key (grant left unbound), then the burn and the encode. */
+    static #bindWith(
+        grant: NativeReplyGrant,
+        expectedKey: string | null,
+        encode: (base: ReplyBlobBase) => string,
+    ): NativeReplyOwner | null {
         if (grant.#bound) {
+            return null
+        }
+        if (expectedKey !== null && expectedKey !== grant.#key) {
             return null
         }
         grant.#bound = true
         let blob: string
         try {
-            blob = encodeReplyBlob(grant.#base, parse)
+            blob = encode(grant.#base)
         } catch (error) {
             console.error(error)
             return null
@@ -109,6 +143,22 @@ export function bindGrant(grant: unknown, parse: OpenAIParseContext): NativeRepl
         return null
     }
     return NativeReplyGrant.bind(grant, parse)
+}
+
+/**
+ * Binds a grant to the stream request of the reply `expectedKey`; null for no grant, a lookalike, a second bind, a grant
+ * of another reply or a blob that cannot be built (a usage context that is not a model key and a finite input estimate).
+ */
+export function bindStreamGrant(
+    grant: unknown,
+    expectedKey: string | undefined,
+    parse: OpenAIStreamParseContext,
+    usage: StreamUsageFacts,
+): NativeReplyOwner | null {
+    if (!NativeReplyGrant.is(grant) || expectedKey === undefined) {
+        return null
+    }
+    return NativeReplyGrant.bindStream(grant, expectedKey, parse, usage)
 }
 
 /** What the native invoke carries, once: a second take, a lookalike and an unbound owner give null. */
