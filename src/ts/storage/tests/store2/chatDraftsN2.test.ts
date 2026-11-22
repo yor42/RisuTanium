@@ -2,7 +2,10 @@
 import { describe, expect, test } from 'vitest'
 import type { Database } from '../../database.svelte'
 import type { EncodedTree } from '../../store2/codec'
-import { asDatabase, buildSmall, encodeWith, unitOf, type Obj } from './codecFixtures'
+import { unitsToWrite } from '../../store2/codec'
+import { previousOfTree } from '../../store2/previousOfTree'
+import { createSaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
+import { asDatabase, buildSmall, encodeWith, fakeLists, seededEnv, unitOf, type Obj } from './codecFixtures'
 
 /**
  * N2 (#272): the draft unit at the 200-draft cap, 3 KB of text each, encoded through the real codec. The plan's bound
@@ -69,5 +72,32 @@ describe('N2: the draft unit at the cap', () => {
         const without = medianMs(() => encodeWith(profile()))
         const withCap = medianMs(() => encodeWith(withDrafts))
         console.log(`N2 chatDrafts unit: ${unit.bytes.length} bytes for ${DRAFTS} drafts x ${TEXT_BYTES} chars; encode median ${withCap.toFixed(1)} ms with, ${without.toFixed(1)} ms without (difference ${(withCap - without).toFixed(1)} ms, this host)`)
+    })
+})
+
+describe('N2: an unchanged plan over an encoder booted on the stored tree', () => {
+    const REQUEST: SavePassRequest = { marked: new Set(), modules: false, whole: false }
+
+    /** The first plan after boot, and the median of the seven that follow; none is acknowledged and every one is unchanged. */
+    async function planTimes(db: Database): Promise<{ first: number, median: number }> {
+        const tree = encodeWith(db)
+        const bytes = new Map(unitsToWrite(tree).map(unit => [unit.key, unit.bytes]))
+        const previous = previousOfTree({ manifestKey: tree.manifestKey, manifest: tree.manifest, source: { get: key => bytes.get(key) } })
+        const encoder = createSaveEncoder({ previous, lists: fakeLists, env: seededEnv(78), now: () => NOW })
+        const times: number[] = []
+        for (let i = 0; i < 8; i++) {
+            const start = performance.now()
+            const plan = await encoder.plan(db, REQUEST)
+            times.push(performance.now() - start)
+            expect(plan.unchanged).toBe(true)
+        }
+        const rest = times.slice(1).sort((a, b) => a - b)
+        return { first: times[0], median: rest[3] }
+    }
+
+    test('at the cap every plan after boot is unchanged; the first and the later plan times are recorded, not asserted', async () => {
+        const withCap = await planTimes(profile(cappedDrafts()))
+        const without = await planTimes(profile())
+        console.log(`N2 unchanged plan: first ${withCap.first.toFixed(1)} ms with, ${without.first.toFixed(1)} ms without (difference ${(withCap.first - without.first).toFixed(1)} ms); later median ${withCap.median.toFixed(1)} ms with, ${without.median.toFixed(1)} ms without (difference ${(withCap.median - without.median).toFixed(1)} ms, this host)`)
     })
 })

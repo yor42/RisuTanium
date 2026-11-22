@@ -290,8 +290,9 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from '../index.svelte'
+import { sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -484,7 +485,7 @@ beforeEach(() => {
     isLastCharPunctuationMock.mockReset()
     isLastCharPunctuationMock.mockReturnValue(true)
     chatOutputListeners.clear()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

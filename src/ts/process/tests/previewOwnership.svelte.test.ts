@@ -194,10 +194,12 @@ import { runPreviewPrompt } from 'src/ts/process/devToolActions'
 import { send, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { doingChat, sendChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore, sendChat } from 'src/ts/process/index.svelte'
 import { alertMd, alertWait } from 'src/ts/alert'
 import { changeChar } from 'src/ts/characters'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures
 

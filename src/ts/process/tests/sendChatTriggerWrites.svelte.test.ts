@@ -292,6 +292,7 @@ vi.mock(import('../command'), () => ({
 
 import { sendChat, doingChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -420,7 +421,7 @@ beforeEach(() => {
     requestChatDataMock.mockReset()
     alertInputMock.mockReset()
     alertInputMock.mockImplementation(async () => '')
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 //#endregion

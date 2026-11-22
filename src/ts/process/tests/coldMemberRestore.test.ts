@@ -62,9 +62,11 @@ vi.mock(import('../index.svelte'), () => ({
 import { restoreColdCharacterByChaId } from '../coldMemberRestore'
 import { buildColdStub } from './coldStubFixture'
 import { restoreColdCharacter } from '../coldCharacterRestore'
-import { doingChat } from '../index.svelte'
+import { doingChat as doingChatStore } from '../index.svelte'
 import { DBState } from '../../stores.svelte'
 import { language } from '../../../lang'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 type CharacterFixture = Database['characters'][number]
 

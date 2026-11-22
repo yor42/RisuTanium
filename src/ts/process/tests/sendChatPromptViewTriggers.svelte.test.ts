@@ -38,6 +38,7 @@ import type { WorkHandle } from '../chatOrigin'
 // `src/main.ts` does (`import "./ts/polyfill"`): the setup file's stand-in
 // throws on `undefined`, which the script pass clones.
 import '../../polyfill'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region module mocks
 
@@ -306,7 +307,6 @@ interface RequestBody {
 }
 
 let sendChat: typeof import('../index.svelte').sendChat
-let doingChat: typeof import('../index.svelte').doingChat
 let beginWork: typeof import('../chatOrigin').beginWork
 let resetScriptCache: typeof import('../scripts').resetScriptCache
 let refreshModules: typeof import('../modules').refreshModules
@@ -319,7 +319,6 @@ beforeAll(async () => {
 
     const index = await import('../index.svelte')
     sendChat = index.sendChat
-    doingChat = index.doingChat
     beginWork = (await import('../chatOrigin')).beginWork
     resetScriptCache = (await import('../scripts')).resetScriptCache
     refreshModules = (await import('../modules')).refreshModules
@@ -333,7 +332,7 @@ beforeEach(() => {
     h.queries.length = 0
     h.searchResult = []
     h.onAddInfo = null
-    doingChat.set(false)
+    clearRunningSends()
     resetScriptCache()
     refreshModules()
 })

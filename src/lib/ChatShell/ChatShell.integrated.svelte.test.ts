@@ -94,8 +94,10 @@ vi.mock('../../lang', () => ({ language: {
 } }))
 
 import ChatShell from './ChatShell.svelte'
-import { doingChat } from '../../ts/process/index.svelte'
+import { doingChat as doingChatStore } from '../../ts/process/index.svelte'
 import { DBState } from '../../ts/stores.svelte'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 let app: ReturnType<typeof ChatShell> | undefined
 let target: HTMLElement

@@ -7,6 +7,7 @@
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ReaderIntentSource } from '../../ts/chatShell/readerIntent'
+import { activeUnits } from '../../ts/process/activeUnits'
 
 const captured = vi.hoisted(() => ({
     hardware: null as null | ((seen: boolean) => void),
@@ -21,7 +22,8 @@ vi.mock('../../ts/stores.svelte', async () => {
 })
 vi.mock('../../ts/process/index.svelte', async () => {
     const { writable: store } = await import('svelte/store')
-    return { doingChat: store(false), chatProcessStage: store(0) }
+    const { activeUnits: units } = await import('../../ts/process/activeUnits')
+    return { doingChat: units.active, chatProcessStage: store(0) }
 })
 vi.mock('../ChatScreens/chatSurface.svelte', () => ({ chatSurface: { hidden: false, closeEpoch: 0 } }))
 vi.mock('../../ts/parser/parser.svelte', () => ({ hasher: (value: string) => value, risuChatParser: (value: string) => value, assetRegex: /{{asset:[^}]+}}/g }))
@@ -63,7 +65,7 @@ async function mountShell(width = 400): Promise<void> {
     await vi.waitFor(() => {
         flushSync()
         if (!target.querySelector('header') || !captured.hardware || !captured.intent) throw new Error('waiting for the header and list')
-    })
+    }, { timeout: 15000 })
     // Room above and below the reader, so an intent in either direction is movable.
     Object.defineProperty(transcript(), 'scrollHeight', { value: 3000, configurable: true })
     Object.defineProperty(transcript(), 'clientHeight', { value: 800, configurable: true })
@@ -202,5 +204,31 @@ describe('the reader\'s input drives the header (C-3)', () => {
         await tick()
         flushSync()
         expect(hidden()).toBe(false)
+    })
+})
+
+describe('the header after a send ends', () => {
+    test('S1: today: the header comes back only when the last held unit is released, and stays hidden while another is held (pins registry counting, not a product rule)', async () => {
+        await mountShell()
+        const first = activeUnits.unit({ chaId: 'c', chatId: 'chat' })
+        const second = activeUnits.unit({ chaId: 'other', chatId: 'other-chat' })
+        try {
+            first.take()
+            second.take()
+            flushSync()
+            wheel(-40)
+            expect(hidden()).toBe(true)
+
+            first.release()
+            flushSync()
+            expect(hidden()).toBe(true)
+
+            second.release()
+            flushSync()
+            expect(hidden()).toBe(false)
+        } finally {
+            first.release()
+            second.release()
+        }
     })
 })

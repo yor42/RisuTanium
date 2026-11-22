@@ -239,13 +239,14 @@ vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from 'src/ts/process/index.svelte'
+import { sendChat } from 'src/ts/process/index.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
 import { resetActiveStreamsForTest } from 'src/ts/process/activeStreams'
 import { inFlightKinds, resetInFlightForTest, subscribeInFlight } from 'src/ts/process/inFlightWork'
 import { resetHiddenReplySaveGuardForTest } from 'src/ts/process/hiddenReplySaveGuard'
 import { createKeepAliveConsumer, KEEP_ALIVE_LINGER_MS, type KeepAliveConsumer, type KeepAliveHost } from 'src/ts/android/keepAliveService'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -481,7 +482,7 @@ beforeEach(() => {
             interrupted: reply !== undefined && 'interrupted' in reply,
         })
     })
-    doingChat.set(false)
+    clearRunningSends()
     resetActiveStreamsForTest()
     setVisibility('hidden')
 })

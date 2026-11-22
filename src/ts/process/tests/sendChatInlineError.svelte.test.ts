@@ -256,10 +256,11 @@ vi.mock('../coldMemberRestore', () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from '../index.svelte'
+import { sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { hypaMemoryV2 } from '../memory/hypav2'
 import { openMemorySettings } from '../memory/memorySettingsLink'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -424,7 +425,7 @@ beforeEach(() => {
     isLastCharPunctuationMock.mockReturnValue(true)
     chatOutputListeners.clear()
     restoreColdCharacterMock.mockReset()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

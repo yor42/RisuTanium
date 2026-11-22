@@ -196,9 +196,10 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 //#endregion
 
 import { get } from 'svelte/store'
-import { sendChat, doingChat } from '../index.svelte'
+import { sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { latestLoreUse, noteLoreUse } from '../loreUse'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 function installDb(useStreaming: boolean, messages: unknown[]): void {
     DBState.db = {
@@ -273,7 +274,7 @@ function streamOf(text: string): ReadableStream<Record<string, string>> {
 beforeEach(() => {
     noteLoreUse('', [])
     selectedCharID.set(0)
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 describe('sendChat: the lorebook entries of the latest reply', () => {

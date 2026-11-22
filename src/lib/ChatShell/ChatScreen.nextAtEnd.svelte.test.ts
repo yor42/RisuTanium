@@ -227,6 +227,7 @@ import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { siblingsAt } from 'src/ts/process/chatTree'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import { language } from 'src/lang'
+import { clearRunningSends } from '../../ts/process/tests/activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -328,7 +329,7 @@ beforeEach(() => {
     composerDrafts.resetComposerDraftsForTests()
     resetComposerActionsForTests()
     resetLocalDraftsForTest()
-    doingChat.set(false)
+    clearRunningSends()
     localStorage.clear()
     installDb()
 })

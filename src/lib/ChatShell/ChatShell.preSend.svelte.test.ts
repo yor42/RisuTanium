@@ -223,6 +223,7 @@ import { resetSendFailuresForTests } from 'src/ts/chatShell/sendFailure.svelte'
 import { resetSettingsRouteForTests } from 'src/lib/Setting/settingsRoute'
 import { settingsBackClose } from 'src/lib/Setting/settingsBack'
 import { language } from 'src/lang'
+import { clearRunningSends } from '../../ts/process/tests/activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -350,7 +351,7 @@ beforeEach(() => {
     resetSettingsRouteForTests()
     settingsOpen.set(false)
     SettingsMenuIndex.set(-1)
-    doingChat.set(false)
+    clearRunningSends()
     localStorage.clear()
     installDb()
 })

@@ -319,6 +319,7 @@ import { isWriting, originOf, registerWork } from '../chatOrigin'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from '../../storage/characterSaveMarks'
 import { isStopDeletePending, requestStopDelete } from '../../chatShell/stopDelete.svelte'
 import { language } from '../../../lang'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -468,7 +469,7 @@ beforeEach(() => {
     alertNormalMock.mockReset()
     composerDrafts.resetComposerDraftsForTests()
     resetComposerActionsForTests()
-    doingChat.set(false)
+    clearRunningSends()
     installDb()
     installLoggingMarks()
 })
