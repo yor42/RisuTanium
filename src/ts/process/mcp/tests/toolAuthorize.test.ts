@@ -55,6 +55,11 @@ vi.mock('../toolApproval', () => ({
         return await h.answer()
     }),
 }))
+vi.mock('../toolGrants', () => ({
+    hasToolGrant: vi.fn(async () => false),
+    addToolGrant: vi.fn(async () => true),
+    toolGrantsOffered: () => true,
+}))
 vi.mock('../filesystemclient', () => ({
     FileSystemClient: class {
         url = 'internal:fs'

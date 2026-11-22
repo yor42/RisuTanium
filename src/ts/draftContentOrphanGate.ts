@@ -29,7 +29,35 @@ import {
     type DraftContentStore,
     type DraftIdentity,
     type DraftRecord,
+    type MessageIdentity,
 } from './draftContents'
+
+/**
+ * Where the production singleton mirrors an original-message edit that carries `persist`. `chatDraftStore.ts` installs it at
+ * its own load, so this module imports nothing about the database. Only `set` and `delete` of a message identity reach it:
+ * `get`, `clear`, LRU eviction, a base-mismatch prune and every translation identity are never mirrored. `flush` writes
+ * what is pending into the profile and says whether it changed the profile.
+ */
+export interface DraftPersistSink {
+    set(identity: MessageIdentity, text: string, baseData: string, at: number): void
+    delete(identity: MessageIdentity): void
+    flush(): boolean
+}
+
+let persistSink: DraftPersistSink | null = null
+
+export function setDraftPersistSink(sink: DraftPersistSink | null): void {
+    persistSink = sink
+}
+
+/**
+ * Writes the pending unsent message edits into the profile now, through the installed sink. False when no sink is installed:
+ * the draft store loads with the first message editor, so a page that never opened one has nothing pending. Lets the leave
+ * rule and the export and import starts flush without importing the database graph.
+ */
+export function flushPersistedDrafts(): boolean {
+    return persistSink?.flush() ?? false
+}
 
 // An alias for the existing 'other' kind -- NOT a new `DraftKind` union
 // member (§3 commits to leaving `localDrafts`'s shape unchanged). Reusing
@@ -71,7 +99,7 @@ export interface OrphanRegisteringDraftStore extends DraftContentStore {
  */
 export function createOrphanRegisteringDraftStore(
     store: DraftContentStore,
-    deps: { capMs: number }
+    deps: { capMs: number, persist?: () => DraftPersistSink | null }
 ): OrphanRegisteringDraftStore {
     // key -> the time it was last (re-)armed. Only ever holds keys this
     // wrapper itself registered, so `sweepExpiredRegistrations` never
@@ -98,12 +126,29 @@ export function createOrphanRegisteringDraftStore(
         unregisterDraft(key)
     }
 
+    // Mirrors a message edit that may survive a restart. It runs after the wrapped store, and a fault in the sink never
+    // reaches the input handler that called `set` or `delete`.
+    function mirror(identity: DraftIdentity, write: (sink: DraftPersistSink, identity: MessageIdentity) => void): void {
+        if (identity.kind !== 'msg' || identity.persist === undefined) {
+            return
+        }
+        try {
+            const sink = deps.persist?.() ?? null
+            if (sink !== null) {
+                write(sink, identity)
+            }
+        } catch (error) {
+            console.error(error)
+        }
+    }
+
     function set(identity: DraftIdentity, text: string, baseData: string, now: number = Date.now()): void {
         store.set(identity, text, baseData)
         // A create AND an update both re-arm the stamp (§6: "an update
         // re-arms the stamp") -- there is only one code path here, so a
         // second `set` on an existing identity always resets the clock.
         register(identity, now)
+        mirror(identity, (sink, message) => sink.set(message, text, baseData, now))
     }
 
     function get(identity: DraftIdentity, currentBaseData: string): DraftRecord | undefined {
@@ -121,6 +166,7 @@ export function createOrphanRegisteringDraftStore(
     function del(identity: DraftIdentity): void {
         store.delete(identity)
         release(identity)
+        mirror(identity, (sink, message) => sink.delete(message))
     }
 
     function clear(): void {
@@ -156,5 +202,5 @@ export function createOrphanRegisteringDraftStore(
 // by accident.
 export const draftContentOrphanGate = createOrphanRegisteringDraftStore(
     createDraftContentStore({ maxRecords: DRAFT_CONTENT_RECORD_LIMIT }),
-    { capMs: DRAFT_CONTENT_ORPHAN_CAP_MS }
+    { capMs: DRAFT_CONTENT_ORPHAN_CAP_MS, persist: () => persistSink }
 )

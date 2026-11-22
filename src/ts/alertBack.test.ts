@@ -389,12 +389,12 @@ describe('alerts Back leaves on screen', () => {
         expect(held).toEqual(['none', 'peerConflicts', 'progress', 'staleAccountNotice', 'toast', 'tos'])
     })
 
-    test('exactly the select, the input and the update offer are classified as a per-instance cancel', () => {
+    test('exactly the select, the input, the update offer and the tool approval are classified as a per-instance cancel', () => {
         const perInstance = Object.entries(ALERT_BACK_ACTIONS)
             .filter(([, action]) => action.kind === 'cancelIfOffered')
             .map(([type]) => type)
             .sort()
-        expect(perInstance).toEqual(['input', 'select', 'updateOffer'])
+        expect(perInstance).toEqual(['input', 'select', 'toolApproval', 'updateOffer'])
     })
 })
 

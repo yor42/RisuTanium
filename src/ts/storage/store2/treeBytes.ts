@@ -9,7 +9,7 @@ import type { UnitSource } from './codec/types'
 import { classifyCommitRead } from './commitKey'
 import {
     keyOfRef, readUnit, UNIT_TYPE,
-    type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitBody, type UnitType, type WorkspaceRecord,
+    type ContentBody, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitBody, type UnitType, type WorkspaceRecord,
 } from './format'
 import type { StoredTree } from './previousOfTree'
 import { checkManifestKey, readBatch } from './tree'
@@ -23,6 +23,7 @@ import { checkManifestKey, readBatch } from './tree'
  *   or damaged makes the read `structure`;
  *   leaves (an entity's core, lore, scripts, lists, chat cores and chat chunks, and a task preset) are `flagged`, and the tree still
  *   reads `ok`;
+ *   the draft unit is `dropped`: the tree still reads `ok`, the unit is listed in `dropped` and no question is asked;
  *   any unit a newer build wrote makes the read `too-new`, which wins over every other finding of the same read;
  *   a backend failure makes the read `unreadable` and is never read as damage or absence.
  * A flagged unit's bytes are withheld from the source, so the unit is registered without a digest and is rewritten by
@@ -46,7 +47,7 @@ export type FlaggedLeaf =
 
 export type TreeBytesRead =
     /** `newerLists` holds the readable lists above this build's version: never flagged, and the profile opens. */
-    | { status: 'ok', tree: StoredTree, flagged: readonly FlaggedLeaf[], newerLists: readonly string[] }
+    | { status: 'ok', tree: StoredTree, flagged: readonly FlaggedLeaf[], newerLists: readonly string[], dropped?: readonly DroppedUnit[] }
     /** A manifest, shard or fixed unit is missing or damaged: the recovery screen's route. `tree` is `missing` only when every such unit is absent. */
     | { status: 'structure', manifestKey: string, keys: string[], reason: string, tree: 'missing' | 'damaged' }
     | { status: 'too-new', manifestKey: string, keys: string[], reason: string }
@@ -103,6 +104,8 @@ type Why = 'missing' | 'damaged'
 type Role =
     | { kind: 'fixed' }
     | { kind: 'leaf', flag: (key: string, why: Why) => FlaggedLeaf }
+    /** Optional data nothing else depends on: a missing or damaged unit is left out and reported, and asks no question. */
+    | { kind: 'dropped' }
 
 interface Wanted {
     ref: Ref
@@ -112,8 +115,16 @@ interface Wanted {
     count: UnitType | null
 }
 
+/** A unit of the `dropped` role that was missing or damaged: left out of the load, its bytes untouched. */
+export interface DroppedUnit {
+    key: string
+    type: UnitType
+    why: 'missing' | 'damaged'
+}
+
 interface Findings {
     flagged: FlaggedLeaf[]
+    dropped: DroppedUnit[]
     structure: string[]
     structureReason: string
     /** Every structure finding so far is an absent unit. */
@@ -174,7 +185,7 @@ function createByteReader(backend: Store2Backend, yieldBetween: (() => Promise<v
 }
 
 function newFindings(): Findings {
-    return { flagged: [], structure: [], structureReason: '', structureAllMissing: true, tooNew: [], tooNewReason: '', newerLists: [] }
+    return { flagged: [], dropped: [], structure: [], structureReason: '', structureAllMissing: true, tooNew: [], tooNewReason: '', newerLists: [] }
 }
 
 /**
@@ -237,6 +248,7 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
 
     const findings = newFindings()
     const fixed: Role = { kind: 'fixed' }
+    const dropped: Role = { kind: 'dropped' }
 
     /** Reads and checks `wanted`; answers the bodies of the units whose body a later step needs. */
     async function readAndCheck(wanted: readonly Wanted[]): Promise<{ status: 'checked', bodies: Map<string, unknown> } | { status: 'unreadable', cause: Store2BackendError }> {
@@ -254,6 +266,9 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
         { ref: manifest.fixed.statics, type: UNIT_TYPE.statics, role: fixed, count: null },
         { ref: manifest.fixed.order, type: UNIT_TYPE.order, role: fixed, count: null },
         { ref: manifest.fixed.loadouts, type: UNIT_TYPE.loadouts, role: fixed, count: null },
+        // Present only when the store holds a draft or a hint flag. Unsent edits are never a reason to refuse the profile: a
+        // missing or damaged unit is left out and the boot goes on without drafts, its bytes untouched under their key.
+        ...(manifest.fixed.chatDrafts === undefined ? [] : [{ ref: manifest.fixed.chatDrafts, type: UNIT_TYPE.chatDrafts, role: dropped, count: null } satisfies Wanted]),
         { ref: manifest.fixed.moduleIndex, type: UNIT_TYPE.moduleIndex, role: fixed, count: null },
         ...(manifest.fixed.moduleBuckets ?? []).map((ref): Wanted => ({ ref, type: UNIT_TYPE.moduleBucket, role: fixed, count: null })),
         ...manifest.fixed.presets.map((ref): Wanted => ({ ref, type: UNIT_TYPE.preset, role: fixed, count: null })),
@@ -271,6 +286,15 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
     const first = await readAndCheck(fixedUnits)
     if (first.status === 'unreadable') {
         return { status: 'unreadable', manifestKey, cause: first.cause }
+    }
+    // A draft unit whose body does not hold the list the assembly reads is as damaged as one that fails its checksum.
+    if (manifest.fixed.chatDrafts !== undefined) {
+        const draftsKey = keyOfRef(manifest.fixed.chatDrafts)
+        const draftsBody = first.bodies.get(draftsKey) as ContentBody | undefined
+        if (draftsBody !== undefined && !Array.isArray(draftsBody.chats)) {
+            findings.dropped.push({ key: draftsKey, type: UNIT_TYPE.chatDrafts, why: 'damaged' })
+            bytes.delete(draftsKey)
+        }
     }
 
     // The units the bodies of the first group name. A parent that did not check names nothing here: its own finding stands.
@@ -364,8 +388,9 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
         tree: { manifestKey, manifest, source },
         flagged: findings.flagged,
         newerLists: findings.newerLists,
+        ...(findings.dropped.length > 0 ? { dropped: findings.dropped } : {}),
     }
-    return findings.flagged.length > 0 ? recheck(backend, manifestKey, ok) : ok
+    return findings.flagged.length > 0 || findings.dropped.length > 0 ? recheck(backend, manifestKey, ok) : ok
 }
 
 export type EntityBytesRead =
@@ -529,6 +554,9 @@ function record(findings: Findings, item: Wanted, key: string, checked: UnitChec
             const reason = checked.status === 'missing' ? `${key} is missing.` : `${key}: ${checked.reason}`
             if (item.role.kind === 'leaf') {
                 findings.flagged.push(item.role.flag(key, why))
+                bytes.delete(key)
+            } else if (item.role.kind === 'dropped') {
+                findings.dropped.push({ key, type: item.type, why })
                 bytes.delete(key)
             } else {
                 findings.structure.push(key)

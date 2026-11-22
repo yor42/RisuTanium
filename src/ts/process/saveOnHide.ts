@@ -5,11 +5,12 @@
  *
  * While a 'chat' unit of work is in flight, the reply streamed so far is marked
  * and saved; the text saved is what the chat already holds at the hide. Without
- * a chat, it acts only when the page has unsaved edits, and marks nothing: a
- * page without unsaved edits is never made dirty by a hide, so a hide never
- * changes what a peer tab's commit or a parked loop sees. One exception: a leave
- * flush that moves an unsaved edit held outside the database into it (the vault's
- * pending keys) requests the save itself. The save is best
+ * a chat, it acts only when the page has unsaved edits or pending drafts. A
+ * pending draft is an unsaved edit: a hide writes it and saves it. A page with
+ * neither unsaved edits nor pending drafts is never made dirty by a hide, so a
+ * hide never changes what a peer tab's commit or a parked loop sees. One
+ * exception: a leave flush that moves an unsaved edit held outside the database
+ * into it (the vault's pending keys) requests the save itself. The save is best
  * effort, not durable: the asynchronous write may not finish if the page is
  * killed right away.
  *
@@ -24,6 +25,8 @@ import { hasUnsavedSaveMarks, requestNetSweep, requestSaveNow } from '../globalA
 import { markCharacterForSave } from '../storage/characterSaveMarks'
 import { noteReplyEnd } from '../storage/saveRequestProbe'
 import { MEASURE } from './memory/measureFlag'
+import { flushPersistedDrafts } from '../draftContentOrphanGate'
+import { flushSync } from 'svelte'
 
 export interface SaveOnHideDeps {
     /** Where `visibilitychange` is heard and `visibilityState` is read. */
@@ -40,9 +43,13 @@ export interface SaveOnHideDeps {
     sweepNet?: () => void
     /** Flushes other persisted kinds' pending debounces; it marks nothing and never dirties the page, except that a flush moving an unsaved edit held outside the database into it requests the save itself. */
     leaveFlush?: () => void
+    /** Writes pending unsent message edits into the profile; true when it changed the profile, which makes the page dirty. */
+    draftFlush?: () => boolean
+    /** Runs the reactive effects that mark the change just made, so the mark lands before the save request. */
+    settle?: () => void
 }
 
-export type FlushDeps = Pick<SaveOnHideDeps, 'kinds' | 'streams' | 'unsaved' | 'mark' | 'saveNow' | 'sweepNet' | 'leaveFlush'>
+export type FlushDeps = Pick<SaveOnHideDeps, 'kinds' | 'streams' | 'unsaved' | 'mark' | 'saveNow' | 'sweepNet' | 'leaveFlush' | 'draftFlush' | 'settle'>
 
 const leaveFlushes = new Set<() => void>()
 
@@ -88,6 +95,17 @@ export function flushBeforeLeaving(deps: FlushDeps): void {
     } catch (error) {
         console.error(error)
     }
+    // A draft written here is an edit the page has not saved yet. Its mark comes from an effect, so the effects run first:
+    // the request clears the debounce each mark restarts, and a mark landing after it would leave the page dirty.
+    let drafted = false
+    try {
+        drafted = deps.draftFlush?.() === true
+        if (drafted) {
+            deps.settle?.()
+        }
+    } catch (error) {
+        console.error(error)
+    }
     if (deps.kinds().includes('chat')) {
         for (const stream of deps.streams()) {
             deps.mark(stream.chaId)
@@ -97,7 +115,7 @@ export function flushBeforeLeaving(deps: FlushDeps): void {
         deps.saveNow()
         return
     }
-    if (deps.unsaved()) {
+    if (drafted || deps.unsaved()) {
         deps.saveNow()
     }
 }
@@ -193,6 +211,8 @@ function pageFlushDeps(): FlushDeps {
         saveNow: requestSaveNow,
         sweepNet: requestNetSweep,
         leaveFlush: runLeaveFlushes,
+        draftFlush: flushPersistedDrafts,
+        settle: flushSync,
     }
 }
 

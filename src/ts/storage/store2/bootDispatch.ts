@@ -17,7 +17,7 @@ import { clearAbandonedMarker, type MarkerOwnerProbe } from './abandonedMarker'
 import { assembleCharacter, assembleDatabase, assembleModule, CodecAssembleError, stubFromEntry, type ListDerivation } from './codec'
 import { createListDerivation } from './lists/derive'
 import { lineIdOf, replacedStamp } from './commitKey'
-import { defaultKeyEnv, type CommitKey, type KeyEnv } from './format'
+import { defaultKeyEnv, UNIT_TYPE, type CommitKey, type KeyEnv } from './format'
 import { firstLifeGrant, type FirstLifeLabel, type GrantResult } from './firstLife'
 import { isOwnMarker, type Staging } from './owner'
 import { previousOfTree } from './previousOfTree'
@@ -314,6 +314,8 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 module: (entry, source, handle) => residentModules === null || residentModules.has(handle) ? assembleModule(entry, source) : moduleStubOf(entry),
                 // A flagged task preset is left out of the list, so the next pass writes a manifest without its Ref; its bytes stay under their write-once key.
                 skipTaskPresets: fallback?.skipTaskPresets,
+                // A dropped draft unit is neither read nor replaced by the boot: the next pass writes a manifest without its Ref, and its bytes stay under their write-once key.
+                skipChatDrafts: read.dropped?.some(unit => unit.type === UNIT_TYPE.chatDrafts) === true,
                 // A flagged workspace file keeps its entry without text, so the next pass carries its earlier unit and the ref stays in the record.
                 placeholderWorkspaceFiles: fallback?.placeholderWorkspaceFiles,
             })

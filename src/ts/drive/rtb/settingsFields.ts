@@ -203,6 +203,8 @@ const EXCLUDED_BY_NAME = [
     // themes and GUI
     'themePacks', 'activeThemePack', 'themePackSchemeSnapshot', 'customBackground', 'customGUI', 'guiHTML',
     'customSidebarItems', 'taskPresets',
+    // unsent message edits and long-chat hint flags
+    'chatDrafts',
 ] as const satisfies readonly (keyof StoredDatabase)[]
 
 /** The credential fields of the database: every `SECRET_FIELDS` entry that is not a look-alike flagged `notCredential`. */
