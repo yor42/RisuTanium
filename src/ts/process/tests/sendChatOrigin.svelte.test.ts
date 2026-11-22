@@ -260,6 +260,7 @@ import { registerDbChangeEffects } from '../../storage/dbChangeEffects.svelte'
 import { decodeRisuSave } from '../../storage/risuSave'
 import { RisuSaveEncoder } from '../../storage/tests/risuSaveEncoder'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from '../../storage/characterSaveMarks'
+import { simulateRunningSend, clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -542,7 +543,7 @@ beforeEach(() => {
     isLastCharPunctuationMock.mockReset()
     isLastCharPunctuationMock.mockReturnValue(true)
     chatOutputListeners.clear()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {
@@ -784,7 +785,7 @@ describe('the origin registered as being written to', () => {
         expect(result).toBe(true)
         expect(isWriting(target)).toBe(false)
 
-        doingChat.set(false)
+        clearRunningSends()
         const source = controlledStream()
         requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: source.stream })
         const second = settled(() => sendChat())
@@ -841,7 +842,7 @@ describe('the origin registered as being written to', () => {
     test('guard: a send refused because a generation is already running registers nothing and fills no ids', async () => {
         installDb([makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')])])])
         selectedCharID.set(0)
-        doingChat.set(true)
+        simulateRunningSend()
 
         const result = await settled(() => sendChat())
 

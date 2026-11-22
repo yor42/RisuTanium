@@ -85,7 +85,9 @@ import { runPreviewPrompt } from 'src/ts/process/devToolActions'
 import { renderPromptPreview } from 'src/ts/process/previewRunner'
 import { resetAlertPromptsForTests } from 'src/ts/alertPrompts'
 import { alertStore, DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { doingChat, sendChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore, sendChat } from 'src/ts/process/index.svelte'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 const NONE: alertData = { type: 'none', msg: '' }
 

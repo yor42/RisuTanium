@@ -561,7 +561,7 @@ vi.mock(import('src/ts/hotkey'), () => ({
 //#endregion
 
 import { resetStore2ShellBox, store2ShellMock, type Store2ShellBox } from 'src/ts/drive/tests/store2ShellStub'
-import { sendChat, doingChat } from 'src/ts/process/index.svelte'
+import { sendChat } from 'src/ts/process/index.svelte'
 import { send, reroll, unReroll, runAutoMode, abortChat, isAutoModeActive, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { processMultiCommand } from 'src/ts/process/command'
@@ -906,7 +906,7 @@ beforeEach(() => {
     interceptedSleeps.clear()
     held.length = 0
     resetLocalDraftsForTest()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {
@@ -923,6 +923,7 @@ import { isComposerBusy } from 'src/ts/process/composerActions.svelte'
 import { language } from 'src/lang'
 import { flushSync, mount, unmount } from 'svelte'
 import UserSettings from 'src/lib/Setting/Pages/UserSettings.svelte'
+import { clearRunningSends } from '../../process/tests/activeUnits.test-helpers'
 
 async function settleMany(n = 6): Promise<void> {
     for (let i = 0; i < n; i++) {

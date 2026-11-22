@@ -262,6 +262,7 @@ vi.mock('../coldMemberRestore', () => ({
 import { sendChat, doingChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { isWriting, writeAt, type Origin } from '../chatOrigin'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -388,7 +389,7 @@ beforeEach(() => {
     isLastCharPunctuationMock.mockReturnValue(true)
     chatOutputListeners.clear()
     restoreColdCharacterMock.mockReset()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

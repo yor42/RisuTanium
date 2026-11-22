@@ -9,7 +9,7 @@
  * graph). Mutants M24 (speech or auto-continue on a recovered reply), M25 (`sendAIprompt` honoured).
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import type { Database, Chat, Message } from '../storage/database.svelte'
 import '../polyfill'
 import { heldReply, resetPageStateForTests, configurePageState } from '../nativeReply/pageState'
@@ -105,9 +105,12 @@ vi.mock('./coldMemberRestore', () => ({ restoreColdCharacterByChaId: vi.fn(async
 vi.mock(import('./chatOnScreen.svelte'), () => ({ isChatOnScreen: vi.fn(() => onScreen.value) }) as unknown as typeof import('./chatOnScreen.svelte'))
 vi.mock(import('../storage/characterSaveMarks'), () => ({ markCharacterForSave: vi.fn() }) as unknown as typeof import('../storage/characterSaveMarks'))
 
-import { applyRecoveredReply, doingChat } from './index.svelte'
+import { applyRecoveredReply, doingChat, sendChat } from './index.svelte'
+import { activeUnits } from './activeUnits'
+import { isWriting } from './chatOrigin'
 import { DBState } from '../stores.svelte'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
+import { simulateRunningSend, clearRunningSends } from './tests/activeUnits.test-helpers'
 
 const KEY = '0b9c1a7e-0000-4000-8000-000000000001'
 const blob: ReplyBlob = {
@@ -147,7 +150,7 @@ beforeEach(() => {
     })
     onScreen.value = true
     saveMarkCount.value = 7
-    doingChat.set(false)
+    clearRunningSends()
     processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text, emoChanged: false }))
     runTriggerMock.mockResolvedValue(null)
     runInlayScreenMock.mockImplementation((_char: unknown, text: string) => ({ text: `[emotion]${text}` }))
@@ -217,10 +220,10 @@ describe('applyRecoveredReply', () => {
 
     test('defers while a send runs, writes nothing, and gives the flag back after a run', async () => {
         installDb()
-        doingChat.set(true)
+        simulateRunningSend()
         expect(await applyRecoveredReply(input())).toBe('deferred')
         expect(liveChat().message).toHaveLength(2)
-        doingChat.set(false)
+        clearRunningSends()
         await applyRecoveredReply(input())
         const { get } = await import('svelte/store')
         expect(get(doingChat)).toBe(false)
@@ -247,5 +250,96 @@ describe('applyRecoveredReply', () => {
         expect(await applyRecoveredReply(input())).toBe('failed')
         expect(liveChat().message).toHaveLength(2)
         expect(heldReply(KEY)).toBeUndefined()
+    })
+})
+
+describe('the unit an apply holds', () => {
+    const TARGET = { chaId: 'cha', chatId: 'chat' }
+    const ELSEWHERE = { chaId: 'other-cha', chatId: 'other-chat' }
+
+    interface ScriptGate {
+        entered: Promise<void>
+        open(): void
+        fail(error: Error): void
+    }
+
+    /** Holds the output script of the next apply, so a test reads the registry while that apply runs. */
+    function holdOutputScript(): ScriptGate {
+        let enter!: () => void
+        const entered = new Promise<void>((resolve) => { enter = resolve })
+        let open!: () => void
+        let fail!: (error: Error) => void
+        const opened = new Promise<void>((resolve, reject) => { open = resolve; fail = reject })
+        // A gate nobody opens (a test that stopped early) is not an unhandled rejection.
+        opened.catch(() => {})
+        processScriptFullMock.mockImplementationOnce(async (_char: unknown, text: string) => {
+            enter()
+            await opened
+            return { data: text, emoChanged: false }
+        })
+        return { entered, open: () => open(), fail: (error) => fail(error) }
+    }
+
+    test('G2: today\'s global rule: a unit held in another chat defers an apply into this chat, and nothing is written', async () => {
+        installDb()
+        simulateRunningSend(ELSEWHERE)
+
+        expect(await applyRecoveredReply(input())).toBe('deferred')
+
+        expect(liveChat().message).toHaveLength(2)
+        expect(heldReply(KEY)).toBeUndefined()
+        expect(processScriptFullMock).not.toHaveBeenCalled()
+        expect(activeUnits.has(TARGET)).toBe(false)
+        expect(activeUnits.has(ELSEWHERE)).toBe(true)
+    })
+
+    const finishes: Array<[string, (gate: ScriptGate) => void, string]> = [
+        ['a normal write', (gate) => gate.open(), 'applied'],
+        ['a script that fails', (gate) => gate.fail(new Error('script')), 'failed'],
+        ['a chat that went away', (gate) => { DBState.db.characters[0].chats = []; gate.open() }, 'deferred'],
+        ['a message another write placed first', (gate) => { liveChat().message.push(msg('char', 'placed elsewhere', { chatId: KEY })); gate.open() }, 'applied'],
+    ]
+
+    test.each(finishes)('G3: %s: the apply holds its own chat while it runs, refuses a send (today\'s global rule: into any chat), and releases once it returns', async (_name, finish, expected) => {
+        installDb()
+        // A live other chat, so a refusal is the gate's and not an unresolvable origin.
+        DBState.db.characters.push({ ...DBState.db.characters[0], chaId: 'other-cha', chats: [{ id: 'other-chat', note: '', name: '', localLore: [], fmIndex: -1, message: [], scriptstate: {} } as unknown as Chat] })
+        const gate = holdOutputScript()
+        const run = applyRecoveredReply(input())
+        try {
+            await gate.entered
+            expect(get(doingChat)).toBe(true)
+            expect(activeUnits.has(TARGET)).toBe(true)
+            expect(await applyRecoveredReply(input())).toBe('deferred')
+            const sent = sendChat(-1, { origin: ELSEWHERE }).catch(() => 'threw')
+            expect(isWriting(ELSEWHERE)).toBe(false)
+            let timer: ReturnType<typeof setTimeout> | undefined
+            const hung = new Promise<string>((resolve) => { timer = setTimeout(() => resolve('hung'), 2000) })
+            expect(await Promise.race([sent, hung])).toBe(false)
+            clearTimeout(timer)
+        } finally {
+            finish(gate)
+        }
+
+        expect(await run).toBe(expected)
+        expect(get(doingChat)).toBe(false)
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    test('O2: a subscriber sees no registered work for the chat when the unit is taken and when it is released', async () => {
+        installDb()
+        const seen: Array<{ busy: boolean, writing: boolean }> = []
+        const stop = doingChat.subscribe((busy) => { seen.push({ busy, writing: isWriting(TARGET) }) })
+        try {
+            expect(await applyRecoveredReply(input())).toBe('applied')
+        } finally {
+            stop()
+        }
+
+        expect(seen).toEqual([
+            { busy: false, writing: false },
+            { busy: true, writing: false },
+            { busy: false, writing: false },
+        ])
     })
 })

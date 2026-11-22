@@ -166,7 +166,9 @@ vi.mock(import('./globalApi.svelte'), () => ({
 
 import { initHotkey } from './hotkey'
 import { DBState, selectedCharID } from './stores.svelte'
-import { doingChat } from './process/index.svelte'
+import { doingChat as doingChatStore } from './process/index.svelte'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures
 

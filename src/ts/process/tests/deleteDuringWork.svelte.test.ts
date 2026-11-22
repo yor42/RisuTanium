@@ -766,7 +766,7 @@ beforeEach(() => {
     interceptedSleeps.clear()
     held.length = 0
     resetLocalDraftsForTest()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {
@@ -781,6 +781,7 @@ afterEach(() => {
 
 import { sayTTS } from 'src/ts/process/tts'
 import { isComposerBusy, isComposerLocked } from 'src/ts/process/composerActions.svelte'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 const BASE_CONFIRM = () => language.removeConfirm
 const CHAT_WARNING = () => language.removeChatWhileWorking

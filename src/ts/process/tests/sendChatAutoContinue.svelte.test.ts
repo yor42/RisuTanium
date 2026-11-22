@@ -317,8 +317,9 @@ vi.mock('../coldMemberRestore', () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from '../index.svelte'
+import { sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -498,7 +499,7 @@ beforeEach(() => {
     processScriptFullMock.mockReset()
     processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text, emoChanged: false }))
     chatOutputListeners.clear()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

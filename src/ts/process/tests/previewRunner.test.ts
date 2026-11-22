@@ -88,8 +88,10 @@ import { previewMayStart, renderPromptPreview, renderPromptResult, runPreview } 
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
 import { setComposerWindow } from 'src/ts/process/generationOwnership.svelte'
 import { alertStore, DBState, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
-import { doingChat, sendChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore, sendChat } from 'src/ts/process/index.svelte'
 import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertWait } from 'src/ts/alert'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures
 

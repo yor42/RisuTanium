@@ -99,12 +99,14 @@ vi.mock('../../SideBars/DevTool.svelte', () => ({ default: () => {} }))
 vi.mock('../../Others/PluginDefinedIcon.svelte', () => ({ default: () => {} }))
 
 import { DBState, DynamicGUI, alertStore, bookmarkListOpen, selectedCharID, selIdState, sideBarClosing } from 'src/ts/stores.svelte'
-import { doingChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
 import { registerWork } from 'src/ts/process/chatOrigin'
 import { language } from 'src/lang'
 import { takeOverlayReturnFocus } from '../../../ts/chatShell/overlayFocus'
 import { clearPending } from '../../../ts/chatShell/switchTarget.svelte'
 import ShellSidebar from './ShellSidebar.svelte'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 type Entry = Database['characters'][number]
 

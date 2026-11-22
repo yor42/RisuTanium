@@ -341,6 +341,7 @@ import { DBState, selectedCharID } from '../../stores.svelte'
 import { writeAt, stopWorkIn } from '../chatOrigin'
 import { stopTTS } from '../tts'
 import { getUserName } from '../../util'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -549,7 +550,7 @@ beforeEach(() => {
     isLastCharPunctuationMock.mockReset()
     isLastCharPunctuationMock.mockReturnValue(true)
     chatOutputListeners.clear()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

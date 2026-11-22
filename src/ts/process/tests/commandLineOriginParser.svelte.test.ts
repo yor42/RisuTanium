@@ -356,7 +356,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 
 //#endregion
 
-import { doingChat } from 'src/ts/process/index.svelte'
+import 'src/ts/process/index.svelte'
 import { send, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { runTrigger } from 'src/ts/process/triggers'
@@ -368,6 +368,7 @@ import { loadLoreBookV3Prompt } from 'src/ts/process/lorebook.svelte'
 import { alertInput } from 'src/ts/alert'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -595,7 +596,7 @@ beforeEach(() => {
     resetCharacterSaveMarksForTest()
     marks.tracker = { character: [] }
     installCharacterSaveMarks({ tracker: marks.tracker as unknown as toSaveType, schedule: () => {} })
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

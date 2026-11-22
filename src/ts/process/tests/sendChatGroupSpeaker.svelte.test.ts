@@ -242,10 +242,11 @@ vi.mock('../../media/avatarThumb', () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from '../index.svelte'
+import { sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { activeStreams, resetActiveStreamsForTest, replySpeakerOf } from '../activeStreams'
 import { notificationSubjectOf } from '../../android/notificationAvatar'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -417,7 +418,7 @@ beforeEach(() => {
     processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text, emoChanged: false }))
     isLastCharPunctuationMock.mockReset()
     isLastCharPunctuationMock.mockReturnValue(true)
-    doingChat.set(false)
+    clearRunningSends()
     resetActiveStreamsForTest()
 })
 

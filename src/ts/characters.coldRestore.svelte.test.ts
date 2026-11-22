@@ -172,13 +172,15 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { doingChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
 import { alertError } from 'src/ts/alert'
 import { setCharacterByIndex } from 'src/ts/storage/database.svelte'
 import { language } from 'src/lang'
 import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { changeChar } from './characters'
 import { restoreColdCharacterByChaId } from 'src/ts/process/coldMemberRestore'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures and helpers
 

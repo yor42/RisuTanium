@@ -1,4 +1,4 @@
-import { get, writable } from "svelte/store";
+import { get, writable, type Readable } from "svelte/store";
 import { type character, type groupChat, type ChatAltMemory, type MessageGenerationInfo, type Chat, type MessagePresetInfo, changeToPreset, type Message, type StreamingDisplayOptimizationMode } from "../storage/database.svelte";
 import { DBState } from '../stores.svelte';
 import { CharEmotion, selectedCharID } from "../stores.svelte";
@@ -72,6 +72,7 @@ import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { flushPageReplyEndWhenHidden } from "./saveOnHide";
 import { MEASURE } from "./memory/measureFlag";
 import { noteReplyArrived } from "../storage/saveRequestProbe";
+import { activeUnits, type ActiveUnitKey } from "./activeUnits";
 import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkKind, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
 import { addActiveStream, addReplySpeaker, noteStreamReceived, noteStreamText } from "./activeStreams";
@@ -124,11 +125,11 @@ export interface MultiModal{
 }
 
 /**
- * True exactly while one outermost `sendChat` call is in progress. That call
- * sets it when it is accepted and clears it when it settles; nothing else
- * writes it.
+ * True exactly while a unit is held: an outermost `sendChat` call, from its
+ * acceptance until it settles, or a recovered apply. Only the registry writes
+ * it, through the unit's own take and release.
  */
-export const doingChat = writable(false)
+export const doingChat: Readable<boolean> = activeUnits.active
 export const chatProcessStage = writable(0)
 
 /**
@@ -331,37 +332,58 @@ function settleSendChatCall(entry: SendChatEntry): void {
 }
 
 /**
- * The one admission gate for an outermost send: a single send runs at a time,
- * whichever chat it writes to. The check and the take stay one synchronous
- * stretch, so no other gate may shadow this one.
+ * The chat a send called with `arg` will write to, as far as it is known before
+ * the call enters: the explicit origin, else the selected character and chat
+ * ids, else null (nothing selected, or a character or chat without an id yet).
+ * Pure: it fills no id, warns nowhere and marks nothing. The key is the
+ * owner's chat, never the member.
  */
-function sendAdmissible(): boolean {
-    return !get(doingChat)
+export function sendTargetOf(arg: Pick<SendChatArg, 'origin'>): ActiveUnitKey | null {
+    if(arg.origin){
+        return { chaId: arg.origin.chaId, chatId: arg.origin.chatId }
+    }
+    const selected = DBState.db?.characters?.[get(selectedCharID)]
+    const selectedChat = selected?.chats?.[selected.chatPage]
+    if(!selected?.chaId || !selectedChat?.id){
+        return null
+    }
+    return { chaId: selected.chaId, chatId: selectedChat.id }
 }
 
 /**
- * Outer wrapper (CHORE-01). An outermost call is a unit: it owns `doingChat`
- * and the abort controller published as the unit in progress, from the moment
- * it is accepted until it settles. It is refused while another unit holds the
- * flag, when its caller's signal is already aborted, and by the refusals that
- * depend on the chat it writes to (a cold chat still loading, nothing
- * selected, an origin that is gone). A refused call changes neither the flag
- * nor the published controller and registers nothing.
+ * The one admission gate for an outermost send. Today any held unit refuses,
+ * whichever chat it writes to. The check and the take stay one synchronous
+ * stretch, so no other gate may shadow this one.
+ */
+function sendAdmissible(arg: SendChatArg): boolean {
+    void arg
+    return !activeUnits.any()
+}
+
+/**
+ * Outer wrapper (CHORE-01). An outermost call is a unit: it holds a unit of
+ * `activeUnits` (which `doingChat` reports) and the abort controller published
+ * as the unit in progress, from the moment it is accepted until it settles. It
+ * is refused while another unit is held, when its caller's signal is already
+ * aborted, and by the refusals that depend on the chat it writes to (a cold
+ * chat still loading, nothing selected, an origin that is gone). A refused call
+ * changes neither the registry nor the published controller and registers
+ * nothing.
  *
- * The flag check and the take happen in one synchronous stretch: nothing
+ * The admission check and the take happen in one synchronous stretch: nothing
  * between them may await, or two units could be accepted together.
  *
  * The call writes into a chat fixed at entry and is registered as writing to
  * it until it settles. The recursion inside `sendChatBody` (group turns,
  * auto-continue, resend) goes through `sendChatRecursion`, so it registers
- * and marks for itself but neither checks, sets nor clears the flag.
+ * and marks for itself but neither checks, takes nor releases a unit.
  *
  * Reports `true` only when the body did and the unit was not aborted, by its
  * caller's signal or by the busy button.
  */
 export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Promise<boolean> {
     chatProcessStage.set(0)
-    if(!sendAdmissible() || arg.signal?.aborted){
+    if(!sendAdmissible(arg) || arg.signal?.aborted){
         return false
     }
     // The registration carries this unit's abort, so a delete of the chat it
@@ -371,9 +393,11 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     if(!entry){
         return false
     }
+    // Inert until taken; the release below affects this handle only.
+    const active = activeUnits.unit(entry.context.origin)
     const callerSignal = arg.signal
     const relayAbort = () => unit.abort()
-    // Held from the moment the unit takes the flag until it releases it, so the
+    // Held from the moment the unit takes its place until it releases it, so the
     // page is not cut off while a reply is being produced. Refused sends and the
     // recursion never begin one.
     let endInFlight: (outcome?: ReplyOutcome) => void = () => {}
@@ -391,8 +415,8 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
         publishUnit(unit, entry.context.origin)
         // The target is the owner's chat (a group's own id for a group chat), so a notification can open it.
         endInFlight = beginInFlight('chat', { target: entry.context.origin })
-        doingChat.set(true)
-        // Awaited only after the flag is taken, so the check and the take stay one synchronous stretch. The busy
+        active.take()
+        // Awaited only after the unit is taken, so the check and the take stay one synchronous stretch. The busy
         // button aborts the wait through the unit's signal; a failure alerts once and the finally releases the unit.
         if(hasModuleStubs() && !(await ensureModulesOrAlert(entry.context.origin, unit.signal, entry.context.hint))){
             modulesFailed = true
@@ -430,7 +454,7 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
             endInFlight(replyOutcome)
             callerSignal?.removeEventListener('abort', relayAbort)
             releaseUnit(unit)
-            doingChat.set(false)
+            active.release()
             rerunDeferredApply()
         } finally {
             try {
@@ -450,8 +474,8 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
 
 /**
  * A send's own recursion (a group's turns, an auto-continue, a resend): it
- * runs on its unit's flag and signal, so it neither checks, sets nor clears
- * the flag.
+ * runs on its unit and signal, so it neither checks, takes nor releases a
+ * unit.
  */
 async function sendChatRecursion(chatProcessIndex: number, arg: SendChatArg): Promise<boolean> {
     chatProcessStage.set(0)
@@ -502,12 +526,11 @@ function settleReplyKeys(signal: AbortSignal): void {
 }
 
 /**
- * Whether a send's unit already owns this chat, so a recovered reply cannot be placed now. Today the flag is global; the
- * per-chat unit check replaces this body in one place.
+ * Whether a held unit blocks placing a recovered reply now. Today any held unit blocks it, whichever chat it owns.
  */
 function recoveredApplyBlocked(origin: Origin): boolean {
     void origin
-    return get(doingChat)
+    return activeUnits.any()
 }
 
 /** Records that a recovered reply waited for a unit: the send's end asks the reconcile to run again. */
@@ -518,7 +541,7 @@ function deferRecoveredApply(origin: Origin, key: string): 'deferred' {
     return 'deferred'
 }
 
-/** After the unit released the flag: a recovered reply that waited for it is placed by a new reconcile pass. */
+/** After the unit is released: a recovered reply that waited for it is placed by a new reconcile pass. */
 function rerunDeferredApply(): void {
     if(recoveredApplyDeferred){
         recoveredApplyDeferred = false
@@ -533,7 +556,7 @@ function rerunDeferredApply(): void {
  * a `sendAIprompt` of the output trigger is ignored. An imggen tag is stored as it came (MC-2359). A reply for a chat
  * that is not on screen sets the unseen mark (MC-2358).
  *
- * It runs only while no send does (`doingChat`): the flag is taken for the apply, so a send is refused meanwhile, and a
+ * It runs only while no unit is held (`doingChat`): the apply takes a unit, so a send is refused meanwhile, and a
  * busy Stop finds nothing to stop. A deleted or trashed chat stops it through its work registration.
  */
 export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<ApplyOutcome> {
@@ -556,7 +579,8 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
     const currentChar = entryCtx.owner
     const unit = new AbortController()
     let stopped = false
-    doingChat.set(true)
+    const active = activeUnits.unit(origin)
+    active.take()
     const handle = registerWork(origin, () => {
         stopped = true
         unit.abort()
@@ -619,7 +643,7 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
             holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
         }
         handle.end()
-        doingChat.set(false)
+        active.release()
     }
 }
 
@@ -630,7 +654,7 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
  * follows. A prefix of a body (a partial) gets the output scripts and the unseen mark only, and its message keeps
  * `interrupted`.
  *
- * Three cases, decided inside the `doingChat` exclusion (a running send or Continue is never written into):
+ * Three cases, decided inside the unit exclusion (a running send or Continue is never written into):
  * - the message is absent: it is appended once, with the key as its id;
  * - it is present and still `interrupted` (the page's own partial): the text and the flag are upgraded in place, after the
  *   flag is checked again in the stretch that writes, so an edit made during the awaits is never overwritten;
@@ -663,7 +687,8 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
     const currentChar = entryCtx.owner
     const unit = new AbortController()
     let stopped = false
-    doingChat.set(true)
+    const active = activeUnits.unit(origin)
+    active.take()
     const handle = registerWork(origin, () => {
         stopped = true
         unit.abort()
@@ -764,7 +789,7 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
             holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
         }
         handle.end()
-        doingChat.set(false)
+        active.release()
     }
 }
 

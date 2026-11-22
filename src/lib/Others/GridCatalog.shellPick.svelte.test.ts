@@ -168,11 +168,12 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 312 })
 
 import { DBState } from '../../ts/stores.svelte'
-import { doingChat } from '../../ts/process/index.svelte'
+import '../../ts/process/index.svelte'
 import * as shellSwitchModule from '../../ts/chatShell/shellSwitch.svelte'
 import { clearPending, switchTarget } from '../../ts/chatShell/switchTarget.svelte'
 import { language } from '../../lang'
 import GridCatalog from './GridCatalog.svelte'
+import { simulateRunningSend, clearRunningSends } from '../../ts/process/tests/activeUnits.test-helpers'
 
 const shellFlag = (shellSwitchModule as unknown as { shellFlag: { eligible: boolean } }).shellFlag
 
@@ -243,12 +244,12 @@ beforeEach(() => {
     alertNormalSpy.mockReset()
     alertErrorSpy.mockReset()
     shellFlag.eligible = true
-    doingChat.set(false)
+    clearRunningSends()
     clearPending()
 })
 
 afterEach(() => {
-    doingChat.set(false)
+    clearRunningSends()
     clearPending()
 })
 
@@ -256,7 +257,7 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
     test('TB9 (T6): during a reply a Grid tab pick closes the grid and switches quietly, with no notice', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
         changeCharSpy.mockResolvedValue('selected')
-        doingChat.set(true)
+        simulateRunningSend()
         const endGrid = vi.fn()
 
         await withMounted(endGrid, async (target) => {
@@ -272,7 +273,7 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
     test('TB9 (T6): the Simple list switches the same way', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
         changeCharSpy.mockResolvedValue('selected')
-        doingChat.set(true)
+        simulateRunningSend()
         const endGrid = vi.fn()
 
         await withMounted(endGrid, async (target) => {
@@ -348,7 +349,7 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
     test('TB12 (T6): during a reply with the shell not eligible a Grid tab pick is the plain call and closes the grid', async () => {
         shellFlag.eligible = false
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
-        doingChat.set(true)
+        simulateRunningSend()
         const endGrid = vi.fn()
 
         await withMounted(endGrid, (target) => {
@@ -363,7 +364,7 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
     test('TB12 (T6): during a reply with the shell not eligible a List tab pick switches the same way', async () => {
         shellFlag.eligible = false
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
-        doingChat.set(true)
+        simulateRunningSend()
         const endGrid = vi.fn()
 
         await withMounted(endGrid, (target) => {
@@ -379,7 +380,7 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
     test('TB12 (T6): during a reply with the shell not eligible a Simple tab pick switches the same way', async () => {
         shellFlag.eligible = false
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
-        doingChat.set(true)
+        simulateRunningSend()
         const endGrid = vi.fn()
 
         await withMounted(endGrid, (target) => {
@@ -395,7 +396,7 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
     test('guard: TB13 in edit mode a tile tap toggles the pick, with no notice, during a reply', async () => {
         shellFlag.eligible = false
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
-        doingChat.set(true)
+        simulateRunningSend()
         const endGrid = vi.fn()
 
         await withMounted(endGrid, async (target) => {

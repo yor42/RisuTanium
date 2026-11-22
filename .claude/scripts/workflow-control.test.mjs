@@ -236,3 +236,42 @@ test('test-only dispatches route straight to the native test primary; non-test w
   assert.equal(ok.provider, 'claude'); assert.equal(ok.role, 'test-warrior');
   assert.equal((await selectRoute({ root, jobId: 'code-1', mode: 'implement' })).provider, 'claude');
 });
+test('a designer may take Sonnet only by an explicit choice without a critical contract or escalation (MC-3643)', async t => {
+  const root = fixture(t);
+  assert.equal((await selectRoute({ root, jobId: 'dm-0', mode: 'scout', role: 'designer' })).model, 'opus');
+  assert.equal((await selectRoute({ root, jobId: 'dm-1', mode: 'scout', role: 'designer', model: 'sonnet' })).model, 'sonnet');
+  await assert.rejects(selectRoute({ root, jobId: 'dm-2', mode: 'scout', role: 'designer', model: 'sonnet', changedContracts: ['migration'] }), /default model/);
+  await assert.rejects(selectRoute({ root, jobId: 'dm-3', mode: 'scout', role: 'designer', model: 'sonnet', escalation: { kind: 'three-reject', evidence: 'r3.md' } }), /default model/);
+  await assert.rejects(registerDispatch(job({ id: 'dm-4', logicalJobId: 'dm-4', mode: 'scout', role: 'designer', model: 'haiku', allowedWrites: [] }), { root }), /eligible/);
+  await assert.rejects(registerDispatch(job({ id: 'dm-5', logicalJobId: 'dm-5', mode: 'review', role: 'opus-reviewer', model: 'sonnet', changedContracts: ['migration'], allowedWrites: [] }), { root }), /eligible/);
+});
+test('a Sonnet designer receipt is claimed only by an Agent call that names Sonnet (MC-3643)', async t => {
+  const root = fixture(t);
+  const call = (id, model) => ({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { subagent_type: 'designer', prompt: '[workflow-dispatch:' + id + ']', ...(model ? { model } : {}) } });
+  const d = await registerDispatch(job({ id: 'dm-sonnet', logicalJobId: 'dm-sonnet', mode: 'scout', role: 'designer', model: 'sonnet', allowedWrites: [] }), { root });
+  assert.equal(d.model, 'sonnet');
+  await assert.rejects(hook(call('dm-sonnet'), { root }), /names its model/);
+  await assert.rejects(hook(call('dm-sonnet', 'opus'), { root }), /differs from registered/);
+  await hook(call('dm-sonnet', 'sonnet'), { root });
+  assert.equal(loadState(root).dispatches['dm-sonnet'].status, 'running');
+  const plain = await registerDispatch(job({ id: 'dm-opus', logicalJobId: 'dm-opus', mode: 'scout', role: 'designer', allowedWrites: [] }), { root });
+  assert.equal(plain.model, 'opus');
+  await hook(call('dm-opus'), { root });
+});
+test('a model choice that is not a list makes the policy unsafe (MC-3643)', async t => {
+  const root = fixture(t);
+  const file = path.join(root, '.claude/workflow-policy.json');
+  const policy = JSON.parse(fs.readFileSync(file, 'utf8'));
+  policy.nativeModelChoices = { designer: 'sonnet' };
+  fs.writeFileSync(file, JSON.stringify(policy));
+  await assert.rejects(selectRoute({ root, jobId: 'dm-type', mode: 'scout', role: 'designer', model: 'son' }), /Unsupported or unsafe policy/);
+});
+test('without the policy choice a designer stays on Opus and an earlier Sonnet receipt is refused (MC-3643)', async t => {
+  const root = fixture(t);
+  const d = await registerDispatch(job({ id: 'dm-old', logicalJobId: 'dm-old', mode: 'scout', role: 'designer', model: 'sonnet', allowedWrites: [] }), { root });
+  const file = path.join(root, '.claude/workflow-policy.json');
+  const policy = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete policy.nativeModelChoices;
+  fs.writeFileSync(file, JSON.stringify(policy));
+  await assert.rejects(validateDispatch(d, { root }), /Route changed/);
+});

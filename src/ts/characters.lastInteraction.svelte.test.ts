@@ -151,7 +151,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), async (importOriginal) => (
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { doingChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
 import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { beginWork } from 'src/ts/process/chatOrigin'
 import { changeChar, characterFormatUpdate, supersedeChangeChar } from './characters'
@@ -159,6 +159,8 @@ import { restoreColdCharacterByChaId } from 'src/ts/process/coldMemberRestore'
 import { recentCharacters } from 'src/ts/chatShell/recentCharacters'
 import { installCharacterSaveMarks, markDbWrite, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWriteHook'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures
 

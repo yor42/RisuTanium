@@ -197,11 +197,12 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
 
 import { DBState, selectedCharID } from '../../ts/stores.svelte'
 import { changeCharGeneration } from '../../ts/characters'
-import { doingChat } from '../../ts/process/index.svelte'
+import '../../ts/process/index.svelte'
 import { isWriting, registerWork } from '../../ts/process/chatOrigin'
 import * as shellSwitchModule from '../../ts/chatShell/shellSwitch.svelte'
 import { language } from '../../lang'
 import GridCatalog from './GridCatalog.svelte'
+import { simulateRunningSend, clearRunningSends } from '../../ts/process/tests/activeUnits.test-helpers'
 
 const shellFlag = (shellSwitchModule as unknown as { shellFlag: { eligible: boolean } }).shellFlag
 
@@ -341,13 +342,13 @@ beforeEach(() => {
     alertErrorSpy.mockReset()
     recordErrorSpy.mockReset()
     shellFlag.eligible = false
-    doingChat.set(false)
+    clearRunningSends()
     selectedCharID.set(-1)
     installDeferredChangeChar()
 })
 
 afterEach(() => {
-    doingChat.set(false)
+    clearRunningSends()
     vi.restoreAllMocks()
 })
 
@@ -440,7 +441,7 @@ describe('GridCatalog: a cold pick keeps the grid open until the character has o
 
     test('C5 (T6): a reply being written does not stop a cold pick: the tile is marked and the grid closes when it lands selected', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), upstreamStub('b', 'Bob')])
-        doingChat.set(true)
+        simulateRunningSend()
         const endGrid = vi.fn()
 
         await withMounted(endGrid, async (target) => {
@@ -626,7 +627,7 @@ describe('GridCatalog: a cold pick keeps the grid open until the character has o
 
     test('guard: T23 dropping a pending pick during a reply supersedes the pick only and leaves the reply registered and running', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), upstreamStub('b', 'Bob')])
-        doingChat.set(true)
+        simulateRunningSend()
         const stopReply = vi.fn()
         const reply = registerWork({ chaId: 'a', chatId: 'a-chat' }, stopReply, 'reply')
         const endGrid = vi.fn()

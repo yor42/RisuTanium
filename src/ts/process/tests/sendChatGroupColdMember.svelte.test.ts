@@ -272,10 +272,11 @@ vi.mock(import('../../characters'), () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from '../index.svelte'
+import { sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { isWriting } from '../chatOrigin'
 import { language } from '../../../lang'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -400,7 +401,7 @@ beforeEach(() => {
     readColdStorageItemMock.mockReset()
     alertNormalMock.mockReset()
     alertMdMock.mockReset()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

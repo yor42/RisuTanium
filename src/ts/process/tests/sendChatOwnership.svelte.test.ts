@@ -41,6 +41,7 @@ const supaMemoryMock = vi.hoisted(() => vi.fn())
 const isLastCharPunctuationMock = vi.hoisted(() => vi.fn())
 const chatOutputListeners = vi.hoisted(() => new Set<(arg: ChatOutputArg) => unknown>())
 const workSpies = vi.hoisted(() => ({ beginWork: vi.fn(), registerWork: vi.fn() }))
+const publishedUnits = vi.hoisted(() => ({ controllers: [] as AbortController[] }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -250,12 +251,34 @@ vi.mock('src/ts/process/chatOrigin', async (importOriginal) => {
     return { ...actual, beginWork: workSpies.beginWork, registerWork: workSpies.registerWork }
 })
 
+// The real published-unit state, with publishUnit wrapped so a test can ask the real isUnitInProgressSignal about the
+// controller a send published.
+vi.mock('src/ts/process/generationOwnership.svelte', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('src/ts/process/generationOwnership.svelte')>()
+    return {
+        ...actual,
+        publishUnit: (controller: AbortController, origin?: { chaId: string, chatId: string }) => {
+            publishedUnits.controllers.push(controller)
+            actual.publishUnit(controller, origin)
+        },
+    }
+})
+
 //#endregion
 
-import { sendChat, doingChat } from 'src/ts/process/index.svelte'
+import { sendChat, doingChat, sendTargetOf, applyRecoveredReply } from 'src/ts/process/index.svelte'
+import type { SendChatArg } from 'src/ts/process/index.svelte'
+import { activeUnits, type ActiveUnitKey } from 'src/ts/process/activeUnits'
+import { subscribeInFlight, inFlightKinds } from 'src/ts/process/inFlightWork'
+import { setReconcileTrigger } from 'src/ts/nativeReply/pageState'
+import { resetRunningRepliesForTests } from 'src/ts/nativeReply/runningReplies.svelte'
+import type { ReplyBlob } from 'src/ts/nativeReply/blob'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { isWriting } from 'src/ts/process/chatOrigin'
-import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
+import { abortUnitInProgress, isUnitInProgressSignal } from 'src/ts/process/generationOwnership.svelte'
+import { simulateRunningSend, clearRunningSends } from './activeUnits.test-helpers'
+import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
+import type { toSaveType } from 'src/ts/storage/risuSave'
 
 //#region fixtures
 
@@ -497,7 +520,7 @@ beforeEach(() => {
     chatOutputListeners.clear()
     workSpies.beginWork.mockClear()
     workSpies.registerWork.mockClear()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {
@@ -598,7 +621,7 @@ describe('the flag stays true from the take until the unit settles', () => {
 describe('a call refused because a unit holds the flag', () => {
     test('guard: a refused outermost call leaves the flag set and registers nothing', async () => {
         installSingleChat()
-        doingChat.set(true)
+        simulateRunningSend()
 
         const result = await settled(() => sendChat())
 
@@ -782,3 +805,432 @@ describe('the published unit controller', () => {
         expect.soft(get(doingChat)).toBe(false)
     })
 })
+
+//#region the keyed registry of taken units
+
+type UnitKey = ActiveUnitKey
+
+/** char-0/chat-0 (selected) and char-1/chat-1: two chats under two owners. */
+function installTwoChats(): void {
+    installDb([
+        makeCharacter('char-0', [makeChat('chat-0', [msg('user', 'Hi')])]),
+        makeCharacter('char-1', [makeChat('chat-1', [msg('user', 'Hey')])]),
+    ])
+    selectedCharID.set(0)
+}
+
+const CHAT_A: UnitKey = { chaId: 'char-0', chatId: 'chat-0' }
+const CHAT_B: UnitKey = { chaId: 'char-1', chatId: 'chat-1' }
+
+/** Answers each request with the stream of the character it asks for, so two sends can be held at once. */
+function routeStreamsByCharacter(streams: Record<string, ControlledStream>): void {
+    requestChatDataMock.mockImplementation(async (arg: { currentChar: { chaId: string } }) => (
+        { type: 'streaming', result: streams[arg.currentChar.chaId].stream }
+    ))
+}
+
+/** Closes every held stream and waits for every outcome, so a failed assertion leaves no unit held. */
+async function finishAll(sources: ControlledStream[], outcomes: Array<Promise<boolean | Error>>): Promise<void> {
+    for (const source of sources) {
+        source.close()
+    }
+    for (const outcome of outcomes) {
+        await outcome
+    }
+}
+
+/**
+ * Holds one send (or prompt preview) of `arg` inside its request until `finish` is called. A preview is held on a gate,
+ * a send on a stream.
+ */
+async function holdUnit(arg: SendChatArg): Promise<{ finish(): Promise<boolean | Error> }> {
+    if (arg.previewPrompt) {
+        let open!: () => void
+        const gate = new Promise<void>((resolve) => { open = resolve })
+        requestChatDataMock.mockImplementationOnce(async () => {
+            await gate
+            return { type: 'success', result: '{}' }
+        })
+        const outcome = settled(() => sendChat(-1, arg))
+        try {
+            await until(() => requestChatDataMock.mock.calls.length > 0, 'the preview request')
+        } catch (error) {
+            open()
+            await outcome
+            throw error
+        }
+        return { finish: async () => { open(); return outcome } }
+    }
+    const { source, outcome } = await startHeldSend(() => sendChat(-1, arg))
+    return { finish: async () => { source.close(); return outcome } }
+}
+
+describe('a second send started while a unit is being taken', () => {
+    test('R1: a send that another send\'s in-flight notice starts is still counted when the first send ends', async () => {
+        installTwoChats()
+        const streams = { 'char-0': controlledStream(), 'char-1': controlledStream() }
+        routeStreamsByCharacter(streams)
+        const second: Array<Promise<boolean | Error>> = []
+        // One shot: the second send's own in-flight notice would call it again.
+        const stop = subscribeInFlight(() => {
+            stop()
+            second.push(settled(() => sendChat(-1, { origin: CHAT_B })))
+        })
+        const first = settled(() => sendChat(-1, { origin: CHAT_A }))
+        try {
+            await until(() => requestChatDataMock.mock.calls.length >= 2, 'both requests')
+            streams['char-0'].push('A')
+            streams['char-1'].push('B')
+            await settle()
+            expect(get(doingChat)).toBe(true)
+            expect(activeUnits.has(CHAT_A)).toBe(true)
+            expect(activeUnits.has(CHAT_B)).toBe(true)
+
+            streams['char-0'].close()
+            await first
+
+            // The first send's end releases its own unit only: the other is still running.
+            expect(get(doingChat)).toBe(true)
+            expect(activeUnits.has(CHAT_B)).toBe(true)
+        } finally {
+            stop()
+            await finishAll([streams['char-0'], streams['char-1']], [first, ...second])
+        }
+        expect(get(doingChat)).toBe(false)
+    })
+
+    test.each([
+        ['another chat', CHAT_B],
+        ['the same chat', CHAT_A],
+    ] as const)('R2: a send that never takes its unit does not clear the unit of a send its caller\'s signal started (second send into %s)', async (_name, secondChat) => {
+        installTwoChats()
+        const second: Array<Promise<boolean | Error>> = []
+        const source = controlledStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: source.stream })
+        const callerSignal = new AbortController().signal
+        // The first send reaches its signal before it takes its unit; the second is started from there and the first fails.
+        vi.spyOn(callerSignal, 'addEventListener').mockImplementation(() => {
+            second.push(settled(() => sendChat(-1, { origin: secondChat })))
+            throw new Error('the signal listener failed')
+        })
+        let first: boolean | Error | undefined
+        try {
+            first = await settled(() => sendChat(-1, { signal: callerSignal }))
+            await until(() => requestChatDataMock.mock.calls.length > 0, 'the second send request')
+            source.push('Hello')
+            await settle()
+
+            // Soft, so a run that wrongly cleared the second's unit still reaches the third send below.
+            expect.soft(first).toBeInstanceOf(Error)
+            expect.soft(get(doingChat)).toBe(true)
+            expect.soft(activeUnits.has(secondChat)).toBe(true)
+            // A third send is still refused: the first send's end did not clear the second's unit. If it is wrongly
+            // accepted, its request gets a stream that ends by itself, so the test cannot hang.
+            mockStreamingReply('third')
+            const third = await settled(() => sendChat(-1, { origin: CHAT_B }))
+            expect(third).toBe(false)
+            expect(requestChatDataMock).toHaveBeenCalledTimes(1)
+        } finally {
+            await finishAll([source], second)
+        }
+        expect(get(doingChat)).toBe(false)
+    })
+})
+
+describe('a send called from a store subscriber', () => {
+    test('Q1: today: two sends started inside another store\'s subscriber, the second is refused and makes no request', async () => {
+        installSingleChat()
+        const source = controlledStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: source.stream })
+        const outer = writable(0)
+        // Both stores are subscribed before the trigger, so the store queue is already in use when the callback runs.
+        const stopBusy = doingChat.subscribe(() => {})
+        const calls: Array<Promise<boolean | Error>> = []
+        const stopOuter = outer.subscribe((value) => {
+            if (value === 1) {
+                calls.push(settled(() => sendChat()), settled(() => sendChat()))
+            }
+        })
+        try {
+            outer.set(1)
+            expect(calls).toHaveLength(2)
+            expect(await calls[1]).toBe(false)
+            await until(() => requestChatDataMock.mock.calls.length > 0, 'the request')
+            expect(requestChatDataMock).toHaveBeenCalledTimes(1)
+            expect(get(doingChat)).toBe(true)
+        } finally {
+            stopOuter()
+            stopBusy()
+            await finishAll([source], calls)
+        }
+        expect(get(doingChat)).toBe(false)
+    })
+
+    test('Q2: a subscriber that sends the moment the flag turns true is refused and starts nothing', async () => {
+        installSingleChat()
+        const refused: Array<Promise<boolean | Error>> = []
+        const stop = doingChat.subscribe((busy) => {
+            if (busy && refused.length === 0) {
+                refused.push(settled(() => sendChat()))
+            }
+        })
+        let held: Awaited<ReturnType<typeof startHeldSend>> | undefined
+        try {
+            held = await startHeldSend(() => sendChat())
+            expect(refused).toHaveLength(1)
+            expect(await refused[0]).toBe(false)
+            expect(requestChatDataMock).toHaveBeenCalledTimes(1)
+            expect(get(doingChat)).toBe(true)
+        } finally {
+            stop()
+            await finishAll(held ? [held.source] : [], held ? [held.outcome] : [])
+        }
+        expect(get(doingChat)).toBe(false)
+    })
+
+    test('Q2: a subscriber that sends the moment the flag turns false is accepted, and its unit stays held and abortable', async () => {
+        installSingleChat()
+        const successors: Array<Promise<boolean | Error>> = []
+        const successorStream = controlledStream()
+        let sawBusy = false
+        const stop = doingChat.subscribe((busy) => {
+            if (busy) {
+                sawBusy = true
+            } else if (sawBusy && successors.length === 0) {
+                successors.push(settled(() => sendChat()))
+            }
+        })
+        let held: Awaited<ReturnType<typeof startHeldSend>> | undefined
+        try {
+            held = await startHeldSend(() => sendChat())
+            requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: successorStream.stream })
+            held.source.close()
+            await held.outcome
+            await until(() => requestChatDataMock.mock.calls.length === 2, 'the successor request')
+            successorStream.push('Again')
+            await settle()
+
+            expect(successors).toHaveLength(1)
+            expect(get(doingChat)).toBe(true)
+            expect(activeUnits.has(CHAT_A)).toBe(true)
+            abortUnitInProgress()
+            expect((requestChatDataMock.mock.calls[1][2] as AbortSignal).aborted).toBe(true)
+        } finally {
+            stop()
+            await finishAll([successorStream, ...(held ? [held.source] : [])], [...successors, ...(held ? [held.outcome] : [])])
+        }
+        expect(get(doingChat)).toBe(false)
+    })
+})
+
+describe('a unit held in one chat and a send into another', () => {
+    test.each([
+        ['send', { previewResult: {} }],
+        ['prompt preview', { previewPrompt: true, previewResult: {} }],
+    ] as const)('G1: today: a %s in chat A refuses a send into chat B, with no registration, id fill or request', async (_name, arg) => {
+        installTwoChats()
+        const held = await holdUnit({ ...arg })
+        try {
+            const registered = workSpies.beginWork.mock.calls.length + workSpies.registerWork.mock.calls.length
+            const requests = requestChatDataMock.mock.calls.length
+
+            const refused = await settled(() => sendChat(-1, { origin: CHAT_B }))
+
+            expect(refused).toBe(false)
+            expect(workSpies.beginWork.mock.calls.length + workSpies.registerWork.mock.calls.length).toBe(registered)
+            expect(requestChatDataMock.mock.calls.length).toBe(requests)
+            expect(chatById('char-1', 'chat-1').message[0].chatId).toBeUndefined()
+            expect(isWriting({ chaId: 'char-1' })).toBe(false)
+            expect(activeUnits.has(CHAT_A)).toBe(true)
+            expect(activeUnits.has(CHAT_B)).toBe(false)
+        } finally {
+            await held.finish()
+        }
+        expect(get(doingChat)).toBe(false)
+    })
+})
+
+describe('the chat a held send is keyed by', () => {
+    test('K1: a group send holds the group and its chat at both turns, never a member', async () => {
+        installGroupWorld(['member-1', 'member-2'])
+        const groupChat: UnitKey = { chaId: 'group-1', chatId: 'group-chat' }
+        const turns = [controlledStream(), controlledStream()]
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: turns[0].stream })
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: turns[1].stream })
+        const outcome = settled(() => sendChat())
+        try {
+            for (let turn = 0; turn < 2; turn++) {
+                await until(() => requestChatDataMock.mock.calls.length === turn + 1, `the request of turn ${turn + 1}`)
+                turns[turn].push(`turn ${turn + 1}`)
+                await settle()
+                expect(activeUnits.has(groupChat)).toBe(true)
+                expect(activeUnits.has({ chaId: 'member-1', chatId: 'group-chat' })).toBe(false)
+                expect(activeUnits.has({ chaId: 'member-2', chatId: 'group-chat' })).toBe(false)
+                turns[turn].close()
+            }
+        } finally {
+            await finishAll(turns, [outcome])
+        }
+        expect(requestChatDataMock).toHaveBeenCalledTimes(2)
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    interface KeyRow {
+        name: string
+        install: () => void
+        index: number
+        arg: SendChatArg
+        /** What `sendTargetOf` answers before the call. */
+        targetBefore: UnitKey | null
+        /** The key the held send must be registered under, read after the call started. */
+        expected: () => UnitKey
+        wrong: UnitKey
+    }
+    const groupChatKey: UnitKey = { chaId: 'group-1', chatId: 'group-chat' }
+    const memberKey: UnitKey = { chaId: 'member-1', chatId: 'group-chat' }
+    const rows: KeyRow[] = [
+        {
+            name: 'a: the selected chat, ids present',
+            install: installTwoChats, index: -1, arg: {},
+            targetBefore: CHAT_A, expected: () => CHAT_A, wrong: CHAT_B,
+        },
+        {
+            name: 'b: an explicit origin in a chat other than the selected one',
+            install: installTwoChats, index: -1, arg: { origin: { ...CHAT_B } },
+            targetBefore: CHAT_B, expected: () => CHAT_B, wrong: CHAT_A,
+        },
+        {
+            name: 'c: a selected group, called for one member',
+            install: () => installGroupWorld(['member-1', 'member-2']), index: 0, arg: {},
+            targetBefore: groupChatKey, expected: () => groupChatKey, wrong: memberKey,
+        },
+        {
+            name: 'd: an origin that carries a member of its group',
+            install: () => installGroupWorld(['member-1', 'member-2']), index: 0,
+            arg: { origin: { ...groupChatKey, memberChaId: 'member-1' } },
+            targetBefore: groupChatKey, expected: () => groupChatKey, wrong: memberKey,
+        },
+        {
+            name: 'e: a selected chat that has no id yet',
+            install: () => {
+                installDb([makeCharacter('char-0', [makeChat('chat-0', [msg('user', 'Hi')], { id: undefined })])])
+                selectedCharID.set(0)
+            },
+            index: -1, arg: {},
+            targetBefore: null,
+            expected: () => ({ chaId: 'char-0', chatId: charById('char-0').chats[0].id }),
+            wrong: CHAT_A,
+        },
+    ]
+
+    test.each(rows)('K2 $name: the held send is registered under its owner\'s chat', async (row) => {
+        row.install()
+        const target = sendTargetOf(row.arg)
+        expect(target).toEqual(row.targetBefore)
+        // Only row e starts without an id on the selected chat.
+        expect(DBState.db.characters[0].chats[0].id === undefined).toBe(row.targetBefore === null)
+        const { source, outcome } = await startHeldSend(() => sendChat(row.index, row.arg))
+        const expected = row.expected()
+        try {
+            expect(expected.chatId).toBeTruthy()
+            expect(activeUnits.has(expected)).toBe(true)
+            expect(activeUnits.has(row.wrong)).toBe(false)
+            expect(activeUnits.has(target)).toBe(row.targetBefore !== null)
+            expect(sendTargetOf(row.arg)).toEqual(expected)
+        } finally {
+            await finishAll([source], [outcome])
+        }
+        expect(activeUnits.has(expected)).toBe(false)
+    })
+})
+
+describe('sendTargetOf', () => {
+    test('ST: an explicit origin beats the selection and drops the member; the selection gives the owner\'s chat', () => {
+        installTwoChats()
+
+        expect(sendTargetOf({})).toEqual(CHAT_A)
+        expect(sendTargetOf({ origin: { ...CHAT_B, memberChaId: 'member-9' } })).toEqual(CHAT_B)
+
+        installGroupWorld(['member-1', 'member-2'])
+        expect(sendTargetOf({})).toEqual({ chaId: 'group-1', chatId: 'group-chat' })
+    })
+
+    test.each([
+        ['nothing selected', () => { installTwoChats(); selectedCharID.set(-1) }],
+        ['a chat without an id', () => {
+            installDb([makeCharacter('char-0', [makeChat('chat-0', [msg('user', 'Hi')], { id: undefined })])])
+            selectedCharID.set(0)
+        }],
+        ['a character without an id', () => {
+            installDb([makeCharacter('char-0', [makeChat('chat-0', [msg('user', 'Hi')])], { chaId: undefined })])
+            selectedCharID.set(0)
+        }],
+    ])('ST: %s gives null and fills, warns and marks nothing', (_name, install) => {
+        install()
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const before = JSON.stringify(DBState.db.characters)
+        resetCharacterSaveMarksForTest()
+        const tracker = { character: [] as string[] }
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker: tracker as unknown as toSaveType, schedule })
+        try {
+            expect(sendTargetOf({})).toBeNull()
+
+            expect(JSON.stringify(DBState.db.characters)).toBe(before)
+            expect(schedule).not.toHaveBeenCalled()
+            expect(tracker.character).toEqual([])
+            expect(warn).not.toHaveBeenCalled()
+            expect(workSpies.beginWork).not.toHaveBeenCalled()
+            expect(workSpies.registerWork).not.toHaveBeenCalled()
+        } finally {
+            warn.mockRestore()
+            resetCharacterSaveMarksForTest()
+        }
+    })
+})
+
+describe('the order in which a unit is taken and released', () => {
+    const blob: ReplyBlob = {
+        target: { ...CHAT_A }, targetName: 'char-0', saying: 'char-0',
+        generationInfo: { generationId: 'o1-key', model: 'm' }, promptInfo: { promptName: 'Main' }, escape: false, requestedMs: 1,
+        parse: { kind: 'openai-chat', deepSeekThinkingOutput: false, extractJson: null, jsonSchema: false, multiGen: false },
+    }
+
+    test('O1: at the take the work, the in-flight notice and the published unit are live; at the release only the work is, and the reconcile asked for after it sees the flag false', async () => {
+        installSingleChat()
+        publishedUnits.controllers.length = 0
+        const seen: Array<{ busy: boolean, work: boolean, inFlight: boolean, published: boolean }> = []
+        const stop = doingChat.subscribe((busy) => {
+            const latest = publishedUnits.controllers.at(-1)
+            seen.push({
+                busy,
+                work: isWriting({ chaId: 'char-0', chatId: 'chat-0' }),
+                inFlight: inFlightKinds().includes('chat'),
+                published: latest !== undefined && isUnitInProgressSignal(latest.signal),
+            })
+        })
+        const reconcileSaw: boolean[] = []
+        setReconcileTrigger(() => { reconcileSaw.push(get(doingChat)) })
+        let held: Awaited<ReturnType<typeof startHeldSend>> | undefined
+        try {
+            held = await startHeldSend(() => sendChat())
+            // An apply that waited for the unit asks for a new reconcile pass once the unit is released.
+            expect(await applyRecoveredReply({ key: 'o1-key', blob, text: 'late reply' })).toBe('deferred')
+            expect(reconcileSaw).toEqual([])
+        } finally {
+            await finishAll(held ? [held.source] : [], held ? [held.outcome] : [])
+            stop()
+            setReconcileTrigger(null)
+            resetRunningRepliesForTests()
+        }
+
+        expect(seen).toEqual([
+            { busy: false, work: false, inFlight: false, published: false },
+            { busy: true, work: true, inFlight: true, published: true },
+            { busy: false, work: true, inFlight: false, published: false },
+        ])
+        expect(reconcileSaw).toEqual([false])
+    })
+})
+
+//#endregion
