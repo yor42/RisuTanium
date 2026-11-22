@@ -1,5 +1,7 @@
 import { get } from 'svelte/store'
 import { alertError, alertNormalWait, alertStore, alertWait, waitAlert } from '../alert'
+import { askRtbPassword } from './rtbSealedOpen'
+import { cardRestoreProgress, rtbBootCardDef, type RestoreProgress } from './restoreProgress'
 import { language } from 'src/lang'
 import { markAppInitiatedReload } from '../reloadGuard'
 import { beginBusy, type BusyHandle } from '../process/memory/busyActions'
@@ -11,11 +13,11 @@ import { omittedTailsOf, planRestore, RtbRestoreError, type RestorePlanInput, ty
 import { defaultSideBackends, type SideRestoreResult } from './rtb/sideStores'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { skippedNoticesOf } from './backuplocal'
-import { copyRtbEntries, landedFactsOf, withCopiedKept, type CopyEnd } from './rtbRestoreCopy'
+import { copyRtbEntries, landedFactsOf, withCopiedKept, type CopyEnd, type RtbCopyDeps } from './rtbRestoreCopy'
 import { leftOutLines, realSideDeps, restoreSides, stageConnectionKeys } from './rtbRestoreFinish'
 import { acquireRestoreHold, type HoldAcquire, type RestoreHold } from './rtbRestoreHold'
 import { clearPluginGrants, rereadUnits } from './rtbRestoreInstall'
-import { realVerifyDeps, verifyAndConfirm, type PickedRtb, type RtbVerifyEnd, type VerifiedRtb } from './rtbRestorePlan'
+import { realVerifyDeps, verifyAndConfirm, type PickedRtb, type RtbVerifyDeps, type RtbVerifyEnd, type VerifiedRtb } from './rtbRestorePlan'
 
 /**
  * The start-up `.rtb` restore (CHORE-128 S14b): the shell that runs a `.rtb` over the boot's installer, for the first-life
@@ -43,6 +45,10 @@ import { realVerifyDeps, verifyAndConfirm, type PickedRtb, type RtbVerifyEnd, ty
  *   and the page reloads once into the restored profile. `markReload` and `reload` must stay the two calls of the recovery
  *   screen's own reload. The recovery exit returns `installed` and its controller reloads.
  * - The shell never rejects.
+ * - The run shows its phases on the task card with no Cancel (MC-3634). Every card call is synchronous and guarded, so a card
+ *   failure never changes how the restore ends or the order of any other call. The card is gone before any error, notice
+ *   or wait alert of the shell and before the first-life installed text, and `leaveCard` is called again, idempotently, by
+ *   the `finally`.
  */
 
 /** The boot `.rtb` plan: what was verified and confirmed; no page target and no base. */
@@ -73,17 +79,46 @@ export interface RtbBootDeps {
     clearAlert(): void
     markReload(): void
     reload(): void
+    /** Opens the restore's task card, with no Cancel (MC-3634). A throw means the restore runs with the legacy wait dialogs. */
+    openCard(): RestoreProgress
 }
 
-function realBootDeps(): RtbBootDeps {
+/** The card the run holds, read by the real `verify`, `copy` and `wait`; null before it opens and once it left. */
+interface CardBox {
+    card: RestoreProgress | null
+}
+
+/**
+ * The start-up restore's calls on the card: the file check reports the `check` step, the sealed file's password prompt
+ * stands the card aside, the copy's bytes move the `copy` step, and a stop's alert comes after the card leaves.
+ */
+export function bootCardWiring(progress: RestoreProgress): { verifyDeps: Partial<RtbVerifyDeps>, copyDeps: Partial<RtbCopyDeps> } {
+    const showError = (text: string): void => {
+        progress.leave()
+        alertError(text)
+    }
+    return {
+        verifyDeps: {
+            wait: () => progress.phase('check', null),
+            password: (reason) => progress.aside(() => askRtbPassword(reason)),
+            error: showError,
+        },
+        copyDeps: {
+            bytes: (done, total) => progress.bytes('copy', done, total, null),
+            error: showError,
+        },
+    }
+}
+
+function realBootDeps(box: CardBox): RtbBootDeps {
     return {
         beginBusy: () => beginBusy('backupLoad'),
         settled: assetDeletionSettled,
         refuseOnReadOnlyPage,
         refuseWhileBusy: (own) => refuseBackupLoadWhileBusy(own),
         acquireHold: (busy) => acquireRestoreHold(busy),
-        verify: (picked) => verifyAndConfirm(picked, realVerifyDeps(), { newerBase: null }),
-        copy: (plan, hold) => copyRtbEntries(plan, hold),
+        verify: (picked) => verifyAndConfirm(picked, box.card === null ? realVerifyDeps() : { ...realVerifyDeps(), ...bootCardWiring(box.card).verifyDeps }, { newerBase: null }),
+        copy: (plan, hold) => copyRtbEntries(plan, hold, box.card === null ? {} : bootCardWiring(box.card).copyDeps),
         reread: (plan) => rereadUnits(plan),
         planRestore,
         clearGrants: (plan) => clearPluginGrants(plan, defaultSideBackends),
@@ -92,7 +127,13 @@ function realBootDeps(): RtbBootDeps {
         notice: alertNormalWait,
         error: alertError,
         waitAlert,
-        wait: alertWait,
+        // While the card is open the `load` step is its own wait text; the first-life texts come after it left.
+        wait: (text) => {
+            if (box.card === null) {
+                alertWait(text)
+            }
+        },
+        openCard: () => cardRestoreProgress(rtbBootCardDef(), null),
         // Clears the shell's own wait text only: an error or a notice the person has not read stays.
         clearAlert: () => {
             if (get(alertStoreState).type === 'wait') {
@@ -113,12 +154,31 @@ const CANCELLED: BootImportEnd = { kind: 'cancelled' }
  * A first-life install that landed never settles: the page reloads into the restored profile.
  */
 export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTarget, options: Partial<RtbBootDeps> = {}): Promise<BootImportEnd> {
-    const deps: RtbBootDeps = { ...realBootDeps(), ...options }
+    const box: CardBox = { card: null }
+    const deps: RtbBootDeps = { ...realBootDeps(box), ...options }
     const installBuiltTree = target.installBuiltTree
     if (installBuiltTree === undefined) {
         // A test double of the target only: the real boot target always carries the method.
         deps.error(language.backupRestoreFailed)
         return CANCELLED
+    }
+    // A card failure never changes how the restore ends: every call is guarded, and without a card the run is the legacy one.
+    const cardPhase = (step: string): void => {
+        try {
+            box.card?.phase(step, null)
+        } catch (error) {
+            console.error(error)
+        }
+    }
+    // The card is gone before any error, notice or wait alert of the shell; idempotent, and the `finally` calls it again.
+    const leaveCard = (): void => {
+        const card = box.card
+        box.card = null
+        try {
+            card?.leave()
+        } catch (error) {
+            console.error(error)
+        }
     }
     let busy: BusyHandle | null = null
     let hold: RestoreHold | null = null
@@ -130,6 +190,12 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
     // The connection-keys staging result of the gate; null when that action is not a `restore`.
     let staged: SideRestoreResult | null = null
     try {
+        // Opened with no await before it and before `beginBusy`: a throwing `beginBusy` leaves no card behind (the `finally` leaves it).
+        try {
+            box.card = deps.openCard()
+        } catch (error) {
+            console.error(error)
+        }
         const own = deps.beginBusy()
         busy = own
         await deps.settled()
@@ -147,21 +213,25 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         const held = acquired.hold
         hold = held
 
+        cardPhase('check')
         const verdict = await deps.verify(picked)
         if (verdict.kind === 'ended') {
             return CANCELLED
         }
         if (verdict.kind === 'settings') {
             // A settings-only file cannot set up a profile: refused with the hint, nothing is copied, planned or installed.
+            leaveCard()
             deps.error(language.rtbRestoreSettingsAtStart)
             return CANCELLED
         }
         const plan = verdict.verified
 
         copyBegan = true
+        cardPhase('copy')
         const copied = await deps.copy(plan, held)
         if (copied.kind === 'stopped') {
             // The copy shows its own text; a stop whose alert failed falls back to the generic write-failed text.
+            leaveCard()
             if (!copied.shown) {
                 deps.error(language.restoreWriteFailed)
             }
@@ -172,6 +242,7 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         const units = await deps.reread(plan)
         if (units.kind === 'changed') {
             console.error(units.detail)
+            leaveCard()
             deps.error(language.backupFileChangedWhileReading)
             return CANCELLED
         }
@@ -188,12 +259,14 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         } catch (error) {
             if (error instanceof RtbRestoreError) {
                 console.error(error)
+                leaveCard()
                 deps.error(withCopiedKept(language.rtbRestoreDamaged))
                 return CANCELLED
             }
             throw error
         }
 
+        cardPhase('load')
         deps.wait(language.rtbRestoreInstalling)
         const built = await installBuiltTree.call(target, {
             newUnits: request.newUnits,
@@ -212,6 +285,7 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         })
         const outcome = built.outcome
         if (outcome.status === 'not-started') {
+            leaveCard()
             deps.error(withCopiedKept(language.backupLoadWorkInProgress))
             return CANCELLED
         }
@@ -225,7 +299,9 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         // B11: the side data and the notices. A failure here is logged and never changes the end: the profile landed.
         try {
             const facts = landedFactsOf(copied.facts)
+            cardPhase('finish')
             const results = await deps.applySides(plan, staged)
+            leaveCard()
             for (const notice of skippedNoticesOf(facts.skippedAssets, facts.inlays.skipped, plan.assets.limit)) {
                 await deps.notice(notice)
             }
@@ -243,6 +319,7 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         }
 
         // First life: reload once into the restored profile, with the write lock kept closed until then.
+        leaveCard()
         try {
             deps.wait(language.store2Boot.recoveryInstalledBody)
         } catch (error) {
@@ -265,6 +342,7 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         return await new Promise<BootImportEnd>(() => { })
     } catch (error) {
         console.error(error)
+        leaveCard()
         if (gatePassed) {
             // No profile write is promised any more: the installer may have landed. The boot classifies again.
             try {
@@ -282,6 +360,7 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         }
         return CANCELLED
     } finally {
+        leaveCard()
         // The one release site: every end that returns, a throw included.
         if (!handedOff) {
             try {

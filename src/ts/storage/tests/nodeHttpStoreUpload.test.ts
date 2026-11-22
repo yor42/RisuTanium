@@ -759,6 +759,29 @@ describe('writeBlob', () => {
         expect(sameBytes(await onDisk(main, BODY), bytes)).toBe(true)
     })
 
+    test('R4: onProgress is called after each slice with the bytes sent and the Blob size, and ends at the size (reproducer: no report on base)', async () => {
+        const BODY = 'inlays/b-progress.0123456789abcdef'
+        const { store } = await probedStore(main)
+        const bytes = patterned(450, 32)
+        const reports: [number, number][] = []
+
+        await store.writeBlob!(BODY, new Blob([bytes as Uint8Array<ArrayBuffer>]), 'unconditional', (done, total) => { reports.push([done, total]) })
+
+        expect(reports).toEqual([[100, 450], [200, 450], [300, 450], [400, 450], [450, 450]])
+        expect(sameBytes(await onDisk(main, BODY), bytes)).toBe(true)
+    })
+
+    test('R4b: a progress callback that throws never ends or alters the write', async () => {
+        const BODY = 'inlays/b-progress-throws.0123456789abcdef'
+        const { store } = await probedStore(main)
+        const bytes = patterned(450, 33)
+
+        const result = await store.writeBlob!(BODY, new Blob([bytes as Uint8Array<ArrayBuffer>]), 'unconditional', () => { throw new Error('the card failed') })
+
+        expect(result.version).toBe(1)
+        expect(sameBytes(await onDisk(main, BODY), bytes)).toBe(true)
+    })
+
     test('new behaviour: a Blob of one chunk or less is one single-body write', async () => {
         const BODY = 'inlays/b-small.0123456789abcdef'
         const { store, spy } = await probedStore(main)

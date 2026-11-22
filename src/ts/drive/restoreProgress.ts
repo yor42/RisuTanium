@@ -63,9 +63,10 @@ function guarded(call: () => void): void {
 /**
  * Shows the restore on the task card with Cancel offered until `lockCancel`. Every card call is synchronous and guarded,
  * so the restore's order and side effects are the legacy route's. A granted lock is final: no Cancel can be accepted
- * after it, so `cancelled` then only leaves and a result card can never follow a commit.
+ * after it, so `cancelled` then only leaves and a result card can never follow a commit. A null `token` offers no Cancel at
+ * all: the card shows no button and never reports a cancel (the start-up restore).
  */
-export function cardRestoreProgress(def: RestoreCardDef, token: ExportCancelToken = new ExportCancelToken()): RestoreProgress {
+export function cardRestoreProgress(def: RestoreCardDef, token: ExportCancelToken | null = new ExportCancelToken()): RestoreProgress {
     let task: ExportTask<string> | null = null
     guarded(() => {
         const created = createExportTask<string>(def)
@@ -101,11 +102,11 @@ export function cardRestoreProgress(def: RestoreCardDef, token: ExportCancelToke
             }
         },
         get cancelRequested() {
-            return token.cancelled
+            return token?.cancelled === true
         },
-        race: (wait) => token.race(wait),
+        race: (wait) => token === null ? wait : token.race(wait),
         lockCancel() {
-            let granted = !token.cancelled
+            let granted = token?.cancelled !== true
             guarded(() => {
                 const active = live()
                 if (active !== null) granted = active.lockCancel()
@@ -173,6 +174,19 @@ export function rtbCardDef(): RestoreCardDef {
         steps: [
             step('save', language.restoreStepSave),
             ...tabsStep(),
+            step('check', language.importStepCheck),
+            step('copy', language.restoreStepCopy, { mark: 'transfer_in' }),
+            step('load', language.restoreStepLoad),
+            step('finish', language.restoreStepFinish),
+        ],
+    }
+}
+
+/** The start-up restore: no save (nothing is open), no tabs (the boot holds no page) and no Cancel. */
+export function rtbBootCardDef(): RestoreCardDef {
+    return {
+        title: language.restoreTaskTitle,
+        steps: [
             step('check', language.importStepCheck),
             step('copy', language.restoreStepCopy, { mark: 'transfer_in' }),
             step('load', language.restoreStepLoad),

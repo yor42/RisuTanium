@@ -492,6 +492,63 @@ describe('inlays (U7)', () => {
     })
 })
 
+describe('the byte line inside an inlay (R1, MC-3635)', () => {
+    /** A store that takes Blobs and reports the write in `chunks` equal steps, as the Tauri store does. */
+    function chunkedStore(chunks: number): MemoryByteStore {
+        const memory = new MemoryByteStore()
+        return Object.assign(memory, {
+            writeBlob: async (key: string, blob: Blob, _condition: unknown, onProgress?: (done: number, total: number) => void) => {
+                for (let n = 1; n <= chunks; n++) {
+                    onProgress?.(Math.floor(blob.size * n / chunks), blob.size)
+                }
+                memory.files.set(key, new Uint8Array(await blob.arrayBuffer()))
+                return { version: null }
+            },
+        })
+    }
+
+    test('R1: the line moves half while the body is read and half while it is written, strictly inside the second half during the write, and ends at the inlay\'s bytes (reproducer: no report during the write on base)', async () => {
+        const body = 'x'.repeat(1001)
+        const file = await fileOf({}, [inlayFixture(INLAY_A, body)])
+        const plan = await planOfBytes(file)
+        const reports: [number, number][] = []
+        const { end } = await run(file, { plan, store: chunkedStore(4), deps: { bytes: (done, total) => { reports.push([done, total]) } } })
+        copiedOf(end)
+        const total = plan.assets.copyBytes + plan.inlays.copyBytes
+        const bodySize = plan.inlays.copy[0].bodySize
+        expect(bodySize).toBe(1001)
+        const half = Math.floor(bodySize / 2)
+        const during = reports.filter(([done]) => done > half && done < bodySize)
+        expect(during.length).toBeGreaterThanOrEqual(3)
+        const values = reports.map(([done]) => done)
+        expect(values).toEqual([...values].sort((a, b) => a - b))
+        expect(Math.max(...values)).toBeLessThanOrEqual(total)
+        expect(reports.every(([, t]) => t === total)).toBe(true)
+        expect(values[values.length - 1]).toBe(total)
+    })
+
+    test('a store with no writeBlob reports only the read half and the inlay\'s end (guard: passes before and after)', async () => {
+        const file = await fileOf({}, [inlayFixture(INLAY_A, 'x'.repeat(41))])
+        const reports: number[] = []
+        const { end, store } = await run(file, { deps: { bytes: (done) => { reports.push(done) } } })
+        copiedOf(end)
+        expect(store.files.size).toBeGreaterThan(0)
+        expect(reports[reports.length - 1]).toBe(41)
+        expect(reports.every((done, n) => n === 0 || done >= reports[n - 1])).toBe(true)
+    })
+
+    test.each([0, 1, 2, 3, 7])('the half and half split of a %i byte body stays monotone and within the total', async (size) => {
+        const file = await fileOf({}, [inlayFixture(INLAY_A, 'y'.repeat(size))])
+        const plan = await planOfBytes(file)
+        const reports: [number, number][] = []
+        const { end } = await run(file, { plan, store: chunkedStore(3), deps: { bytes: (done, total) => { reports.push([done, total]) } } })
+        copiedOf(end)
+        const values = reports.map(([done]) => done)
+        expect(values).toEqual([...values].sort((a, b) => a - b))
+        expect(reports.every(([done, total]) => done <= total)).toBe(true)
+    })
+})
+
 describe('C0 (U16, U22)', () => {
     test('a busy entry opened elsewhere stops the copy before any write, with the busy message and no copied-kept line (guard)', async () => {
         const file = await fileOf({ [LITERAL]: bytesOf('literal-body') })

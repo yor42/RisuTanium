@@ -2399,7 +2399,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     copyDone += bytes;
                     progress.bytes('copy', copyDone, file.size, null);
                 };
-                // Whether the file held an inlay part: the inlays are written after the loop with no progress source.
+                // Whether the file held an inlay part: the inlays are written after the loop, under the files step.
                 let sawInlayPart = false;
                 try {
                     for (const entry of backupEntries) {
@@ -2662,10 +2662,10 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     return refused();
                 }
                 if (sawInlayPart) {
-                    // The inlays are written here, after the loop, with no progress source of their own.
+                    // The inlays are written here, after the loop; their bytes move the line of this step.
                     progress.phase('files', null);
                 }
-                const inlayOutcome = await restoreCollectedInlays(inlayCollector);
+                const inlayOutcome = await restoreCollectedInlays(inlayCollector, (done, total) => progress.bytes('files', done, total, null));
                 if (inlayOutcome.changed) {
                     alertError(language.backupFileChangedWhileReading);
                     return refused();
