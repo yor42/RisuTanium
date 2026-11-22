@@ -41,9 +41,9 @@
 
 ## 6. What the maintainer still does by hand
 No agent did, read or can do any of this.
-1. Create environment `android-release` per the setup guide in `Agents/Tools/device/SIGNING.md` (main only, required
-   reviewer as the guide says). Enter there, by name only: the keystore secret, its password, the key alias and the key
-   password secrets as the guide names them, and the variable `ANDROID_RELEASE_CERT_SHA256`.
+1. Create environment `android-release` per `Agents/Tools/device/SIGNING.md` (CI section): branch rule `main` only,
+   administrator bypass off. Enter there the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+   `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` and the variable `ANDROID_RELEASE_CERT_SHA256` (64 lower-case hex, no colons).
 2. Delete the repository-level copies of those secrets right after (MC-3717).
 3. Judge whether the alias or a password is only short digits or only a-f characters; GitHub masking could then hide
    unrelated log text. Change it if so.
