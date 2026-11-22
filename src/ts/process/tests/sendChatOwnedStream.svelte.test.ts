@@ -224,6 +224,19 @@ vi.mock(import('../replyNotice'), async (importOriginal) => ({
     announceReply: announceSpy,
 }))
 
+const hiddenFlush = vi.hoisted(() => ({ onCall: null as null | (() => void) }))
+
+vi.mock(import('../saveOnHide'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return {
+        ...actual,
+        flushPageReplyEndWhenHidden: ((origin: Parameters<typeof actual.flushPageReplyEndWhenHidden>[0]) => {
+            hiddenFlush.onCall?.()
+            return actual.flushPageReplyEndWhenHidden(origin)
+        }) as typeof actual.flushPageReplyEndWhenHidden,
+    }
+})
+
 vi.mock(import('../../plugins/plugins.svelte'), () => ({
     pluginV2: { chatOutput: new Set() },
 }) as unknown as typeof import('../../plugins/plugins.svelte'))
@@ -521,6 +534,29 @@ describe('sendChat stream branch: end bookkeeping of an owned stream', () => {
         expect(atTarget[0].data).toBe('Hello world')
         expect(run.abandon).not.toHaveBeenCalled()
         await expectAwaitingTheCommit(run)
+    })
+
+    test('T30: the settle (mark and noteReplyPushed) runs before the hidden-page flush, so the flush save covers the mark', async () => {
+        const seen: Array<{ state: string | undefined, target: number | undefined, marks: number }> = []
+        let key = ''
+        hiddenFlush.onCall = () => {
+            const entry = heldReply(key)
+            seen.push({ state: entry?.state, target: entry?.target, marks: world.markCount })
+        }
+        try {
+            const run = await startOwnedSend({ onRequest: (k) => { key = k } })
+            run.source.push('Hello world')
+            run.source.close()
+            expect(await run.outcome).toBe(true)
+        } finally {
+            hiddenFlush.onCall = null
+        }
+
+        // The first flush is the stream branch's own; later flushes belong to the send's end.
+        expect(seen.length).toBeGreaterThanOrEqual(1)
+        expect(seen[0].state).toBe('awaiting-save')
+        expect(seen[0].target).toBeDefined()
+        expect(seen[0].marks).toBeGreaterThanOrEqual(seen[0].target!)
     })
 
     test('a natural end whose stamp says failed body-too-large still waits for its commit', async () => {

@@ -3,8 +3,9 @@ import {
     configurePageState, heldReply, holdInflight, noteBound, noteInvoked, noteUnowned, notePageEnded, noteReplyPushed, resetPageStateForTests,
     takeAnnounced,
 } from '../pageState'
-import { createStreamProbe, endOwnedRead, forgetOwnedStream, resetOwnedStreamsForTests, settleOwnedStreamEnd } from '../ownedStream'
-import type { ReplyStamp } from '../ownedBody'
+import { bindOwnedStream, createStreamProbe, endOwnedRead, forgetOwnedStream, resetOwnedStreamsForTests, retireFailedHead, settleOwnedStreamEnd } from '../ownedStream'
+import { issueNativeReplyGrant } from '../grant'
+import type { PumpProbe, ReplyStamp } from '../ownedBody'
 
 const marks = vi.hoisted(() => ({ count: 0, charIds: [] as unknown[] }))
 
@@ -191,5 +192,76 @@ describe('settleOwnedStreamEnd: the stream branch ended', () => {
         expect(marks.count).toBe(0)
         expect(heldReply(K1)).toMatchObject({ state: 'inflight', pageEnded: true })
         expect(refused.abandon).not.toHaveBeenCalled()
+    })
+})
+
+describe('U1: the shared call-site helpers of an owned stream request', () => {
+    const base = { target: { chaId: 'cha', chatId: 'chat' }, targetName: 'Alice', saying: 'cha', generationInfo: {}, promptInfo: {}, escape: false, requestedMs: 1 }
+    const parse = { kind: 'openai-responses-stream', extractJson: null, jsonSchema: false } as const
+    const request = (extra: Record<string, unknown> = {}) => ({ nativeReplyGrant: issueNativeReplyGrant(K1, base), chatId: K1, usageInputEstimate: 7, replyUsageModelKey: 'm', ...extra })
+
+    test('bindOwnedStream registers the probe under the reply key, so ending the read abandons the native request', () => {
+        const bound = bindOwnedStream(request(), parse)
+        expect(bound?.owner.key).toBe(K1)
+        const abandon = vi.fn()
+        bound!.probe.owned = true
+        bound!.probe.abandon = abandon
+        endOwnedRead(K1)
+        expect(abandon).toHaveBeenCalledTimes(1)
+    })
+
+    test('the abort listener ends only its own reply read', () => {
+        const other = register(K2)
+        const controller = new AbortController()
+        const bound = bindOwnedStream(request({ abortSignal: controller.signal }), parse)
+        const abandon = vi.fn()
+        bound!.probe.owned = true
+        bound!.probe.abandon = abandon
+        controller.abort()
+        expect(heldReply(K1)?.pageEnded).toBe(true)
+        expect(abandon).toHaveBeenCalledTimes(1)
+        expect(other.abandon).not.toHaveBeenCalled()
+        expect(heldReply(K2)?.pageEnded).toBeUndefined()
+    })
+
+    test('a request of another reply, a missing estimate and no grant bind nothing', () => {
+        expect(bindOwnedStream(request({ chatId: K2 }), parse)).toBeNull()
+        expect(bindOwnedStream(request({ usageInputEstimate: undefined }), parse)).toBeNull()
+        expect(bindOwnedStream({ chatId: K1, usageInputEstimate: 7 }, parse)).toBeNull()
+    })
+
+    test('retireFailedHead is false for an unannounced stamp, true for an announced failure and false for an announced done', async () => {
+        const unannounced = register(K1)
+        unannounced.probe.stamp = failedStamp(K1, { status: 429 })
+        expect(await retireFailedHead(K1, unannounced.probe, 429)).toBe(false)
+
+        const announced = register(K2)
+        announced.probe.stamp = failedStamp(K2, { announced: true, status: 429 })
+        expect(await retireFailedHead(K2, announced.probe, 429)).toBe(true)
+
+        resetPageStateForTests()
+        resetOwnedStreamsForTests()
+        const done = register(K1)
+        done.probe.stamp = { key: K1, outcome: 'done', stored: true, announced: true, status: 200 }
+        expect(await retireFailedHead(K1, done.probe, 200)).toBe(false)
+    })
+
+    test('retireFailedHead reads the stamp after the record is removed, so a stamp learned during the removal counts', async () => {
+        const holder: { probe: PumpProbe | null } = { probe: null }
+        configurePageState({
+            store: {
+                consume: vi.fn(async () => {
+                    await Promise.resolve()
+                    holder.probe!.stamp = failedStamp(K1, { announced: true, status: 429 })
+                    return { result: 'removed' as const, flushed: true }
+                }),
+            },
+            waiter: { committedMarkCount: () => 0, markCount: () => 0, verdict: () => 'absent', afterNextCommit: () => {}, markCharacter: () => {}, requestSaveNow: () => {} },
+            onUnreadable: () => {},
+        })
+        const { probe } = register(K1)
+        holder.probe = probe
+        probe.stamp = failedStamp(K1, { status: 429 })
+        expect(await retireFailedHead(K1, probe, 429)).toBe(true)
     })
 })
