@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
     refreshed: 0,
     bumped: 0,
     rejectConfirms: false,
+    refsThrow: false,
 }))
 
 vi.mock(import('src/ts/alert'), () => ({
@@ -99,7 +100,12 @@ vi.mock(import('src/ts/process/moduleRefList'), async () => {
     const rows = () => ((h.state.db as { modules?: { id: string }[] } | undefined)?.modules ?? [])
     const ids = () => ((h.state.db as { enabledModules?: string[] } | undefined)?.enabledModules ?? [])
     return {
-        moduleRefIdsOf: () => ids(),
+        moduleRefIdsOf: () => {
+            if (h.refsThrow) {
+                throw new Error('reference read failed')
+            }
+            return ids()
+        },
         moduleListOf: (wanted: string[]) => rows().filter(row => wanted.includes(row.id)),
         hasModuleStubs: () => rows().some(row => isStub(row)),
         unloadedModulesOf: () => rows().filter(row => ids().includes(row.id) && isStub(row)),
@@ -128,6 +134,8 @@ import type { SaveEncoder } from 'src/ts/storage/store2/saveEncoder'
 import type { RisuModule } from 'src/ts/process/modules'
 import { bootThroughDispatch, createClock, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
 import { buildSmall, fakeLists, type Obj } from 'src/ts/storage/tests/store2/codecFixtures'
+import { setDisplayModuleRefSource } from 'src/ts/process/moduleDisplayRefs'
+import { moduleRefIdsOf } from 'src/ts/process/moduleRefList'
 
 type Plain = Record<string, unknown>
 
@@ -305,6 +313,9 @@ beforeEach(() => {
     h.refreshed = 0
     h.bumped = 0
     h.rejectConfirms = false
+    h.refsThrow = false
+    // As moduleEnsure registers it in the page, over this file's reference mock.
+    setDisplayModuleRefSource(() => moduleRefIdsOf())
     migrate.mockClear()
     fault.readerCalls = 0
     useStorage(new Map())
@@ -357,6 +368,7 @@ describe('the boot registers the loader and a load installs the stored body', ()
 
     test('the module screens are told: the chat parser cache is cleared and the pointer is bumped once', async () => {
         const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        ;(world.db as unknown as { enabledModules: string[] }).enabledModules = [world.ids[1]]
         stubOut(world, 1)
         await acquireModule(world.ids[1])
         expect(h.refreshed).toBe(1)
@@ -377,6 +389,80 @@ describe('the boot registers the loader and a load installs the stored body', ()
         const got = await acquireModule(world.ids[0])
         expect(got?.module).toBe(slots(world)[0])
         expect(world.gate.reads).toBe(0)
+    })
+})
+
+describe('an install reloads the chat only when the displayed origin references the module', () => {
+    const refer = (world: World, ids: string[]) => {
+        ;(world.db as unknown as { enabledModules: string[] }).enabledModules = ids
+    }
+
+    test('an install the displayed origin does not reference refreshes the memo but sets no pointer', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        refer(world, [])
+        stubOut(world, 1)
+        await acquireModule(world.ids[1])
+        expect(isModuleStub(slots(world)[1])).toBe(false)
+        expect(h.refreshed).toBe(1)
+        expect(h.bumped).toBe(0)
+    })
+
+    test('a library-wide loop of installs bumps only for the referenced module', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b'), moduleBody('c')])
+        refer(world, [world.ids[0]])
+        for (let index = 0; index < 3; index++) {
+            stubOut(world, index)
+        }
+        for (const id of world.ids) {
+            await acquireModule(id)
+        }
+        expect(slots(world).every(holdsFullBody)).toBe(true)
+        expect(h.refreshed).toBe(3)
+        expect(h.bumped).toBe(1)
+    })
+
+    test('guard: a module referenced by its namespace is announced', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b', { namespace: 'ns-b' })])
+        refer(world, ['ns-b'])
+        stubOut(world, 1)
+        await acquireModule(world.ids[1])
+        expect(h.bumped).toBe(1)
+    })
+
+    test('references are read at install time: a module referenced while its read is held is announced', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        refer(world, [])
+        stubOut(world, 1)
+        const release = holdReads(world)
+        const loading = acquireModule(world.ids[1])
+        await waitFor(() => world.gate.reads > 0, 'the unit read')
+        refer(world, [world.ids[1]])
+        release()
+        await loading
+        expect(h.bumped).toBe(1)
+    })
+
+    test('references are read at install time: a module no longer referenced when its held read ends is not announced', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        refer(world, [world.ids[1]])
+        stubOut(world, 1)
+        const release = holdReads(world)
+        const loading = acquireModule(world.ids[1])
+        await waitFor(() => world.gate.reads > 0, 'the unit read')
+        refer(world, [])
+        release()
+        await loading
+        expect(h.bumped).toBe(0)
+    })
+
+    test('guard: a reference read that throws still announces the install', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        refer(world, [])
+        stubOut(world, 1)
+        h.refsThrow = true
+        await acquireModule(world.ids[1])
+        expect(isModuleStub(slots(world)[1])).toBe(false)
+        expect(h.bumped).toBe(1)
     })
 })
 

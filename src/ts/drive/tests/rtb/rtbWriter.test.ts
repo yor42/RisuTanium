@@ -8,7 +8,7 @@ import { decodeInlayMeta, pairInlayEntries } from 'src/ts/drive/rtb/inlayEntries
 import { parseManifest } from 'src/ts/drive/rtb/manifest'
 import { V1_REF_STRINGS } from 'src/ts/drive/rtb/refsFingerprint'
 import { classifyRtb } from 'src/ts/drive/rtb/rtbClassify'
-import { SIDE_SECTION_IDS, parseStoreBlockName } from 'src/ts/drive/rtb/entryNames'
+import { CONNECTION_KEYS_ID, SIDE_SECTION_IDS, parseStoreBlockName } from 'src/ts/drive/rtb/entryNames'
 import { writeRtb, type RtbWriteInput, type SideRecord } from 'src/ts/drive/rtb/rtbWriter'
 import { decodeSideLines, type SideTagCodec } from 'src/ts/drive/rtb/sideLines'
 import { decodeBlock } from 'src/ts/drive/rtb/unitBlocks'
@@ -120,6 +120,9 @@ function group(name: string): number {
     return groups[name[0]] ?? -1
 }
 
+/** The side sections read from a store: every one but the connection keys. */
+const STORE_SIDE_IDS = SIDE_SECTION_IDS.filter((id) => id !== CONNECTION_KEYS_ID)
+
 const F64: SideTagCodec = {
     tag: 'f64',
     encode: (value) => {
@@ -168,21 +171,49 @@ function standardInput(): Partial<RtbWriteInput> {
 }
 
 describe('writeRtb with empty stores (T-asm, T40w, T10w, T-sew)', () => {
-    test('the three reserved rows and the eight side sections are written, each side as one 0-byte deflated data.jsonl', async () => {
+    test('the three reserved rows and the eight store-backed side sections are written, each side as one 0-byte deflated data.jsonl, and the connection keys section is not', async () => {
         const { bytes } = await write()
         const opened = await open(bytes)
         const manifest = manifestOf(opened)
-        expect(manifest.sections.map((row: { id: string }) => row.id)).toEqual(['store2', 'assets', 'inlays', ...SIDE_SECTION_IDS])
+        expect(manifest.sections.map((row: { id: string }) => row.id)).toEqual(['store2', 'assets', 'inlays', ...STORE_SIDE_IDS])
         const byId = new Map<string, Record<string, unknown>>(manifest.sections.map((row: { id: string }) => [row.id, row]))
         for (const id of ['store2', 'assets', 'inlays']) {
             expect(byId.get(id)).toMatchObject({ v: 1, required: true, entries: 0, bytes: 0 })
         }
-        for (const id of SIDE_SECTION_IDS) {
+        for (const id of STORE_SIDE_IDS) {
             expect(byId.get(id)).toMatchObject({ v: 1, required: false, entries: 1, bytes: 0, prefix: `s/${id.slice(5)}/` })
             const name = `s/${id.slice(5)}/data.jsonl`
             expect(opened.methods.get(name)).toBe(8)
             expect(opened.files.get(name)?.length).toBe(0)
         }
+    })
+
+    // T22 writer part and T23 (guard of the new rule: the row exists only with lines)
+    test('the connection keys section is written only when it has lines, as {k, j:{e, p}} in the order given', async () => {
+        const lines: SideRecord[] = [{ key: 'conn-1', value: { e: 'SYNTH-ENV-1', p: 'SYNTH-PLAIN-1' } }, { key: 'conn-2', value: { e: 'SYNTH-ENV-2', p: 'SYNTH-PLAIN-2' } }]
+        const { bytes } = await write({ sides: { [CONNECTION_KEYS_ID]: { records: iterate(lines) } } })
+        const opened = await open(bytes)
+        const manifest = manifestOf(opened)
+        expect(manifest.sections.find((row: { id: string }) => row.id === CONNECTION_KEYS_ID)).toMatchObject({ v: 1, required: false, entries: 1, prefix: 's/connection-keys/' })
+        const text = decoder.decode(opened.files.get('s/connection-keys/data.jsonl'))
+        expect(text.trimEnd().split('\n').map((line) => JSON.parse(line))).toEqual([
+            { k: 'conn-1', j: { e: 'SYNTH-ENV-1', p: 'SYNTH-PLAIN-1' } },
+            { k: 'conn-2', j: { e: 'SYNTH-ENV-2', p: 'SYNTH-PLAIN-2' } },
+        ])
+    })
+
+    test('a connection keys section with no lines, or no input, leaves no row, no entry and no manifest mention', async () => {
+        const absent = await open((await write()).bytes)
+        const empty = await open((await write({ sides: { [CONNECTION_KEYS_ID]: { records: iterate<SideRecord>([]) } } })).bytes)
+        for (const opened of [absent, empty]) {
+            expect(manifestOf(opened).sections.map((row: { id: string }) => row.id)).not.toContain(CONNECTION_KEYS_ID)
+            expect([...opened.files.keys()].some((name) => name.startsWith('s/connection-keys/'))).toBe(false)
+            expect(JSON.stringify(manifestOf(opened))).not.toContain('connection-keys')
+        }
+        // identical to a file written with no sides at all, apart from nothing: byte-identical
+        const none = (await write()).bytes
+        const emptyBytes = (await write({ sides: { [CONNECTION_KEYS_ID]: { records: iterate<SideRecord>([]) } } })).bytes
+        expect(Buffer.from(emptyBytes).equals(Buffer.from(none))).toBe(true)
     })
 
     test('the file classifies ok with an empty notice', async () => {

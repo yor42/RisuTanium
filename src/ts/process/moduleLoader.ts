@@ -9,6 +9,7 @@ import { getResidency } from '../storage/store2/residencyActive'
 import type { ModuleStubLoad } from '../storage/store2/saveActive'
 import { lorebookRepairNeed, repairModuleLorebook } from './moduleLorebookRepair'
 import { bumpModuleGui, refreshModules, type RisuModule } from './modules'
+import { displayReferencesModule } from './moduleDisplayRefs'
 
 /**
  * The module loader: brings a module stub's body in from the store and installs it into the stub's slot.
@@ -183,7 +184,11 @@ async function loadInto(flight: Flight, residency: Residency): Promise<RisuModul
     // untouched by the repair and keep theirs.
     residency.hydrateModule(repair.changed ? withoutModuleUnit(read) : read)
     refreshModules()
-    bumpModuleGui()
+    // Only a slot the displayed origin references reloads the chat, so a library-wide load (a plugin's getDatabase)
+    // does not remount it once per module.
+    if (displayReferencesModule(DBState.db.modules[index])) {
+        bumpModuleGui()
+    }
     return DBState.db.modules[index]
 }
 

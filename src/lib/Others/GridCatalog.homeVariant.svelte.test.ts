@@ -324,3 +324,52 @@ describe('GridCatalog home variant', { timeout: 60_000 }, () => {
         })
     })
 })
+
+describe('GridCatalog cast-sheet hooks (S4d-U1)', { timeout: 60_000 }, () => {
+    const HOOKS = ['library-head', 'library-tile', 'library-row']
+    const hookNodes = (root: HTMLElement) => HOOKS.flatMap((hook) => Array.from(root.querySelectorAll(`[data-part="${hook}"]`)))
+
+    /** Class lists of the header block, the view buttons and the first tile of the current variant, in the grid layout. */
+    async function classSnapshot(variant: Variant): Promise<{ head: string; views: string[]; tile: string; hooks: number; rootClass: boolean; listRows: number }> {
+        let snapshot: { head: string; views: string[]; tile: string; hooks: number; rootClass: boolean; listRows: number } | undefined
+        await withMounted(variant, (target) => {
+            clickLayoutButton(target, GRID)
+            const head = target.querySelector('input[type="text"]')!.closest('div.mx-4')!
+            const views = Array.from(target.querySelectorAll('[data-part="library-views"] button')).map((b) => b.className)
+            const tileButton = Array.from(target.querySelectorAll('button[aria-label="Alice"]'))[0]
+            const tile = tileButton.parentElement!
+            const hooks = hookNodes(target).length
+            const rootClass = target.querySelector('.home-library') !== null
+            clickLayoutButton(target, LIST)
+            snapshot = { head: head.className, views, tile: tile.className, hooks, rootClass, listRows: target.querySelectorAll('[data-part="library-row"]').length }
+        })
+        return snapshot!
+    }
+
+    test('the Home variant carries the hooks and the scoped root class', async () => {
+        DBState.db = buildDb(threeCharacters())
+        const home = await classSnapshot('home')
+        expect(home.rootClass).toBe(true)
+        expect(home.hooks).toBeGreaterThanOrEqual(2)
+        expect(home.listRows).toBe(3)
+        await withMounted('home', (target) => {
+            expect(target.querySelector('[data-part="library-head"]')).not.toBeNull()
+            clickLayoutButton(target, GRID)
+            expect(target.querySelectorAll('[data-part="library-tile"]').length).toBe(3)
+        })
+    })
+
+    // The hooks are plain literals in both variants (the theme-pack part list reads only literals); the look stays Home-only
+    // because every rule descends from the scoped root class, which the App host never carries.
+    test('the App host has no scoped class, the same hooks, and the same class lists as the Home variant markup', async () => {
+        DBState.db = buildDb(threeCharacters())
+        const app = await classSnapshot('app')
+        const home = await classSnapshot('home')
+        expect(app.rootClass).toBe(false)
+        expect(app.hooks).toBe(home.hooks)
+        expect(app.listRows).toBe(3)
+        expect(app.head).toBe('mx-4 mb-6 flex flex-col shrink-0')
+        expect(app.views).toEqual(home.views)
+        expect(app.tile).toBe(home.tile)
+    })
+})

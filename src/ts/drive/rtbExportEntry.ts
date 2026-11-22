@@ -13,6 +13,7 @@ import { language } from 'src/lang'
 import { isTauri } from 'src/ts/platform'
 import { alertClear, alertConfirm, alertError, alertNormal } from '../alert'
 import { shownPromptNames } from './backupUpstreamSizes'
+import { exportKeysLateText } from './exportKeys'
 import type { ExportTaskStepDef } from '../exportTask'
 import { exportSettingsRtb, type SettingsRtbResult } from './rtbSettingsExport'
 import {
@@ -85,6 +86,9 @@ export function rtbSavedNotice(report: RtbExportReport, isTauriPage: boolean): s
     if (sides.length > 0) {
         paragraphs.push(language.rtbExportSideLeftOut(sides.length))
     }
+    if (report.keysLeftOutLate.length > 0) {
+        paragraphs.push(exportKeysLateText(report.keysLeftOutLate))
+    }
     if (paragraphs.length > 0) {
         parts.push(language.backupDataLeftOut, ...paragraphs)
     }
@@ -110,7 +114,7 @@ function rtbExportCard(isTauriPage: boolean): RtbExportCard {
             failedHeadline: language.backupTaskFailed,
         },
         // A report ends on the notice that names what the file lacks; a clean save ends on the done card.
-        savedEnding: (report) => report.unsavedExcluded || report.omitted.length > 0 || report.oldInlayStoreUnlisted
+        savedEnding: (report) => report.unsavedExcluded || report.omitted.length > 0 || report.oldInlayStoreUnlisted || report.keysLeftOutLate.length > 0
             ? { notice: rtbSavedNotice(report, isTauriPage) }
             : { summary: [isTauriPage ? language.rtbExportSaved : language.exportDownloadStarted] },
     }

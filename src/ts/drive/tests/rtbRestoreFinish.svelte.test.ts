@@ -13,9 +13,9 @@ import { language } from 'src/lang'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { SIDE_SECTION_IDS } from 'src/ts/drive/rtb/entryNames'
 import type { SideInput, SideRecord } from 'src/ts/drive/rtb/rtbWriter'
-import { GOOGLE_SEARCH_STORE, HYPA_VECTOR_STORE, IRIS_STORE, MCP_TOOL_CALLS_STORE, PLUGIN_PERMISSIONS_STORE, UI_PREFS_KEYS } from 'src/ts/drive/rtb/sideStoreConfig'
-import { applySideAction } from 'src/ts/drive/rtb/sideStores'
-import { bodyReaderOf, finishRtbRestore, type RtbFinishDeps, type RtbFinishLanded } from 'src/ts/drive/rtbRestoreFinish'
+import { GOOGLE_SEARCH_STORE, HYPA_VECTOR_STORE, IRIS_STORE, MCP_TOOL_CALLS_STORE, PLUGIN_PERMISSIONS_STORE, RESTORED_KEYS_STORE, UI_PREFS_KEYS } from 'src/ts/drive/rtb/sideStoreConfig'
+import { applySideAction, type SideRestoreResult } from 'src/ts/drive/rtb/sideStores'
+import { bodyReaderOf, finishRtbRestore, stageConnectionKeys, type RtbFinishDeps, type RtbFinishLanded } from 'src/ts/drive/rtbRestoreFinish'
 import { tailOfKey, UNIT_TYPE } from 'src/ts/storage/store2/format'
 import { rtbWorld, type RtbWorld } from 'src/ts/storage/tests/store2/rtbFixtures'
 import { repackRtb, withBrokenCrc, writeRtbFile, type RtbBuild } from './rtb/rtbRestoreFixtures'
@@ -67,7 +67,7 @@ async function* iterate<T>(items: readonly T[]): AsyncGenerator<T> {
 const records = (...items: readonly [string, unknown][]): SideInput => ({ records: iterate<SideRecord>(items.map(([key, value]) => ({ key, value }))) })
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-const noFacts = (): RtbFinishLanded => ({ flushed: true, facts: { assetsWritten: 0, assetsPresent: 0, skippedAssets: [], inlays: { written: 0, skipped: [], changed: false } } })
+const noFacts = (): RtbFinishLanded => ({ flushed: true, facts: { assetsWritten: 0, assetsPresent: 0, skippedAssets: [], inlays: { written: 0, skipped: [], changed: false } }, staged: null })
 
 interface Run {
     log: string[]
@@ -229,7 +229,7 @@ describe('S.2 and S.3 the notices and the reload (B3, B5, B8)', () => {
                 add: [{ name: 'x/unknown/one', bytes: new TextEncoder().encode('unknown-entry-bytes'), method: 0 }],
             },
         )
-        const landed: RtbFinishLanded = { flushed: true, facts: { ...noFacts().facts, skippedAssets: [{ name: 'bad:name', reason: 'invalidName' }] } }
+        const landed: RtbFinishLanded = { flushed: true, facts: { ...noFacts().facts, skippedAssets: [{ name: 'bad:name', reason: 'invalidName' }] }, staged: null }
         const run = await finish(withUnknown, { landed })
         expect(run.notices).toEqual([
             language.restoreAssetsSkipped(1, ['bad:name']),
@@ -254,6 +254,7 @@ describe('S.2 and S.3 the notices and the reload (B3, B5, B8)', () => {
                 skippedAssets: [{ name: 'huge.bin', reason: 'tooLarge' }],
                 inlays: { written: 0, changed: false, skipped: [{ label: 'inlay-a', reason: 'notStored' }, { label: 'inlay-b', reason: 'tooLarge', limit: 777 }] },
             },
+            staged: null,
         }
         const fakes = sideFakes()
         const notices: string[] = []
@@ -346,5 +347,64 @@ describe('a throw after the commit landed (B4)', () => {
 describe('the side ids', () => {
     test('every side section has a shown name (guard; a section added without one fails it)', () => {
         expect(SIDE_SECTION_IDS).toHaveLength(Object.keys(language.rtbRestoreSideNames).length)
+    })
+})
+
+describe('the finish and the connection keys staged before the commit (G1, G1b, G3, G5)', () => {
+    const CONNECTION_KEYS = 'side.connection-keys'
+    const keyedSides = (): Record<string, SideInput> => ({ ...allSides(), [CONNECTION_KEYS]: records(['c1', { e: 'SYNTH-ENV-1', p: 'SYNTH-P1' }]) })
+    const stagedOk: SideRestoreResult = { id: CONNECTION_KEYS, status: 'ok', written: 1, skipped: [] }
+    const failedLine = (): string => language.rtbRestoreLeftOut([language.rtbRestoreLineSideFailed([language.rtbRestoreSideNames.connectionKeys])])
+
+    test('G1: a staging that failed before the commit is named by the finish, and the other sections are still restored after the commit (guard of a new rule)', async () => {
+        const staged: SideRestoreResult = { id: CONNECTION_KEYS, status: 'write-failed', phase: 'write', written: 0, key: 'SYNTH-ENV-1', message: 'disk full' }
+        const run = await finish(await fileOf({ sides: keyedSides() }), { landed: { ...noFacts(), staged } })
+
+        expect(run.notices).toEqual([failedLine()])
+        expect([...run.fakes.forage(IRIS_STORE).data.keys()].sort()).toEqual(['k1', 'k2'])
+        expect([...run.fakes.forage(MCP_TOOL_CALLS_STORE).data.keys()]).toEqual(['m1'])
+    })
+
+    test('G1b: a connection-keys restore with no staging result is named as failed and is not applied (guard of a new rule)', async () => {
+        const run = await finish(await fileOf({ sides: keyedSides() }), { landed: { ...noFacts(), staged: null } })
+
+        expect(run.notices).toEqual([failedLine()])
+        expect(run.fakes.forage(RESTORED_KEYS_STORE).data.size).toBe(0)
+    })
+
+    test('G3: a staged connection-keys restore is never applied by the finish and is not named when it succeeded (guard of a new rule)', async () => {
+        const applied: string[] = []
+        const run = await finish(await fileOf({ sides: keyedSides() }), {
+            landed: { ...noFacts(), staged: stagedOk },
+            deps: {
+                applySide: async (action, body, backends) => {
+                    applied.push(`${action.id}:${action.kind}`)
+                    return await applySideAction(action, body, backends)
+                },
+            },
+        })
+
+        expect(applied).not.toContain(`${CONNECTION_KEYS}:restore`)
+        expect(applied).toContain('side.iris:restore')
+        expect(run.fakes.forage(RESTORED_KEYS_STORE).data.size).toBe(0)
+        expect(run.notices).toEqual([])
+    })
+
+    test('G2u: stageConnectionKeys never rejects: a throw is a named write-failed, and a section that is not a restore gives null (guard of a new rule)', async () => {
+        const fakes = sideFakes()
+        const keyed = await finishPlanOf(await fileOf({ sides: keyedSides() }))
+        const staged = await stageConnectionKeys(keyed, { applySide: async () => { throw new Error('apply failed') }, sideBackends: fakes.backends })
+
+        expect(staged).toMatchObject({ id: CONNECTION_KEYS, status: 'write-failed', phase: 'write', message: 'apply failed' })
+        const without = await finishPlanOf(await fileOf({ sides: allSides() }))
+        expect(await stageConnectionKeys(without, { applySide: applySideAction, sideBackends: fakes.backends })).toBeNull()
+    })
+    test('G5: a file without the section still clears the staging store in the finish and names nothing (compatibility guard: passes before and after)', async () => {
+        const run = await finish(await fileOf({ sides: allSides() }), {
+            seed: (fakes) => { fakes.forage(RESTORED_KEYS_STORE).data.set('SYNTH-ENV-LEFTOVER', { id: 'c9', p: 'SYNTH-STALE' }) },
+        })
+
+        expect(run.fakes.forage(RESTORED_KEYS_STORE).data.size).toBe(0)
+        expect(run.notices).toEqual([])
     })
 })
