@@ -24,7 +24,7 @@ import { desktopLaunchImport } from "./desktopLaunch";
 import { androidOpenedFilesImport } from "./android/openedFiles";
 import { startLaunchNavigation } from "./android/launchTarget";
 import { keepAliveHost } from "./android/hostBridge";
-import { startLaunchOptions } from "./android/launchOptions";
+import { settlePackDecision, startLaunchOptions } from "./android/launchOptions";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { decodeRisuSave, decodeRisuSaveReporting, encodeRisuSaveLegacy, type SalvageOmittedBlock } from "./storage/risuSave";
 import { legacyPartialFact, legacyPartialNoticeText, setLegacyPartialSave, type LegacyPartialSave } from "./storage/legacyPartialSave";
@@ -108,8 +108,9 @@ export async function loadData() {
                 throw missingStore2BootError()
             }
             if (isTauri) {
-                // Asks the Android host how the app was started (the "Start without theme pack" shortcut) and whether
-                // touch exploration is on. Never awaited: boot does not wait, and a late answer acts live.
+                // Holds the page pack-free, then asks the Android host how the app was started (the "Start without theme
+                // pack" shortcut) and whether touch exploration is on. Not awaited here: the boot waits for the decision
+                // at the theme step (`settlePackDecision`), and an answer after that acts live.
                 if (isAndroidTransport()) {
                     startLaunchOptions(keepAliveHost())
                 }
@@ -393,6 +394,9 @@ export async function loadData() {
             } catch (error) {
                 console.error(error)
             }
+            // The one place the boot waits for the host: no pack may paint before it has said whether the app starts
+            // without one, and the wait is bounded and counted from here.
+            await settlePackDecision()
             const db = getDatabase();
 
             LoadingStatusState.text = "Updating States..."

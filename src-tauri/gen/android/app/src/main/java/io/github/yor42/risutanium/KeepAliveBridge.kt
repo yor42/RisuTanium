@@ -155,8 +155,8 @@ class KeepAliveBridge(
     }
   }
 
-  // The page asks for the launch options; the activity answers through the page's hook and forgets
-  // the shortcut's request, so each launch is delivered once.
+  // The page asks for the launch options; the activity answers through the page's hook with the
+  // process's pack-safe decision, which every ask gets again.
   @JavascriptInterface
   fun requestLaunchOptions() {
     mainHandler.post {
