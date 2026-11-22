@@ -25,10 +25,22 @@ export interface NetworkFieldOptions {
     still?: boolean
     /** Wave phase in seconds at the first frame. */
     startTime?: number
+    /**
+     * Any CSS colour for nodes and links. When set, link levels are carried by globalAlpha and the `r g b`
+     * options and the --nexus-network-* tokens are not read.
+     */
+    colour?: string
+    /**
+     * Decides whether a press may raise a wave. Mouse presses wave at once; touch and pen presses wave on their
+     * own release within a short travel and time. Default: every press may.
+     */
+    canWave?: (event: PointerEvent) => boolean
 }
 
 export interface NetworkField {
     destroy(): void
+    /** The wave phase in seconds now, to carry into the next field. */
+    time(): number
 }
 
 // Radial displacement per unit of wave height, and the matching upward lift in pixels.
@@ -45,6 +57,9 @@ const MAX_WAVES = 3
 // pointer, not a glow dragged behind it; the click wave is the strong signal.
 const HOVER_RADIUS = 110
 const HOVER_STRENGTH = 0.35
+// A touch or pen press waves on release only within this travel (CSS px) and press time (ms).
+const TAP_SLOP = 10
+const TAP_MS = 500
 
 function wave(x: number, y: number, t: number): number {
     return 0.6 * Math.sin(x * 0.0045 + t * 0.32) * Math.cos(y * 0.0055 - t * 0.21)
@@ -70,15 +85,17 @@ interface Wave {
 export function createNetworkField(canvas: HTMLCanvasElement, options: NetworkFieldOptions = {}): NetworkField {
     const context = canvas.getContext('2d')
     if (!context) {
-        return { destroy() {} }
+        return { destroy() {}, time: () => options.startTime ?? 0 }
     }
     const ctx = context
     const lowPower = options.lowPower ?? false
     const reducedMotion = options.reducedMotion ?? false
     const still = options.still ?? false
     const spacing = (options.spacing ?? 46) * (lowPower ? 1.4 : 1)
-    const nodeRgb = options.nodeRgb ?? readRgb(canvas, '--nexus-network-node', '190 220 255')
-    const linkRgb = options.linkRgb ?? readRgb(canvas, '--nexus-network-link', '127 233 255')
+    const colour = options.colour
+    const nodeRgb = colour === undefined ? options.nodeRgb ?? readRgb(canvas, '--nexus-network-node', '190 220 255') : ''
+    const linkRgb = colour === undefined ? options.linkRgb ?? readRgb(canvas, '--nexus-network-link', '127 233 255') : ''
+    const canWave = options.canWave ?? (() => true)
     const minFrameMs = lowPower ? 1000 / 24 : 0
     const maxWaves = lowPower ? 1 : MAX_WAVES
     // A NaN position would make every height NaN and index a node bucket with NaN, so
@@ -303,7 +320,13 @@ export function createNetworkField(canvas: HTMLCanvasElement, options: NetworkFi
             for (let level = 0; level < LINK_LEVELS; level++) {
                 const bucket = linkBuckets[level]
                 if (bucket.length === 0) continue
-                ctx.strokeStyle = `rgb(${linkRgb} / ${((level + 1) / LINK_LEVELS * 0.5).toFixed(3)})`
+                const linkAlpha = (level + 1) / LINK_LEVELS * 0.5
+                if (colour === undefined) {
+                    ctx.strokeStyle = `rgb(${linkRgb} / ${linkAlpha.toFixed(3)})`
+                } else {
+                    ctx.strokeStyle = colour
+                    ctx.globalAlpha = linkAlpha
+                }
                 ctx.beginPath()
                 for (let k = 0; k < bucket.length; k += 2) {
                     ctx.moveTo(screenX[bucket[k]], screenY[bucket[k]])
@@ -311,6 +334,7 @@ export function createNetworkField(canvas: HTMLCanvasElement, options: NetworkFi
                 }
                 ctx.stroke()
             }
+            ctx.globalAlpha = 1
         }
 
         for (const bucket of nodeBuckets) bucket.length = 0
@@ -321,7 +345,7 @@ export function createNetworkField(canvas: HTMLCanvasElement, options: NetworkFi
             radii[i] = 0.6 + lift * 0.45 + crest * 0.7
             nodeBuckets[Math.min(NODE_LEVELS - 1, Math.floor(alpha / 0.75 * NODE_LEVELS))].push(i)
         }
-        ctx.fillStyle = `rgb(${nodeRgb})`
+        ctx.fillStyle = colour ?? `rgb(${nodeRgb})`
         for (let level = 0; level < NODE_LEVELS; level++) {
             const bucket = nodeBuckets[level]
             if (bucket.length === 0) continue
@@ -380,15 +404,49 @@ export function createNetworkField(canvas: HTMLCanvasElement, options: NetworkFi
         frameId = 0
     }
 
-    function onPointerDown(event: PointerEvent) {
-        // Primary button only for mice; touch and pen always count.
-        if (event.pointerType === 'mouse' && event.button !== 0) return
+    // The loop runs only while the page is visible and the canvas has an area: a display:none canvas is 0x0 and
+    // would otherwise spend a frame per tick drawing nothing. Idempotent, so it never leaves two loops.
+    function syncLoop() {
+        if (document.hidden || canvas.clientWidth === 0 || canvas.clientHeight === 0) stop()
+        else start()
+    }
+
+    function raiseWave(clientX: number, clientY: number) {
         const rect = canvas.getBoundingClientRect()
-        const x = event.clientX - rect.left
-        const y = event.clientY - rect.top
+        const x = clientX - rect.left
+        const y = clientY - rect.top
         if (x < 0 || y < 0 || x > width || y > height) return
         if (waves.length >= maxWaves) waves.shift()
         waves.push({ x, y, bornAt: now(), strength: 1 })
+    }
+
+    // A touch or pen press waves only on its own quick, short release, so a scroll (which ends in pointercancel
+    // or a long travel) never raises one.
+    let pendingPress: { id: number, x: number, y: number, t: number } | null = null
+
+    function onPointerDown(event: PointerEvent) {
+        pendingPress = null
+        // Primary button only for mice; touch and pen always count.
+        if (event.pointerType === 'mouse' && event.button !== 0) return
+        if (!canWave(event)) return
+        if (event.pointerType === 'mouse') {
+            raiseWave(event.clientX, event.clientY)
+            return
+        }
+        pendingPress = { id: event.pointerId, x: event.clientX, y: event.clientY, t: performance.now() }
+    }
+
+    function onPointerUp(event: PointerEvent) {
+        const press = pendingPress
+        if (!press || press.id !== event.pointerId) return
+        pendingPress = null
+        if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > TAP_SLOP) return
+        if (performance.now() - press.t > TAP_MS) return
+        raiseWave(event.clientX, event.clientY)
+    }
+
+    function onPointerCancel() {
+        pendingPress = null
     }
 
     function onPointerMove(event: PointerEvent) {
@@ -414,13 +472,14 @@ export function createNetworkField(canvas: HTMLCanvasElement, options: NetworkFi
     }
 
     function onVisibility() {
-        if (document.hidden) stop()
-        else start()
+        syncLoop()
     }
 
     const resizeObserver = new ResizeObserver(() => {
+        // Assigning the canvas size clears the bitmap, so every rebuild is followed by a redraw in every mode.
         rebuild()
-        if (reducedMotion || still) draw(startTime)
+        draw(now())
+        syncLoop()
     })
     resizeObserver.observe(canvas)
     rebuild()
@@ -439,20 +498,27 @@ export function createNetworkField(canvas: HTMLCanvasElement, options: NetworkFi
     if (!interactive) {
         draw(startTime)
     } else {
+        // Complete bitmap at creation, independent of when the first resize notification arrives.
+        draw(startTime)
         window.addEventListener('pointerdown', onPointerDown, { passive: true })
+        window.addEventListener('pointerup', onPointerUp, { passive: true })
+        window.addEventListener('pointercancel', onPointerCancel, { passive: true })
         window.addEventListener('pointermove', onPointerMove, { passive: true })
         document.addEventListener('pointerout', onPointerOut, { passive: true })
         window.addEventListener('blur', onBlur)
         document.addEventListener('visibilitychange', onVisibility)
-        if (!document.hidden) start()
+        syncLoop()
     }
 
     return {
+        time: now,
         destroy() {
             stop()
             resizeObserver.disconnect()
             if (interactive) {
                 window.removeEventListener('pointerdown', onPointerDown)
+                window.removeEventListener('pointerup', onPointerUp)
+                window.removeEventListener('pointercancel', onPointerCancel)
                 window.removeEventListener('pointermove', onPointerMove)
                 document.removeEventListener('pointerout', onPointerOut)
                 window.removeEventListener('blur', onBlur)

@@ -157,6 +157,7 @@
   --home-portrait-start-hue: 20;
   --home-bloom-alpha-rp: 0; --home-bloom-alpha-hybrid: 0; --home-bloom-alpha-utility: 0;
   --home-network-alpha: 0.35;                           /* the lattice behind the page, in the scheme's borderc; quiet so the page reads as the app's surface */
+  --home-network-alpha-soft: 0.15;                      /* the same lattice on light schemes and Lite, fainter so a ripple keeps small secondary text at 4.5:1 */
 
   /* ---- motion (JS reads the numbers from here, DD-143) ---- */
   --home-dur-stage: 220ms; --home-dur-topbar: 180ms; --home-dur-mode-bar: 180ms; --home-dur-bloom: 360ms; --home-dur-rail: 220ms; --home-dur-rail-fade: 180ms; --home-dur-progress: 400ms; --home-dur-toast: 150ms;

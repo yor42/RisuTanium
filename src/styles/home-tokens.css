@@ -73,6 +73,10 @@
   --home-select-bar: var(--home-accent-solid);
   --home-accent-fill: var(--color-accent-tint-strong);
   --home-danger-solid: var(--nexus-danger);
+
+  /* decoration */
+  --home-network-alpha: 0.35;
+  --home-network-alpha-soft: 0.15;
 }
 
 :root:lang(ko), :root:lang(ko) [data-own-scheme] {

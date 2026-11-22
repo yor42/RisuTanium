@@ -1,35 +1,63 @@
 <script lang="ts">
     import { MediaQuery } from 'svelte/reactivity'
+    import { motionPrefs } from 'src/ts/chatShell/motionPrefs.svelte'
     import { createNetworkField } from './nexusNetwork'
+    import { networkFrozen } from './networkMotion'
 
     interface Props {
         /** Coarser lattice, device-pixel ratio 1 and a 24 fps cap for mobile and constrained webviews. */
         lowPower?: boolean
         /** Lattice spacing in CSS pixels. */
         spacing?: number
+        /** One still frame and no loop, whatever the preferences say. */
+        still?: boolean
+        /** No field runs while true; the canvas keeps its last bitmap. */
+        paused?: boolean
+        /** `inherit` draws in the canvas's computed `color`; `tokens` reads the --nexus-network-* tokens. */
+        tint?: 'tokens' | 'inherit'
+        /** Decides whether a press may raise a wave; see the renderer's `canWave`. */
+        canWave?: (event: PointerEvent) => boolean
     }
 
-    let { lowPower = false, spacing = 46 }: Props = $props()
+    let { lowPower = false, spacing = 46, still = false, paused = false, tint = 'tokens', canWave }: Props = $props()
 
     let canvas = $state<HTMLCanvasElement>()
-    const reducedMotion = new MediaQuery('(prefers-reduced-motion: reduce)')
+    const osReduced = new MediaQuery('(prefers-reduced-motion: reduce)')
 
-    // Recreated when an option changes; these change rarely, and recreation keeps the renderer stateless.
+    // The app's own Low power and Reduce motion choices count, not only the OS query.
+    const frozen = $derived(networkFrozen({
+        still,
+        lowPower: motionPrefs.lowPower,
+        reducedMotion: motionPrefs.reducedMotion,
+        systemReduced: osReduced.current,
+    }))
+    const coarse = $derived(lowPower || motionPrefs.lowPower)
+
+    // The wave phase carried from one field to the next, so a switch does not jump the lattice.
+    let phase = 0
+
+    // Recreated when an input changes; at most one field exists, and a paused lattice has none.
     $effect(() => {
-        if (!canvas) return
-        const field = createNetworkField(canvas, {
-            lowPower,
+        if (!canvas || paused) return
+        const target = canvas
+        const colour = tint === 'inherit' ? getComputedStyle(target).color : ''
+        const field = createNetworkField(target, {
+            lowPower: coarse,
             spacing,
-            reducedMotion: reducedMotion.current,
+            still: frozen,
+            startTime: phase,
+            colour: colour === '' ? undefined : colour,
+            canWave,
         })
-        return () => field.destroy()
+        return () => {
+            phase = field.time()
+            field.destroy()
+        }
     })
 </script>
 
 <!--
-    Stacking: the canvas sits at z-0 as the first child of the app root, and the interactive
-    shell is a sibling `relative z-10` container. A negative z-index would put it behind <body>'s and every
-    opaque view's background. Ancestors between the root and the canvas must stay transparent, and the
-    root (or <body>) carries .nexus-canvas. The canvas ignores pointer events; waves listen on window.
+    The canvas fills its positioned parent and ignores pointer events; waves listen on window. The parent
+    decides the stacking: Home places it before the content, so the content paints above it.
 -->
-<canvas bind:this={canvas} aria-hidden="true" class="pointer-events-none fixed inset-0 z-0 h-full w-full"></canvas>
+<canvas bind:this={canvas} aria-hidden="true" class="pointer-events-none absolute inset-0 h-full w-full"></canvas>

@@ -85,6 +85,14 @@ describe('home tokens file (S1-G1)', () => {
         for (const name of Object.keys(ALIAS_TABLE)) expect(rootBlock.has(name), name).toBe(true)
     })
 
+    test('the network lattice alpha is declared at :root with the registry value', () => {
+        expect(app.get(':root')?.get('--home-network-alpha')).toBe('0.35')
+    })
+
+    test('the fainter lattice alpha for light schemes and Lite is declared at :root with the registry value', () => {
+        expect(app.get(':root')?.get('--home-network-alpha-soft')).toBe('0.15')
+    })
+
     test('each band block restates the registry html[data-layout] block and the ko block restates html[data-lang="ko"]', () => {
         const wrong: string[] = []
         const restate = (appSelector: string, registrySelector: string) => {
