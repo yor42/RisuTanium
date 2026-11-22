@@ -495,6 +495,7 @@ import { studioOpen } from 'src/ts/studio/studioOpen'
 import { toastHost, resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
 import { alertError } from 'src/ts/alert'
 import { DynamicGUI, settingsOpen, ShowRealmFrameStore, sideBarStore } from 'src/ts/stores.svelte'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region the page and its observations
 
@@ -591,7 +592,7 @@ beforeEach(() => {
         saves.push({ mark })
         events.push(`save:${String(mark)}`)
     })
-    doingChat.set(false)
+    clearRunningSends()
     setVisibility('visible')
 })
 

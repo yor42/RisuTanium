@@ -228,7 +228,7 @@ vi.mock(import('src/ts/translator/translator'), () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from 'src/ts/process/index.svelte'
+import { sendChat } from 'src/ts/process/index.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
 import {
@@ -239,6 +239,7 @@ import { detachTail, endTarget, siblingsAt, switchTo } from 'src/ts/process/chat
 import { treeView } from 'src/ts/process/chatTreeView'
 import { keepLiveAlt } from 'src/ts/plugins/chatAltBridge'
 import { addRerolls, renameContinuedMessage } from 'src/ts/process/prereroll'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -359,7 +360,7 @@ beforeEach(() => {
     supaMemoryMock.mockReset()
     closeMenu.mockReset()
     resetComposerActionsForTests()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

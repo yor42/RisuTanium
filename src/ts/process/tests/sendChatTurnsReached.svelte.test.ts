@@ -258,9 +258,10 @@ vi.mock('src/ts/process/coldMemberRestore', () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from 'src/ts/process/index.svelte'
+import { sendChat } from 'src/ts/process/index.svelte'
 import { turnsReachedCount } from 'src/ts/process/generationOwnership.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -411,7 +412,7 @@ beforeEach(() => {
     isLastCharPunctuationMock.mockReturnValue(true)
     chatOutputListeners.clear()
     restoreColdCharacterMock.mockReset()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

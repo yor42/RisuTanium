@@ -393,6 +393,7 @@ import { runAutopilot } from 'src/ts/process/devToolActions'
 import { makeRisuaiAPIV3 } from 'src/ts/plugins/apiV3/v3.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -718,7 +719,7 @@ beforeEach(() => {
     interceptedSleeps.clear()
     held.length = 0
     resetLocalDraftsForTest()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

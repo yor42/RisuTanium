@@ -489,7 +489,7 @@ beforeEach(() => {
     chatOutputListeners.clear()
     workSpies.beginWork.mockClear()
     workSpies.registerWork.mockClear()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {
@@ -501,6 +501,7 @@ afterEach(() => {
 
 import { activeStreams, isActiveStreamReply, resetActiveStreamsForTest, streamWroteText } from 'src/ts/process/activeStreams'
 import { resetChatStreamingState } from 'src/ts/storage/characterDefaults'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 type StreamingMode = 'off' | 'balanced' | 'strong'
 

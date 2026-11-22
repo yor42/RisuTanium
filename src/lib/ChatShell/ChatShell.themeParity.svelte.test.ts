@@ -225,6 +225,7 @@ import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { pendingChatFileUploads } from 'src/ts/process/composerSurface.svelte'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import { isStopDeletePending, requestStopDelete } from 'src/ts/chatShell/stopDelete.svelte'
+import { clearRunningSends } from '../../ts/process/tests/activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -363,7 +364,7 @@ beforeEach(() => {
     composerDrafts.resetComposerDraftsForTests()
     resetComposerActionsForTests()
     resetLocalDraftsForTest()
-    doingChat.set(false)
+    clearRunningSends()
     localStorage.clear()
     installDb()
 })

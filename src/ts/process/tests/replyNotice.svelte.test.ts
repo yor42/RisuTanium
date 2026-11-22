@@ -565,7 +565,7 @@ beforeEach(() => {
         saves.push({ mark })
         events.push(`save:${String(mark)}`)
     })
-    doingChat.set(false)
+    clearRunningSends()
     setVisibility('visible')
 })
 
@@ -601,6 +601,7 @@ import { announceReply, hasChimedFor, hasFailedFor, hasSilencedFor, nativeNotice
 import { noteAnnounced } from 'src/ts/nativeReply/pageState'
 import { __avatarThumbTestHooks, getAvatarThumbSrc, peekAvatarThumb, THUMB_VERSION } from 'src/ts/media/avatarThumb'
 import { createHostChannelFake, type HostChannelFake } from 'src/ts/android/hostChannelFake'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 const audioPlays = { count: 0 }
 

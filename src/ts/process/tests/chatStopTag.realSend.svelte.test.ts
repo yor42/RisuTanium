@@ -306,12 +306,13 @@ vi.mock('../../chatCard', () => ({ captureCardTheme: vi.fn(), noteNewerPlainCopy
 
 //#endregion
 
-import { doingChat } from '../index.svelte'
+import '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { sendChatMain, resetComposerActionsForTests } from '../composerActions.svelte'
 import * as composerDrafts from '../composerDrafts.svelte'
 import { originOf } from '../chatOrigin'
 import { abortUnitInProgress, isUnitInProgressSignal, unitTargetOfSignal } from '../generationOwnership.svelte'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -384,7 +385,7 @@ beforeEach(() => {
     requestChatDataMock.mockResolvedValue({ type: 'fail', result: 'unexpected request' })
     composerDrafts.resetComposerDraftsForTests()
     resetComposerActionsForTests()
-    doingChat.set(false)
+    clearRunningSends()
     installDb()
 })
 

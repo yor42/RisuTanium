@@ -87,8 +87,10 @@ vi.mock('localforage', () => ({
 //#endregion
 
 import { translateHTML, translateWholeText } from '../translator'
-import { doingChat } from '../../process/index.svelte'
+import { doingChat as doingChatStore } from '../../process/index.svelte'
 import { registerWork, type RunSubject } from '../../process/chatOrigin'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 const FIVE_PARAGRAPHS = 'one\n\ntwo\n\nthree\n\nfour\n\nfive'
 

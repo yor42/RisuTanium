@@ -230,9 +230,10 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from '../index.svelte'
+import { sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { noteReplyPushed, noteBound, noteInvoked, resetPageStateForTests } from '../../nativeReply/pageState'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 function installDb(useStreaming: boolean): void {
     DBState.db = {
@@ -299,7 +300,7 @@ async function sendOnce(options: { android: boolean, useStreaming: boolean, owne
     world.android = options.android
     installDb(options.useStreaming)
     selectedCharID.set(0)
-    doingChat.set(false)
+    clearRunningSends()
     // A request that owns the record binds the grant and invokes the native fetch with it; the page state learns both
     // through its real notes. A request that never does leaves the entry as the grant made it.
     requestChatDataMock.mockImplementationOnce(async (args: { chatId: string }) => {

@@ -236,6 +236,7 @@ import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
 import { MODULE_STUB_KEY } from 'src/ts/storage/moduleStub'
 import { ModuleLoadError, registerModuleLoader, unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
 import { get } from 'svelte/store'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -309,7 +310,7 @@ beforeEach(() => {
     runTriggerMock.mockResolvedValue(undefined)
     processScriptFullMock.mockReset()
     processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text, emoChanged: false }))
-    doingChat.set(false)
+    clearRunningSends()
     installStubbedWorld()
 })
 

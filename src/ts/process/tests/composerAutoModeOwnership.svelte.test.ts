@@ -96,8 +96,10 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
 
 import { runAutoMode, abortChat, isAutoModeActive, isComposerBusy, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { doingChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
 import { noteTurnReached } from 'src/ts/process/generationOwnership.svelte'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures
 
