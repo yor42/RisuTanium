@@ -67,6 +67,7 @@ interface CentralEntry {
     localOffset: number
     madeBy: number
     externalAttrs: number
+    crc: number
 }
 
 class ArchiveRefusal extends Error {
@@ -136,6 +137,7 @@ function readCentralDirectory(bytes: Uint8Array): CentralEntry[] {
             madeBy: view.getUint16(at + 4, true),
             flags: view.getUint16(at + 8, true),
             method: view.getUint16(at + 10, true),
+            crc: view.getUint32(at + 16, true),
             compressedSize: view.getUint32(at + 20, true),
             declaredSize: view.getUint32(at + 24, true),
             externalAttrs: view.getUint32(at + 38, true),
@@ -222,6 +224,27 @@ function inflateBounded(data: Uint8Array, budget: UnpackBudget): Uint8Array {
         offset += chunk.length
     }
     return out
+}
+
+const CRC_TABLE: Uint32Array = (() => {
+    const table = new Uint32Array(256)
+    for (let n = 0; n < 256; n++) {
+        let c = n
+        for (let bit = 0; bit < 8; bit++) {
+            c = (c & 1) !== 0 ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1)
+        }
+        table[n] = c >>> 0
+    }
+    return table
+})()
+
+/** The zip CRC-32 (IEEE) of `bytes`; fflate's public API does not expose its own. */
+export function zipCrc32(bytes: Uint8Array): number {
+    let crc = 0xffffffff
+    for (let index = 0; index < bytes.length; index++) {
+        crc = CRC_TABLE[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8)
+    }
+    return (crc ^ 0xffffffff) >>> 0
 }
 
 function describeName(entry: CentralEntry): string {
@@ -331,6 +354,12 @@ export function planZipImport(bytes: Uint8Array, existingPaths: readonly string[
                     continue
                 }
             }
+            // The stored checksum must match what the entry actually produced, so a flipped byte that still decodes as
+            // text is refused instead of imported as altered content.
+            if (zipCrc32(content) !== entry.crc) {
+                refuse('damaged', 'The entry data does not match its checksum.')
+                continue
+            }
             const decoded = decodeWorkspaceBytes(content)
             if (decoded.ok === false) {
                 refuse('binary', 'Only text files are accepted.')
@@ -365,6 +394,7 @@ export type ZipImportResult =
     | { ok: false, reason: 'no-workspace', detail: string }
     | { ok: false, reason: 'archive', archive: ZipArchiveRefusal, detail: string }
     | { ok: false, reason: 'cancelled' }
+    | { ok: false, reason: 'changed', detail: string }
     | { ok: false, reason: 'caps', error: WorkspaceChangeError, refused: ZipRefusedEntry[] }
 
 /**
@@ -386,23 +416,38 @@ export async function importZipIntoWorkspace(
         return { ok: false, reason: 'archive', archive: plan.reason, detail: plan.detail }
     }
     let choice: CollisionChoice = 'replace'
+    let current = plan
     if (plan.collisions.length > 0) {
         choice = await askCollision(plan.collisions)
         if (choice === 'cancel') {
             return { ok: false, reason: 'cancelled' }
         }
+        // The workspace can change while the question is open. Plan again against what it holds now, and refuse when a
+        // path the user was never asked about has appeared: only the asked paths may be replaced or kept.
+        if (!hasWorkspace(workspaceId)) {
+            return { ok: false, reason: 'no-workspace', detail: 'The workspace does not exist.' }
+        }
+        const replanned = planZipImport(bytes, listFiles(workspaceId).map(file => file.path))
+        if (replanned.ok === false) {
+            return { ok: false, reason: 'archive', archive: replanned.reason, detail: replanned.detail }
+        }
+        const asked = new Set(plan.collisions)
+        if (replanned.collisions.some(path => !asked.has(path))) {
+            return { ok: false, reason: 'changed', detail: 'The workspace changed while the question was open. Nothing was imported.' }
+        }
+        current = replanned
     }
-    const colliding = new Set(plan.collisions)
-    const keptExisting = choice === 'keep' ? plan.collisions : []
-    const writes = plan.accepted.filter(file => !(choice === 'keep' && colliding.has(file.path)))
+    const colliding = new Set(current.collisions)
+    const keptExisting = choice === 'keep' ? current.collisions : []
+    const writes = current.accepted.filter(file => !(choice === 'keep' && colliding.has(file.path)))
     if (writes.length > 0) {
         const ops: WorkspaceOp[] = writes.map(file => ({ kind: 'write', path: file.path, text: file.text }))
         const result = commitWorkspaceChange(workspaceId, ops, env)
         if (result.ok === false) {
-            return { ok: false, reason: 'caps', error: result.error, refused: plan.refused }
+            return { ok: false, reason: 'caps', error: result.error, refused: current.refused }
         }
     }
-    return { ok: true, written: writes.map(file => file.path), keptExisting, refused: plan.refused }
+    return { ok: true, written: writes.map(file => file.path), keptExisting, refused: current.refused }
 }
 
 export type ZipExportResult =

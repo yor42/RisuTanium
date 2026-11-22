@@ -211,8 +211,8 @@ describe('T3 boot: a damaged workspace record is a fixed-unit finding, a damaged
                 const read = await readTreeBytes(world.memory, world.manifestKey)
                 expect(read.status).toBe('ok')
                 if (read.status === 'ok') {
-                    const [wsId, path] = identity === 'wsf:w1:f2' ? ['w1', 'notes/a.md'] : ['w2', 'x.txt']
-                    expect(read.flagged).toEqual([{ kind: 'workspace-file', wsId, path, key, why: damage.name === 'missing' ? 'missing' : 'damaged' }])
+                    const [wsId, wsName, path] = identity === 'wsf:w1:f2' ? ['w1', 'First', 'notes/a.md'] : ['w2', 'Second', 'x.txt']
+                    expect(read.flagged).toEqual([{ kind: 'workspace-file', wsId, wsName, path, key, why: damage.name === 'missing' ? 'missing' : 'damaged' }])
                 }
             })
         }
