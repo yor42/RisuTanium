@@ -11,12 +11,12 @@ import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-const mounts = vi.hoisted(() => [] as Array<{ interrupted: boolean, message: string, idx: number }>)
+const mounts = vi.hoisted(() => [] as Array<{ interrupted: boolean, replyRunning: boolean, message: string, idx: number }>)
 const unmounts = vi.hoisted(() => ({ count: 0 }))
 
 vi.mock('./Chat.svelte', () => ({
-    default: (_anchor: unknown, props: { interrupted: boolean, message: string, idx: number }) => {
-        mounts.push({ interrupted: props.interrupted, message: props.message, idx: props.idx })
+    default: (_anchor: unknown, props: { interrupted: boolean, replyRunning: boolean, message: string, idx: number }) => {
+        mounts.push({ interrupted: props.interrupted, replyRunning: props.replyRunning, message: props.message, idx: props.idx })
         return { destroy: () => { unmounts.count += 1 } }
     },
 }))
@@ -41,6 +41,7 @@ vi.mock(import('src/ts/characters'), () => ({
 
 import { DBState } from 'src/ts/stores.svelte'
 import { addActiveStream, resetActiveStreamsForTest } from 'src/ts/process/activeStreams'
+import { resetRunningRepliesForTests, setRunningReplies } from 'src/ts/nativeReply/runningReplies.svelte'
 import Chats from './Chats.svelte'
 
 type Mode = 'off' | 'balanced' | 'strong'
@@ -83,6 +84,7 @@ beforeEach(() => {
     mounts.length = 0
     unmounts.count = 0
     resetActiveStreamsForTest()
+    resetRunningRepliesForTests()
 })
 
 afterEach(async () => {
@@ -141,6 +143,21 @@ describe('the interrupted note is a mount prop of Chat', () => {
         const after = mountsAt(1)
         expect(after.length).toBe(mountedBefore + 1)
         expect(after.at(-1)).toMatchObject({ interrupted: false, message: 'Partial' })
+    })
+
+    test('T26: a flagged reply whose key runs elsewhere is mounted with the running flag, and re-mounts with the note when the map empties', () => {
+        resetRunningRepliesForTests()
+        setRunningReplies([{ key: 'reply-1', target: null }])
+        mountChats('off', [
+            { role: 'user', data: 'Hi' },
+            { role: 'char', data: 'Partial', chatId: 'reply-1', interrupted: true },
+        ])
+        expect(mountsAt(1).map((entry) => [entry.interrupted, entry.replyRunning])).toEqual([[false, true]])
+
+        setRunningReplies([])
+        flushSync()
+
+        expect(mountsAt(1).map((entry) => [entry.interrupted, entry.replyRunning])).toEqual([[false, true], [true, false]])
     })
 
     test.each(['off', 'balanced', 'strong'] as const)('a continue of a flagged reply hides the note while it streams and after it ends (%s mode)', (mode) => {

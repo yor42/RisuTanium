@@ -4,6 +4,7 @@ import type { RunSubject } from '../process/chatOrigin'
 import { decodeReplyBlob, isStreamReplyBlob, type ReplyBlob, type StreamReplyBlob } from './blob'
 import type { ParkedReply } from './parkedDialog'
 import { consumeReply, heldReply } from './pageState'
+import { addRunningReplies, setRunningReplies, takeWaitingForUnit, type RunningReplyEntry, type RunningReplyTarget } from './runningReplies.svelte'
 import type { NativeReplyStore, ReplyListing, ReplyListingState, ReplyOutcome } from './store'
 import type { UsageMeterState } from '../usage/usageTypes'
 
@@ -194,6 +195,15 @@ export async function recoveredText(
     }
     text = text.trim()
     return text === '' ? null : text
+}
+
+/** The chat a listed record replies into, from its ticket blob; null when the listing has no readable blob. */
+function runningTargetOf(listing: ReplyListing): RunningReplyTarget | null {
+    const decoded = decodeReplyBlob(listing.blob, listing.pageVersion)
+    if (!('blob' in decoded)) {
+        return null
+    }
+    return { chaId: decoded.blob.target.chaId, chatId: decoded.blob.target.chatId, name: decoded.blob.targetName }
 }
 
 export function createReconciler(deps: ReconcileDeps): Reconciler {
@@ -486,13 +496,27 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
             return
         }
         const items: ParkedReply[] = []
+        // A key this page holds is read or settled by this page itself, so it never shows as running elsewhere.
+        const entries: RunningReplyEntry[] = []
+        for (const listing of listings) {
+            if (listing.state === 'live' && heldReply(listing.key) === undefined) {
+                entries.push({ key: listing.key, target: runningTargetOf(listing) })
+            }
+        }
+        addRunningReplies(entries)
         for (const listing of listings) {
             try {
                 await handle(listing, items)
             } catch (error) {
                 console.error(error)
             }
+            // Only a reply that waited for a send's unit stays running; every other result ends it with this pass.
+            if (listing.state !== 'live' && takeWaitingForUnit(listing.key)) {
+                entries.push({ key: listing.key, target: runningTargetOf(listing) })
+            }
         }
+        // Published before the parked dialog, which can wait for the person.
+        setRunningReplies(entries)
         if (items.length > 0) {
             await deps.showParked(items)
         }

@@ -62,6 +62,7 @@ import { hasModuleStubs } from "./moduleRefList";
 import { getSaveMarkCount, readImage } from "../globalApi.svelte";
 import { issueNativeReplyGrant, nativeReplyEligible } from "../nativeReply/grant";
 import { holdRecoveredReply, noteReplyPushed, ownsPushedReply, requestReconcile, settleNativeReplyInflight, takeAnnounced } from "../nativeReply/pageState";
+import { noteWaitingForUnit } from "../nativeReply/runningReplies.svelte";
 import { endOwnedRead, forgetOwnedStream, settleOwnedStreamEnd } from "../nativeReply/ownedStream";
 import type { ApplyOutcome, RecoveredReplyInput, RecoveredStreamInput } from "../nativeReply/reconcile";
 import { settleRecoveredUsage } from "../usage/usageCapture";
@@ -510,9 +511,10 @@ function recoveredApplyBlocked(origin: Origin): boolean {
 }
 
 /** Records that a recovered reply waited for a unit: the send's end asks the reconcile to run again. */
-function deferRecoveredApply(origin: Origin): 'deferred' {
+function deferRecoveredApply(origin: Origin, key: string): 'deferred' {
     void origin
     recoveredApplyDeferred = true
+    noteWaitingForUnit(key)
     return 'deferred'
 }
 
@@ -538,7 +540,7 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
     const { key, blob, text } = input
     const origin: Origin = { chaId: blob.target.chaId, chatId: blob.target.chatId }
     if(recoveredApplyBlocked(origin)){
-        return deferRecoveredApply(origin)
+        return deferRecoveredApply(origin, key)
     }
     const subject = createSendSubject(origin)
     const entryCtx = subject.resolve()
@@ -640,7 +642,7 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
     const { key, blob, modelText, complete, meter, how } = input
     const origin: Origin = { chaId: blob.target.chaId, chatId: blob.target.chatId }
     if(recoveredApplyBlocked(origin)){
-        return deferRecoveredApply(origin)
+        return deferRecoveredApply(origin, key)
     }
     const subject = createSendSubject(origin)
     const entryCtx = subject.resolve()
