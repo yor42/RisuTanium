@@ -2011,15 +2011,15 @@ describe('new behaviour: a character that cannot be saved is skipped, noticed on
         healthy(loop)
     })
 
-    test('guard (passes before and after): a bad value outside a character still fails the pass and is reported', async () => {
+    test('reproducer: a cyclic plugin no longer fails the pass, which lands with the plugin list held', async () => {
         const db = clone(buildSmall(4))
         const loop = await startLoop(db, { idleNet: null })
         ;((db as unknown as { pluginV2: Array<Record<string, unknown>> }).pluginV2)[0].cycle = cyclic()
         loop.reloadFlag.state = true
         loop.due()
-        await until(() => loop.failures.length >= 1, 'the failure report', 4000)
+        await until(() => loop.state.saved >= 1, 'the landed pass', 4000)
+        expect(loop.failures).toEqual([])
         expect(loop.unsavableCalls).toEqual([])
-        expect(loop.state.saved).toBe(0)
     })
 })
 

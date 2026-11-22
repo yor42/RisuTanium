@@ -1171,15 +1171,21 @@ function unsavableItemNotice(item: SkippedItem): string {
         if (item.scope === 'loadouts') {
             return language.saveLoadoutsHeldNotice(item.label)
         }
+        if (item.scope === 'plugins') {
+            return language.savePluginsHeldNotice(item.label)
+        }
+        const workspaceLabel = item.key.startsWith('wsf:') ? language.saveItemWorkspaceFileLabel : language.saveItemWorkspaceLabel
         const what = item.scope === 'module'
             ? language.saveItemModuleLabel(item.label.slice(1, -1))
-            : item.scope === 'settings'
-                ? language.saveItemSettingLabel(item.key)
-                : item.scope === 'statics'
-                    ? language.saveItemStaticsLabel
-                    : item.scope === 'characterOrder'
-                        ? language.saveItemCharacterOrderLabel
-                        : language.saveItemPluginDataLabel(item.key)
+            : item.scope === 'workspaces'
+                ? workspaceLabel(item.label.slice(1, -1))
+                : item.scope === 'settings'
+                    ? language.saveItemSettingLabel(item.key)
+                    : item.scope === 'statics'
+                        ? language.saveItemStaticsLabel
+                        : item.scope === 'characterOrder'
+                            ? language.saveItemCharacterOrderLabel
+                            : language.saveItemPluginDataLabel(item.key)
         return item.saved ? language.saveItemUnsavedNotice(what) : language.saveItemNeverSavedNotice(what)
     } catch {
         return item.saved ? language.saveItemUnsavedNotice(`"${item.key}"`) : language.saveItemNeverSavedNotice(`"${item.key}"`)
