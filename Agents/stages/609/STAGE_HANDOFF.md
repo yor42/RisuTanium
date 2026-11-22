@@ -5,10 +5,10 @@
 - Reviewed change: commit 643664a7c. 29032f886 merges origin/main 72a7e32a4 without touching the six changed files.
 
 ## 2. Decisions
-- One memo slot per save encoder: the last framed draft list and its digest, filled while planning, because the save loop
-  never acknowledges an unchanged plan (Gate 1 round 1 reject of plan 1).
-- Every pass still copies and compares the whole live list. No dirty mark was narrowed. Reuse needs equal length, equal
-  value and the previous unit's digest equal to the slot's.
+- One memo slot per save encoder: the last framed draft list and its digest, filled while planning, because an ordinary
+  unchanged pass is neither built nor acknowledged (Gate 1 round 1 reject of plan 1).
+- Every pass still copies the whole live list; it is compared only where the previous unit has the slot's digest, and is
+  encoded otherwise. No dirty mark was narrowed. Reuse needs equal length, equal value and that equal digest.
 - A compare that throws counts as not equal and goes on to the normal encode (Gate 1 round 2 E1, orchestrator arbitration).
 - No maintainer decision was needed (grilling found no open question), so no MC entry. MC-3704..3713 are unused.
   Context: MC-3585 (the 200 cap), MC-3615 (priority).
@@ -26,15 +26,17 @@
 - Before the last test-only edit: store2 folder, save-loop host file and draft store suites, 8,926 passed.
   After the main merge: the chatDrafts suites, workspaceMemo and the save-loop host file, 161 passed; svelte-check 0 errors.
 - N2, i9, later unchanged plans at the cap, ten runs: 7.0-10.0 ms before, 1.3-1.9 ms after, 0.8-1.7 ms without drafts.
-- Gates: Gate 1 [REJECT] then [EDITORIAL]; Gate 2 [EDITORIAL] with closure. Dispositions are in the PR body.
-- CI: TODO(evidence), see the PR's checks.
+- Gates: Gate 1 [REJECT] then [EDITORIAL]; Gate 2 [EDITORIAL] with closure, and a second Gate 2 pass at xhigh
+  [EDITORIAL] (wording only, applied). Dispositions are in the PR body.
+- CI: all seven checks passed on db4ab19a1. Later commits change only this file; the PR's checks show their runs.
 - Device: Note 9 A/B save-pass timing with 200 drafts (boot, no edit, no commit), requested from lane B at PR open.
   PENDING; merge waits for PASS or a maintainer waiver. The PR body holds the row's state.
 
 ## 5. Unresolved
 - The known limitations in the PR body (accepted, no follow-up).
-- Unrelated, forwarded to lane A: `ffPresetInUse.test.ts` U0 fails under CPU load on the base and the change alike
-  (5 of 5 at 5 copies on 2 CPUs) and is not in `flake-list.json`.
+- Unrelated, dropped with reason (lane A, MC-2745 item 5): `ffPresetInUse.test.ts` U0 was seen failing only under
+  synthetic CPU contention, is absent from the last 10 failed CI runs and is test-only; revisit on its first CI failure.
+  All 11 recorded failures, on main and on this change, are timeouts, none an assertion.
 
 ## 6. Next stage
 - None remains. After merge: confirm the issue closed and the board card moved.
