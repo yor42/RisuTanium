@@ -105,6 +105,8 @@
                         <span>{language.otherBots}</span>
                     </button>
                     <button class="flex gap-2 items-center hover:text-textcolor"
+                        data-part="settings-index-display"
+                        data-part-critical
                         class:text-textcolor={$SettingsMenuIndex === 3}
                         class:text-textcolor2={$SettingsMenuIndex !== 3}
                         onclick={() => {

@@ -84,7 +84,7 @@ function mountHost(): HTMLElement {
 }
 
 function entries(target: HTMLElement): HTMLButtonElement[] {
-    return [...target.querySelectorAll<HTMLButtonElement>('[data-part="settings-index-entry"]')]
+    return [...target.querySelectorAll<HTMLButtonElement>('[data-part="settings-index-entry"], [data-part="settings-index-display"]')]
 }
 
 beforeEach(() => {

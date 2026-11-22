@@ -420,7 +420,7 @@
                 {#if !scopeOn}
                     {@render jailbreakRow()}
                 {/if}
-                <button type="button" data-part="this-chat-all-settings" data-kind="button" onclick={() => leave(() => settingsOpen.set(true))}>{language.chatShellAllSettings}</button>
+                <button type="button" data-part="this-chat-all-settings" data-part-critical data-kind="button" onclick={() => leave(() => settingsOpen.set(true))}>{language.chatShellAllSettings}</button>
             </section>
 
             {#if additionalChatMenu.length > 0}

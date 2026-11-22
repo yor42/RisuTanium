@@ -106,11 +106,11 @@
     })
 </script>
 
-<div class="flex flex-col" bind:this={wrapper} data-part="theme-pack-row-host">
+<div class="flex flex-col" bind:this={wrapper} data-part="theme-pack-row-host" data-part-critical>
     {#if Row}
         <Row />
     {:else if failed}
-        <p class="text-sm text-draculared mt-4" role="status" data-part="theme-pack-load-failed">{language.themePackRowLoadFailed}</p>
+        <p class="text-sm text-draculared mt-4" role="status" data-part="theme-pack-load-failed" data-part-critical>{language.themePackRowLoadFailed}</p>
     {:else}
         <span class="text-textcolor mt-4">{language.themePackRowTitle}</span>
     {/if}
