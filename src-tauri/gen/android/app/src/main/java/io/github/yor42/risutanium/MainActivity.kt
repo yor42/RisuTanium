@@ -307,8 +307,9 @@ class MainActivity : TauriActivity() {
     val previous = liveWebView
     liveWebView = webView
     backWebView = webView
-    // This blocks every content link as a page load, the app's own provider included; picked files are read by path.
-    webView.settings.allowContentAccess = false
+    // Files picked from other apps' providers are read through content links. The app's own provider refuses
+    // this process (OwnFileProvider), so page code cannot load it.
+    webView.settings.allowContentAccess = true
     // A new page life ends any update attempt of the old page.
     AppUpdateService.shared.newPage()
     // Until the page paints, the WebView shows the loading screen's colour, so no white or black frame appears.
