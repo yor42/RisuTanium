@@ -1,5 +1,5 @@
 "shipped pack: chat/origin-navy" 6931399cd76b50f2 chat:962d9db586502581 settings:962d9db586502581 studio:f2b4825c55a373b5 home:f9d5c86b0e06fe49
-"shipped pack: chat/banana-cocoa" 4177b7695275086d chat:47dcfa837fc4d849 settings:35f7352db30b251d studio:3ebe9ed7782c081e home:d31b3bb966d0c132
+"shipped pack: chat/banana-cocoa" 4177b7695275086d chat:47dcfa837fc4d849 settings:f530674ae71e0172 studio:3ebe9ed7782c081e home:1a7e3adef4f54322
 "shipped pack: settings/origin-navy" d240e167207aae56 chat:ea99b490198f582c settings:c8c11433fd9e295a studio:ea99b490198f582c home:ea99b490198f582c
 "shipped pack: settings/banana-cocoa" e5a7d6f533d6f73d chat:6c5d481d9ecb6c3e settings:1c099ad36e6b7acc studio:06a78026ec1d50c0 home:03a5a0b3a3a895a1
 "shipped pack: studio/origin-navy" 37cb52a0097edf29 chat:91653b3b6aaf0fbe settings:91653b3b6aaf0fbe studio:8bb4784aab3e0cb1 home:91653b3b6aaf0fbe
@@ -10,8 +10,8 @@
 "home-hostile on Navy: A1" ab34939165529e06 chat:fd201fc890fd5ab4 settings:fd201fc890fd5ab4 studio:b4fef67077a76032 home:d78245e6adca7484
 "home-hostile: A2" 1634c7eb7d49a14d chat:3be0a8c1be4c04bd settings:3be0a8c1be4c04bd studio:3be0a8c1be4c04bd home:3be0a8c1be4c04bd
 "home-hostile on Navy: A2" 6caa2504fadff6a8 chat:250d1fc9c0e0f4fc settings:250d1fc9c0e0f4fc studio:d27e3a30f0863a66 home:250d1fc9c0e0f4fc
-"home-hostile: A3" 2414554a93618be0 chat:727a2550a85be431 settings:727a2550a85be431 studio:727a2550a85be431 home:727a2550a85be431
-"home-hostile on Navy: A3" dc30165d1fc9b946 chat:272003e07b7cd10d settings:272003e07b7cd10d studio:b964124fdb4afe09 home:272003e07b7cd10d
+"home-hostile: A3" 2414554a93618be0 chat:727a2550a85be431 settings:3935a496ac97e680 studio:727a2550a85be431 home:3935a496ac97e680
+"home-hostile on Navy: A3" dc30165d1fc9b946 chat:272003e07b7cd10d settings:2479ec0590627a6a studio:b964124fdb4afe09 home:2479ec0590627a6a
 "home-hostile: A4" 496c157f490dfc4a chat:c33fd80077e405dd settings:c33fd80077e405dd studio:c33fd80077e405dd home:c33fd80077e405dd
 "home-hostile on Navy: A4" 5d89e6dd85131922 chat:33b14f75c3156526 settings:33b14f75c3156526 studio:61895812978fa265 home:33b14f75c3156526
 "home-hostile: A5" c7a49c369a4411c4 chat:2d3eaa2136a7a93b settings:2d3eaa2136a7a93b studio:2d3eaa2136a7a93b home:2d3eaa2136a7a93b
@@ -112,10 +112,10 @@
 "home-hostile on Navy: C3" 70717e6210e81fa5 chat:9cd333fae877a0bd settings:7d3b23886a3f8a60 studio:80e1c728d6a43ea7 home:217273d20f77e21d
 "home-hostile: C4" c5cf0f871fe7a142 chat:ea1ff6cc955da546 settings:496dcd429b796fc1 studio:8bed568d3839b644 home:b86f800fbecf4e2f
 "home-hostile on Navy: C4" 0217784d39fcf757 chat:51b234c3e7dae47c settings:517804376c8cfafb studio:e55870c07a428734 home:d14aff3481af4b46
-"home-hostile: C5" 1255d1184482eb53 chat:1cd312d4fcaf25d1 settings:f2c6929cd8b95ece studio:777c52bce9d4f209 home:f395c3ae521346ea
-"home-hostile on Navy: C5" fb9161f1f3e5b975 chat:2f5e11b1425106b7 settings:6f9cfef25e1fe1e5 studio:8ca27f07007e7201 home:63b751b5f7ed469a
-"home-hostile: C6" 7a8b06854544a354 chat:703c2c0253fca8d7 settings:002cbdd0ce1c8811 studio:f70f78efba0e46fb home:747d24e52274ef22
-"home-hostile on Navy: C6" 70322b11cd41abc1 chat:0e0168139195c1b0 settings:274df369ebb33dc2 studio:8bab0e8d26bd6567 home:328bb8d99d3aa805
+"home-hostile: C5" 1255d1184482eb53 chat:1cd312d4fcaf25d1 settings:c018b7383fa85ba1 studio:777c52bce9d4f209 home:4021110d95566c09
+"home-hostile on Navy: C5" fb9161f1f3e5b975 chat:2f5e11b1425106b7 settings:0a78fb9a4644065f studio:8ca27f07007e7201 home:7bcefa5abc545ac8
+"home-hostile: C6" 7a8b06854544a354 chat:703c2c0253fca8d7 settings:be9c11f5c3fbefb5 studio:f70f78efba0e46fb home:8e8722b831800e0d
+"home-hostile on Navy: C6" 70322b11cd41abc1 chat:0e0168139195c1b0 settings:a973da8b6ca6c8c4 studio:8bab0e8d26bd6567 home:07a1acf365307ba2
 "home-hostile: C7" a6deb0a9e7b67b86 chat:05e399a780617ce3 settings:961985b6bd1c10d3 studio:05e399a780617ce3 home:1027491b1cf26ab9
 "home-hostile on Navy: C7" 67281bce6ba7bb64 chat:c3cebfdc7f71c9ad settings:6b7ca54521fd706a studio:a1b8d6437f3149ef home:382fd87a3eeefa64
 "home-hostile: C8" 079d445ab24ee949 chat:265d4ac6e19b0968 settings:265d4ac6e19b0968 studio:32e856d9136b4a90 home:265d4ac6e19b0968
@@ -404,8 +404,8 @@
 "studio-hostile on Navy: S02" 357f0d269c12ca73 chat:b3bb4efe357e263f settings:b3bb4efe357e263f studio:0749bb869685def0 home:b3bb4efe357e263f
 "studio-hostile: S03" 8f8dae2ae79cc8ed chat:0dc977faa751c537 settings:0dc977faa751c537 studio:0dc977faa751c537 home:0dc977faa751c537
 "studio-hostile on Navy: S03" 6b1664301665d2a0 chat:f59133b0ac61b5b1 settings:f59133b0ac61b5b1 studio:62329761ff60fbef home:f59133b0ac61b5b1
-"studio-hostile: S04" adc1c42e2cee8b08 chat:3deebf1bf3fa584c settings:3deebf1bf3fa584c studio:3deebf1bf3fa584c home:3deebf1bf3fa584c
-"studio-hostile on Navy: S04" f8f9d4888f4b9b64 chat:ed2e4a574617083b settings:ed2e4a574617083b studio:03687cd522cf96d4 home:ed2e4a574617083b
+"studio-hostile: S04" adc1c42e2cee8b08 chat:3deebf1bf3fa584c settings:2c6afdb771d136ce studio:3deebf1bf3fa584c home:2c6afdb771d136ce
+"studio-hostile on Navy: S04" f8f9d4888f4b9b64 chat:ed2e4a574617083b settings:91d0ea4ed8434c21 studio:03687cd522cf96d4 home:91d0ea4ed8434c21
 "studio-hostile: S05" ed9d595f4897e9b8 chat:b33005fd0c283eb5 settings:b33005fd0c283eb5 studio:5ff87bdfed086535 home:b33005fd0c283eb5
 "studio-hostile on Navy: S05" 24435a3ccf36ed0d chat:7d1682268f7365b5 settings:7d1682268f7365b5 studio:34a0ee82d1d90efd home:7d1682268f7365b5
 "studio-hostile: S06" fdb4bbeee9f1ff19 chat:3f7eb5b53742775f settings:3f7eb5b53742775f studio:3f7eb5b53742775f home:75e63bae2b2c5ba0
@@ -420,22 +420,22 @@
 "studio-hostile on Navy: S10" ea711768268a9771 chat:d055da3733ff843b settings:d055da3733ff843b studio:ed1e08dc6078dfdb home:d055da3733ff843b
 "studio-hostile: S11" 7b7d81492bfe6c51 chat:700d4def3189a175 settings:700d4def3189a175 studio:700d4def3189a175 home:700d4def3189a175
 "studio-hostile on Navy: S11" 667712a8226e75b6 chat:e434c2942aaa9ed9 settings:e434c2942aaa9ed9 studio:50ac366fbdb1223a home:e434c2942aaa9ed9
-"studio-hostile: S12" f3aa678e5b2309be chat:4f6b75a934e1a3d9 settings:4f6b75a934e1a3d9 studio:4f6b75a934e1a3d9 home:4f6b75a934e1a3d9
-"studio-hostile on Navy: S12" a43d83a14451968a chat:9a72a9acbe0b5388 settings:9a72a9acbe0b5388 studio:98388c9e36d6f9a7 home:9a72a9acbe0b5388
-"studio-hostile: S13" fe28d4196ada1422 chat:d742b80b8d91e774 settings:d742b80b8d91e774 studio:d742b80b8d91e774 home:d742b80b8d91e774
-"studio-hostile on Navy: S13" 5a8f61125c7b435b chat:d4aabfb5f90467d8 settings:d4aabfb5f90467d8 studio:b431ec746e936e4c home:d4aabfb5f90467d8
-"studio-hostile: S14" 3e0355a5b41ba484 chat:a147996532217aca settings:a147996532217aca studio:a147996532217aca home:a147996532217aca
-"studio-hostile on Navy: S14" 64023efb85e1954d chat:c1a7e599f9ac7e90 settings:c1a7e599f9ac7e90 studio:554721a1cf40e015 home:c1a7e599f9ac7e90
-"studio-hostile: S15" 46b65b5067561e13 chat:58b0c38b27b9697f settings:58b0c38b27b9697f studio:58b0c38b27b9697f home:58b0c38b27b9697f
-"studio-hostile on Navy: S15" 1de4f65c0bd28123 chat:32c5f1ce64f37ae3 settings:32c5f1ce64f37ae3 studio:c1edd5bfbdddffd8 home:32c5f1ce64f37ae3
-"studio-hostile: S16" 52a47e0a57912d46 chat:1f7e538a30389f0e settings:1f7e538a30389f0e studio:1f7e538a30389f0e home:1f7e538a30389f0e
-"studio-hostile on Navy: S16" c77607211c04087d chat:cdf822e27ae3cbe8 settings:cdf822e27ae3cbe8 studio:79fc9770633e398e home:cdf822e27ae3cbe8
-"studio-hostile: S17" a20b99f899128431 chat:1ab525ded870ef27 settings:1ab525ded870ef27 studio:1ab525ded870ef27 home:1ab525ded870ef27
-"studio-hostile on Navy: S17" a884b4ee02fd71fd chat:73dbb0b0a39bc92f settings:73dbb0b0a39bc92f studio:bdeb6c617411a192 home:73dbb0b0a39bc92f
-"studio-hostile: S18" f44ae8c401ccacb6 chat:207494329aac6762 settings:207494329aac6762 studio:207494329aac6762 home:207494329aac6762
-"studio-hostile on Navy: S18" 13ac4e3f749cf4c4 chat:463fe96113133510 settings:463fe96113133510 studio:87b1620c95967009 home:463fe96113133510
-"studio-hostile: S19" f159d67da5b1cb3a chat:b994e54da46af12a settings:b994e54da46af12a studio:b994e54da46af12a home:b994e54da46af12a
-"studio-hostile on Navy: S19" 1e771f92e203c644 chat:c5508bc36aa78280 settings:c5508bc36aa78280 studio:0842790248fea035 home:c5508bc36aa78280
+"studio-hostile: S12" f3aa678e5b2309be chat:4f6b75a934e1a3d9 settings:37ff413e39568d85 studio:4f6b75a934e1a3d9 home:37ff413e39568d85
+"studio-hostile on Navy: S12" a43d83a14451968a chat:9a72a9acbe0b5388 settings:ebeef8d0fb8ce3c0 studio:98388c9e36d6f9a7 home:ebeef8d0fb8ce3c0
+"studio-hostile: S13" fe28d4196ada1422 chat:d742b80b8d91e774 settings:27178f84f63a47a1 studio:d742b80b8d91e774 home:27178f84f63a47a1
+"studio-hostile on Navy: S13" 5a8f61125c7b435b chat:d4aabfb5f90467d8 settings:6aeb2a87cdfef0f5 studio:b431ec746e936e4c home:6aeb2a87cdfef0f5
+"studio-hostile: S14" 3e0355a5b41ba484 chat:a147996532217aca settings:2a0979461b4e507d studio:a147996532217aca home:2a0979461b4e507d
+"studio-hostile on Navy: S14" 64023efb85e1954d chat:c1a7e599f9ac7e90 settings:be383e93fc9650ee studio:554721a1cf40e015 home:be383e93fc9650ee
+"studio-hostile: S15" 46b65b5067561e13 chat:58b0c38b27b9697f settings:1729e70c80a88aa7 studio:58b0c38b27b9697f home:1729e70c80a88aa7
+"studio-hostile on Navy: S15" 1de4f65c0bd28123 chat:32c5f1ce64f37ae3 settings:4d6e349add98de19 studio:c1edd5bfbdddffd8 home:4d6e349add98de19
+"studio-hostile: S16" 52a47e0a57912d46 chat:1f7e538a30389f0e settings:224f60937c089d75 studio:1f7e538a30389f0e home:224f60937c089d75
+"studio-hostile on Navy: S16" c77607211c04087d chat:cdf822e27ae3cbe8 settings:2260b5cbb926f3b8 studio:79fc9770633e398e home:2260b5cbb926f3b8
+"studio-hostile: S17" a20b99f899128431 chat:1ab525ded870ef27 settings:45a51e0a1dae01ba studio:1ab525ded870ef27 home:45a51e0a1dae01ba
+"studio-hostile on Navy: S17" a884b4ee02fd71fd chat:73dbb0b0a39bc92f settings:15396e779475e17c studio:bdeb6c617411a192 home:15396e779475e17c
+"studio-hostile: S18" f44ae8c401ccacb6 chat:207494329aac6762 settings:e83062031f5b4d6f studio:207494329aac6762 home:e83062031f5b4d6f
+"studio-hostile on Navy: S18" 13ac4e3f749cf4c4 chat:463fe96113133510 settings:5711da37edc2558a studio:87b1620c95967009 home:5711da37edc2558a
+"studio-hostile: S19" f159d67da5b1cb3a chat:b994e54da46af12a settings:98a20dc7bd1f9d9e studio:b994e54da46af12a home:98a20dc7bd1f9d9e
+"studio-hostile on Navy: S19" 1e771f92e203c644 chat:c5508bc36aa78280 settings:c513dfd39be9098c studio:0842790248fea035 home:c513dfd39be9098c
 "studio-hostile: P01" 75b9c2702a23043c chat:ec087aaaa690e4f8 settings:ec087aaaa690e4f8 studio:ec087aaaa690e4f8 home:ec087aaaa690e4f8
 "studio-hostile on Navy: P01" 9e44c63796ece4eb chat:3c9bd22a1fdbbe16 settings:3c9bd22a1fdbbe16 studio:3a4d0011ce08a665 home:3c9bd22a1fdbbe16
 "studio-hostile: P02" a81973d45a7997e1 chat:c58e76de5e843fe2 settings:c58e76de5e843fe2 studio:86bff47080468320 home:c58e76de5e843fe2
@@ -588,7 +588,7 @@
 "NEW_HOSTILE all: outline-color transparent" bc0c617110b3377e chat:dd7307a003884b21 settings:dd7307a003884b21 studio:dd7307a003884b21 home:dd7307a003884b21
 "NEW_HOSTILE all: focus shadow none" cf019b85f3548527 chat:4e508560ed98ff0c settings:4e508560ed98ff0c studio:4e508560ed98ff0c home:4e508560ed98ff0c
 "NEW_HOSTILE all: focus border transparent" a67197763227017c chat:ec3ceaf69b028210 settings:ec3ceaf69b028210 studio:ec3ceaf69b028210 home:ec3ceaf69b028210
-"NEW_HOSTILE all: background on a kind selector" 28859fccf9c71dbf chat:b833865589ee6e67 settings:b833865589ee6e67 studio:b833865589ee6e67 home:6cedd1346b3fc54f
+"NEW_HOSTILE all: background on a kind selector" 28859fccf9c71dbf chat:b833865589ee6e67 settings:f4bf11abc9a6cc14 studio:b833865589ee6e67 home:8c568831c938a60c
 "NEW_HOSTILE chat: hide Send" e7ccaa39e1a9a9f8 chat:3c0517fa46fb9ebe settings:3c0517fa46fb9ebe studio:3c0517fa46fb9ebe home:3c0517fa46fb9ebe
 "NEW_HOSTILE chat: hide the composer field" e2d3328d742bd431 chat:50ba91224561dd8c settings:50ba91224561dd8c studio:50ba91224561dd8c home:50ba91224561dd8c
 "NEW_HOSTILE chat: hide the composer" 3e749f045745e39d chat:ee1547c0c33a5593 settings:ee1547c0c33a5593 studio:ee1547c0c33a5593 home:ee1547c0c33a5593
@@ -624,9 +624,9 @@
 "HOSTILE: R2 generic selector on every critical element" a18a51bfdcf8031a chat:0615f6e7859982c6 settings:0615f6e7859982c6 studio:0615f6e7859982c6 home:0615f6e7859982c6
 "HOSTILE: R3 universal descendant of the message body (removes the failed card)" 357abb54e7889364 chat:1e0759e2f9ce58e3 settings:1e0759e2f9ce58e3 studio:1e0759e2f9ce58e3 home:1e0759e2f9ce58e3
 "HOSTILE: R4 ancestor clipped to zero height (clips the failed card)" 35a61b8bd8617f1d chat:25c344452824666a settings:25c344452824666a studio:25c344452824666a home:25c344452824666a
-"HOSTILE: R5 the state attribute that marks a failed message" 5063ce90f1f74886 chat:2a342455ac99dfb5 settings:2a342455ac99dfb5 studio:2a342455ac99dfb5 home:2a342455ac99dfb5
+"HOSTILE: R5 the state attribute that marks a failed message" 5063ce90f1f74886 chat:2a342455ac99dfb5 settings:f542a4a220ee3380 studio:2a342455ac99dfb5 home:f542a4a220ee3380
 "HOSTILE: R6 class descendant inside a sheet" b1ee33cab62df957 chat:d1493ed326bbb8c4 settings:d1493ed326bbb8c4 studio:d1493ed326bbb8c4 home:d1493ed326bbb8c4
-"HOSTILE: H1 generic control kind (matches the critical actions)" a0eb14f56c9912cf chat:61fec081fca1f594 settings:61fec081fca1f594 studio:61fec081fca1f594 home:61fec081fca1f594
+"HOSTILE: H1 generic control kind (matches the critical actions)" a0eb14f56c9912cf chat:61fec081fca1f594 settings:a5a775b5dbbb83b7 studio:61fec081fca1f594 home:a5a775b5dbbb83b7
 "HOSTILE: H2 protected child by its own part name" de129d393514d9a7 chat:ee14b8c2f40702a5 settings:ee14b8c2f40702a5 studio:ee14b8c2f40702a5 home:ee14b8c2f40702a5
 "HOSTILE: H3 protected card by name" 9eef4368ebeb759a chat:fbc31f6a44d440ce settings:fbc31f6a44d440ce studio:fbc31f6a44d440ce home:fbc31f6a44d440ce
 "HOSTILE: H4 protected child through an ancestor" 472ba3f291511dd2 chat:1536915ed431bb16 settings:1536915ed431bb16 studio:1536915ed431bb16 home:1536915ed431bb16
@@ -698,8 +698,8 @@
 "HOSTILE_2: uppercase attr" 1d5257833b760ed7 chat:c3f11cd457a40d13 settings:c3f11cd457a40d13 studio:c3f11cd457a40d13 home:c3f11cd457a40d13
 "HOSTILE_2: uppercase value" e15fa6eb68f2312f chat:fbd969a2ebcae023 settings:fbd969a2ebcae023 studio:fbd969a2ebcae023 home:fbd969a2ebcae023
 "HOSTILE_2: attr ~= / ^=" 0d270165f6ec052a chat:d6cd5edcd755c837 settings:d6cd5edcd755c837 studio:d6cd5edcd755c837 home:d6cd5edcd755c837
-"HOSTILE_2: attr no value" f7cd84d13244bddc chat:00701b8f2705d92c settings:00701b8f2705d92c studio:00701b8f2705d92c home:00701b8f2705d92c
-"HOSTILE_2: attr-critical via different name" 7ff9341fbb02448d chat:060ef171bbdd2cea settings:060ef171bbdd2cea studio:060ef171bbdd2cea home:060ef171bbdd2cea
+"HOSTILE_2: attr no value" f7cd84d13244bddc chat:00701b8f2705d92c settings:141cc8066ac68a89 studio:00701b8f2705d92c home:141cc8066ac68a89
+"HOSTILE_2: attr-critical via different name" 7ff9341fbb02448d chat:060ef171bbdd2cea settings:fb0207e926c46cd9 studio:060ef171bbdd2cea home:fb0207e926c46cd9
 "HOSTILE_2: comma list partial" 1bcc7d1b2b52a62b chat:f56025a4432bd8ce settings:f56025a4432bd8ce studio:f56025a4432bd8ce home:f56025a4432bd8ce
 "HOSTILE_2: semicolon in value trick" 6cb75f9426d55cfe chat:df38b0a0d22339d6 settings:df38b0a0d22339d6 studio:df38b0a0d22339d6 home:df38b0a0d22339d6
 "HOSTILE_2: important" dffb01530e4a65b0 chat:d2f3837d5baad31b settings:d2f3837d5baad31b studio:d2f3837d5baad31b home:d2f3837d5baad31b
@@ -721,17 +721,17 @@
 "HOSTILE_3: X7 accent channel so dark the derived accent is unreadable on the sheet" bca24012fde8fb39 chat:9e815a2c04598856 settings:9e815a2c04598856 studio:849af3ae84f25b66 home:b86a2394b0a71e8d
 "HOSTILE_3: X8 danger channel equal to the sheet" f4e8554ed3471fd2 chat:7c7b18c9a804adc0 settings:02b1caa3f8365c26 studio:0acb40baa63fb140 home:a0fc96e73ed1a37d
 "HOSTILE_3: X1 root attribute rule with a layout declaration" 90acd3233bcc4db3 chat:2df445d83495eac9 settings:2df445d83495eac9 studio:2df445d83495eac9 home:2df445d83495eac9
-"HOSTILE_3: X2 bare attribute selector sets tokens (not the root)" b579c0b5bd9c5218 chat:eca9e6716fb149f5 settings:eca9e6716fb149f5 studio:eca9e6716fb149f5 home:eca9e6716fb149f5
+"HOSTILE_3: X2 bare attribute selector sets tokens (not the root)" b579c0b5bd9c5218 chat:eca9e6716fb149f5 settings:8f62387a56ee96dd studio:eca9e6716fb149f5 home:8f62387a56ee96dd
 "HOSTILE_3: X3 token on a root attribute that makes the sheet unusable" a33c6b1e2e646295 chat:ba95aee9280e13c7 settings:ba95aee9280e13c7 studio:ba95aee9280e13c7 home:ba95aee9280e13c7
 "HOSTILE_3: X4 token on a root attribute that makes critical text invisible" 9d509b350432e327 chat:35d19b1406480593 settings:a64bf6b68365354d studio:27ccd1a588a8a17c home:cfcd47d8097141a7
-"HOSTILE_3: X5 root attribute that is not input or layout" 6cc5a556452f4361 chat:4647c9ff0ff8511a settings:4647c9ff0ff8511a studio:4647c9ff0ff8511a home:4647c9ff0ff8511a
+"HOSTILE_3: X5 root attribute that is not input or layout" 6cc5a556452f4361 chat:4647c9ff0ff8511a settings:0791497b1031b52d studio:4647c9ff0ff8511a home:0791497b1031b52d
 "HOSTILE_3: X6 root attribute descendant reaching a part" 8e76ce1a845d2a70 chat:e54d2664e8694c66 settings:e54d2664e8694c66 studio:e54d2664e8694c66 home:e54d2664e8694c66
 "BENIGN: B1 bubble fill" 8937e26358746dc6 chat:f6e2ba462dbfa4c7 settings:f6e2ba462dbfa4c7 studio:e9be3d1cb6ecd726 home:f6e2ba462dbfa4c7
-"BENIGN: B2 tail corner on run starts" 31c29f703839402f chat:403463de55a990ae settings:403463de55a990ae studio:8ed2d39443120342 home:403463de55a990ae
-"BENIGN: B3 failed bubble takes the column" c3875ff767248cf4 chat:ba78b7f231866eea settings:ba78b7f231866eea studio:62754876ca982dc3 home:ba78b7f231866eea
+"BENIGN: B2 tail corner on run starts" 31c29f703839402f chat:403463de55a990ae settings:7d62c2d4725cb156 studio:8ed2d39443120342 home:7d62c2d4725cb156
+"BENIGN: B3 failed bubble takes the column" c3875ff767248cf4 chat:ba78b7f231866eea settings:c2010f08f2f96cf1 studio:62754876ca982dc3 home:c2010f08f2f96cf1
 "BENIGN: B4 compact actions on hover" 1c262ca66f57889c chat:c161bfde1d73aab2 settings:c161bfde1d73aab2 studio:c9380e83e9fa1ba4 home:c161bfde1d73aab2
 "BENIGN: B5 token block" d33296b2763c0081 chat:425c6dfa3aa1eae6 settings:425c6dfa3aa1eae6 studio:425c6dfa3aa1eae6 home:425c6dfa3aa1eae6
-"BENIGN: B6 own actions beside the bubble" c6d3080b79191e0d chat:527c91a55b1d531b settings:527c91a55b1d531b studio:01150e8885bc3c64 home:527c91a55b1d531b
+"BENIGN: B6 own actions beside the bubble" c6d3080b79191e0d chat:527c91a55b1d531b settings:1fd1d7f1b7c88c5d studio:01150e8885bc3c64 home:1fd1d7f1b7c88c5d
 "BENIGN: B7 forced colours outline" fdcffc6179c55cfa chat:ad4faf552c1514cb settings:ad4faf552c1514cb studio:329207844773479a home:ad4faf552c1514cb
 "BENIGN: B8 header title colour" b5ed9551fe6c46f9 chat:2da5f428484a1e0e settings:2da5f428484a1e0e studio:2d7d2f18598e6b1e home:2da5f428484a1e0e
 "BENIGN_2: D1 touch density" 47ebb26d1cf81f56 chat:2c00f2e70e078f4d settings:2c00f2e70e078f4d studio:2c00f2e70e078f4d home:2c00f2e70e078f4d
@@ -789,8 +789,8 @@
 "values REJECT: safe-scrim-cover" 55746082cfc24fd1 chat:e8b72d81d1a18b70 settings:ba0b39c4891c0bad studio:e8b72d81d1a18b70 home:e8b72d81d1a18b70
 "values REJECT: safe-index-neg-margin" d7eedb6ac946218e chat:e16bcb5a2ef5dc96 settings:e16bcb5a2ef5dc96 studio:e16bcb5a2ef5dc96 home:e16bcb5a2ef5dc96
 "values REJECT: safe-header-width-2000" 3dcb9b6ba7f7bcff chat:5945b62e575eeca0 settings:5945b62e575eeca0 studio:5945b62e575eeca0 home:5945b62e575eeca0
-"values REJECT: color-black-cancel" 592f09cb5ba8f7c8 chat:d185b2e25d9dc244 settings:d185b2e25d9dc244 studio:d185b2e25d9dc244 home:8495c7aaead05555
-"values REJECT: color-black-dlg" cb88aca3f8e745de chat:5563937922181f5c settings:5563937922181f5c studio:5563937922181f5c home:3af813dc7601b77a
+"values REJECT: color-black-cancel" 592f09cb5ba8f7c8 chat:d185b2e25d9dc244 settings:0e732188e5103e4c studio:d185b2e25d9dc244 home:3bd24ead7426cff4
+"values REJECT: color-black-dlg" cb88aca3f8e745de chat:5563937922181f5c settings:6d8cc993221d67c9 studio:5563937922181f5c home:d9f02a9fa9d4da47
 "values REJECT: color-black-row" 25528a373e97be60 chat:23338ac8a0b8a270 settings:23338ac8a0b8a270 studio:23338ac8a0b8a270 home:6db3747c9baa324d
 "values REJECT: color-black-body" 3da1a471d1ce798f chat:030634b90cde73ce settings:030634b90cde73ce studio:030634b90cde73ce home:e704536d7ce7f86d
 "values REJECT: color-black-shell" f0db070447add544 chat:d663588d3a094187 settings:d663588d3a094187 studio:d663588d3a094187 home:a3413d64fc34c461
@@ -800,10 +800,10 @@
 "values REJECT: bg-white-row" 48b2c9adc55960e4 chat:3485fbe915cee6f2 settings:3485fbe915cee6f2 studio:3485fbe915cee6f2 home:bb58088c680a7632
 "values REJECT: bg-white-name-row" 0e3d5f51b100594c chat:5308683e52df63a0 settings:5308683e52df63a0 studio:5308683e52df63a0 home:701553bdf2363374
 "values REJECT: bg-gradient-row" 471e44fde3e2a1f7 chat:bacd158f2a8a4e4f settings:bacd158f2a8a4e4f studio:bacd158f2a8a4e4f home:a527e4e4ace69320
-"values REJECT: bg-white-overlay" 3ed225e3dc31abe3 chat:4f9947adc5a0ec64 settings:4f9947adc5a0ec64 studio:4f9947adc5a0ec64 home:cd69cd6944faeed6
+"values REJECT: bg-white-overlay" 3ed225e3dc31abe3 chat:4f9947adc5a0ec64 settings:9499689787ac07af studio:4f9947adc5a0ec64 home:a8a870025396eaf1
 "values REJECT: bg-white-own-pair" 551ac728550986a8 chat:af427e2940a44f89 settings:af427e2940a44f89 studio:af427e2940a44f89 home:233166eabe1b94a2
 "values REJECT: bg-white-shell" 02d06b01889308fa chat:ccb82489e997724b settings:ccb82489e997724b studio:ccb82489e997724b home:fb0b02c3ce5bd96d
-"values REJECT: bg-white-dialog-btn" faa1e7067402c0e1 chat:7af17a24e033ca57 settings:7af17a24e033ca57 studio:7af17a24e033ca57 home:0963d03fe7d23ef7
+"values REJECT: bg-white-dialog-btn" faa1e7067402c0e1 chat:7af17a24e033ca57 settings:67a96e372e3ada64 studio:7af17a24e033ca57 home:2e40cf79a79d0929
 "values REJECT: name-connection-warning" 4c0ef6e8b113b35f chat:5e9de694e37ff394 settings:415f6deea8aa7925 studio:ebd554ebfdfe4c74 home:883cb92f20d7fdb5
 "values REJECT: name-card-status-hidden" 2f630d80d39b1179 chat:3410b83346f4218f settings:22bee880116d78ac studio:3410b83346f4218f home:3410b83346f4218f
 "values REJECT: name-card-status-transparent" 47cab2aec07b7d38 chat:394fa60334d8c9a2 settings:3f4a6a9306efa230 studio:394fa60334d8c9a2 home:394fa60334d8c9a2
@@ -813,7 +813,7 @@
 "values REJECT: name-preset-warning" 645090baabb27216 chat:28520a015904ac73 settings:e413fbfb79a318e3 studio:28520a015904ac73 home:28520a015904ac73
 "legacy settings: backdrop-hidden" ea7c83da47dae884 chat:14d439baa97a1b28 settings:8931b9d8ee89d9d8 studio:14d439baa97a1b28 home:14d439baa97a1b28
 "legacy settings: backdrop-top" 620619d3fa2da286 chat:2471d64f7dee94d5 settings:304c7b631f7e9bf0 studio:2471d64f7dee94d5 home:2471d64f7dee94d5
-"legacy settings: cancel-hidden" 324d9f97ed244456 chat:95bb11792aabfffc settings:95bb11792aabfffc studio:95bb11792aabfffc home:95bb11792aabfffc
+"legacy settings: cancel-hidden" 324d9f97ed244456 chat:95bb11792aabfffc settings:5baa042b3e3f0bf2 studio:95bb11792aabfffc home:5baa042b3e3f0bf2
 "legacy settings: footer-row-reverse" 6b0b2a9634878ac8 chat:c81e7377987dc4a7 settings:8f57084e330dc367 studio:c81e7377987dc4a7 home:c81e7377987dc4a7
 "legacy settings: retry-hidden" 22c2e08f83daef0a chat:6fd30fba7bcc34f6 settings:18c575e018223a1b studio:6fd30fba7bcc34f6 home:6fd30fba7bcc34f6
 "legacy settings: row-hidden" 5503f6bdc9bf0f98 chat:9fdb60ed94872588 settings:9fdb60ed94872588 studio:9fdb60ed94872588 home:9fdb60ed94872588
@@ -829,11 +829,11 @@
 "studio reach: R8 sheet-root letter-spacing/text-decoration/transform" 315a89546659caee chat:fa4ba651328f4b03 settings:b9085ed846e6ce82 studio:b9085ed846e6ce82 home:b9085ed846e6ce82
 "studio reach: R9 sheet-root font-family dingbat" 539945aa418dfe84 chat:9a2e9db879b9a5a0 settings:9a2e9db879b9a5a0 studio:9a2e9db879b9a5a0 home:9a2e9db879b9a5a0
 "studio reach: R10 toast-box text-align + width 100%" ba1eadeb1e50cc57 chat:bb7636f6faf3466d settings:f4f19cd3cb3a1a5e studio:f4f19cd3cb3a1a5e home:f4f19cd3cb3a1a5e
-"studio reach: R11 alert via data-kind box" ede77a0381513ceb chat:e188e6194765e4ed settings:e188e6194765e4ed studio:e188e6194765e4ed home:e188e6194765e4ed
-"studio reach: R12 data-kind=conflict padding" 983b9690cb463a5b chat:5c812330d84476d4 settings:5c812330d84476d4 studio:5c812330d84476d4 home:5c812330d84476d4
+"studio reach: R11 alert via data-kind box" ede77a0381513ceb chat:e188e6194765e4ed settings:7624732d2425e184 studio:e188e6194765e4ed home:7624732d2425e184
+"studio reach: R12 data-kind=conflict padding" 983b9690cb463a5b chat:5c812330d84476d4 settings:aa27c9241fe0a4ca studio:5c812330d84476d4 home:aa27c9241fe0a4ca
 "studio reach: R13 color on ancestors" bd109318348a0310 chat:6c22374b9bfe5a64 settings:63e1bfed69613e7f studio:63e1bfed69613e7f home:63e1bfed69613e7f
-"studio reach: R14 data-kind=restore color/background close to bg" 0a0354fe33c22c04 chat:7b8a9a30dc7c1208 settings:7b8a9a30dc7c1208 studio:7b8a9a30dc7c1208 home:7b8a9a30dc7c1208
-"studio reach: R15 data-state=ask outline" cfaba86a44e197c6 chat:ec256debf470d4ec settings:ec256debf470d4ec studio:ec256debf470d4ec home:ec256debf470d4ec
+"studio reach: R14 data-kind=restore color/background close to bg" 0a0354fe33c22c04 chat:7b8a9a30dc7c1208 settings:2d444359c893da67 studio:7b8a9a30dc7c1208 home:2d444359c893da67
+"studio reach: R15 data-state=ask outline" cfaba86a44e197c6 chat:ec256debf470d4ec settings:9ab33be187bdf442 studio:ec256debf470d4ec home:9ab33be187bdf442
 "studio reach: R16 font-size 11 on sheet + width 50%" dc2394be54f3e950 chat:693b082a5edabbc6 settings:8095ecf14426239a studio:ce90a12db0a39d8c home:8095ecf14426239a
 "resource forms: unquoted" 0907fbc38948bfbc chat:52c294e974b6b62d settings:52c294e974b6b62d studio:84c2656b9c705d25 home:def31a5e3024f5b9
 "resource forms: unquoted with whitespace" 3df6189b8ff7f97d chat:6da8b17f4090944d settings:6da8b17f4090944d studio:24162196bd731676 home:d04e5083ee0fd4e0
