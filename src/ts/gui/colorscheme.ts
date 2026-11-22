@@ -10,6 +10,7 @@ import { syncSystemBars } from "./systemBars";
 import { nexusColorScheme } from "./nexusColorScheme";
 import { deriveSchemeRoles } from "./schemeRoles";
 import { ColorSchemeTypeStore } from "./surfaceTone";
+import { packSafe } from "../themePack/packSafeFlag.svelte";
 
 export interface ColorScheme{
     bgcolor: string;
@@ -288,6 +289,9 @@ function isColorSchemeValue(value: unknown): value is ColorScheme{
     return SCHEME_COLOUR_FIELDS.every((field) => typeof record[field] === 'string') && (record.type === 'light' || record.type === 'dark')
 }
 
+/** The database fields the scheme readers use. The Custom slot and the snapshot are optional: a missing one reads as absent. */
+export type SchemeSource = Pick<Database, 'colorSchemeName' | 'colorScheme'> & Partial<Pick<Database, 'customColorScheme' | 'themePackSchemeSnapshot'>>
+
 /** Narrows a persisted snapshot: a non-empty name other than the pack scheme and a full scheme, else null. */
 export function readSchemeSnapshot(value: unknown): ThemePackSchemeSnapshot | null{
     if(typeof value !== 'object' || value === null){
@@ -306,7 +310,7 @@ export function readSchemeSnapshot(value: unknown): ThemePackSchemeSnapshot | nu
  * Pure: it never writes. The pack-off restore and the `.bin` export copy share it, so a `.bin` shows exactly the
  * scheme that turning the pack off restores.
  */
-export function schemeWithoutPack(db: Pick<Database, 'colorSchemeName' | 'colorScheme' | 'customColorScheme' | 'themePackSchemeSnapshot'>): { colorSchemeName: string, colorScheme: ColorScheme }{
+export function schemeWithoutPack(db: SchemeSource): { colorSchemeName: string, colorScheme: ColorScheme }{
     const snapshot = readSchemeSnapshot(db.themePackSchemeSnapshot)
     if(snapshot === null){
         return { colorSchemeName: 'default', colorScheme: safeStructuredClone(defaultColorScheme) }
@@ -333,15 +337,19 @@ export function setPackSchemeProvider(provider: (() => ColorScheme | null) | nul
  * never written here. Under `theme-pack` the applied pack's default paints live, and the stored
  * copy is the fallback before the pack is read, in Safe Mode, with a missing or broken pack, on a
  * downgrade and upstream. Custom, unknown and prototype names fall back to the saved copy, and lite
- * mode always reports the lite scheme. The result may be a shared table object: callers must not
+ * mode always reports the lite scheme. In pack safe mode the pack scheme name paints the scheme turning the pack off would
+ * restore, before any live provider. The result may be a shared table object: callers must not
  * mutate it and must clone it before handing it out.
  */
-export function effectiveColorScheme(db: Pick<Database, 'colorSchemeName' | 'colorScheme'>): ColorScheme{
+export function effectiveColorScheme(db: SchemeSource): ColorScheme{
     if(get(isLite)){
         return colorShemes.lite
     }
     if(typeof db.colorSchemeName === 'string' && Object.hasOwn(colorShemes, db.colorSchemeName)){
         return colorShemes[db.colorSchemeName as keyof typeof colorShemes]
+    }
+    if(db.colorSchemeName === PACK_SCHEME_NAME && packSafe.on){
+        return schemeWithoutPack(db).colorScheme
     }
     if(db.colorSchemeName === PACK_SCHEME_NAME){
         const live = packSchemeProvider?.()

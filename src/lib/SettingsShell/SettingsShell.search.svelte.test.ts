@@ -242,7 +242,7 @@ function press(el: Element, init: KeyboardEventInit & { keyCode?: number }): Key
 }
 
 function indexEntry(target: HTMLElement): HTMLElement {
-    return target.querySelector<HTMLElement>('[data-part="settings-index-entry"]')!
+    return target.querySelector<HTMLElement>('[data-part="settings-index-entry"], [data-part="settings-index-display"]')!
 }
 
 function resultIds(target: HTMLElement): string[] {
@@ -376,7 +376,7 @@ describe('the results and the combobox', () => {
         expect(settingsSearchState.open).toBe(true)
         expect(resultIds(target)).toContain('display.customCSS')
         expect(target.querySelector('[data-part="settings-page"]')).toBeNull()
-        expect(target.querySelector('[data-part="settings-index-entry"][aria-current="page"]')).toBeNull()
+        expect(target.querySelector(':is([data-part="settings-index-entry"], [data-part="settings-index-display"])[aria-current="page"]')).toBeNull()
         const marked = result(target, 'display.customCSS').querySelector('mark')
         expect(marked).not.toBeNull()
         const input = searchField(target)
@@ -459,7 +459,7 @@ describe('the results and the combobox', () => {
         const target = mountHost()
         await settle()
         await typeQuery(target, 'size')
-        const entries = [...target.querySelectorAll<HTMLButtonElement>('[data-part="settings-index-entry"]')]
+        const entries = [...target.querySelectorAll<HTMLButtonElement>('[data-part="settings-index-entry"], [data-part="settings-index-display"]')]
         entries[0].click()
         await settle()
         expect(settingsSearchState.open).toBe(false)

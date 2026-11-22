@@ -185,8 +185,9 @@ interface BootStores {
     loadedStore: Writable<boolean>
 }
 
-function saveFixture(): Uint8Array {
+function saveFixture(extra: Record<string, unknown> = {}): Uint8Array {
     return encodeRisuSaveLegacy({
+        ...extra,
         formatversion: 999,
         characters: [{ chaId: 'a', name: 'A', type: 'character', chats: [] }],
         modules: [],
@@ -206,8 +207,8 @@ function saveFixture(): Uint8Array {
 }
 
 /** Boots the web `loadData()` over a plain main file and answers whether it resolved with the boot finished. */
-async function boot(): Promise<{ resolved: boolean; loaded: boolean }> {
-    world.items.set(MAIN_KEY, saveFixture())
+async function boot(saved: Record<string, unknown> = {}): Promise<{ resolved: boolean; loaded: boolean }> {
+    world.items.set(MAIN_KEY, saveFixture(saved))
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
@@ -274,6 +275,27 @@ describe('loadData() starts the theme pack driver', () => {
         expect(startThemePackApplyMock).not.toHaveBeenCalled()
         expect(errorLog).toHaveBeenCalled()
         expect(unhandled).toEqual([])
+    })
+
+    test('TA-14: with an active pack, boot offers the escape banner, and still does when the driver chunk fails', async () => {
+        mockDriver(true)
+
+        const { resolved, loaded } = await boot({ activeThemePack: 'builtin:banana-cocoa' })
+
+        expect(resolved).toBe(true)
+        expect(loaded).toBe(true)
+        expect(startThemePackApplyMock).not.toHaveBeenCalled()
+        const { packBanner } = await import('src/ts/themePack/packSafeMode.svelte')
+        expect(packBanner.mode).toBe('offer')
+    })
+
+    test('TA-14: without an active pack, boot offers nothing', async () => {
+        mockDriver(false)
+
+        await boot()
+
+        const { packBanner } = await import('src/ts/themePack/packSafeMode.svelte')
+        expect(packBanner.mode).toBe('hidden')
     })
 
     test('T3D-10: a driver start that throws is logged and does not reject loadData()', async () => {

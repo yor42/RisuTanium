@@ -17,6 +17,8 @@ import type { IntakeRefusal } from './intake'
 import { openJudgeSession, type JudgeSession } from './judgeClient'
 import { sameScheme } from './packColours'
 import { listThemePacks } from './packRecord'
+import { packSafe } from './packSafeFlag.svelte'
+import { registerPackRequestCanceller } from './turnOff'
 
 export interface ThemePackApplyState {
     activeId: string | undefined
@@ -303,11 +305,14 @@ export function startThemePackApply(): void {
         lite = value
     })
     setPackSchemeProvider(() => appliedDefault)
+    registerPackRequestCanceller(cancelPackSchemeRequest)
     disposeRoot = $effect.root(() => {
         $effect(() => {
             const id = DBState.db?.activeThemePack
             const safeMode = safe
-            untrack(() => request(id, safeMode))
+            // Read outside `untrack`: entering or leaving pack safe mode while a sheet is committed must re-run the driver.
+            const packSafeOn = packSafe.on
+            untrack(() => request(id, safeMode || packSafeOn))
         })
         // The user's later pick, a tile click or lite decides the mode live. This writes nothing.
         $effect(() => {
@@ -336,6 +341,7 @@ export function resetThemePackApplyForTests(): void {
     unsubscribeLite?.()
     unsubscribeLite = null
     setPackSchemeProvider(null)
+    registerPackRequestCanceller(null)
     started = false
     resetPackSheetForTests()
     generation += 1

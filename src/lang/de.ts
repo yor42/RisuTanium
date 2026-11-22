@@ -3762,6 +3762,10 @@ export const languageGerman = {
     "themePackRemoveConfirm": (name: string) =>
         `Das Design-Paket „${name}“ entfernen? Seine Dateien werden bei einer späteren Speicherbereinigung gelöscht.`,
     "themePackRemoveChanged": "Die Liste der Design-Pakete hat sich geändert, während Sie entschieden haben, daher wurde nichts entfernt. Versuchen Sie es erneut.",
+    "packEscapeLabel": "Ein Design-Paket ist aktiv",
+    "packEscapeTurnOff": "Design-Paket ausschalten",
+    "packEscapeDismiss": "Schließen",
+    "packSafeModeNotice": "Das Design-Paket ist für diese Sitzung ausgeschaltet",
     "themePackBroken": (name: string, reason: string) =>
         `Das Design-Paket „${name}“ wurde nicht angewendet: ${reason}. Es bleibt gespeichert; entfernen Sie es hier, wenn Sie es nicht mehr brauchen.`,
     "themePackBrokenFiles": "seine Dateien sind beschädigt oder fehlen",

@@ -25,7 +25,7 @@ import { decodeRisuSave, decodeRisuSaveReporting, encodeRisuSaveLegacy, type Sal
 import { legacyPartialFact, legacyPartialNoticeText, setLegacyPartialSave, type LegacyPartialSave } from "./storage/legacyPartialSave";
 import { getPageStorageMode, pageMayGoLive, setPageStorageMode } from "./storage/pageStorageMode";
 import { updateAnimationSpeed } from "./gui/animation";
-import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
+import { bootThemePackStep } from "./themePack/packSafeMode.svelte";
 import { language } from "src/lang";
 import { markBootWrite } from "./bootWindow";
 import { startObserveDom } from "./observer.svelte";
@@ -379,11 +379,10 @@ export async function loadData() {
             const db = getDatabase();
 
             LoadingStatusState.text = "Updating States..."
-            updateColorScheme()
-            updateTextThemeAndCSS()
             // The pack element is inserted before #customcss, so it sits after the app's sheets and before Custom CSS in document order.
             // Boot does not wait for the judge: a chat shown first has the built-in look until the pack is applied.
-            void import('./themePack/activePack.svelte').then((m) => m.startThemePackApply()).catch((error) => console.error(error))
+            // The escape banner is offered before the driver chunk is requested, so a chunk that fails still shows it.
+            bootThemePackStep(db, () => import('./themePack/activePack.svelte'))
             startRootAttributeMirror(window, document)
             updateAnimationSpeed()
             updateHeightMode()
