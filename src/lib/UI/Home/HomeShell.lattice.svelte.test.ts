@@ -95,6 +95,7 @@ import { startHomeView } from './homeView.svelte'
 import { chatSurface } from '../../ChatScreens/chatSurface.svelte'
 import { DBState, OpenRealmStore, alertStore } from 'src/ts/stores.svelte'
 import { ColorSchemeTypeStore } from 'src/ts/gui/surfaceTone'
+import { holdModalLayer } from 'src/lib/Nexus/pattern/modalLayers.svelte'
 
 type Slot = Record<string, unknown>
 
@@ -283,6 +284,17 @@ describe('pausing', () => {
         flushSync()
         expect(live()).toHaveLength(1)
         alertStore.set({ type: 'toast', msg: '' })
+        flushSync()
+        expect(live()).toHaveLength(1)
+    })
+
+    test('T-S6-30: any open modal layer pauses the lattice and releasing it resumes', () => {
+        armedShellAt(1400)
+        expect(live()).toHaveLength(1)
+        const release = holdModalLayer()
+        flushSync()
+        expect(live()).toHaveLength(0)
+        release()
         flushSync()
         expect(live()).toHaveLength(1)
     })

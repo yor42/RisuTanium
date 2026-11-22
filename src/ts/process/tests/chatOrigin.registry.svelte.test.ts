@@ -17,7 +17,7 @@ vi.mock(import('../../stores.svelte'), () => {
 })
 
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, hasAnyWork, isWorkInProgress, isGeneratingIn, generatingChatIdsIn, stopRepliesOf, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
+import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, hasAnyWork, isWorkInProgress, isGeneratingIn, generatingChatIdsIn, replyTargets, stopRepliesOf, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
 
 type CharacterFixture = Database['characters'][number]
 
@@ -482,5 +482,77 @@ describe('hasAnyWork and isWorkInProgress follow the registry', () => {
         second.end()
         expect(hasAnyWork()).toBe(false)
         expect(isWorkInProgress()).toBe(false)
+    })
+})
+
+// Specification: `replyTargets` is a new read-only export, so these tests pin its contract.
+describe('replyTargets lists the chats with a reply registered', () => {
+    const X_A = { chaId: 'cha-x', chatId: 'chat-a' }
+    const X_B = { chaId: 'cha-x', chatId: 'chat-b' }
+    const Y_C = { chaId: 'cha-y', chatId: 'chat-c' }
+
+    test('T-S6-25: lists each (chaId, chatId) pair once, in first-registration order', () => {
+        open(registerWork(X_A, undefined, 'reply'))
+        open(registerWork(Y_C, undefined, 'reply'))
+        open(registerWork(X_A, undefined, 'reply'))
+        open(registerWork(X_B, undefined, 'reply'))
+
+        expect(replyTargets()).toEqual([X_A, Y_C, X_B])
+    })
+
+    test('T-S6-26: leaves out preview and plain work, and keeps a stopped reply that has not ended', () => {
+        open(registerWork({ chaId: 'cha-x', chatId: 'chat-d' }, undefined, 'preview'))
+        open(registerWork({ chaId: 'cha-y', chatId: 'chat-e' }))
+        const stop = vi.fn()
+        open(registerWork(X_A, stop, 'reply'))
+
+        stopWorkIn(X_A)
+
+        expect(stop).toHaveBeenCalledTimes(1)
+        expect(replyTargets()).toEqual([X_A])
+    })
+
+    test('T-S6-27: a group turn, outer and recursion, is one entry under the group and none for the member', () => {
+        const turn = { chaId: 'grp-g', chatId: 'chat-g', memberChaId: 'cha-x' }
+        open(registerWork(turn, vi.fn(), 'reply'))
+        open(registerWork({ ...turn }, undefined, 'reply'))
+
+        expect(replyTargets()).toEqual([{ chaId: 'grp-g', chatId: 'chat-g' }])
+    })
+
+    test('T-S6-28: returns copies, so a caller cannot reach a registration', () => {
+        open(registerWork(X_A, undefined, 'reply'))
+
+        const first = replyTargets()
+        first[0].chatId = 'tampered'
+        first.push(Y_C)
+
+        expect(replyTargets()).toEqual([X_A])
+    })
+
+    test('T-S6-29: a derived over it re-runs when a reply starts or ends, not when plain work starts', () => {
+        const seen: number[] = []
+        const stopEffect = $effect.root(() => {
+            const targets = $derived(replyTargets())
+            $effect(() => {
+                seen.push(targets.length)
+            })
+        })
+        flushSync()
+        expect(seen).toEqual([0])
+
+        const work = open(registerWork(X_B))
+        flushSync()
+        expect(seen).toEqual([0])
+        work.end()
+
+        const reply = open(registerWork(X_A, undefined, 'reply'))
+        flushSync()
+        expect(seen.at(-1)).toBe(1)
+
+        reply.end()
+        flushSync()
+        expect(seen.at(-1)).toBe(0)
+        stopEffect()
     })
 })

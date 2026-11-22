@@ -5,6 +5,7 @@
     import { MARK_VIEWBOX, markInner } from 'src/lib/Nexus/brand/nexusMark'
     import HomeModeSwitcher from './HomeModeSwitcher.svelte'
     import HomePersonaChip from './HomePersonaChip.svelte'
+    import HomeTasks from './HomeTasks.svelte'
     import SeasonalBrand from 'src/lib/UI/Seasonal/SeasonalBrand.svelte'
     import type { HomeBand } from './homeLayout'
 
@@ -27,9 +28,13 @@
     const uid = $props.id()
     const inner = markInner(uid)
 
-    // One DOM order in every band (menu button, brand, switcher, chip); only the grid placement
-    // changes. The start inset keeps the brand clear of the sidebar arrow that sits at the top-left
-    // corner; the phone has no arrow (the menu button replaces it), so it needs only the edge gap.
+    // Lives here, not in HomeTasks: a band change replaces the Tasks instance, and the open dialog must survive it.
+    let tasksOpen = $state(false)
+
+    // The phone order is menu button, brand, Tasks, switcher, chip, equal to its visual order; mid and wide keep
+    // brand, switcher, then the chip cluster (Tasks and the chip), with only the grid placement changing.
+    // The start inset keeps the brand clear of the sidebar arrow that sits at the top-left corner; the phone has
+    // no arrow (the menu button replaces it), so it needs only the edge gap.
     // The switcher and the chip carry their own top margin, which the wrappers cancel.
     //
     // Centring (MC-1403, MC-1415): the switcher sits on the visible bar's centre in mid and wide
@@ -63,8 +68,8 @@
     }
     const chipClass: Record<HomeBand, string> = {
         phone: 'max-w-full *:mt-0!',
-        mid: 'col-start-2 row-start-1 flex justify-end *:mt-0!',
-        wide: 'flex min-w-0 justify-end -mr-10 *:mt-0!',
+        mid: 'col-start-2 row-start-1 flex items-center gap-2 justify-end *:mt-0!',
+        wide: 'flex min-w-0 items-center gap-2 justify-end -mr-10 *:mt-0!',
     }
     // Wordmark sliver rule (MC-1443, sizes MC-3081): the brand cell is an inline-size container in mid and
     // wide. The cell holds the 32 px mark and the 8 px gap, so a cell under 4rem (64 px) leaves the
@@ -132,6 +137,7 @@
                 <MenuIcon size={22} />
             </button>
             {@render brand()}
+            <HomeTasks bind:open={tasksOpen} class="ms-auto" />
         </div>
     {:else}
         {@render brand()}
@@ -141,6 +147,9 @@
     </div>
     <!-- Roleplay content: while Roleplay is the only built mode (BUILT_HOME_MODES) the landing is Roleplay. -->
     <div class={chipClass[band]}>
+        {#if band !== 'phone'}
+            <HomeTasks bind:open={tasksOpen} />
+        {/if}
         <HomePersonaChip />
     </div>
 </header>
