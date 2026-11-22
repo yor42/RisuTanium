@@ -30,6 +30,13 @@ export interface StudioNoticePlaces {
     places: readonly string[]
 }
 
+/** A merged list's own selection and the row of it that opened the current detail. */
+export interface StudioListReturn {
+    ownerKey: string
+    kind: StudioKind
+    rowId: string
+}
+
 /**
  * The state of the Studio visit that is on screen. Nothing here touches a store until the first
  * `openStudio`, so surfaces that import this module (More, the This chat sheet, App) read no
@@ -51,6 +58,9 @@ export interface StudioNoticePlaces {
  * - `settingsReturn` is the Settings page index a link from Settings left, or null. Leaving the visit reopens Settings
  *   there; every other end of a visit leaves it null, so only the visit the link opened returns.
  * - `targetPending` is true from the open until a pane that has the model places the target.
+ * - `listReturn` is the merged (Combined) list an entry was opened from, with the row that opened it. Back on a phone
+ *   detail returns to that list instead of the tree; any other selection, the list and the end of the visit drop it.
+ * - `revealListRow` is the row the merged list scrolls into view and focuses once it is shown again after that Back.
  * - The selection, the expanded rows, the extra pages and "hide empty kinds" live here, not in the tree, so a
  *   phone layout that unmounts the tree keeps them for the visit.
  */
@@ -76,6 +86,8 @@ export const studioScreen = $state({
     // to; every other write of the notice clears it.
     noticePlaces: null as StudioNoticePlaces | null,
     targetPending: false,
+    listReturn: null as StudioListReturn | null,
+    revealListRow: null as string | null,
     selectedOwnerKey: null as string | null,
     selectedKind: null as StudioKind | null,
     selectedItemId: null as string | null,
@@ -112,6 +124,8 @@ function resetVisitState(): void {
     studioScreen.notice = null
     studioScreen.noticePlaces = null
     studioScreen.targetPending = false
+    studioScreen.listReturn = null
+    studioScreen.revealListRow = null
     studioScreen.selectedOwnerKey = null
     studioScreen.selectedKind = null
     studioScreen.selectedItemId = null
@@ -226,6 +240,8 @@ export function showStudioList(): void {
     flushStudioFields('leave')
     studioScreen.togglePreviewOpen = false
     studioScreen.detailShown = false
+    studioScreen.listReturn = null
+    studioScreen.revealListRow = null
     studioScreen.notice = null
     studioScreen.noticePlaces = null
 }
@@ -233,6 +249,32 @@ export function showStudioList(): void {
 /** Back on a phone detail goes to the list only when the user came from that list. */
 export function studioViaList(): boolean {
     return studioScreen.layout === 'stack' && studioScreen.pickedInVisit && studioScreen.detailShown
+}
+
+/**
+ * Back on a phone detail: to the merged list the entry was opened from, at its row, else to the tree. The merged list is
+ * itself a detail, so a second Back goes on to the tree.
+ */
+export function studioDetailBack(): void {
+    const origin = studioScreen.listReturn
+    if (origin === null) {
+        showStudioList()
+        return
+    }
+    setStudioSelection(origin.ownerKey, origin.kind, null)
+    studioScreen.revealListRow = origin.rowId
+    studioScreen.notice = null
+    studioScreen.noticePlaces = null
+}
+
+/** What Back on a phone detail changes: a press that leaves this unchanged did nothing. */
+export function studioDetailBackSnapshot(): string {
+    return `${studioScreen.detailShown}|${studioScreen.selectedOwnerKey}|${studioScreen.selectedKind}|${studioScreen.selectedItemId}`
+}
+
+/** The merged list scrolled to and focused `rowId`; the request is spent. */
+export function takeStudioListReveal(rowId: string): void {
+    if (studioScreen.revealListRow === rowId) studioScreen.revealListRow = null
 }
 
 /** Shows one message, or none. A newer notice replaces an older one whole: the places of the older one go with it. */
@@ -308,6 +350,9 @@ export function setStudioSelection(ownerKey: string, kind: StudioKind | null, it
     if (studioScreen.selectedOwnerKey !== ownerKey) studioScreen.restoreSheetOpen = false
     // A line selection inside a builder changes neither the owner nor the kind, so the sheet stays open across it.
     if (studioScreen.selectedOwnerKey !== ownerKey || studioScreen.selectedKind !== kind) studioScreen.togglePreviewOpen = false
+    // A new selection leaves the merged list the detail came from; only `openStudioListRow` sets it again.
+    studioScreen.listReturn = null
+    studioScreen.revealListRow = null
     studioScreen.selectedOwnerKey = ownerKey
     studioScreen.selectedKind = kind
     studioScreen.selectedItemId = itemId
@@ -328,6 +373,15 @@ export function clearStudioSelection(notice: string): void {
 export function selectStudioNode(ownerKey: string, kind: StudioKind | null, itemId: string | null): void {
     setStudioSelection(ownerKey, kind, itemId)
     pickStudioItem()
+}
+
+/**
+ * A row chosen in a merged list: opens the entry in its owner, and Back on a phone returns to `list` at that row.
+ * `list` is the merged list's own selection (its key and kind), which the entry's selection replaces.
+ */
+export function openStudioListRow(list: { ownerKey: string, kind: StudioKind }, ownerKey: string, itemId: string): void {
+    selectStudioNode(ownerKey, list.kind, itemId)
+    studioScreen.listReturn = { ownerKey: list.ownerKey, kind: list.kind, rowId: itemId }
 }
 
 export function setStudioExpanded(rowId: string, expanded: boolean): void {
