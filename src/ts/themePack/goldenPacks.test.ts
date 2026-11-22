@@ -74,7 +74,7 @@ describe('T1-31 golden v1 packs', () => {
         if (golden.file !== 'origin-navy.risutheme') {
             continue
         }
-        it(`${golden.file} is accepted with its chat and studio sheets judged and the other two areas skipped`, async () => {
+        it(`${golden.file} is accepted with its chat, studio and settings sheets judged and home skipped`, async () => {
             const pack = acceptedPack(await intakePackBytes(bytesOf(golden.file), judge))
             expect(pack.manifest).toStrictEqual({
                 format: 1,
@@ -89,7 +89,8 @@ describe('T1-31 golden v1 packs', () => {
             })
             expect(pack.sheets.chat?.result.ok).toBe(true)
             expect(pack.sheets.studio?.result.ok).toBe(true)
-            expect(pack.skippedAreas).toEqual(['home', 'settings'])
+            expect(pack.sheets.settings?.result.ok).toBe(true)
+            expect(pack.skippedAreas).toEqual(['home'])
             expect(pack.files.size).toBe(0)
             expect(pack.size.warn).toBe(false)
         })

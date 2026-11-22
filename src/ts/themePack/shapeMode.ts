@@ -77,11 +77,19 @@ const STUDIO_GEOMETRY_TOKEN_NAMES: readonly string[] = [
 const STUDIO_SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set([...SHAPE_TOKEN_NAMES, ...STUDIO_GEOMETRY_TOKEN_NAMES])
 
 /**
+ * Settings keeps the chat list and nothing else: no `--settings-*` name (no live reader paints or sizes from one yet) and no
+ * `--pattern-*`, `--warning-*` or `--task-*` name, which the pattern dialog, the toasts and the backup chooser read (H-7a). A
+ * test pins it as SHAPE_TOKEN_NAMES intersected with `allowedTokenNames('settings')`.
+ */
+const SETTINGS_SHAPE_TOKEN_NAMES: ReadonlySet<string> = SHAPE_TOKEN_NAMES
+
+/**
  * The custom properties an applied area's shape variant keeps. Chat keeps its own list. Studio keeps the chat list, which its
- * allowlist also accepts, and its geometry tokens; a test pins both against `allowedTokenNames('studio')`.
+ * allowlist also accepts, and its geometry tokens; Settings keeps the chat list. A test pins each against `allowedTokenNames(area)`.
  */
 export function shapeTokenNames(area: AppliedArea): ReadonlySet<string> {
-    return area === 'studio' ? STUDIO_SHAPE_TOKEN_NAMES : SHAPE_TOKEN_NAMES
+    if (area === 'studio') return STUDIO_SHAPE_TOKEN_NAMES
+    return area === 'settings' ? SETTINGS_SHAPE_TOKEN_NAMES : SHAPE_TOKEN_NAMES
 }
 
 /** True when the text declares nothing: empty, comment-only, or only rule blocks emptied by the shape strip. */

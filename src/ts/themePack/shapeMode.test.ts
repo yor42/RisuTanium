@@ -285,6 +285,14 @@ describe('S1 the studio shape token list (MC-3121)', () => {
         expect([...names].filter((name) => COLOUR_FAMILY.test(name))).toEqual([])
     })
 
+    it('the settings list is the chat list intersected with the settings names: no settings, pattern, warning or task token, and the strip drops them (C8)', () => {
+        const allowed = allowedTokenNames('settings')
+        const names = shapeTokenNames('settings')
+        expect([...names].sort()).toEqual([...SHAPE_TOKEN_NAMES].filter((name) => allowed.has(name)).sort())
+        expect([...names].filter((name) => /^--(settings|pattern|warning|task)-/.test(name))).toEqual([])
+        expect(shapeOnlySheet(':root{--pattern-warn-padding:20px;--warning-press-dur:90ms;--settings-dialog-padding:9px;--nexus-touch:44px}', names)).toBe(':root{--nexus-touch:44px}')
+    })
+
     // N7 (SC.2): no app rule puts a listed studio geometry name, or a token derived from one, into a paint property. A stylesheet
     // declaration is judged by its property; any other reader (markup, script) must be a geometry utility or is a finding.
     it('every studio geometry name is read only as geometry, derived tokens included (G6b)', () => {

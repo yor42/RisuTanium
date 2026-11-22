@@ -17,6 +17,7 @@
     import { arrivalInFlight, runSettingsArrival } from '../../ts/settingsShell/settingsArrival'
     import { restoreOpenerFocus, settingsOrigin } from '../../ts/settingsShell/settingsOrigin'
     import { firstIndexOf, pageEntry, pageForIndex, settingsLabel } from '../../ts/settingsShell/settingsPages'
+    import { declareSurface } from '../../ts/themePack/surfaceGate.svelte'
     import { closeSearch, openSearch, resetSearch, setHighlight, settingsSearchState } from '../../ts/settingsShell/settingsSearchState.svelte'
     import SettingsSearchResults, { hitCountOf, resultBlocksOf, type ResultRow } from './SettingsSearchResults.svelte'
     import SettingsShellHeader from './SettingsShellHeader.svelte'
@@ -36,6 +37,10 @@
     let header = $state<ReturnType<typeof SettingsShellHeader>>()
     let indexPane = $state<ReturnType<typeof SettingsShellIndex>>()
     let pagePane = $state<ReturnType<typeof SettingsShellPage>>()
+
+    // A theme pack's settings sheet is on only while this shell is mounted, Settings is open and the own colours are off. The
+    // legacy Settings screen never declares: the declaration lives here, not in Settings or SettingsSurface.
+    $effect(() => declareSurface('settings'))
 
     // While Settings is open the wide layout never shows index -1: it applies the stored last page, or Models.
     // Gated on the open state so a close (which resets the index) is not undone by this effect.

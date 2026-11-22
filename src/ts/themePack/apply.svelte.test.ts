@@ -1361,3 +1361,109 @@ describe('T16 setPackSheetColours switches the variant in place', () => {
         expect(packElements()).toHaveLength(0)
     })
 })
+
+
+describe('S3a-3 the settings element (MC-3121: shape variant only, no base, in both modes)', () => {
+    const FONT_X = 'fonts/x.woff2'
+    const FACE_X = '@font-face{font-family:"pack-x";src:url(fonts/x.woff2) format("woff2")}'
+    const CHAT_X = FACE_X + LEAF
+    /** A settings sheet with colours, an image only its colours name, a pattern token and two shape properties. */
+    const SETTINGS_X = '@font-face{font-family:"pack-x";src:url(fonts/x.woff2)}:root{--pattern-warn-padding:20px;--nexus-touch:44px}'
+        + '[data-part="settings-section-title"]{font-family:"pack-x";color:#ff0000;background-image:url(images/s.png);border-radius:6px}'
+    const SETTINGS_WHOLE = '[data-part="settings-section-title"]{border-radius:6px}'
+    const BASE = 'data-theme-pack-base'
+    const pack = (extra: Readonly<Record<string, PackFile>>): Uint8Array => packOf(CHAT_X, [FONT_X], { 'images/s.png': PNG_1X1, ...extra })
+
+    /** The text the settings element must carry: the judged shape variant, with each resource span replaced by its URL. */
+    function expectedSettingsText(settings: string, urlOf: Readonly<Record<string, string>> = {}): string {
+        const whole = judgeAreaSheet('settings', settings, undefined, 'settings')
+        const shape = judgeAreaSheet('settings', shapeOnlySheet(whole.canonical, shapeTokenNames('settings')), undefined, 'settings')
+        expect(shape.result.ok).toBe(true)
+        return buildAppliedText(shape, (raw) => urlOf[raw] ?? '')
+    }
+
+    const tagged = (label: string, rule: 'contrast' | 'layout') => (response: JudgeResponse): JudgeResponse => {
+        if (!response.ok || !Object.hasOwn(response.results, label)) {
+            return response
+        }
+        const verdict = response.results[label]
+        return { ...response, results: { ...response.results, [label]: { ...verdict, warnings: [...verdict.warnings, { selector: 's', prop: 'color', why: 'w', rule }] } } }
+    }
+
+    it('C5: the settings element is the shape judgement with blob substitution: no colour, no image, no pattern token, after chat and before #customcss', async () => {
+        const prepared = accepted(await prepareArchive(pack({ 'settings.css': SETTINGS_X })))
+        commitAll(prepared, true)
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat', 'settings'])
+        const [chat, settings] = packElements()
+        expect(chat.nextElementSibling).toBe(settings)
+        expect(settings.nextElementSibling?.id).toBe('customcss')
+        expect(settings.getAttribute('media')).toBe('not all')
+        expect(settings.textContent).toBe(expectedSettingsText(SETTINGS_X, { [FONT_X]: blobs.minted[0] }))
+        expect(settings.textContent).toContain('border-radius')
+        expect(settings.textContent).toContain('--nexus-touch')
+        expect(settings.textContent).not.toMatch(/color:|#ff0000|background-image|images\/|--pattern-/)
+        expect(prepared.elements.find((element) => element.area === 'settings')).toMatchObject({ area: 'settings', base: null })
+    })
+
+    it('an image only the settings colours name is never minted; only the shared font is', async () => {
+        accepted(await prepareArchive(pack({ 'settings.css': SETTINGS_X })))
+        expect(blobs.minted).toHaveLength(1)
+    })
+
+    it('the settings element is on while settings is the shown screen, in colour mode and shape mode alike, and sets no base', async () => {
+        const prepared = accepted(await prepareArchive(pack({ 'settings.css': SETTINGS_X })))
+        installThemePackGate(() => false)
+        declareSurface('chat')
+        declareSurface('settings')
+        flushSync()
+        commitAll(prepared, true)
+        const [chat, settings] = packElements()
+        const shapeText = expectedSettingsText(SETTINGS_X, { [FONT_X]: blobs.minted[0] })
+        expect(settings.getAttribute('media')).toBe('all')
+        expect(chat.getAttribute('media')).toBe('not all')
+        expect(document.documentElement.hasAttribute(BASE)).toBe(false)
+        setPackSheetColours(false)
+        expect(settings.textContent).toBe(shapeText)
+        setPackSheetColours(true)
+        expect(settings.textContent).toBe(shapeText)
+        expect(document.documentElement.hasAttribute(BASE)).toBe(false)
+    })
+
+    it('a sheet the settings allowlist leaves whole is its own shape variant and posts no settings#shape job; a stripped one posts one', async () => {
+        const whole = judgeRig()
+        accepted(await prepareArchive(pack({ 'settings.css': SETTINGS_WHOLE }), whole))
+        expect(whole.posts.flatMap((post) => post.jobs.map((job) => job.label))).not.toContain('settings#shape')
+        const stripped = judgeRig()
+        accepted(await prepareArchive(pack({ 'settings.css': SETTINGS_X }), stripped))
+        const job = stripped.posts.flatMap((post) => post.jobs).find((entry) => entry.label === 'settings#shape')
+        expect(job?.area).toBe('settings')
+    })
+
+    it('C4 twin: a missing settings#shape verdict gives no settings element and chat applies (fail-closed, never the unjudged text)', async () => {
+        const dropShape = (response: JudgeResponse): JudgeResponse => {
+            if (!response.ok) return response
+            const kept = Object.fromEntries(Object.entries(response.results).filter(([label]) => label !== 'settings#shape'))
+            return { ...response, results: kept }
+        }
+        const prepared = accepted(await prepareArchive(pack({ 'settings.css': SETTINGS_X }), judgeRig({ rewrite: dropShape })))
+        expect(prepared.elements.map((element) => element.area)).not.toContain('settings')
+        expect(prepared.elements.map((element) => element.area)).toContain('chat')
+    })
+
+    it('a refused settings#shape verdict gives no settings element', async () => {
+        const refuse = (response: JudgeResponse): JudgeResponse => {
+            if (!response.ok || !Object.hasOwn(response.results, 'settings#shape')) return response
+            const verdict = response.results['settings#shape']
+            return { ...response, results: { ...response.results, 'settings#shape': { ...verdict, result: { ...verdict.result, ok: false, errors: [{ selector: 's', prop: 'p', why: 'refused' }] } } } }
+        }
+        const prepared = accepted(await prepareArchive(pack({ 'settings.css': SETTINGS_X }), judgeRig({ rewrite: refuse })))
+        expect(prepared.elements.map((element) => element.area)).toEqual(['chat'])
+    })
+
+    it('the own-colour trigger carries a contrast or readability note on the settings judgement, as it does for studio; a layout note is not', async () => {
+        const bytes = pack({ 'settings.css': SETTINGS_X })
+        expect(accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('settings', 'contrast') }))).ownColourTrigger).toBe(true)
+        expect(Object.hasOwn(accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('settings', 'layout') }))), 'ownColourTrigger')).toBe(false)
+        expect(Object.hasOwn(accepted(await prepareArchive(bytes, judgeRig())), 'ownColourTrigger')).toBe(false)
+    })
+})

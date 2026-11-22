@@ -42,7 +42,7 @@ describe('T3W-6 the judge worker handler', () => {
         expect(vi.mocked(judgeAreaSheet)).toHaveBeenCalledTimes(2)
     })
 
-    it('S0-C1: a job of a non-applied area is dropped and never judged; the studio job is judged in its own area', () => {
+    it('S0-C1: a job of a non-applied area is dropped and never judged; the studio and settings jobs are judged in their own areas', () => {
         vi.mocked(judgeAreaSheet).mockClear()
         const answer = handleJudgeRequest({
             id: 8,
@@ -55,11 +55,12 @@ describe('T3W-6 the judge worker handler', () => {
             ],
         })
         if (answer.ok === false) throw new Error('expected an answer')
-        expect(Object.keys(answer.results)).toEqual(['chat', 'studio'])
+        expect(Object.keys(answer.results)).toEqual(['chat', 'studio', 'settings'])
         expect(answer.results.studio).toEqual(judgeAreaSheet('studio', STUDIO_SHEET, undefined, 'studio'))
-        expect(vi.mocked(judgeAreaSheet).mock.calls.slice(0, 2)).toEqual([
+        expect(vi.mocked(judgeAreaSheet).mock.calls.slice(0, 3)).toEqual([
             ['chat', PLAIN_CHAT_SHEET, undefined, 'chat'],
             ['studio', STUDIO_SHEET, undefined, 'studio'],
+            ['settings', 'a{}', undefined, 'settings'],
         ])
     })
 
