@@ -1,10 +1,20 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import {
-    configurePageState, heldReply, holdInflight, noteBound, noteInvoked, notePageEnded, noteReplyPushed, resetPageStateForTests,
+    configurePageState, heldReply, holdInflight, noteBound, noteInvoked, noteUnowned, notePageEnded, noteReplyPushed, resetPageStateForTests,
     takeAnnounced,
 } from '../pageState'
-import { createStreamProbe, endOwnedRead, forgetOwnedStream, resetOwnedStreamsForTests } from '../ownedStream'
+import { createStreamProbe, endOwnedRead, forgetOwnedStream, resetOwnedStreamsForTests, settleOwnedStreamEnd } from '../ownedStream'
 import type { ReplyStamp } from '../ownedBody'
+
+const marks = vi.hoisted(() => ({ count: 0, charIds: [] as unknown[] }))
+
+vi.mock(import('../../storage/characterSaveMarks'), async (importOriginal) => ({
+    ...(await importOriginal()),
+    markCharacterForSave: vi.fn((chaId: unknown) => {
+        marks.count += 1
+        marks.charIds.push(chaId)
+    }),
+}))
 
 /**
  * P9, P10-AK, P10-R, P10-B (new rules): the per-reply facts of an owned stream. Every fact is keyed by the reply's key, so
@@ -16,6 +26,8 @@ const K1 = '0b9c1a7e-0000-4000-8000-000000000001'
 const K2 = '0b9c1a7e-0000-4000-8000-000000000002'
 
 beforeEach(() => {
+    marks.count = 0
+    marks.charIds.length = 0
     resetPageStateForTests()
     resetOwnedStreamsForTests()
     configurePageState({
@@ -147,5 +159,37 @@ describe('P10-B: the settle backstop', () => {
     test('a key that was never registered does nothing and does not throw', () => {
         expect(() => forgetOwnedStream(K2)).not.toThrow()
         expect(heldReply(K2)).toBeUndefined()
+    })
+})
+
+describe('settleOwnedStreamEnd: the stream branch ended', () => {
+    test('a reply in memory on an owned key is marked first and awaited at the count read after the mark', () => {
+        const one = register(K1)
+        settleOwnedStreamEnd(K1, { chaId: 'cha', saveMarkCount: () => marks.count })
+        expect(marks.charIds).toEqual(['cha'])
+        expect(heldReply(K1)).toMatchObject({ state: 'awaiting-save', chaId: 'cha', target: 1 })
+        expect(one.abandon).not.toHaveBeenCalled()
+    })
+
+    test('no reply in memory: the page end is noted and the native request abandoned once', () => {
+        const one = register(K1)
+        const two = register(K2)
+        const before = structuredClone(heldReply(K2))
+        settleOwnedStreamEnd(K1, null)
+        expect(heldReply(K1)?.pageEnded).toBe(true)
+        expect(heldReply(K1)?.state).toBe('inflight')
+        expect(one.abandon).toHaveBeenCalledTimes(1)
+        expect(marks.count).toBe(0)
+        expect(two.abandon).not.toHaveBeenCalled()
+        expect(heldReply(K2)).toEqual(before)
+    })
+
+    test('a reply in memory on a key that owns no record marks nothing and only ends the read', () => {
+        const refused = register(K1, false)
+        noteUnowned(K1)
+        settleOwnedStreamEnd(K1, { chaId: 'cha', saveMarkCount: () => marks.count })
+        expect(marks.count).toBe(0)
+        expect(heldReply(K1)).toMatchObject({ state: 'inflight', pageEnded: true })
+        expect(refused.abandon).not.toHaveBeenCalled()
     })
 })

@@ -1,5 +1,6 @@
 import { createPumpProbe, knowledgeOfStamp, type PumpProbe } from './ownedBody'
-import { consumeReply, heldReply, noteAnnounced, notePageEnded, noteTerminal, type ConsumeResult } from './pageState'
+import { consumeReply, heldReply, noteAnnounced, notePageEnded, noteReplyPushed, noteTerminal, ownsPushedReply, type ConsumeResult } from './pageState'
+import { markCharacterForSave } from '../storage/characterSaveMarks'
 
 /**
  * The page-side facts of an owned stream request, kept per reply: the probe of the request's event pump is registered
@@ -40,6 +41,21 @@ export function endOwnedRead(key: string): void {
     if (probe !== undefined && probe.owned !== false) {
         probe.abandon?.()
     }
+}
+
+/**
+ * The stream branch of `key`'s send ended. With the reply still in memory (`reply`) the character is marked and the
+ * waiter's target is read after the mark, so the save that covers the mark also covers the settled reply; the record is
+ * consumed only after that commit. Without a reply the page's read just ended (`endOwnedRead`). `saveMarkCount` is the
+ * page's save-request counter, handed in so this module stays free of the page's save machinery.
+ */
+export function settleOwnedStreamEnd(key: string, reply: { chaId: string, saveMarkCount: () => number } | null): void {
+    if (reply !== null && ownsPushedReply(key)) {
+        markCharacterForSave(reply.chaId)
+        noteReplyPushed(key, reply.chaId, reply.saveMarkCount())
+        return
+    }
+    endOwnedRead(key)
 }
 
 /**
