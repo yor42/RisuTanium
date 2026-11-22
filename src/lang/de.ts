@@ -3990,6 +3990,8 @@ export const languageGerman = {
     "keepAliveFinishing": "Wird abgeschlossen…",
     "keepAliveSavePending": "Antwort bereit. Öffnen Sie die App, um das Speichern abzuschließen.",
     "messageInterrupted": "Unterbrochen – die Antwort ist möglicherweise unvollständig",
+    "messageReplyRunning": "Antwortet noch – die vollständige Antwort erscheint hier, sobald sie fertig ist",
+    "chatReplyRunning": "{name} antwortet noch – die Antwort erscheint hier, sobald sie fertig ist",
     "messageRenderFailed": "Diese Nachricht konnte nicht korrekt angezeigt werden, daher wird ihr Originaltext angezeigt.",
     "messageRenderRetry": "Erneut versuchen",
     "nanoGPTLoadingAccountInfo": "Kontodaten werden geladen…",

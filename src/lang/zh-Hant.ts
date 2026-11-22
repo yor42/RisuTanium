@@ -4015,6 +4015,8 @@ export const languageChineseTraditional = {
     "keepAliveFinishing": "收尾中…",
     "keepAliveSavePending": "回覆已就緒。請開啟應用程式以完成儲存。",
     "messageInterrupted": "已中斷 — 回覆可能不完整",
+    "messageReplyRunning": "仍在回覆中 — 完成後完整回覆會顯示在這裡",
+    "chatReplyRunning": "{name} 仍在回覆中 — 完成後回覆會顯示在這裡",
     "messageRenderFailed": "此訊息無法正常顯示，因此顯示的是原始文字。",
     "messageRenderRetry": "重試",
     "loadouts": "設定組合",

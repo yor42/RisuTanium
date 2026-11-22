@@ -3971,6 +3971,8 @@ export const languageChinese = {
     "keepAliveFinishing": "正在收尾…",
     "keepAliveSavePending": "回复已就绪。请打开应用以完成保存。",
     "messageInterrupted": "已中断 — 回复可能不完整",
+    "messageReplyRunning": "仍在回复中 — 完成后完整回复会显示在这里",
+    "chatReplyRunning": "{name} 仍在回复中 — 完成后回复会显示在这里",
     "messageRenderFailed": "此消息无法正常显示，因此显示的是原始文本。",
     "messageRenderRetry": "重试",
     "nanoGPTLoadingAccountInfo": "正在加载账户信息…",

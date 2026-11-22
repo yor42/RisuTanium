@@ -4113,6 +4113,8 @@ export const languageJapanese = {
     keepAliveSavePending: "応答の準備が完了しました。保存を完了するにはアプリを開いてください。",
     keepAliveStop: "停止",
     messageInterrupted: "中断されました — 応答が不完全な可能性があります",
+    messageReplyRunning: "返信中です — 完了すると完全な応答がここに表示されます",
+    chatReplyRunning: "{name} は応答中です — 完了すると応答がここに表示されます",
     messageRenderFailed: "このメッセージは正常に表示できなかったため、元のテキストを表示しています。",
     messageRenderRetry: "再試行",
     // NanoGPT Dashboard
