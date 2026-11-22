@@ -57,6 +57,7 @@ import { enterKeydown, imeEventSequence } from '../../ts/ime/tests/imeEventSeque
 import ThisChatSheet from './ThisChatSheet.svelte'
 import { additionalChatMenu, hypaV3ModalOpen, settingsOpen } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
+import { ownColours, resetOwnColoursForTests } from '../../ts/themePack/ownColours.svelte'
 
 type Owner = { chaId: string, name: string, type: 'character', chatPage: number, chats: Chat[], supaMemory?: boolean, customModuleToggle?: string, coldstorage?: string }
 
@@ -142,6 +143,7 @@ afterEach(async () => {
     if (mounted) await unmount(mounted)
     mounted = undefined
     document.body.innerHTML = ''
+    resetOwnColoursForTests()
     vi.restoreAllMocks()
 })
 
@@ -380,6 +382,19 @@ describe('close-first rows', () => {
         expect(get(settingsOpen)).toBe(false)
         await tick()
         expect(get(settingsOpen)).toBe(true)
+    })
+
+    test('the All settings button is an own-scheme escape island while the own colours are on, and bare otherwise', async () => {
+        await show()
+        expect(part('all-settings')!.hasAttribute('data-own-scheme')).toBe(false)
+        ownColours.vars = { '--risu-theme-bgcolor': '#102030' }
+        ownColours.on = true
+        flushSync()
+        expect(part('all-settings')!.getAttribute('data-own-scheme')).toBe('escape')
+        expect(part('all-settings')!.style.getPropertyValue('--risu-theme-bgcolor')).toBe('#102030')
+        ownColours.on = false
+        flushSync()
+        expect(part('all-settings')!.hasAttribute('data-own-scheme')).toBe(false)
     })
 
     test('a plugin row closes the sheet and then runs the plugin\'s callback', async () => {

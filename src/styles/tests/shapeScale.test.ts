@@ -52,7 +52,7 @@ async function compileFullRepo(cssText: string): Promise<string> {
 /** The defaults the first `:root` rule of a token file declares for the given names. */
 function rootDefaults(file: string, names: readonly string[]): Map<string, string> {
     const rootRules: Rule[] = []
-    postcss.parse(readRepoFile(file)).walkRules((rule) => { if (rule.selector === ':root') rootRules.push(rule) })
+    postcss.parse(readRepoFile(file)).walkRules((rule) => { if (rule.selector === ':root' || rule.selector === ':root, [data-own-scheme]') rootRules.push(rule) })
     const first = rootRules[0]
     if (!first) throw new Error(`${file} has no :root rule`)
     const wanted = new Set(names)

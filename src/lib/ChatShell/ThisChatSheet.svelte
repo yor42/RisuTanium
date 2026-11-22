@@ -15,6 +15,7 @@
     import { chroMemoryOn, legacyEngineFields, showsMemoryToggle } from '../../ts/process/memory/memoryEngine'
     import { memoryToggleLabel } from '../../ts/process/memory/memoryLabels'
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte'
+    import { ownScheme } from '../UI/ownScheme.svelte'
     import ShellSheet from './ShellSheet.svelte'
     import ToggleScopeSwitch from './ToggleScopeSwitch.svelte'
 
@@ -420,7 +421,7 @@
                 {#if !scopeOn}
                     {@render jailbreakRow()}
                 {/if}
-                <button type="button" data-part="this-chat-all-settings" data-part-critical data-kind="button" onclick={() => leave(() => settingsOpen.set(true))}>{language.chatShellAllSettings}</button>
+                <button type="button" data-part="this-chat-all-settings" data-part-critical data-kind="button" use:ownScheme={'escape'} onclick={() => leave(() => settingsOpen.set(true))}>{language.chatShellAllSettings}</button>
             </section>
 
             {#if additionalChatMenu.length > 0}

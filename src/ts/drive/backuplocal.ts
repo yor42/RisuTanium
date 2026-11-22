@@ -37,6 +37,7 @@ import { binKeySnapshot, confirmExportKeys, exportKeysLateText } from "./exportK
 import { readArchivedUnitCharacter } from "./restoreReplace";
 import { repairCharacterTree } from "../storage/characterTreeRepair";
 import { language } from "src/lang";
+import { confirmRestoreWithoutTabCheck } from "./restoreNoLockWarning";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
 import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, exportForkOnlyLabels, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, beginModuleSnapshotMark, endModuleSnapshotMark, clearModuleSnapshotMarks, unpackStubEntry, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { listColdBackupRoots } from "../process/coldstorageData";
@@ -2333,7 +2334,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             }
             if (!isTauri) {
                 if (locksSupported === false) {
-                    if (!await alertConfirm(language.restoreNoLockWarningConfirm)) {
+                    if (!await confirmRestoreWithoutTabCheck()) {
                         return declined();
                     }
                 } else {

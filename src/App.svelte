@@ -44,6 +44,7 @@
     import { getBootScreen } from './ts/storage/store2/ui/bootScreen.svelte';
     import { chatSurface, installChatSurface } from './lib/ChatScreens/chatSurface.svelte';
     import { installThemePackGate, screenMasked } from './ts/themePack/surfaceGate.svelte';
+    import { setSettingsOwnColours } from './ts/gui/colorschemeCore';
     import { installChatOnScreen } from './ts/process/chatOnScreen.svelte';
     import { installReplyNotifications } from './ts/android/replyNotifications.svelte';
     import { startVisibleChatWatcher } from './ts/process/mcp/serverChatGrants.svelte';
@@ -76,6 +77,11 @@
     // Studio, Studio shows only while it is open.
     const screenState = $derived({ settingsOpen: $settingsOpen, studioOpen: $studioOpen })
     installThemePackGate((area) => screenMasked(area, screenState))
+    // Settings paints the own scheme at the root in the flush that mounts it. The store is the only tracked read.
+    $effect.pre(() => {
+        const open = $settingsOpen
+        setSettingsOwnColours(open)
+    })
     let aprilFools = $state(new Date().getMonth() === 3 && new Date().getDate() === 1)
     let aprilFoolsPage = $state(0)
     let keepingSessionAlive = $state(false)

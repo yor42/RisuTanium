@@ -593,6 +593,64 @@ describe('T3-4 a pack that cannot apply', () => {
     })
 })
 
+describe('TB-3 the own-colour verdict carried by prepareBuiltin and prepareArchive', () => {
+    // REPRODUCER for the carriage: no pack sheet tags a rule yet, so each case tags the judge's answer for one label.
+    const tagged = (label: string, rule: 'contrast' | 'readability' | 'layout' | null) => (response: JudgeResponse): JudgeResponse => {
+        if (!response.ok || !Object.hasOwn(response.results, label)) {
+            return response
+        }
+        const verdict = response.results[label]
+        const warning = { selector: 's', prop: 'color', why: 'w', ...(rule === null ? {} : { rule }) }
+        return { ...response, results: { ...response.results, [label]: { ...verdict, warnings: [...verdict.warnings, warning] } } }
+    }
+    const builtin: BuiltinPack = { id: 'builtin:ok', slug: 'ok', name: 'Ok', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET }
+    const lightCss = builtinPackById('builtin:scratch-white')!.chatCss
+    const archiveOf = (modes: string[], chatCss: string): Uint8Array => zipPack(validPackFiles({ 'manifest.json': manifestText({ name: 'Tagged', modes }), 'chat.css': chatCss }))
+
+    it('a builtin whose chat verdict carries a contrast or readability note: the trigger is carried', async () => {
+        for (const rule of ['contrast', 'readability'] as const) {
+            const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }, judgeRig({ rewrite: tagged('chat', rule) })))
+            expect(prepared.ownColourTrigger, rule).toBe(true)
+        }
+    })
+
+    it('a builtin whose chat verdict carries a layout note, an untagged note or none: the field is absent', async () => {
+        for (const rewrite of [tagged('chat', 'layout'), tagged('chat', null), undefined]) {
+            const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }, judgeRig({ rewrite })))
+            expect(Object.hasOwn(prepared, 'ownColourTrigger')).toBe(false)
+        }
+    })
+
+    it('an archive on the dark base reads the chat verdict: a contrast note on it is carried, a layout note is not', async () => {
+        const bytes = archiveOf(['dark'], PLAIN_CHAT_SHEET)
+        expect(accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('chat', 'contrast') }))).ownColourTrigger).toBe(true)
+        expect(Object.hasOwn(accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('chat', 'layout') }))), 'ownColourTrigger')).toBe(false)
+        expect(Object.hasOwn(accepted(await prepareArchive(bytes, judgeRig())), 'ownColourTrigger')).toBe(false)
+    })
+
+    it('an archive on the light base reads the light variant: its note is carried, a note on the chat sheet alone is not', async () => {
+        const bytes = archiveOf(['light'], lightCss)
+        const viaLight = accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('chat#light', 'contrast') })))
+        expect(chatElementOf(viaLight).base).toBe('light')
+        expect(viaLight.ownColourTrigger).toBe(true)
+        const viaChat = accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('chat', 'contrast') })))
+        expect(chatElementOf(viaChat).base).toBe('light')
+        expect(Object.hasOwn(viaChat, 'ownColourTrigger')).toBe(false)
+    })
+
+    // A mid-tone canvas passes the chat judgement but is refused by the light proof, so a light-labelled archive lands on the dark base.
+    const MID_TONE_SHEET = ':root { --nexus-canvas: #969fae; --color-surface-sheet: #ffffff; --color-surface-toast: #ffffff; --nexus-text: #000000; --nexus-text-secondary: #1a1d24; --nexus-text-muted: #2a2d34; --nexus-ring: #102a60; --nexus-accent-rgb: 16 42 96; --nexus-accent: rgb(var(--nexus-accent-rgb)); --nexus-danger-rgb: 138 0 24; --nexus-danger: rgb(var(--nexus-danger-rgb)); --color-on-accent: #ffffff; --danger: #6a0012; --color-scheme: light; }\n'
+
+    it('a light-labelled archive whose light proof is refused falls back to the dark base and reads the chat verdict', async () => {
+        const bytes = archiveOf(['light'], MID_TONE_SHEET)
+        const viaChat = accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('chat', 'contrast') })))
+        expect(chatElementOf(viaChat).base).toBe('dark')
+        expect(viaChat.ownColourTrigger).toBe(true)
+        const viaLight = accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('chat#light', 'contrast') })))
+        expect(Object.hasOwn(viaLight, 'ownColourTrigger')).toBe(false)
+    })
+})
+
 describe('T2b-2 a stored pack with malformed tile fields still applies', () => {
     // GUARD (passes before and after the tile fields exist): apply re-runs intake over the stored archive and never
     // judges `colors` or `icon`, so a pack installed before those keys were checked must not turn broken.

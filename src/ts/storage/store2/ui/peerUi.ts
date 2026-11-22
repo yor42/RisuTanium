@@ -97,7 +97,7 @@ export async function askForeignMarkerQuestion(marker: Staging): Promise<'wait' 
     const question = foreignMarkerScreen(marker)
     const buttons = question.model.buttons
     const waitIndex = buttons.findIndex((button) => button.key === 'foreignWait')
-    const index = await alertSelect(buttons.map((button) => button.label), `${question.model.title} ${question.model.paragraphs.join(' ')}`, { cancel: String(waitIndex) })
+    const index = await alertSelect(buttons.map((button) => button.label), `${question.model.title} ${question.model.paragraphs.join(' ')}`, { cancel: String(waitIndex), ownScheme: 'saveGuard' })
     const pressed = buttons[Number(index)]
     return pressed !== undefined && pressed.key === 'foreignClear' && question.answers[pressed.key] === 'clear' ? 'clear' : 'wait'
 }
@@ -251,7 +251,7 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
     async function decide(prompt: PeerParkPrompt): Promise<PeerOffer> {
         await untilClear()
         const displayed = prompt.offers.filter((offer) => offer !== 'export-first' || exportAvailable)
-        const index = await alertSelect(displayed.map(labelOf), titleOf(prompt, displayed.includes('export-first'), autoExportName))
+        const index = await alertSelect(displayed.map(labelOf), titleOf(prompt, displayed.includes('export-first'), autoExportName), { ownScheme: 'saveGuard' })
         return displayed[Number(index)] ?? 'reload'
     }
 
@@ -263,6 +263,7 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         await untilClear()
         const answer = await askPrompt({
             type: 'peerConflicts', msg: language.store2Boot.peerConflictTitle, peerConflicts: request.conflicts.map(rowOf),
+            ownScheme: 'saveGuard',
         })
         return parseConflictAnswer(answer, request.conflicts)
     }
@@ -296,7 +297,7 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
                     : (warned ? text.peerCleanCommitDrafts : text.peerCleanCommit)
             const reloadLabel = warned ? text.peerReloadDrafts : text.peerReloadOnly
             const labels = exportOffered ? [reloadLabel, text.peerExportFirst, text.peerKeepReading] : [reloadLabel, text.peerKeepReading]
-            const index = await alertSelect(labels, title, { cancel: String(labels.length - 1) })
+            const index = await alertSelect(labels, title, { cancel: String(labels.length - 1), ownScheme: 'saveGuard' })
             if (exportOffered && index === '1' && manifestKey !== undefined) {
                 const now = live()
                 if (!now.parked || now.dirty) {
@@ -354,7 +355,7 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         alertMd((result.notices.length > 0 ? result.notices : [language.partialBackupInlaysNotIncluded]).join('\n\n'))
         await waitAlert()
         for (;;) {
-            const index = await alertSelect([text.peerExportReloadNow], text.peerExportHandedOff)
+            const index = await alertSelect([text.peerExportReloadNow], text.peerExportHandedOff, { ownScheme: 'saveGuard' })
             if (index === '0') {
                 return 'saved'
             }
@@ -385,7 +386,7 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         await untilClear()
         const text = language.store2Boot
         const name = cleanNames([info.moduleName])[0] ?? ''
-        const index = await alertSelect([text.peerReload, text.moduleEditedKeep], text.moduleEditedTitle.replace('{name}', () => name), { cancel: '1' })
+        const index = await alertSelect([text.peerReload, text.moduleEditedKeep], text.moduleEditedTitle.replace('{name}', () => name), { cancel: '1', ownScheme: 'saveGuard' })
         if (index === '0' && stillBlocked()) {
             options.reload()
         }

@@ -9,6 +9,7 @@
     import { isTopmostShell, makeInert, registerShell, returnFocus, trapTab, watchFocus } from 'src/lib/Nexus/pattern/patternFocus'
     import PluginDefinedIcon from 'src/lib/Others/PluginDefinedIcon.svelte'
     import { holdReturnedFocus } from './homeFocusHold'
+    import { ownScheme } from '../ownScheme.svelte'
     import { homeDrawerItems, type HomeDrawerItem } from './homeDrawerItems'
 
     interface Props {
@@ -168,16 +169,19 @@
             {/each}
             {#if settingsItem}
                 {@const settings = settingsItem}
-                <button
-                    type="button"
-                    data-part="home-drawer-settings"
-                    data-part-critical
-                    class="flex min-h-11 w-full items-center gap-3 px-4 py-2 text-start text-textcolor2 hover:bg-selected/50"
-                    onclick={() => choose(settings)}
-                >
-                    <SettingsIcon size={20} aria-hidden="true" />
-                    <span class="min-w-0 break-words">{settings.label}</span>
-                </button>
+                <!-- The button's hover fill is translucent, so the island's opaque backdrop sits on a wrapper beneath it. -->
+                <div use:ownScheme={'escape'}>
+                    <button
+                        type="button"
+                        data-part="home-drawer-settings"
+                        data-part-critical
+                        class="flex min-h-11 w-full items-center gap-3 px-4 py-2 text-start text-textcolor2 hover:bg-selected/50"
+                        onclick={() => choose(settings)}
+                    >
+                        <SettingsIcon size={20} aria-hidden="true" />
+                        <span class="min-w-0 break-words">{settings.label}</span>
+                    </button>
+                </div>
             {/if}
         </nav>
     </div>
