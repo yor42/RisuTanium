@@ -246,6 +246,18 @@ describe('the long-chat hint in the shell', () => {
         expect(region().textContent).toBe('Opened Chat 1 Long chat · 2,001 messages')
     })
 
+    test('a switch into a long chat while the search bar is open shows no hint and keeps the flag unset', async () => {
+        const chats = seed([10, 2001])
+        await mountShell()
+        captured.sheet!.onsearch!(null)
+        flushSync()
+        ;(state.db.characters[0] as { chatPage: number }).chatPage = 1
+        await settle()
+        expect(hintElement()).toBeNull()
+        const entries = (state.db.chatDrafts ?? []) as { chat: string, shown?: true }[]
+        expect(entries.some((entry) => entry.chat === chats[1].id && entry.shown)).toBe(false)
+    })
+
     test('a switch to another chat takes the hint away', async () => {
         seed([2001, 10])
         await mountShell()

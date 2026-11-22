@@ -421,7 +421,8 @@
             const ran = hintRan
             hintSeenChat = chat
             hintRan = true
-            if (pending || !chat || character?.type !== 'character') {
+            // An open sheet or find bar would hide the hint, so it is not shown and its once-per-chat flag stays unset.
+            if (pending || scrubBlockedByState || findOpen || !chat || character?.type !== 'character') {
                 hint.dismiss()
                 return
             }
