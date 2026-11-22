@@ -211,6 +211,19 @@ describe('a pack value reaches the landing (S1-G5)', () => {
         expect(ko.custom(document.querySelector('section')!, '--home-leading-quote')).toBe('1.7')
     })
 
+    test('(i) S4d-G1: the cast-sheet tokens carry the registry values and the select bar resolves to the accent chain', () => {
+        const rootBlock = app.get(':root')!
+        expect(rootBlock.get('--home-select-bar')).toBe('var(--home-accent-solid)')
+        expect(rootBlock.get('--home-control-radius')).toBe('var(--home-radius-3)')
+        expect(registry.get(':root')?.get('--home-select-bar')).toBe('var(--home-accent-solid)')
+        document.body.innerHTML = '<div class="home-root" data-layout="wide"><section></section></div>'
+        const section = document.querySelector('section')!
+        const model = modelWith('')
+        expect(model.custom(section, '--home-select-bar')).toBe(modelWith('').custom(section, '--nexus-accent'))
+        expect(model.custom(section, '--home-control-radius')).toBe('8px')
+        expect(modelWith(':root{--nexus-accent:#123456}').custom(section, '--home-select-bar')).toBe('#123456')
+    })
+
     test('(e) the Korean block outranks a pack plain :root value', () => {
         const h1 = h1Under('wide', 'ko')
         const model = modelWith(':root{--home-tracking-h1:0.05em}')
