@@ -2,6 +2,7 @@ import { DBState } from '../stores.svelte'
 import { ChatTokenizer, tokenize } from '../tokenizer'
 import type { OpenAIChat } from '../process/index.svelte'
 import type { requestDataResponse, StreamResponseChunk } from '../process/request/request'
+import type { ReplyUsageContext } from '../nativeReply/blob'
 import { recordUsage } from './usageLedger'
 import { createUsageMeter } from './usageMeter'
 import { usagePurposeOf } from './usagePurpose'
@@ -113,6 +114,23 @@ function finishAttempt(attempt: Attempt, how: Settlement, outputText: string): v
         void estimateTokens(attempt.inputEstimate, attempt.formated, outputText)
             .then((estimated) => record(attempt, { reported: null, estimated }))
             .catch(() => {})
+    } catch (error) {}
+}
+
+/**
+ * Settles the usage of a reply that was recovered from a native record, once. The model and the input estimate come from
+ * the record's blob, never from the current settings; the purpose is the main send's, the only one that owns records. The
+ * rules are the live ones: reported usage if the replay found any, else an estimate unless `how` is `failed`. It never throws.
+ */
+export function settleRecoveredUsage(context: ReplyUsageContext, meter: UsageMeterState, how: Settlement, outputText: string): void {
+    try {
+        finishAttempt({
+            meter,
+            modelKey: context.modelKey,
+            purpose: 'chat',
+            inputEstimate: context.inputEstimate,
+            formated: undefined,
+        }, how, outputText)
     } catch (error) {}
 }
 
