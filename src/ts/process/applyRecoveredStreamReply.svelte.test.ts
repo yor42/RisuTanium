@@ -27,6 +27,7 @@ const saveMarkCount = vi.hoisted(() => ({ value: 7 }))
 const onScreen = vi.hoisted(() => ({ value: true }))
 const replacerMock = vi.hoisted(() => vi.fn())
 const chatOutputListeners = vi.hoisted(() => new Set<(arg: { messageIndex: number }) => unknown>())
+const saveInlayedSignatureMock = vi.hoisted(() => vi.fn())
 
 vi.mock('localforage', () => ({ default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}), removeItem: vi.fn(async () => {}) }) } }))
 vi.mock('@tauri-apps/plugin-fs', () => ({ writeFile: vi.fn(), exists: vi.fn(async () => false), mkdir: vi.fn(), readFile: vi.fn(), BaseDirectory: { AppData: 0 } }))
@@ -74,7 +75,7 @@ vi.mock(import('./group'), () => ({ groupOrder: vi.fn((order: unknown) => order)
 vi.mock(import('./triggers'), () => ({ runTrigger: runTriggerMock }) as unknown as typeof import('./triggers'))
 vi.mock(import('./memory/hypamemory'), () => ({ HypaProcesser: class {} }) as unknown as typeof import('./memory/hypamemory'))
 vi.mock(import('./embedding/addinfo'), () => ({ additionalInformations: vi.fn(async () => '') }) as unknown as typeof import('./embedding/addinfo'))
-vi.mock(import('./files/inlays'), () => ({ getInlayAsset: vi.fn(), getInlayAssetBlob: vi.fn(async () => undefined) }) as unknown as typeof import('./files/inlays'))
+vi.mock(import('./files/inlays'), () => ({ getInlayAsset: vi.fn(), getInlayAssetBlob: vi.fn(async () => undefined), saveInlayedSignature: saveInlayedSignatureMock }) as unknown as typeof import('./files/inlays'))
 vi.mock(import('./models/modelString'), () => ({ getGenerationModelString: vi.fn(() => undefined) }) as unknown as typeof import('./models/modelString'))
 vi.mock(import('./inlayScreen'), () => ({ runInlayScreen: runInlayScreenMock }) as unknown as typeof import('./inlayScreen'))
 vi.mock(import('./prereroll'), () => ({ renameContinuedMessage: vi.fn(), addRerolls: vi.fn() }) as unknown as typeof import('./prereroll'))
@@ -117,6 +118,8 @@ import { encodeStreamReplyBlob, type ReplyBlobBase, decodeReplyBlob, type Stream
 import type { RecoveredStreamInput } from '../nativeReply/reconcile'
 import type { CharacterVerdict } from '../nativeReply/characterSaved'
 import type { TokenUsage } from '../usage/usageTypes'
+import type { GeminiSignatureRecord } from '../nativeReply/streamReplay'
+import { LLMFormat } from '../model/types'
 
 const KEY = '0b9c1a7e-0000-4000-8000-000000000001'
 const base: ReplyBlobBase = {
@@ -140,7 +143,7 @@ function input(extra: Partial<RecoveredStreamInput> & { reported?: TokenUsage | 
         meter.report(reported)
     }
     const { reported: _reported, ...rest } = extra
-    return { key: KEY, blob: streamBlob(), modelText: 'Hello, world.', complete: true, outcome: 'done', meter, how: 'finished', ...rest }
+    return { key: KEY, blob: streamBlob(), modelText: 'Hello, world.', complete: true, outcome: 'done', meter, how: 'finished', signatures: [], ...rest }
 }
 
 function msg(role: 'user' | 'char', data: string, extra: Record<string, unknown> = {}): Message {
@@ -211,6 +214,8 @@ beforeEach(() => {
     runTriggerMock.mockResolvedValue(null)
     runInlayScreenMock.mockImplementation((_char: unknown, text: string) => ({ text: `[emotion]${text}` }))
     replacerMock.mockImplementation(async (text: string) => `[replaced]${text}`)
+    saveInlayedSignatureMock.mockReset()
+    saveInlayedSignatureMock.mockResolvedValue('')
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -533,5 +538,88 @@ describe('the usage of an applied record', () => {
         await applyRecoveredStreamReply(input())
         await flush()
         expect(usageKeys()).toEqual([])
+    })
+})
+
+describe('Gemini signature inlays', () => {
+    const sig = (id: string, content: string): GeminiSignatureRecord => ({
+        id, signature: { source: 'gemini-x', sourceFormat: LLMFormat.GoogleCloud, signatures: [{ type: 'text', content }] },
+    })
+    const A = sig('sig-a', 'one')
+    const B = sig('sig-b', 'two')
+    const token = (id: string) => `{{inlayeddata::${id}}}`
+    const written = () => saveInlayedSignatureMock.mock.calls.map((call) => call[0])
+
+    test('T16: an upgrade writes one inlay per referenced token after the text, and holds only after they settle', async () => {
+        installDb()
+        const seenText: string[] = []
+        const resolvers: Array<() => void> = []
+        saveInlayedSignatureMock.mockImplementation((_id: string) => {
+            seenText.push(liveChat().message[1].data)
+            return new Promise<string>((resolve) => { resolvers.push(() => resolve('')) })
+        })
+        const applying = applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')} there${token('sig-b')}`, signatures: [A, B] }))
+        await flush()
+        expect(written()).toEqual(['sig-a', 'sig-b'])
+        expect(saveInlayedSignatureMock.mock.calls[0][1]).toBe(A.signature)
+        // The text is in the chat when each write starts, and the record is not held while a write is pending.
+        expect(seenText).toEqual([`Hi${token('sig-a')} there${token('sig-b')}`, `Hi${token('sig-a')} there${token('sig-b')}`])
+        expect(heldReply(KEY)).toBeUndefined()
+        resolvers.forEach((resolve) => resolve())
+        expect(await applying).toBe('applied')
+        expect(heldReply(KEY)).toMatchObject({ state: 'awaiting-save' })
+    })
+
+    test('T16: an append (the message is absent) writes its referenced inlays too', async () => {
+        installDb({}, [msg('user', 'hi')])
+        expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A] }))).toBe('applied')
+        expect(liveChat().message).toHaveLength(2)
+        expect(written()).toEqual(['sig-a'])
+    })
+
+    test('T16: a rejected write is logged, the text stays and the outcome is applied with the hold', async () => {
+        installDb()
+        saveInlayedSignatureMock.mockRejectedValue(new Error('disk'))
+        expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A] }))).toBe('applied')
+        expect(liveChat().message[1].data).toBe(`Hi${token('sig-a')}`)
+        expect(heldReply(KEY)).toMatchObject({ state: 'awaiting-save' })
+        expect(console.error).toHaveBeenCalledWith('The Gemini signature could not be saved:', expect.any(Error))
+    })
+
+    test('T17: a present message, a re-check that finds it edited, a deferral and an error before the write write none', async () => {
+        installDb({}, [msg('user', 'hi'), msg('char', 'Hello', { chatId: KEY })])
+        expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A] }))).toBe('present')
+
+        installDb()
+        processScriptFullMock.mockImplementationOnce(async (_char: unknown, text: string) => {
+            delete liveChat().message[1].interrupted
+            return { data: text, emoChanged: false }
+        })
+        expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A] }))).toBe('present')
+
+        installDb()
+        doingChat.set(true)
+        expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A] }))).toBe('deferred')
+        doingChat.set(false)
+
+        installDb()
+        processScriptFullMock.mockRejectedValueOnce(new Error('script'))
+        expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A] }))).toBe('failed')
+        expect(saveInlayedSignatureMock).not.toHaveBeenCalled()
+    })
+
+    test('T17: a token the written text lacks is not written, though the replay text had it', async () => {
+        installDb({}, [msg('user', 'hi'), interruptedPartial()], { removeIncompleteResponse: true })
+        // The trim keeps the text up to the last full stop, so the second token is cut off.
+        expect(await applyRecoveredStreamReply(input({ modelText: `One${token('sig-a')}. Two${token('sig-b')}`, signatures: [A, B] }))).toBe('applied')
+        expect(liveChat().message[1].data).toBe(`One${token('sig-a')}.`)
+        expect(written()).toEqual(['sig-a'])
+    })
+
+    test('T17: a partial upgrade writes its referenced inlays and keeps interrupted', async () => {
+        installDb()
+        expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A], complete: false, outcome: 'dead' }))).toBe('applied')
+        expect(liveChat().message[1].interrupted).toBe(true)
+        expect(written()).toEqual(['sig-a'])
     })
 })

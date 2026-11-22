@@ -87,6 +87,8 @@
         rawStreamingText?: string;
         /** The reply was left unfinished when the page last ran; shows a note under it. */
         interrupted?: boolean;
+        /** The interrupted reply is still being received elsewhere; shows the running note instead of the interrupted one. */
+        replyRunning?: boolean;
         /** True only for the Chats tail while its reply streams; Chats carries the same fact in the row's hash, so the row is re-mounted when it ends. */
         deferAutoTranslate?: boolean;
         /** Live: true while the Chats tail's reply streams in place; a translated view then waits for the stream end. */
@@ -131,6 +133,7 @@
         streamingOptimizationMode = 'off',
         rawStreamingText = message,
         interrupted = false,
+        replyRunning = false,
         deferAutoTranslate = false,
         translationHold = false,
         startTranslated = false,
@@ -748,6 +751,9 @@
         </span>
         {#if interrupted && !isOptimizedStreamingMessage}
             <div class="text-xs text-textcolor2 italic interrupted-note" role="note">{language.messageInterrupted}</div>
+        {/if}
+        {#if replyRunning && !isOptimizedStreamingMessage}
+            <div class="text-xs text-textcolor2 italic interrupted-note" data-kind="running" role="status">{language.messageReplyRunning}</div>
         {/if}
         {#if renderFailed}
             <div class="text-xs text-textcolor2 italic render-failed-note" role="note">{language.messageRenderFailed}</div>

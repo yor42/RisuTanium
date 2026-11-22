@@ -3,7 +3,9 @@ import { isColdChat } from '../process/coldstorageData'
 import type { RunSubject } from '../process/chatOrigin'
 import { decodeReplyBlob, isStreamReplyBlob, type ReplyBlob, type StreamReplyBlob } from './blob'
 import type { ParkedReply } from './parkedDialog'
+import type { GeminiSignatureRecord } from './streamReplay'
 import { consumeReply, heldReply } from './pageState'
+import { addRunningReplies, setRunningReplies, takeWaitingForUnit, type RunningReplyEntry, type RunningReplyTarget } from './runningReplies.svelte'
 import type { NativeReplyStore, ReplyListing, ReplyListingState, ReplyOutcome } from './store'
 import type { UsageMeterState } from '../usage/usageTypes'
 
@@ -41,6 +43,8 @@ export interface RecoveredStreamInput {
     outcome: ReplyOutcome | ReplyListingState
     meter: UsageMeterState
     how: 'finished' | 'failed'
+    /** The thought signatures the replay collected; only a Gemini replay has any. */
+    signatures: GeminiSignatureRecord[]
 }
 
 /**
@@ -61,7 +65,7 @@ export interface ReconcileDeps {
     recoverText(listing: ReplyListing, blob: ReplyBlob, bodyText: string): Promise<string | null>
     apply(input: RecoveredReplyInput): Promise<ApplyOutcome>
     /** Reads the bytes of a recorded stream through the transform the live request used; `modelText` is empty when they hold no reply. */
-    replayStream(blob: StreamReplyBlob, bytes: Uint8Array, complete: boolean): Promise<{ modelText: string, meter: UsageMeterState }>
+    replayStream(blob: StreamReplyBlob, bytes: Uint8Array, complete: boolean): Promise<{ modelText: string, meter: UsageMeterState, signatures: GeminiSignatureRecord[] }>
     /** Applies a replayed stream record: upgrades an interrupted message, appends an absent one, or holds a present one. */
     applyStream(input: RecoveredStreamInput): Promise<ApplyOutcome>
     /** Settles the usage of a reply that is parked instead of applied; the apply settles its own. */
@@ -196,6 +200,15 @@ export async function recoveredText(
     return text === '' ? null : text
 }
 
+/** The chat a listed record replies into, from its ticket blob; null when the listing has no readable blob. */
+function runningTargetOf(listing: ReplyListing): RunningReplyTarget | null {
+    const decoded = decodeReplyBlob(listing.blob, listing.pageVersion)
+    if (!('blob' in decoded)) {
+        return null
+    }
+    return { chaId: decoded.blob.target.chaId, chatId: decoded.blob.target.chatId, name: decoded.blob.targetName }
+}
+
 export function createReconciler(deps: ReconcileDeps): Reconciler {
     // One launch's memory: notes, unreadable reports, queued dialogs and the cold restores already tried.
     const reported = new Set<string>()
@@ -323,7 +336,7 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
         }
         // The live request keeps a stream only for status 200, not any 2xx; a partial implies it.
         const readable = !complete || listing.status === undefined || listing.status === 200
-        let replayed: { modelText: string, meter: UsageMeterState } | null = null
+        let replayed: { modelText: string, meter: UsageMeterState, signatures: GeminiSignatureRecord[] } | null = null
         if (readable) {
             try {
                 replayed = await deps.replayStream(blob, bytes, complete)
@@ -383,6 +396,7 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
                     outcome: listing.outcome ?? listing.state,
                     meter: replayed.meter,
                     how,
+                    signatures: replayed.signatures,
                 })
                 if (outcome === 'applied' || outcome === 'present') {
                     if (!complete && note !== null) {
@@ -486,13 +500,27 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
             return
         }
         const items: ParkedReply[] = []
+        // A key this page holds is read or settled by this page itself, so it never shows as running elsewhere.
+        const entries: RunningReplyEntry[] = []
+        for (const listing of listings) {
+            if (listing.state === 'live' && heldReply(listing.key) === undefined) {
+                entries.push({ key: listing.key, target: runningTargetOf(listing) })
+            }
+        }
+        addRunningReplies(entries)
         for (const listing of listings) {
             try {
                 await handle(listing, items)
             } catch (error) {
                 console.error(error)
             }
+            // Only a reply that waited for a send's unit stays running; every other result ends it with this pass.
+            if (listing.state !== 'live' && takeWaitingForUnit(listing.key)) {
+                entries.push({ key: listing.key, target: runningTargetOf(listing) })
+            }
         }
+        // Published before the parked dialog, which can wait for the person.
+        setRunningReplies(entries)
         if (items.length > 0) {
             await deps.showParked(items)
         }

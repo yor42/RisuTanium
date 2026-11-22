@@ -90,7 +90,7 @@ function rig(listings: ReplyListing[], options: { text?: string | null, apply?: 
         },
         recoverText: async () => options.text === undefined ? 'a reply' : options.text,
         apply,
-        replayStream: async () => ({ modelText: '', meter: createUsageMeter() }),
+        replayStream: async () => ({ modelText: '', meter: createUsageMeter(), signatures: [] }),
         applyStream: async (): Promise<ApplyOutcome> => 'failed',
         settleUsage: () => {},
         restoreCharacter: restore,
