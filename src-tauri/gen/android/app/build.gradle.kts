@@ -66,6 +66,9 @@ android {
     buildTypes {
         getByName("debug") {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
+            // The update check's test origin (debug only; the release source set has none). Empty by default.
+            val updateTestOrigin = (findProperty("risuUpdateTestOrigin") as String?) ?: ""
+            buildConfigField("String", "UPDATE_TEST_ORIGIN", "\"" + updateTestOrigin.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false

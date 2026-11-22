@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createHostChannelFake } from './hostChannelFake'
-import { connectHostBridge, gestureInsetLeft, hasOpenedFilesHost, hostChannelPresent, hostIme, hostRequest, hostTouchExploration, keepAliveHost, openedFilesTake, replyNotificationsHost, systemBarsHost } from './hostBridge'
+import { connectHostBridge, gestureInsetLeft, hasOpenedFilesHost, hostChannelPresent, hostIme, hostRequest, hostPost, hostTouchExploration, keepAliveHost, openedFilesTake, replyNotificationsHost, subscribeAppUpdateProgress, systemBarsHost } from './hostBridge'
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -673,5 +673,85 @@ describe('requests to the host that name their method in the reply', () => {
         connectHostBridge()
         fake.channel.postMessage.mockImplementationOnce(() => { throw new Error('host failed') })
         await expect(hostRequest('keyVault', 'wrap', ['k'])!.reply).rejects.toThrow('host failed')
+    })
+})
+
+describe('update download progress over the channel', () => {
+    test('a listener gets a progress event whose fields are integers with 0 <= received <= total', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        connectHostBridge()
+        const listener = vi.fn()
+        subscribeAppUpdateProgress(listener)
+        fake.deliver('{"event":"appUpdateProgress","received":5,"total":10}')
+        fake.deliver('{"event":"appUpdateProgress","received":0,"total":0}')
+        expect(listener.mock.calls.map((call) => call[0])).toEqual([{ received: 5, total: 10 }, { received: 0, total: 0 }])
+    })
+
+    test.each([
+        ['received above total', '{"event":"appUpdateProgress","received":11,"total":10}'],
+        ['a negative received', '{"event":"appUpdateProgress","received":-1,"total":10}'],
+        ['a fractional received', '{"event":"appUpdateProgress","received":1.5,"total":10}'],
+        ['a string received', '{"event":"appUpdateProgress","received":"5","total":10}'],
+        ['a missing total', '{"event":"appUpdateProgress","received":5}'],
+        ['a null total', '{"event":"appUpdateProgress","received":5,"total":null}'],
+    ])('%s is not delivered', (_name, json) => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        connectHostBridge()
+        const listener = vi.fn()
+        subscribeAppUpdateProgress(listener)
+        fake.deliver(json)
+        expect(listener).not.toHaveBeenCalled()
+    })
+
+    test('unsubscribing stops the delivery', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        connectHostBridge()
+        const listener = vi.fn()
+        const stop = subscribeAppUpdateProgress(listener)
+        fake.deliver('{"event":"appUpdateProgress","received":1,"total":2}')
+        stop()
+        fake.deliver('{"event":"appUpdateProgress","received":2,"total":2}')
+        expect(listener).toHaveBeenCalledTimes(1)
+    })
+
+    test('an appUpdate.install reply never settles an appUpdate.check request with the same id', async () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const request = hostRequest('appUpdate', 'check', [])
+        const id = fake.postedTo('appUpdate', 'check')[0].id
+        let settled = false
+        void request?.reply.then(() => { settled = true })
+        fake.deliver(JSON.stringify({ id, method: 'appUpdate.install', update: 'ok' }))
+        await settle()
+        expect(settled).toBe(false)
+        fake.deliver(JSON.stringify({ id, method: 'appUpdate.check', update: 'disabled' }))
+        await settle()
+        expect(settled).toBe(true)
+    })
+})
+
+describe('posting to the host without waiting for a reply', () => {
+    test('hostPost sends bridge, method and args with no id key, and reports true', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        expect(hostPost('appUpdate', 'cancel', [])).toBe(true)
+        const message = fake.postedTo('appUpdate', 'cancel')[0]
+        expect(message).toEqual({ bridge: 'appUpdate', method: 'cancel', args: [] })
+        expect('id' in message).toBe(false)
+    })
+
+    test('hostPost returns false when there is no channel', () => {
+        expect(hostPost('appUpdate', 'cancel', [])).toBe(false)
+    })
+
+    test('hostPost returns false when the send throws', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        connectHostBridge()
+        fake.channel.postMessage.mockImplementation(() => { throw new Error('closed') })
+        expect(hostPost('appUpdate', 'cancel', [])).toBe(false)
     })
 })
