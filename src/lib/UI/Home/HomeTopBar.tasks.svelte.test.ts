@@ -77,6 +77,27 @@ const handles: WorkHandle[] = []
 const instances: unknown[] = []
 const targets: HTMLElement[] = []
 
+interface Watch { callback: ResizeObserverCallback, owner: ResizeObserver, targets: Element[], active: boolean }
+// Reset at the start of the one test that stubs the global, so observers never leak between tests.
+let watches: Watch[] = []
+
+class RecordingObserver implements ResizeObserver {
+    private readonly watch: Watch
+    constructor(callback: ResizeObserverCallback) {
+        this.watch = { callback, owner: this, targets: [], active: true }
+        watches.push(this.watch)
+    }
+    observe(target: Element): void {
+        this.watch.targets.push(target)
+    }
+    unobserve(target: Element): void {
+        this.watch.targets = this.watch.targets.filter((t) => t !== target)
+    }
+    disconnect(): void {
+        this.watch.active = false
+    }
+}
+
 function reg(origin: { chaId: string, chatId: string, memberChaId?: string }, kind: 'reply' | 'preview' | 'work', stop?: () => void): WorkHandle {
     const handle = registerWork(origin, stop, kind)
     handles.push(handle)
@@ -550,6 +571,68 @@ describe('the Tasks dialog', () => {
         expect(dispatchBack()).toBe(true)
         flushSync()
         expect(dialogOf()).toBeNull()
+    })
+
+    // The switch between the wide and the mid layout of a wide band changes classes on the same nodes, so an open
+    // dialog, its focused Stop and the inert page behind it survive; only the layout assertion is red on the base.
+    test('T-S6-61: a width switch of the wide bar keeps the dialog, the focused Stop and Back', () => {
+        watches = []
+        let barWidth = 811
+        const original = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth')
+        Object.defineProperty(Element.prototype, 'clientWidth', {
+            configurable: true,
+            get(this: Element): number {
+                if (this.getAttribute('data-part') === 'home-topbar') return barWidth
+                return (original?.get?.call(this) as number | undefined) ?? 0
+            },
+        })
+        vi.stubGlobal('ResizeObserver', RecordingObserver)
+        try {
+            reg(ALPHA, 'reply')
+            installBackGuard({ showToast: vi.fn() })
+            const root = mountBar('wide')
+            const bar = root.querySelector('header')!
+            const deliver = (width: number): void => {
+                barWidth = width
+                for (const w of watches) {
+                    if (w.active && w.targets.includes(bar.parentElement!)) w.callback([], w.owner)
+                }
+                flushSync()
+            }
+            expect(bar.getAttribute('data-layout')).toBe('mid')
+
+            const button = openDialog(root)
+            const dialog = dialogOf()!
+            const stop = stopsOf()[0]
+            stop.focus()
+            expect(document.activeElement).toBe(stop)
+
+            deliver(1275)
+            expect(bar.getAttribute('data-layout')).toBe('wide')
+            expect(buttonOf(root)).toBe(button)
+            expect(dialogOf()).toBe(dialog)
+            expect(document.querySelectorAll('[data-part="pattern-dialog"]')).toHaveLength(1)
+            expect(document.activeElement).toBe(stop)
+            expect(button.closest('[inert]')).not.toBeNull()
+
+            deliver(811)
+            expect(bar.getAttribute('data-layout')).toBe('mid')
+            expect(buttonOf(root)).toBe(button)
+            expect(dialogOf()).toBe(dialog)
+            expect(document.activeElement).toBe(stop)
+            expect(button.closest('[inert]')).not.toBeNull()
+
+            expect(dispatchBack()).toBe(true)
+            flushSync()
+            expect(dialogOf()).toBeNull()
+        } finally {
+            vi.unstubAllGlobals()
+            if (original) {
+                Object.defineProperty(Element.prototype, 'clientWidth', original)
+            } else {
+                Reflect.deleteProperty(Element.prototype, 'clientWidth')
+            }
+        }
     })
 
     test('T-S6-19: a group turn, outer and recursion, is one row named after the group, and its Stop stops that turn only', () => {

@@ -7,7 +7,7 @@
     import HomePersonaChip from './HomePersonaChip.svelte'
     import HomeTasks from './HomeTasks.svelte'
     import SeasonalBrand from 'src/lib/UI/Seasonal/SeasonalBrand.svelte'
-    import type { HomeBand } from './homeLayout'
+    import { WIDE_BAR_MIN, type HomeBand } from './homeLayout'
 
     interface Props {
         band: HomeBand
@@ -31,6 +31,39 @@
     // Lives here, not in HomeTasks: a band change replaces the Tasks instance, and the open dialog must survive it.
     let tasksOpen = $state(false)
 
+    // The bar's own width, not the window's: a docked sidebar makes the bar narrower than the window. It is read only
+    // while the band is wide, synchronously on entering and again on every resize of the bar's parent. The parent
+    // is observed, never the header: the layout switch changes the header's height, and observing the element that
+    // the switch resizes raises a ResizeObserver loop error, and the parent's height does not follow the bar.
+    // The header is full width in a parent whose width is set from above, so the bar's width does not depend on
+    // the layout and the switch needs no hysteresis. A width of 0 means unmeasured and keeps the band.
+    let header: HTMLElement | undefined = $state()
+    let barWidth = $state(0)
+
+    // The layout the bar draws: a wide band whose bar is narrower than WIDE_BAR_MIN takes the mid layout, otherwise
+    // it is the band. Everything that positions the bar's parts reads the layout; the phone/Tasks node conditionals
+    // keep reading the band, so a layout switch changes classes on the same nodes and never re-creates the Tasks
+    // button or the open dialog.
+    const layout: HomeBand = $derived(band === 'wide' && barWidth > 0 && barWidth < WIDE_BAR_MIN ? 'mid' : band)
+
+    $effect(() => {
+        if (band !== 'wide' || !header) {
+            return
+        }
+        const bar = header
+        const measure = (): void => {
+            barWidth = bar.clientWidth
+        }
+        measure()
+        const parent = bar.parentElement
+        if (!parent || typeof ResizeObserver === 'undefined') {
+            return
+        }
+        const observer = new ResizeObserver(measure)
+        observer.observe(parent)
+        return () => observer.disconnect()
+    })
+
     // The phone order is menu button, brand, Tasks, switcher, chip, equal to its visual order; mid and wide keep
     // brand, switcher, then the chip cluster (Tasks and the chip), with only the grid placement changing.
     // The start inset keeps the brand clear of the sidebar arrow that sits at the top-left corner; the phone has
@@ -41,13 +74,17 @@
     // only; the phone layout is unchanged.
     // - Wide: the insets are equal and both side tracks are identical, so the auto track is
     //   centred; the chip wrapper's negative end margin equals the inset difference (pr-14 minus
-    //   pr-4), which gives the chip back its 16 px right edge without moving the track.
+    //   pr-4), which gives the chip back its 16 px right edge without moving the track. Wide holds
+    //   only while the bar is at least WIDE_BAR_MIN wide; a narrower bar takes the mid layout.
     // - Mid: the switcher row spans both columns, so its box is the content box; the negative start
     //   margin equals the inset difference (pl-14 minus pr-4), which makes that box symmetric
     //   about the bar. From a viewport of 1025 px to about 1068 px with the sidebar docked open the
     //   bar stays on one row and the switcher may drift from the centre (MC-1414). The first track
     //   has a fixed minimum that keeps a clipped wordmark and the chip track has a zero minimum, so
     //   a long name truncates inside the bar and in mid the two tracks sum to the content box.
+    // The chip cluster's children (Tasks and the chip) each keep at least 44 px in mid and wide, so the cluster
+    // cannot shrink below that and spill over the wordmark or the switcher; the chip's label and hint still
+    // truncate or wrap inside that width.
     // When a language's switcher labels do not fit one row, the fieldset wraps to two rows and each
     // row is centred (MC-1440); the wrapper centres the fieldset box itself.
     // The wordmark truncates rather than covering the switcher when its column is narrow (MC-1404).
@@ -68,14 +105,15 @@
     }
     const chipClass: Record<HomeBand, string> = {
         phone: 'max-w-full *:mt-0!',
-        mid: 'col-start-2 row-start-1 flex items-center gap-2 justify-end *:mt-0!',
-        wide: 'flex min-w-0 items-center gap-2 justify-end -mr-10 *:mt-0!',
+        mid: 'col-start-2 row-start-1 flex items-center gap-2 justify-end *:min-w-11 *:mt-0!',
+        wide: 'flex min-w-0 items-center gap-2 justify-end -mr-10 *:min-w-11 *:mt-0!',
     }
     // Wordmark sliver rule (MC-1443, sizes MC-3081): the brand cell is an inline-size container in mid and
     // wide. The cell holds the 32 px mark and the 8 px gap, so a cell under 4rem (64 px) leaves the
     // wordmark under 24 px. Below that the wordmark leaves the layout (visually hidden, not display:none,
-    // so the brand keeps its text alternative); this only avoids a sliver. The side tracks stay equal
-    // so the switcher stays centred, so the chip does not grow into the freed space (MC-1446). The mid
+    // so the brand keeps its text alternative); this only avoids a sliver. The wide side tracks stay equal
+    // so the switcher stays centred, so the chip does not grow into the freed space (MC-1446). A bar
+    // too narrow for them (under WIDE_BAR_MIN) takes the mid layout instead of squeezing the wide tracks. The mid
     // track minimum (6rem) keeps the wordmark at 56 px or more, above the threshold, so a clipped
     // "Ris" stays visible (MC-1436). The wordmark is a fixed-width box, so a narrow cell clips it
     // horizontally (overflow-x-clip on the cell) instead of ellipsising it; the 6 px clip margin keeps the
@@ -97,7 +135,7 @@
 </script>
 
 {#snippet brand()}
-    <div data-part="home-brand" data-seasonal-brand class={brandClass[band]}>
+    <div data-part="home-brand" data-seasonal-brand class={brandClass[layout]}>
         <svg
             class="nexus-mark size-8 shrink-0 max-[639.98px]:size-7"
             viewBox={MARK_VIEWBOX}
@@ -111,15 +149,16 @@
         >
             {@html inner}
         </svg>
-        <SeasonalBrand class={wordmarkClass[band]} />
+        <SeasonalBrand class={wordmarkClass[layout]} />
     </div>
 {/snippet}
 
 <header
     data-part="home-topbar"
-    data-layout={band}
+    data-layout={layout}
     data-seasonal-anchor
-    class="w-full {insetClass[band]} pt-3 pb-2 {barClass[band]}"
+    bind:this={header}
+    class="w-full {insetClass[layout]} pt-3 pb-2 {barClass[layout]}"
 >
     {#if band === 'phone'}
         <div class="flex w-full items-center gap-2">
@@ -142,11 +181,11 @@
     {:else}
         {@render brand()}
     {/if}
-    <div class={switcherClass[band]}>
+    <div class={switcherClass[layout]}>
         <HomeModeSwitcher />
     </div>
     <!-- Roleplay content: while Roleplay is the only built mode (BUILT_HOME_MODES) the landing is Roleplay. -->
-    <div class={chipClass[band]}>
+    <div class={chipClass[layout]}>
         {#if band !== 'phone'}
             <HomeTasks bind:open={tasksOpen} />
         {/if}
