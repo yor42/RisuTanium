@@ -574,7 +574,7 @@ export function formatOwnsReply(format:LLMFormat, streaming:boolean):boolean {
     if(format === LLMFormat.OpenAICompatible){
         return true
     }
-    return streaming && format === LLMFormat.OpenAIResponseAPI
+    return streaming && (format === LLMFormat.OpenAIResponseAPI || format === LLMFormat.Anthropic)
 }
 
 

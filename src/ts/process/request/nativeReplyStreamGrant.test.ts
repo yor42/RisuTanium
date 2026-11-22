@@ -220,7 +220,6 @@ describe('P3: other formats never own a stream', () => {
     test.each([
         ['Mistral', 'mistral-large-latest'],
         ['NanoGPT', 'nanogpt'],
-        ['Anthropic', 'claude-3-5-sonnet-latest'],
         ['Gemini', 'gemini-2.5-pro'],
     ])('a %s stream leaves the grant unbound', async (_label, aiModel) => {
         installDb({ aiModel, subModel: aiModel })

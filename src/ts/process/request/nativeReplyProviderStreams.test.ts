@@ -15,7 +15,7 @@ import '../../polyfill'
 import { resetKeyRings } from './keyRing'
 import { issueNativeReplyGrant, takeReplyOwner, type NativeReplyOwnerArg } from '../../nativeReply/grant'
 import { LLMFormat } from '../../model/types'
-import { configurePageState, heldReply, noteInvoked, resetPageStateForTests, setReconcileTrigger, settleNativeReplyInflight, takeAnnounced } from '../../nativeReply/pageState'
+import { configurePageState, heldReply, noteAnnounced, noteInvoked, ownsPushedReply, resetPageStateForTests, setReconcileTrigger, settleNativeReplyInflight, takeAnnounced } from '../../nativeReply/pageState'
 import type { PumpProbe, ReplyStamp } from '../../nativeReply/ownedBody'
 import type { fetchNative as FetchNative } from '../../globalApi.svelte'
 
@@ -33,6 +33,7 @@ const h = vi.hoisted(() => ({
     rules: [] as unknown[],
     respRules: [] as unknown[],
     beforeRequest: new Set<(formated: unknown, model: string) => unknown>(),
+    sleepGate: undefined as ((ms: number) => Promise<void>) | undefined,
 }))
 
 vi.mock('localforage', () => ({ default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}), removeItem: vi.fn(async () => {}) }) } }))
@@ -105,7 +106,7 @@ vi.mock('../../plugins/plugins.svelte', () => ({
 vi.mock('../mcp/mcp', () => ({ getTools: vi.fn(async () => []), callTool: vi.fn(), decodeToolCall: vi.fn(), encodeToolCall: vi.fn() }))
 vi.mock('../../util', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../../util')>()),
-    sleep: async () => {},
+    sleep: async (ms: number) => { await h.sleepGate?.(ms) },
 }))
 vi.mock('../../storage/database.svelte', async () => {
     const stores = await import('../../stores.svelte')
@@ -194,6 +195,7 @@ beforeEach(() => {
     h.rules.length = 0
     h.respRules.length = 0
     h.beforeRequest.clear()
+    h.sleepGate = undefined
     consume.mockReset()
     consume.mockImplementation(async (_key: string) => { h.log.push('consume'); return { result: 'removed' as const, flushed: true } })
     trigger.mockReset()
@@ -257,11 +259,13 @@ describe('B1: a streaming Responses request binds a stream blob of its own kind'
 })
 
 describe('N1: formatOwnsReply', () => {
-    test('OpenAI-compatible owns streamed or not; Responses owns only streamed; every other format is refused', () => {
+    test('OpenAI-compatible owns streamed or not; Responses and Anthropic own only streamed; every other format is refused', () => {
         expect(formatOwnsReply(LLMFormat.OpenAICompatible, true)).toBe(true)
         expect(formatOwnsReply(LLMFormat.OpenAICompatible, false)).toBe(true)
         expect(formatOwnsReply(LLMFormat.OpenAIResponseAPI, true)).toBe(true)
         expect(formatOwnsReply(LLMFormat.OpenAIResponseAPI, false)).toBe(false)
+        expect(formatOwnsReply(LLMFormat.Anthropic, true)).toBe(true)
+        expect(formatOwnsReply(LLMFormat.Anthropic, false)).toBe(false)
         for (const format of [LLMFormat.AnthropicLegacy, LLMFormat.AWSBedrockClaude, LLMFormat.NanoGPTMessages, LLMFormat.NanoGPTResponses, LLMFormat.Mistral, LLMFormat.NanoGPT, LLMFormat.Ollama]) {
             expect(formatOwnsReply(format, true), String(format)).toBe(false)
             expect(formatOwnsReply(format, false), String(format)).toBe(false)
@@ -468,5 +472,249 @@ describe('K1: two owned requests of different formats never retire each other', 
         expect(consume).toHaveBeenCalledTimes(1)
         expect(consume).toHaveBeenCalledWith(KEY)
         expect(heldReply(OTHER)).toEqual(before)
+    })
+})
+
+// ---- Anthropic (S4b) ----
+
+const CLAUDE_MODEL = 'claude-3-5-sonnet-latest'
+const claudeEvent = (name: string, data: Record<string, unknown>) => `event: ${name}\ndata: ${JSON.stringify({ type: name, ...data })}\n\n`
+const claudeStart = () => claudeEvent('message_start', { message: { id: 'msg_1', type: 'message', role: 'assistant', content: [], model: 'claude-3-5-sonnet-20241022', usage: { input_tokens: 1, output_tokens: 1 } } })
+const claudeBlock = () => claudeEvent('content_block_start', { index: 0, content_block: { type: 'text', text: '' } })
+const claudeDelta = (text: string) => claudeEvent('content_block_delta', { index: 0, delta: { type: 'text_delta', text } })
+const claudeEnd = () => claudeEvent('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } }) + claudeEvent('message_stop', {})
+const CLAUDE_OVERLOAD = claudeEvent('error', { error: { type: 'overloaded_error', message: 'Overloaded' } })
+const claudeText = (text = 'hi') => claudeStart() + claudeBlock() + claudeDelta(text) + claudeEnd()
+const claudeSse = (text = 'hi') => new Response(claudeText(text), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+
+/** An open body that ends its owned read like `tauriReadableStream.cancel` does: the native request is abandoned. */
+function claudeOverloadBody(call: FetchCall): Response {
+    const body = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(encoder.encode(claudeStart() + claudeBlock() + claudeDelta('partial') + CLAUDE_OVERLOAD)) },
+        cancel() { h.log.push('abandon'); (call.abandon as unknown as () => void)() },
+    })
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+}
+
+function installClaude(extra: Record<string, unknown> = {}): void {
+    installDb({ aiModel: CLAUDE_MODEL, subModel: CLAUDE_MODEL, claudeAPIKey: 'k', ...extra })
+}
+
+describe('B2: a streaming Anthropic request binds a stream blob of its own kind', () => {
+    test('the request runs, then the grant is bound with the anthropic-stream rule and the usage context', async () => {
+        installClaude()
+        script(() => claudeSse())
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+        expect(out.type).toBe('streaming')
+        expect(calls).toHaveLength(1)
+        expect(heldReply(KEY)?.bound).toBe(true)
+        const blob = JSON.parse(calls[0].taken!.blob) as { parse: Record<string, unknown>, usage: { modelKey: string, inputEstimate: number } }
+        expect(blob.parse).toEqual({ kind: 'anthropic-stream' })
+        expect(blob.usage).toEqual({ modelKey: CLAUDE_MODEL, inputEstimate: 7 })
+        expect(calls[0].probe).toBeDefined()
+        expect(await drain(out)).toBe('hi')
+    })
+})
+
+describe('N2/N3 (Anthropic): requests that never own leave the grant unbound', () => {
+    test('a non-stream Anthropic request', async () => {
+        installClaude()
+        await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase), useStreaming: false })
+        expect(heldReply(KEY)?.bound).toBe(false)
+    })
+
+    test('N3: batching returns before the stream branch: no request carries an owner and settle drops the key without a consume', async () => {
+        installClaude({ claudeBatching: true })
+        await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+        expect(calls.every((call) => call.taken === null)).toBe(true)
+        expect(heldReply(KEY)?.bound).toBe(false)
+        await settleNativeReplyInflight(KEY)
+        expect(consume).not.toHaveBeenCalled()
+    })
+})
+
+describe('F (Anthropic): a failed head is retired before any retry, and an announced one ends the turn', () => {
+    test('F1: 429 unannounced, then 200: consume is logged between the fetches and the retry is unowned', async () => {
+        installClaude({ requestRetrys: 1 })
+        script((call, n) => {
+            if (n === 1) {
+                stamp(call, { key: KEY, outcome: 'done', stored: true, status: 429 })
+                return new Response('slow down', { status: 429 })
+            }
+            return claudeSse()
+        })
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+        expect(out.type).toBe('streaming')
+        expect(calls).toHaveLength(2)
+        expect(calls[0].taken).not.toBeNull()
+        expect(calls[1].taken).toBeNull()
+        expect(h.log).toEqual(['fetch', 'consume', 'fetch'])
+        expect(heldReply(KEY)).toBeUndefined()
+    })
+
+    test('F2: an announced 429 gives one request and ends the turn', async () => {
+        installClaude({ requestRetrys: 2 })
+        script((call) => {
+            stamp(call, { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 })
+            return new Response('slow down', { status: 429 })
+        })
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+        expect(out).toMatchObject({ type: 'fail', endsTurn: true })
+        expect(calls).toHaveLength(1)
+        expect(consume).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('H (Anthropic): a throw or a Stop is the page ending its read', () => {
+    test('H1: a throw after the owner was taken notes pageEnded, abandons once, and settle consumes without a reconcile', async () => {
+        installClaude()
+        script((call) => {
+            stamp(call, { key: KEY, outcome: 'failed', stored: false })
+            throw new Error('connection refused')
+        })
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+        expect(out.type).toBe('threw')
+        expect(heldReply(KEY)?.pageEnded).toBe(true)
+        expect(calls[0].abandon).toHaveBeenCalledTimes(1)
+
+        await settleNativeReplyInflight(KEY)
+        expect(consume).toHaveBeenCalledWith(KEY)
+        expect(trigger).not.toHaveBeenCalled()
+    })
+
+    test('a Stop after the stream is returned notes pageEnded and abandons once, with no settle', async () => {
+        installClaude()
+        const body = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(encoder.encode(claudeStart())) } })
+        script(() => new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }))
+        const controller = new AbortController()
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) }, 'model', controller.signal)
+        expect(out.type).toBe('streaming')
+        expect(heldReply(KEY)?.pageEnded).toBeUndefined()
+        controller.abort()
+
+        expect(heldReply(KEY)?.pageEnded).toBe(true)
+        expect(calls[0].abandon).toHaveBeenCalledTimes(1)
+        expect(consume).not.toHaveBeenCalled()
+    })
+})
+
+describe('O: an overload refetch retires the first record before the unowned retry', () => {
+    const overloadSetup = (extra: Record<string, unknown> = {}) => installClaude({ antiServerOverloads: true, requestRetrys: 1, ...extra })
+
+    test('O1: the order is fetch(owned), abandon, consume, fetch(unowned); the retry text is the reply and nothing waits for its push', async () => {
+        overloadSetup()
+        script((call, n) => (n === 1 ? claudeOverloadBody(call) : claudeSse('retried')))
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+        expect(out.type).toBe('streaming')
+        const text = await drain(out)
+
+        expect(h.log).toEqual(['fetch', 'abandon', 'consume', 'fetch'])
+        expect(calls[0].taken).not.toBeNull()
+        expect(calls[1].taken).toBeNull()
+        expect(text).toBe('retried')
+        expect(ownsPushedReply(KEY)).toBe(false)
+    })
+
+    test('O2: a live: answer leaves the entry release, the retry still runs, and nothing waits for its push', async () => {
+        overloadSetup()
+        consume.mockImplementation(async (_key: string) => { h.log.push('consume'); return { result: 'live: running' as never, flushed: true } })
+        script((call, n) => (n === 1 ? claudeOverloadBody(call) : claudeSse('retried')))
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+        const text = await drain(out)
+
+        expect(h.log).toEqual(['fetch', 'abandon', 'consume', 'fetch'])
+        expect(text).toBe('retried')
+        expect(ownsPushedReply(KEY)).toBe(false)
+    })
+
+    test('O3: a Stop during the sleep retires nothing and does not refetch; the listener noted pageEnded', async () => {
+        overloadSetup()
+        let entered!: () => void
+        const sleeping = new Promise<void>((resolve) => { entered = resolve })
+        let release!: () => void
+        h.sleepGate = () => { entered(); return new Promise<void>((resolve) => { release = resolve }) }
+        script((call) => claudeOverloadBody(call))
+        const controller = new AbortController()
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) }, 'model', controller.signal)
+        const drained = drain(out)
+        await sleeping
+        controller.abort()
+        release()
+        await drained
+
+        expect(consume).not.toHaveBeenCalled()
+        expect(calls).toHaveLength(1)
+        expect(heldReply(KEY)?.pageEnded).toBe(true)
+    })
+
+    test('O3b: a Stop landing during the retire skips the refetch', async () => {
+        overloadSetup()
+        const controller = new AbortController()
+        consume.mockImplementation(async (_key: string) => { h.log.push('consume'); controller.abort(); return { result: 'removed' as const, flushed: true } })
+        script((call) => claudeOverloadBody(call))
+
+        // The stream's start runs at construction, so the Stop lands inside the request; the request layer then reports the abort.
+        await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) }, 'model', controller.signal)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(consume).toHaveBeenCalledTimes(1)
+        expect(calls).toHaveLength(1)
+    })
+
+    test('O4: the retry stream overloading too retires only once', async () => {
+        overloadSetup({ requestRetrys: 2 })
+        const overloadClosed = () => new Response(claudeStart() + claudeBlock() + claudeDelta('p') + CLAUDE_OVERLOAD, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+        script((call, n) => (n === 1 ? claudeOverloadBody(call) : n === 2 ? overloadClosed() : claudeSse('third')))
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+        const text = await drain(out)
+
+        expect(calls).toHaveLength(3)
+        expect(consume).toHaveBeenCalledTimes(1)
+        expect(text).toBe('third')
+    })
+
+    test('O5: with the setting off the overload text is the reply and nothing is retired while the request runs', async () => {
+        overloadSetup({ antiServerOverloads: false })
+        script(() => new Response(claudeStart() + claudeBlock() + claudeDelta('partial') + CLAUDE_OVERLOAD, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }))
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+        const text = await drain(out)
+
+        expect(calls).toHaveLength(1)
+        expect(consume).not.toHaveBeenCalled()
+        expect(text).toContain('Error:')
+        expect(text).toContain('Overloaded')
+    })
+
+    test('O6: the announced fact the first stamp set is dropped, so the page posts its own notice at the real end', async () => {
+        overloadSetup()
+        let announcedBeforeRetire: boolean | undefined
+        h.sleepGate = async () => {
+            announcedBeforeRetire = takeAnnounced([KEY])
+            noteAnnounced(KEY)
+        }
+        script((call, n) => {
+            if (n === 1) {
+                stamp(call, { key: KEY, outcome: 'done', stored: true, announced: true, status: 200 })
+                return claudeOverloadBody(call)
+            }
+            return claudeSse('retried')
+        })
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+        await drain(out)
+
+        expect(announcedBeforeRetire).toBe(true)
+        expect(takeAnnounced([KEY])).toBe(false)
     })
 })
