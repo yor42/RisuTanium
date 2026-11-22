@@ -1365,3 +1365,46 @@ describe('new behaviour: the trash origin rides the store2 commit and survives a
         }
     })
 })
+
+describe('the draft unit is not framed again for an unchanged list (#609)', () => {
+    test('a mark with no edit after the boot read frames the draft unit once, then never, and writes nothing', async () => {
+        const drafts = [0, 1, 2].map(e => ({
+            cha: `c${e}`,
+            chat: `k${e}`,
+            shown: true,
+            drafts: [0, 1, 2, 3].map(i => ({ m: `id:${e}${i}`, text: 'a'.repeat(3000) + i, bh: '0123456789abcdef0123456789abcdef', at: 1_700_000_000_000 + i })),
+        }))
+        const seed = { ...buildSmall(1), chatDrafts: drafts } as unknown as Database
+        const seen: Array<{ framed: number, unchanged: boolean }> = []
+        const page = await startPage(seed, {
+            stubs: [],
+            beforeStart: async (started) => {
+                // The world's own module graph: the encoder hashes through this copy of the hash class.
+                const { Sha256 } = await import('src/ts/assetHash')
+                let framed = 0
+                const update = Sha256.prototype.update
+                vi.spyOn(Sha256.prototype, 'update').mockImplementation(function (this: InstanceType<typeof Sha256>, data: Uint8Array) {
+                    if (data.length >= 10_000) framed++
+                    return update.call(this, data)
+                })
+                const encoder = started.k.encoder
+                const realPlan = encoder.plan.bind(encoder)
+                encoder.plan = async (db, request) => {
+                    const before = framed
+                    const plan = await realPlan(db, request)
+                    seen.push({ framed: framed - before, unchanged: plan.unchanged })
+                    return plan
+                }
+            },
+        })
+        await settled(page.w)
+        page.k.counted.reset()
+        for (let i = 0; i < 3; i++) {
+            await nextCommit(page.w, () => page.w.marks.markCharacterForSave(characters(page.db)[0].chaId))
+        }
+        expect(seen.length).toBeGreaterThanOrEqual(3)
+        expect(seen.every(plan => plan.unchanged)).toBe(true)
+        expect(page.k.counted.writeCalls()).toBe(0)
+        expect.soft(seen.map(plan => plan.framed)).toEqual([1, ...seen.slice(1).map(() => 0)])
+    })
+})
