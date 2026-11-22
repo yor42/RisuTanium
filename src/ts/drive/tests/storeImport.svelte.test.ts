@@ -460,6 +460,7 @@ armed('the .bin import of a store2 page', () => {
         await loadBin(page, golden('upstream-full.bin'))
 
         expect(confirmTexts(page)).toEqual([language.restoreNoLockWarningConfirm])
+        expect(page.alert.alertConfirm).toHaveBeenCalledWith(language.restoreNoLockWarningConfirm, { ownScheme: 'saveGuard' })
         expect(page.reloads.count).toBe(1)
         expect((await page.k.commitKey()).retained).toHaveLength(1)
         expect(await writeLockIsFree(page)).toBe(false)
@@ -1185,6 +1186,7 @@ armed('Gate 2 pins', () => {
         await running
 
         expect(confirmTexts(page)).toContain(language.store2RestoreUnsavedConfirm)
+        expect(page.alert.alertConfirm).toHaveBeenCalledWith(language.store2RestoreUnsavedConfirm, { ownScheme: 'saveGuard' })
     })
 })
 

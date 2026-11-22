@@ -1324,9 +1324,9 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         }
         if (report.alert !== null) {
             console.error(error)
-            alertStore.set({ type: 'error', msg: report.alert.msg, submsg: report.alert.submsg })
+            alertStore.set({ type: 'error', msg: report.alert.msg, submsg: report.alert.submsg, ownScheme: 'saveGuard' })
         } else if (report.showRaw) {
-            alertError(error instanceof Error ? error : String(error))
+            alertError(error instanceof Error ? error : String(error), { ownScheme: 'saveGuard' })
         } else {
             console.error(error)
         }

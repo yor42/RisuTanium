@@ -83,6 +83,8 @@ export interface alertData{
     cancelAnswer?: string
     /** Set on an error alert that has a place to fix it: a button that closes the alert, then runs `open`. */
     link?: { label: string, open: () => void }
+    /** Set on an alert raised by the persistence machinery whose choice can lose data not yet durably saved or restored. Only the host that renders the alert reads it. */
+    ownScheme?: 'saveGuard'
 }
 
 type AlertGenerationInfoStoreData = {
@@ -100,7 +102,7 @@ export const alertStore = {
     }
 }
 
-export function alertError(msg: string | Error, opts?: { link?: alertData['link'] }) {
+export function alertError(msg: string | Error, opts?: { link?: alertData['link'], ownScheme?: alertData['ownScheme'] }) {
     console.error(msg)
     const db = getDatabase()
 
@@ -141,7 +143,8 @@ export function alertError(msg: string | Error, opts?: { link?: alertData['link'
         'msg': msg,
         'submsg': submsg,
         'stackTrace': stackTrace,
-        ...(opts?.link ? { 'link': opts.link } : {})
+        ...(opts?.link ? { 'link': opts.link } : {}),
+        ...(opts?.ownScheme ? { 'ownScheme': opts.ownScheme } : {})
     })
 }
 
@@ -278,7 +281,7 @@ export function alertStaleAccountNotice(): Promise<void> {
     })
 }
 
-export async function alertSelect(msg:string[], display?:string, options?:PromptCancel){
+export async function alertSelect(msg:string[], display?:string, options?:PromptCancel & { ownScheme?: alertData['ownScheme'] }){
     const message = display !== undefined ? `__DISPLAY__${display}||${msg.join('||')}` : msg.join('||')
     const data: alertData = {
         'type': 'select',
@@ -286,6 +289,9 @@ export async function alertSelect(msg:string[], display?:string, options?:Prompt
     }
     if(options?.cancel !== undefined){
         data.cancelAnswer = options.cancel
+    }
+    if(options?.ownScheme !== undefined){
+        data.ownScheme = options.ownScheme
     }
     return await askPrompt(data)
 }
@@ -403,11 +409,12 @@ export async function alertSelectChar(){
     })
 }
 
-export async function alertConfirm(msg:string, options?:{signal?:AbortSignal|null}){
+export async function alertConfirm(msg:string, options?:{signal?:AbortSignal|null, ownScheme?:alertData['ownScheme']}){
 
     return (await askPrompt({
         'type': 'ask',
-        'msg': msg
+        'msg': msg,
+        ...(options?.ownScheme !== undefined ? { 'ownScheme': options.ownScheme } : {})
     }, options)) === 'yes'
 }
 

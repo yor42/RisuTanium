@@ -12,10 +12,12 @@ const allDeclarations = (css: string) => {
     postcss.parse(css).walkDecls((decl) => { if (decl.prop.startsWith('--')) names.push(decl.prop) })
     return names
 }
+/** The selector without its own-scheme island twin: the island re-declares each root block, so the twin is not a rule of its own. */
+const withoutIslandTwin = (selector: string) => selector.split(',').map((part) => part.trim()).filter((part) => !part.endsWith('[data-own-scheme]')).join(', ')
 const rootDeclarations = (css: string) => {
     const names: string[] = []
-    postcss.parse(css).walkRules(':root', (rule) => {
-        if (rule.parent?.type !== 'root') return
+    postcss.parse(css).walkRules((rule) => {
+        if (rule.parent?.type !== 'root' || withoutIslandTwin(rule.selector) !== ':root') return
         rule.walkDecls((decl) => { if (decl.prop.startsWith('--')) names.push(decl.prop) })
     })
     return names
@@ -36,13 +38,28 @@ describe('T studio token port', () => {
             if (rule.parent?.type !== 'root') return
             rule.walkDecls((decl) => {
                 if (decl.prop === 'color-scheme') colorScheme++
-                values.set(`${rule.selector}|${decl.prop}`, decl.value)
+                values.set(`${withoutIslandTwin(rule.selector)}|${decl.prop}`, decl.value)
             })
         })
         expect(colorScheme).toBe(0)
         expect(values.get(':root|--studio-dur-quick')).toBe('calc(120ms * var(--chat-motion, 1))')
         expect(values.get(':root|--studio-dur-base')).toBe('calc(200ms * var(--chat-motion, 1))')
         expect(values.get('html.nexus-low-power|--studio-dur-base')).toBe('min(calc(200ms * var(--chat-motion, 1)), 120ms)')
+    })
+    test('every root-subject rule has an own-scheme island twin', () => {
+        const heads: string[] = []
+        postcss.parse(read('src/styles/studio-tokens.css')).walkRules((rule) => {
+            const inMedia = rule.parent?.type === 'atrule'
+            if (rule.parent?.type !== 'root' && !inMedia) return
+            heads.push(rule.selector)
+        })
+        expect(heads).toEqual([
+            ':root, [data-own-scheme]',
+            'html.rm, html.nexus-low-power, html.rm [data-own-scheme], html.nexus-low-power [data-own-scheme]',
+            'html.rm, html.rm [data-own-scheme]',
+            'html.nexus-low-power, html.nexus-low-power [data-own-scheme]',
+            ':root:not(.rm-off), :root:not(.rm-off) [data-own-scheme]',
+        ])
     })
     test('shared names have one owner and styles.css does not load the studio block', () => {
         const own = new Set(allDeclarations(read('src/styles/studio-tokens.css')))

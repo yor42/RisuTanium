@@ -21,16 +21,20 @@ const ALLOWED_SELECTORS = [':root', ':root:lang(ko)', ...BAND_SELECTORS]
 
 const norm = (value: string) => value.replace(/\s+/g, ' ').trim()
 
-/** Custom-property declarations per top-level selector, in source order. */
+/** The selector without its own-scheme island twin: the island re-declares each root block, so the twin is not a rule of its own. */
+const withoutIslandTwin = (selector: string) => norm(selector).split(',').map((part) => part.trim()).filter((part) => !part.endsWith('[data-own-scheme]')).join(', ')
+
+/** Custom-property declarations per top-level selector (island twin removed), in source order. */
 function declarationsBySelector(css: string): Map<string, Map<string, string>> {
     const result = new Map<string, Map<string, string>>()
     postcss.parse(css).walkRules((rule) => {
         if (rule.parent?.type !== 'root') return
-        const own = result.get(norm(rule.selector)) ?? new Map<string, string>()
+        const key = withoutIslandTwin(rule.selector)
+        const own = result.get(key) ?? new Map<string, string>()
         rule.walkDecls((decl) => {
             if (decl.prop.startsWith('--')) own.set(decl.prop, norm(decl.value))
         })
-        result.set(norm(rule.selector), own)
+        result.set(key, own)
     })
     return result
 }
@@ -52,6 +56,14 @@ describe('home tokens file (S1-G1)', () => {
         expect(selectors.filter((selector) => !ALLOWED_SELECTORS.includes(selector))).toEqual([])
         expect(selectors).toContain(':root')
         expect(app.get('.home-root')?.size ?? 0).toBe(0)
+    })
+
+    test('the :root and :root:lang(ko) blocks are mirrored for an own-scheme island; the landing band blocks are not', () => {
+        const selectors: string[] = []
+        postcss.parse(appCss).walkRules((rule) => { if (rule.parent?.type === 'root') selectors.push(norm(rule.selector)) })
+        expect(selectors).toContain(':root, [data-own-scheme]')
+        expect(selectors).toContain(':root:lang(ko), :root:lang(ko) [data-own-scheme]')
+        expect(selectors.filter((selector) => selector.includes('[data-own-scheme]') && selector.includes('.home-root'))).toEqual([])
     })
 
     test('every declared name is a registry name or carries the internal prefix, and the registry has no internal prefix', () => {

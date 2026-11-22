@@ -2,9 +2,13 @@
    Every value below equals the literal the chat CSS used before the theme-readiness pass, so Deep Nexus looks the same.
    Components read only these names plus the shared --nexus-* tokens (../theme/nexus-tokens.css). A theme pack overrides them on :root
    (chat/themes/*.css, loaded by theme.js from ?theme=). Load order: nexus-tokens.css, this file, the slice stylesheets, the theme. */
+/* Not mirrored for an island: animation.ts writes this inline on the root, and an island re-declaring it would shadow the user's speed. */
 :root {
-  /* ---- shared names that already existed (moved here from slice1/3/4.css) ---- */
   --chat-motion: 1;                          /* unitless factor: 1 = nominal durations, 0 = none; animation.ts derives it from the app's seconds-valued --risu-animation-speed */
+}
+
+:root, [data-own-scheme] {
+  /* ---- shared names that already existed (moved here from slice1/3/4.css) ---- */
   --color-scheme: var(--risu-theme-role-color-scheme, dark);  /* follows the scheme type; a light pack sets light and the native controls follow */
   color-scheme: var(--color-scheme);
   --danger: var(--nexus-danger);              /* (the solid and its channels live in ../theme/nexus-tokens.css) */

@@ -666,7 +666,7 @@ describe('restoreOpenedBackup', () => {
 
         await expect(restoreOpenedBackup(entry)).resolves.toBe('pageLive')
 
-        expect(alertConfirmMock).toHaveBeenCalledWith(language.restoreNoLockWarningConfirm)
+        expect(alertConfirmMock).toHaveBeenCalledWith(language.restoreNoLockWarningConfirm, { ownScheme: 'saveGuard' })
         expectNothingInstalled()
     })
 

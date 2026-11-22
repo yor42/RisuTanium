@@ -3,6 +3,7 @@
     import { language } from '../../lang'
     import { fixPending } from '../Setting/settingsRoute'
     import type { SendFailure } from '../../ts/chatShell/sendFailure.svelte'
+    import { ownScheme } from '../UI/ownScheme.svelte'
 
     interface Props {
         failure: SendFailure
@@ -24,7 +25,7 @@
     })
 </script>
 
-<div data-part="chat-failed-card" data-part-critical role="alert" data-reason={failure.reason}>
+<div data-part="chat-failed-card" data-part-critical role="alert" data-reason={failure.reason} use:ownScheme={'prompt'}>
     <p data-part="chat-critical-body" data-line><span class="sr-only">{language.chatShellFailedReply}: </span>{reason}</p>
     {#if failure.provider}<p data-part="chat-critical-body" data-detail>{language.chatShellFailDetail(failure.provider)}</p>{/if}
     <div data-line="actions">
@@ -35,6 +36,8 @@
 
 <style>
     [data-part="chat-failed-card"] { margin: var(--space-7) var(--space-7) 0; padding: var(--space-10) var(--space-10) var(--space-7); border: 1px solid var(--color-danger-edge); border-radius: var(--radius-8); background: var(--color-danger-tint); color: var(--nexus-text); }
+    /* The danger tint stays, laid over an opaque own sheet while the card is an own-scheme island. */
+    [data-part="chat-failed-card"]:global([data-own-scheme]) { background: linear-gradient(var(--color-danger-tint), var(--color-danger-tint)), var(--color-surface-sheet); }
     [data-part="chat-failed-card"] p { margin: 0; line-height: var(--leading-145); overflow-wrap: anywhere; }
     [data-part="chat-failed-card"] p[data-line] { font-weight: var(--font-weight-semibold); }
     [data-part="chat-failed-card"] p[data-detail] { margin-top: var(--space-1); font-size: var(--font-size-sm); color: var(--nexus-text-secondary); }

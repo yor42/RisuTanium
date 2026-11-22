@@ -229,7 +229,7 @@ describe('restore of a point on a store2 page', () => {
         const { reload } = await runRestore(page)
 
         expect(reload).toHaveBeenCalledTimes(1)
-        expect(vi.mocked(page.alert.alertConfirm).mock.calls.map((call) => call[0])).toEqual(webLocks ? [] : [language.restoreNoLockWarningConfirm])
+        expect(vi.mocked(page.alert.alertConfirm).mock.calls).toEqual(webLocks ? [] : [[language.restoreNoLockWarningConfirm, { ownScheme: 'saveGuard' }]])
         expect(await currentKey(page)).toBe(seedKey)
         page.k.counted.reset()
         page.db.mainPrompt = 'after the restore'
@@ -457,7 +457,7 @@ describe('the confirmation after the pick', () => {
         const { reload } = await runRestore(page)
 
         expect(page.alert.alertConfirm).toHaveBeenCalledTimes(1)
-        expect(page.alert.alertConfirm).toHaveBeenCalledWith(language.store2RestoreUnsavedConfirm)
+        expect(page.alert.alertConfirm).toHaveBeenCalledWith(language.store2RestoreUnsavedConfirm, { ownScheme: 'saveGuard' })
         expect(reload).not.toHaveBeenCalled()
         expect(await currentKey(page)).toBe(before)
         expect(await writeLockIsFree(page)).toBe(true)
@@ -499,7 +499,7 @@ describe('the confirmation after the pick', () => {
         const { reload } = await running
 
         expect(page.alert.alertConfirm).toHaveBeenCalledTimes(1)
-        expect(page.alert.alertConfirm).toHaveBeenCalledWith(language.store2RestoreUnsavedConfirm)
+        expect(page.alert.alertConfirm).toHaveBeenCalledWith(language.store2RestoreUnsavedConfirm, { ownScheme: 'saveGuard' })
         expect(reload).toHaveBeenCalledTimes(1)
     })
 })
