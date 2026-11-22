@@ -9,11 +9,8 @@
     
     import { DBState } from 'src/ts/stores.svelte';
     import { currentPresetOf } from 'src/ts/storage/currentPreset';
-    import { useCharImageLookups } from '../../ts/media/charImageLookups';
-    import { isHiddenSystemCharacter } from '../../ts/hiddenCharacters';
     import { ParseMarkdown } from '../../ts/parser/parser.svelte';
-    import BarIcon from '../SideBars/BarIcon.svelte';
-    import { ChevronRightIcon, User } from '@lucide/svelte';
+    import { ChevronRightIcon } from '@lucide/svelte';
     import { isCharacterHasAssets } from 'src/ts/characterCards';
     import TextInput from '../UI/GUI/TextInput.svelte';
     import { aiLawApplies, openURL, getFetchLogs } from 'src/ts/globalApi.svelte';
@@ -30,11 +27,10 @@
     import { language } from 'src/lang';
     import { getFetchData } from 'src/ts/globalApi.svelte';
     import { alertStore, selectedCharID } from "src/ts/stores.svelte";
-    import { nearViewport } from "src/ts/gui/nearViewport.svelte";
-    import { SvelteMap } from "svelte/reactivity";
     import { tokenize } from "src/ts/tokenizer";
     import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
     import ModuleChatMenu from "../Setting/Pages/Module/ModuleChatMenu.svelte";
+    import SelectCharGrid from "./SelectCharGrid.svelte";
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme";
     import { getChatBranches } from "src/ts/gui/branches";
     import { branchMoveTarget, branchNodeKey, branchNodeName, branchNodeText, classifyBranchKey, placeBranchPreview, resolveBranchStop, type BranchNodeLike } from "src/ts/gui/branchNode";
@@ -166,9 +162,6 @@
         return () => clearTimeout(timer)
     })
 
-    // One hold per character row of the picker; a row gives it back when it leaves the viewport, the alert when it closes.
-    const lookups = useCharImageLookups();
-
     let showDetails = $state(false);
     let translatedStackTrace = $state('');
     let stackTraceTranslationFailed = $state(false);
@@ -252,15 +245,6 @@
     let expandedLogs: Set<number> = $state(new Set())
     let allExpanded = $state(false)
     let copiedKey: string | null = $state(null)
-    // db.characters indices near the selectChar dialog's own scroll viewport,
-    // mapped to their owning element (see GridCatalog.svelte's comment on
-    // `visibleIndices` for why a Map, not a Set). Keyed by index, not chaId:
-    // the dialog never reorders db.characters, and it skips groups, trashed
-    // and hidden system characters in place, so an index stays a valid key.
-    // chaId uniqueness isn't guaranteed (older saves can lack it, and
-    // duplicates/copies can collide), so a chaId key risks Svelte's
-    // each_key_duplicate crash.
-    let visibleSelectChars = new SvelteMap<number, Element>()
 
     // Register JSON language for syntax highlighting
     if (!hljs.getLanguage('json')) {
@@ -864,32 +848,7 @@
                 }} />
             {/if}
             {#if a.type === 'selectChar'}
-                <div data-part="pattern-alert-chars">
-                    {#each DBState.db.characters as char, i (i)}
-                        {#if char.type !== 'group' && !char.trashTime && !isHiddenSystemCharacter(char)}
-                            {@const imgPath = char.image}
-                            {@const isVisible = visibleSelectChars.has(i)}
-                            {@const avatarStyle = lookups.getIf('char:' + i, isVisible, imgPath, 'thumbcss', '')}
-                            <div data-part="pattern-alert-char" use:nearViewport={{ onChange: (v, node) => {
-                                if (v) { visibleSelectChars.set(i, node) } else if (visibleSelectChars.get(i) === node) { visibleSelectChars.delete(i) }
-                            } }}>
-                            {#if imgPath}
-                                <BarIcon label={char.name} onClick={() => {
-                                    alertStore.set({type: 'none',msg: char.chaId})
-                                }} additionalStyle={avatarStyle} />
-                            {:else}
-                                <BarIcon label={char.name} onClick={() => {
-                                    alertStore.set({type: 'none',msg: char.chaId})
-                                }}>
-                                <User/>
-                                </BarIcon>
-                            {/if}
-                            <!-- The avatar button already carries the name; the caption is the same name for sighted users. -->
-                            <span data-part="pattern-alert-char-name" aria-hidden="true">{char.name}</span>
-                            </div>
-                        {/if}
-                    {/each}
-                </div>
+                <SelectCharGrid onPick={(chaId) => alertStore.set({type: 'none', msg: chaId})} />
                 <div data-part="pattern-warn-actions" data-count="1">
                     <button type="button" class="pattern-button" onclick={() => {
                         alertStore.set({type: 'none', msg: ''})

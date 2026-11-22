@@ -16,7 +16,7 @@ const root = path.resolve(fileURLToPath(new URL('../../../', import.meta.url)))
 const patternDir = path.join(root, 'src/lib/Nexus/pattern')
 // The two test harness components render no part and are not part of the app.
 const HARNESSES = new Set(['TaskToastHarness.svelte', 'TaskYieldHarness.svelte'])
-const OTHERS = ['AlertComp', 'ParkedReplyPrompt', 'PasswordPrompt', 'PeerConflicts', 'PresetBundlePrompt', 'UpdateOfferPrompt']
+const OTHERS = ['AlertComp', 'ParkedReplyPrompt', 'PasswordPrompt', 'PeerConflicts', 'PresetBundlePrompt', 'SelectCharCard', 'SelectCharGrid', 'UpdateOfferPrompt']
 const relative = (file: string): string => path.relative(root, file).split(path.sep).join('/')
 const files = [
     ...readdirSync(patternDir).filter((name) => name.endsWith('.svelte') && !HARNESSES.has(name)).map((name) => path.join(patternDir, name)),

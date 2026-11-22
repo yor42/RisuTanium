@@ -10,7 +10,8 @@ export const POPUPS_FILES: string[] = ['src/lib/Nexus/pattern/PatternDialog.svel
     'src/lib/Nexus/pattern/PatternTask.svelte', 'src/lib/Nexus/pattern/PatternWarnMark.svelte', 'src/lib/Nexus/pattern/PatternWarning.svelte',
     'src/lib/Nexus/pattern/QuitPill.svelte', 'src/lib/Nexus/pattern/TaskHost.svelte', 'src/lib/Nexus/pattern/ToastHost.svelte',
     'src/lib/Others/AlertComp.svelte', 'src/lib/Others/ParkedReplyPrompt.svelte', 'src/lib/Others/PasswordPrompt.svelte',
-    'src/lib/Others/PeerConflicts.svelte', 'src/lib/Others/PresetBundlePrompt.svelte', 'src/lib/Others/UpdateOfferPrompt.svelte']
+    'src/lib/Others/PeerConflicts.svelte', 'src/lib/Others/PresetBundlePrompt.svelte', 'src/lib/Others/SelectCharCard.svelte',
+    'src/lib/Others/SelectCharGrid.svelte', 'src/lib/Others/UpdateOfferPrompt.svelte']
 // Every literal data-part of those files; a dynamic name is not counted.
 export const POPUPS_PARTS: string[] = ['password-prompt-actions', 'password-prompt-cancel', 'password-prompt-field', 'password-prompt-field-label', 'password-prompt-heading',
     'password-prompt-ok', 'password-prompt-root', 'password-prompt-show', 'pattern-alert-bar', 'pattern-alert-bar-fill', 'pattern-alert-bar-sweep',

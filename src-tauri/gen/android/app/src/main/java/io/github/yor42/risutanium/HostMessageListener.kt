@@ -192,6 +192,32 @@ class HostMessageListener(
       is BridgeCommand.VaultWrap -> vault.run(command) { reply(replyProxy, it) }
       is BridgeCommand.VaultUnwrap -> vault.run(command) { reply(replyProxy, it) }
       is BridgeCommand.KeyVaultMalformed -> vault.run(command) { reply(replyProxy, it) }
+      is BridgeCommand.AppUpdateCheck ->
+        appUpdate(command.id, "check", replyProxy) { service, deliver -> service.check(command.id, deliver) }
+      is BridgeCommand.AppUpdateInstallPermission ->
+        appUpdate(command.id, "installPermission", replyProxy) { service, deliver -> service.installPermission(command.id, deliver) }
+      is BridgeCommand.AppUpdateOpenInstallSettings ->
+        appUpdate(command.id, "openInstallSettings", replyProxy) { service, deliver -> service.openInstallSettings(command.id, deliver) }
+      is BridgeCommand.AppUpdateInstall ->
+        appUpdate(command.id, "install", replyProxy) { service, deliver ->
+          service.install(command.id, command.url, command.size, command.versionCode, deliver)
+        }
+      is BridgeCommand.AppUpdateCancel -> AppUpdateService.shared.cancel()
+      is BridgeCommand.AppUpdateMalformed ->
+        reply(replyProxy, encodeUpdateReply(command.id, command.method, UpdateReply.Failure(UpdateErrorCode.OTHER)))
+    }
+  }
+
+  // The update service is one per process and answers on the main thread. A throw before the
+  // request's terminal reply is answered with an `other` error, so the page's request never waits.
+  private fun appUpdate(
+    id: Int,
+    method: String,
+    replyProxy: JavaScriptReplyProxy,
+    call: (AppUpdateService, (String) -> Unit) -> Unit
+  ) {
+    guardedRequest(id, method, { reply(replyProxy, it) }, { Log.w(TAG, it) }) { deliver ->
+      call(AppUpdateService.shared, deliver)
     }
   }
 

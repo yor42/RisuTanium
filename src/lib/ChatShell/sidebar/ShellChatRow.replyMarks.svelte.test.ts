@@ -58,13 +58,13 @@ function makeChat(id: string, patch: Record<string, unknown> = {}): Chat {
     return chat as unknown as Chat
 }
 
-function mountRow(chat: Chat, chaId = 'c0'): HTMLElement {
+function mountRow(chat: Chat, chaId = 'c0', extra: Record<string, unknown> = {}): HTMLElement {
     DBState.db = { characters: [], language: 'en' } as unknown as Database
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(ShellChatRow, {
         target,
-        props: { chat, chaId, index: 0, open: false, tabbable: true, level: 1, posinset: 1, setsize: 1, editing, onopen: () => {} },
+        props: { chat, chaId, index: 0, open: false, tabbable: true, level: 1, posinset: 1, setsize: 1, editing, onopen: () => {}, ...extra },
     }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
     flushSync()
@@ -116,7 +116,8 @@ describe('the chat row (T20)', () => {
         flushSync()
         expect(parts(target)).toEqual(['reply-new-dot'])
         const handle = startWriting('c0', 'a')
-        expect(parts(target)).toEqual(['reply-writing-badge', 'reply-new-dot'])
+        // The Stop button is a sibling after the row button, so it follows the dot inside it.
+        expect(parts(target)).toEqual(['reply-new-dot', 'reply-writing-badge'])
         handle.end()
         chat.unseenReply = 'error'
         flushSync()
@@ -131,10 +132,37 @@ describe('the chat row (T20)', () => {
         startWriting('c0', 'a')
         expect(target.querySelector('[data-part="reply-new-dot"]')?.getAttribute('aria-label')).toBe(language.chatNewReplyDot)
         const badge = target.querySelector('[data-part="reply-writing-badge"]')
-        expect(badge?.getAttribute('aria-label')).toBe(language.chatWritingBadge)
+        expect(badge?.tagName).toBe('BUTTON')
+        expect(badge?.getAttribute('aria-label')).toBe(language.chatStopReplyFor('chat a'))
         expect(badge?.hasAttribute('aria-busy')).toBe(false)
         const red = mountRow(makeChat('b', { unseenReply: 'error' }))
         expect(red.querySelector('[data-part="reply-error-dot"]')?.getAttribute('aria-label')).toBe(language.chatReplyErrorDot)
+    })
+
+    test('reproducer (#449): tapping the badge stops this chat only, with no open and outside the row button', () => {
+        const onopen = vi.fn()
+        const stopA = vi.fn()
+        const stopB = vi.fn()
+        const target = mountRow(makeChat('a'), 'c0', { onopen })
+        handles.push(registerWork({ chaId: 'c0', chatId: 'a' }, stopA, 'reply'))
+        handles.push(registerWork({ chaId: 'c0', chatId: 'b' }, stopB, 'reply'))
+        flushSync()
+
+        const badge = target.querySelector<HTMLButtonElement>('[data-part="reply-writing-badge"]')!
+        expect(badge.closest('[data-part="chat-row"]')).toBeNull()
+        badge.click()
+        flushSync()
+
+        expect(stopA).toHaveBeenCalledTimes(1)
+        expect(stopB).not.toHaveBeenCalled()
+        expect(onopen).not.toHaveBeenCalled()
+    })
+
+    test('guard (#449): while reordering the badge stays display-only', () => {
+        const target = mountRow(makeChat('a'), 'c0', { reordering: true })
+        startWriting('c0', 'a')
+        const badge = target.querySelector('[data-part="reply-writing-badge"]')
+        expect(badge?.tagName).toBe('SPAN')
     })
 
     test('guard (MF): an archived placeholder chat that kept a mark shows no dot', () => {

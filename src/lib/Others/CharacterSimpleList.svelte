@@ -22,7 +22,9 @@
     import { slotKeys } from "src/ts/gui/characterSearch";
     import CharacterWindow from "./CharacterWindow.svelte";
     import CharListAvatar from "./CharListAvatar.svelte";
-    import CharacterNameRow from "./CharacterNameRow.svelte";
+    import { getContext } from "svelte";
+    import CharacterNameRow, { replyStateContext, type CharacterReplyState } from "./CharacterNameRow.svelte";
+    import CharacterReplyStop from "./CharacterReplyStop.svelte";
     import { SIMPLE_ROW_FALLBACK_PX, listRows } from "./charListRows";
     import { compareRecent } from "./charListOrder";
 
@@ -44,6 +46,9 @@
     }
 
     const AGO_OPTIONS = { style: 'short' } as const;
+
+    // The screen's reply lookup, if it offers one: a row writing a reply is wrapped so its Stop control sits beside the row button.
+    const replyLookup = getContext<((chaId: string) => CharacterReplyState) | undefined>(replyStateContext);
 
     let {endGrid = () => {}, search, hideTrash = true, results, onpick, opening, studio}: Props = $props();
     // Fixed for the component's life: the effect inside createCharacterSearch
@@ -117,6 +122,7 @@
         {@const agoText = makeAgoText(entry.interaction)}
         {@const busy = opening?.(index) ?? false}
         {@const studioShown = studio?.available(index) ?? false}
+        {@const writing = replyLookup?.(c.chaId).writing ?? false}
         <!-- The row button; with a Studio control beside it the divider line moves to the wrapper, so it runs under both. -->
         {#snippet rowButton(divided: boolean)}
             <button class="flex p-2 border-t-darkborderc gap-2 w-full rounded-md transition-colors duration-150 hover:bg-darkbutton/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" class:border-t={divided} data-part="library-row" aria-busy={busy ? 'true' : undefined} onclick={() => {
@@ -139,19 +145,23 @@
                 </div>
             </button>
         {/snippet}
-        {#if studio && studioShown}
+        {#if (studio && studioShown) || writing}
+            <!-- The Stop control is a sibling of the row button, never inside it. -->
             <div class="flex items-center gap-1 border-t-darkborderc" class:border-t={position !== 1} data-part="library-row">
                 {@render rowButton(false)}
-                <button
-                    class="shrink-0 p-2 rounded-md text-textcolor2 hover:text-textcolor hover:bg-darkbutton/40 transition-colors duration-150 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected"
-                    data-part="library-studio"
-                    data-cha-id={c.chaId}
-                    aria-label={language.studioOpenInNamed(entry.name)}
-                    title={language.studioOpenInNamed(entry.name)}
-                    onclick={(event) => studio?.open(index, event.currentTarget)}
-                >
-                    <LayoutPanelLeftIcon size={18} aria-hidden="true" />
-                </button>
+                <CharacterReplyStop chaId={c.chaId} name={entry.name} class="shrink-0 p-2" />
+                {#if studio && studioShown}
+                    <button
+                        class="shrink-0 p-2 rounded-md text-textcolor2 hover:text-textcolor hover:bg-darkbutton/40 transition-colors duration-150 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected"
+                        data-part="library-studio"
+                        data-cha-id={c.chaId}
+                        aria-label={language.studioOpenInNamed(entry.name)}
+                        title={language.studioOpenInNamed(entry.name)}
+                        onclick={(event) => studio?.open(index, event.currentTarget)}
+                    >
+                        <LayoutPanelLeftIcon size={18} aria-hidden="true" />
+                    </button>
+                {/if}
             </div>
         {:else}
             {@render rowButton(position !== 1)}
