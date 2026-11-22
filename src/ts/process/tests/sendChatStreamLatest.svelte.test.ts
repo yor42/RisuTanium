@@ -220,12 +220,13 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 
 //#endregion
 
-import { sendChat, doingChat, setStreamFlushObserverForTests } from '../index.svelte'
+import { sendChat, setStreamFlushObserverForTests } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { activeStreamChars, resetActiveStreamsForTest } from '../activeStreams'
 import { settleUsage } from '../../usage/usageCapture'
 import { createUsageMeter } from '../../usage/usageMeter'
 import type { StreamResponseChunk } from '../request/request'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -423,7 +424,7 @@ beforeEach(() => {
     requestChatDataMock.mockResolvedValue({ type: 'success', result: 'unexpected request.' })
     processScriptFullMock.mockReset()
     processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text, emoChanged: false }))
-    doingChat.set(false)
+    clearRunningSends()
     resetActiveStreamsForTest()
 })
 

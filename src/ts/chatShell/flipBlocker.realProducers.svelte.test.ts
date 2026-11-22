@@ -2,11 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushSync } from 'svelte'
 import { DBState, selectedCharID, selIdState } from '../stores.svelte'
-import { doingChat } from '../process/index.svelte'
+import '../process/index.svelte'
 import { beginWork } from '../process/chatOrigin'
 import { getLLMCache } from '../translator/translator'
 import { createMessageEditorController, translationEditLoading, type MessageEditorDeps } from '../process/messageEditorController.svelte'
 import { shellFlipBlocker } from './flipBlocker'
+import { simulateRunningSend, clearRunningSends } from '../process/tests/activeUnits.test-helpers'
 
 vi.mock('../translator/translator', async (importOriginal) => ({
     ...await importOriginal<typeof import('../translator/translator')>(),
@@ -38,17 +39,17 @@ function installChat() {
 
 beforeEach(() => {
     installChat()
-    doingChat.set(false)
+    clearRunningSends()
     vi.mocked(getLLMCache).mockReset()
 })
 
-afterEach(() => { doingChat.set(false) })
+afterEach(() => { clearRunningSends() })
 
 describe('T20 real flip blocker producers', () => {
     it('blocks for the real generation flag', () => {
-        doingChat.set(true)
+        simulateRunningSend()
         expect(shellFlipBlocker()?.reasonKey).toBe('chatShellFlipRefusedGenerating')
-        doingChat.set(false)
+        clearRunningSends()
         expect(shellFlipBlocker()).toBeNull()
     })
 

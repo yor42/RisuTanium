@@ -430,7 +430,7 @@ vi.mock(import('src/ts/interchangeability'), () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from 'src/ts/process/index.svelte'
+import { sendChat } from 'src/ts/process/index.svelte'
 import { send, reroll, unReroll, runAutoMode, abortChat, isAutoModeActive, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { processMultiCommand } from 'src/ts/process/command'
@@ -772,7 +772,7 @@ beforeEach(() => {
     interceptedSleeps.clear()
     held.length = 0
     resetLocalDraftsForTest()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {
@@ -786,6 +786,7 @@ afterEach(() => {
 
 import { sayTTS } from 'src/ts/process/tts'
 import { isComposerBusy, isComposerLocked } from 'src/ts/process/composerActions.svelte'
+import { clearRunningSends } from '../../ts/process/tests/activeUnits.test-helpers'
 
 const BASE_CONFIRM = () => language.removeConfirm
 const BASE_CONFIRM2 = () => language.removeConfirm2

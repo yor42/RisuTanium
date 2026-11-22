@@ -172,12 +172,14 @@ vi.mock(import('./globalApi.svelte'), () => ({
 
 import { initHotkey } from './hotkey'
 import { DBState, PlaygroundStore, OpenRealmStore, selectedCharID } from './stores.svelte'
-import { doingChat } from './process/index.svelte'
+import { doingChat as doingChatStore } from './process/index.svelte'
 import { readColdStorageItem } from './process/coldstorage.svelte'
 import { beginWork } from './process/chatOrigin'
 import { alertError } from './alert'
 import { language } from '../lang'
 import { changeChar, characterFormatUpdate } from './characters'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures
 

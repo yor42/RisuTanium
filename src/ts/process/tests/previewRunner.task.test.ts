@@ -73,7 +73,9 @@ import { resetAlertPromptsForTests } from 'src/ts/alertPrompts'
 import { setComposerWindow } from 'src/ts/process/generationOwnership.svelte'
 import { alertTask, answerTask, resetTaskHostForTests } from 'src/ts/alertTask.svelte'
 import { alertStore } from 'src/ts/stores.svelte'
-import { doingChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 const def = { title: 'Import', steps: [{ label: 'Read file' }] }
 

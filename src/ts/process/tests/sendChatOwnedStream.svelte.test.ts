@@ -10,7 +10,7 @@
  * requestOpenAI does. Real pageState with a fake store and a fake commit source.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import '../../polyfill'
 
@@ -231,16 +231,19 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 
 //#endregion
 
-import { applyRecoveredReply, applyRecoveredStreamReply, sendChat, doingChat } from '../index.svelte'
+import { applyRecoveredReply, applyRecoveredStreamReply, doingChat, sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { abortUnitInProgress } from '../generationOwnership.svelte'
 import {
     configurePageState, heldReply, holdInflight, noteAnnounced, noteBound, noteInvoked, noteUnowned, resetPageStateForTests,
     setReconcileTrigger, takeAnnounced,
 } from '../../nativeReply/pageState'
-import { createStreamProbe, endOwnedRead, resetOwnedStreamsForTests } from '../../nativeReply/ownedStream'
+import { createStreamProbe, endOwnedRead, resetOwnedStreamsForTests, retireOwnedStream } from '../../nativeReply/ownedStream'
 import type { PumpProbe, ReplyStamp } from '../../nativeReply/ownedBody'
 import type { RecoveredReplyInput, RecoveredStreamInput } from '../../nativeReply/reconcile'
+import { clearRunningSends } from './activeUnits.test-helpers'
+import { activeUnits } from '../activeUnits'
+import { pluginV2 } from '../../plugins/plugins.svelte'
 
 const CHAT = 'char-0-chat-0'
 
@@ -483,7 +486,7 @@ beforeEach(() => {
     setReconcileTrigger(reconcile)
     installDb()
     selectedCharID.set(0)
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {
@@ -733,5 +736,79 @@ describe('sendChat: a recovered reply that meets a running send', () => {
         run.source.close()
         await run.outcome
         expect(reconcile).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('sendChat: the unit stays held until the send settles, whatever the reply record already did', () => {
+    const target = { chaId: 'char-0', chatId: CHAT }
+    const recoveredReply = { key: OTHER, blob: { target }, text: 'Recovered' } as unknown as RecoveredReplyInput
+
+    test('HL1: a record retired mid-stream, as the overload path does, leaves the flag and the unit held, refuses a send, defers an apply, and releases once at the end', async () => {
+        const values: boolean[] = []
+        const stop = doingChat.subscribe((busy) => { values.push(busy) })
+        let run: OwnedRun | undefined
+        try {
+            run = await startOwnedSend()
+            await retireOwnedStream(run.key)
+            takeAnnounced([run.key])
+
+            expect(get(doingChat)).toBe(true)
+            expect(activeUnits.has(target)).toBe(true)
+            expect(await settled(() => sendChat())).toBe(false)
+            expect(await applyRecoveredReply(recoveredReply)).toBe('deferred')
+            expect(requestChatDataMock).toHaveBeenCalledTimes(1)
+
+            run.source.push(' more')
+            await settle()
+            expect(get(doingChat)).toBe(true)
+            run.source.close()
+            await run.outcome
+        } finally {
+            run?.source.close()
+            await run?.outcome
+            stop()
+        }
+
+        expect(values).toEqual([false, true, false])
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    test('HL2: still held while a chatOutput listener works: the record is consumed by its commit, the unit is not released until the listener resolves', async () => {
+        let enter!: () => void
+        const entered = new Promise<void>((resolve) => { enter = resolve })
+        let open!: () => void
+        const gate = new Promise<void>((resolve) => { open = resolve })
+        const listener = async () => {
+            enter()
+            await gate
+        }
+        pluginV2.chatOutput.add(listener)
+        let run: OwnedRun | undefined
+        try {
+            run = await startOwnedSend()
+            run.source.push(' world')
+            run.source.close()
+            await entered
+            // The reply is in the chat and marked: the commit that covers the mark consumes its record.
+            landCommit()
+            await settle()
+            expect(consume).toHaveBeenCalledWith(run.key)
+
+            expect(get(doingChat)).toBe(true)
+            expect(activeUnits.has(target)).toBe(true)
+            expect(await settled(() => sendChat())).toBe(false)
+            expect(await applyRecoveredReply(recoveredReply)).toBe('deferred')
+
+            open()
+            expect(await run.outcome).toBe(true)
+        } finally {
+            open()
+            pluginV2.chatOutput.delete(listener)
+            run?.source.close()
+            await run?.outcome
+        }
+
+        expect(get(doingChat)).toBe(false)
+        expect(activeUnits.any()).toBe(false)
     })
 })

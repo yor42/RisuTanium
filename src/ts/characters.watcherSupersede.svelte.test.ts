@@ -157,10 +157,12 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 
 //#endregion
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { doingChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
 import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { changeChar, removeChar, removeTrashedCharacters } from './characters'
 import { clearPending, switchCharacter, switchTarget } from './chatShell/switchTarget.svelte'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures and helpers
 
