@@ -97,3 +97,41 @@ describe('UpdateOfferPrompt.svelte', () => {
         expect(onanswer).toHaveBeenLastCalledWith('install')
     })
 })
+
+describe('UpdateOfferPrompt.svelte with a download', () => {
+    const base = { currentVersion: '0.1.0', version: '0.2.0', notes: 'n' }
+
+    test('T-U1: the size line shows and Install reads Download and install', () => {
+        const target = mountPrompt({ ...base, download: { sizeBytes: 280_000_000, metered: false } })
+        expect(target.querySelector('[data-update-size]')?.textContent).toBe('Download size: 280.0 MB')
+        expect(button(target, language.updateDownloadAndInstall)).toBeDefined()
+        expect([...target.querySelectorAll('button')].some(b => b.textContent?.trim() === language.updateInstall)).toBe(false)
+    })
+
+    test('T-U2: the metered line shows only for a metered connection', () => {
+        const metered = mountPrompt({ ...base, download: { sizeBytes: 1, metered: true } })
+        expect(metered.querySelector('[data-update-metered]')?.textContent).toBe(language.updateMeteredNotice)
+        const unmetered = mountPrompt({ ...base, download: { sizeBytes: 1, metered: false } })
+        expect(unmetered.querySelector('[data-update-metered]')).toBeNull()
+    })
+
+    test('T-U3: without a download the dialog is the desktop dialog', () => {
+        const target = mountPrompt(base)
+        expect(target.querySelector('[data-update-size]')).toBeNull()
+        expect(target.querySelector('[data-update-metered]')).toBeNull()
+        expect(button(target, language.updateInstall)).toBeDefined()
+    })
+
+    test('T-U4: the Download and install button answers install', () => {
+        const onanswer = vi.fn()
+        const target = mountPrompt({ ...base, download: { sizeBytes: 5, metered: false } }, onanswer)
+        button(target, language.updateDownloadAndInstall).click()
+        expect(onanswer).toHaveBeenCalledWith('install')
+    })
+
+    test('hostile text beside a download still renders as text', () => {
+        const target = mountPrompt({ currentVersion: '<i>0.1.0</i>', version: HOSTILE, notes: HOSTILE, download: { sizeBytes: 5, metered: true } })
+        expect(target.querySelector('img, script, b, i')).toBeNull()
+        expect((window as unknown as Record<string, unknown>).__updateXss).toBeUndefined()
+    })
+})

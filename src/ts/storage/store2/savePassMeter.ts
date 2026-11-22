@@ -1364,7 +1364,7 @@ const FIXED_GROUP_BY_PREFIX: readonly (readonly [string, FixedGroup])[] = [
     ['preset:', 'botPreset'], ['taskPreset:', 'none'], ['ws:', 'none'], ['wsf:', 'none'], ['plugin:', 'plugins'], ['psv:', 'pluginCustomStorage'], ['bucket:', 'pluginCustomStorage'],
     ['al:config', 'configLists'], ['il:config', 'configLists'],
 ]
-const FIXED_GROUP_BY_IDENTITY: Readonly<Record<string, FixedGroup>> = { loadouts: 'loadouts', config: 'none', statics: 'none', order: 'none' }
+const FIXED_GROUP_BY_IDENTITY: Readonly<Record<string, FixedGroup>> = { loadouts: 'loadouts', config: 'none', statics: 'none', order: 'none', chatDrafts: 'none' }
 
 /** What one written unit belongs to: a character's entity id, a module's handle, a fixed group, a shard, or unknown. */
 type UnitOwner =

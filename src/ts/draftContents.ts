@@ -28,6 +28,11 @@ export interface MessageIdentity {
      * message yet.
      */
     index: number
+    /**
+     * Present only when the edit may be kept across a restart: the owner's `chaId` and the chat's id, both non-empty. Never
+     * part of the key. A message whose chat has no id stays memory-only.
+     */
+    persist?: { chaId: string, chatId: string }
 }
 
 // A frozen identity for the translation editor. `key` is the existing

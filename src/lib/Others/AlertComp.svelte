@@ -9,11 +9,8 @@
     
     import { DBState } from 'src/ts/stores.svelte';
     import { currentPresetOf } from 'src/ts/storage/currentPreset';
-    import { useCharImageLookups } from '../../ts/media/charImageLookups';
-    import { isHiddenSystemCharacter } from '../../ts/hiddenCharacters';
     import { ParseMarkdown } from '../../ts/parser/parser.svelte';
-    import BarIcon from '../SideBars/BarIcon.svelte';
-    import { ChevronRightIcon, User } from '@lucide/svelte';
+    import { ChevronRightIcon } from '@lucide/svelte';
     import { isCharacterHasAssets } from 'src/ts/characterCards';
     import TextInput from '../UI/GUI/TextInput.svelte';
     import { aiLawApplies, openURL, getFetchLogs } from 'src/ts/globalApi.svelte';
@@ -21,6 +18,7 @@
     import PeerConflicts from './PeerConflicts.svelte';
     import ParkedReplyPrompt from './ParkedReplyPrompt.svelte';
     import UpdateOfferPrompt from './UpdateOfferPrompt.svelte';
+    import ToolApprovalPrompt from './ToolApprovalPrompt.svelte';
     import PresetBundlePrompt from './PresetBundlePrompt.svelte';
     import { XIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, CheckIcon } from "@lucide/svelte";
     import hljs from 'highlight.js/lib/core';
@@ -30,11 +28,10 @@
     import { language } from 'src/lang';
     import { getFetchData } from 'src/ts/globalApi.svelte';
     import { alertStore, selectedCharID } from "src/ts/stores.svelte";
-    import { nearViewport } from "src/ts/gui/nearViewport.svelte";
-    import { SvelteMap } from "svelte/reactivity";
     import { tokenize } from "src/ts/tokenizer";
     import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
     import ModuleChatMenu from "../Setting/Pages/Module/ModuleChatMenu.svelte";
+    import SelectCharGrid from "./SelectCharGrid.svelte";
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme";
     import { getChatBranches } from "src/ts/gui/branches";
     import { branchMoveTarget, branchNodeKey, branchNodeName, branchNodeText, classifyBranchKey, placeBranchPreview, resolveBranchStop, type BranchNodeLike } from "src/ts/gui/branchNode";
@@ -68,6 +65,7 @@
             case 'patternInput':
             case 'updateOffer':
             case 'presetBundle':
+            case 'toolApproval':
                 return 'confirm'
             case 'tos':
             case 'staleAccountNotice':
@@ -82,7 +80,7 @@
     // Types that ask for an answer or report a failure interrupt a screen reader's reading; the rest are plain dialogs.
     const ALERT_DIALOG_TYPES = new Set<alertData['type']>(['error', 'ask', 'select', 'input', 'tos', 'staleAccountNotice'])
     // Reports and tool content need more room than a message.
-    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply', 'updateOffer', 'presetBundle'])
+    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply', 'updateOffer', 'presetBundle', 'toolApproval'])
     // Types whose body has no message element of its own; the dialog is named and described by the body instead.
     const NO_MESSAGE_TYPES = new Set<alertData['type']>(['select', 'selectChar', 'requestdata', 'addchar', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'chatOptions', 'peerConflicts', 'parkedReply'])
     // Viewers the person closes themselves: the head carries a named close, and Escape and Back close them as well.
@@ -95,7 +93,7 @@
         input: 'message', toast: 'excluded', wait2: 'message', markdown: 'message', select: 'message',
         tos: 'message', cardexport: 'tool', requestdata: 'tool', addchar: 'tool', hypaV2: 'tool', selectModule: 'excluded',
         chatOptions: 'tool', pukmakkurit: 'excluded', branches: 'tool', progress: 'message', pluginconfirm: 'message', requestlogs: 'tool',
-        staleAccountNotice: 'message', patternSelect: 'message', patternInput: 'message', peerConflicts: 'message', parkedReply: 'message', updateOffer: 'tool', presetBundle: 'message',
+        staleAccountNotice: 'message', patternSelect: 'message', patternInput: 'message', peerConflicts: 'message', parkedReply: 'message', updateOffer: 'tool', presetBundle: 'message', toolApproval: 'message',
     } satisfies Record<alertData['type'], 'message' | 'tool' | 'excluded'>
 
     // The headline of a dialog that has one. A tool dialog is named by it, so every tool dialog that moves into the shared box adds its case here.
@@ -129,6 +127,8 @@
                 return language.updateAvailableTitle
             case 'presetBundle':
                 return language.presetBundleTitle
+            case 'toolApproval':
+                return language.toolApprovalTitle
             default:
                 return null
         }
@@ -165,9 +165,6 @@
         const timer = setTimeout(() => (waitSlow = true), WAIT_HINT_MS)
         return () => clearTimeout(timer)
     })
-
-    // One hold per character row of the picker; a row gives it back when it leaves the viewport, the alert when it closes.
-    const lookups = useCharImageLookups();
 
     let showDetails = $state(false);
     let translatedStackTrace = $state('');
@@ -252,15 +249,6 @@
     let expandedLogs: Set<number> = $state(new Set())
     let allExpanded = $state(false)
     let copiedKey: string | null = $state(null)
-    // db.characters indices near the selectChar dialog's own scroll viewport,
-    // mapped to their owning element (see GridCatalog.svelte's comment on
-    // `visibleIndices` for why a Map, not a Set). Keyed by index, not chaId:
-    // the dialog never reorders db.characters, and it skips groups, trashed
-    // and hidden system characters in place, so an index stays a valid key.
-    // chaId uniqueness isn't guaranteed (older saves can lack it, and
-    // duplicates/copies can collide), so a chaId key risks Svelte's
-    // each_key_duplicate crash.
-    let visibleSelectChars = new SvelteMap<number, Element>()
 
     // Register JSON language for syntax highlighting
     if (!hljs.getLanguage('json')) {
@@ -565,6 +553,12 @@
                 <ParkedReplyPrompt name={a.parkedReply?.name ?? ''} text={a.parkedReply?.text ?? ''} title={a.msg} titleId={headingId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
                 }} />
+            {:else if a.type === 'toolApproval'}
+                {#if a.toolApproval}
+                    <ToolApprovalPrompt view={a.toolApproval} {messageId} onanswer={(message) => {
+                        alertStore.set({ type: 'none', msg: message })
+                    }} />
+                {/if}
             {:else if a.type === 'presetBundle'}
                 <PresetBundlePrompt view={a.presetBundle ?? { rows: [], existingNames: [] }} {messageId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
@@ -864,32 +858,7 @@
                 }} />
             {/if}
             {#if a.type === 'selectChar'}
-                <div data-part="pattern-alert-chars">
-                    {#each DBState.db.characters as char, i (i)}
-                        {#if char.type !== 'group' && !char.trashTime && !isHiddenSystemCharacter(char)}
-                            {@const imgPath = char.image}
-                            {@const isVisible = visibleSelectChars.has(i)}
-                            {@const avatarStyle = lookups.getIf('char:' + i, isVisible, imgPath, 'thumbcss', '')}
-                            <div data-part="pattern-alert-char" use:nearViewport={{ onChange: (v, node) => {
-                                if (v) { visibleSelectChars.set(i, node) } else if (visibleSelectChars.get(i) === node) { visibleSelectChars.delete(i) }
-                            } }}>
-                            {#if imgPath}
-                                <BarIcon label={char.name} onClick={() => {
-                                    alertStore.set({type: 'none',msg: char.chaId})
-                                }} additionalStyle={avatarStyle} />
-                            {:else}
-                                <BarIcon label={char.name} onClick={() => {
-                                    alertStore.set({type: 'none',msg: char.chaId})
-                                }}>
-                                <User/>
-                                </BarIcon>
-                            {/if}
-                            <!-- The avatar button already carries the name; the caption is the same name for sighted users. -->
-                            <span data-part="pattern-alert-char-name" aria-hidden="true">{char.name}</span>
-                            </div>
-                        {/if}
-                    {/each}
-                </div>
+                <SelectCharGrid onPick={(chaId) => alertStore.set({type: 'none', msg: chaId})} />
                 <div data-part="pattern-warn-actions" data-count="1">
                     <button type="button" class="pattern-button" onclick={() => {
                         alertStore.set({type: 'none', msg: ''})

@@ -23,7 +23,7 @@ const CHAT_PART_NAMES: readonly string[] = [
     'chat-folder-name-input', 'chat-gen-strip', 'chat-generate-reply', 'chat-header', 'chat-header-avatar', 'chat-header-back', 'chat-header-chat', 'chat-header-heading',
     'chat-header-host', 'chat-header-menu', 'chat-header-title', 'chat-jump-bookmarks', 'chat-jump-date', 'chat-jump-number', 'chat-legacy-cold-notice', 'chat-list', 'chat-list-character', 'chat-list-folder', 'chat-list-row',
     'chat-list-row-count', 'chat-list-row-last', 'chat-list-row-main', 'chat-list-row-mark', 'chat-list-row-menu', 'chat-list-row-name', 'chat-list-row-time',
-    'chat-list-scroller', 'chat-load-more', 'chat-long-press-ring', 'chat-message', 'chat-message-actions', 'chat-message-actions-float', 'chat-message-actions-hover',
+    'chat-list-scroller', 'chat-load-more', 'chat-long-hint', 'chat-long-press-ring', 'chat-message', 'chat-message-actions', 'chat-message-actions-float', 'chat-message-actions-hover',
     'chat-message-alts', 'chat-message-avatar', 'chat-message-badges', 'chat-message-body', 'chat-message-branch-origin', 'chat-message-container',
     'chat-message-delete-pending', 'chat-message-divider', 'chat-message-draft-restored', 'chat-message-editor', 'chat-message-editor-controls', 'chat-message-end',
     'chat-message-failed', 'chat-message-generation-info', 'chat-message-interrupted', 'chat-message-list', 'chat-message-lore', 'chat-message-lore-count', 'chat-message-lore-entry',

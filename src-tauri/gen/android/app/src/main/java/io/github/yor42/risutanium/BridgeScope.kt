@@ -92,6 +92,14 @@ sealed class BridgeCommand {
   data class KeyVaultMalformed(override val id: Int, val method: String) : BridgeCommand(), VaultCommand {
     override val replyMethod: String get() = "keyVault.$method"
   }
+  // The in-app update. A known method with a wrong argument list and an id is answered with an `other`
+  // error; a call without an id has nobody to answer and is dropped. Cancel needs no id.
+  data class AppUpdateCheck(val id: Int) : BridgeCommand()
+  data class AppUpdateInstallPermission(val id: Int) : BridgeCommand()
+  data class AppUpdateOpenInstallSettings(val id: Int) : BridgeCommand()
+  data class AppUpdateInstall(val id: Int, val url: String, val size: Long, val versionCode: Long) : BridgeCommand()
+  object AppUpdateCancel : BridgeCommand()
+  data class AppUpdateMalformed(val id: Int, val method: String) : BridgeCommand()
 }
 
 // Largest magnitude a double holds exactly as an integer.
@@ -123,7 +131,32 @@ fun toCommand(bridge: String, method: String, args: List<Any?>, id: Any?): Bridg
   "replyNotifications" -> replyNotificationsCommand(method, args)
   "openedFiles" -> openedFilesCommand(method, args, id)
   "keyVault" -> keyVaultCommand(method, args, id)
+  "appUpdate" -> appUpdateCommand(method, args, id)
   else -> null
+}
+
+// The url is a bounded string (native re-validates it against the release pattern); size and
+// versionCode are whole numbers inside the ranges the update accepts. Cancel carries no argument and
+// needs no id, so it is accepted whatever id comes with it.
+private fun appUpdateCommand(method: String, args: List<Any?>, id: Any?): BridgeCommand? {
+  if (method == "cancel") return if (args.isEmpty()) BridgeCommand.AppUpdateCancel else null
+  if (method != "check" && method != "installPermission" && method != "openInstallSettings" && method != "install") return null
+  val requestId = intArg(id) ?: return null
+  val malformed = BridgeCommand.AppUpdateMalformed(requestId, method)
+  return when (method) {
+    "check" -> if (args.isEmpty()) BridgeCommand.AppUpdateCheck(requestId) else malformed
+    "installPermission" -> if (args.isEmpty()) BridgeCommand.AppUpdateInstallPermission(requestId) else malformed
+    "openInstallSettings" -> if (args.isEmpty()) BridgeCommand.AppUpdateOpenInstallSettings(requestId) else malformed
+    else -> {
+      if (args.size != 3) return malformed
+      val url = args[0] as? String ?: return malformed
+      if (url.length > UPDATE_URL_MAX) return malformed
+      val size = integral(args[1]) ?: return malformed
+      val versionCode = integral(args[2]) ?: return malformed
+      if (!acceptOfferedSize(size) || !acceptVersionCode(versionCode)) return malformed
+      BridgeCommand.AppUpdateInstall(requestId, url, size, versionCode)
+    }
+  }
 }
 
 // A call without an integer id has nobody to answer and is dropped; a known method with a wrong
@@ -273,7 +306,7 @@ fun encodeVaultReply(id: Int, method: String, result: VaultResult): String {
 
 // Quotes, backslashes, control characters and the line separators U+2028/2029 are escaped; every
 // other character, a supplementary one included, is passed through.
-private fun jsonString(value: String): String {
+internal fun jsonString(value: String): String {
   val out = StringBuilder(value.length + 2).append('"')
   for (char in value) {
     when {

@@ -6,7 +6,7 @@ import {
     type ChatEntry, type ContentBody, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType, type WorkspaceRecord,
 } from '../format'
 import {
-    CONFIG_PARTITIONED_FIELDS, DERIVED_COLD_FIELDS, ENTRY_MOVED_FIELDS, ENTRY_REQUIRED_MOVED_FIELDS, LORE_FIELDS, PLUGIN_LISTS,
+    chatDraftsBody, CONFIG_PARTITIONED_FIELDS, DERIVED_COLD_FIELDS, ENTRY_MOVED_FIELDS, ENTRY_REQUIRED_MOVED_FIELDS, LORE_FIELDS, PLUGIN_LISTS,
     SCRIPT_FIELDS, VOLATILE_CHARACTER_FIELDS,
     type CharacterCoreBody, type ConfigBody, type FieldBagBody, type LoadoutsBody, type OrderBody, type PluginBody,
     type PluginList, type PluginValueBody, type PresetBody, type StaticsBody, type WorkspaceFileBody,
@@ -1529,6 +1529,53 @@ function readLoadoutsKeeping(db: Database, previous: PreviousEncoding, skipped: 
     return [...held]
 }
 
+/** The draft unit as `finishTree` places it: the Ref the manifest names and, when known, the list the next pass keeps as its base. */
+interface ChatDraftsPart {
+    ref: Ref
+    items: readonly JsonValue[] | undefined
+}
+
+/**
+ * Puts the draft unit: one whole unit over `db.chatDrafts`, none when the value is absent or an empty list. The entries are
+ * written as held, never sorted, deduplicated, capped or checked: a draft fault must not fail a pass. Under `skipItems` a
+ * value that cannot be read as plain JSON keeps the last saved set (the previous encoding's list, else its unit carried as it
+ * is) and is reported as saved; with neither, nothing was ever saved, the unit is left out and the item is reported unsaved.
+ * Without `skipItems` the fault is thrown, as for the loadouts.
+ */
+function putChatDrafts(db: Database, encoder: Encoder): ChatDraftsPart | undefined {
+    let items: JsonValue[]
+    try {
+        const list = listOrEmpty(db.chatDrafts, 'chatDrafts')
+        if (list.length === 0) {
+            return undefined
+        }
+        items = list.map((item) => toPlainJson(item) ?? null)
+    } catch (error) {
+        if (!encoder.skipItems || !isSkippableFault(error)) {
+            throw error
+        }
+        const held = encoder.previous?.objects?.chatDrafts
+        const heldUnit = encoder.previous?.units.get('chatDrafts')
+        const skip = (saved: boolean): void => {
+            encoder.skippedItems.push({ scope: 'chatDrafts', key: 'chatDrafts', label: quoted('chatDrafts'), saved, cause: error })
+        }
+        if (held !== undefined) {
+            skip(true)
+            const kept = encoder.put('chatDrafts', UNIT_TYPE.chatDrafts, chatDraftsBody(held))
+            return { ref: refTuple(kept.ref), items: held }
+        }
+        if (heldUnit !== undefined) {
+            skip(true)
+            encoder.carried.set('chatDrafts', heldUnit)
+            return { ref: refTuple(heldUnit.ref), items: undefined }
+        }
+        skip(false)
+        return undefined
+    }
+    const unit = encoder.put('chatDrafts', UNIT_TYPE.chatDrafts, chatDraftsBody(items))
+    return { ref: refTuple(unit.ref), items }
+}
+
 /**
  * One whole field of the live database as plain JSON. A fault of the data keeps the value the previous encoding's body
  * holds under `field`, or leaves the field out when that body holds none (`saved` false); without a body the fault is thrown.
@@ -1601,6 +1648,7 @@ export function finishTree(
 
     const { loadouts: loadoutItems, statics, characterOrder } = readFixedFields(db, encoder)
     const loadouts = encoder.put('loadouts', UNIT_TYPE.loadouts, { v: 1, items: loadoutItems } satisfies LoadoutsBody)
+    const chatDrafts = putChatDrafts(db, encoder)
     const staticsBody: StaticsBody = statics === undefined ? { v: 1 } : { v: 1, value: statics }
     const staticsUnit = encoder.put('statics', UNIT_TYPE.statics, staticsBody)
     const orderBody: OrderBody = { v: 1, chars: entries.map(entry => entry.u) }
@@ -1651,6 +1699,7 @@ export function finishTree(
         plugins: plugins.refs,
         pluginStorageRefs: pluginStorage.refs,
         workspaces,
+        chatDrafts: chatDrafts?.ref,
     }))
     encoder.parents.set('manifest', { type: UNIT_TYPE.manifest, body: manifest })
     const manifestUnit = encoder.sink.putFresh('manifest', UNIT_TYPE.manifest, manifest, 'manifest')
@@ -1673,6 +1722,7 @@ export function finishTree(
             entities: encoder.entities,
             objects: {
                 manifest, shards: shardBodies, moduleIndex: moduleSet.body, config, statics: { ...staticsBody }, order: { ...orderBody }, loadouts: loadoutItems,
+                ...(chatDrafts?.items === undefined ? {} : { chatDrafts: chatDrafts.items }),
                 // A carried preset list keeps the bodies of the encoding it was carried from; one that held none holds none.
                 ...(presetBodies === undefined ? {} : { presets: presetBodies }),
                 ...(encoder.workspaceExtras.size === 0 ? {} : { workspaces: encoder.workspaceExtras }),

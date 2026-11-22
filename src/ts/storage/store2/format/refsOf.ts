@@ -52,6 +52,7 @@ export const REFS_TABLE: readonly RefRow[] = [
     { type: UNIT_TYPE.manifest, path: 'fixed.plugins[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.pluginStorage.refs[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.workspaces[]', mode: 'ref' },
+    { type: UNIT_TYPE.manifest, path: 'fixed.chatDrafts', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.legacyKeep.unit', mode: 'ref' },
 
     { type: UNIT_TYPE.shard, path: 'entries[].core', mode: 'ref' },

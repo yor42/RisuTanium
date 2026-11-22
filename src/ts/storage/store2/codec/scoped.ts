@@ -654,6 +654,9 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
     if (before?.loadouts !== undefined) {
         objects.loadouts = before.loadouts
     }
+    if (before?.chatDrafts !== undefined) {
+        objects.chatDrafts = before.chatDrafts
+    }
     if (before?.presets !== undefined) {
         objects.presets = before.presets
     }

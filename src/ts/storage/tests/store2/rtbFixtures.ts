@@ -37,7 +37,7 @@ const NOT_WALKED = ['1:current.key', '1:retained[].key', '1:pins[].key', '2:fixe
 
 const rowIdOf = (row: { type: number, path: string }): string => `${row.type}:${row.path}`
 
-/** The 30 rows a walk visits, from the one schema table. */
+/** The 31 rows a walk visits, from the one schema table. */
 export const FIXTURE_WALK_TABLE: readonly RefRow[] = REFS_TABLE.filter(row => !NOT_WALKED.includes(rowIdOf(row)))
 export const FIXTURE_WALK_ROW_IDS: readonly string[] = FIXTURE_WALK_TABLE.map(rowIdOf)
 
@@ -67,7 +67,7 @@ export interface RtbWorld {
     manifestKey: string
     tree: EncodedTree
     env: KeyEnv
-    /** The tails named at each walk row, from an independent walk over the 30 rows; rows that name nothing are absent. */
+    /** The tails named at each walk row, from an independent walk over the 31 rows; rows that name nothing are absent. */
     refsByRow: Map<string, string[]>
     /** The keep list's tail when `keep` was planted. */
     keepTail: string | null
@@ -115,13 +115,16 @@ function enriched(): Obj {
             { id: 'f2', path: 'notes/a.md', text: 'note', size: 4, mtime: 3 },
         ],
     }]
+    db.chatDrafts = [
+        { cha: 'draft-cha', chat: 'draft-chat', shown: true, drafts: [{ m: 'id:m1', text: 'unsent edit', bh: '0123456789abcdef0123456789abcdef', at: 1_700_000_000_000 }] },
+    ]
     db.loadouts = [{ name: 'lo1' }]
     db.statics = { s: 1 }
     db.pluginCustomStorage = { a: 'value-a', b: 'value-b' }
     return db
 }
 
-/** Walks the final store from the manifest with `refsOfWith` over the 30 rows and files each tail under the row that names it. */
+/** Walks the final store from the manifest with `refsOfWith` over the 31 rows and files each tail under the row that names it. */
 function refsByRowOf(store: ReadonlyMap<string, Uint8Array>, manifestKey: string): Map<string, string[]> {
     const byRow = new Map<string, Set<string>>()
     const queue = [manifestKey]
@@ -343,7 +346,7 @@ export function assembleStore(store: ReadonlyMap<string, Uint8Array>, manifestKe
     return assembleDatabase(manifest, { get: key => store.get(key) }, options)
 }
 
-/** Every walk-row Ref in the given frames, found with the fixture's own 30-row table, whatever the unit's type. */
+/** Every walk-row Ref in the given frames, found with the fixture's own 31-row table, whatever the unit's type. */
 export function walkRefsOf(units: Iterable<{ bytes: Uint8Array }>): { row: string, tail: string }[] {
     const found: { row: string, tail: string }[] = []
     for (const { bytes } of units) {

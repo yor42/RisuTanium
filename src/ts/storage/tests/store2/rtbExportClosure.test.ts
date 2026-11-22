@@ -79,10 +79,10 @@ function spied(inner: MemoryBackend, hooks: {
 const tailsOf = (units: readonly ExportUnit[]): string[] => units.map(unit => unit.tail).sort()
 
 describe('the coverage precondition and the fixtures (T3-0, guard)', () => {
-    test('the two producer worlds together populate every one of the 30 walk rows', () => {
+    test('the two producer worlds together populate every one of the 31 walk rows', () => {
         const union = new Set([...rowsOf(plain1), ...rowsOf(plain2)])
         const missing = FIXTURE_WALK_ROW_IDS.filter(id => !union.has(id))
-        expect(FIXTURE_WALK_ROW_IDS).toHaveLength(30)
+        expect(FIXTURE_WALK_ROW_IDS).toHaveLength(31)
         expect(missing, `walk rows no world populates: ${missing.join(', ')}`).toEqual([])
     })
 
@@ -128,7 +128,7 @@ describe('the closure (T3-1, guard)', () => {
         ['layout 2', () => plain2],
         ['layout 1 with an old-file keep list', () => kept],
         ['layout 1, planted non-canonical frames and a keep list', () => planted],
-    ])('%s: the emitted set is the independent walk over the 30 rows, once each, in the stored bytes', async (_label, pick) => {
+    ])('%s: the emitted set is the independent walk over the 31 rows, once each, in the stored bytes', async (_label, pick) => {
         const world = pick()
         const { closure, units } = await run(await world.open())
         const expected = [...reachedTails(world)].sort()

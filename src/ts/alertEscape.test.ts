@@ -31,6 +31,7 @@ const SPECIFIED: Record<alertData['type'], AlertEscapeAction> = {
     peerConflicts: 'ignore',
     parkedReply: 'ignore',
     updateOffer: 'ignore',
+    toolApproval: 'ignore',
     presetBundle: 'ignore',
     progress: 'ignore',
     normal: 'close',

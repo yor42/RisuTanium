@@ -143,7 +143,7 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
     const taskPreset = await put(M, 'fixed.taskPresets[]', UNIT_TYPE.taskPreset)
     const body: Manifest = {
         fmt: 1,
-        req: bucketRefs === undefined ? ['task-presets', 'utility-workspaces'] : ['module-buckets', 'task-presets', 'utility-workspaces'],
+        req: bucketRefs === undefined ? ['chat-drafts', 'task-presets', 'utility-workspaces'] : ['chat-drafts', 'module-buckets', 'task-presets', 'utility-workspaces'],
         seq: 1,
         createdAt: 1,
         shardCount: 1,
@@ -155,6 +155,7 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
             statics: await put(M, 'fixed.statics', UNIT_TYPE.statics),
             order: await put(M, 'fixed.order', UNIT_TYPE.order),
             loadouts: await put(M, 'fixed.loadouts', UNIT_TYPE.loadouts),
+            chatDrafts: await put(M, 'fixed.chatDrafts', UNIT_TYPE.chatDrafts),
             moduleIndex: moduleRef,
             ...(bucketRefs === undefined ? {} : { moduleBuckets: bucketRefs }),
             presets: [preset],

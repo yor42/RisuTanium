@@ -15,7 +15,7 @@
 
 import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
 import type { RisuEnvironmentLabel } from '../../ts/platform'
 import 'src/ts/polyfill'
@@ -181,6 +181,7 @@ import {
 } from '../../ts/alert'
 import { getChatBranches } from 'src/ts/gui/branches'
 import { controlName, unnamedControls } from '../a11yNames.test-helpers'
+import { setWindowGeometryForTests } from '../../ts/windowing/windowHost.svelte'
 import AlertComp from './AlertComp.svelte'
 import PeerConflicts from './PeerConflicts.svelte'
 import ParkedReplyPrompt from './ParkedReplyPrompt.svelte'
@@ -366,9 +367,133 @@ describe('the choosers are made of the pinned parts', () => {
         const target = await openChooser(() => alertSelectChar())
 
         expect(partsOf(target)).toEqual(CHOOSER_PARTS.selectChar)
-        expect(target.querySelectorAll('[data-part="pattern-alert-chars"] > [data-part="pattern-alert-char"]')).toHaveLength(2)
+        expect(target.querySelectorAll('[data-part="pattern-alert-chars"] [data-part="pattern-alert-char"]')).toHaveLength(2)
         const footer = target.querySelector('[data-part="pattern-warn-actions"]')
         expect(Array.from(footer?.querySelectorAll('button') ?? []).map((b) => b.textContent?.trim())).toEqual([language.cancel])
+    })
+})
+
+//#region selectChar with a large library: the windowed grid
+
+/**
+ * The picker mounts only the grid rows near the dialog's view, under the window host's test geometry
+ * (a 600 px band). The list element's top follows `scrolled`, as a scrolled-away list does. Titles that
+ * start with "regression reproducer:" fail against the picker that mounted every character.
+ */
+describe('selectChar windows its avatar grid', () => {
+    const LIBRARY = 300
+    let frames: (() => void)[] = []
+    let scrolled = 0
+
+    function runFrames(): void {
+        const pending = frames
+        frames = []
+        for (const frame of pending) frame()
+        flushSync()
+    }
+
+    async function settleWindow(): Promise<void> {
+        flushSync()
+        await Promise.resolve()
+        flushSync()
+        runFrames()
+    }
+
+    function arrangeLibrary(count: number): void {
+        DBState.db = {
+            characters: Array.from({ length: count }, (_, i) => ({ name: `c${i}`, chaId: `cha-${i}`, type: 'character', image: '', chats: [], chatPage: 0 })),
+            modules: [],
+            enabledModules: [],
+            botPresets: [],
+            botPresetsId: 0,
+        } as unknown as Database
+    }
+
+    async function openLibrary(count: number): Promise<{ target: HTMLElement, picked: Promise<unknown> }> {
+        arrangeLibrary(count)
+        const target = mountAlertComp()
+        await settleWindow()
+        const picked = alertSelectChar()
+        await settleWindow()
+        return { target, picked }
+    }
+
+    const avatarNames = (target: HTMLElement) => Array.from(target.querySelectorAll<HTMLButtonElement>('button.ico')).map(controlName)
+
+    beforeEach(() => {
+        frames = []
+        scrolled = 0
+        setWindowGeometryForTests({
+            rectOf: (element) => (element.getAttribute('role') === 'list' ? { top: -scrolled, height: 600 } : { top: 0, height: 600 }),
+            viewport: () => 600,
+            scrollBy: () => {},
+            schedule: (callback) => {
+                frames.push(callback)
+                return () => { frames = frames.filter((frame) => frame !== callback) }
+            },
+        })
+    })
+
+    afterEach(() => {
+        setWindowGeometryForTests(undefined)
+        vi.unstubAllGlobals()
+        vi.restoreAllMocks()
+    })
+
+    test('regression reproducer: a library of 300 characters mounts only the avatars near the view', async () => {
+        const { target } = await openLibrary(LIBRARY)
+
+        const names = avatarNames(target)
+        expect(names[0]).toBe('c0')
+        expect(names.length).toBeGreaterThan(0)
+        expect(names.length).toBeLessThan(100)
+    })
+
+    test('regression reproducer: scrolling brings a far avatar in, and it resolves the prompt with its own chaId', async () => {
+        vi.useFakeTimers()
+        const { target, picked } = await openLibrary(LIBRARY)
+        expect(avatarNames(target)).not.toContain('c250')
+
+        // Four cards per row until a row reports its tracks, 120 px per unmeasured row: c250 is in row 62.
+        scrolled = 62 * 120
+        window.dispatchEvent(new Event('scroll'))
+        await settleWindow()
+
+        const avatar = Array.from(target.querySelectorAll<HTMLButtonElement>('button.ico')).find((button) => controlName(button) === 'c250')
+        expect(avatar).toBeDefined()
+        expect(avatarNames(target)).not.toContain('c0')
+        // Past the prompt's guard against a click that lands as it opens.
+        vi.advanceTimersByTime(2000)
+        avatar!.click()
+        flushSync()
+        expect(await picked).toBe('cha-250')
+    })
+
+    test('the cards per row follow the tracks a mounted row reports', async () => {
+        const observers: ((records: unknown[]) => void)[] = []
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(callback: (records: unknown[]) => void) { observers.push(callback) }
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+        })
+        const computed = window.getComputedStyle.bind(window)
+        vi.spyOn(window, 'getComputedStyle').mockImplementation((element: Element) => {
+            const style = computed(element)
+            if (element.getAttribute('role') !== 'listitem') return style
+            return new Proxy(style, { get: (base, key) => (key === 'gridTemplateColumns' ? '100px 100px 100px' : Reflect.get(base, key)) })
+        })
+        const { target } = await openLibrary(10)
+
+        const rowsBefore = Array.from(target.querySelectorAll('[role="listitem"]')).map((row) => row.querySelectorAll('button.ico').length)
+        expect(rowsBefore).toEqual([4, 4, 2])
+        expect(observers.length).toBeGreaterThan(0)
+        for (const observer of observers) observer([])
+        await settleWindow()
+
+        const rowsAfter = Array.from(target.querySelectorAll('[role="listitem"]')).map((row) => row.querySelectorAll('button.ico').length)
+        expect(rowsAfter).toEqual([3, 3, 3, 1])
+        expect(avatarNames(target)).toEqual(Array.from({ length: 10 }, (_, i) => `c${i}`))
     })
 })
 
@@ -1040,7 +1165,7 @@ const KIND_OF = {
     tos: 'message', cardexport: 'tool', requestdata: 'tool', addchar: 'tool', hypaV2: 'tool', selectModule: 'excluded',
     chatOptions: 'tool', pukmakkurit: 'excluded', branches: 'tool', progress: 'message', pluginconfirm: 'message', requestlogs: 'tool',
     staleAccountNotice: 'message', patternSelect: 'message', patternInput: 'message', peerConflicts: 'message', parkedReply: 'message',
-    updateOffer: 'tool', presetBundle: 'message',
+    updateOffer: 'tool', presetBundle: 'message', toolApproval: 'message',
 } satisfies Record<alertData['type'], 'message' | 'tool' | 'excluded'>
 
 const openStored = (data: Record<string, unknown>): Promise<HTMLElement> => openViewer(() => alertStore.set(data as never))
@@ -1064,6 +1189,7 @@ const OPEN: Record<Exclude<alertData['type'], 'none' | 'toast' | 'selectModule' 
     peerConflicts: () => openPeerConflicts(),
     parkedReply: () => openParkedReply(),
     presetBundle: () => openStored({ type: 'presetBundle', msg: '', presetBundle: { rows: [{ name: 'A', folder: null, aiModel: 'm' }], existingNames: [] } }),
+    toolApproval: () => openStored({ type: 'toolApproval', msg: '', cancelAnswer: 'deny', toolApproval: { server: 'internal:workspace', action: [{ text: 'delete workspace file (' }, { text: 'a.txt', path: true }, { text: ')' }], summary: 'delete_file({"path":"a.txt"})', instructionTarget: false, offerAlways: true, replacement: null } }),
     selectChar: () => openChooser(() => alertSelectChar()),
     cardexport: () => openExport(),
     requestdata: () => openRequestData(),

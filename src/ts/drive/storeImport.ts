@@ -1,4 +1,5 @@
 import { alertConfirm, alertError, alertNormalWait, alertStore, alertWait, waitAlert } from '../alert'
+import { flushPersistedDrafts } from '../draftContentOrphanGate'
 import { getSaveMarkCount, isSaveClean } from '../globalApi.svelte'
 import { language } from 'src/lang'
 import { getDatabase, type Database } from '../storage/database.svelte'
@@ -715,6 +716,21 @@ function pageWorkspaces(db: Database): JsonObject[] {
 }
 
 /**
+ * The page's unsent message edits and hint flags as the import keeps them: plain objects read through the reactive proxy (a copy
+ * that does not follow later edits, every key kept). A `.bin` carries none, so the profile keeps the page's own. A value that
+ * cannot be read as plain JSON gives none, so a draft fault never stops an import of other data; an item that is not an object
+ * is left out.
+ */
+function pageChatDrafts(db: Database): JsonObject[] {
+    try {
+        const plain = toPlainJson(db.chatDrafts)
+        return Array.isArray(plain) ? plain.filter(isJsonObject) : []
+    } catch {
+        return []
+    }
+}
+
+/**
  * The page's usage ledger keys and price overrides as the import keeps them: plain values read through the reactive proxy
  * (a copy that does not follow later edits). Each is present only when the page holds some.
  */
@@ -771,6 +787,14 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
     // And the ChroMemory choice and settings: a `.bin` carries neither, so the profile keeps the page's own, by value, and the
     // imported legacy engine flags never outrank the page's choice.
     const { ltmEngine, ltmSettings } = pageChroMemory(getDatabase())
+    // And the unsent message edits and hint flags: a `.bin` carries none, so the profile keeps the page's own, by value.
+    // A draft typed in the last idle window is written first, so it is among them.
+    try {
+        flushPersistedDrafts()
+    } catch (error) {
+        console.error(error)
+    }
+    const chatDrafts = pageChatDrafts(getDatabase())
     // A committer without `commitStreamed` takes every file the whole way.
     const stream = committer.commitStreamed === undefined ? undefined : request.stream
     for (let attempt = 1; ; attempt++) {
@@ -801,7 +825,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
         }
         const streamRequest = stream === undefined
             ? null
-            : { stream, reader: request.reader, lists, taskPresets, utilityWorkspaces, themePacks, activeThemePack, usageStatics, usagePriceOverrides, ltmEngine, ltmSettings, yieldToMain: request.yieldToMain ?? yieldToEventLoop, baseContent }
+            : { stream, reader: request.reader, lists, taskPresets, utilityWorkspaces, themePacks, activeThemePack, usageStatics, usagePriceOverrides, ltmEngine, ltmSettings, chatDrafts, yieldToMain: request.yieldToMain ?? yieldToEventLoop, baseContent }
         // The library releases the tree it is handed once the tree is resolved; nothing here may keep another reference.
         let source: ImportSource | null = null
         // What the streamed prepare decided when it did not hand the file back to the whole path.
@@ -841,7 +865,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                 }
                 outcome = await importLegacyTree(
                     {
-                        source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, utilityWorkspaces, themePacks, activeThemePack, usageStatics, usagePriceOverrides, ltmEngine, ltmSettings,
+                        source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, utilityWorkspaces, themePacks, activeThemePack, usageStatics, usagePriceOverrides, ltmEngine, ltmSettings, chatDrafts,
                         baseContent,
                     },
                     hooks,
