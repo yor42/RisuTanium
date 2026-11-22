@@ -8,6 +8,7 @@
 // than `?raw` imports so the validator needs no Tailwind-processed stylesheet at run time or in the worker bundle.
 import { effective, packSettableTest } from './engine'
 import type { ScopedArea } from './areaParts'
+import { SETTINGS_LINT_REGISTRY } from './registries/settings5b'
 import { STUDIO_REGISTRY } from './registries/studio'
 import { tokenFile, type TokenFile } from './tokens'
 import type { ThemeArea } from './index'
@@ -15,7 +16,7 @@ import type { ThemeArea } from './index'
 /** The token stylesheets each area's engine reads as the app's own tokens (engine APP merged with the registry's tokens). */
 export const APP_TOKEN_FILES: Readonly<Record<ThemeArea, readonly TokenFile[]>> = {
     chat: ['chat/theme-tokens.css', 'theme/nexus-tokens.css'],
-    settings: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'settings/theme-tokens.css'],
+    settings: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'settings/theme-tokens.css', 'theme/pattern-tokens.css'],
     studio: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'studio/studio-tokens.css', 'studio/st4.css'],
     home: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'home/home-tokens.css'],
 }
@@ -135,19 +136,34 @@ export function declaredTokenNames(area: ThemeArea): string[] {
     return [...new Set(names)]
 }
 
+/**
+ * The tokens a Settings pack may never set, because the pattern dialog layer and the toast host read them as `z-index`
+ * (pattern-dialog.css on `pattern-layer`, ToastHost and QuitPill): a pack value of -1 would put every critical prompt, the
+ * backup chooser included, under the page. A pack stylesheet may set no stacking (MC-3422).
+ */
+export const SETTINGS_STACKING_TOKENS: ReadonlySet<string> = new Set(['--pattern-z-layer', '--pattern-z-toast'])
+
+const STACKING_WHY = (name: string): string => `${name} sets the stacking of the app's critical dialogs and toasts, and a pack stylesheet may set no stacking (MC-3422)`
+
+/** The reason an area refuses a token the engine would otherwise admit as pack-settable, or '' when it does not. */
+export function stackingNameReason(area: ThemeArea, name: string): string {
+    return area === 'settings' && SETTINGS_STACKING_TOKENS.has(name) ? STACKING_WHY(name) : ''
+}
+
 const allowedCache = new Map<ScopedArea, ReadonlySet<string>>()
 /**
  * A_tok(area): the names the area's token stylesheets declare or its registry bounds that the engine admits as pack-settable,
- * minus the reserved names T, D and I. A pack may declare these and its own `--pack-*` helpers, and nothing else.
+ * minus the reserved names T, D and I and, for Settings, the stacking tokens. A pack may declare these and its own `--pack-*`
+ * helpers, and nothing else.
  */
 export function allowedTokenNames(area: ScopedArea): ReadonlySet<string> {
     let names = allowedCache.get(area)
     if (!names) {
-        const registry = area === 'studio' ? STUDIO_REGISTRY : undefined
+        const registry = area === 'studio' ? STUDIO_REGISTRY : area === 'settings' ? SETTINGS_LINT_REGISTRY : undefined
         const bounded = effective(registry)
         const candidates = [...declaredTokenNames(area), ...Object.keys(bounded.minimums), ...Object.keys(bounded.maximums)]
         const isSettable = packSettableTest(registry)
-        names = new Set(candidates.filter((name) => isSettable(name) && !reservedNameReason(name)))
+        names = new Set(candidates.filter((name) => isSettable(name) && !reservedNameReason(name) && !stackingNameReason(area, name)))
         allowedCache.set(area, names)
     }
     return names
