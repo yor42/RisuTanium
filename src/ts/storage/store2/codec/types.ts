@@ -190,6 +190,7 @@ export interface PreviousObjects {
     /**
      * The draft unit's `chats` list as the encoding holds it. In memory only (never written): a draft set a later pass
      * cannot read is put back whole from here. Absent when the encoding holds no unit or the unit was not read or did not parse.
+     * Never mutated, only replaced: the draft memo's list may be this array.
      */
     chatDrafts?: readonly JsonValue[]
     /**
@@ -303,6 +304,14 @@ export interface SplitRecorder {
     splitAmbiguous(ambiguous: ReadonlySet<string>): void
 }
 
+/**
+ * The last draft list a save encoder framed and that frame's digest, kept whether or not the plan commits. INVARIANT: the
+ * list is the pass's own plain copy and is never mutated at any depth; otherwise a changed set compares equal and is not saved.
+ */
+export interface ChatDraftsMemo {
+    last?: { items: readonly JsonValue[], digest: string }
+}
+
 export interface EncodeOptions {
     /** Randomness and clock for keys and entity ids; a CSPRNG in production. */
     env: KeyEnv
@@ -328,6 +337,8 @@ export interface EncodeOptions {
      * remembered digest is taken without being framed. The save encoder prunes it to each adopted encoding's units.
      */
     workspaceMemo?: ChunkMemo
+    /** The draft unit's memo (see `ChatDraftsMemo`). Absent, the draft list is framed on every pass. */
+    chatDraftsMemo?: ChatDraftsMemo
     /**
      * The stored units an import takes by content (see `ContentIndex`). An import-only rule: it never accompanies
      * `previous`, so every entity id of the encode is new.

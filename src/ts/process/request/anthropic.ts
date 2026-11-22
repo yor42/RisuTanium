@@ -20,6 +20,8 @@ import { limitedField, sendArgKey, sendKeyLine } from './secretKey'
 import { isSecretRef } from 'src/ts/secretRef'
 import { parseAnthropicUsage } from '../../usage/usageParse'
 import { createAnthropicStreamReader } from './anthropicStreamRead'
+import { bindOwnedStream, endOwnedRead, retireFailedHead, retireOwnedStream } from 'src/ts/nativeReply/ownedStream'
+import { takeAnnounced } from 'src/ts/nativeReply/pageState'
 
 interface Claude3TextBlock {
     type: 'text',
@@ -933,114 +935,136 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
     
     if(arg.useStreaming){
         
-        const res = await fetchNative(replacerURL, {
-            body: JSON.stringify(body),
-            headers: headers,
-            method: "POST",
-            chatId: arg.chatId,
-            signal: arg.abortSignal,
-            interceptor: 'anthropic_streaming'
-        })
+        const owned = bindOwnedStream(arg, { kind: 'anthropic-stream' })
+        // Everything up to the hand-off is covered: a throw here means the page stopped reading the owned request.
+        try {
+            const res = await fetchNative(replacerURL, {
+                body: JSON.stringify(body),
+                headers: headers,
+                method: "POST",
+                chatId: arg.chatId,
+                signal: arg.abortSignal,
+                interceptor: 'anthropic_streaming',
+                nativeReply: owned?.owner,
+                pumpProbe: owned?.probe,
+            })
 
-        if(res.status !== 200){
-            return {
-                type: 'fail',
-                result: await textifyReadableStream(res.body),
-                keyLimited: limitedField(arg, res.status)
+            if(res.status !== 200){
+                const result = await textifyReadableStream(res.body)
+                const keyLimited = limitedField(arg, res.status)
+                // The attempt is over and its record is not the reply: it is removed before any retry pushes.
+                if(owned && await retireFailedHead(owned.owner.key, owned.probe, res.status)){
+                    return { type: 'fail', result, keyLimited, endsTurn: true }
+                }
+                return { type: 'fail', result, keyLimited }
             }
-        }
-        let breakError = ''
+            let breakError = ''
 
-        const stream = new ReadableStream<StreamResponseChunk>({
-            async start(controller){
-                let reader = res.body.getReader()
-                let retries = 0
-                const parser = createAnthropicStreamReader({
-                    onUsage: (usage) => arg.usageMeter?.report(usage),
-                    onFailed: () => arg.usageMeter?.markFailed(),
-                    retryOverload: () => Boolean(db.antiServerOverloads) && retries < (db.requestRetrys ?? 0),
-                })
-                let breakWhile = false
-                while(true){
-                    try {
-                        if(arg?.abortSignal?.aborted || breakWhile){
-                            break
-                        }
-                        const {done, value} = await reader.read() 
-                        if(done){
-                            break
-                        }
-                        let emit = true
-                        if(parser.feed(value) === 'overload'){
-                            // console.log('Overload detected, retrying...')
-                            controller.enqueue({
-                                "0": "Overload detected, retrying..."
-                            })
-                            // The retried reply starts from nothing: no text, no open thinking block, no partial line.
-                            retries++
-                            parser.reset()
-                            reader.cancel().catch(() => {})
-                            await sleep(1000)
-                            if(arg?.abortSignal?.aborted){
-                                breakWhile = true
-                                emit = false
+            const stream = new ReadableStream<StreamResponseChunk>({
+                async start(controller){
+                    let reader = res.body.getReader()
+                    let retries = 0
+                    const parser = createAnthropicStreamReader({
+                        onUsage: (usage) => arg.usageMeter?.report(usage),
+                        onFailed: () => arg.usageMeter?.markFailed(),
+                        retryOverload: () => Boolean(db.antiServerOverloads) && retries < (db.requestRetrys ?? 0),
+                    })
+                    let breakWhile = false
+                    let retired = false
+                    while(true){
+                        try {
+                            if(arg?.abortSignal?.aborted || breakWhile){
+                                break
                             }
-                            else{
-                                const retryRes = await fetchNative(replacerURL, {
-                                    body: JSON.stringify(body),
-                                    headers: headers,
-                                    method: "POST",
-                                    chatId: arg.chatId,
-                                    signal: arg.abortSignal,
-                                    interceptor: 'anthropic_streaming_retry'
+                            const {done, value} = await reader.read() 
+                            if(done){
+                                break
+                            }
+                            let emit = true
+                            if(parser.feed(value) === 'overload'){
+                                // console.log('Overload detected, retrying...')
+                                controller.enqueue({
+                                    "0": "Overload detected, retrying..."
                                 })
-                                if(retryRes.status !== 200){
-                                    arg.usageMeter?.markFailed()
-                                    controller.enqueue({
-                                        "0": await textifyReadableStream(retryRes.body)
-                                    })
+                                // The retried reply starts from nothing: no text, no open thinking block, no partial line.
+                                retries++
+                                parser.reset()
+                                reader.cancel().catch(() => {})
+                                await sleep(1000)
+                                if(owned && !retired && !arg?.abortSignal?.aborted){
+                                    // The superseded first attempt must not stay `inflight` for a reconcile to place its error text
+                                    // over the retry. The retry is unowned, and the key's announced fact is dropped so the page posts
+                                    // its own notice when the retry really ends.
+                                    await retireOwnedStream(owned.owner.key)
+                                    takeAnnounced([owned.owner.key])
+                                    retired = true
+                                }
+                                if(arg?.abortSignal?.aborted){
                                     breakWhile = true
                                     emit = false
                                 }
                                 else{
-                                    reader = retryRes.body.getReader()
+                                    const retryRes = await fetchNative(replacerURL, {
+                                        body: JSON.stringify(body),
+                                        headers: headers,
+                                        method: "POST",
+                                        chatId: arg.chatId,
+                                        signal: arg.abortSignal,
+                                        interceptor: 'anthropic_streaming_retry'
+                                    })
+                                    if(retryRes.status !== 200){
+                                        arg.usageMeter?.markFailed()
+                                        controller.enqueue({
+                                            "0": await textifyReadableStream(retryRes.body)
+                                        })
+                                        breakWhile = true
+                                        emit = false
+                                    }
+                                    else{
+                                        reader = retryRes.body.getReader()
+                                    }
                                 }
                             }
-                        }
 
-                        if(emit){
-                            controller.enqueue({
-                                "0": parser.text()
-                            })
-                        }
+                            if(emit){
+                                controller.enqueue({
+                                    "0": parser.text()
+                                })
+                            }
 
-                    } catch (error) {
-                        if(!arg?.abortSignal?.aborted){
-                            // A source that errored rejects every later read, so retrying would never end.
-                            parser.reportUsage()
-                            controller.error(error)
-                            return
+                        } catch (error) {
+                            if(!arg?.abortSignal?.aborted){
+                                // A source that errored rejects every later read, so retrying would never end.
+                                parser.reportUsage()
+                                controller.error(error)
+                                return
+                            }
+                            await sleep(1)
                         }
-                        await sleep(1)
                     }
+                    const beforeFinish = parser.text()
+                    const finished = parser.finish()
+                    if(finished !== beforeFinish){
+                        controller.enqueue({
+                            "0": finished
+                        })
+                    }
+                    parser.reportUsage()
+                    controller.close()
+                },
+                cancel(){
                 }
-                const beforeFinish = parser.text()
-                const finished = parser.finish()
-                if(finished !== beforeFinish){
-                    controller.enqueue({
-                        "0": finished
-                    })
-                }
-                parser.reportUsage()
-                controller.close()
-            },
-            cancel(){
-            }
-        })
+            })
 
-        return {
-            type: 'streaming',
-            result: stream
+            return {
+                type: 'streaming',
+                result: stream
+            }
+        } catch (error) {
+            if(owned){
+                endOwnedRead(owned.owner.key)
+            }
+            throw error
         }
 
     }

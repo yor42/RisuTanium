@@ -701,7 +701,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
 
             return {
                 type: 'streaming',
-                result: wrapToolStream(transtream.readable, body, headers, replacerURL, arg, streamingLocalNetworkOptions)
+                result: wrapToolStream(transtream.readable, body, headers, replacerURL, arg, streamingLocalNetworkOptions, owner?.key)
             }
         } catch (error) {
             if(owner){
@@ -1024,7 +1024,8 @@ function wrapToolStream(
     headers:Record<string,string>,
     replacerURL:string,
     arg:RequestDataArgumentExtended,
-    networkOptions: LocalNetworkRequestOptions = {}
+    networkOptions: LocalNetworkRequestOptions = {},
+    ownedKey?: string
 ):ReadableStream<StreamResponseChunk> {
     return new ReadableStream<StreamResponseChunk>({
         async start(controller) {
@@ -1056,6 +1057,10 @@ function wrapToolStream(
                     
                     const toolCalls = Object.values(JSON.parse(value?.['__tool_calls'] || '{}') || {}) as ToolCall[]; 
                     if(toolCalls && toolCalls.length > 0){
+                        if(ownedKey !== undefined){
+                            // Round 1's request has ended and its record is not the reply: it is removed before the follow-up.
+                            await retireOwnedStream(ownedKey)
+                        }
                         const round = beginToolRound(arg)
                         if(round !== 'go'){
                             return endStreamForGate(controller, round)

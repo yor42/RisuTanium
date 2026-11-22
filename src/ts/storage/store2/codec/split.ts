@@ -16,7 +16,7 @@ import { overflowInlayList } from '../lists/inlayList'
 import { buildManifest, carryManifest } from './manifest'
 import { carryModuleIndex, hasCurrentEntryFields, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef, uniqueIdHandles } from './modules'
 import { MODULE_INDEX_PARAMS } from './moduleIndexParams'
-import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, toPlainJson } from './normalize'
+import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, sameJsonValue, toPlainJson } from './normalize'
 import { bucketOfKey, groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
 import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, noteShardDigest, refTuple, shardCountFor, shardDigestOf } from './shard'
@@ -1543,10 +1543,15 @@ interface ChatDraftsPart {
  * Without `skipItems` the fault is thrown, as for the loadouts.
  */
 function putChatDrafts(db: Database, encoder: Encoder): ChatDraftsPart | undefined {
+    const memo = encoder.options.chatDraftsMemo
     let items: JsonValue[]
     try {
         const list = listOrEmpty(db.chatDrafts, 'chatDrafts')
         if (list.length === 0) {
+            // Deleted text is not kept alive by the memo.
+            if (memo !== undefined) {
+                memo.last = undefined
+            }
             return undefined
         }
         items = list.map((item) => toPlainJson(item) ?? null)
@@ -1572,8 +1577,34 @@ function putChatDrafts(db: Database, encoder: Encoder): ChatDraftsPart | undefin
         skip(false)
         return undefined
     }
-    const unit = encoder.put('chatDrafts', UNIT_TYPE.chatDrafts, chatDraftsBody(items))
+    // The live list is read on every pass, so no mutation needs a signal. The length is compared by itself: `sameJsonValue`
+    // counts keys, so a trailing hole would compare equal. The previous unit is taken only with the digest of that equal list;
+    // otherwise the unit is framed as without a memo.
+    const last = memo?.last
+    let unit: EncodedUnit | null = null
+    if (last !== undefined && encoder.previous?.units.get('chatDrafts')?.digest === last.digest
+        && items.length === last.items.length && sameDraftList(items, last.items)) {
+        unit = encoder.sink.reuseAt('chatDrafts', UNIT_TYPE.chatDrafts)
+    }
+    if (unit === null) {
+        unit = encoder.put('chatDrafts', UNIT_TYPE.chatDrafts, chatDraftsBody(items))
+        if (memo !== undefined) {
+            memo.last = { items, digest: unit.digest }
+        }
+    }
     return { ref: refTuple(unit.ref), items }
+}
+
+/**
+ * Whether two plain draft lists are equal. A compare that throws counts as not equal: it can exhaust the stack on a value
+ * the canonical writer still handles, and the pass then goes on to `put`, which raises whatever it raises without the memo.
+ */
+function sameDraftList(items: readonly JsonValue[], last: readonly JsonValue[]): boolean {
+    try {
+        return sameJsonValue(items, last)
+    } catch {
+        return false
+    }
 }
 
 /**

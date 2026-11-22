@@ -21,7 +21,8 @@ import { isAndroidTransport } from "src/ts/storage/tauriByteTransport"
 import { parseJsonBody, readBodyText } from "src/ts/network/frozenBody"
 import { parseGoogleUsage } from "../../usage/usageParse"
 import type { UsageMeter } from "../../usage/usageTypes"
-import { composeGeminiDisplay, extractGeminiContent, geminiReadRuleOf, geminiStreamTransform, initGeminiStreamState } from "./geminiStreamTransform"
+import { composeGeminiDisplay, extractGeminiContent, geminiReadRuleOf, geminiStreamTransform, initGeminiStreamState, type GeminiReadRule } from "./geminiStreamTransform"
+import { bindOwnedStream, endOwnedRead, retireFailedHead, retireOwnedStream } from "src/ts/nativeReply/ownedStream"
 
 /** Vertex access token minted from a referenced service-account key. Memory only; never stored. */
 let vertexMemoryToken: { reference: string, email: string, token: string, expires: number } | null = null
@@ -674,45 +675,69 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
             }
         }
         
-        const f = await fetchNative(url, {
-            headers: headers,
-            body: JSON.stringify(body),
-            method: 'POST',
-            chatId: arg.chatId,
-            signal: arg.abortSignal,
-            interceptor: 'gemini_base_stream'
-        })
+        // One rule for the stored blob and the live read: the record is replayed exactly as this request reads it.
+        const rule = geminiReadRuleOf(arg, db)
+        const owned = bindOwnedStream(arg, { kind: 'gemini-stream', ...rule })
+        // Everything up to the hand-off is covered: a throw here means the page stopped reading the owned request.
+        try {
+            const f = await fetchNative(url, {
+                headers: headers,
+                body: JSON.stringify(body),
+                method: 'POST',
+                chatId: arg.chatId,
+                signal: arg.abortSignal,
+                interceptor: 'gemini_base_stream',
+                nativeReply: owned?.owner,
+                pumpProbe: owned?.probe,
+            })
 
-        if(f.status !== 200){
-            const text = await textifyReadableStream(f.body)
-            const limited = limitedField(arg, f.status)
-            if(limited){
+            if(f.status !== 200){
+                const text = await textifyReadableStream(f.body)
+                // The attempt is over and its record is not the reply: it is removed before the key-limit return
+                // and before the fallback request, which is never owned.
+                if(owned && await retireFailedHead(owned.owner.key, owned.probe, f.status)){
+                    return {
+                        type: 'fail',
+                        result: text,
+                        endsTurn: true
+                    }
+                }
+                const limited = limitedField(arg, f.status)
+                if(limited){
+                    return {
+                        type: 'fail',
+                        result: text,
+                        keyLimited: limited
+                    }
+                }
+                if(text.includes('RESOURCE_EXHAUSTED')){
+                    return await fallBackGemini(text)
+                }
                 return {
                     type: 'fail',
-                    result: text,
-                    keyLimited: limited
+                    result: text
                 }
             }
-            if(text.includes('RESOURCE_EXHAUSTED')){
-                return fallBackGemini(text)
-            }
+
+            const transtream = geminiStreamTransform(rule, {
+                onUsage: (usage) => arg.usageMeter?.report(usage),
+                // Its a promise, but we don't need to await it here
+                onSignature: ({ id, signature }) => {
+                    saveInlayedSignature(id, signature).catch((error) => console.error('The Gemini signature could not be saved:', error))
+                },
+            })
+
+            f.body.pipeTo(transtream.writable).catch(() => {})
+
             return {
-                type: 'fail',
-                result: text
+                type: 'streaming',
+                result: wrapToolStream(transtream.readable, body, headers, url, arg, rule, owned?.owner.key)
             }
-        }
-
-        const transtream = getTranStream({
-            modelInfo: arg.modelInfo,
-            saveSignature: arg.saveSignatures ?? false,
-            usage: arg.usageMeter
-        })
-
-        f.body.pipeTo(transtream.writable).catch(() => {})
-
-        return {
-            type: 'streaming',
-            result: wrapToolStream(transtream.readable, body, headers, url, arg)
+        } catch (error) {
+            if(owned){
+                endOwnedRead(owned.owner.key)
+            }
+            throw error
         }
     }
 
@@ -1058,14 +1083,15 @@ function wrapToolStream(
     body:any,
     headers:Record<string,string>,
     url:string,
-    arg:RequestDataArgumentExtended
+    arg:RequestDataArgumentExtended,
+    // The rule the stream was bound and read with: extraction and thoughts follow it, as a recovered record does.
+    rule:GeminiReadRule,
+    ownedKey?:string
 ):ReadableStream<StreamResponseChunk> {
     return new ReadableStream<StreamResponseChunk>({
         async start(controller) {
 
             const db = getDatabase()
-            // Read once per request, as a recovered record reads it.
-            const rule = geminiReadRuleOf(arg, db)
             let reader = stream.getReader()
             let prefix = ''
             let lastValue = initGeminiStreamState()
@@ -1096,6 +1122,10 @@ function wrapToolStream(
 
                     const calls = JSON.parse(value["__tool_calls"]) as GeminiFunctionCall[]
                     if(calls && calls.length > 0){
+                        if(ownedKey !== undefined){
+                            // Round 1's request has ended and its record is not the reply: it is removed before the follow-up.
+                            await retireOwnedStream(ownedKey)
+                        }
                         const round = beginToolRound(arg)
                         if(round !== 'go'){
                             return endStreamForGate(controller, round)
