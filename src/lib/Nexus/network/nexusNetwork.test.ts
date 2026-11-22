@@ -234,6 +234,71 @@ describe('listeners and loops', () => {
     })
 })
 
+describe('no frame loop while the canvas has no area', () => {
+    function setSize(canvas: HTMLCanvasElement, width: number, height: number): void {
+        Object.defineProperty(canvas, 'clientWidth', { configurable: true, value: width })
+        Object.defineProperty(canvas, 'clientHeight', { configurable: true, value: height })
+    }
+
+    test('N9a: an animated field created at 0x0 queues no frame; a delivery with a size starts exactly one loop', () => {
+        const fixture = makeCanvas()
+        setSize(fixture.canvas, 0, 0)
+        create({ still: false }, fixture)
+        expect(requestSpy).not.toHaveBeenCalled()
+        expect(frames.size).toBe(0)
+
+        setSize(fixture.canvas, 800, 600)
+        for (const callback of roCallbacks) callback()
+        expect(frames.size).toBe(1)
+        for (const callback of roCallbacks) callback()
+        expect(frames.size).toBe(1)
+        expect(requestSpy).toHaveBeenCalledTimes(1)
+    })
+
+    test('N9b: a delivery back to 0x0 stops the loop and a later size resumes it', () => {
+        const fixture = makeCanvas()
+        create({ still: false }, fixture)
+        expect(frames.size).toBe(1)
+        setSize(fixture.canvas, 0, 0)
+        for (const callback of roCallbacks) callback()
+        expect(frames.size).toBe(0)
+        expect(cancelSpy).toHaveBeenCalled()
+        setSize(fixture.canvas, 800, 600)
+        for (const callback of roCallbacks) callback()
+        expect(frames.size).toBe(1)
+    })
+
+    test('N9c: a hidden document stays stopped through a sized delivery and a visibility event, and destroy ends it', () => {
+        const fixture = makeCanvas()
+        const { field } = create({ still: false }, fixture)
+        const hidden = vi.spyOn(document, 'hidden', 'get')
+        hidden.mockReturnValue(true)
+        document.dispatchEvent(new Event('visibilitychange'))
+        expect(frames.size).toBe(0)
+        for (const callback of roCallbacks) callback()
+        expect(frames.size).toBe(0)
+        hidden.mockReturnValue(false)
+        setSize(fixture.canvas, 0, 0)
+        document.dispatchEvent(new Event('visibilitychange'))
+        expect(frames.size).toBe(0)
+        setSize(fixture.canvas, 800, 600)
+        for (const callback of roCallbacks) callback()
+        expect(frames.size).toBe(1)
+        field.destroy()
+        expect(frames.size).toBe(0)
+    })
+
+    test('N9d: a still field at 0x0 still redraws after a delivery and never queues a frame', () => {
+        const fixture = makeCanvas()
+        setSize(fixture.canvas, 0, 0)
+        create({ still: true }, fixture)
+        setSize(fixture.canvas, 800, 600)
+        for (const callback of roCallbacks) callback()
+        expect(fixture.counts.fillsSinceClear).toBeGreaterThan(0)
+        expect(requestSpy).not.toHaveBeenCalled()
+    })
+})
+
 describe('wave phase', () => {
     test('N5: time() is the start phase plus the elapsed frame time, capped per frame', () => {
         const { field } = create({ still: false, startTime: 7 })

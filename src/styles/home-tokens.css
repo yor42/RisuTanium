@@ -76,6 +76,7 @@
 
   /* decoration */
   --home-network-alpha: 0.35;
+  --home-network-alpha-soft: 0.15;
 }
 
 :root:lang(ko) {

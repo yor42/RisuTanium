@@ -404,6 +404,13 @@ export function createNetworkField(canvas: HTMLCanvasElement, options: NetworkFi
         frameId = 0
     }
 
+    // The loop runs only while the page is visible and the canvas has an area: a display:none canvas is 0x0 and
+    // would otherwise spend a frame per tick drawing nothing. Idempotent, so it never leaves two loops.
+    function syncLoop() {
+        if (document.hidden || canvas.clientWidth === 0 || canvas.clientHeight === 0) stop()
+        else start()
+    }
+
     function raiseWave(clientX: number, clientY: number) {
         const rect = canvas.getBoundingClientRect()
         const x = clientX - rect.left
@@ -465,14 +472,14 @@ export function createNetworkField(canvas: HTMLCanvasElement, options: NetworkFi
     }
 
     function onVisibility() {
-        if (document.hidden) stop()
-        else start()
+        syncLoop()
     }
 
     const resizeObserver = new ResizeObserver(() => {
         // Assigning the canvas size clears the bitmap, so every rebuild is followed by a redraw in every mode.
         rebuild()
         draw(now())
+        syncLoop()
     })
     resizeObserver.observe(canvas)
     rebuild()
@@ -500,7 +507,7 @@ export function createNetworkField(canvas: HTMLCanvasElement, options: NetworkFi
         document.addEventListener('pointerout', onPointerOut, { passive: true })
         window.addEventListener('blur', onBlur)
         document.addEventListener('visibilitychange', onVisibility)
-        if (!document.hidden) start()
+        syncLoop()
     }
 
     return {

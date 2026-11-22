@@ -22,6 +22,7 @@
     import { jumpToSection, revealInScrollContainer, scrollContainerOf } from './homeJump'
     import { engageHomeLibrary, homeView, openHomeLibrary, startHomeView, takeHomeReturnFocus } from './homeView.svelte'
     import { reducedMotionActive } from 'src/ts/chatShell/motionPrefs.svelte'
+    import { ColorSchemeTypeStore } from 'src/ts/gui/surfaceTone'
 
     // Every creation starts at the top of the landing: a selection change, the language remount and a return
     // to Home all create a fresh shell. Covers (Settings, Studio) keep it mounted. The one exception is the
@@ -144,6 +145,9 @@
     const latticeStill = $derived(band !== 'wide')
     const latticePaused = $derived(chatSurface.hidden || coversPage($alertStore.type))
     const latticeShown = $derived(latticeArmed && !DBState.db.customBackground)
+    // A light scheme and the Lite preset draw the lattice fainter: a light page has less headroom before the
+    // links compete with text.
+    const latticeSoft = $derived($ColorSchemeTypeStore === 'light' || DBState.db.colorSchemeName === 'lite')
 
     // A background press may raise a wave; presses on interactive elements and on every named block do not.
     const WAVE_BLOCKERS = 'button, a, input, select, textarea, label, summary, details, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [contenteditable], [data-part]:not([data-part="home-landing"]):not([data-part="home-body"])'
@@ -295,7 +299,7 @@
     <!-- A previous sibling of the landing in a positioned parent: it paints first and all Home content paints over
          it with no z-index. The part's opacity cannot exceed the inner alpha. -->
     <div data-part="home-network" aria-hidden="true" class="pointer-events-none absolute inset-0 overflow-hidden text-[color:var(--nexus-edge-strong)] forced-colors:hidden">
-        <div class="absolute inset-0 opacity-[var(--home-network-alpha)]">
+        <div class="absolute inset-0 {latticeSoft ? 'opacity-[var(--home-network-alpha-soft)]' : 'opacity-[var(--home-network-alpha)]'}">
             <NexusNetworkBackground still={latticeStill} lowPower={latticeStill} paused={latticePaused} tint="inherit" {canWave} />
         </div>
     </div>

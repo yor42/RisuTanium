@@ -94,6 +94,7 @@ import HomeShellKeyHarness from './HomeShellKeyHarness.svelte'
 import { startHomeView } from './homeView.svelte'
 import { chatSurface } from '../../ChatScreens/chatSurface.svelte'
 import { DBState, OpenRealmStore, alertStore } from 'src/ts/stores.svelte'
+import { ColorSchemeTypeStore } from 'src/ts/gui/surfaceTone'
 
 type Slot = Record<string, unknown>
 
@@ -196,6 +197,7 @@ afterEach(async () => {
     OpenRealmStore.set(false)
     alertStore.set({ type: 'none', msg: '' })
     chatSurface.hidden = false
+    ColorSchemeTypeStore.set('dark')
     for (const instance of instances.splice(0)) {
         await unmount(instance as never).catch(() => {})
     }
@@ -334,6 +336,47 @@ describe('markup and wiring', () => {
         expect(part.children).toHaveLength(1)
         expect(part.children[0].classList.contains('opacity-[var(--home-network-alpha)]')).toBe(true)
         expect(landingOf(root)!.querySelector('canvas')).toBeNull()
+    })
+
+    test('L8b: the lattice alpha is the soft one for a light scheme and for the Lite preset, and the normal one otherwise', () => {
+        const NORMAL = 'opacity-[var(--home-network-alpha)]'
+        const SOFT = 'opacity-[var(--home-network-alpha-soft)]'
+        const inner = (root: ParentNode) => partOf(root)!.children[0].classList
+
+        const dark = armedShellAt(1400)
+        expect(inner(dark).contains(NORMAL)).toBe(true)
+        expect(inner(dark).contains(SOFT)).toBe(false)
+
+        ColorSchemeTypeStore.set('light')
+        const light = armedShellAt(1400)
+        expect(inner(light).contains(SOFT)).toBe(true)
+        expect(inner(light).contains(NORMAL)).toBe(false)
+
+        ColorSchemeTypeStore.set('dark')
+        DBState.db.colorSchemeName = 'lite'
+        const lite = armedShellAt(1400)
+        expect(inner(lite).contains(SOFT)).toBe(true)
+        expect(inner(lite).contains(NORMAL)).toBe(false)
+        expect(partOf(lite)!.getAttribute('data-part')).toBe('home-network')
+    })
+
+    test('L8c: switching the scheme type or the preset while mounted updates the alpha', () => {
+        const root = armedShellAt(1400)
+        const classes = () => Array.from(partOf(root)!.children[0].classList)
+        expect(classes()).toContain('opacity-[var(--home-network-alpha)]')
+        ColorSchemeTypeStore.set('light')
+        flushSync()
+        expect(classes()).toContain('opacity-[var(--home-network-alpha-soft)]')
+        expect(classes()).not.toContain('opacity-[var(--home-network-alpha)]')
+        ColorSchemeTypeStore.set('dark')
+        flushSync()
+        expect(classes()).toContain('opacity-[var(--home-network-alpha)]')
+        DBState.db.colorSchemeName = 'lite'
+        flushSync()
+        expect(classes()).toContain('opacity-[var(--home-network-alpha-soft)]')
+        DBState.db.colorSchemeName = 'default'
+        flushSync()
+        expect(classes()).toContain('opacity-[var(--home-network-alpha)]')
     })
 
     test('L9: the field draws in the canvas computed colour', () => {
