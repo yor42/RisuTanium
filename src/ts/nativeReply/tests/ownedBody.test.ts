@@ -3,7 +3,7 @@ import { createPumpProbe, parseReplyStamp, resolveOwnedFetch, type OwnedFetchRes
 import {
     configurePageState, heldReply, holdInflight, noteBound, noteInvoked, resetPageStateForTests, settleNativeReplyInflight, takeAnnounced,
 } from '../pageState'
-import { readReplyBody, type ReplyListing } from '../store'
+import { createReplyStore, readReplyBody, readReplyBytes, type ReplyInvoke, type ReplyListing } from '../store'
 import { RANGE_TRAILER_BYTES, TEXT_RANGE_MAX_BYTES, bytesToBase64 } from '../../storage/tauriByteTransport'
 
 /**
@@ -392,5 +392,50 @@ describe('readReplyBody', () => {
             call += 1
             return pieceReply(new Uint8Array(4), call === 1 ? 8 : 9)
         }, KEY)).rejects.toThrow(/changed/)
+    })
+})
+
+describe('store byte reads', () => {
+    function pieceReply(bytes: Uint8Array, total: number): string {
+        const out = new Uint8Array(bytes.length + RANGE_TRAILER_BYTES)
+        out.set(bytes, 0)
+        new DataView(out.buffer, bytes.length, RANGE_TRAILER_BYTES).setBigUint64(0, BigInt(total), true)
+        return bytesToBase64(out)
+    }
+
+    // A body whose first piece ends inside a three-byte character, so the pieces must be joined as bytes.
+    const text = 'a'.repeat(TEXT_RANGE_MAX_BYTES - 1) + '€' + 'tail'
+    const bytes = new TextEncoder().encode(text)
+
+    function fakeInvoke(calls: Array<{ command: string, args?: Record<string, unknown> }>): ReplyInvoke {
+        return (async (command: string, args?: Record<string, unknown>) => {
+            calls.push({ command, args })
+            const offset = args?.offset as number
+            const len = args?.len as number
+            return pieceReply(bytes.subarray(offset, offset + len), bytes.length)
+        }) as ReplyInvoke
+    }
+
+    test('readReplyBytes returns the exact joined bytes across a split character', async () => {
+        const joined = await readReplyBytes(async (offset, len) => pieceReply(bytes.subarray(offset, offset + len), bytes.length), KEY)
+        expect(joined).toEqual(bytes)
+    })
+
+    test('readBodyBytes and readPartialBytes call their own command and return the exact bytes; readBody still decodes', async () => {
+        const calls: Array<{ command: string, args?: Record<string, unknown> }> = []
+        const store = createReplyStore(fakeInvoke(calls))
+
+        expect(await store.readBodyBytes(KEY)).toEqual(bytes)
+        expect(new Set(calls.map((call) => call.command))).toEqual(new Set(['native_reply_read_body']))
+        expect(calls.map((call) => call.args?.key)).toEqual([KEY, KEY])
+
+        calls.length = 0
+        expect(await store.readPartialBytes(KEY)).toEqual(bytes)
+        expect(new Set(calls.map((call) => call.command))).toEqual(new Set(['native_reply_read_partial']))
+        expect(calls.map((call) => call.args?.offset)).toEqual([0, TEXT_RANGE_MAX_BYTES])
+
+        calls.length = 0
+        expect(await store.readBody(KEY)).toBe(text)
+        expect(new Set(calls.map((call) => call.command))).toEqual(new Set(['native_reply_read_body']))
     })
 })

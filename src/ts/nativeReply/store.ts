@@ -27,6 +27,8 @@ export interface ReplyListing {
     problem?: string
     /** Additive field of a later stage: the native side told the person already. Absent means the turn may be retried. */
     announced?: boolean
+    /** The length of the raw partial body kept beside a record that did not finish; absent where there is none to read. */
+    partialBytes?: number
 }
 
 export interface RemoveOutcome {
@@ -41,6 +43,10 @@ export interface NativeReplyStore {
     list(): Promise<ReplyListing[]>
     /** The whole body of a finished reply as text, read in pieces and decoded once. */
     readBody(key: string): Promise<string>
+    /** The whole body of a finished reply as the exact bytes, read in pieces. */
+    readBodyBytes(key: string): Promise<Uint8Array>
+    /** The raw partial body of a record that did not finish (`partialBytes` in its listing), as the exact bytes. */
+    readPartialBytes(key: string): Promise<Uint8Array>
     consume(key: string): Promise<RemoveOutcome>
     discard(key: string): Promise<RemoveOutcome>
     park(key: string): Promise<void>
@@ -48,13 +54,12 @@ export interface NativeReplyStore {
 
 /**
  * Reads a body through `readPiece`, which answers one base64 reply (a piece of at most `TEXT_RANGE_MAX_BYTES` and the
- * range trailer) for an offset. The pieces are joined as bytes and decoded once, so a character cut by a piece
- * boundary is whole.
+ * range trailer) for an offset. The pieces are joined as bytes, so a character cut by a piece boundary stays whole.
  */
-export async function readReplyBody(
+export async function readReplyBytes(
     readPiece: (offset: number, len: number) => Promise<string>,
     key: string,
-): Promise<string> {
+): Promise<Uint8Array> {
     const pieces: Uint8Array[] = []
     let offset = 0
     let total = -1
@@ -86,13 +91,23 @@ export async function readReplyBody(
         joined.set(piece, at)
         at += piece.length
     }
-    return new TextDecoder().decode(joined)
+    return joined
+}
+
+/** The same read as readReplyBytes, decoded once as text. */
+export async function readReplyBody(
+    readPiece: (offset: number, len: number) => Promise<string>,
+    key: string,
+): Promise<string> {
+    return new TextDecoder().decode(await readReplyBytes(readPiece, key))
 }
 
 export function createReplyStore(invoke: ReplyInvoke = tauriInvoke as ReplyInvoke): NativeReplyStore {
     return {
         list: () => invoke<ReplyListing[]>('native_reply_list'),
         readBody: (key) => readReplyBody((offset, len) => invoke<string>('native_reply_read_body', { key, offset, len }), key),
+        readBodyBytes: (key) => readReplyBytes((offset, len) => invoke<string>('native_reply_read_body', { key, offset, len }), key),
+        readPartialBytes: (key) => readReplyBytes((offset, len) => invoke<string>('native_reply_read_partial', { key, offset, len }), key),
         consume: (key) => invoke<RemoveOutcome>('native_reply_consume', { key }),
         discard: (key) => invoke<RemoveOutcome>('native_reply_discard', { key }),
         park: (key) => invoke<void>('native_reply_park', { key }),
