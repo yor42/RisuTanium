@@ -251,6 +251,7 @@ describe('U1: the shared call-site helpers of an owned stream request', () => {
         configurePageState({
             store: {
                 consume: vi.fn(async () => {
+                    await Promise.resolve()
                     holder.probe!.stamp = failedStamp(K1, { announced: true, status: 429 })
                     return { result: 'removed' as const, flushed: true }
                 }),

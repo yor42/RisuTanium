@@ -1,14 +1,14 @@
 /**
- * Request-level rows of the S4a native-reply writer: a streaming Responses API request of a single character binds the
- * reply grant with its own stream blob, reads the stream with the rule the blob stores, retires a failed head and a tool
- * round before any later request of the send (every later request is unowned), and tells the page when it stops reading.
- * `formatOwnsReply` decides which formats keep the grant.
+ * Request-level rows of the native-reply writer for streaming Responses API, Anthropic, GoogleCloud and Vertex requests of
+ * a single character: each binds the reply grant with its own stream blob, reads the stream with the rule the blob stores,
+ * retires a failed head, the overloaded Anthropic attempt before its refetch and a tool round before any later request of
+ * the send (every later request is unowned), and tells the page when it stops reading. `formatOwnsReply` decides which formats keep the grant.
  *
  * Drives the real `requestChatData` and the real request paths over the module mocks of `nativeReplyStreamGrant.test.ts`
  * (copied: each suite mocks its own graph). `fetchNative` is a mock that takes the owner the way the real one does, so
  * nothing here says anything about native behaviour.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import '../../polyfill'
@@ -60,7 +60,7 @@ vi.mock('../../alert', () => ({
 vi.mock('../../globalApi.svelte', () => ({
     fetchNative: vi.fn(),
     globalFetch: vi.fn(),
-    addFetchLog: vi.fn(), textifyReadableStream: vi.fn(async () => ''),
+    addFetchLog: vi.fn(), textifyReadableStream: vi.fn(async (body: ReadableStream<Uint8Array>) => new Response(body).text()),
     readImage: vi.fn(), aiWatermarkingLawApplies: vi.fn(() => false), getFileSrc: vi.fn(async () => ''),
     forageStorage: { keys: vi.fn(async () => []), getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}) },
     AppendableBuffer: class {}, LocalWriter: class {}, VirtualWriter: class {}, downloadFile: vi.fn(), saveAsset: vi.fn(async () => ''),
@@ -181,9 +181,46 @@ function script(answer: (call: FetchCall, n: number) => Promise<Response> | Resp
                 call.probe.abandon = call.abandon as unknown as () => void
             }
         }
-        return answer(call, calls.length)
+        const response = await answer(call, calls.length)
+        if (call.probe) {
+            call.probe.head = { status: response.status, headers: Object.fromEntries(response.headers.entries()) }
+        }
+        return response
     })
 }
+
+/**
+ * A failed head whose body delivers the stamp as it closes, and not before it is read: the latest the pump can learn the
+ * end event's stamp, since that event also closes the body. A caller that retires before it reads the body can miss it.
+ */
+function failedHead(call: FetchCall, status: number, text: string, value?: ReplyStamp): Response {
+    let sent = false
+    const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+            if (!sent) {
+                sent = true
+                controller.enqueue(encoder.encode(text))
+                return
+            }
+            if (value) {
+                stamp(call, value)
+            }
+            controller.close()
+        },
+    }, { highWaterMark: 0 })
+    return new Response(body, { status })
+}
+
+/** A non-200 head whose body errors when read, as the pump errors the body when the transport fails after the head. */
+function erroredHead(status: number): Response {
+    const body = new ReadableStream<Uint8Array>({
+        pull(controller) { controller.error(new Error('transport lost')) },
+    }, { highWaterMark: 0 })
+    return new Response(body, { status })
+}
+
+/** The pause of a consume double before it completes and logs: it stands in for the store's IPC round trip. */
+const suspend = () => new Promise<void>((resolve) => { setTimeout(resolve, 5) })
 
 /** What the pump does on an end event: the probe learns the stamp, and the stream's own hook is told. */
 function stamp(call: FetchCall, value: ReplyStamp): void {
@@ -209,7 +246,7 @@ beforeEach(() => {
     h.beforeRequest.clear()
     h.sleepGate = undefined
     consume.mockReset()
-    consume.mockImplementation(async (_key: string) => { h.log.push('consume'); return { result: 'removed' as const, flushed: true } })
+    consume.mockImplementation(async (_key: string) => { await suspend(); h.log.push('consume'); return { result: 'removed' as const, flushed: true } })
     trigger.mockReset()
     resetKeyRings()
     resetPageStateForTests()
@@ -223,6 +260,9 @@ beforeEach(() => {
     script(() => sse())
 })
 
+
+/** A provider connection holding two key lines: the slot of the provider then leases a line, so a 429 head rotates. */
+const twoKeyConnection = (provider: 'openai' | 'anthropic' | 'google') => ({ id: 'conn-1', name: provider, provider, key: 'k1\nk2' })
 
 const RESPONSES_MODEL = 'gpt4o-response-api'
 const respEvent = (name: string, data: Record<string, unknown>) => `event: ${name}\ndata: ${JSON.stringify({ type: name, ...data })}\n\n`
@@ -271,20 +311,14 @@ describe('B1: a streaming Responses request binds a stream blob of its own kind'
 })
 
 describe('N1: formatOwnsReply', () => {
-    test('OpenAI-compatible owns streamed or not; Responses and Anthropic own only streamed; every other format is refused', () => {
-        expect(formatOwnsReply(LLMFormat.OpenAICompatible, true)).toBe(true)
-        expect(formatOwnsReply(LLMFormat.OpenAICompatible, false)).toBe(true)
-        expect(formatOwnsReply(LLMFormat.OpenAIResponseAPI, true)).toBe(true)
-        expect(formatOwnsReply(LLMFormat.OpenAIResponseAPI, false)).toBe(false)
-        expect(formatOwnsReply(LLMFormat.Anthropic, true)).toBe(true)
-        expect(formatOwnsReply(LLMFormat.Anthropic, false)).toBe(false)
-        expect(formatOwnsReply(LLMFormat.GoogleCloud, true)).toBe(true)
-        expect(formatOwnsReply(LLMFormat.GoogleCloud, false)).toBe(false)
-        expect(formatOwnsReply(LLMFormat.VertexAIGemini, true)).toBe(true)
-        expect(formatOwnsReply(LLMFormat.VertexAIGemini, false)).toBe(false)
-        for (const format of [LLMFormat.AnthropicLegacy, LLMFormat.AWSBedrockClaude, LLMFormat.NanoGPTMessages, LLMFormat.NanoGPTResponses, LLMFormat.Mistral, LLMFormat.NanoGPT, LLMFormat.Ollama]) {
-            expect(formatOwnsReply(format, true), String(format)).toBe(false)
-            expect(formatOwnsReply(format, false), String(format)).toBe(false)
+    test('OpenAI-compatible owns streamed or not; Responses, Anthropic, GoogleCloud and Vertex own only streamed; every other LLMFormat is refused', () => {
+        const ownsAlways = new Set<number>([LLMFormat.OpenAICompatible])
+        const ownsStreamed = new Set<number>([LLMFormat.OpenAIResponseAPI, LLMFormat.Anthropic, LLMFormat.GoogleCloud, LLMFormat.VertexAIGemini])
+        const formats: number[] = Object.values(LLMFormat)
+        expect(formats.length).toBeGreaterThan(ownsAlways.size + ownsStreamed.size)
+        for (const format of formats) {
+            expect(formatOwnsReply(format, true), `${format} streamed`).toBe(ownsAlways.has(format) || ownsStreamed.has(format))
+            expect(formatOwnsReply(format, false), `${format} not streamed`).toBe(ownsAlways.has(format))
         }
     })
 })
@@ -324,13 +358,7 @@ describe('C1: the live Responses read uses the rule of the blob', () => {
 describe('F: a failed head is retired before any retry, and an announced one ends the turn', () => {
     test('F1: 429 unannounced, then 200: consume is logged between the fetches and the retry is unowned', async () => {
         installDb({ aiModel: RESPONSES_MODEL, subModel: RESPONSES_MODEL, requestRetrys: 1 })
-        script((call, n) => {
-            if (n === 1) {
-                stamp(call, { key: KEY, outcome: 'done', stored: true, status: 429 })
-                return new Response('slow down', { status: 429 })
-            }
-            return respSse()
-        })
+        script((call, n) => (n === 1 ? failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, status: 429 }) : respSse()))
 
         const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
 
@@ -344,16 +372,39 @@ describe('F: a failed head is retired before any retry, and an announced one end
 
     test('F2: an announced 429 gives one request and ends the turn', async () => {
         installDb({ aiModel: RESPONSES_MODEL, subModel: RESPONSES_MODEL, requestRetrys: 2 })
-        script((call) => {
-            stamp(call, { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 })
-            return new Response('slow down', { status: 429 })
-        })
+        script((call) => failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 }))
 
         const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
 
         expect(out).toMatchObject({ type: 'fail', endsTurn: true })
         expect(calls).toHaveLength(1)
         expect(consume).toHaveBeenCalledTimes(1)
+    })
+
+    test('a key-limited 429 head with an unannounced stamp is retired before the rotation, whose request is unowned', async () => {
+        installDb({ aiModel: RESPONSES_MODEL, subModel: RESPONSES_MODEL, requestRetrys: 0, connections: [twoKeyConnection('openai')] })
+        script((call, n) => (n === 1 ? failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, status: 429 }) : respSse()))
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+        expect(out.type).toBe('streaming')
+        expect(calls).toHaveLength(2)
+        expect(calls[0].taken).not.toBeNull()
+        expect(calls[1].taken).toBeNull()
+        expect(h.log).toEqual(['fetch', 'consume', 'fetch'])
+        expect(heldReply(KEY)).toBeUndefined()
+    })
+
+    test('an announced key-limited 429 head ends the turn instead of rotating', async () => {
+        installDb({ aiModel: RESPONSES_MODEL, subModel: RESPONSES_MODEL, requestRetrys: 0, connections: [twoKeyConnection('openai')] })
+        script((call, n) => (n === 1 ? failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 }) : respSse()))
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+        expect(out).toMatchObject({ type: 'fail', endsTurn: true })
+        expect(calls).toHaveLength(1)
+        expect(h.log).toEqual(['fetch', 'consume'])
+        expect(heldReply(KEY)).toBeUndefined()
     })
 
     test('F3: a 200 that is not an event stream is retired and retried', async () => {
@@ -479,10 +530,7 @@ describe('K1: two owned requests of different formats never retire each other', 
         expect(before?.bound).toBe(true)
 
         installDb({ aiModel: RESPONSES_MODEL, subModel: RESPONSES_MODEL })
-        script((call) => {
-            stamp(call, { key: KEY, outcome: 'done', stored: true, status: 500 })
-            return new Response('x', { status: 500 })
-        })
+        script((call) => failedHead(call, 500, 'x', { key: KEY, outcome: 'done', stored: true, status: 500 }))
         await ask({ nativeReplyGrant: grantA, chatId: KEY })
 
         expect(consume).toHaveBeenCalledTimes(1)
@@ -553,13 +601,7 @@ describe('N2/N3 (Anthropic): requests that never own leave the grant unbound', (
 describe('F (Anthropic): a failed head is retired before any retry, and an announced one ends the turn', () => {
     test('F1: 429 unannounced, then 200: consume is logged between the fetches and the retry is unowned', async () => {
         installClaude({ requestRetrys: 1 })
-        script((call, n) => {
-            if (n === 1) {
-                stamp(call, { key: KEY, outcome: 'done', stored: true, status: 429 })
-                return new Response('slow down', { status: 429 })
-            }
-            return claudeSse()
-        })
+        script((call, n) => (n === 1 ? failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, status: 429 }) : claudeSse()))
 
         const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
 
@@ -573,16 +615,41 @@ describe('F (Anthropic): a failed head is retired before any retry, and an annou
 
     test('F2: an announced 429 gives one request and ends the turn', async () => {
         installClaude({ requestRetrys: 2 })
-        script((call) => {
-            stamp(call, { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 })
-            return new Response('slow down', { status: 429 })
-        })
+        script((call) => failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 }))
 
         const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
 
         expect(out).toMatchObject({ type: 'fail', endsTurn: true })
         expect(calls).toHaveLength(1)
         expect(consume).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('F (Anthropic): a key-limited failed head', () => {
+    test('a 429 head with an unannounced stamp is retired before the rotation, whose request is unowned', async () => {
+        installClaude({ requestRetrys: 0, connections: [twoKeyConnection('anthropic')] })
+        script((call, n) => (n === 1 ? failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, status: 429 }) : claudeSse()))
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+        expect(out.type).toBe('streaming')
+        expect(calls).toHaveLength(2)
+        expect(calls[0].taken).not.toBeNull()
+        expect(calls[1].taken).toBeNull()
+        expect(h.log).toEqual(['fetch', 'consume', 'fetch'])
+        expect(heldReply(KEY)).toBeUndefined()
+    })
+
+    test('an announced key-limited 429 head ends the turn instead of rotating', async () => {
+        installClaude({ requestRetrys: 0, connections: [twoKeyConnection('anthropic')] })
+        script((call, n) => (n === 1 ? failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 }) : claudeSse()))
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+        expect(out).toMatchObject({ type: 'fail', endsTurn: true })
+        expect(calls).toHaveLength(1)
+        expect(h.log).toEqual(['fetch', 'consume'])
+        expect(heldReply(KEY)).toBeUndefined()
     })
 })
 
@@ -640,7 +707,8 @@ describe('O: an overload refetch retires the first record before the unowned ret
 
     test('O2: a live: answer leaves the entry release, the retry still runs, and nothing waits for its push', async () => {
         overloadSetup()
-        consume.mockImplementation(async (_key: string) => { h.log.push('consume'); return { result: 'live: running' as never, flushed: true } })
+        // The store rejects with a plain string, as the native command's error text reaches the page.
+        consume.mockImplementation(async (_key: string) => { await suspend(); h.log.push('consume'); throw 'live: reply 0b9c1a7e-0000-4000-8000-000000000001 is still being received' })
         script((call, n) => (n === 1 ? claudeOverloadBody(call) : claudeSse('retried')))
 
         const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
@@ -649,6 +717,7 @@ describe('O: an overload refetch retires the first record before the unowned ret
         expect(h.log).toEqual(['fetch', 'abandon', 'consume', 'fetch'])
         expect(text).toBe('retried')
         expect(ownsPushedReply(KEY)).toBe(false)
+        expect(heldReply(KEY)?.state).toBe('release')
     })
 
     test('O3: a Stop during the sleep retires nothing and does not refetch; the listener noted pageEnded', async () => {
@@ -675,12 +744,12 @@ describe('O: an overload refetch retires the first record before the unowned ret
     test('O3b: a Stop landing during the retire skips the refetch', async () => {
         overloadSetup()
         const controller = new AbortController()
-        consume.mockImplementation(async (_key: string) => { h.log.push('consume'); controller.abort(); return { result: 'removed' as const, flushed: true } })
+        consume.mockImplementation(async (_key: string) => { await suspend(); h.log.push('consume'); controller.abort(); return { result: 'removed' as const, flushed: true } })
         script((call) => claudeOverloadBody(call))
 
-        // The stream's start runs at construction, so the Stop lands inside the request; the request layer then reports the abort.
+        // The Stop lands while the retire is suspended; the refetch must not follow once the retire completes.
         await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) }, 'model', controller.signal)
-        await new Promise((resolve) => setTimeout(resolve, 0))
+        await new Promise((resolve) => setTimeout(resolve, 50))
 
         expect(consume).toHaveBeenCalledTimes(1)
         expect(calls).toHaveLength(1)
@@ -753,18 +822,6 @@ function installGemini(extra: Record<string, unknown> = {}, model = GEMINI_MODEL
 }
 
 describe('Gemini (S4c)', () => {
-    let textify: ReturnType<typeof vi.mocked<typeof import('../../globalApi.svelte').textifyReadableStream>>
-    beforeAll(async () => {
-        textify = vi.mocked((await import('../../globalApi.svelte')).textifyReadableStream)
-    })
-    // The failed-head rows read the real body, as the transport's textify does.
-    beforeEach(() => {
-        textify.mockImplementation(async (body) => new Response(body).text())
-    })
-    afterEach(() => {
-        textify.mockImplementation(async () => '')
-    })
-
     describe('B3/B4: a streaming Gemini request binds a stream blob of its own kind', () => {
         test('B3: GoogleCloud binds gemini-stream with the rule of the request and the usage context', async () => {
             installGemini()
@@ -855,13 +912,7 @@ describe('Gemini (S4c)', () => {
     describe('F (Gemini): a failed head is retired before any retry, and an announced one ends the turn', () => {
         test('F1: 429 unannounced, then 200: consume is logged between the fetches and the retry is unowned', async () => {
             installGemini({ requestRetrys: 1 })
-            script((call, n) => {
-                if (n === 1) {
-                    stamp(call, { key: KEY, outcome: 'done', stored: true, status: 429 })
-                    return new Response('slow down', { status: 429 })
-                }
-                return geminiSse()
-            })
+            script((call, n) => (n === 1 ? failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, status: 429 }) : geminiSse()))
 
             const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
 
@@ -875,10 +926,7 @@ describe('Gemini (S4c)', () => {
 
         test('F2: an announced 429 gives one request and ends the turn', async () => {
             installGemini({ requestRetrys: 2 })
-            script((call) => {
-                stamp(call, { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 })
-                return new Response('slow down', { status: 429 })
-            })
+            script((call) => failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 }))
 
             const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
 
@@ -889,13 +937,9 @@ describe('Gemini (S4c)', () => {
 
         test('F4: an unannounced RESOURCE_EXHAUSTED is retired before the fallback request, which is unowned', async () => {
             installGemini({ antiServerOverloads: true })
-            script((call, n) => {
-                if (n === 1) {
-                    stamp(call, { key: KEY, outcome: 'done', stored: true, status: 429 })
-                    return new Response('{"error":{"status":"RESOURCE_EXHAUSTED"}}', { status: 429 })
-                }
-                return geminiSse()
-            })
+            script((call, n) => (n === 1
+                ? failedHead(call, 429, '{"error":{"status":"RESOURCE_EXHAUSTED"}}', { key: KEY, outcome: 'done', stored: true, status: 429 })
+                : geminiSse()))
 
             const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
 
@@ -913,8 +957,7 @@ describe('Gemini (S4c)', () => {
                 if (n > 1) {
                     return geminiSse()
                 }
-                stamp(call, { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 })
-                return new Response('{"error":{"status":"RESOURCE_EXHAUSTED"}}', { status: 429 })
+                return failedHead(call, 429, '{"error":{"status":"RESOURCE_EXHAUSTED"}}', { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 })
             })
 
             const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
@@ -922,6 +965,34 @@ describe('Gemini (S4c)', () => {
             expect(out).toMatchObject({ type: 'fail', endsTurn: true })
             expect(calls).toHaveLength(1)
             expect(consume).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    describe('F (Gemini): a key-limited failed head', () => {
+        test('a 429 head with an unannounced stamp is retired before the rotation, whose request is unowned', async () => {
+            installGemini({ requestRetrys: 0, connections: [twoKeyConnection('google')] })
+            script((call, n) => (n === 1 ? failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, status: 429 }) : geminiSse()))
+
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+            expect(out.type).toBe('streaming')
+            expect(calls).toHaveLength(2)
+            expect(calls[0].taken).not.toBeNull()
+            expect(calls[1].taken).toBeNull()
+            expect(h.log).toEqual(['fetch', 'consume', 'fetch'])
+            expect(heldReply(KEY)).toBeUndefined()
+        })
+
+        test('an announced key-limited 429 head ends the turn instead of rotating', async () => {
+            installGemini({ requestRetrys: 0, connections: [twoKeyConnection('google')] })
+            script((call, n) => (n === 1 ? failedHead(call, 429, 'slow down', { key: KEY, outcome: 'done', stored: true, announced: true, status: 429 }) : geminiSse()))
+
+            const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+            expect(out).toMatchObject({ type: 'fail', endsTurn: true })
+            expect(calls).toHaveLength(1)
+            expect(h.log).toEqual(['fetch', 'consume'])
+            expect(heldReply(KEY)).toBeUndefined()
         })
     })
 
@@ -1003,15 +1074,37 @@ describe('Gemini (S4c)', () => {
             expect(before?.bound).toBe(true)
 
             installClaude()
-            script((call) => {
-                stamp(call, { key: KEY, outcome: 'done', stored: true, status: 500 })
-                return new Response('x', { status: 500 })
-            })
+            script((call) => failedHead(call, 500, 'x', { key: KEY, outcome: 'done', stored: true, status: 500 }))
             await ask({ nativeReplyGrant: grantA, chatId: KEY })
 
             expect(consume).toHaveBeenCalledTimes(1)
             expect(consume).toHaveBeenCalledWith(KEY)
             expect(heldReply(OTHER)).toEqual(before)
         })
+    })
+})
+
+describe('D: a non-200 head whose body errors is the page ending its read', () => {
+    const providers: Array<[string, () => void]> = [
+        ['Responses', () => installDb({ aiModel: RESPONSES_MODEL, subModel: RESPONSES_MODEL, requestRetrys: 2 })],
+        ['Anthropic', () => installClaude({ requestRetrys: 2 })],
+        ['Gemini', () => installGemini({ requestRetrys: 2 })],
+    ]
+
+    test.each(providers)('%s: the read ends like a throw, with no retire and no later owned request', async (_name, install) => {
+        install()
+        script(() => erroredHead(500))
+
+        const out = await ask({ nativeReplyGrant: issueNativeReplyGrant(KEY, parseBase) })
+
+        expect(out.type).toBe('threw')
+        expect(calls).toHaveLength(1)
+        expect(heldReply(KEY)?.pageEnded).toBe(true)
+        expect(calls[0].abandon).toHaveBeenCalledTimes(1)
+        expect(consume).not.toHaveBeenCalled()
+
+        await settleNativeReplyInflight(KEY)
+        expect(consume).toHaveBeenCalledWith(KEY)
+        expect(trigger).not.toHaveBeenCalled()
     })
 })
