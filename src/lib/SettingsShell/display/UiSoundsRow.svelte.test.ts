@@ -94,6 +94,20 @@ describe('UiSoundsRow', () => {
         expect(audio.started).toHaveLength(before)
     })
 
+    // Reproducer for the TalkBack note: the row says why nothing sounds while touch exploration is on, and says nothing otherwise.
+    test('shows the TalkBack note only while touch exploration is on', async () => {
+        audio = installFakeAudio()
+        window.__risuTaniumAccessibility = { touchExploration: () => true }
+        try {
+            const muted = await render()
+            expect(muted.querySelector('[data-part="ui-sounds-talkback"]')!.textContent).toBe(language.uiSoundsTalkBackMuted)
+            window.__risuTaniumAccessibility = { touchExploration: () => false }
+            expect((await render()).querySelector('[data-part="ui-sounds-talkback"]')).toBeNull()
+        } finally {
+            delete window.__risuTaniumAccessibility
+        }
+    })
+
     // Guards: offering a switch that can never sound on a page without Web Audio.
     test('renders nothing without an AudioContext', async () => {
         const root = await render()

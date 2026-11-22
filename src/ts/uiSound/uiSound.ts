@@ -17,6 +17,7 @@ import studioToggleOff from '../../etc/uisfx/studio/toggle-off.mp3'
 import studioToggleOn from '../../etc/uisfx/studio/toggle-on.mp3'
 import studioUndo from '../../etc/uisfx/studio/undo.mp3'
 import studioWarning from '../../etc/uisfx/studio/warning.mp3'
+import { hostTouchExploration } from '../android/hostBridge'
 import { studioOpen } from '../studio/studioOpen'
 import { createUiSoundPlayer, type UiSoundCue, type UiSoundPack, type UiSoundPlayer } from './uiSoundPlayer'
 import { readUiSounds, uiSoundContextCtor, uiSoundsSupported } from './uiSoundPrefs'
@@ -59,9 +60,14 @@ function soundsOn(): boolean {
     return uiSoundsSupported() && readUiSounds(true)
 }
 
-// Nothing mutes the sounds yet; the TalkBack signal arrives with the Android host bridge.
+/** Android touch exploration (TalkBack) mutes the cues; read per play, unknown (no host) never mutes. */
 function soundsMuted(): boolean {
-    return false
+    return hostTouchExploration() === true
+}
+
+/** True while TalkBack mutes the UI sounds; the settings row shows a note for it. */
+export function uiSoundsMutedByTalkBack(): boolean {
+    return soundsMuted()
 }
 
 let player: UiSoundPlayer | null = null

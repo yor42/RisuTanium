@@ -30,6 +30,11 @@
     @android.webkit.JavascriptInterface public <methods>;
 }
 
+# The page reads the touch-exploration (TalkBack) state bridge by name the same way.
+-keep class io.github.yor42.risutanium.AccessibilityBridge {
+    @android.webkit.JavascriptInterface public <methods>;
+}
+
 # The page calls the system-bar colour bridge by name the same way.
 -keep class io.github.yor42.risutanium.SystemBarsBridge {
     @android.webkit.JavascriptInterface public <methods>;

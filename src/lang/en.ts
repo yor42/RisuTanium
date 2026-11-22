@@ -119,6 +119,7 @@ export const languageEnglish = {
     chatShellPreviewLabel: 'New chat screen (preview)',
     uiSoundsLabel: 'UI sounds',
     uiSoundsDesc: 'Short sounds when you send, get a reply, hit an error, see a notice, undo, or flip a setting.',
+    uiSoundsTalkBackMuted: 'Muted while TalkBack is on',
     chatShellOnThisDevice: 'On this device',
     chatShellOnThisDeviceHelp: 'Other devices keep their own setting.',
     settingsShellPreviewLabel: 'New Settings screen (preview)',

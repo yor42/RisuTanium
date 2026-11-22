@@ -1,7 +1,7 @@
 <script lang="ts">
     import { language } from '../../../lang'
     import type { SettingContext } from '../../../ts/setting/types'
-    import { playUiSound } from '../../../ts/uiSound/uiSound'
+    import { playUiSound, uiSoundsMutedByTalkBack } from '../../../ts/uiSound/uiSound'
     import { readUiSounds, uiSoundsSupported, writeUiSounds } from '../../../ts/uiSound/uiSoundPrefs'
     import CheckInput from '../../UI/GUI/CheckInput.svelte'
 
@@ -30,5 +30,8 @@
             <span class="rounded-md border border-darkborderc px-2 text-xs text-textcolor2" data-part="device-chip">{language.chatShellOnThisDevice}</span>
         </div>
         <p class="mt-1 text-sm text-textcolor2" data-part="ui-sounds-help">{language.uiSoundsDesc}</p>
+        {#if uiSoundsMutedByTalkBack()}
+            <p class="mt-1 text-sm text-textcolor2" data-part="ui-sounds-talkback">{language.uiSoundsTalkBackMuted}</p>
+        {/if}
     </div>
 {/if}
