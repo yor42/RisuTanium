@@ -23,6 +23,7 @@ src/ts/themePack/fixtures/packs/*.risutheme binary
 # The downloadable theme packs are shipped bytes: binary files are never converted.
 theme-packs/*.risutheme binary
 src-tauri/tests/fixtures/native-reply-v1/** binary
+src-tauri/tests/fixtures/native-reply-part-v1/** binary
 # tbdriver: LF sources like the other device harnesses; the Gradle wrapper keeps its Windows script and binary jar intact.
 Agents/Tools/tbdriver/** text eol=lf
 Agents/Tools/tbdriver/android/gradlew.bat text eol=crlf
