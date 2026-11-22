@@ -23,7 +23,7 @@ import { withCopiedKept } from 'src/ts/drive/rtbRestoreCopy'
 import { leftOutLines } from 'src/ts/drive/rtbRestoreFinish'
 import type { RestoreHold } from 'src/ts/drive/rtbRestoreHold'
 import type { PickedRtb, RtbVerifyEnd, VerifiedRtb } from 'src/ts/drive/rtbRestorePlan'
-import { bootCardWiring, runRtbBootRestore, type RtbBootDeps } from 'src/ts/drive/rtbBootRestore'
+import { bootCardWiring, bootHoldOptions, runRtbBootRestore, type RtbBootDeps } from 'src/ts/drive/rtbBootRestore'
 import { rtbBootCardDef, type RestoreProgress } from 'src/ts/drive/restoreProgress'
 
 vi.mock('src/ts/stores.svelte', async () => {
@@ -84,6 +84,8 @@ interface Options {
     releaseTrueRejects?: boolean
     /** Leaves `clearAlert` to the shell's own, which reads and writes the alert store of the mocked stores module. */
     realClearAlert?: boolean
+    /** Leaves `wait` to the shell's own, which writes the alert store of the mocked stores module. */
+    realWait?: boolean
     /** The result the gate's stageKeys returns. */
     staged?: SideRestoreResult | null
 }
@@ -168,6 +170,11 @@ function rig(options: Options = {}): Rig {
     }
     if (options.realClearAlert === true) {
         delete deps.clearAlert
+    }
+    if (options.realWait === true) {
+        delete deps.wait
+        // The shell's own clear would wipe the wait text this run is asked about.
+        deps.clearAlert = () => { log.push('clear-alert') }
     }
     return {
         log, releases, errors, waits, notices, planInputs, stagedSeen,
@@ -512,6 +519,53 @@ describe('the restore card (R3, MC-3634)', () => {
         pending?.catch(() => { })
         wiring.copyDeps.bytes?.(3, 10)
         expect(seen.at(-1)).toBe('bytes:copy:3/10')
+    })
+
+    test('R3h: with a card open the boot hold reports the card\'s check step and raises no wait alert; without a card it keeps its own wait (reproducer: bootHoldOptions absent on ad483a21d, where the hold raised alertWait over the card)', () => {
+        const seen: string[] = []
+        alertStore.set({ type: 'none', msg: '' })
+        const progress = { phase: (step: string) => { seen.push(step) } } as unknown as RestoreProgress
+        const withCard = bootHoldOptions(progress)
+        expect(withCard.checking).toBeDefined()
+        withCard.checking?.()
+        expect(seen).toEqual(['check'])
+        expect(get(alertStore).type).toBe('none')
+        expect(bootHoldOptions(null).checking).toBeUndefined()
+    })
+
+    test('R3i: the stop alerts of the verification and the copy leave the card first (kills a wiring error dep that does not leave)', () => {
+        const log: string[] = []
+        const progress = { leave: () => { log.push('leave') } } as unknown as RestoreProgress
+        const unsubscribe = alertStore.subscribe((value) => { if (value.type === 'error') { log.push('alert') } })
+        try {
+            const wiring = bootCardWiring(progress)
+            wiring.verifyDeps.error?.('verify stop')
+            wiring.copyDeps.error?.('copy stop')
+        } finally {
+            unsubscribe()
+        }
+        expect(log).toEqual(['leave', 'alert', 'leave', 'alert'])
+    })
+
+    test('R3j: the real wait raises no wait alert while the card is open and shows the first-life text once the card left (kills a real wait that always alerts)', async () => {
+        alertStore.set({ type: 'none', msg: '' })
+        let r!: Rig
+        const card = cardOver(() => r)
+        const during: string[] = []
+        r = rig({
+            realWait: true,
+            deps: { openCard: card.open },
+            install: async (request) => {
+                during.push(get(alertStore).type)
+                await request.beforeFirstWrite()
+                return { entry: 'first-life', outcome: INSTALLED }
+            },
+        })
+        expect(await r.run()).toBe(PENDING)
+        expect(during).toEqual(['none'])
+        const after = get(alertStore)
+        expect(after.type).toBe('wait')
+        expect(after.msg).toBe(language.store2Boot.recoveryInstalledBody)
     })
 
     test('the boot card def has the steps check, copy, load, finish and the card is opened with no Cancel token', () => {

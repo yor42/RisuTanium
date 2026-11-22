@@ -361,6 +361,9 @@ describe('the first-life restore of a .rtb (INT1)', () => {
             ...vi.mocked(boot.alert.alertNormalWait).mock.calls.map((call) => call[0]),
         ]
         expect(shown).toContain(language.store2Boot.recoveryInstalledBody)
+        // The card shows the run: the hold's other-tabs wait and the installing text raise no alert over it.
+        expect(shown).not.toContain(language.restoreCheckingOtherTabs)
+        expect(shown).not.toContain(language.rtbRestoreInstalling)
         expect(shown).not.toContain(language.store2ImportDone)
         expect(shown).not.toContain(language.store2ImportNotFlushed)
         expect(shown.some((text) => typeof text === 'string' && text.includes('Test device'))).toBe(false)

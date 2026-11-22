@@ -15,7 +15,7 @@ import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { skippedNoticesOf } from './backuplocal'
 import { copyRtbEntries, landedFactsOf, withCopiedKept, type CopyEnd, type RtbCopyDeps } from './rtbRestoreCopy'
 import { leftOutLines, realSideDeps, restoreSides, stageConnectionKeys } from './rtbRestoreFinish'
-import { acquireRestoreHold, type HoldAcquire, type RestoreHold } from './rtbRestoreHold'
+import { acquireRestoreHold, type HoldAcquire, type HoldOptions, type RestoreHold } from './rtbRestoreHold'
 import { clearPluginGrants, rereadUnits } from './rtbRestoreInstall'
 import { realVerifyDeps, verifyAndConfirm, type PickedRtb, type RtbVerifyDeps, type RtbVerifyEnd, type VerifiedRtb } from './rtbRestorePlan'
 
@@ -46,9 +46,11 @@ import { realVerifyDeps, verifyAndConfirm, type PickedRtb, type RtbVerifyDeps, t
  *   screen's own reload. The recovery exit returns `installed` and its controller reloads.
  * - The shell never rejects.
  * - The run shows its phases on the task card with no Cancel (MC-3634). Every card call is synchronous and guarded, so a card
- *   failure never changes how the restore ends or the order of any other call. The card is gone before any error, notice
- *   or wait alert of the shell and before the first-life installed text, and `leaveCard` is called again, idempotently, by
- *   the `finally`.
+ *   failure never changes how the restore ends or the order of any other call. The card is gone before the shell's own
+ *   error and notice alerts, before the stop alerts of the verification and the copy, and before the first-life installed
+ *   text, and `leaveCard` is called again, idempotently, by the `finally`. An early refusal inside a dep (read-only page,
+ *   busy, hold refused) raises its alert with the card still open: the host yields to that alert and the `finally` leaves
+ *   right after.
  */
 
 /** The boot `.rtb` plan: what was verified and confirmed; no page target and no base. */
@@ -110,13 +112,21 @@ export function bootCardWiring(progress: RestoreProgress): { verifyDeps: Partial
     }
 }
 
+/**
+ * The hold's other-tabs wait on a non-Tauri boot: with the card open it reports the card's `check` step (the boot card has
+ * no tabs step) and raises no wait alert over it; without a card the hold keeps its own wait.
+ */
+export function bootHoldOptions(card: RestoreProgress | null): HoldOptions {
+    return card === null ? {} : { checking: () => card.phase('check', null) }
+}
+
 function realBootDeps(box: CardBox): RtbBootDeps {
     return {
         beginBusy: () => beginBusy('backupLoad'),
         settled: assetDeletionSettled,
         refuseOnReadOnlyPage,
         refuseWhileBusy: (own) => refuseBackupLoadWhileBusy(own),
-        acquireHold: (busy) => acquireRestoreHold(busy),
+        acquireHold: (busy) => acquireRestoreHold(busy, bootHoldOptions(box.card)),
         verify: (picked) => verifyAndConfirm(picked, box.card === null ? realVerifyDeps() : { ...realVerifyDeps(), ...bootCardWiring(box.card).verifyDeps }, { newerBase: null }),
         copy: (plan, hold) => copyRtbEntries(plan, hold, box.card === null ? {} : bootCardWiring(box.card).copyDeps),
         reread: (plan) => rereadUnits(plan),
