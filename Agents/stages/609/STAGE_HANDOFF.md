@@ -1,0 +1,43 @@
+# Stage handoff: #609 chatDrafts encode memo (single stage)
+
+## 1. Completed PR and commit
+- PR https://github.com/yor42/RisuTanium/pull/635 (closes the issue at merge). Branch `claude/609-drafts-memo-480186`.
+- Reviewed change: commit 643664a7c. 29032f886 merges origin/main 72a7e32a4 without touching the six changed files.
+
+## 2. Decisions
+- One memo slot per save encoder: the last framed draft list and its digest, filled while planning, because an ordinary
+  unchanged pass is neither built nor acknowledged (Gate 1 round 1 reject of plan 1).
+- Every pass still copies the whole live list; it is compared only where the previous unit has the slot's digest, and is
+  encoded otherwise. No dirty mark was narrowed. Reuse needs equal length, equal value and that equal digest.
+- A compare that throws counts as not equal and goes on to the normal encode (Gate 1 round 2 E1, orchestrator arbitration).
+- No maintainer decision was needed (grilling found no open question), so no MC entry. MC-3704..3713 are unused.
+  Context: MC-3585 (the 200 cap), MC-3615 (priority).
+
+## 3. Changed files
+- `src/ts/storage/store2/codec/split.ts`, `src/ts/storage/store2/codec/types.ts`, `src/ts/storage/store2/saveEncoder.ts`
+- `src/ts/storage/tests/store2/chatDraftsMemo.svelte.test.ts` (new), `src/ts/storage/tests/store2/chatDraftsN2.test.ts`,
+  `src/ts/storage/tests/globalApi.saveStore2.svelte.test.ts` (one test)
+
+## 4. Tests and evidence
+- Red before green: on 51dba53a3 the new tests give 14 failures, all on re-encode counts (13 in the memo file, one
+  save-loop test); green with the change.
+- Mutants: M1-M14 killed at Gate 2, and X9r, X10r, X14 by the final test lines.
+- Gate 2 differential against the base: 68,860 plans, identical.
+- Before the last test-only edit: store2 folder, save-loop host file and draft store suites, 8,926 passed.
+  After the main merge: the chatDrafts suites, workspaceMemo and the save-loop host file, 161 passed; svelte-check 0 errors.
+- N2, i9, later unchanged plans at the cap, ten runs: 7.0-10.0 ms before, 1.3-1.9 ms after, 0.8-1.7 ms without drafts.
+- Gates: Gate 1 [REJECT] then [EDITORIAL]; Gate 2 [EDITORIAL] with closure, and a second Gate 2 pass at xhigh
+  [EDITORIAL] (wording only, applied). Dispositions are in the PR body.
+- CI: all seven checks passed on db4ab19a1. Later commits change only this file, which CI skips.
+- Device: DV-609-1 PASS (Note 9, lane B, 2026-11-23). 200 ASCII drafts, 12 unchanged passes per build, none wrote;
+  median splitFinishFixedMs 25.1 ms on main 72a7e32a4, 7.7 ms on db4ab19a1. An edited draft survived a relaunch on B.
+  The no-drafts and Korean arms were not run. The PR body holds the full row.
+
+## 5. Unresolved
+- The known limitations in the PR body (accepted, no follow-up).
+- Unrelated, dropped with reason (lane A, MC-2745 item 5): `ffPresetInUse.test.ts` U0 was seen failing only under
+  synthetic CPU contention, is absent from the last 10 failed CI runs and is test-only; revisit on its first CI failure.
+  All 11 recorded failures, on main and on this change, are timeouts, none an assertion.
+
+## 6. Next stage
+- None remains. After merge: confirm the issue closed and the board card moved.

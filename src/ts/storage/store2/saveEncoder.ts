@@ -4,7 +4,7 @@ import type { CommitRequest } from './commit'
 import {
     acknowledgedBytesOf, builtCommitOf, characterContentMatches, characterMatchesAcknowledged, characterMatchesAcknowledgedPlain, CodecInputError, IDENTITY, isColdStub,
     movable, overlayLeavesEntry, overlayStub, planScopedEncode, plainObject, previousEntriesOf, previousFrom, sameJsonValue, verdictBaseOf,
-    type AcknowledgedVerdict, type EncodedTree, type OverlaidFields, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
+    type AcknowledgedVerdict, type ChatDraftsMemo, type EncodedTree, type OverlaidFields, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
     type ScopedPlan, type SkippedCharacter, type VerdictBase,
 } from './codec'
 import { ChunkMemo, WORKSPACE_MEMO_BUCKET_CAP, WORKSPACE_MEMO_TOTAL_BUDGET } from './codec/chunkMemo'
@@ -187,7 +187,7 @@ export interface SaveEncoder {
      * settings, presets, plugins, plugin storage, loadouts, statics, the character list's order and membership, and the
      * manifest) is what the acknowledged encoding holds. It runs the fixed-group comparison every marked pass makes
      * with every resident carried and no module encoded: `clean` iff that plan would write nothing and skipped no item.
-     * `unknown` while an attempt is pending, and for any fault of the read (logged). It holds and changes no encoder state.
+     * `unknown` while an attempt is pending, and for any fault of the read (logged). It changes nothing but the memos and never adopts.
      */
     frontVerdictOf(db: Database): Promise<AcknowledgedVerdict>
     /**
@@ -487,6 +487,8 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
     // The saved workspace file texts. Unlike the chunk memo it is pruned at every adoption (`adopt`): a deleted file's or
     // workspace's text must not stay pinned, and a carried or scoped-out file keeps its entry because `previous` holds it.
     const workspaceMemo = new ChunkMemo(WORKSPACE_MEMO_BUCKET_CAP, WORKSPACE_MEMO_TOTAL_BUDGET)
+    // The last draft list framed, kept for the encoder's life whether or not the plan that framed it commits.
+    const chatDraftsMemo: ChatDraftsMemo = {}
 
     /** Makes `next` the acknowledged encoding and drops the workspace memo entries it does not hold. */
     function adopt(next: PreviousEncoding): void {
@@ -547,7 +549,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             }
             const scoped = await planScopedEncode(
                 db,
-                { env, lists: options.lists, seq: 0, createdAt: now(), previous: request.rewriteAll === true ? withoutDigests(base) : base, chunkMemo, workspaceMemo },
+                { env, lists: options.lists, seq: 0, createdAt: now(), previous: request.rewriteAll === true ? withoutDigests(base) : base, chunkMemo, workspaceMemo, chatDraftsMemo },
                 MEASURE && split !== null ? { ...scope, split } : scope,
             )
             if (MEASURE) {
@@ -736,7 +738,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             try {
                 const scoped = await planScopedEncode(
                     db,
-                    { env, lists: options.lists, seq: 0, createdAt: now(), previous, chunkMemo, workspaceMemo },
+                    { env, lists: options.lists, seq: 0, createdAt: now(), previous, chunkMemo, workspaceMemo, chatDraftsMemo },
                     { modules: false, characters: new Set<string>(), skipUnsavableCharacters: true, skipUnsavableItems: true },
                 )
                 return scoped.unchanged && scoped.skipped.length === 0 && scoped.skippedItems.length === 0 ? 'clean' : 'dirty'
