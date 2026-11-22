@@ -1,11 +1,12 @@
 import { allowedDbKeys, customProviderStore, getV2PluginAPIs, handlePluginInstallViaPlugin, pluginV2, type PluginV2ProviderArgument, type PluginV2ProviderOptions, type RisuPlugin } from "../plugins.svelte";
 import { SandboxHost } from "./factory";
 import { copyCharactersWithoutAlt, markPlainResult } from "./pluginCopy.svelte";
-import { acquireModule, ModuleAmbiguousError } from "src/ts/storage/store2/moduleAcquire";
-import { isModuleStub } from "src/ts/storage/moduleStub";
-import type { RisuModule } from "src/ts/process/modules";
+import { modulesCopyAt, readStubBodies } from "./moduleStubCopy.svelte";
+import { ensureCurrentModules } from "src/ts/process/moduleEnsure";
+import { hasModuleStubs, unloadedModulesOf } from "src/ts/process/moduleRefList";
+import { originOf, resolveOriginWithHint, type Origin, type OriginHint } from "src/ts/process/chatOrigin";
 import { createPluginScriptHashGetter, getPluginPermissionKey, PluginPermissionSessionCache, runWithPluginPermission, type PluginPermission } from "./pluginPermissionCache";
-import { getDatabase, type Chat } from "src/ts/storage/database.svelte";
+import { getCurrentCharacter, getCurrentChat, getDatabase, type Chat } from "src/ts/storage/database.svelte";
 import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
 import {
     fillMissingCharacterInstallIds,
@@ -883,55 +884,39 @@ function snapshotChat(chats: Chat[] | undefined, chatIndex: number) {
 }
 
 /**
- * Puts the body of each module stub of `liveModules` into the same index of
- * `copiedModules`. A stub whose id another slot also holds is refused, because
- * the loader resolves an id to its first holder and would hand this slot
- * another module's body. Any failure rejects with a message naming the module
- * (only the message crosses the plugin bridge), and nothing is half-filled for
- * the caller: the rejection discards the copy. Every acquired module is released
- * once its body has been copied.
+ * The chat a plugin call that reads the open chat has to wait for: the selected character's current chat when it
+ * references a module that is still a stub. The call continues only in the chat this names, so it keeps the origin and
+ * the hint the wait itself resolves by.
  */
-async function materialiseModuleStubs(liveModules: readonly RisuModule[] | undefined, copiedModules: RisuModule[]): Promise<void> {
-    const live = liveModules ?? []
-    const stubs: { index: number, id: string, name: string, ambiguous: boolean }[] = []
-    for(let index = 0; index < live.length; index++){
-        const slot = live[index]
-        if(!isModuleStub(slot)){
-            continue
-        }
-        stubs.push({
-            index,
-            id: slot.id,
-            name: slot.name,
-            ambiguous: live.some((other, otherIndex) => otherIndex !== index && other?.id === slot.id),
-        })
+interface WaitTarget {
+    origin: Origin
+    hint: OriginHint
+    key: string
+}
+
+function waitTarget(): WaitTarget | null {
+    if(!hasModuleStubs()){
+        return null
     }
-    const releases: (() => void)[] = []
-    try{
-        for(const stub of stubs){
-            if(stub.ambiguous){
-                throw new Error(new ModuleAmbiguousError(stub.id, stub.name).message)
-            }
-            let acquired: Awaited<ReturnType<typeof acquireModule>>
-            try{
-                acquired = await acquireModule(stub.id)
-            }
-            catch(error){
-                const reason = error instanceof Error ? error.message : String(error)
-                throw new Error(`The module "${stub.name}" (${stub.id}) could not be loaded: ${reason}`)
-            }
-            if(!acquired){
-                throw new Error(`The module "${stub.name}" (${stub.id}) could not be loaded: the module list has no module with that id.`)
-            }
-            releases.push(acquired.release)
-            copiedModules[stub.index] = $state.snapshot(acquired.module)
-        }
+    const character = getCurrentCharacter()
+    const chat = getCurrentChat()
+    if(!character || !chat || character.type === 'group' || !character.chaId || !chat.id){
+        return null
     }
-    finally{
-        for(const release of releases){
-            release()
-        }
+    if(unloadedModulesOf().length === 0){
+        return null
     }
+    const origin = originOf(character, chat)
+    if(!origin){
+        return null
+    }
+    return { origin, hint: { owner: character, chat }, key: `${character.chaId}/${chat.id}` }
+}
+
+/** The selected character and current chat are the owner and chat the call's own origin resolves to now. */
+function sameChat(target: WaitTarget): boolean {
+    const context = resolveOriginWithHint(target.origin, target.hint)
+    return context !== null && context.owner === getCurrentCharacter() && context.chat === getCurrentChat()
 }
 
 // Exported (only) so CHORE-07 stage 7c-1's `sendChat` cold-chat guard can be
@@ -1186,40 +1171,47 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 rec?.finish()
                 return null;
             }
-            const db = DBState.db
-            let liteDB = {}
-            for(const key of allowedDbKeys){
-                if(includeOnly !== 'all' && !includeOnly.includes(key)){
-                    continue;
-                }
-                // The chats of the character list are copied without their
-                // alternatives; the live ones stay.
-                (liteDB as any)[key] = key === 'characters'
-                    ? copyCharactersWithoutAlt((db as any)[key])
-                    : $state.snapshot((db as any)[key]);
-                rec?.lap('snapshotMs', key)
-            }
-            // The chats of the copy lose their alternatives; the live ones stay.
-            const copiedCharacters = (liteDB as { characters?: unknown }).characters
-            if(Array.isArray(copiedCharacters)){
-                if(rec !== null){
-                    // The copy has no alternatives left to count, so the volume is read from the live list, after the copy.
-                    noteAltVolume(rec, db.characters)
-                    rec.restart()
-                }
-                withoutAltIn(copiedCharacters)
-                rec?.lap('withoutAltMs')
-            }
-            // A plugin only ever receives full modules: each module stub in the
-            // live list is loaded and its body copied into the same index of the copy.
-            const copiedModules = (liteDB as { modules?: RisuModule[] }).modules
-            if(Array.isArray(copiedModules)){
-                await materialiseModuleStubs(db.modules, copiedModules)
+            // A plugin only ever receives full modules: the bodies of the live stubs are read first, without installing
+            // them, and the copy below is one synchronous step that is the live state at that moment.
+            const wantsModules = includeOnly === 'all' || includeOnly.includes('modules')
+            const bodies = wantsModules && hasModuleStubs() ? await readStubBodies() : null
+            if(wantsModules){
                 rec?.lap('materialiseModulesMs')
             }
-            rec?.finish()
-            // Persisted keys and module bodies, all copies: no stream, port or buffer to transfer.
-            return markPlainResult(liteDB);
+            try{
+                const db = DBState.db
+                let liteDB = {}
+                for(const key of allowedDbKeys){
+                    if(includeOnly !== 'all' && !includeOnly.includes(key)){
+                        continue;
+                    }
+                    // The chats of the character list are copied without their
+                    // alternatives; the live ones stay.
+                    (liteDB as any)[key] = key === 'characters'
+                        ? copyCharactersWithoutAlt((db as any)[key])
+                        : key === 'modules' && bodies !== null
+                            ? modulesCopyAt(db.modules, bodies)
+                            : $state.snapshot((db as any)[key]);
+                    rec?.lap('snapshotMs', key)
+                }
+                // The chats of the copy lose their alternatives; the live ones stay.
+                const copiedCharacters = (liteDB as { characters?: unknown }).characters
+                if(Array.isArray(copiedCharacters)){
+                    if(rec !== null){
+                        // The copy has no alternatives left to count, so the volume is read from the live list, after the copy.
+                        noteAltVolume(rec, db.characters)
+                        rec.restart()
+                    }
+                    withoutAltIn(copiedCharacters)
+                    rec?.lap('withoutAltMs')
+                }
+                rec?.finish()
+                // Persisted keys and module bodies, all copies: no stream, port or buffer to transfer.
+                return markPlainResult(liteDB);
+            }
+            finally{
+                bodies?.release()
+            }
         },
 
         installPlugin: (plugins: RisuPlugin[]) => handlePluginInstallViaPlugin(plugins, plugin.name),
@@ -1412,6 +1404,14 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             tokenizeAccurate?: boolean
             cbsConditions?: CbsConditions
         }) => {
+            // The chat's modules are loaded first, and the parse runs only in the chat that was waited for.
+            const target = waitTarget()
+            if(target){
+                await ensureCurrentModules({ alert: false })
+                if(!sameChat(target)){
+                    throw new Error('The chat changed while its modules were loading.')
+                }
+            }
             const db = DBState.db
             const char = db.characters[get(selectedCharID)];
             if(!char){
@@ -1467,7 +1467,14 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             const charId = get(selectedCharID)
             return db.characters[charId].chatPage
         },
-        getCurrentLorebookEntries: () => {
+        getCurrentLorebookEntries: async () => {
+            // Each chat is waited for once; a chat selected while waiting is waited for in turn, and the answer is the
+            // lore of the chat selected when the waits end. A module that fails to load is left out without an alert.
+            const waited = new Set<string>()
+            for(let target = waitTarget(); target !== null && !waited.has(target.key); target = waitTarget()){
+                waited.add(target.key)
+                await ensureCurrentModules({ alert: false })
+            }
             const charId = get(selectedCharID)
             const char = DBState.db.characters[charId]
             if(!char){

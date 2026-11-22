@@ -2,7 +2,7 @@ import type { JsonObject } from '../blockFrame'
 import type { character, groupChat } from '../database.svelte'
 import type { Store2Backend } from './backend/types'
 import {
-    assembleCharacter, assembleModule, characterMatchesAcknowledged, CodecAssembleError, moduleHandles, overlayStub, stubFromEntry,
+    assembleCharacter, assembleModule, characterMatchesAcknowledged, CodecAssembleError, moduleHandles, moduleIsStoredUnit, overlayStub, stubFromEntry,
     type AcknowledgedVerdict, type UnitSource,
 } from './codec'
 import { defaultKeyEnv, type ModuleEntry, type ShardEntry } from './format'
@@ -54,6 +54,12 @@ export interface Residency {
      * encoding's is left as it is, so a read that went stale hydrates nothing it should not.
      */
     hydrateModule(read: Extract<ResidencyModuleRead, { status: 'ok' }>): void
+    /**
+     * Whether a save of `module` would reuse the stored module unit of `handle` and carry its asset and inlay lists, judged
+     * against the acknowledged encoding now. False when that cannot be proved (no entry, an edit, a unit or list without
+     * a digest, a list version this build does not carry); it never throws.
+     */
+    moduleIsStored(handle: string, module: unknown): boolean
     /** Reads and assembles the character of `u` as a copy: nothing is hydrated. */
     readCharacter(u: string): Promise<ResidencyRead>
     /** `readCharacter`, then gives the units just read their digests in place, so the loaded character is reused whole by its first pass. */
@@ -189,6 +195,10 @@ export function createResidency(options: ResidencyOptions): Residency {
         moduleEntryOf,
         readModule,
         hydrateModule: read => hydrateModuleDigests(encoder.acknowledged(), read.entry, read.handle, read.source),
+        moduleIsStored(handle, module) {
+            const entry = moduleEntryOf(handle)
+            return entry !== null && moduleIsStoredUnit(module, entry, handle, encoder.acknowledged(), lists.moduleListVersions, env)
+        },
         readCharacter,
         async load(u) {
             const read = await readCharacter(u)

@@ -3,7 +3,7 @@ import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
     carryUnknownFields, KNOWN_FIELDS, keyOfTail, parseStore2Key, randomId26, UNIT_TYPE,
-    type ChatEntry, type ContentBody, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType, type WorkspaceRecord,
+    type ChatEntry, type ContentBody, type KeyEnv, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType, type WorkspaceRecord,
 } from '../format'
 import {
     chatDraftsBody, CONFIG_PARTITIONED_FIELDS, DERIVED_COLD_FIELDS, ENTRY_MOVED_FIELDS, ENTRY_REQUIRED_MOVED_FIELDS, LORE_FIELDS, PLUGIN_LISTS,
@@ -894,10 +894,24 @@ function previousUnitOf(previous: PreviousEncoding, identity: string, type: Unit
 function carriedModuleLists(
     encoder: Encoder, previousEntries: ReadonlyMap<string, ModuleEntry> | null, handle: string,
 ): { al: ListRef, il: ListRef, units: [string, ReusableUnit][] } | null {
-    const versions = encoder.options.lists.moduleListVersions
     const previous = encoder.previous
     const entry = previousEntries?.get(handle)
-    if (versions === undefined || previous === null || entry === undefined || entry.il === null) {
+    if (previous === null || entry === undefined) {
+        return null
+    }
+    return moduleListsCarriable(previous, entry, handle, encoder.options.lists.moduleListVersions)
+}
+
+/**
+ * The previous list units that the module entry `entry` names under `handle`, when a save may carry them; null means
+ * derive. It is the rule `carriedModuleLists` applies to a reused module unit, shared so that a check made before a
+ * save and the save itself agree: the module unit at the entry's head, the opted-in list versions and both list units
+ * at the entry's heads.
+ */
+export function moduleListsCarriable(
+    previous: PreviousEncoding, entry: ModuleEntry, handle: string, versions: ListDerivation['moduleListVersions'],
+): { al: ListRef, il: ListRef, units: [string, ReusableUnit][] } | null {
+    if (versions === undefined || entry.il === null) {
         return null
     }
     if (previousUnitOf(previous, `${IDENTITY.module}${handle}`, UNIT_TYPE.module, entry.unit) === undefined) {
@@ -915,6 +929,25 @@ function carriedModuleLists(
     }
     // Copies, not the previous arrays; `listRefTuple` also drops an unknown trailing element exactly as a fresh list ref does.
     return { al: listRefTuple(entry.al, entry.al[3]), il: listRefTuple(entry.il, entry.il[3]), units: [[alId, alUnit], [ilId, ilUnit]] }
+}
+
+/**
+ * Whether a save of `module` would reuse the module unit that `entry` names under `handle` and carry its lists. False
+ * whenever that cannot be proved, and it never throws: a module this cannot read as plain JSON, or one whose bytes are
+ * not the stored unit's, is not the stored module.
+ */
+export function moduleIsStoredUnit(
+    module: unknown, entry: ModuleEntry, handle: string, previous: PreviousEncoding, versions: ListDerivation['moduleListVersions'], env: KeyEnv,
+): boolean {
+    try {
+        if (moduleListsCarriable(previous, entry, handle, versions) === null) {
+            return false
+        }
+        new UnitSink(env, previous, undefined, { reuseOnly: true }).put(`${IDENTITY.module}${handle}`, UNIT_TYPE.module, moduleBodyOf(plainObject(module, 'module')))
+        return true
+    } catch {
+        return false
+    }
 }
 
 /**

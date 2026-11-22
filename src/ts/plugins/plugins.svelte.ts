@@ -16,6 +16,7 @@ import { pluginCodeTranspiler } from "./apiV3/transpiler";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
 import { withoutModuleStubDowngrades } from "./moduleStubGuard";
+import { retainedSourceOfStub, withRecordedStubs } from "./moduleStubWrite";
 import { databaseWriteProblem, selectedCharacterMismatch, singleCharacterProblem } from "./characterWriteCheck";
 import { keepOrderPlaceOnSwap } from "./characterSwapOrder";
 import { hasLightEntry, LIGHT_ENTRY_WRAPPER_MESSAGE, swapLightEntries, type LightWriteCounts } from "./lightCharacters";
@@ -636,7 +637,7 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
             db.pluginCustomStorage = keepPluginStorageInternals(db.pluginCustomStorage, newDb[key]);
         }
         else if (key === 'modules') {
-            db.modules = withHeldAssetLists(db, withLiveRetained(db.modules, newDb[key], 'id'));
+            db.modules = withHeldAssetLists(db, withRecordedStubs(db.modules, withLiveRetained(db.modules, newDb[key], 'id', retainedSourceOfStub)));
         }
         else if (allowedDbKeys.includes(key)) {
             (db as any)[key] = newDb[key];

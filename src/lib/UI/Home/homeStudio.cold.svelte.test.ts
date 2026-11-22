@@ -808,6 +808,7 @@ describe('a store2 page (a residency is registered)', () => {
         moduleEntryOf: () => null,
         readModule: async () => ({ status: 'error', reason: 'no-entry', error: new Error('unused') }),
         hydrateModule: () => { },
+        moduleIsStored: () => false,
         readCharacter: async () => ({ status: 'error', error: new Error('unused') }),
         load: async () => ({ status: 'error', error: new Error('unused') }),
         hydrate: () => { },
