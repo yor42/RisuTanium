@@ -7,6 +7,7 @@
     import { chatFoldedStateMessageIndex } from 'src/ts/globalApi.svelte';
     import { get } from 'svelte/store';
     import { isActiveStreamReply } from 'src/ts/process/activeStreams';
+    import { isNativeReplyRunning } from 'src/ts/nativeReply/runningReplies.svelte';
     import { createMountHolders, type MountHolderRun } from './chatMountHolders';
     import { treeView } from 'src/ts/process/chatTreeView';
     import { chatSurface, isChatSurfaceInstalled, onSurfaceHiding } from './chatSurface.svelte';
@@ -197,7 +198,11 @@
             // writes, which happen in the same step as the registry changes. The
             // note is part of the hash, so removing the flag without touching the
             // text still re-mounts the message.
-            const interrupted = message.interrupted === true && !isActiveStreamReply(message.chatId);
+            const interruptedNote = message.interrupted === true && !isActiveStreamReply(message.chatId);
+            // A reply still being received elsewhere shows its running note instead of "Interrupted"; the map is a rune
+            // read, so the row re-mounts (through `rowTail`) when the reply ends.
+            const replyRunning = interruptedNote && isNativeReplyRunning(message.chatId);
+            const interrupted = interruptedNote && !replyRunning;
             // Only the registered reply at the last index defers its auto-translation. The same boolean is part of the
             // hash and a mount-time prop, so an instance that defers is replaced when the stream ends. `autoTranslate`
             // is read only for that row while it streams, so nothing else gains a dependency.
@@ -206,7 +211,7 @@
                 && isActiveStreamReply(message.chatId)
                 && DBState.db.autoTranslate === true;
             const rowId = message.chatId ?? '';
-            const rowTail = i.toString() + messageLargePortrait.toString() + message.disabled?.toString() + reloadPointer.toString() + (interrupted ? 'interrupted' : '') + (deferAutoTranslate ? 'autotr' : '');
+            const rowTail = i.toString() + messageLargePortrait.toString() + message.disabled?.toString() + reloadPointer.toString() + (interrupted ? 'interrupted' : '') + (replyRunning ? 'running' : '') + (deferAutoTranslate ? 'autotr' : '');
             const memoEntry = hashMemo.get(i);
             // The reply being streamed in 'off' mode: the last 'char' row of a streaming chat. Its row is carried in place
             // while only its text changes, and the translated view waits for the reply to end.
@@ -278,6 +283,7 @@
                     streamingOptimizationMode: performanceMode,
                     rawStreamingText: message.data,
                     interrupted,
+                    replyRunning,
                     deferAutoTranslate,
                     translationHold: holdTail,
                     startTranslated,

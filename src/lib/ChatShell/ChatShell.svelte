@@ -11,6 +11,7 @@
     import { postToast } from '../../ts/toast/toastHost.svelte'
     import type SendFailureCardComponent from './SendFailureCard.svelte'
     import type NotificationsOffNoticeComponent from '../ChatScreens/NotificationsOffNotice.svelte'
+    import type ReplyRunningNoticeComponent from '../ChatScreens/ReplyRunningNotice.svelte'
     import { chatWindowKey } from '../../ts/chatWindowPolicy'
     import type ShellHeaderComponent from './ShellHeader.svelte'
     import type ShellComposerComponent from './ShellComposer.svelte'
@@ -105,6 +106,7 @@
     let settingsRoute: typeof import('../Setting/settingsRoute') | null = null
     // The notification-permission notice loads on its own so the character-only early return below never skips it.
     let NotificationsOffNotice: typeof NotificationsOffNoticeComponent | null = $state(null)
+    let ReplyRunningNotice: typeof ReplyRunningNoticeComponent | null = $state(null)
     let messageList: ReturnType<typeof ShellMessageListComponent> | undefined = $state()
     // One action sheet and one customize sheet serve every row; they live outside the transcript so a row's clipping cannot cover them.
     let actionRequest: ActionRequest | null = $state.raw(null)
@@ -242,6 +244,10 @@
             if (!live) return
             NotificationsOffNotice = noticeModule.default
         }).catch((error) => console.error('The notifications-off notice did not load:', error))
+        void import('../ChatScreens/ReplyRunningNotice.svelte').then((noticeModule) => {
+            if (!live) return
+            ReplyRunningNotice = noticeModule.default
+        }).catch((error) => console.error('The reply-running notice did not load:', error))
         return () => { live = false }
     })
 
@@ -1130,6 +1136,7 @@
         {#if SendFailureCard && sendFailure}<SendFailureCard failure={sendFailure} onfix={fixSendFailure} onretry={retryShownSendFailure} />{/if}
         <!-- The key is block identity only: a chat or character switch remounts the notice, so the instance that showed it is gone. -->
         {#if NotificationsOffNotice}{#key chatWindowKey(character?.chaId, shownChat)}<NotificationsOffNotice />{/key}{/if}
+        {#if ReplyRunningNotice}{#key chatWindowKey(character?.chaId, shownChat)}<ReplyRunningNotice {character} />{/key}{/if}
         {#if ShellComposer}<ShellComposer onplus={openPlus} onpersona={openPersona} personaexpanded={personaOpen && !personaOverSheet} bind:stickersOpen onhardwarechange={(seen) => { hardwareKeyboardSeen = seen; if (seen) headerHidden = false }} />{/if}
     </div>
     {#if ActionSheet}<ActionSheet open={actionOpen} opener={actionRequest?.opener ?? null} anchor={actionRequest?.anchor} available={actionOpen ? actionRequest?.available() ?? [] : []} disabled={actionOpen ? actionRequest?.disabled() ?? [] : []} generating={actionOpen && actionRequest?.generating() === true} background={sheetBackground} onaction={(id) => actionRequest?.run(id)} onclose={() => actionOpen = false} />{/if}

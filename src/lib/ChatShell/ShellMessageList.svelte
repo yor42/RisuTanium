@@ -8,6 +8,7 @@
     import { chatFoldedState, chatFoldedStateMessageIndex } from '../../ts/globalApi.svelte'
     import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from '../../ts/process/firstMessage'
     import { isActiveStreamReply } from '../../ts/process/activeStreams'
+    import { isNativeReplyRunning } from '../../ts/nativeReply/runningReplies.svelte'
     import { getAdditionalChatLoadPages, getInitialChatLoadPages, pagesOnReturn } from '../../ts/chatLoadPages'
     import { chatWindowKey, createChatWindowPolicy } from '../../ts/chatWindowPolicy'
     import { hasMessageEditorDrafts, onDraftsChanged } from '../../ts/localDrafts'
@@ -942,7 +943,8 @@
                         rawStreamingText={row.message.data} isOptimizedStreamingMessage={chat?.isStreaming === true && row.idx === messages.length - 1 && row.message.role === 'char'}
                         streaming={chat?.isStreaming === true && row.idx === messages.length - 1 && row.message.role === 'char' && isActiveStreamReply(row.message.chatId)}
                         renderWhenComplete={character.risutanium_render_when_complete === true}
-                        interrupted={row.message.interrupted === true && !isActiveStreamReply(row.message.chatId)}
+                        interrupted={row.message.interrupted === true && !isActiveStreamReply(row.message.chatId) && !isNativeReplyRunning(row.message.chatId)}
+                        replyRunning={row.message.interrupted === true && !isActiveStreamReply(row.message.chatId) && isNativeReplyRunning(row.message.chatId)}
                         deferAutoTranslate={chat?.isStreaming === true && row.idx === messages.length - 1 && isActiveStreamReply(row.message.chatId) && DBState.db.autoTranslate === true}
                         guiRevision={guiPointer + (rowPointers[row.idx] ?? 0)} stepRow={runStep} {onBranch} {getTreeView} {getBusy} {onReroll} {unReroll} {onOpenActions} {onCloseActions} {onOpenCustomize} onOverlay={(open) => setOverlay(row.key, open)} />
                     {#snippet failed(_error, reset)}

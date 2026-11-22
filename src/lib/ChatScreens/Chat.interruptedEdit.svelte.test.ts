@@ -290,6 +290,29 @@ describe('the interrupted note under a message', () => {
         expect(target.querySelector('.interrupted-note')).toBeNull()
     })
 
+    test('T26: the running note shows only with replyRunning and replaces the interrupted one', () => {
+        DBState.db = baseDb() as never
+        DBState.db.characters = [makeCharacter([makeChat([interruptedMessage('partial')])])] as never
+        selIdState.selId = 0
+
+        const { target } = mountChat({ idx: 0, message: 'partial', isLastMemory: false, replyRunning: true })
+
+        const note = target.querySelector('.interrupted-note[data-kind="running"]')
+        expect(note!.textContent).toBe(language.messageReplyRunning)
+        expect(target.querySelectorAll('.interrupted-note').length).toBe(1)
+    })
+
+    test('T26: the running note is absent without replyRunning and while streaming', () => {
+        DBState.db = baseDb() as never
+        DBState.db.characters = [makeCharacter([makeChat([interruptedMessage('partial')])])] as never
+        selIdState.selId = 0
+
+        const plain = mountChat({ idx: 0, message: 'partial', isLastMemory: false, interrupted: true })
+        expect(plain.target.querySelector('[data-kind="running"]')).toBeNull()
+        const streaming = mountChat({ idx: 0, message: 'partial', isLastMemory: false, replyRunning: true, isOptimizedStreamingMessage: true })
+        expect(streaming.target.querySelector('[data-kind="running"]')).toBeNull()
+    })
+
     test('is absent while the message is the optimized streaming message', () => {
         DBState.db = baseDb() as never
         DBState.db.characters = [makeCharacter([makeChat([interruptedMessage('partial')])])] as never

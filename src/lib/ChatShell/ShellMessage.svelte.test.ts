@@ -52,7 +52,7 @@ vi.mock('./MessageEditor.svelte', () => ({ default: () => ({}) }))
 vi.mock('./TranslationEditor.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../ts/characters', () => ({ getCharImage: async () => null }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'model' }) }))
-vi.mock('../../lang', () => ({ language: { messageInterrupted: 'Interrupted' } }))
+vi.mock('../../lang', () => ({ language: { messageInterrupted: 'Interrupted', messageReplyRunning: 'Still replying' } }))
 
 import ShellMessage from './ShellMessage.svelte'
 
@@ -63,10 +63,10 @@ afterEach(async () => {
     streamCalls.mockClear()
 })
 
-function show(message: Message, streaming: boolean) {
+function show(message: Message, streaming: boolean, extra: { replyRunning?: boolean, interrupted?: boolean } = {}) {
     const target = document.createElement('div')
     document.body.appendChild(target)
-    const app = mount(ShellMessage, { target, props: { idx: 1, chatId: message.chatId, name: 'Ari', message, streaming } })
+    const app = mount(ShellMessage, { target, props: { idx: 1, chatId: message.chatId, name: 'Ari', message, streaming, ...extra } })
     mounted.push({ target, app })
     flushSync()
     return target
@@ -88,5 +88,19 @@ describe('ShellMessage minimal prose row', () => {
         expect(target.querySelector('[data-part="chat-message-interrupted"]')).toBeNull()
         const completed = show({ role: 'char', data: 'Partial', chatId: 'n', interrupted: true }, false)
         expect(completed.querySelector('[data-part="chat-message-interrupted"]')?.textContent).toContain('Interrupted')
+        expect(completed.querySelector('[data-part="chat-message-interrupted"]')?.hasAttribute('data-kind')).toBe(false)
+    })
+
+    test('T24: a reply still running elsewhere shows the running note and not "Interrupted"', () => {
+        const target = show({ role: 'char', data: 'Partial', chatId: 'm', interrupted: true }, false, { replyRunning: true, interrupted: false })
+        const note = target.querySelector('[data-part="chat-message-interrupted"][data-kind="running"]')
+        expect(note?.textContent).toBe('Still replying')
+        expect(note?.getAttribute('role')).toBe('status')
+        expect(target.textContent).not.toContain('Interrupted')
+    })
+
+    test('T24: the running note is absent while the row streams', () => {
+        const target = show({ role: 'char', data: 'Partial', chatId: 'm', interrupted: true }, true, { replyRunning: true, interrupted: false })
+        expect(target.querySelector('[data-kind="running"]')).toBeNull()
     })
 })

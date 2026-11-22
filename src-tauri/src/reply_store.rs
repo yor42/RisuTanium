@@ -437,6 +437,17 @@ fn classify(dir: &Path, key: &str, nonce: &str) -> Option<ReplyListing> {
     Some(listing)
 }
 
+/// The ticket of a live record, or `None` when it is missing, still being
+/// written, unreadable or does not belong to this key. A live record is never
+/// classified or swept: its ticket is written once, before the record exists.
+fn live_ticket(dir: &Path, key: &str) -> Option<Ticket> {
+    let ticket: Ticket = read_json(&dir.join(TICKET_FILE), TICKET_FILE).ok()?;
+    if ticket.format != TICKET_FORMAT || ticket.v != FORMAT_VERSION || ticket.key != key {
+        return None;
+    }
+    Some(ticket)
+}
+
 /// The open record a request writes through. Its live-set membership ends when
 /// it is dropped, which the request's slot does only after the last write.
 struct Record<O: FileOps> {
@@ -649,9 +660,10 @@ impl<O: FileOps + Send + Sync + 'static> ReplyStore<O> {
     }
 
     /// Every record: its state, and for a readable one its ticket and end data.
-    /// Per record, under the live-set lock: a live key is reported as such and
-    /// not read; otherwise temps are swept, the record is classified and an
-    /// empty directory is removed. An unreadable record is reported and kept.
+    /// Per record, under the live-set lock: a live key is reported with its
+    /// ticket's blob when the ticket is complete; nothing else of it is read or
+    /// swept. Otherwise temps are swept, the record is classified and an empty
+    /// directory is removed. An unreadable record is reported and kept.
     pub fn list(&self, base: &Path) -> Result<Vec<ReplyListing>, String> {
         self.sweep_consumed(base);
         let records = records_dir(base);
@@ -670,7 +682,13 @@ impl<O: FileOps + Send + Sync + 'static> ReplyStore<O> {
         for name in names {
             let live = self.inner.live.lock();
             if live.contains(&name) {
-                listings.push(ReplyListing::bare(&name, ReplyState::Live));
+                let mut listing = ReplyListing::bare(&name, ReplyState::Live);
+                if let Some(ticket) = live_ticket(&records.join(&name), &name) {
+                    listing.created_ms = Some(ticket.created_ms);
+                    listing.page_version = Some(ticket.page_version);
+                    listing.blob = Some(ticket.blob);
+                }
+                listings.push(listing);
                 continue;
             }
             let dir = records.join(&name);
@@ -1475,6 +1493,59 @@ mod tests {
         assert_eq!(listing_of(&store, &base, &live).state, ReplyState::Live);
         assert_eq!(listing_of(&store, &base, &live).partial_bytes, None);
         drop(held);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_live_record_lists_its_ticket_blob() {
+        let base = scratch("live-blob");
+        let store = plain_store();
+        let blob = r#"{"target":"chat"}"#;
+        let held = store.open_record(&base, KEY, 3, blob).unwrap();
+
+        let listing = listing_of(&store, &base, KEY);
+
+        assert_eq!(listing.state, ReplyState::Live);
+        assert_eq!(listing.blob.as_deref(), Some(blob));
+        assert_eq!(listing.page_version, Some(3));
+        assert_eq!(listing.created_ms, Some(FIXED_MS));
+        assert_eq!(listing.partial_bytes, None);
+        drop(held);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_live_record_without_a_sound_ticket_lists_bare_and_is_not_swept() {
+        let base = scratch("live-bare");
+        let store = plain_store();
+        let temp = "risu-write-0123456789abcdef.tmp";
+        let good = r#"{"format":"risu-native-reply-ticket","v":1,"key":"KEY","createdMs":1,"process":"p","pageVersion":1,"blob":"b"}"#
+            .replace("KEY", KEY);
+        let cases: Vec<(&str, Option<String>)> = vec![
+            ("missing", None),
+            ("garbage", Some("{not json".to_string())),
+            ("format", Some(good.replace("risu-native-reply-ticket", "other"))),
+            ("version", Some(good.replace("\"v\":1", "\"v\":2"))),
+            ("key", Some(good.replace(KEY, &key_n(9)))),
+        ];
+        for (name, ticket) in cases {
+            let held = store.open_record(&base, KEY, 1, "{}").unwrap();
+            let dir = record_dir(&base, KEY);
+            fs::remove_file(dir.join(TICKET_FILE)).unwrap();
+            fs::write(dir.join(temp), b"cut").unwrap();
+            if let Some(text) = ticket {
+                fs::write(dir.join(TICKET_FILE), text).unwrap();
+            }
+
+            let listing = listing_of(&store, &base, KEY);
+
+            assert_eq!(listing.state, ReplyState::Live, "{}", name);
+            assert_eq!(listing.blob, None, "{}", name);
+            assert_eq!(listing.page_version, None, "{}", name);
+            assert!(dir.join(temp).exists(), "{}: the live directory was swept", name);
+            drop(held);
+            fs::remove_dir_all(&dir).unwrap();
+        }
         fs::remove_dir_all(&base).unwrap();
     }
 

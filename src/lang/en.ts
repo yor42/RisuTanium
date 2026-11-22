@@ -4117,6 +4117,8 @@ export const languageEnglish = {
     keepAliveSavePending: "Reply ready. Open the app to finish saving.",
     keepAliveStop: "Stop",
     messageInterrupted: "Interrupted — the reply may be incomplete",
+    messageReplyRunning: "Still replying — the full reply appears here when it finishes",
+    chatReplyRunning: "{name} is still replying — the reply appears here when it finishes",
     messageRenderFailed: "This message could not be displayed properly, so its original text is shown.",
     messageRenderRetry: "Retry",
     // NanoGPT Dashboard

@@ -33,7 +33,7 @@ import { placeReverseDepth, type ReverseDepthEntry } from "./depthPlacement";
 import { runTrigger } from "./triggers";
 import { HypaProcesser } from "./memory/hypamemory";
 import { additionalInformations } from "./embedding/addinfo";
-import { getInlayAsset, getInlaySummary } from "./files/inlays";
+import { getInlayAsset, getInlaySummary, saveInlayedSignature } from "./files/inlays";
 import { INLAY_SEND_LIMIT_BYTES, inlayImageWithheld, inlaySendVerdict } from "./files/inlaySendGate";
 import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES } from "../storage/assetUrlGate";
 import { isAndroidTransport } from "../storage/tauriByteTransport";
@@ -62,6 +62,7 @@ import { hasModuleStubs } from "./moduleRefList";
 import { getSaveMarkCount, readImage } from "../globalApi.svelte";
 import { issueNativeReplyGrant, nativeReplyEligible } from "../nativeReply/grant";
 import { holdRecoveredReply, noteReplyPushed, ownsPushedReply, requestReconcile, settleNativeReplyInflight, takeAnnounced } from "../nativeReply/pageState";
+import { noteWaitingForUnit } from "../nativeReply/runningReplies.svelte";
 import { endOwnedRead, forgetOwnedStream, settleOwnedStreamEnd } from "../nativeReply/ownedStream";
 import type { ApplyOutcome, RecoveredReplyInput, RecoveredStreamInput } from "../nativeReply/reconcile";
 import { settleRecoveredUsage } from "../usage/usageCapture";
@@ -510,9 +511,10 @@ function recoveredApplyBlocked(origin: Origin): boolean {
 }
 
 /** Records that a recovered reply waited for a unit: the send's end asks the reconcile to run again. */
-function deferRecoveredApply(origin: Origin): 'deferred' {
+function deferRecoveredApply(origin: Origin, key: string): 'deferred' {
     void origin
     recoveredApplyDeferred = true
+    noteWaitingForUnit(key)
     return 'deferred'
 }
 
@@ -538,7 +540,7 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
     const { key, blob, text } = input
     const origin: Origin = { chaId: blob.target.chaId, chatId: blob.target.chatId }
     if(recoveredApplyBlocked(origin)){
-        return deferRecoveredApply(origin)
+        return deferRecoveredApply(origin, key)
     }
     const subject = createSendSubject(origin)
     const entryCtx = subject.resolve()
@@ -637,10 +639,10 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
  * The usage of the record is settled once, by the stretch that writes.
  */
 export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Promise<ApplyOutcome> {
-    const { key, blob, modelText, complete, meter, how } = input
+    const { key, blob, modelText, complete, meter, how, signatures } = input
     const origin: Origin = { chaId: blob.target.chaId, chatId: blob.target.chatId }
     if(recoveredApplyBlocked(origin)){
-        return deferRecoveredApply(origin)
+        return deferRecoveredApply(origin, key)
     }
     const subject = createSendSubject(origin)
     const entryCtx = subject.resolve()
@@ -667,6 +669,8 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
         unit.abort()
     }, 'reply')
     let written = false
+    // The signature inlays the written text references; the record is held for the save only after they settle.
+    const signatureWrites: Promise<unknown>[] = []
     try {
         let head = modelText
         if(DBState.db.removeIncompleteResponse){
@@ -711,6 +715,15 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
         writeCtx.owner.reloadKeys += 1
         markCharacterForSave(origin.chaId)
         written = true
+        // Only a token in the written text (after the trim and the output scripts) gets its inlay, as a live stream saves
+        // the signature of what it shows; a failed write is logged and the text stays.
+        for(const record of signatures){
+            if(processed.data.includes('{{inlayeddata::' + record.id + '}}')){
+                signatureWrites.push(saveInlayedSignature(record.id, record.signature).catch((error) => {
+                    console.error('The Gemini signature could not be saved:', error)
+                }))
+            }
+        }
         settleRecoveredUsage(blob.usage, meter, how, modelText)
 
         if(complete){
@@ -746,6 +759,7 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
         // After the write the reply is saved like any other: its mark and the waiter come first, whatever failed above. The
         // target is read after the mark.
         if(written){
+            await Promise.allSettled(signatureWrites)
             markCharacterForSave(origin.chaId)
             holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
         }

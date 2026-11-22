@@ -3978,6 +3978,8 @@ export const languageSpanish = {
     "keepAliveFinishing": "Finalizando…",
     "keepAliveSavePending": "Respuesta lista. Abre la app para terminar de guardar.",
     "messageInterrupted": "Interrumpido — la respuesta puede estar incompleta",
+    "messageReplyRunning": "Aún respondiendo — la respuesta completa aparecerá aquí cuando termine",
+    "chatReplyRunning": "{name} sigue respondiendo — la respuesta aparecerá aquí cuando termine",
     "messageRenderFailed": "Este mensaje no se pudo mostrar correctamente, por lo que se muestra su texto original.",
     "messageRenderRetry": "Reintentar",
     "nanoGPTLoadingAccountInfo": "Cargando información de la cuenta…",

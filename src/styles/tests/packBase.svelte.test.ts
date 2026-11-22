@@ -189,6 +189,8 @@ const EMBEDDED = [
     'src/lib/ChatScreens/CreatorQuote.svelte',
     'src/lib/ChatScreens/NotificationsOffNotice.svelte',
     'src/lib/ChatScreens/PartialEditController.svelte',
+    // The chat-level "still replying" status above the shell composer (#514).
+    'src/lib/ChatScreens/ReplyRunningNotice.svelte',
     'src/lib/ChatScreens/Suggestion.svelte',
     // Enters through the TaskYieldHarness test harness; in production App renders it over the chat.
     'src/lib/Others/AlertComp.svelte',
