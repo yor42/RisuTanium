@@ -104,6 +104,7 @@ export function loadPolicy(root = defaultRoot) {
   // written before those fields existed gets the same values.
   p.routeHealthMaxAgeDays ??= 7; p.optInProviders ??= ['codex', 'agy'];
   if (p.routeHealthMaxAgeDays !== 7 || !Array.isArray(p.optInProviders) || p.optInProviders.some(x => !['codex', 'agy'].includes(x))) throw Error('Unsupported or unsafe policy');
+  if (Object.values(p.nativeModelChoices ?? {}).some(list => !Array.isArray(list))) throw Error('Unsupported or unsafe policy');
   return p;
 }
 export function loadState(root = defaultRoot) {
@@ -240,7 +241,7 @@ function validateScheduling(d) {
     } else if (!/^[a-f0-9]{64}$/i.test(d.artifact?.sha256 ?? '') || !d.artifact?.sourceRevision) throw Error('Device run requires pinned artifact hash and source revision');
   }
 }
-export async function selectRoute({ root = defaultRoot, jobId, mode, role, workClass, testOnly = false, legacy = false, escalation, gate, effortReason, changedContracts = [], scoutEffort = 'medium', optIn = null, healthCheck = false, now = Date.now() }) {
+export async function selectRoute({ root = defaultRoot, jobId, mode, role, workClass, testOnly = false, legacy = false, escalation, gate, effortReason, changedContracts = [], scoutEffort = 'medium', optIn = null, healthCheck = false, model = null, now = Date.now() }) {
   safeId(jobId); const p = loadPolicy(root); const s = loadState(root);
   if (!['scout', 'implement', 'review'].includes(mode)) throw Error('Invalid mode');
   if (changedContracts.some(c => !p.criticalContracts.includes(c))) throw Error('Unknown critical contract');
@@ -256,7 +257,13 @@ export async function selectRoute({ root = defaultRoot, jobId, mode, role, workC
       const kinds = role === 'opus-reviewer' ? ['dispute', 'three-reject', 'maintainer'] : ['dispute', 'investigation-conflict', 'three-reject', 'expensive-plan', 'maintainer'];
       if (!kinds.includes(escalation?.kind) || typeof escalation.evidence !== 'string' || !escalation.evidence.trim()) throw Error('Native escalation needs a named eligible trigger and evidence');
     }
-    routes = [{ provider: 'claude', model: p.nativeOnlyRoles[role], role, effort: 'high' }];
+    let chosen = p.nativeOnlyRoles[role];
+    // MC-3643: a cheaper model is only ever an explicit choice. Critical contracts and escalations keep the default.
+    if (model && p.nativeModelChoices?.[role]?.includes(model)) {
+      if (changedContracts.length || escalation) throw Error('A critical contract or escalation keeps the default model');
+      chosen = model;
+    }
+    routes = [{ provider: 'claude', model: chosen, role, effort: 'high' }];
   }
   if (mode === 'review' && changedContracts.length) routes = [{ provider: 'claude', model: 'opus', role: 'opus-reviewer', effort: 'high' }];
   const persistence = changedContracts.some(c => c !== 'security-boundary');
@@ -324,7 +331,7 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
   const workClass = schedulingClass(input);
   if (input.optIn != null && typeof input.optIn !== 'string' || input.healthCheck != null && typeof input.healthCheck !== 'boolean') throw Error('optIn is a provider name and healthCheck a boolean');
   const optIn = input.optIn ?? null; const healthCheck = input.healthCheck === true;
-  const route = await selectRoute({ root, jobId: input.logicalJobId, mode: input.mode, role: input.role, workClass, testOnly: input.testOnly === true, escalation: input.escalation, gate: input.gate, effortReason: input.effortReason, changedContracts, scoutEffort: input.effort ?? 'medium', optIn, healthCheck });
+  const route = await selectRoute({ root, jobId: input.logicalJobId, mode: input.mode, role: input.role, workClass, testOnly: input.testOnly === true, escalation: input.escalation, gate: input.gate, effortReason: input.effortReason, changedContracts, scoutEffort: input.effort ?? 'medium', optIn, healthCheck, model: input.model ?? null });
   if (!route.provider) throw Error(`No eligible route; park: ${route.blocked.join(', ')}`);
   if (input.provider && input.provider !== route.provider || input.model && input.model !== route.model || input.effort && input.effort !== route.effort) throw Error('Dispatch does not match eligible policy route');
   const d = { ...input, optIn, healthCheck, provider: route.provider, model: route.model, effort: route.effort, role: route.role ?? input.role, requestedRole: input.role ?? null, timeoutMinutes: input.timeoutMinutes ?? route.timeoutMinutes, changedContracts, workClass, schedulingAmendment: p.scheduling.amendment, policyRevision: p.revision, repoRoot: input.repoRoot ?? root, coordinatorRoot: root };
@@ -391,7 +398,7 @@ export async function validateDispatch(d, { root = defaultRoot, claim = false } 
   // its route is recomputed under the current policy below and must still match.
   const knownRevision = d.policyRevision === p.revision || (p.previousRevision != null && d.policyRevision === p.previousRevision);
   if (!entry || entry.hash !== digest(d) || digest(savedDispatch(root, d.id)) !== entry.hash || !knownRevision || entry.status !== 'registered') throw Error('Unregistered, changed, stale or already consumed dispatch');
-  const route = await selectRoute({ root, jobId: d.logicalJobId, mode: d.mode, role: d.requestedRole, workClass: d.workClass, testOnly: d.testOnly === true, legacy: !d.schedulingAmendment, escalation: d.escalation, gate: d.gate, effortReason: d.effortReason, changedContracts: d.changedContracts, scoutEffort: d.effort, optIn: d.optIn ?? null, healthCheck: d.healthCheck === true });
+  const route = await selectRoute({ root, jobId: d.logicalJobId, mode: d.mode, role: d.requestedRole, workClass: d.workClass, testOnly: d.testOnly === true, legacy: !d.schedulingAmendment, escalation: d.escalation, gate: d.gate, effortReason: d.effortReason, changedContracts: d.changedContracts, scoutEffort: d.effort, optIn: d.optIn ?? null, healthCheck: d.healthCheck === true, model: d.model });
   if (route.provider !== d.provider || route.model !== d.model) throw Error('Route changed before dispatch');
   if (claim) mutateState(root, s.generation, next => { if (next.dispatches[d.id].status !== 'registered') throw Error('Dispatch already claimed'); next.dispatches[d.id].status = 'running'; });
   return d;
@@ -442,6 +449,8 @@ export async function hook(payload, { root = defaultRoot } = {}) {
   if (!match) throw Error('Register bounded dispatch first; native Agent requires [workflow-dispatch:ID]');
   const d = savedDispatch(root, match[1]);
   if (d.provider !== 'claude' || payload.tool_input.subagent_type !== d.role || payload.tool_input.model && payload.tool_input.model !== d.model) throw Error('Native role/model differs from registered route');
+  // Without a model the Agent tool runs the profile's default, which would differ from a chosen-model receipt.
+  if (p.nativeOnlyRoles[d.role] && d.model !== p.nativeOnlyRoles[d.role] && payload.tool_input.model !== d.model) throw Error('A chosen-model dispatch names its model in the Agent call');
   await validateDispatch(d, { root, claim: true });
   return { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: `Registered ${d.id}. ${d.question}. Native subscription quota only; stop on quota, no API/extra usage. Report file then finish this dispatch in workflow-control.` } };
 }

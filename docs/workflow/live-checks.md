@@ -101,6 +101,17 @@ Identify a device by serial and model before any command; never run a command ag
 
 **Personal devices.** Shade crops locate our card before any image is opened; app-window frames only once the app is in front. Keep a redacted copy of an evidence frame and delete the unredacted original unviewed; never delete an evidence frame without keeping a redacted copy. Keep no other-app content. No PASS without retained evidence (else UNVERIFIED).
 
+## Repeated rows (MC-3768)
+
+Repeated device rows run through guarded scripts or batched commands instead of one model request per step. The screenshots are still checked. The accepted risks are script upkeep and false passes.
+
+Derived, for applying it:
+
+- It covers PC rows as well, under the PC rules above.
+- A script or batch keeps every rule above: the guard and the helpers, an explicit serial, the STOP rule and exit 89. It stops at the first refusal or unexpected state.
+- It prints a pass or fail per row with the evidence paths. Its pass is not evidence for a visual row until the model has opened that row's screenshot.
+- A row run once, or one that needs judgement at each step, needs no script; batch its predictable steps.
+
 ## Device-row template
 
 The PR's own session writes its device rows from the actual diff and checks them against code (MC-2713). Copy this block per row:
