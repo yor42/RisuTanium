@@ -31,7 +31,7 @@ describe('ModeVisibilityGroup form control names', () => {
         document.body.appendChild(target)
         mounted.push(mount(ModeVisibilityGroup, { target, props: { onaskshowall: vi.fn() } }))
         flushSync()
-        const boxes = [...target.querySelectorAll<HTMLInputElement>('[data-part="mode-checkbox"]')]
+        const boxes = [...target.querySelectorAll<HTMLInputElement>('[data-part="settings-mode-checkbox"]')]
         expect(boxes).toHaveLength(3)
         for (const box of boxes) {
             const visible = box.closest('label')!.querySelector('span.flex-col > span')!.textContent!.trim()

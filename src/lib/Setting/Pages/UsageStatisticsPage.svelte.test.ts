@@ -139,7 +139,7 @@ describe('empty and populated page (G)', () => {
             const target = await render()
             await new Promise((resolve) => setTimeout(resolve, 0))
             flushSync()
-            const row = rowOf(table(target, 'usage-models'), '[data-model="gpt-unknown"]')
+            const row = rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-unknown"]')
             expect(row.textContent).toContain(text.unpriced)
             expect(row.textContent).not.toContain('$')
             expect(unhandled).toEqual([])
@@ -153,12 +153,12 @@ describe('empty and populated page (G)', () => {
         resetModelDataForTests()
         setLedger([entry('gpt-priced', 'chat', 1000, 500), JUNE])
         const target = await render()
-        expect(rowOf(table(target, 'usage-models'), '[data-model="gpt-priced"]').textContent).toContain(text.unpriced)
+        expect(rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-priced"]').textContent).toContain(text.unpriced)
         seedLiteLLMForTests(parseLiteLLMDataset({
             'gpt-priced': { litellm_provider: 'openai', mode: 'chat', max_input_tokens: 1000, input_cost_per_token: 0.000001, output_cost_per_token: 0.000002 },
         }, 2))
         flushSync()
-        const row = rowOf(table(target, 'usage-models'), '[data-model="gpt-priced"]')
+        const row = rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-priced"]')
         expect(row.textContent).toContain('$0.002')
         expect(row.textContent).not.toContain(text.unpriced)
     })
@@ -176,16 +176,16 @@ describe('empty and populated page (G)', () => {
                 expect(head.getAttribute('scope')).toBe('col')
             }
         }
-        const purposes = table(target, 'usage-purposes')
+        const purposes = table(target, 'settings-usage-purposes')
         expect(rowOf(purposes, '[data-purpose="chat"]').textContent).toContain(text.purposeChat)
         expect(rowOf(purposes, '[data-purpose="utility"]').textContent).toContain(text.purposeUtility)
-        expect(rowOf(table(target, 'usage-months'), 'tbody tr th[scope="row"]').textContent).toContain('2026-06')
+        expect(rowOf(table(target, 'settings-usage-months'), 'tbody tr th[scope="row"]').textContent).toContain('2026-06')
     })
 
     test('a priced model shows its exact cost with no unpriced label', async () => {
         setLedger([entry('gpt-priced', 'chat', 1000, 500), JUNE])
         const target = await render()
-        const row = rowOf(table(target, 'usage-models'), '[data-model="gpt-priced"]')
+        const row = rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-priced"]')
         expect(row.textContent).toContain('$0.002')
         expect(row.textContent).not.toContain(text.unpriced)
     })
@@ -193,16 +193,16 @@ describe('empty and populated page (G)', () => {
     test('an unpriced model reads "unpriced" and never a dollar amount', async () => {
         setLedger([entry('gpt-unknown', 'chat', 1000, 500), JUNE])
         const target = await render()
-        const row = rowOf(table(target, 'usage-models'), '[data-model="gpt-unknown"]')
+        const row = rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-unknown"]')
         expect(row.textContent).toContain(text.unpriced)
         expect(row.textContent).not.toContain('$')
-        expect(rowOf(table(target, 'usage-months'), 'tbody tr').textContent).not.toContain('$')
+        expect(rowOf(table(target, 'settings-usage-months'), 'tbody tr').textContent).not.toContain('$')
     })
 
     test('cache tokens with no cache price read "partly unpriced" next to the priced part', async () => {
         setLedger([entry('gpt-priced', 'chat', 1000, 500, 2000), JUNE])
         const target = await render()
-        const row = rowOf(table(target, 'usage-models'), '[data-model="gpt-priced"]')
+        const row = rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-priced"]')
         expect(row.textContent).toContain('$0.002')
         expect(row.textContent).toContain(text.partlyUnpriced)
     })
@@ -210,7 +210,7 @@ describe('empty and populated page (G)', () => {
     test('an attempt counted by estimate carries the estimated label, an exact one does not', async () => {
         setLedger([{ modelKey: 'gpt-priced', purpose: 'chat', reported: null, estimated: { input: 40, output: 20 } }, JUNE], [entry('gpt-priced', 'chat', 1, 1), JULY])
         const target = await render()
-        const months = [...table(target, 'usage-months').querySelectorAll('tbody tr')]
+        const months = [...table(target, 'settings-usage-months').querySelectorAll('tbody tr')]
         const june = months.find((row) => row.textContent?.includes('2026-06'))
         const july = months.find((row) => row.textContent?.includes('2026-07'))
         expect(june?.textContent).toContain(text.estimated)
@@ -219,11 +219,11 @@ describe('empty and populated page (G)', () => {
 
     test('the overflow row appears only when overflow counters exist', async () => {
         setLedger([entry('gpt-priced', 'chat', 1, 1), JUNE])
-        expect((await render()).querySelector('[data-part="usage-overflow"]')).toBeNull()
+        expect((await render()).querySelector('[data-part="settings-usage-overflow"]')).toBeNull()
         const statics = DBState.db.statics as unknown as Record<string, number>
         statics['u1|ovf|n'] = 4
         const target = await render()
-        expect(rowOf(target, '[data-part="usage-overflow"]').textContent).toContain(text.overflow)
+        expect(rowOf(target, '[data-part="settings-usage-overflow"]').textContent).toContain(text.overflow)
     })
 
     test('the month choice switches the By model breakdown', async () => {
@@ -260,10 +260,10 @@ describe('price override editor (G)', () => {
         type(target, 'usage-price-output', '20')
         press(target, text.priceSave)
         expect(DBState.db.usagePriceOverrides).toEqual({ 'gpt-unknown': { input: '10', output: '20' } })
-        const row = rowOf(table(target, 'usage-models'), '[data-model="gpt-unknown"]')
+        const row = rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-unknown"]')
         expect(row.textContent).toContain('$0.02')
         expect(row.textContent).toContain(text.yourPrice)
-        expect(target.querySelector('[data-part="usage-price-editor"]')).toBeNull()
+        expect(target.querySelector('[data-part="settings-usage-price-editor"]')).toBeNull()
     })
 
     test('opening the editor focuses its first input, and save or "Use catalog price" returns focus to the row\'s Set price button', async () => {
@@ -276,13 +276,13 @@ describe('price override editor (G)', () => {
         type(target, 'usage-price-input', '2')
         press(target, text.priceSave)
         await settle()
-        const rowButton = rowOf(table(target, 'usage-models'), '[data-model="gpt-unknown"] button')
+        const rowButton = rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-unknown"] button')
         expect(document.activeElement).toBe(rowButton)
         openEditor(target)
         await settle()
         press(target, text.priceClear)
         await settle()
-        expect(document.activeElement).toBe(rowOf(table(target, 'usage-models'), '[data-model="gpt-unknown"] button'))
+        expect(document.activeElement).toBe(rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-unknown"] button'))
     })
 
     test('a negative, non-numeric or empty price is refused with a message and writes nothing', async () => {
@@ -290,11 +290,11 @@ describe('price override editor (G)', () => {
         const target = await render()
         openEditor(target)
         press(target, text.priceSave)
-        expect(target.querySelector('[data-part="usage-price-invalid"]')?.textContent).toBe(text.priceInvalid)
+        expect(target.querySelector('[data-part="settings-usage-price-invalid"]')?.textContent).toBe(text.priceInvalid)
         for (const bad of ['-1', 'abc', '1e3', '1,5']) {
             type(target, 'usage-price-input', bad)
             press(target, text.priceSave)
-            expect(target.querySelector('[data-part="usage-price-invalid"]'), bad).not.toBeNull()
+            expect(target.querySelector('[data-part="settings-usage-price-invalid"]'), bad).not.toBeNull()
         }
         expect(DBState.db.usagePriceOverrides).toBeUndefined()
     })
@@ -303,12 +303,12 @@ describe('price override editor (G)', () => {
         setLedger([entry('gpt-priced', 'chat', 1000, 500), JUNE])
         DBState.db.usagePriceOverrides = { 'gpt-priced': { input: '10', output: '20' } }
         const target = await render()
-        expect(rowOf(table(target, 'usage-models'), '[data-model="gpt-priced"]').textContent).toContain('$0.02')
+        expect(rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-priced"]').textContent).toContain('$0.02')
         openEditor(target)
         expect((target.querySelector('#usage-price-input') as HTMLInputElement).value).toBe('10')
         press(target, text.priceClear)
         expect(DBState.db.usagePriceOverrides).toBeUndefined()
-        expect(rowOf(table(target, 'usage-models'), '[data-model="gpt-priced"]').textContent).toContain('$0.002')
+        expect(rowOf(table(target, 'settings-usage-models'), '[data-model="gpt-priced"]').textContent).toContain('$0.002')
     })
 
     test('a saved price keeps the other models\' overrides', async () => {
@@ -342,8 +342,8 @@ describe('clear and retention controls (G)', () => {
         await settle()
     }
 
-    const retentionSelect = (target: HTMLElement): HTMLSelectElement => rowOf(target, '[data-part="usage-manage"] select') as HTMLSelectElement
-    const clearSelect = (target: HTMLElement): HTMLSelectElement => rowOf(target, '[data-part="usage-clear"] select') as HTMLSelectElement
+    const retentionSelect = (target: HTMLElement): HTMLSelectElement => rowOf(target, '[data-part="settings-usage-manage"] select') as HTMLSelectElement
+    const clearSelect = (target: HTMLElement): HTMLSelectElement => rowOf(target, '[data-part="settings-usage-clear"] select') as HTMLSelectElement
     const statics = (): Record<string, unknown> => DBState.db.statics as unknown as Record<string, unknown>
     const hasMonth = (month: string): boolean => Object.keys(statics()).some((key) => key.startsWith(`u1|${month}|`))
 
@@ -385,8 +385,8 @@ describe('clear and retention controls (G)', () => {
         expect(statics().messages).toBe(7)
         expect(statics().imports).toBe(2)
         expect(DBState.db.usagePriceOverrides).toEqual({ 'gpt-priced': { input: '1' } })
-        expect(target.querySelector('[data-part="usage-empty"]')).not.toBeNull()
-        const notice = rowOf(target, '[data-part="usage-cleared"]')
+        expect(target.querySelector('[data-part="settings-usage-empty"]')).not.toBeNull()
+        const notice = rowOf(target, '[data-part="settings-usage-cleared"]')
         expect(notice.textContent).toBe(text.clearedNotice)
         expect(document.activeElement).toBe(notice)
     })
@@ -405,7 +405,7 @@ describe('clear and retention controls (G)', () => {
         expect(confirmMock).toHaveBeenCalledWith(text.clearConfirmAll)
         expect($state.snapshot(DBState.db.statics)).toEqual(before)
         expect(DBState.db.usagePriceOverrides).toEqual({ 'gpt-priced': { input: '1' } })
-        expect(target.querySelector('[data-part="usage-cleared"]')).toBeNull()
+        expect(target.querySelector('[data-part="settings-usage-cleared"]')).toBeNull()
     })
 
     test('T-P3 clear before July removes June, keeps July, August and the overflow row, and does not offer the oldest month', async () => {
@@ -425,7 +425,7 @@ describe('clear and retention controls (G)', () => {
         expect(hasMonth('2026-06')).toBe(false)
         expect(hasMonth('2026-07')).toBe(true)
         expect(hasMonth('2026-08')).toBe(true)
-        expect(target.querySelector('[data-part="usage-overflow"]')).not.toBeNull()
+        expect(target.querySelector('[data-part="settings-usage-overflow"]')).not.toBeNull()
     })
 
     test('T-P4 a period with no old month stores the number without asking; Off removes the field without asking; the select is labelled and shown on an empty page', async () => {
@@ -433,7 +433,7 @@ describe('clear and retention controls (G)', () => {
         const target = await render()
         const select = retentionSelect(target)
         expect(select.closest('label')?.textContent).toContain(text.retentionLabel)
-        expect(target.querySelector('[data-part="usage-clear"]')).toBeNull()
+        expect(target.querySelector('[data-part="settings-usage-clear"]')).toBeNull()
 
         await choose(select, '6')
         expect(DBState.db.usageRetentionMonths).toBe(6)

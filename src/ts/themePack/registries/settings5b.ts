@@ -1,8 +1,8 @@
 // The Settings part registry as slice 5b extends it (on top of slice 5a's, ./settings5a): this module adds the slice 5b names to their lists and passes them to the same validator (lintPack(css, name, registry)).
-import { SETTINGS_SURFACES, SETTINGS_TOKENS, lintPack as lintSettings } from './settings'
+import { SETTINGS_SURFACES, SETTINGS_TOKENS, fullSettingsRegistry, lintPack as lintSettings } from './settings'
 import { CRITICAL5, SAFE5, MINIMUMS5 } from './settings5a'
 import type { SliceRegistry } from './settings4'
-import type { LintResult } from '../engine'
+import type { LintResult, RegistryInput } from '../engine'
 
 // the 34 new part names (SLICE5B_SPEC Appendix: Parts)
 export const NEW_PARTS: string[] = ['settings-choice-list', 'settings-choice', 'settings-choice-recommended', 'settings-choice-legacy', 'settings-service-chip', 'settings-service-missing', 'settings-service-list', 'settings-service-row', 'settings-service-fields', 'settings-test-button', 'settings-service-test-result',
@@ -22,3 +22,5 @@ export const SAFE5B: string[] = [...SAFE5, ...NEW_SAFE]
 export const MINIMUMS5B: Record<string, string | number> = { ...MINIMUMS5, '--p5b-bar': '2px' }
 export const REG5B: SliceRegistry = { critical: CRITICAL5B, safe: SAFE5B, surfaces: SETTINGS_SURFACES, tokens: SETTINGS_TOKENS, strictSafe: true, minimums: MINIMUMS5B, settable: [/^--param-[a-z0-9-]+$/, /^--p5-[a-z0-9-]+$/, /^--p5b-[a-z0-9-]+$/] }   // DD-242: the slice 4, 5a and 5b role tokens
 export const lint5b = (css: string, name = ''): LintResult => lintSettings(css, name, REG5B)
+/** The registry the applied Settings area is judged under: the slice 5b registry completed the way lintSettings completes it. Defined here, not in ./settings, because the slice modules import ./settings and spread its lists while loading. */
+export const SETTINGS_LINT_REGISTRY: RegistryInput = fullSettingsRegistry(REG5B)

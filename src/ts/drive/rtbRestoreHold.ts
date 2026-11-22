@@ -1,4 +1,5 @@
-import { alertConfirm, alertError, alertWait } from '../alert'
+import { alertError, alertWait } from '../alert'
+import { confirmRestoreWithoutTabCheck } from './restoreNoLockWarning'
 import { acquireExclusiveStorageMigrationLock, dbWriteLock, locksSupported, tabPresenceLockAcquired } from '../globalApi.svelte'
 import { isAppInitiatedReload } from '../reloadGuard'
 import { isTauri } from 'src/ts/platform'
@@ -51,7 +52,7 @@ export async function acquireRestoreHold(busy: BusyHandle, options: HoldOptions 
     let releaseDbWriteLock: (() => void) | null = null
     if (!isTauri) {
         if (locksSupported === false) {
-            if (!await alertConfirm(language.restoreNoLockWarningConfirm)) {
+            if (!await confirmRestoreWithoutTabCheck()) {
                 return { kind: 'declined' }
             }
         } else {

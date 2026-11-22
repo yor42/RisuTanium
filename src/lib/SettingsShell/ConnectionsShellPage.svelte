@@ -198,15 +198,15 @@
     }
 </script>
 
-<div class="flex flex-col gap-3 min-w-0" data-part="connections-root" bind:this={rootEl}>
+<div class="flex flex-col gap-3 min-w-0" data-part="settings-connections-root" bind:this={rootEl}>
     {#key subKey}
-        <div class="connections-view flex flex-col gap-3 min-w-0" data-part="connections-view">
+        <div class="connections-view flex flex-col gap-3 min-w-0" data-part="settings-connections-view">
             {#if sub === null}
                 <div class="flex items-center gap-2">
                     <button
                         type="button"
                         class="inline-flex items-center gap-2 min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected risu-focus-ring"
-                        data-part="connection-add-open"
+                        data-part="settings-connection-add-open"
                         bind:this={addButton}
                         onclick={() => { sub = { kind: 'add' } }}
                     >
@@ -215,7 +215,7 @@
                     </button>
                 </div>
                 {#if showNotice}
-                    <section class="flex flex-col gap-2 p-3 rounded-md border border-darkborderc bg-darkbg" data-part="connection-notice">
+                    <section class="flex flex-col gap-2 p-3 rounded-md border border-darkborderc bg-darkbg" data-part="settings-connection-notice">
                         <h2 class="font-semibold text-textcolor">{language.connectionsRenameNoticeTitle}</h2>
                         <p class="text-sm text-textcolor2">{language.connectionsRenameNoticeBody}</p>
                         <ul class="flex flex-wrap gap-2 list-none p-0 m-0">
@@ -232,15 +232,15 @@
                         <button
                             type="button"
                             class="self-start min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected risu-focus-ring"
-                            data-part="connection-notice-dismiss"
+                            data-part="settings-connection-notice-dismiss"
                             onclick={dismiss}
                         >{language.connectionsRenameNoticeDismiss}</button>
                     </section>
                 {/if}
                 {#if rows.length === 0}
-                    <p class="text-textcolor2" data-part="connections-empty">{language.connectionsEmpty}</p>
+                    <p class="text-textcolor2" data-part="settings-connections-empty">{language.connectionsEmpty}</p>
                 {:else}
-                    <ul class="grid grid-cols-1 gap-2 list-none p-0 m-0" data-part="connections-list">
+                    <ul class="grid grid-cols-1 gap-2 list-none p-0 m-0" data-part="settings-connections-list">
                         {#each rows as conn (conn.id)}
                             <ConnectionCard
                                 {conn}

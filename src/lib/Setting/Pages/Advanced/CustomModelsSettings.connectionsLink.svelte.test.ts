@@ -71,7 +71,7 @@ afterEach(async () => {
 describe('a custom model links to the Connections page', () => {
     test('the opened model shows one link and choosing it sets the settings index to 18', () => {
         const target = render()
-        const links = Array.from(target.querySelectorAll<HTMLElement>('[data-part="connections-link"]'))
+        const links = Array.from(target.querySelectorAll<HTMLElement>('[data-part="settings-connections-link"]'))
         expect(links).toHaveLength(1)
         expect(links[0].textContent).toBe(language.connectionsManageLink)
         SettingsMenuIndex.set(1)

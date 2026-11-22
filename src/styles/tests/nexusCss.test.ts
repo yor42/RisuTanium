@@ -114,6 +114,11 @@ const WRAPPERS = [
     /^:root:not\(\.rm-off\)$/,
     // The theme pack's fixed base: the gate sets the root attribute while a pack sheet is on, and these rules restore the judged reference.
     /^:root:where\(\[data-theme-pack-base\]\)$/,
+    // The own-scheme island (ownScheme.svelte.ts) re-declares each root block, so those blocks also match the island and its state variants.
+    /^:root, \[data-own-scheme\]$/,
+    /^:root\.rm, :root\.rm \[data-own-scheme\]$/,
+    /^:root:not\(\.rm-off\), :root:not\(\.rm-off\) \[data-own-scheme\]$/,
+    /^html\[data-input="hover"\], html\[data-input="hover"\] \[data-own-scheme\]$/,
     /^@media /,
     /^@layer [\w-]+$/,
     /^@supports /,
@@ -137,11 +142,14 @@ function isWrapper(head: string): boolean {
     return WRAPPERS.some((w) => w.test(head))
 }
 
+// A rule whose every selector is the own-scheme island itself (optionally a descendant of it) changes nothing outside an island, so it is allowed to add any declaration. Sibling combinators are refused because they select elements outside the island.
+const ISLAND_SELECTOR = /^(\[data-own-scheme(="[\w-]+")?\]( [\w.#:\[\]="*>() -]+)?|:is\(\[data-own-scheme="[\w-]+"\], \[data-own-scheme="[\w-]+"\] \*\)(:[\w-]+)*)$/
+
 function isNexusHead(head: string): boolean {
     if (head.startsWith('@keyframes ')) return head.startsWith('@keyframes nexus-')
     if (head.startsWith('@property ')) return head.startsWith('@property --nexus-')
     if (head.startsWith('@')) return false
-    return splitTopLevel(head).every((part) => NEXUS_CLASS.test(part))
+    return splitTopLevel(head).every((part) => NEXUS_CLASS.test(part) || ISLAND_SELECTOR.test(part))
 }
 
 function declaredNames(lines: string[]): Set<string> {

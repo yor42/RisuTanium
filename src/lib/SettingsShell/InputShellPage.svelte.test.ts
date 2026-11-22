@@ -211,14 +211,14 @@ describe('the Input page at index 11', () => {
         const touch = showPage()
         await settle()
         const note = maybeRow(touch.target, 'acc.enableBlockPartialEdit')!
-        expect(note.querySelector('[data-part="setting-row-note"]')?.textContent).toBe(language.settingsShellInputBlockEditTouch)
+        expect(note.querySelector('[data-part="settings-row-note"]')?.textContent).toBe(language.settingsShellInputBlockEditTouch)
         expect(note.querySelector('input[type="checkbox"]')).toBeNull()
         stubPointer(true)
         const hover = showPage()
         await settle()
         const control = maybeRow(hover.target, 'acc.enableBlockPartialEdit')!
         expect(control.querySelector('input[type="checkbox"]')).not.toBeNull()
-        expect(control.querySelector('[data-part="setting-row-note"]')).toBeNull()
+        expect(control.querySelector('[data-part="settings-row-note"]')).toBeNull()
     })
 
     test('an easier-to-read link opens Display', async () => {

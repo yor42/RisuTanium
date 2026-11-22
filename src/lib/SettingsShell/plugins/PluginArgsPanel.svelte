@@ -60,7 +60,7 @@
     const fieldClass = 'border border-darkborderc focus:border-borderc rounded-md bg-transparent text-textcolor px-3 py-2 min-h-11 w-full focus:ring-borderc focus:ring-2 focus:outline-hidden'
 </script>
 
-<div class="flex flex-col pt-1" data-part="plugin-args">
+<div class="flex flex-col pt-1" data-part="settings-plugin-args">
     {#each keys as key, i (key)}
         {@const meta = plugin.argMeta?.[key]}
         {@const kind = plugin.arguments[key]}
@@ -169,7 +169,7 @@
                     onblur={(event) => commitField(key, 'int', event.currentTarget)}
                     onkeydown={(event) => onEnter(key, 'int', event)}
                 />
-                <span class="text-sm text-draculared" role="status" aria-live="polite" data-part="plugin-arg-invalid">{invalidKey === key ? language.pluginsPage.numberInvalid : ''}</span>
+                <span class="text-sm text-draculared" role="status" aria-live="polite" data-part="settings-plugin-arg-invalid">{invalidKey === key ? language.pluginsPage.numberInvalid : ''}</span>
             {/if}
         {/if}
     {/each}

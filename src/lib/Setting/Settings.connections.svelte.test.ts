@@ -88,7 +88,7 @@ function labels(target: HTMLElement): string[] {
 }
 
 function detailOpen(): boolean {
-    return document.querySelector('[data-part="connection-detail"]') !== null
+    return document.querySelector('[data-part="settings-connection-detail"]') !== null
 }
 
 function dialogOpen(): boolean {
@@ -134,17 +134,17 @@ describe('Connections row in the classic Settings menu', () => {
         SettingsMenuIndex.set(18)
         const target = mountSettings()
         expect(labels(target)).not.toContain(language.settingsShellPageConnections)
-        expect(document.querySelector('[data-part="connection-add-open"]')).toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-add-open"]')).toBeNull()
     })
 
     test('(R) choosing the row sets 18 and renders the page', async () => {
         setWidth(1000)
         const target = mountSettings()
-        expect(document.querySelector('[data-part="connection-add-open"]')).toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-add-open"]')).toBeNull()
         Array.from(target.querySelectorAll('button')).find((button) => button.textContent?.trim() === language.settingsShellPageConnections)!.click()
         await settle()
         expect(get(SettingsMenuIndex)).toBe(18)
-        expect(document.querySelector('[data-part="connection-add-open"]')).not.toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-add-open"]')).not.toBeNull()
     })
 
     test.each([18, 19])('(R) index %i renders the page', async (index) => {
@@ -152,7 +152,7 @@ describe('Connections row in the classic Settings menu', () => {
         SettingsMenuIndex.set(index)
         mountSettings()
         await settle()
-        expect(document.querySelector('[data-part="connection-add-open"]')).not.toBeNull()
+        expect(document.querySelector('[data-part="settings-connection-add-open"]')).not.toBeNull()
     })
 })
 
@@ -180,7 +180,7 @@ describe('A11 legacy Back on the Connections page (real Settings.svelte, phone w
         await settle()
         document.querySelector<HTMLElement>('[data-connection-open="conn-1"]')!.click()
         await settle()
-        document.querySelector<HTMLElement>('[data-part="connection-delete"]')!.click()
+        document.querySelector<HTMLElement>('[data-part="settings-connection-delete"]')!.click()
         await settle()
         expect(dialogOpen()).toBe(true)
         expect(dispatchBack()).toBe(true)

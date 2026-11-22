@@ -17,7 +17,7 @@
 </script>
 
 <!-- A device choice (MC-1529), like low power. -->
-<fieldset class="mt-4 min-w-0 border-0 p-0" data-part="reduced-motion" aria-describedby="{group}-desc">
+<fieldset class="mt-4 min-w-0 border-0 p-0" data-part="settings-reduced-motion" aria-describedby="{group}-desc">
     <legend class="text-textcolor">{language.settingsShellReducedMotion}</legend>
     <div class="mt-2 flex w-full overflow-hidden rounded-md border border-darkborderc">
         {#each choices as choice (choice.mode)}

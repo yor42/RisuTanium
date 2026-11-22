@@ -17,6 +17,7 @@ import type { IntakeRefusal } from './intake'
 import { openJudgeSession, type JudgeSession } from './judgeClient'
 import { sameScheme } from './packColours'
 import { listThemePacks } from './packRecord'
+import { ownColours } from './ownColours.svelte'
 import { packSafe } from './packSafeFlag.svelte'
 import { registerPackRequestCanceller } from './turnOff'
 
@@ -220,6 +221,7 @@ async function run(key: ApplyKey, mine: number, session: JudgeSession): Promise<
         return
     }
     if (prepared.ok === false) {
+        ownColours.verdict = false
         consumeSchemeRequest(status.activeId, 'broken')
         appliedDefault = null
         commitPackSheet(null)
@@ -228,6 +230,8 @@ async function run(key: ApplyKey, mine: number, session: JudgeSession): Promise<
         repaintPackScheme()
         return
     }
+    // Written before any repaint of this block, so the paint that follows sees this pack's verdict.
+    ownColours.verdict = prepared.ownColourTrigger === true
     const enteredByTurnOn = consumeSchemeRequest(status.activeId, prepared.defaultScheme)
     appliedDefault = prepared.defaultScheme
     const result = commitPackSheet({ elements: prepared.elements, blobs: prepared.blobs, colours: coloursOn() })
@@ -238,6 +242,7 @@ async function run(key: ApplyKey, mine: number, session: JudgeSession): Promise<
                 leavePackScheme()
             } catch { }
         }
+        ownColours.verdict = false
         appliedDefault = null
         commitPackSheet(null)
         applied = null
@@ -271,6 +276,7 @@ function request(id: unknown, safeMode: boolean): void {
     }
     generation += 1
     if (key === 'none' || key.startsWith('unreadable:')) {
+        ownColours.verdict = false
         if (key === 'none') {
             // Safe Mode, or an id that names no record, is never a user turn-off.
             schemeRequest = null
@@ -350,6 +356,7 @@ export function resetThemePackApplyForTests(): void {
     applied = null
     appliedDefault = null
     schemeRequest = null
+    ownColours.verdict = false
     safe = false
     lite = false
     status.activeId = undefined

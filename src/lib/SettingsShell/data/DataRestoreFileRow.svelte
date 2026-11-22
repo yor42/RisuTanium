@@ -19,9 +19,9 @@
     <button
         type="button"
         class="self-start min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected"
-        data-part="data-action"
+        data-part="settings-data-action"
         aria-disabled={dataSheetState.running ? 'true' : undefined}
         onclick={restore}
     >{getLabel(item)}</button>
-    <p class="text-xs text-textcolor2 mt-1 mb-2" data-part="setting-row-hint">{language.settingsShellDataRestoreFileHint}</p>
+    <p class="text-xs text-textcolor2 mt-1 mb-2" data-part="settings-row-hint">{language.settingsShellDataRestoreFileHint}</p>
 </div>

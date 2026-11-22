@@ -419,7 +419,7 @@
     <div role="status" class="sr-only" data-hotkey-status>{status}</div>
 
     {#if readOnly}
-        <p class="text-textcolor2 text-sm" data-part="settings-hotkey-banner">{language.settingsShellHkPhone}</p>
+        <p class="text-textcolor2 text-sm" data-part="settings-hotkey-readonly-note">{language.settingsShellHkPhone}</p>
     {:else}
         <div class="flex items-center gap-2 justify-end">
             <button
@@ -431,7 +431,7 @@
     {/if}
 
     {#if duplicates.count > 0}
-        <p class="text-draculared text-sm" data-part="settings-hotkey-banner" data-hotkey-dup-banner>{language.settingsShellHkDupBanner(duplicates.count)}</p>
+        <p class="text-draculared text-sm" data-part="settings-hotkey-dup-warning" data-hotkey-dup-banner>{language.settingsShellHkDupBanner(duplicates.count)}</p>
     {/if}
 
     {#each groups as group (group.id)}

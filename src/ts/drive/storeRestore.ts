@@ -1,5 +1,6 @@
-import { alertError, alertConfirm, alertNormal, alertNormalWait, alertSelect, alertStore, alertWait } from '../alert'
+import { alertError, alertNormal, alertNormalWait, alertSelect, alertStore, alertWait } from '../alert'
 import { acquireExclusiveStorageMigrationLock, afterNextSaveCommit, dbWriteLock, isSaveClean, locksSupported, requestSaveNow, tabPresenceLockAcquired } from '../globalApi.svelte'
+import { confirmRestoreWithoutTabCheck } from './restoreNoLockWarning'
 import { isAppInitiatedReload } from '../reloadGuard'
 import { isTauri } from 'src/ts/platform'
 import { language } from 'src/lang'
@@ -260,7 +261,7 @@ async function runExclusively(busy: BusyHandle, progress: RestoreProgress, perfo
     const run: ExclusiveRun = { releaseExclusiveHold: null, started: false, landed: false, staysClosed: false }
     if (!isTauri) {
         if (locksSupported === false) {
-            if (!await alertConfirm(language.restoreNoLockWarningConfirm)) {
+            if (!await confirmRestoreWithoutTabCheck()) {
                 return { outcome: 'canceled', cause: null }
             }
         } else {

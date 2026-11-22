@@ -27,7 +27,7 @@
     }
 </script>
 
-<fieldset class="mt-4 min-w-0 border-0 p-0" data-part="asset-width">
+<fieldset class="mt-4 min-w-0 border-0 p-0" data-part="settings-asset-width">
     <legend class="text-textcolor">{language.assetWidth}</legend>
     <div class="mt-2 mb-2 flex w-full overflow-hidden rounded-md border border-darkborderc">
         {#each choices as choice (choice.mode)}
@@ -46,7 +46,7 @@
         {/each}
     </div>
     {#if mode === 'custom'}
-        <span class="text-textcolor" data-part="asset-width-custom" id="{group}-max-width">{language.settingsShellAssetMaxWidth}</span>
+        <span class="text-textcolor" data-part="settings-asset-width-custom" id="{group}-max-width">{language.settingsShellAssetMaxWidth}</span>
         <SliderInput
             labelId="{group}-max-width"
             marginBottom={true}

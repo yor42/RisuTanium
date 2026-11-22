@@ -42,8 +42,11 @@ export type FlaggedLeaf =
     | { kind: 'character-part', chaId: string, part: CharacterPart, key: string, why: 'missing' | 'damaged' }
     /** A task preset's unit; `position` is its place in the manifest's list. Its name is unreadable, so the position names it. */
     | { kind: 'task-preset', position: number, key: string, why: 'missing' | 'damaged' }
-    /** A workspace file's unit, named by its workspace's id and the file's path in the record. The record itself is never flagged. */
-    | { kind: 'workspace-file', wsId: string, path: string, key: string, why: 'missing' | 'damaged' }
+    /**
+     * A workspace file's unit, named by its workspace's id and the file's path in the record; `wsName` is the record's
+     * name for the workspace (its id when the record has none). The record itself is never flagged.
+     */
+    | { kind: 'workspace-file', wsId: string, wsName?: string, path: string, key: string, why: 'missing' | 'damaged' }
 
 export type TreeBytesRead =
     /** `newerLists` holds the readable lists above this build's version: never flagged, and the profile opens. */
@@ -324,10 +327,11 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
     for (const ref of manifest.fixed.workspaces ?? []) {
         const record = first.bodies.get(keyOfRef(ref)) as WorkspaceRecord | undefined
         const wsId = String(record?.ws.id)
+        const wsName = typeof record?.ws.name === 'string' && record.ws.name.trim() !== '' ? record.ws.name : wsId
         for (const file of record?.files ?? []) {
             second.push({
                 ref: file.ref, type: UNIT_TYPE.workspaceFile, count: null,
-                role: { kind: 'leaf', flag: (key, why): FlaggedLeaf => ({ kind: 'workspace-file', wsId, path: file.path, key, why }) },
+                role: { kind: 'leaf', flag: (key, why): FlaggedLeaf => ({ kind: 'workspace-file', wsId, wsName, path: file.path, key, why }) },
             })
         }
     }

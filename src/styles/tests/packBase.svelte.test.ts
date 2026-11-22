@@ -110,7 +110,9 @@ function declaredIn(css: string, selectors: string[]): Map<string, string> {
     for (const node of postcss.parse(css).nodes) {
         if (node.type !== 'rule') continue
         const rule = node as Rule
-        if (!selectors.includes(rule.selector.trim())) continue
+        // The own-scheme island twin of a root block is not a rule of its own: the block still declares what the root declares.
+        const subject = rule.selector.split(',').map((part) => part.trim()).filter((part) => !part.endsWith('[data-own-scheme]')).join(', ')
+        if (!selectors.includes(subject)) continue
         rule.walkDecls((d) => { if (d.prop.startsWith('--')) out.set(d.prop, collapse(d.value)) })
     }
     return out

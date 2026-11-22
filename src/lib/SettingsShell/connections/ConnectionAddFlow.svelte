@@ -77,11 +77,11 @@
     }
 </script>
 
-<div class="flex flex-col gap-3 min-w-0" data-part="connection-add">
+<div class="flex flex-col gap-3 min-w-0" data-part="settings-connection-add">
     {#if provider === null}
         <h2 class="font-semibold text-textcolor">{language.connectionsPickProvider}</h2>
         {#if onlyProxy}
-            <p class="text-sm text-textcolor2" data-part="connection-all-added">{language.connectionsAllAdded}</p>
+            <p class="text-sm text-textcolor2" data-part="settings-connection-all-added">{language.connectionsAllAdded}</p>
         {/if}
         {#each groups as item (item.group)}
             <section class="flex flex-col gap-2" aria-label={groupLabel(item.group)}>
@@ -107,7 +107,7 @@
     {:else}
         <div class="flex flex-col gap-1">
             <span class="text-sm text-textcolor2">{language.connectionsProvider}</span>
-            <span class="font-semibold text-textcolor" data-part="connection-add-provider">{provider.label}</span>
+            <span class="font-semibold text-textcolor" data-part="settings-connection-add-provider">{provider.label}</span>
         </div>
         {#if provider.provider === 'vertex'}
             <p class="text-sm text-textcolor2">{language.connectionsVertexNote}</p>
@@ -139,7 +139,7 @@
         {/if}
         <div class="flex flex-col gap-1">
             <span class="text-sm text-textcolor2" id="{uid}-key">{language.connectionsKey}</span>
-            <div data-part="connection-key-input">
+            <div data-part="settings-connection-key-input">
                 {#if provider.multilineKey}
                     <TextInput labelId="{uid}-key" size="sm" hideText bind:value={key} />
                 {:else}
@@ -149,13 +149,13 @@
             <span class="text-xs text-textcolor2">{language.connectionsKeyLocal}</span>
         </div>
         {#if error !== ''}
-            <p class="flex items-center gap-1 text-sm text-draculared" role="alert" data-part="connection-error">{error}</p>
+            <p class="flex items-center gap-1 text-sm text-draculared" role="alert" data-part="settings-connection-error">{error}</p>
         {/if}
         <div class="flex flex-wrap gap-2">
             <button
                 type="button"
                 class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected disabled:opacity-50 risu-focus-ring"
-                data-part="connection-save"
+                data-part="settings-connection-save"
                 disabled={!canSave}
                 onclick={() => { void save() }}
             >{language.uiCommon.save}</button>

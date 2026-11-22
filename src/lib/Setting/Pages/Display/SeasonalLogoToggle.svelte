@@ -17,4 +17,4 @@
         onChange={setSeasonalLogoEnabled}
     />
 </div>
-<p class="text-sm text-textcolor2 mt-1" data-part="seasonal-logo-help">{language.seasonalLogoHelp}</p>
+<p class="text-sm text-textcolor2 mt-1" data-part="settings-seasonal-logo-help">{language.seasonalLogoHelp}</p>

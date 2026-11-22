@@ -17,8 +17,11 @@ import { LLMFormat } from '../../../model/types'
 import { setPageStorageMode } from '../../../storage/pageStorageMode'
 import { DBState } from '../../../stores.svelte'
 import { WORKSPACE_TOOLS } from '../../mcp/workspaceclient'
-import { advertisedToolKey } from '../../request/toolLoop'
-import { newUtilityConversation, sendUtility, setUtilityWorkspace, utilityConversation } from '../utilityConversation.svelte'
+import { advertisedToolKey, reportToolStep, type ToolLoopState } from '../../request/toolLoop'
+import { language } from 'src/lang'
+import {
+    getUtilityInstructions, getUtilitySteps, getUtilityWorkspace, isUtilityWorkspaceLocked, newUtilityConversation, sendUtility, setUtilityWorkspace, utilityConversation,
+} from '../utilityConversation.svelte'
 
 type Sent = {
     formated: Array<{ role: string, content: string }>
@@ -111,15 +114,16 @@ describe('a run with a workspace', () => {
         await sendUtility('p1', 'go')
 
         expect(h.request).not.toHaveBeenCalled()
-        expect(utilityConversation.turns[1]).toMatchObject({ state: 'failed' })
+        expect(utilityConversation.turns[1]).toMatchObject({ state: 'failed', error: language.utility.failureWorkspaceGone })
         expect(utilityConversation.runId).toBeNull()
     })
 
-    test('the workspace id argument of a send overrides the conversation state only for that send', async () => {
-        await sendUtility('p1', 'go', 'w1')
+    test('a send takes its workspace from the conversation choice alone; it has no per-send workspace parameter', async () => {
+        expect(sendUtility.length).toBe(2)
+        await (sendUtility as (presetId: string, text: string, ...extra: unknown[]) => Promise<void>)('p1', 'go', 'w1')
 
-        expect(sent().toolLoop?.workspace).toEqual({ id: 'w1' })
-        expect(utilityConversation.workspaceId).toBeNull()
+        expect('toolLoop' in sent()).toBe(false)
+        expect(getUtilityWorkspace()).toBeNull()
     })
 })
 
@@ -141,11 +145,100 @@ describe('picking the workspace', () => {
         await sendUtility('p1', 'go')
 
         expect(setUtilityWorkspace(null)).toBe(false)
-        expect(utilityConversation.workspaceId).toBe('w1')
+        expect(getUtilityWorkspace()).toBe('w1')
+        expect(isUtilityWorkspaceLocked()).toBe(true)
 
         await newUtilityConversation(async () => true)
 
-        expect(utilityConversation.workspaceId).toBeNull()
+        expect(getUtilityWorkspace()).toBeNull()
+        expect(isUtilityWorkspaceLocked()).toBe(false)
         expect(setUtilityWorkspace('w1')).toBe(true)
+    })
+
+    test('a live run locks the choice before any turn text arrives', async () => {
+        let release!: () => void
+        h.request.mockImplementation(() => new Promise((resolve) => {
+            release = () => resolve({ type: 'success', result: 'done' })
+        }))
+        const sending = sendUtility('p1', 'go')
+
+        expect(isUtilityWorkspaceLocked()).toBe(true)
+        expect(setUtilityWorkspace('w1')).toBe(false)
+
+        await vi.waitFor(() => expect(h.request).toHaveBeenCalled())
+        release()
+        await sending
+    })
+})
+
+describe('the steps and instruction sources of a run', () => {
+    /** A request that makes the calls `calls` through the run's own loop state, like a provider would. */
+    function callsDuring(calls: Array<[string, unknown, 'ran' | 'denied' | 'refused' | 'error' | 'stopped']>): void {
+        h.request.mockImplementation(async (arg: { toolLoop?: ToolLoopState }) => {
+            for (const [name, args, outcome] of calls) {
+                reportToolStep(arg.toolLoop, name, args, outcome)
+            }
+            return { type: 'success', result: 'done' }
+        })
+    }
+
+    test('a workspace run keeps its steps in call order and its instruction sources', async () => {
+        callsDuring([['read_file', { path: 'AGENTS.md' }, 'ran'], ['delete_file', { path: 'x.md' }, 'denied']])
+        setUtilityWorkspace('w1')
+
+        await sendUtility('p1', 'go')
+
+        expect(getUtilitySteps()).toEqual([
+            { name: 'read_file', summary: 'AGENTS.md', outcome: 'ran' },
+            { name: 'delete_file', summary: 'x.md', outcome: 'denied' },
+        ])
+        expect(getUtilityInstructions()).toEqual({
+            truncated: false,
+            damaged: [],
+            agentsPaths: ['AGENTS.md'],
+            skills: [{ path: 'skills/s/SKILL.md', name: 's', description: 'A skill.' }],
+        })
+        expect(JSON.stringify(getUtilityInstructions())).not.toContain('Be brief.')
+    })
+
+    test('the next turn starts an empty list; New empties list and sources', async () => {
+        callsDuring([['read_file', { path: 'a.md' }, 'ran']])
+        setUtilityWorkspace('w1')
+        await sendUtility('p1', 'one')
+        expect(getUtilitySteps()).toHaveLength(1)
+
+        callsDuring([['write_file', { path: 'b.md' }, 'refused']])
+        await sendUtility('p1', 'two')
+        expect(getUtilitySteps()).toEqual([{ name: 'write_file', summary: 'b.md', outcome: 'refused' }])
+
+        await newUtilityConversation(async () => true)
+        expect(getUtilitySteps()).toEqual([])
+        expect(getUtilityInstructions()).toBeNull()
+    })
+
+    test('a late step from a run that New replaced never reaches the list', async () => {
+        let late!: () => void
+        h.request.mockImplementation(async (arg: { toolLoop?: ToolLoopState }) => {
+            await new Promise<void>((resolve) => { late = resolve })
+            reportToolStep(arg.toolLoop, 'read_file', { path: 'late.md' }, 'ran')
+            return { type: 'success', result: 'done' }
+        })
+        setUtilityWorkspace('w1')
+        const sending = sendUtility('p1', 'go')
+        await vi.waitFor(() => expect(h.request).toHaveBeenCalled())
+
+        await newUtilityConversation(async () => true)
+        late()
+        await sending
+
+        expect(getUtilitySteps()).toEqual([])
+    })
+
+    test('a run without a workspace has no hook and no sources', async () => {
+        await sendUtility('p1', 'go')
+
+        expect('toolLoop' in sent()).toBe(false)
+        expect(getUtilitySteps()).toEqual([])
+        expect(getUtilityInstructions()).toBeNull()
     })
 })

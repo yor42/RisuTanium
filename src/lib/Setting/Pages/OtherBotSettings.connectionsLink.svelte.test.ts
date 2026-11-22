@@ -120,7 +120,7 @@ afterEach(async () => {
 describe('the image-generation key block links to the Connections page', () => {
     test('the DALL-E key block shows one link and choosing it sets the settings index to 18', () => {
         const target = mountImageTab()
-        const links = Array.from(target.querySelectorAll<HTMLElement>('[data-part="connections-link"]'))
+        const links = Array.from(target.querySelectorAll<HTMLElement>('[data-part="settings-connections-link"]'))
         expect(links).toHaveLength(1)
         expect(links[0].textContent).toBe(language.connectionsManageLink)
         SettingsMenuIndex.set(1)
@@ -131,6 +131,6 @@ describe('the image-generation key block links to the Connections page', () => {
     test('a provider without the OpenAI key block shows no link', () => {
         DBState.db.sdProvider = 'webui'
         const target = mountImageTab()
-        expect(target.querySelectorAll('[data-part="connections-link"]')).toHaveLength(0)
+        expect(target.querySelectorAll('[data-part="settings-connections-link"]')).toHaveLength(0)
     })
 })

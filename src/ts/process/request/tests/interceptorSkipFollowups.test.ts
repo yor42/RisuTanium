@@ -171,7 +171,8 @@ afterEach(() => {
 async function send(model: string, workspaceId: string | null): Promise<void> {
     installDb({ taskPresets: [{ id: 'p1', name: 'Fixer', instructions: 'Fix text', model }] })
     await utility.newUtilityConversation(async () => true)
-    await utility.sendUtility('p1', 'hello', workspaceId)
+    utility.setUtilityWorkspace(workspaceId)
+    await utility.sendUtility('p1', 'hello')
 }
 
 import { WORKSPACE_TOOLS } from '../../mcp/workspaceclient'

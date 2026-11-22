@@ -55,7 +55,7 @@ describe('UsageStatisticsPage price editor field names', () => {
         const setPrice = [...target.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith(language.usageStats.setPrice))!
         setPrice.click()
         flushSync()
-        const inputs = [...target.querySelectorAll<HTMLInputElement>('[data-part="usage-price-editor"] input[type="text"], [data-part="usage-price-editor"] input:not([type])')]
+        const inputs = [...target.querySelectorAll<HTMLInputElement>('[data-part="settings-usage-price-editor"] input[type="text"], [data-part="settings-usage-price-editor"] input:not([type])')]
         expect(inputs.length).toBeGreaterThan(0)
         for (const input of inputs) {
             const label = target.querySelector<HTMLElement>(`label[for="${input.id}"]`)!
@@ -65,7 +65,7 @@ describe('UsageStatisticsPage price editor field names', () => {
             expect(controlName(input)).toBe(label.textContent!.trim())
             expect(controlDescription(input).startsWith(controlName(input))).toBe(true)
         }
-        const editor = target.querySelector<HTMLElement>('[data-part="usage-price-editor"]')!
+        const editor = target.querySelector<HTMLElement>('[data-part="settings-usage-price-editor"]')!
         expect(unnamedControls(editor, { fields: true })).toEqual([])
     })
 })

@@ -44,8 +44,8 @@ describe('SeasonalLogoRow', () => {
         const root = render()
         expect(boxOf(root).checked).toBe(true)
         expect(boxOf(root).getAttribute('aria-label')).toBe(language.seasonalLogoSetting)
-        expect(root.querySelector('[data-part="device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
-        expect(root.querySelector('[data-part="seasonal-logo-help"]')!.textContent).toBe(language.seasonalLogoHelp)
+        expect(root.querySelector('[data-part="settings-device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
+        expect(root.querySelector('[data-part="settings-seasonal-logo-help"]')!.textContent).toBe(language.seasonalLogoHelp)
     })
 
     // Guards: the switch ignoring a stored "off" at mount.

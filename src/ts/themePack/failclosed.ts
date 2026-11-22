@@ -23,11 +23,12 @@ export type NameMatch = string | RegExp
 /** Token name to its default value (the app's token stylesheets). */
 export type TokenMap = Map<string, string>
 
-/** One rejection: the selector of the offending declaration, the property and the reason. */
+/** One rejection: the selector of the offending declaration, the property and the reason. `rule` tags the category of a warning. */
 export interface LintError {
     selector: string
     prop: string
     why: string
+    rule?: 'contrast' | 'readability' | 'layout'
 }
 
 /** Token-on-token contrast: [foreground token, background token or surface key, ratio, label]. */

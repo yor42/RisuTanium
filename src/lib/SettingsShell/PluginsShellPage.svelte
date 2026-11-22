@@ -81,38 +81,38 @@
     const buttonClass = 'flex items-center gap-2 px-3 min-h-11 rounded-md bg-darkbutton text-textcolor hover:text-textcolor'
 </script>
 
-<div class="flex flex-col gap-3" data-part="plugins-page">
-    <p class="text-draculared text-sm" data-part="plugins-warning">{language.pluginsPage.warning}</p>
+<div class="flex flex-col gap-3" data-part="settings-plugins-page">
+    <p class="text-draculared text-sm" data-part="settings-plugins-warning">{language.pluginsPage.warning}</p>
 
     <div class="flex flex-wrap gap-2">
-        <button type="button" class={buttonClass} data-part="plugins-add" onclick={() => { void importPlugin() }}>
+        <button type="button" class={buttonClass} data-part="settings-plugins-add" onclick={() => { void importPlugin() }}>
             <PlusIcon aria-hidden="true" />
             <span>{language.pluginsPage.add}</span>
         </button>
-        <button type="button" class={buttonClass} data-part="plugins-dev" onclick={codeMenu}>
+        <button type="button" class={buttonClass} data-part="settings-plugins-dev" onclick={codeMenu}>
             <CodeXmlIcon aria-hidden="true" />
             <span>{language.pluginsPage.devTools}</span>
         </button>
         {#if checkable}
-            <button type="button" class={buttonClass} disabled={checking} data-part="plugins-check" onclick={checkNow}>
+            <button type="button" class={buttonClass} disabled={checking} data-part="settings-plugins-check" onclick={checkNow}>
                 <RefreshCwIcon aria-hidden="true" />
                 <span>{language.pluginsPage.checkNow}</span>
             </button>
         {/if}
     </div>
 
-    <div class="flex flex-col gap-1 text-sm" role="status" aria-live="polite" data-part="plugins-results">
+    <div class="flex flex-col gap-1 text-sm" role="status" aria-live="polite" data-part="settings-plugins-results">
         {#if checking}
             <span class="text-textcolor2">{language.pluginsPage.checking}</span>
         {:else}
             {#if summary.failed.length > 0}
-                <span class="text-draculared" data-part="plugins-result-failed">{fillLang(language.pluginsPage.resultFailed, { count: summary.failed.length, names: summary.failed.join(', ') })}</span>
+                <span class="text-draculared" data-part="settings-plugins-result-failed">{fillLang(language.pluginsPage.resultFailed, { count: summary.failed.length, names: summary.failed.join(', ') })}</span>
             {/if}
             {#if summary.updates > 0}
-                <span class="text-textcolor" data-part="plugins-result-updates">{fillLang(language.pluginsPage.resultUpdates, { count: summary.updates })}</span>
+                <span class="text-textcolor" data-part="settings-plugins-result-updates">{fillLang(language.pluginsPage.resultUpdates, { count: summary.updates })}</span>
             {/if}
             {#if summary.allCurrent}
-                <span class="text-textcolor2" data-part="plugins-result-current">{language.pluginsPage.resultAllCurrent}</span>
+                <span class="text-textcolor2" data-part="settings-plugins-result-current">{language.pluginsPage.resultAllCurrent}</span>
             {/if}
         {/if}
     </div>

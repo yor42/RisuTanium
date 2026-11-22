@@ -376,7 +376,7 @@
             <input
                 type="search"
                 class="grow min-w-0 min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden"
-                data-part="settings-search-field"
+                data-part="settings-persona-search"
                 aria-label={language.settingsShellPersonaSearch}
                 placeholder={language.settingsShellPersonaSearch}
                 bind:value={query}
@@ -405,7 +405,7 @@
                                 class:cursor-grab={drag === null}
                                 class:cursor-grabbing={drag !== null}
                                 aria-hidden="true"
-                                data-part="settings-persona-handle"
+                                data-part="settings-persona-drag"
                                 onpointerdown={(event) => onHandleDown(event, row.persona)}
                                 onpointermove={onHandleMove}
                                 onpointerup={onHandleUp}
@@ -435,7 +435,7 @@
                             <span class="flex flex-col min-w-0">
                                 <span class="font-semibold truncate">{displayName(row.persona)}</span>
                                 <span class="text-sm text-textcolor2 truncate">{row.persona.note ?? ''}</span>
-                                <span class="text-xs text-textcolor2 truncate" data-part="settings-persona-count">{countText(row.persona, active)}</span>
+                                <span class="text-xs text-textcolor2 truncate" data-part="settings-persona-usage">{countText(row.persona, active)}</span>
                             </span>
                             {#if active}
                                 <span class="ml-auto shrink-0 px-2 rounded-md bg-selected text-sm" data-part="settings-persona-active">{language.settingsShellPersonaActive}</span>
@@ -491,7 +491,7 @@
                     {#if rows.length <= 1}
                         <p class="text-sm text-textcolor2" data-part="settings-persona-guard">{language.settingsShellPersonaLast}</p>
                     {/if}
-                    <div class="flex flex-col gap-1" data-part="settings-persona-bound">
+                    <div class="flex flex-col gap-1" data-part="settings-persona-binding">
                         <span class="text-sm text-textcolor2">{boundChats.length > 0 ? language.settingsShellPersonaBoundList : (shownActive ? language.settingsShellPersonaBoundNoneActive : language.settingsShellPersonaBoundNone)}</span>
                         {#each boundChats as chatLine}
                             <span class="text-sm">{chatLine}</span>

@@ -5,7 +5,7 @@
   Three groups: --pattern-* (look), --warning-* (warning motion) and --task-* (task motion). The motion groups live only here; stylesheets read them.
   A component uses calc(var(--token) * var(--chat-motion, 1)) where speed applies (--chat-motion is the unitless factor; --risu-animation-speed is a time in seconds).
 */
-:root {
+:root, [data-own-scheme] {
   --pattern-ease: var(--nexus-ease);
 
   /* ---- Warning: severity channels, edges and the tint. notice = overlay, caution = warning, confirm = accent, danger and blocked = danger. ---- */
@@ -102,9 +102,9 @@
 }
 
 /* 44 dp on touch, 40 on hover input. Packs may set tokens under the root attributes too. */
-html[data-input="hover"] { --pattern-warn-action-height: 40px; }
+html[data-input="hover"], html[data-input="hover"] [data-own-scheme] { --pattern-warn-action-height: 40px; }
 
-:root {
+:root, [data-own-scheme] {
   /* ---- Warning motion ---- */
   --warning-glyph-delay: 60ms;
   --warning-glyph-dur: 220ms;

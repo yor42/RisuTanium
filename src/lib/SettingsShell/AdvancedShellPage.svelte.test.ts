@@ -155,7 +155,7 @@ describe('the Advanced page at index 6', () => {
     test('a calm note opens the page and the red warning is gone', async () => {
         const { target } = showPage()
         await settle()
-        expect(target.querySelector('[data-part="advanced-calm"]')?.textContent).toBe(language.settingsShellAdvCalm)
+        expect(target.querySelector('[data-part="settings-advanced-calm"]')?.textContent).toBe(language.settingsShellAdvCalm)
         expect(maybeRow(target, 'adv.warn')).toBeNull()
         expect(target.querySelector('.text-draculared:not(button.help *)')).toBeNull()
     })

@@ -82,7 +82,7 @@ describe('no Notification API (T-B3)', () => {
             expect(DBState.db.notification).toBe(false)
             expect(box(target).checked).toBe(false)
             expect(spies.alertError).not.toHaveBeenCalled()
-            expect(target.querySelector('[data-part="notification-status"]')!.textContent).toBe(language.settingsShellNotificationUnsupported)
+            expect(target.querySelector('[data-part="settings-notification-status"]')!.textContent).toBe(language.settingsShellNotificationUnsupported)
         } finally {
             process.off('unhandledRejection', unhandled)
         }
@@ -97,13 +97,13 @@ describe('status line', () => {
     ] as const)('names the %s permission', (permission, expected) => {
         vi.stubGlobal('Notification', { permission, requestPermission: vi.fn() })
         const target = show()
-        expect(target.querySelector('[data-part="notification-status"]')!.textContent).toBe(expected())
+        expect(target.querySelector('[data-part="settings-notification-status"]')!.textContent).toBe(expected())
     })
 
     test('names a missing API as unsupported', () => {
         vi.stubGlobal('Notification', undefined)
         const target = show()
-        expect(target.querySelector('[data-part="notification-status"]')!.textContent).toBe(language.settingsShellNotificationUnsupported)
+        expect(target.querySelector('[data-part="settings-notification-status"]')!.textContent).toBe(language.settingsShellNotificationUnsupported)
     })
 })
 
@@ -131,7 +131,7 @@ describe('first use and refusal (T-B4)', () => {
         expect(DBState.db.notification).toBe(false)
         expect(box(target).checked).toBe(false)
         expect(spies.alertError).toHaveBeenCalledExactlyOnceWith(language.permissionDenied)
-        expect(target.querySelector('[data-part="notification-status"]')!.textContent).toBe(language.settingsShellNotificationDenied)
+        expect(target.querySelector('[data-part="settings-notification-status"]')!.textContent).toBe(language.settingsShellNotificationDenied)
     })
 
     test('an already blocked permission is not asked again and turns the switch off with the alert', async () => {

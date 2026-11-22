@@ -5,7 +5,7 @@
    this file is imported by HomeShell only, never by styles.css.
    Band and language blocks restate the registry's own blocks of the same name. Home's bands are 768/1280, so
    the band block sits on the landing element rather than on html[data-layout]. */
-:root {
+:root, [data-own-scheme] {
   /* type */
   --home-text-xs: 12px;
   --home-text-sm: 13px;
@@ -75,7 +75,7 @@
   --home-danger-solid: var(--nexus-danger);
 }
 
-:root:lang(ko) {
+:root:lang(ko), :root:lang(ko) [data-own-scheme] {
   --home-tracking-eyebrow: 0;
   --home-tracking-h1: 0;
   --home-leading-body: 1.6;

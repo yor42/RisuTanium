@@ -30,7 +30,7 @@
     }
 </script>
 
-<fieldset class="mt-4 flex flex-col gap-1 min-w-0" data-part="new-message-button-row">
+<fieldset class="mt-4 flex flex-col gap-1 min-w-0" data-part="settings-new-message-button-row">
     <legend class="text-textcolor">{settingsLabel('settingsShellInputNewMsgButton')}</legend>
     <p class="text-xs text-textcolor2 mb-1">{settingsLabel('settingsShellInputNewMsgButtonHint')}</p>
     <div class="flex flex-wrap gap-x-4 gap-y-1">
@@ -48,7 +48,7 @@
             </label>
         {/each}
     </div>
-    <div class="relative h-12 w-24 rounded-md border border-darkborderc" aria-hidden="true" data-part="new-message-button-outline">
+    <div class="relative h-12 w-24 rounded-md border border-darkborderc" aria-hidden="true" data-part="settings-new-message-button-outline">
         <span class="absolute bg-selected {MARKER_CLASS[current] ?? MARKER_CLASS['bottom-center']}"></span>
     </div>
 </fieldset>

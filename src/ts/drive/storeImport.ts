@@ -246,7 +246,7 @@ export class UnsavedGuard {
         if (this.acceptedAt !== null && getSaveMarkCount() === this.acceptedAt) {
             return true
         }
-        if (!await alertConfirm(language.store2RestoreUnsavedConfirm)) {
+        if (!await alertConfirm(language.store2RestoreUnsavedConfirm, { ownScheme: 'saveGuard' })) {
             return false
         }
         this.acceptedAt = getSaveMarkCount()

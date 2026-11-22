@@ -18,7 +18,7 @@
     <button
         type="button"
         class="self-start min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected mb-2"
-        data-part="data-action"
+        data-part="settings-data-action"
         aria-disabled={dataSheetState.running ? 'true' : undefined}
         onclick={restore}
     >{getLabel(item)}</button>

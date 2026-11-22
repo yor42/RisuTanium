@@ -33,6 +33,8 @@
     import { downloadFile } from 'src/ts/globalApi.svelte'
     import { validateTaskPreset } from 'src/ts/process/utility/taskPreset'
     import {
+        getUtilityInstructions,
+        getUtilitySteps,
         newUtilityConversation,
         sendUtility,
         stopUtility,
@@ -41,12 +43,17 @@
     import { DBState } from 'src/ts/stores.svelte'
     import Button from '../UI/GUI/Button.svelte'
     import SelectInput from '../UI/GUI/SelectInput.svelte'
+    import InstructionSources from './InstructionSources.svelte'
     import TaskPresetEditor from './TaskPresetEditor.svelte'
+    import ToolStepList from './ToolStepList.svelte'
     import { utilityOpen } from './utilityGate'
+    import WorkspaceManager from './WorkspaceManager.svelte'
+    import WorkspacePicker from './WorkspacePicker.svelte'
 
     let presetId = $state('')
     let draft = $state('')
     let editing = $state(false)
+    let managing = $state(false)
     let notice = $state('')
 
     const presets = $derived(DBState.db.taskPresets ?? [])
@@ -89,7 +96,7 @@
 <div class="flex h-full w-full flex-col items-center overflow-y-auto" data-testid="utility-screen">
     <div class="flex w-full max-w-4xl flex-col gap-3 p-4 text-textcolor">
         <div class="flex items-center gap-2">
-            <button class="mr-2 text-textcolor2 hover:text-green-500" aria-label={language.utility.back} onclick={() => utilityOpen.set(false)}>
+            <button class="mr-2 flex min-h-11 min-w-11 items-center justify-center text-textcolor2 hover:text-green-500" aria-label={language.utility.back} onclick={() => utilityOpen.set(false)}>
                 <ArrowLeft />
             </button>
             <h1 class="text-2xl font-bold">{language.utility.title}</h1>
@@ -111,10 +118,21 @@
             {:else}
                 <span class="text-textcolor2" data-testid="utility-no-presets">{language.utility.noPresets}</span>
             {/if}
-            <Button styled="outlined" onclick={() => { editing = !editing }}>
+            <Button className="min-h-11" styled="outlined" onclick={() => { editing = !editing }}>
                 {editing ? language.utility.doneEditing : language.utility.editPresets}
             </Button>
         </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+            <WorkspacePicker />
+            <Button className="min-h-11" styled="outlined" onclick={() => { managing = !managing }}>
+                {managing ? language.utility.workspaces.doneManaging : language.utility.workspaces.manage}
+            </Button>
+        </div>
+
+        {#if managing}
+            <WorkspaceManager />
+        {/if}
 
         {#if chosenProblems.length > 0}
             <div class="rounded-md border border-draculared p-2 text-draculared" role="alert" data-testid="utility-damaged-preset">
@@ -152,6 +170,9 @@
             {/each}
         </div>
 
+        <InstructionSources sources={getUtilityInstructions()} />
+        <ToolStepList steps={getUtilitySteps()} />
+
         <span id="utility-input-label" class="sr-only">{language.utility.messagePlaceholder}</span>
         <textarea
             class="min-h-24 w-full resize-y rounded-md border border-darkborderc bg-transparent px-4 py-2 text-textcolor focus:border-borderc focus:outline-hidden focus:ring-2 focus:ring-borderc"
@@ -164,13 +185,13 @@
 
         <div class="flex flex-wrap items-center gap-2">
             {#if running}
-                <Button styled="danger" onclick={stopUtility}>{language.utility.stop}</Button>
+                <Button className="min-h-11" styled="danger" onclick={stopUtility}>{language.utility.stop}</Button>
             {:else}
-                <Button disabled={!canSend} onclick={send}>{language.utility.send}</Button>
+                <Button className="min-h-11" disabled={!canSend} onclick={send}>{language.utility.send}</Button>
             {/if}
-            <Button styled="outlined" onclick={startNew}>{language.utility.newConversation}</Button>
-            <Button styled="outlined" disabled={utilityConversation.turns.length === 0} onclick={copyMarkdown}>{language.utility.copyMarkdown}</Button>
-            <Button styled="outlined" disabled={utilityConversation.turns.length === 0} onclick={saveMarkdown}>{language.utility.saveMarkdown}</Button>
+            <Button className="min-h-11" styled="outlined" onclick={startNew}>{language.utility.newConversation}</Button>
+            <Button className="min-h-11" styled="outlined" disabled={utilityConversation.turns.length === 0} onclick={copyMarkdown}>{language.utility.copyMarkdown}</Button>
+            <Button className="min-h-11" styled="outlined" disabled={utilityConversation.turns.length === 0} onclick={saveMarkdown}>{language.utility.saveMarkdown}</Button>
             {#if notice}
                 <span class="text-sm text-textcolor2" role="status">{notice}</span>
             {/if}

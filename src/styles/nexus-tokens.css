@@ -8,7 +8,7 @@
 /* Registered so the ambient bloom can crossfade between modes. */
 @property --nexus-canvas-warm { syntax: '<color>'; inherits: true; initial-value: rgb(255 154 122 / 0.13); }
 
-:root {
+:root, [data-own-scheme] {
   /* Canvas: the scheme's background. The bloom and the warm glow are off by default; a pack may declare them. */
   --nexus-canvas: var(--risu-theme-bgcolor);
   --nexus-canvas-bloom: transparent;
@@ -140,12 +140,12 @@
 
 /* The app's reduce-motion setting: `rm` turns it on whatever the OS says, `rm-off` keeps the OS query out. */
 @media (prefers-reduced-motion: reduce) {
-  :root:not(.rm-off) {
+  :root:not(.rm-off), :root:not(.rm-off) [data-own-scheme] {
     --nexus-animate-enter: nexus-fade var(--nexus-duration-enter) var(--nexus-ease) both;
     --nexus-animate-breathe: none;
   }
 }
-:root.rm {
+:root.rm, :root.rm [data-own-scheme] {
   --nexus-animate-enter: nexus-fade var(--nexus-duration-enter) var(--nexus-ease) both;
   --nexus-animate-breathe: none;
 }

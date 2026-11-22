@@ -17,7 +17,7 @@
     }
 </script>
 
-<div class="flex flex-col gap-6" data-part="advanced-page">
-    <p class="text-sm text-textcolor2" data-part="advanced-calm">{settingsLabel('settingsShellAdvCalm')}</p>
+<div class="flex flex-col gap-6" data-part="settings-advanced-page">
+    <p class="text-sm text-textcolor2" data-part="settings-advanced-calm">{settingsLabel('settingsShellAdvCalm')}</p>
     <ShellSectionsPage bind:this={sectionsPage} sections={ADVANCED_SHELL_SECTIONS} {components} />
 </div>

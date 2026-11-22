@@ -387,10 +387,10 @@ describe('search and move (P6, P7)', () => {
     test('P6: the search field appears from 8 personas and filters by name, ignoring case', async () => {
         seed(many(7))
         const seven = mountPage()
-        expect(seven.querySelector('[data-part="settings-search-field"]')).toBeNull()
+        expect(seven.querySelector('[data-part="settings-persona-search"]')).toBeNull()
         seed(many(8))
         const target = mountPage()
-        const field = target.querySelector<HTMLInputElement>('[data-part="settings-search-field"]')!
+        const field = target.querySelector<HTMLInputElement>('[data-part="settings-persona-search"]')!
         type(field, 'zE')
         expect(cards(target).length).toBe(1)
         expect(cards(target)[0].textContent).toContain('Zed')
@@ -446,7 +446,7 @@ describe('drag reorder (S3-1)', () => {
     }
 
     function handle(target: HTMLElement, index: number): HTMLElement {
-        return cards(target)[index].querySelector<HTMLElement>('[data-part="settings-persona-handle"]')!
+        return cards(target)[index].querySelector<HTMLElement>('[data-part="settings-persona-drag"]')!
     }
 
     /** Stacks the cards in one column, 100 tall with a 10 gap, so card i spans [110 i, 110 i + 100]. */
@@ -470,7 +470,7 @@ describe('drag reorder (S3-1)', () => {
 
     test('the handle is a pointer-only part: not focusable and hidden from assistive technology', () => {
         const target = mountPage()
-        const handles = target.querySelectorAll('[data-part="settings-persona-handle"]')
+        const handles = target.querySelectorAll('[data-part="settings-persona-drag"]')
         expect(handles.length).toBe(3)
         for (const part of handles) {
             expect(part.matches(FOCUSABLE)).toBe(false)
@@ -573,11 +573,11 @@ describe('drag reorder (S3-1)', () => {
     test('a filtered list has no handles, and a single persona has none', () => {
         seed(Array.from({ length: 8 }, (_, index) => persona(`p${index}`, `N${index}`)))
         const target = mountPage()
-        expect(target.querySelectorAll('[data-part="settings-persona-handle"]').length).toBe(8)
-        type(target.querySelector<HTMLInputElement>('[data-part="settings-search-field"]')!, 'n1')
-        expect(target.querySelectorAll('[data-part="settings-persona-handle"]').length).toBe(0)
+        expect(target.querySelectorAll('[data-part="settings-persona-drag"]').length).toBe(8)
+        type(target.querySelector<HTMLInputElement>('[data-part="settings-persona-search"]')!, 'n1')
+        expect(target.querySelectorAll('[data-part="settings-persona-drag"]').length).toBe(0)
         seed([persona('only', 'Solo')])
-        expect(mountPage().querySelectorAll('[data-part="settings-persona-handle"]').length).toBe(0)
+        expect(mountPage().querySelectorAll('[data-part="settings-persona-drag"]').length).toBe(0)
     })
 
     test('near the bottom edge the scroll view advances each frame and the drop target follows; release stops the frames', async () => {

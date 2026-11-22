@@ -37,8 +37,8 @@ function show(): HTMLElement {
     return target
 }
 
-const box = (target: HTMLElement, mode: HomeMode) => target.querySelector<HTMLInputElement>(`[data-part="mode-checkbox"][data-mode="${mode}"]`)!
-const rowOf = (target: HTMLElement, mode: HomeMode) => target.querySelector<HTMLLabelElement>(`[data-part="mode-row"][data-mode="${mode}"]`)!
+const box = (target: HTMLElement, mode: HomeMode) => target.querySelector<HTMLInputElement>(`[data-part="settings-mode-checkbox"][data-mode="${mode}"]`)!
+const rowOf = (target: HTMLElement, mode: HomeMode) => target.querySelector<HTMLLabelElement>(`[data-part="settings-mode-row"][data-mode="${mode}"]`)!
 const part = (target: HTMLElement, name: string) => target.querySelector<HTMLElement>(`[data-part="${name}"]`)
 const checkedModes = (target: HTMLElement) => (['rp', 'hybrid', 'utility'] as HomeMode[]).filter((mode) => box(target, mode).checked)
 
@@ -146,7 +146,7 @@ describe('the hide switch', () => {
         setDb(['hybrid'], true)
         const stored = DBState.db.visibleModes
         const target = show()
-        const hide = part(target, 'mode-hide-switch')!
+        const hide = part(target, 'settings-mode-hide-switch')!
         expect(hide.getAttribute('role')).toBe('switch')
         expect(hide.getAttribute('aria-checked')).toBe('true')
 
@@ -171,7 +171,7 @@ describe('the hide switch', () => {
 describe('show all modes', () => {
     test('while nothing is hidden it is aria-disabled with the already reason and asks for nothing', () => {
         const target = show()
-        const button = part(target, 'mode-show-all')!
+        const button = part(target, 'settings-mode-show-all')!
         expect(button.getAttribute('aria-disabled')).toBe('true')
         expect(button.getAttribute('aria-describedby')).toBeTruthy()
         expect(document.getElementById(button.getAttribute('aria-describedby')!)?.textContent).toBe(language.settingsShellModesAlready)
@@ -184,7 +184,7 @@ describe('show all modes', () => {
     test('with hiding off it stays disabled even when a smaller set is remembered', () => {
         setDb(['hybrid'], false)
         const target = show()
-        const button = part(target, 'mode-show-all')!
+        const button = part(target, 'settings-mode-show-all')!
         expect(button.getAttribute('aria-disabled')).toBe('true')
         button.click()
         expect(asked).toEqual([])
@@ -194,7 +194,7 @@ describe('show all modes', () => {
         setDb(['hybrid'], true)
         const stored = DBState.db.visibleModes
         const target = show()
-        const button = part(target, 'mode-show-all')!
+        const button = part(target, 'settings-mode-show-all')!
         expect(button.hasAttribute('aria-disabled')).toBe(false)
         button.click()
         flushSync()
@@ -210,39 +210,39 @@ describe('banner, status and notes', () => {
     test('the repair banner shows only while hiding is on and fewer than three modes are shown', () => {
         setDb(['hybrid'], true)
         let target = show()
-        expect(part(target, 'mode-repair-banner')?.textContent).toContain(language.settingsShellModesBanner(language.settingsShellModesNameHybrid))
+        expect(part(target, 'settings-mode-repair-banner')?.textContent).toContain(language.settingsShellModesBanner(language.settingsShellModesNameHybrid))
         for (const component of mounted.splice(0)) unmount(component)
         document.body.replaceChildren()
 
         setDb(['hybrid'], false)
         target = show()
-        expect(part(target, 'mode-repair-banner')).toBeNull()
+        expect(part(target, 'settings-mode-repair-banner')).toBeNull()
         for (const component of mounted.splice(0)) unmount(component)
         document.body.replaceChildren()
 
         setDb(['rp', 'hybrid', 'utility'], true)
         target = show()
-        expect(part(target, 'mode-repair-banner')).toBeNull()
+        expect(part(target, 'settings-mode-repair-banner')).toBeNull()
     })
 
     test('the status line names the shown modes, and says all when all are shown', () => {
         setDb(['rp', 'utility'], true)
         const target = show()
-        const status = part(target, 'mode-status')!
+        const status = part(target, 'settings-mode-status')!
         expect(status.getAttribute('role')).toBe('status')
         expect(status.textContent).toBe(language.settingsShellModesStatusSome(2, `${language.settingsShellModesNameRp}, ${language.settingsShellModesNameUtility}`))
         box(target, 'utility').click()
         flushSync()
         expect(status.textContent).toBe(language.settingsShellModesStatusSome(1, language.settingsShellModesNameRp))
-        part(target, 'mode-hide-switch')!.click()
+        part(target, 'settings-mode-hide-switch')!.click()
         flushSync()
         expect(status.textContent).toBe(language.settingsShellModesStatusAll)
     })
 
     test('both note lines are always present, including the Home-arrives note', () => {
         const target = show()
-        expect(part(target, 'mode-visibility-note')?.textContent).toBe(language.settingsShellModesNote)
-        expect(part(target, 'mode-visibility-home-note')?.textContent).toBe(language.settingsShellModesHomeNote)
-        expect(part(target, 'mode-visibility-title')?.textContent).toBe(language.settingsShellModesTitle)
+        expect(part(target, 'settings-mode-visibility-note')?.textContent).toBe(language.settingsShellModesNote)
+        expect(part(target, 'settings-mode-visibility-home-note')?.textContent).toBe(language.settingsShellModesHomeNote)
+        expect(part(target, 'settings-mode-visibility-title')?.textContent).toBe(language.settingsShellModesTitle)
     })
 })

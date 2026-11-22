@@ -114,7 +114,7 @@ describe('T15 no key in the DOM', () => {
         expect(text).toContain('•••• 5678')
         expect(text).toContain('2 keys')
         expect(text).toContain(ENV_REF)
-        const chips = Array.from(document.querySelectorAll('[data-part="connection-chip"]')).map((el) => el.textContent?.trim())
+        const chips = Array.from(document.querySelectorAll('[data-part="settings-connection-chip"]')).map((el) => el.textContent?.trim())
         expect(chips).toContain('••••')
     })
 
@@ -123,9 +123,9 @@ describe('T15 no key in the DOM', () => {
         document.querySelector<HTMLElement>(`[data-connection-open="${id}"]`)!.click()
         await settle()
         expectNoRawKey()
-        document.querySelector<HTMLElement>('[data-part="connection-key-replace"]')!.click()
+        document.querySelector<HTMLElement>('[data-part="settings-connection-key-replace"]')!.click()
         await settle()
-        const fields = Array.from(document.querySelectorAll<HTMLInputElement>('[data-part="connection-key-input"] input'))
+        const fields = Array.from(document.querySelectorAll<HTMLInputElement>('[data-part="settings-connection-key-input"] input'))
         expect(fields.length).toBeGreaterThan(0)
         // A CSS-masked textarea would carry no password semantics; every key field is a real password input.
         expect(document.querySelectorAll('textarea').length).toBe(0)
@@ -142,12 +142,12 @@ describe('T15 no key in the DOM', () => {
     test('the add flow key field is an empty password input for every offered provider', async () => {
         for (const provider of ['google', 'reverse_proxy', 'ollama']) {
             mountPage()
-            document.querySelector<HTMLElement>('[data-part="connection-add-open"]')!.click()
+            document.querySelector<HTMLElement>('[data-part="settings-connection-add-open"]')!.click()
             await settle()
             document.querySelector<HTMLElement>(`[data-connection-provider="${provider}"]`)!.click()
             await settle()
             expect(document.querySelectorAll('textarea').length).toBe(0)
-            const field = document.querySelector<HTMLInputElement>('[data-part="connection-key-input"] input')!
+            const field = document.querySelector<HTMLInputElement>('[data-part="settings-connection-key-input"] input')!
             expect(field.type).toBe('password')
             expect(field.value).toBe('')
             await unmount(mounted.pop()!)
@@ -159,12 +159,12 @@ describe('T15 no key in the DOM', () => {
         mountPage()
         document.querySelector<HTMLElement>('[data-connection-open="conn-1"]')!.click()
         await settle()
-        document.querySelector<HTMLElement>('[data-part="connection-key-clear"]')!.click()
+        document.querySelector<HTMLElement>('[data-part="settings-connection-key-clear"]')!.click()
         await settle()
         expectNoRawKey()
         document.querySelector<HTMLElement>('[data-part="pattern-warn-cancel"]')!.click()
         await settle()
-        document.querySelector<HTMLElement>('[data-part="connection-delete"]')!.click()
+        document.querySelector<HTMLElement>('[data-part="settings-connection-delete"]')!.click()
         await settle()
         expectNoRawKey()
     })

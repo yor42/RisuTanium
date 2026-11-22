@@ -21,7 +21,7 @@
     const group = $props.id()
 </script>
 
-<fieldset class="mt-4 min-w-0 border-0 p-0" data-part="theme-cards">
+<fieldset class="mt-4 min-w-0 border-0 p-0" data-part="settings-theme-cards">
     <legend class="text-textcolor">{language.settingsShellThemeLegend}</legend>
     <div class="mt-2 grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2">
         {#each THEMES as theme (theme.key)}

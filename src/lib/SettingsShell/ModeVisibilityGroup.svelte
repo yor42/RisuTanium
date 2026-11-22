@@ -57,17 +57,17 @@
     }
 </script>
 
-<section class="flex flex-col gap-3 mb-6" aria-labelledby="{uid}-title" data-part="mode-visibility">
-    <h3 id="{uid}-title" class="text-lg font-semibold" data-part="mode-visibility-title">{language.settingsShellModesTitle}</h3>
-    <p class="text-textcolor2" data-part="mode-visibility-note">{language.settingsShellModesNote}</p>
-    <p class="text-textcolor2" data-part="mode-visibility-home-note">{language.settingsShellModesHomeNote}</p>
+<section class="flex flex-col gap-3 mb-6" aria-labelledby="{uid}-title" data-part="settings-mode-visibility">
+    <h3 id="{uid}-title" class="text-lg font-semibold" data-part="settings-mode-visibility-title">{language.settingsShellModesTitle}</h3>
+    <p class="text-textcolor2" data-part="settings-mode-visibility-note">{language.settingsShellModesNote}</p>
+    <p class="text-textcolor2" data-part="settings-mode-visibility-home-note">{language.settingsShellModesHomeNote}</p>
 
     <button
         type="button"
         role="switch"
         class="flex items-center justify-between gap-3 px-3 min-h-11 rounded-md bg-darkbutton text-textcolor"
         aria-checked={state.hideUnusedModes === true}
-        data-part="mode-hide-switch"
+        data-part="settings-mode-hide-switch"
         onclick={() => setHideUnusedModes(DBState.db, state.hideUnusedModes !== true)}
     >
         <span>{language.settingsShellModesHide}</span>
@@ -77,17 +77,17 @@
     </button>
 
     {#if repair}
-        <div class="flex flex-col gap-1 px-3 py-2 rounded-md border border-draculared text-textcolor" data-part="mode-repair-banner">
+        <div class="flex flex-col gap-1 px-3 py-2 rounded-md border border-draculared text-textcolor" data-part="settings-mode-repair-banner">
             <span class="font-semibold">{language.settingsShellModesBanner(modeNames(shown))}</span>
             <span class="text-textcolor2">{language.settingsShellModesBannerSub}</span>
         </div>
     {/if}
 
-    <fieldset class="flex flex-col gap-2 border-0 p-0 m-0 min-w-0" data-part="mode-fieldset">
+    <fieldset class="flex flex-col gap-2 border-0 p-0 m-0 min-w-0" data-part="settings-mode-fieldset">
         <legend class="mb-1 font-semibold">{language.settingsShellModesLegend}</legend>
         {#each HOME_MODES as mode (mode)}
             {@const lock = lockOf(mode, state)}
-            <label class="flex items-start gap-3 min-h-11 px-3 py-2 rounded-md bg-darkbutton text-textcolor" data-part="mode-row" data-mode={mode}>
+            <label class="flex items-start gap-3 min-h-11 px-3 py-2 rounded-md bg-darkbutton text-textcolor" data-part="settings-mode-row" data-mode={mode}>
                 <input
                     type="checkbox"
                     class="mt-1"
@@ -95,7 +95,7 @@
                     checked={shown.includes(mode)}
                     aria-disabled={lock !== null ? 'true' : undefined}
                     aria-describedby={lock !== null ? `${uid}-${mode}-desc ${uid}-${mode}-reason` : `${uid}-${mode}-desc`}
-                    data-part="mode-checkbox"
+                    data-part="settings-mode-checkbox"
                     data-mode={mode}
                     onclick={(event) => onToggle(event, mode)}
                 />
@@ -103,14 +103,14 @@
                     <span>{modeName(mode)}</span>
                     <span id="{uid}-{mode}-desc" class="text-textcolor2">{modeDescription(mode)}</span>
                     {#if lock !== null}
-                        <span id="{uid}-{mode}-reason" class="text-textcolor2" data-part="mode-lock-reason">{lock === 'off' ? language.settingsShellModesLockOff : language.settingsShellModesLockLast}</span>
+                        <span id="{uid}-{mode}-reason" class="text-textcolor2" data-part="settings-mode-lock-reason">{lock === 'off' ? language.settingsShellModesLockOff : language.settingsShellModesLockLast}</span>
                     {/if}
                 </span>
             </label>
         {/each}
     </fieldset>
 
-    <p class="text-textcolor2" role="status" aria-live="polite" data-part="mode-status">{shown.length === HOME_MODES.length ? language.settingsShellModesStatusAll : language.settingsShellModesStatusSome(shown.length, modeNames(shown))}</p>
+    <p class="text-textcolor2" role="status" aria-live="polite" data-part="settings-mode-status">{shown.length === HOME_MODES.length ? language.settingsShellModesStatusAll : language.settingsShellModesStatusSome(shown.length, modeNames(shown))}</p>
 
     <div class="flex flex-col gap-1">
         <button
@@ -119,11 +119,11 @@
             class:text-textcolor2={!showAllEnabled}
             aria-disabled={showAllEnabled ? undefined : 'true'}
             aria-describedby={showAllEnabled ? undefined : `${uid}-already`}
-            data-part="mode-show-all"
+            data-part="settings-mode-show-all"
             onclick={onShowAll}
         >{language.settingsShellModesShowAll}</button>
         {#if !showAllEnabled}
-            <span id="{uid}-already" class="text-textcolor2" data-part="mode-show-all-reason">{language.settingsShellModesAlready}</span>
+            <span id="{uid}-already" class="text-textcolor2" data-part="settings-mode-show-all-reason">{language.settingsShellModesAlready}</span>
         {/if}
     </div>
 </section>

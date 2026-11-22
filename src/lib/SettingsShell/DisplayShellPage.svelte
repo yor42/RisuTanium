@@ -65,7 +65,7 @@
     }
 </script>
 
-<div class="flex flex-col gap-6" bind:this={root} data-part="display-page">
+<div class="flex flex-col gap-6" bind:this={root} data-part="settings-display-page">
     {#each DISPLAY_SHELL_SECTIONS as section (section.id)}
         {@const open = !section.collapsed || opened[section.id] === true}
         <section data-part="settings-section" data-section={section.id} aria-labelledby="{uid}-{section.id}">

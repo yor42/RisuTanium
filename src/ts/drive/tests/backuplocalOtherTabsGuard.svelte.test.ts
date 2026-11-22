@@ -569,7 +569,7 @@ describe('J2: no Web Locks on a web build', () => {
         await loadBackupBytes(tabA.loadLocalBackup, fixture)
 
         // The store2 unsaved-edits question may be asked on a test page that is not clean; the no-Web-Locks warning is not.
-        expect(tabA.alertModule.alertConfirm).not.toHaveBeenCalledWith(language.restoreNoLockWarningConfirm)
+        expect(vi.mocked(tabA.alertModule.alertConfirm).mock.calls.map((call) => call[0])).not.toContain(language.restoreNoLockWarningConfirm)
         expect(shell.commits).toHaveLength(1)
         expectNoSaveFirstWait(tabA)
     })
