@@ -3792,7 +3792,10 @@ export const languageGerman = {
     "themePackLargeConfirm": (size: string) =>
         `Dieses Design-Paket ist außergewöhnlich groß: Entpackt umfasst es ${size}. Trotzdem installieren? Es wurde noch nichts geschrieben.`,
     "themePackReplaceConfirm": (name: string) => `Das installierte Design-Paket „${name}“ durch diese Datei ersetzen?`,
+    "themePackRiskConfirm": (android: boolean) => `Ein Design-Paket kann die App schwer oder gar nicht mehr bedienbar machen.\n\n${android ? 'Wenn das passiert, tippen Sie lange auf das App-Symbol und wählen Sie „Start without theme pack“. Wenn die App eingefroren ist, schließen Sie sie zuerst in der Liste der zuletzt verwendeten Apps oder erzwingen Sie das Beenden in den App-Infos.\n\n' : ''}Solange ein Paket aktiv ist, können Warnungen vor Datenverlust und Hinweise auf Speicherfehler verdeckt oder schwer lesbar sein.\n\nDieses Design-Paket installieren?`,
     "themePackInstalled": (name: string) => `„${name}“ wurde installiert.`,
+    "themePackPacksOffSession": "Design-Pakete sind in dieser Sitzung ausgeschaltet.",
+    "themePackSelectToTurnOn": "Wählen Sie dieses Paket aus, um es jetzt einzuschalten.",
     "themePackSkippedAreas": (files: string) =>
         `Dieses Paket enthält außerdem ${files}. Diese Version gestaltet nur den neuen Chatbildschirm, Studio und den neuen Einstellungsbildschirm; diese Teile werden mit dem Paket aufbewahrt.`,
     "themePackColoursHeld": (files: string) => `Diese Version verwendet nur die Formen aus ${files}; deren Farben werden für eine spätere Version mit dem Paket aufbewahrt.`,
