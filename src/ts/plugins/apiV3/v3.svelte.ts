@@ -57,6 +57,7 @@ import { requestChatDataMain } from "src/ts/process/request/request";
 import { getModuleLorebooks } from "src/ts/process/modules";
 import { markPluginPanelHidden, markPluginPanelShown } from "src/ts/process/memory/busyActions";
 import { clearSupaMemoryIfEmpty, clearSupaMemoryIfEmptyIn } from "src/ts/process/memory/supaResume";
+import { createInlayFromData } from "src/ts/process/files/inlays";
 import {
     registerTTSPreprocessor,
     unregisterTTSPreprocessor,
@@ -1321,6 +1322,16 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                     p.realArg[key] = value;
                 }
             }
+        },
+        createInlay: async (data: Uint8Array | string, options?: { name?: string }) => {
+            if(typeof data !== 'string' && !(data instanceof Uint8Array)){
+                throw new Error('data must be a Uint8Array or an image data URI string')
+            }
+            const conf = await getPermission('inlay');
+            if(!conf){
+                return null;
+            }
+            return await createInlayFromData(data, options?.name)
         },
         getCharacterFromIndex: async (index:number) => {
             if(!await getPermission('db')){
