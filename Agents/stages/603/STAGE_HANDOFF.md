@@ -48,12 +48,12 @@ Mechanism:
 - `pnpm check`: 0 errors.
 - Mutants: 83 of 83 killed (Rust 46, TypeScript 13, Kotlin 24).
 - Gate 2 ran `cargo check` for `aarch64-linux-android` (passed) and probed the real Android permission set through IPC.
-- PR CI: running when this file was written. The cfg(unix) tests run there for the first time. TODO(evidence): CI result.
-- Note 9 rows DV-603-0..12, #541's DV-15 probe included: assigned to lane B, synthetic data. TODO(evidence): results. They gate the merge.
+- PR CI on `1eecc1531`: 8 of 8 checks passed. The first Linux run failed on the tests' hardcoded IPC origin, fixed in `f72f7dbdd`.
+- Note 9 rows DV-603-0..12 (#541's DV-15 probe included), synthetic data: PASS on the fix build, except DV-603-10b (the accepted capture limit, MC-3725) and two DV-603-8 legs that do not apply (no app field takes a video; My Files offers no app for `.bin`). The table is in the PR body. The first fix build failed DV-603-10a; the own-provider increment fixed it.
 
 ## 5. Unresolved issues
 
-- Merge gates: green PR CI and the Note 9 rows. DV-603-2, 6 and 10 carry three pieces of wiring that no automatic test covers: the OS string in `run()`, the `onActivityResult` override and the `OwnFileProvider` wiring (manifest name and each override's check).
+- Merge gates met: green PR CI and the Note 9 rows. DV-603-2, 6 and 10 carry three pieces of wiring that no automatic test covers: the OS string in `run()`, the `onActivityResult` override and the `OwnFileProvider` wiring (manifest name and each override's check).
 - Maintainer action before the next MVP update: check that the phone's Android System WebView is 152 or later. Record the release build's resolved `Cargo.lock` and merged providers and repeat the version check on them. No agent touches the phone.
 - Leftovers, not fixed here (each is one line in the PR):
   - The boot temp sweep omits `store2`, `inlays` and `consent`, and the comment in `tauriAtomicWrite.ts` says otherwise.
