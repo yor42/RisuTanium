@@ -3,9 +3,10 @@
 // (home/render.js, app.js, lib.js, home.css, home-tokens.css) and from home/checks/_census.out.txt (114 parts over 20 page states); lint-home.mjs re-verifies the part tiers in a real browser.
 // lintHome(css, name) = chat.lintPack(css, name, HOME_REGISTRY) plus homeSupplement(css): three gaps of the shared validator (resources, alias tokens, the primary button pair); section 7 below.
 import * as chat from '../engine'
-import type { ContrastPair, LintError, LintResult, NameMatch, RegistryInput, Rgba, SurfaceCheck, TokenMap } from '../engine'
+import type { ContrastPair, LintError, LintResult, NameMatch, NoteKind, RegistryInput, Rgba, SurfaceCheck, TokenMap } from '../engine'
 import type { GeometryChain, GeometrySheet, SheetTerm } from '../geometry'
 import { parseConcrete } from '../colour'
+import { splitFindings } from '../failclosed'
 import { decls } from '../csslit'
 import type { Decl } from '../csslit'
 import { tokenFile } from '../tokens'
@@ -219,8 +220,8 @@ const ratio = (a: Rgba, b: Rgba): number => {
 }
 export function homeSupplement(css: string): LintError[] {
     const errs: LintError[] = []
-    const fail = (selector: string, prop: string, why: string): void => {
-        errs.push({ selector, prop, why })
+    const fail = (selector: string, prop: string, why: string, rule?: NoteKind): void => {
+        errs.push(rule ? { selector, prop, why, rule } : { selector, prop, why })
     }
     const text = chat.normalise(css)
     for (const m of text.matchAll(/(?<![\w-])(url|image-set|image|src|element)\s*\(/g)) fail('(stylesheet)', m[1] + '()', `${m[1]}() loads or draws a resource: a pack carries none (images and fonts are out of scope, THEMING.md)`)
@@ -237,17 +238,20 @@ export function homeSupplement(css: string): LintError[] {
     else {
         // a translucent label is composited over the accent fill before the ratio is taken
         const k = ratio(on[3] < 1 ? [on[0] * on[3] + acc[0] * (1 - on[3]), on[1] * on[3] + acc[1] * (1 - on[3]), on[2] * on[3] + acc[2] * (1 - on[3]), 1] : on, acc)
-        if (k < 4.5) fail(':root', '--home-on-accent', `the primary button label would be ${k.toFixed(2)}:1 on --nexus-accent (needs 4.5:1)`)
+        if (k < 4.5) fail(':root', '--home-on-accent', `the primary button label would be ${k.toFixed(2)}:1 on --nexus-accent (needs 4.5:1)`, 'contrast')
     }
     return errs
 }
 export const lintHome = (css: string, name = ''): LintResult => {
     const r = chat.lintPack(css, name, HOME_REGISTRY)
-    const extra = homeSupplement(css)
-    if (extra.length) {
-        r.errors.push(...extra)
+    const refusals: LintError[] = []
+    const tagged: LintError[] = []
+    splitFindings(homeSupplement(css), refusals, tagged)
+    if (refusals.length) {
+        r.errors.push(...refusals)
         r.ok = false
     }
+    if (tagged.length) r.notes = [...(r.notes ?? []), ...tagged]
     return r
 }
 export const lintHomeSelector = (sel: string): string[] => chat.lintSelector(sel, HOME_REGISTRY)

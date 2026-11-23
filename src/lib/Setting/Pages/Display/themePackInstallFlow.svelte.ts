@@ -160,6 +160,12 @@ interface SheetWarnings {
     warnings: readonly LintError[]
 }
 
+/** The validator notes of one accepted stylesheet. */
+interface SheetNotes {
+    sheet: string
+    notes: readonly LintError[]
+}
+
 /** The accepted sheets that carry warnings, in area order; an area the pack has no sheet for is skipped. A present judgement without the field throws, which the install reports as a failure before any write. */
 function sheetWarningsOf(pack: VerifiedPack): SheetWarnings[] {
     const out: SheetWarnings[] = []
@@ -171,6 +177,18 @@ function sheetWarningsOf(pack: VerifiedPack): SheetWarnings[] {
         const { warnings } = judgement
         if (warnings.length > 0) {
             out.push({ sheet: `${area}.css`, warnings })
+        }
+    }
+    return out
+}
+
+/** The accepted sheets that carry validator notes (contrast, readability, layout), in area order. Notes are shown and never stored, and never reach `warnings`, which alone feeds the own-colour trigger. */
+function sheetNotesOf(pack: VerifiedPack): SheetNotes[] {
+    const out: SheetNotes[] = []
+    for (const area of APPLIED_AREAS) {
+        const notes = pack.sheets[area]?.result.notes
+        if (notes !== undefined && notes.length > 0) {
+            out.push({ sheet: `${area}.css`, notes })
         }
     }
     return out
@@ -212,8 +230,8 @@ function applyNoticesOf(pack: VerifiedPack): string[] {
     return lines
 }
 
-/** `sheetWarnings` and `notices` show only on an installed pack; every other outcome ignores them, so a failure after verify never shows notes about a pack that was not stored. */
-function mapOutcome(outcome: InstallOutcome<InstallRefusal>, skippedAreas: readonly string[], notices: readonly string[], sheetWarnings: readonly SheetWarnings[]): RowMessage | null {
+/** `sheetWarnings`, `sheetNotes` and `notices` show only on an installed pack; every other outcome ignores them, so a failure after verify never shows notes about a pack that was not stored. */
+function mapOutcome(outcome: InstallOutcome<InstallRefusal>, skippedAreas: readonly string[], notices: readonly string[], sheetWarnings: readonly SheetWarnings[], sheetNotes: readonly SheetNotes[]): RowMessage | null {
     if (outcome.ok === true) {
         const lines = [language.themePackInstalled(outcome.record.name)]
         if (skippedAreas.length > 0) {
@@ -224,6 +242,12 @@ function mapOutcome(outcome: InstallOutcome<InstallRefusal>, skippedAreas: reado
             lines.push(language.themePackInstalledWithWarnings(sheet))
             for (const w of warnings) {
                 lines.push(language.themePackLintLine(w.selector, w.prop, w.why))
+            }
+        }
+        for (const { sheet, notes } of sheetNotes) {
+            lines.push(language.themePackInstalledWithNotes(sheet))
+            for (const n of notes) {
+                lines.push(language.themePackLintLine(n.selector, n.prop, n.why))
             }
         }
         return { tone: 'info', lines, installed: true }
@@ -314,7 +338,7 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
             ok: false,
             kind: 'refused',
             refusal: { kind: 'intake', refusals: [{ code: 'packTooLarge', limitBytes: PACK_MAX_UNPACKED_BYTES }] },
-        }, [], [], []), d.notify)
+        }, [], [], [], []), d.notify)
         return
     }
     installFlowState.pending = true
@@ -324,6 +348,7 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
         let skippedAreas: readonly string[] = []
         let notices: readonly string[] = []
         let sheetWarnings: readonly SheetWarnings[] = []
+        let sheetNotes: readonly SheetNotes[] = []
         const outcome = await d.install<InstallRefusal>({
             bytes,
             verify: async (verifiedBytes) => {
@@ -357,6 +382,7 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
                 skippedAreas = pack.skippedAreas
                 notices = applyNoticesOf(pack)
                 sheetWarnings = sheetWarningsOf(pack)
+                sheetNotes = sheetNotesOf(pack)
                 return icon === undefined ? { ok: true, manifest: pack.manifest, tile } : { ok: true, manifest: pack.manifest, tile, icon }
             },
             confirmReplace: (existing) => d.confirm(language.themePackReplaceConfirm(existing.name)),
@@ -364,7 +390,7 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
             // state: replacing the active pack updates it, anything else is a turn-on (install always activates).
             onActivate: ({ id, replacedId }) => requestPackScheme(id, replacedId !== null && replacedId === DBState.db.activeThemePack ? 'update' : 'turnOn'),
         })
-        publish(mapOutcome(outcome, skippedAreas, notices, sheetWarnings), d.notify)
+        publish(mapOutcome(outcome, skippedAreas, notices, sheetWarnings, sheetNotes), d.notify)
     } catch {
         cancelPackSchemeRequest()
         publish(errorMessage(language.themePackInstallFailed), d.notify)

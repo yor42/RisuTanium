@@ -14,6 +14,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const pending = vi.hoisted(() => ({
     resolvers: [] as Array<(value: unknown) => void>,
+    // Chats a Send holds the composer for.
+    lockedChats: [] as string[],
 }))
 
 vi.mock(import('src/ts/stores.svelte'), () => {
@@ -33,7 +35,8 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
 }) as unknown as typeof import('src/ts/process/index.svelte'))
 
 vi.mock(import('src/ts/process/composerActions.svelte'), () => ({
-    isComposerLocked: vi.fn(() => false),
+    isComposerLocked: vi.fn(() => pending.lockedChats.length > 0),
+    isComposerLockedIn: vi.fn((target: { chatId: string }) => pending.lockedChats.includes(target.chatId)),
 }) as unknown as typeof import('src/ts/process/composerActions.svelte'))
 
 vi.mock(import('src/ts/platform'), () => ({
@@ -100,6 +103,7 @@ const shown = () => target?.textContent ?? ''
 
 beforeEach(() => {
     pending.resolvers.length = 0
+    pending.lockedChats.length = 0
     doingChat.set(false)
 })
 
@@ -119,7 +123,7 @@ const path = (): LiveMessage[] => [
 
 describe('suggestions while a reply is written in another chat', () => {
     /** The shown chat carries ids and a list already, so a request for it would only follow a clear. */
-    function setupShownWithIds(suggestMessages: string[]): LiveChat {
+    function setupShownWithIds(suggestMessages: string[], send: () => void = () => {}): LiveChat {
         const chat = { id: 'chat-b', message: path(), suggestMessages } as unknown as LiveChat
         DBState.db = {
             translator: '',
@@ -130,7 +134,7 @@ describe('suggestions while a reply is written in another chat', () => {
         } as never
         target = document.createElement('div')
         document.body.appendChild(target)
-        instance = mount(Suggestion, { target, props: { send: () => {}, messageInput: () => {} } })
+        instance = mount(Suggestion, { target, props: { send, messageInput: () => {} } })
         flushSync()
         return (DBState.db.characters as unknown as Array<{ chats: LiveChat[] }>)[0].chats[0]
     }
@@ -154,6 +158,28 @@ describe('suggestions while a reply is written in another chat', () => {
 
         expect(shown()).toContain('alpha reply')
         expect(requestSuggestionData).not.toHaveBeenCalled()
+    })
+
+    test('C7: a suggestion click sends in the shown chat while a Send holds the composer for another chat, and not while it holds it for the shown chat', async () => {
+        const send = vi.fn()
+        setupShownWithIds(['alpha reply'], send)
+        await settle()
+        const suggestion = () => [...target!.querySelectorAll('button')].find((button) => button.textContent?.includes('alpha reply'))!
+        pending.lockedChats.push('chat-a')
+        suggestion().click()
+        expect(send).toHaveBeenCalledTimes(1)
+        await settle()
+        expect(shown()).not.toContain('alpha reply')
+    })
+
+    test('C7: a suggestion click does nothing while a Send holds the composer for the shown chat', async () => {
+        const send = vi.fn()
+        setupShownWithIds(['alpha reply'], send)
+        await settle()
+        pending.lockedChats.push('chat-b')
+        ;[...target!.querySelectorAll('button')].find((button) => button.textContent?.includes('alpha reply'))!.click()
+        expect(send).not.toHaveBeenCalled()
+        expect(shown()).toContain('alpha reply')
     })
 
     test('T13: a reply in the shown chat clears the list while it writes and asks again when it ends', async () => {

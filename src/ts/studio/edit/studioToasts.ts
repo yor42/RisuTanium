@@ -45,8 +45,28 @@ export function withListReason(text: string, reason?: ListSkipReason): string {
 // The text of a refused result: the refusal's own, and for an unchecked file the line that names the row. With a module
 // owner, the three refusals that name the owner use module wording; without an owner every text is the one below. Only a
 // precondition refusal carries the list reason; every other refusal keeps its single sentence.
+function isModuleOwner(owner: OwnerKey): boolean {
+    const parsed = parseOwnerKey(owner)
+    if (parsed === null) {
+        return false
+    }
+    switch (parsed.kind) {
+        case 'module':
+            return true
+        case 'character':
+        case 'chat':
+            return false
+        default: {
+            // Adding an owner kind must decide its wording here; the fallback is the generic wording.
+            const unhandled: never = parsed
+            void unhandled
+            return false
+        }
+    }
+}
+
 export function refusalTextOf(result: { reason: StudioRefusal; name?: string; listReason?: ListSkipReason }, owner?: OwnerKey): string {
-    if (owner !== undefined && parseOwnerKey(owner)?.kind === 'module') {
+    if (owner !== undefined && isModuleOwner(owner)) {
         switch (result.reason) {
             case 'not-selected': return language.studioRefusalModuleNotSelected
             case 'gone': return language.studioRefusalModuleGone

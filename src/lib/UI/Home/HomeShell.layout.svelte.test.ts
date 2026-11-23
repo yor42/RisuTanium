@@ -71,6 +71,8 @@ import HomeShell from './HomeShell.svelte'
 import HomeShellKeyHarness from './HomeShellKeyHarness.svelte'
 import { openHomeLibrary, startHomeView } from './homeView.svelte'
 import { DBState, OpenRealmStore, sideBarStore } from 'src/ts/stores.svelte'
+import { ColorSchemeTypeStore } from 'src/ts/gui/surfaceTone'
+import NexusBootScreen from 'src/lib/Nexus/boot/NexusBootScreen.svelte'
 
 const mountedInstances: unknown[] = []
 const mountedTargets: HTMLElement[] = []
@@ -217,8 +219,8 @@ describe('HomeShell layout', () => {
         expect(bar!.contains(chipOf(root))).toBe(true)
     })
 
-    test('T-A2c: the top bar keeps one DOM order in every band: brand, switcher, chip', () => {
-        for (const width of [360, 900, 1400]) {
+    test('T-A2c: mid and wide keep one DOM order: brand, switcher, chip; the phone order is in T-S6-40', () => {
+        for (const width of [900, 1400]) {
             const root = mountShellAt(width)
             const bar = topBarOf(root)
             expect(bar).not.toBeNull()
@@ -442,7 +444,7 @@ describe('HomeShell top bar centring and wordmark', () => {
     // Class guards: the chip is capped inside the bar and a stored name's label truncates, so a long
     // unbroken name is clipped by the chip instead of widening it past the bar. The set-up label (no
     // name) wraps instead, so it is never cut off at large font sizes.
-    test.each([360, 900, 1280])('T-H3: at %i the chip is width-capped and the name label truncates', (width) => {
+    test.each([900, 1280])('T-H3: at %i the chip is width-capped and the name label truncates', (width) => {
         const before = DBState.db.username
         DBState.db.username = 'Averyveryverylongunbrokenpersonaname'
         try {
@@ -927,6 +929,205 @@ describe('HomeShell page-level holds', () => {
             await unmountTracked(instance)
         }
         expect(homeChrome.landing).toBe(false)
+    })
+})
+
+/**
+ * The phone top bar: one row of menu button, brand, Tasks and the icon persona chip, with the switcher
+ * row only when there is a mode to switch. Class guards read the band conditional, not a media query;
+ * jsdom does no layout, so the pixel result is a real-browser check.
+ */
+describe('HomeShell phone top bar', () => {
+    const classesOf = (element: Element | null): string[] => Array.from(element?.classList ?? [])
+    const tasksOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-tasks-button"]')
+    const brandOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-brand"]')
+    const labelOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-persona-chip-label"]')
+    const hintOf = (root: HTMLElement): Element | undefined =>
+        Array.from(chipOf(root)!.querySelectorAll('span')).find((s) => s.textContent === language.homePersonaChipHint)
+    const follows = (a: Element, b: Element): boolean => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+    function setModes(visibleModes: string[], hideUnusedModes: boolean): void {
+        const db = DBState.db as unknown as Record<string, unknown>
+        db.visibleModes = visibleModes
+        db.hideUnusedModes = hideUnusedModes
+        onTestFinished(() => {
+            Reflect.deleteProperty(db, 'visibleModes')
+            Reflect.deleteProperty(db, 'hideUnusedModes')
+        })
+    }
+
+    // Reproducer: on the base the chip sits in its own wrapper below the brand row and shows its text.
+    test.each([360, 700])('T-S6-40: at %i the menu row holds menu, brand, Tasks and the icon chip in that order', (width) => {
+        const root = mountShellAt(width)
+        const bar = topBarOf(root)!
+        const chip = chipOf(root)!
+        const menu = menuButtonOf(root)!
+        const row = menu.parentElement!
+        expect(row.parentElement).toBe(bar)
+        expect(Array.from(row.children)).toEqual([menu, brandOf(root), tasksOf(root)!.parentElement, chip])
+        expect(chip.parentElement).toBe(row)
+
+        const switcher = bar.querySelector('fieldset')!
+        expect(follows(tasksOf(root)!, chip)).toBe(true)
+        expect(follows(chip, switcher)).toBe(true)
+
+        const chipClasses = classesOf(chip)
+        expect(chipClasses).toContain('size-11')
+        expect(chipClasses).toContain('justify-center')
+        expect(classesOf(labelOf(root))).toContain('sr-only')
+        expect(classesOf(hintOf(root)!)).toContain('sr-only')
+        // The label and the hint stay in the text, so the accessible name is unchanged.
+        expect(chip.textContent).toContain(language.homePersonaChipUnnamed)
+        expect(chip.textContent).toContain(language.homePersonaChipHint)
+        expect(chip.textContent).toContain(language.homePersonaChipGo)
+    })
+
+    // Compatibility guard (passes before and after): mid and wide keep the visible chip in its wrapper.
+    test.each([768, 900, 1280])('T-S6-40b: at %i the chip stays visible in the chip wrapper', (width) => {
+        const root = mountShellAt(width)
+        const chip = chipOf(root)!
+        expect(classesOf(chip)).not.toContain('size-11')
+        expect(classesOf(labelOf(root))).not.toContain('sr-only')
+        expect(classesOf(hintOf(root)!)).not.toContain('sr-only')
+        expect(chip.parentElement!.parentElement).toBe(topBarOf(root))
+        expect(chip.parentElement!.querySelector('[data-part="home-tasks-button"]')).not.toBeNull()
+    })
+
+    test('T-S6-40c: the compact chip follows the band live on a resize', () => {
+        const root = mountShellAt(900)
+        expect(classesOf(chipOf(root))).not.toContain('size-11')
+        resizeTo(360)
+        expect(classesOf(chipOf(root))).toContain('size-11')
+        expect(chipOf(root)!.parentElement).toBe(menuButtonOf(root)!.parentElement)
+        resizeTo(768)
+        expect(classesOf(chipOf(root))).not.toContain('size-11')
+    })
+
+    test.each([360, 700])('T-S6-41: at %i the header has one child with one mode and two with several', (width) => {
+        setModes(['rp'], true)
+        const root = mountShellAt(width)
+        const bar = topBarOf(root)!
+        expect(bar.children.length).toBe(1)
+        expect(bar.querySelector('fieldset')).toBeNull()
+
+        setModes(['rp', 'utility'], true)
+        const several = mountShellAt(width)
+        expect(topBarOf(several)!.children.length).toBe(2)
+        expect(topBarOf(several)!.querySelector('fieldset')).not.toBeNull()
+    })
+
+    // Compatibility guard (passes before and after): mid and wide keep the switcher wrapper at one mode.
+    test.each([900, 1280])('T-S6-41b: at %i the switcher wrapper stays when only one mode shows', (width) => {
+        setModes(['rp'], true)
+        const root = mountShellAt(width)
+        expect(topBarOf(root)!.children.length).toBe(3)
+    })
+
+    test('T-S6-41c: the switcher row follows a live change of the shown modes', () => {
+        setModes(['rp'], true)
+        const root = mountShellAt(360)
+        expect(topBarOf(root)!.children.length).toBe(1)
+        DBState.db.visibleModes = ['rp', 'hybrid']
+        flushSync()
+        expect(topBarOf(root)!.children.length).toBe(2)
+        DBState.db.hideUnusedModes = false
+        DBState.db.visibleModes = ['rp']
+        flushSync()
+        expect(topBarOf(root)!.children.length).toBe(2)
+    })
+
+    // The 360 case of T-H3: the compact chip has no width cap of its own (the icon is 44 px) and a stored name stays one
+    // truncated label that is read out in full.
+    test.each([360, 700])('T-S6-40d: at %i the compact chip keeps a long name in a truncating label', (width) => {
+        const before = DBState.db.username
+        DBState.db.username = 'Averyveryverylongunbrokenpersonaname'
+        try {
+            const root = mountShellAt(width)
+            const label = labelOf(root)!
+            expect(label.textContent).toContain('Averyveryverylongunbrokenpersonaname')
+            expect(classesOf(label)).toContain('truncate')
+            expect(classesOf(label)).toContain('sr-only')
+            expect(classesOf(chipOf(root))).not.toContain('max-w-[calc(100%-2rem)]')
+        } finally {
+            DBState.db.username = before
+        }
+    })
+
+    // Reproducer for the class contract: the wordmark leaves the layout below 350 px of viewport (a viewport variant;
+    // a container query would not apply, because the phone brand cell is no container).
+    test('T-S6-42: the phone wordmark hides visually under 350 px with a viewport variant', () => {
+        const root = mountShellAt(360)
+        const word = brandOf(root)!.querySelector('[data-seasonal-host]')!
+        expect(classesOf(word)).toContain('max-[349.98px]:sr-only')
+        expect(classesOf(word).some((c) => c.startsWith('@'))).toBe(false)
+        expect(classesOf(brandOf(root))).not.toContain('@container')
+        expect(word.querySelector('.rt-sw-sr')!.textContent).toBe('RisuTanium')
+        expect(word.hasAttribute('aria-hidden')).toBe(false)
+    })
+
+    // Compatibility guard (passes before and after): hidden modes stay out of the bar switcher, also after a live change.
+    test('T-S6-46: a hidden mode has no radio in the bar switcher and follows a live change', () => {
+        setModes(['rp', 'utility'], true)
+        const root = mountShellAt(360)
+        const modes = (): string[] => Array.from(root.querySelectorAll<HTMLInputElement>('input[name="home-mode"]')).map((i) => i.value)
+        expect(modes()).toEqual(['rp', 'utility'])
+        DBState.db.visibleModes = ['rp', 'hybrid']
+        flushSync()
+        expect(modes()).toEqual(['rp', 'hybrid'])
+        DBState.db.visibleModes = ['rp', 'utility']
+        flushSync()
+        expect(modes()).toEqual(['rp', 'utility'])
+        expect(modes()).not.toContain('hybrid')
+    })
+})
+
+describe('HomeShell brand mark tone', () => {
+    const markOf = (root: HTMLElement): Element | null => root.querySelector('[data-part="home-brand"] svg')
+
+    afterEach(() => {
+        ColorSchemeTypeStore.set('dark')
+    })
+
+    test.each([360, 900, 1280])('T-S6-50: at %i a light scheme tones the Home mark and a dark one sets nothing', (width) => {
+        ColorSchemeTypeStore.set('light')
+        const light = mountShellAt(width)
+        expect(markOf(light)!.getAttribute('data-tone')).toBe('light')
+        expect(light.querySelectorAll('[data-tone]').length).toBe(1)
+
+        ColorSchemeTypeStore.set('dark')
+        const dark = mountShellAt(width)
+        expect(markOf(dark)!.hasAttribute('data-tone')).toBe(false)
+        expect(dark.querySelector('[data-tone]')).toBeNull()
+    })
+
+    test('T-S6-50b: the tone follows a live scheme switch on the mounted mark', () => {
+        const root = mountShellAt(360)
+        const mark = markOf(root)!
+        expect(mark.hasAttribute('data-tone')).toBe(false)
+        ColorSchemeTypeStore.set('light')
+        flushSync()
+        expect(markOf(root)).toBe(mark)
+        expect(mark.getAttribute('data-tone')).toBe('light')
+        ColorSchemeTypeStore.set('dark')
+        flushSync()
+        expect(mark.hasAttribute('data-tone')).toBe(false)
+    })
+
+    // Compatibility guard (passes before and after): the boot screen's mark is a separate component and takes no tone
+    // from the scheme store.
+    test('T-S6-50c: the boot screen mark carries no tone under a light scheme', () => {
+        vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+        onTestFinished(() => {
+            vi.restoreAllMocks()
+        })
+        ColorSchemeTypeStore.set('light')
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mountedTargets.push(target)
+        mountedInstances.push(mount(NexusBootScreen, { target, props: { progress: { step: 'files', state: 'running' } } }))
+        flushSync()
+        expect(target.querySelector('.nexus-mark')).not.toBeNull()
+        expect(target.querySelector('[data-tone]')).toBeNull()
     })
 })
 

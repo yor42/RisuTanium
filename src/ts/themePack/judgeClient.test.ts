@@ -304,6 +304,52 @@ describe('T3W-5 malformed answers', () => {
         expect(refused.ok).toBe(false)
         expect(readJudgement(structuredClone(refused))).toEqual(refused)
     })
+
+    // A plain dark-on-dark header colour: the real validator answers with contrast notes and no errors.
+    const NOTED_SHEET = '[data-part="chat-header"]{color:#111111}'
+    const notedJudgement = judgePackSheets({ chat: NOTED_SHEET })
+    type NotedJudgement = PackSheetsJudgement & { areas: { chat: NonNullable<PackSheetsJudgement['areas']['chat']> } }
+
+    it('T-JC1: readJudgement keeps result.notes with their kinds, and an answer without notes stays without the field', () => {
+        const notes = notedJudgement.areas.chat?.result.notes
+        expect(notes?.length).toBeGreaterThan(0)
+        expect(notes?.every((note) => note.rule === 'contrast')).toBe(true)
+        const read = readJudgement(structuredClone(notedJudgement))
+        expect(read).toEqual(notedJudgement)
+        expect(read?.areas.chat?.result.notes?.map((note) => note.rule)).toEqual(notes?.map((note) => note.rule))
+        expect(read?.areas.chat?.result.notes).not.toBe(notes)
+        const plain = readJudgement(structuredClone(realJudgement))
+        expect(plain?.areas.chat?.result.ok).toBe(true)
+        expect(Object.hasOwn(plain?.areas.chat?.result ?? {}, 'notes')).toBe(false)
+    })
+
+    it('T-JC1: a worker answer carrying notes reaches intake with the notes on the verified sheet', async () => {
+        const result = await intakePackBytes(zipPack(validPackFiles({ 'chat.css': NOTED_SHEET })), createJudgeClient({ spawn: () => new FakeJudgeWorker('real') }))
+        expect(result.ok).toBe(true)
+        if (!result.ok) return
+        expect(result.pack.sheets.chat.result.notes?.map((note) => note.rule)).toEqual(notedJudgement.areas.chat?.result.notes?.map((note) => note.rule))
+        expect(result.pack.sheets.chat.warnings).toEqual([])
+    })
+
+    /** The answer of a noted chat verdict whose `result.notes` is replaced by `notes`. */
+    function withNotes(notes: unknown): unknown {
+        const copy = structuredClone(notedJudgement) as NotedJudgement
+        ;(copy.areas.chat.result as { notes?: unknown }).notes = notes
+        return { chat: copy.areas.chat }
+    }
+
+    it.each([
+        ['notes an empty array', () => withNotes([])],
+        ['notes null', () => withNotes(null)],
+        ['notes not an array', () => withNotes('none')],
+        ['a note without a rule', () => withNotes([{ selector: 'a', prop: 'b', why: 'c' }])],
+        ['a note with an unknown rule', () => withNotes([{ selector: 'a', prop: 'b', why: 'c', rule: 'other' }])],
+        ['a note that is not a string triple', () => withNotes([{ selector: 'a', prop: 'b', rule: 'layout' }])],
+        ['one tagged note beside an untagged one', () => withNotes([{ selector: 'a', prop: 'b', why: 'c', rule: 'layout' }, { selector: 'a', prop: 'b', why: 'c' }])],
+    ] as Array<[string, () => unknown]>)('T-JC2: rejects JudgeProtocolError: %s', async (_label, makeAnswer) => {
+        const answer = makeAnswer()
+        await expect(createJudgeClient({ spawn: () => new FakeJudgeWorker((request) => ({ id: request.id, ok: true, results: answer })) })({ chat: NOTED_SHEET })).rejects.toBeInstanceOf(JudgeProtocolError)
+    })
 })
 
 describe('J1 the client reads every applied area', () => {

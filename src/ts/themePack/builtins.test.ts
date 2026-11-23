@@ -40,6 +40,11 @@ describe('T3B-1 the built-in packs', () => {
         expect(judged.resources).toHaveLength(0)
     })
 
+    // Compatibility guard (passes before and after the notes channel): a shipped sheet has neither errors nor notes.
+    it.each(BUILTIN_PACKS.map((pack) => [pack.slug, pack] as const))('%s: the chat sheet judgement carries no notes', (_slug, pack) => {
+        expect(judgeAreaSheet('chat', pack.chatCss).result.notes).toBeUndefined()
+    })
+
     it('carry a chat sheet only: no studio, settings or home sheet is bundled or exported', () => {
         expect(Object.keys(builtinsModule).sort()).toEqual(['BUILTIN_PACKS', 'builtinPackById'])
         for (const pack of BUILTIN_PACKS) {
@@ -111,6 +116,7 @@ describe('MC-2524 the docs sheets of the new packs are accepted in every area', 
         const judged = judgeAreaSheet(area, docsSheet(area, slug))
         expect(judged.result.errors).toEqual([])
         expect(judged.result.ok).toBe(true)
+        expect(judged.result.notes).toBeUndefined()
     })
 })
 

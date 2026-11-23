@@ -1,9 +1,9 @@
 // Studio slice 4's registry for chat's pack-install validator (DD-149, DD-155, DD-159; the shared engine is used unchanged, as Settings does).
 // A registry is { critical, safe, surfaces, tokens } (DS-075): the slice 4 part names, the surfaces its critical text sits on, and its own token defaults. strictSafe stays false: the spec does not ask for it (positioning of the safe parts is judged by chat's rule).
 import * as chat from '../engine'
-import type { ContrastPair, LintError, LintResult, RegistryInput, Rgba, SheetRef, SurfaceCheck, TokenMap } from '../engine'
+import type { ContrastPair, LintError, LintResult, NoteKind, RegistryInput, Rgba, SheetRef, SurfaceCheck, TokenMap } from '../engine'
 import { parseConcrete } from '../colour'
-import { parseTriple } from '../failclosed'
+import { parseTriple, splitFindings } from '../failclosed'
 import type { GeometryChain, GeometrySheet, SheetTerm } from '../geometry'
 import { STUDIO_PARTS, tokenFile } from '../tokens'
 import type { TokenFile } from '../tokens'
@@ -153,7 +153,7 @@ export function riskyColourPass(css: string): LintError[] {
         }
     }).toLowerCase()
     const errs: LintError[] = []
-    const fail = (prop: string, why: string): void => { errs.push({ selector: ':root', prop, why }) }
+    const fail = (prop: string, why: string, rule?: NoteKind): void => { errs.push(rule ? { selector: ':root', prop, why, rule } : { selector: ':root', prop, why }) }
     // every value the stylesheet gives the token, in source order (any selector)
     const cand = (n: string): string[] => {
         const out: string[] = []
@@ -205,11 +205,11 @@ export function riskyColourPass(css: string): LintError[] {
         }
     }
     for (const d of dangers) for (const r of rgbs) if ([0, 1, 2].some((i) => Math.abs(d[i] - r[i]) > 8)) {
-        fail('--nexus-danger-rgb', `--nexus-danger-rgb (${r.slice(0, 3).map(Math.round).join(' ')}) is not the colour of --nexus-danger (${d.slice(0, 3).map(Math.round).join(' ')}): the tint of the risky section must be the danger colour`)
+        fail('--nexus-danger-rgb', `--nexus-danger-rgb (${r.slice(0, 3).map(Math.round).join(' ')}) is not the colour of --nexus-danger (${d.slice(0, 3).map(Math.round).join(' ')}): the tint of the risky section must be the danger colour`, 'contrast')
         return errs
     }
     for (const d of dangers) for (const x of txt) if ([0, 1, 2].every((i) => Math.abs(d[i] - x[i]) <= 24)) {
-        fail('--nexus-danger-rgb', 'the danger colour is the text colour: the risky section would lose its colour cue (the heading and edge must stay distinguishable from body text)')
+        fail('--nexus-danger-rgb', 'the danger colour is the text colour: the risky section would lose its colour cue (the heading and edge must stay distinguishable from body text)', 'contrast')
         return errs
     }
     const alphas = cand('--studio-form-risky-tint-alpha').map((v) => parseFloat(resolveVar(v))).filter((x) => !Number.isNaN(x))
@@ -222,7 +222,7 @@ export function riskyColourPass(css: string): LintError[] {
             const flat = over(c, surf)
             const k = cr(flat, surf)
             if (k < need) {
-                fail(n, `${n.replace('--nexus-', '')} would be ${k.toFixed(2)}:1 on the risky section's tint (alpha ${a} of the danger colour over the canvas; needs ${need}:1)`)
+                fail(n, `${n.replace('--nexus-', '')} would be ${k.toFixed(2)}:1 on the risky section's tint (alpha ${a} of the danger colour over the canvas; needs ${need}:1)`, 'contrast')
                 return errs
             }
         }
@@ -233,11 +233,14 @@ export function riskyColourPass(css: string): LintError[] {
 export function lintPack(css: string, name = '', reg: RegistryInput = STUDIO_REGISTRY): LintResult {
     const r = chat.lintPack(css, name, reg)
     if (reg === STUDIO_REGISTRY) {
-        const extra = riskyColourPass(css)
-        if (extra.length) {
-            r.errors.push(...extra)
+        const refusals: LintError[] = []
+        const tagged: LintError[] = []
+        splitFindings(riskyColourPass(css), refusals, tagged)
+        if (refusals.length) {
+            r.errors.push(...refusals)
             r.ok = false
         }
+        if (tagged.length) r.notes = [...(r.notes ?? []), ...tagged]
     }
     return r
 }

@@ -70,10 +70,7 @@ describe('T1-31 golden v1 packs', () => {
             expect(readme).toContain(`${golden.size} bytes`)
         })
 
-        // The frozen Banana Cocoa studio.css breaks the plain-paint rule; its verdict is pinned below (RG1), so only Origin Navy is accepted whole.
-        if (golden.file !== 'origin-navy.risutheme') {
-            continue
-        }
+        // Both frozen packs are accepted whole: the plain-paint rule that refused the Banana Cocoa studio.css is removed (MC-2370, #560 PR2), and their bytes are unchanged.
         it(`${golden.file} is accepted with its chat, studio and settings sheets judged and home skipped`, async () => {
             const pack = acceptedPack(await intakePackBytes(bytesOf(golden.file), judge))
             expect(pack.manifest).toStrictEqual({
@@ -90,6 +87,8 @@ describe('T1-31 golden v1 packs', () => {
             expect(pack.sheets.chat?.result.ok).toBe(true)
             expect(pack.sheets.studio?.result.ok).toBe(true)
             expect(pack.sheets.settings?.result.ok).toBe(true)
+            // a shipped pack carries no finding at all: the notes channel is absent, not empty
+            for (const sheet of [pack.sheets.chat, pack.sheets.studio, pack.sheets.settings]) expect(sheet?.result.notes, `${golden.file}`).toBeUndefined()
             expect(pack.skippedAreas).toEqual(['home'])
             expect(pack.files.size).toBe(0)
             expect(pack.size.warn).toBe(false)
@@ -97,34 +96,22 @@ describe('T1-31 golden v1 packs', () => {
     }
 })
 
-// Intake judges studio.css whole at install (MC-3121), so the frozen Banana Cocoa archive is refused by its Studio sheet (MC-2313, MC-2370):
-// MC-2370 accepted that cost; the refusal is pinned so a change to it is deliberate.
-describe('the frozen Studio sheets under the plain-paint rule', () => {
-    it('RG3: intake refuses the frozen Banana Cocoa archive by studio.css alone, with the three plain-paint errors', async () => {
+// Intake judges studio.css whole at install (MC-3121). The frozen Banana Cocoa studio.css holds plain colours and fills on reach parts; MC-2370 refused them, and since #560 PR2 the rule is removed, so the frozen bytes install whole.
+describe('the frozen Studio sheets after the plain-paint rule is removed', () => {
+    it('RG3: intake accepts the frozen Banana Cocoa archive whole, studio.css included', async () => {
         const result = await intakePackBytes(bytesOf('banana-cocoa.risutheme'), judge)
-        if (result.ok === true) throw new Error('expected the frozen Banana Cocoa archive to be refused')
-        expect(result.refusals).toHaveLength(1)
-        expect(result.refusals[0]).toMatchObject({ code: 'sheetRefused', sheet: 'studio.css' })
-        const errors = result.refusals[0].code === 'sheetRefused' ? result.refusals[0].errors : []
-        expect(errors.map((e) => `${e.selector} ${e.prop}`).sort()).toEqual([
-            '[data-part="studio-side-tab"] background',
-            '[data-part="studio-tree-row"] background',
-            '[data-part="studio-tree-row"] color',
-        ])
+        if (result.ok === false) throw new Error(`expected the frozen Banana Cocoa archive to be accepted: ${JSON.stringify(result.refusals)}`)
+        expect(result.pack.sheets.studio?.result.ok).toBe(true)
     })
 
     const PLAIN_PAINT = /\(MC-2313, MC-2370\)/
     const studioSheet = (file: string): string => strFromU8(unzipSync(bytesOf(file))['studio.css'])
 
-    it('RG1 (REPRO): the Banana Cocoa Studio sheet is refused with exactly three plain-paint errors', () => {
+    it('RG1 (REPRO): the Banana Cocoa Studio sheet is accepted and no plain-paint reason is given', () => {
         const result = lintAreaPack('studio', studioSheet('banana-cocoa.risutheme'), 'banana-cocoa')
-        expect(result.ok).toBe(false)
-        const plain = result.errors.filter((e) => PLAIN_PAINT.test(e.why))
-        expect(plain.map((e) => `${e.selector} ${e.prop}`).sort(), JSON.stringify(result.errors)).toEqual([
-            '[data-part="studio-side-tab"] background',
-            '[data-part="studio-tree-row"] background',
-            '[data-part="studio-tree-row"] color',
-        ])
+        expect(result.errors, JSON.stringify(result.errors)).toEqual([])
+        expect(result.ok).toBe(true)
+        expect([...result.errors, ...(result.notes ?? [])].filter((e) => PLAIN_PAINT.test(e.why))).toEqual([])
     })
 
     it('RG2 (GUARD, accepted before and after): the Origin Navy Studio sheet is accepted', () => {

@@ -9,7 +9,7 @@
 // plus the font size, line height, bounded-token and font family rules (MC-2542: an unbundled family warns, a symbol font
 // is refused). The engine is untouched; this pass only adds refusals and warnings. Colour readings (oklch, hwb, lab and the like on focus and contrast checks) are not closed here.
 import { decls, type Decl } from './csslit'
-import { normalise, type LintError } from './engine'
+import { normalise, type LintError, type NoteKind } from './engine'
 import { FAMILY_IDENT, FAMILY_IDENT_REASON, GENERIC_FAMILIES } from './fontFace'
 import { judgeFamilyList, splitFontShorthand, splitTop, SYSTEM_FONTS } from './structure'
 import { tokenFile, type TokenFile } from './tokens'
@@ -216,9 +216,10 @@ export function tokenValues(canon: string, name: string, env: ValueEnv, withApp 
     return buildIndex(text, env, decls(text)).R(name, withApp)
 }
 
-/** What the value rules found: `errors` refuse the sheet; `warnings` are notes the install shows and never change a verdict. */
+/** What the value rules found: `errors` refuse the sheet; `notes` are tagged findings (a symbol font, a focus ring that forced colours remove) that never refuse; `warnings` are untagged notes the install shows and never change a verdict. */
 export interface ValueVerdict {
     errors: LintError[]
+    notes: LintError[]
     warnings: LintError[]
 }
 
@@ -227,14 +228,20 @@ export function valueRulesPass(canon: string, env: ValueEnv): ValueVerdict {
     const all = decls(text)
     const { sites, R, known, chain } = buildIndex(text, env, all)
     const errors: LintError[] = []
+    const tagged: LintError[] = []
     const warnings: LintError[] = []
     const seen = new Set<string>()
+    const seenNotes = new Set<string>()
     const warned = new Set<string>()
-    const push = (selector: string, prop: string, why: string) => {
+    // the symbol-font reasons judgeName produced: they are readability notes, every other family reason refuses
+    const symbolWhys = new Set<string>()
+    const push = (selector: string, prop: string, why: string, rule?: NoteKind) => {
         const key = `${selector}|${prop}|${why}`
-        if (!seen.has(key)) { seen.add(key); errors.push({ selector, prop, why }) }
+        if (rule) {
+            if (!seenNotes.has(key)) { seenNotes.add(key); tagged.push({ selector, prop, why, rule }) }
+        } else if (!seen.has(key)) { seen.add(key); errors.push({ selector, prop, why }) }
     }
-    const report = (d: Decl, why: string) => push(d.ctx.selector.trim() || '(stylesheet)', d.prop, why)
+    const report = (d: Decl, why: string, rule?: NoteKind) => push(d.ctx.selector.trim() || '(stylesheet)', d.prop, why, rule ?? (symbolWhys.has(why) ? 'readability' : undefined))
     const warn = (d: Decl, why: string) => {
         const selector = d.ctx.selector.trim() || '(stylesheet)'
         const key = `${selector}|${d.prop}|${why}`
@@ -341,7 +348,11 @@ export function valueRulesPass(canon: string, env: ValueEnv): ValueVerdict {
     const judgeName = (name: string, out: string[], notes: string[]) => {
         if (env.ownFamilies.has(name)) return
         const key = familyKey(name)
-        if (SYMBOL_FONTS.has(key)) out.push(symbolReason(key))
+        if (SYMBOL_FONTS.has(key)) {
+            const why = symbolReason(key)
+            symbolWhys.add(why)
+            out.push(why)
+        }
         else notes.push(unbundledReason(name))
     }
     // In strict mode a var() item passes only as a --pack-* helper the pack declares; its values are judged strictly too.
@@ -481,7 +492,7 @@ export function valueRulesPass(canon: string, env: ValueEnv): ValueVerdict {
             const resolved = collect(value, 0)
             const shape = (t: string): boolean => LENGTH.test(t) || t === '0'
             if (!resolved || !terminals.every(shape)) report(d, `${d.prop} must be one plain length: the checks read only its largest number (MC-1549)`)
-            else if (d.prop === '--focus-ring-w-forced' && terminals.some((t) => { const m = LENGTH.exec(t); return !m || parseFloat(m[1]) * (m[2] === 'rem' ? 16 : 1) < 1 })) report(d, '--focus-ring-w-forced below 1px removes the focus ring in forced colours (DD-243)')
+            else if (d.prop === '--focus-ring-w-forced' && terminals.some((t) => { const m = LENGTH.exec(t); return !m || parseFloat(m[1]) * (m[2] === 'rem' ? 16 : 1) < 1 })) report(d, '--focus-ring-w-forced below 1px removes the focus ring in forced colours (DD-243)', 'readability')
         } else if (custom && BOUNDED_TOKENS.includes(d.prop)) {
             // set off plain :root (refused by N1r): still shape-checked so the reason is complete
             if (!/^(?:-?(?:\d+\.?\d*|\.\d+)(?:px|rem)|0|var\([^)]*\))$/.test(value)) report(d, `${d.prop} must be one plain length: the checks read only its largest number (MC-1549)`)
@@ -512,5 +523,5 @@ export function valueRulesPass(canon: string, env: ValueEnv): ValueVerdict {
             for (const why of judgeFamilyList(stripImportant(d.value))) report(d, why)
         }
     }
-    return { errors, warnings }
+    return { errors, notes: tagged, warnings }
 }

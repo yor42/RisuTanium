@@ -116,7 +116,7 @@ vi.mock('../ChatShell/FindFiltersSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatShell/FindResultsSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../ts/chatShell/sendFailure.svelte', () => ({ failureOf: () => null, retrySendFailure: vi.fn(), shellGenerationSource: (closeMenu: () => void) => ({ closeMenu }) }))
 vi.mock('../Setting/settingsRoute', () => ({ openSettingsForFix: vi.fn() }))
-vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, branchAt: vi.fn(), sendContinue: vi.fn(async () => {}), reroll: vi.fn(async () => {}) }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, isComposerBusyIn: () => false, branchAt: vi.fn(), sendContinue: vi.fn(async () => {}), reroll: vi.fn(async () => {}) }))
 vi.mock('../ChatScreens/NotificationsOffNotice.svelte', () => ({ default: () => ({}) }))
 // The wallpaper has the real producer's shape (getCustomBackground in util.ts), including its missing-file branch: a value
 // whose file is gone resolves to an empty string.

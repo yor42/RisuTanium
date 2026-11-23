@@ -11,7 +11,7 @@ import {
     type RestorePoint,
     type Step,
 } from './historyModel'
-import { isOwnerKey, type Expectation, type OwnerKey } from './ownerPhase'
+import { isStoredOwnerKey, type Expectation, type StoredOwnerKey } from './ownerPhase'
 
 // Default cap on the counted stored bytes of the whole store; Gate N1 fixes the shipped number.
 export const CAP_BYTES = 4 * 1024 * 1024
@@ -47,8 +47,8 @@ export type SaveResult =
 // cut to the per-owner cap.
 export interface StudioHistoryStore {
     open(): Promise<OpenResult>
-    load(owner: OwnerKey): Promise<LoadResult>
-    save(owner: OwnerKey, record: OwnerRecord, protect: ReadonlySet<OwnerKey>): Promise<SaveResult>
+    load(owner: StoredOwnerKey): Promise<LoadResult>
+    save(owner: StoredOwnerKey, record: OwnerRecord, protect: ReadonlySet<StoredOwnerKey>): Promise<SaveResult>
     // Fires once when the connection gets `versionchange` or `close`. After it fires, `save` and
     // `load` answer `unwritable` and `failed` without touching the database.
     onClosed(callback: () => void): void
@@ -101,19 +101,19 @@ export const RESTORE_PART = 'r'
 export const ENTRY_OVERHEAD = 144
 export const OWNER_OVERHEAD = 512
 
-export function headerKey(owner: OwnerKey): string {
+export function headerKey(owner: StoredOwnerKey): string {
     return HEADER_PREFIX + owner
 }
 
-export function asideMarkKey(owner: OwnerKey): string {
+export function asideMarkKey(owner: StoredOwnerKey): string {
     return ASIDE_MARK_PREFIX + owner
 }
 
-export function ownerPrefix(owner: OwnerKey): string {
+export function ownerPrefix(owner: StoredOwnerKey): string {
     return `${ENTRY_PREFIX}${owner.length}:${owner}|`
 }
 
-export function genPrefix(owner: OwnerKey, gen: string): string {
+export function genPrefix(owner: StoredOwnerKey, gen: string): string {
     return `${ownerPrefix(owner)}${gen}|`
 }
 
@@ -125,7 +125,7 @@ export function deletedPart(id: string): string {
     return `d:${id}`
 }
 
-export function entryKey(owner: OwnerKey, gen: string, part: string): string {
+export function entryKey(owner: StoredOwnerKey, gen: string, part: string): string {
     return genPrefix(owner, gen) + part
 }
 
@@ -143,11 +143,11 @@ export function prefixBounds(prefix: string): KeyBounds {
 // `h:` excludes `xh:`.
 export const HEADER_BOUNDS: KeyBounds = prefixBounds(HEADER_PREFIX)
 
-export function ownerBounds(owner: OwnerKey): KeyBounds {
+export function ownerBounds(owner: StoredOwnerKey): KeyBounds {
     return prefixBounds(ownerPrefix(owner))
 }
 
-export function genBounds(owner: OwnerKey, gen: string): KeyBounds {
+export function genBounds(owner: StoredOwnerKey, gen: string): KeyBounds {
     return prefixBounds(genPrefix(owner, gen))
 }
 
@@ -158,7 +158,7 @@ export function inBounds(key: string, bounds: KeyBounds): boolean {
 export interface StoredHeader {
     wid: string
     gen: string
-    ownerKey: OwnerKey
+    ownerKey: StoredOwnerKey
     size: number
     touchedAt: number
 }
@@ -186,7 +186,7 @@ export function serializeHeader(header: StoredHeader): string {
     })
 }
 
-export function serializeIndex(ownerKey: OwnerKey, wid: string, lists: IndexLists): string {
+export function serializeIndex(ownerKey: StoredOwnerKey, wid: string, lists: IndexLists): string {
     return JSON.stringify({
         v: HISTORY_FORMAT_VERSION,
         wid,
@@ -198,7 +198,7 @@ export function serializeIndex(ownerKey: OwnerKey, wid: string, lists: IndexList
     })
 }
 
-export function serializeEntry(kind: EntryKind, ownerKey: OwnerKey, data: Step | DeletedItem | RestorePoint): string {
+export function serializeEntry(kind: EntryKind, ownerKey: StoredOwnerKey, data: Step | DeletedItem | RestorePoint): string {
     return JSON.stringify({ v: HISTORY_FORMAT_VERSION, k: kind, ownerKey, data })
 }
 
@@ -250,7 +250,7 @@ export function readHeader(text: unknown, expectedOwner?: string): StoredHeader 
         return null
     }
     const ownerKey = value.ownerKey
-    if (!isOwnerKey(ownerKey) || (expectedOwner !== undefined && ownerKey !== expectedOwner)) {
+    if (!isStoredOwnerKey(ownerKey) || (expectedOwner !== undefined && ownerKey !== expectedOwner)) {
         return null
     }
     if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) {
@@ -321,6 +321,13 @@ function idsObeyRule(steps: readonly string[], deleted: readonly string[]): bool
     return true
 }
 
+// A record the store may write: it names a stored owner.
+export type StoredOwnerRecord = OwnerRecord & { ownerKey: StoredOwnerKey }
+
+export function isStoredRecord(record: OwnerRecord): record is StoredOwnerRecord {
+    return isStoredOwnerKey(record.ownerKey)
+}
+
 export function recordObeysIdRule(record: OwnerRecord): boolean {
     return idsObeyRule(
         [...record.done.map((step) => step.id), ...record.undone.map((step) => step.id)],
@@ -329,7 +336,7 @@ export function recordObeysIdRule(record: OwnerRecord): boolean {
 }
 
 // Strict index reader: the format version, the header's write id and the owner, the id rule, and counts.
-function readIndex(text: unknown, owner: OwnerKey, wid: string): IndexLists | null {
+function readIndex(text: unknown, owner: StoredOwnerKey, wid: string): IndexLists | null {
     const value = parseJson(text)
     if (!value || value.v !== HISTORY_FORMAT_VERSION || value.wid !== wid || value.ownerKey !== owner) {
         return null
@@ -352,7 +359,7 @@ function readIndex(text: unknown, owner: OwnerKey, wid: string): IndexLists | nu
 
 // The strict reader of one entry's value: the format version, the kind of its key part, the owner, and for a
 // step or a deleted item its own id equal to the key's.
-function readEntryData(text: string, kind: EntryKind, owner: OwnerKey, id: string | null): unknown {
+function readEntryData(text: string, kind: EntryKind, owner: StoredOwnerKey, id: string | null): unknown {
     const value = parseJson(text)
     if (!value || value.v !== HISTORY_FORMAT_VERSION || value.k !== kind || value.ownerKey !== owner) {
         return undefined
@@ -406,7 +413,7 @@ function baselineOf(header: StoredHeader, record: OwnerRecord, lists: IndexLists
 // record passes the model's guards. Any failure returns null; that owner is never counted, deleted
 // or overwritten. It does not check the size against the owner cap: a later build may change the ratio.
 export function readOwner(
-    owner: OwnerKey,
+    owner: StoredOwnerKey,
     headerText: unknown,
     keys: readonly unknown[],
     values: readonly unknown[],
@@ -487,7 +494,7 @@ export type HeaderStep =
     | { kind: 'readEntries'; header: StoredHeader }
 
 // Batch 1 of a load: the header value (undefined when the key is absent) and whether `xh:` exists.
-export function classifyHeader(owner: OwnerKey, headerValue: unknown, asidePresent: boolean): HeaderStep {
+export function classifyHeader(owner: StoredOwnerKey, headerValue: unknown, asidePresent: boolean): HeaderStep {
     if (headerValue === undefined) {
         return { kind: 'classified', classification: { result: { kind: 'absent' }, expectation: { kind: 'none' }, baseline: null } }
     }
@@ -510,7 +517,7 @@ function unreadableClassification(asidePresent: boolean): LoadClassification {
 
 // Batch 2 of a load, once the header passed: the entries of the header's generation, as read.
 export function classifyLoad(
-    owner: OwnerKey,
+    owner: StoredOwnerKey,
     headerValue: unknown,
     asidePresent: boolean,
     keys: readonly unknown[],
@@ -538,7 +545,7 @@ export type HeaderRead =
     | { kind: 'passes'; header: StoredHeader; value: unknown }
     | { kind: 'fails'; value: unknown }
 
-export function readOwnHeader(owner: OwnerKey, value: unknown): HeaderRead {
+export function readOwnHeader(owner: StoredOwnerKey, value: unknown): HeaderRead {
     if (value === undefined) {
         return { kind: 'absent' }
     }
@@ -608,7 +615,7 @@ interface WalkedOwner {
 // pass `ownerCap`: that entry and everything after it are dropped. That is the oldest `done` first,
 // then `undone`, `deleted` and the restore point, because every size is positive. `memo` holds the
 // lengths of entries that were measured but not kept, so a repeated save does not measure them again.
-function walkOwner(record: OwnerRecord, baseline: Baseline | null, ownerCap: number, memo: WeakMap<object, number>): WalkedOwner {
+function walkOwner(record: StoredOwnerRecord, baseline: Baseline | null, ownerCap: number, memo: WeakMap<object, number>): WalkedOwner {
     const ownerKey = record.ownerKey
     const ownerKeyLength = ownerKey.length
     let size = OWNER_OVERHEAD
@@ -693,7 +700,7 @@ function keptParts(walked: WalkedOwner): KeptEntry[] {
 }
 
 function finishPlan(
-    record: OwnerRecord,
+    record: StoredOwnerRecord,
     walked: WalkedOwner,
     wid: string,
     gen: string,
@@ -726,7 +733,7 @@ function finishPlan(
 // A full rewrite under the fresh gen `wid`: every kept entry is put, whatever the baseline was.
 // `staleGen` is the stored gen to range-delete first (the match-inconsistent case), else null.
 export function planFull(
-    record: OwnerRecord,
+    record: StoredOwnerRecord,
     wid: string,
     ownerCap: number,
     memo: WeakMap<object, number>,
@@ -744,7 +751,7 @@ export function planFull(
 // A patch into the baseline's gen: only the entries whose object differs from the baseline are put,
 // the baseline parts that are no longer kept are deleted, and the index and header go last.
 export function planDelta(
-    record: OwnerRecord,
+    record: StoredOwnerRecord,
     baseline: Baseline,
     wid: string,
     ownerCap: number,
@@ -762,7 +769,7 @@ export function planDelta(
 }
 
 // The stored (trimmed) size of `record` at the store cap `cap`; with `Infinity` the untrimmed size.
-export function storedSizeOf(record: OwnerRecord, ownerKey: OwnerKey, cap: number): number {
+export function storedSizeOf(record: OwnerRecord, ownerKey: StoredOwnerKey, cap: number): number {
     return planFull({ ...record, ownerKey }, 'sizing', ownerCapFor(cap), new WeakMap()).header.size
 }
 
@@ -773,10 +780,10 @@ export function storedSizeOf(record: OwnerRecord, ownerKey: OwnerKey, cap: numbe
 // first, ties by key. When no candidate remains the loop stops and the write proceeds over the cap.
 export function evictionPlan(
     headers: readonly StoredHeader[],
-    written: OwnerKey,
+    written: StoredOwnerKey,
     newSize: number,
     cap: number,
-    protect: ReadonlySet<OwnerKey>,
+    protect: ReadonlySet<StoredOwnerKey>,
 ): StoredHeader[] {
     let total = newSize
     for (const header of headers) {
@@ -801,9 +808,9 @@ export function evictionPlan(
 // ---------------------------------------------------------------- the whole save, as pure data
 
 export interface PrepareSaveInput {
-    owner: OwnerKey
+    owner: StoredOwnerKey
     record: OwnerRecord
-    protect: ReadonlySet<OwnerKey>
+    protect: ReadonlySet<StoredOwnerKey>
     expectation: Expectation | undefined
     baseline: Baseline | null
     ownHeader: HeaderRead
@@ -832,6 +839,11 @@ export type PreparedSave =
 // Decides and plans one save without touching a database. On an id-rule breach nothing is planned.
 export function prepareSave(input: PrepareSaveInput): PreparedSave {
     const { owner, record } = input
+    // Only a stored key is ever written: a session-kind key, or a record naming one, is another kind of owner
+    // that this store never holds. The check precedes every other, so nothing is planned for it.
+    if (!isStoredOwnerKey(owner) || !isStoredRecord(record)) {
+        return { kind: 'result', result: { kind: 'unwritable' } }
+    }
     if (!input.expectation) {
         return { kind: 'result', result: { kind: 'notLoaded' } }
     }

@@ -23,7 +23,8 @@ const DARK = 'background:#111111 !important;color:#111111 !important'
 const YELLOW_ON_DARK = 'background:#ffff00 !important;color:#111111 !important'
 const RULE_S = /MC-1569/
 
-const reasons = (area: ThemeArea, css: string): string[] => lintAreaPack(area, css, 'probe').errors.map((e) => e.why)
+// Rule S's contrast and currentcolor findings are notes, so every helper reads a sheet's refusals and its notes together.
+const reasons = (area: ThemeArea, css: string): string[] => { const result = lintAreaPack(area, css, 'probe'); return [...result.errors, ...(result.notes ?? [])].map((e) => e.why) }
 // Rule E-2 (MC-2309): the reason text every E-2 refusal carries. The helpers use only the public lint, so they fail by assertion on a base without the rule.
 const E2_WHY = /may reach at most 2 px past its element/
 const refusedOnlyByE2 = (area: ThemeArea, css: string): boolean => {
@@ -31,9 +32,9 @@ const refusedOnlyByE2 = (area: ThemeArea, css: string): boolean => {
     return !result.ok && result.errors.length > 0 && result.errors.every((e) => E2_WHY.test(e.why))
 }
 const e2Count = (area: ThemeArea, css: string): number => lintAreaPack(area, css, 'probe').errors.filter((e) => E2_WHY.test(e.why)).length
-const refusedBySuperset = (area: ThemeArea, css: string): boolean => {
+const flaggedBySuperset = (area: ThemeArea, css: string): boolean => {
     const result = lintAreaPack(area, css, 'probe')
-    return !result.ok && result.errors.some((e) => RULE_S.test(e.why))
+    return [...result.errors, ...(result.notes ?? [])].some((e) => RULE_S.test(e.why))
 }
 
 describe('Rule S: a split pair that no single block shows (REPRO)', () => {
@@ -47,7 +48,7 @@ describe('Rule S: a split pair that no single block shows (REPRO)', () => {
         ['split-dup-attr (same value)', `${SEND}{${YELLOW_ON_DARK}}${SEND}[data-part="chat-send"]{background:#111111 !important}`],
         ['cm-attr-attr-ctl', `[data-role="user"] ${SEND}{${DARK}}`],
     ])('%s', (_name, css) => {
-        expect(refusedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
+        expect(flaggedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
     })
 
     // T0a-2: the state, media and hover members of the family, and one pair below the pack/pack threshold.
@@ -58,7 +59,7 @@ describe('Rule S: a split pair that no single block shows (REPRO)', () => {
         ['hover-colour', `${SEND}{${YELLOW_ON_DARK}}${SEND}:hover{color:#ffffff !important}`],
         ['one pair at 3.9:1', `${SEND}{background:#222222 !important;color:#7d7d7d !important}`],
     ])('%s', (_name, css) => {
-        expect(refusedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
+        expect(flaggedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
     })
 
     it('names the part, both colours, the ratio and both blocks', () => {
@@ -81,7 +82,7 @@ describe('Rule S: a split pair that no single block shows (REPRO)', () => {
         ['E', 'studio', LOW('studio-side-tab') + HIGH('[data-part="studio-side-tab"][data-selected]')],
         ['F', 'studio', LOW('studio-lt-focus-undo') + HIGH('html [data-part="studio-lt-focus-undo"]')],
     ] as const)('gradient gap %s (%s)', (_name, area, css) => {
-        expect(refusedBySuperset(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+        expect(flaggedBySuperset(area, css), JSON.stringify(reasons(area, css))).toBe(true)
     })
 
     // T0a-5: a background that yields no colour leaves the app's surface under the text (base verdict not observed; reclassify to GUARD if the engine refuses it).
@@ -89,15 +90,15 @@ describe('Rule S: a split pair that no single block shows (REPRO)', () => {
         ['background: none', `${SEND}{background:#ffffff !important;color:#111111 !important}html ${SEND}{background:none !important}`],
         ['background-color: transparent', `${SEND}{background:#ffffff !important;color:#111111 !important}html ${SEND}{background-color:transparent !important}`],
     ])('%s', (_name, css) => {
-        expect(refusedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
+        expect(flaggedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
     })
 
     // T0a-26: a private variable that takes another value under a root attribute is judged in every variant: the plain :root value
     // (#6a6a6a) reads on the yellow fill, the hover-device value (#f0f0f0) does not.
     it('judges every value of a private variable', () => {
         const css = `:root{--pack-t:#6a6a6a}html[data-input="hover"]{--pack-t:#f0f0f0}${SEND}{background:#ffff00 !important;color:#111111 !important}${SEND}:hover{color:var(--pack-t) !important}`
-        expect(refusedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
-        expect(refusedBySuperset('chat', css.replace('#f0f0f0', '#6b6b6b'))).toBe(false)
+        expect(flaggedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
+        expect(flaggedBySuperset('chat', css.replace('#f0f0f0', '#6b6b6b'))).toBe(false)
         expect(lintAreaPack('chat', css.replace('#f0f0f0', '#6b6b6b'), 'probe').ok).toBe(true)
     })
 })
@@ -115,7 +116,7 @@ describe('Rule S: what stays accepted (GUARD)', () => {
         expect(lintAreaPack('chat', `${SEND}{background-color:#ffff00 !important;color:#111111 !important;background-image:none !important}`, 'probe').ok).toBe(true)
         expect(lintAreaPack('chat', `${SEND}{${YELLOW_ON_DARK}}html ${SEND}{background-image:none !important}`, 'probe').ok).toBe(true)
         // the shorthand and background-color do clear the fill (the T0a-5 rows)
-        expect(refusedBySuperset('chat', `${SEND}{${YELLOW_ON_DARK}}html ${SEND}{background:none !important}`)).toBe(true)
+        expect(flaggedBySuperset('chat', `${SEND}{${YELLOW_ON_DARK}}html ${SEND}{background:none !important}`)).toBe(true)
     })
 
     it('a text colour without a background of its own is judged against the app surfaces', () => {
@@ -178,8 +179,9 @@ describe('Rule R-c: the ancestor padding is judged at the largest value any decl
         ['geom-border', `${blocks('border:30px solid #ffffff')}@media (min-width:100000px){${blocks('border:0 solid #ffffff')}}`],
     ])('%s', (_name, css) => {
         const result = lintAreaPack('chat', css, 'probe')
-        expect(result.ok, JSON.stringify(result.errors.map((e) => e.why))).toBe(false)
-        expect(result.errors.some((e) => /ancestor padding along/.test(e.why))).toBe(true)
+        // the chain sum is a layout note: it is reported as a note and never as a refusal (a value that cannot be measured still refuses)
+        expect(result.errors.some((e) => /ancestor padding along/.test(e.why))).toBe(false)
+        expect((result.notes ?? []).some((n) => n.rule === 'layout' && /ancestor padding along/.test(n.why)), JSON.stringify(reasons('chat', css))).toBe(true)
     })
 
     it('a small value everywhere stays accepted', () => {
@@ -204,7 +206,7 @@ describe('Rule S: a background of currentcolor and a text of initial (REPRO)', (
         ['K8 (through a private variable)', `:root{--pack-c:currentcolor}${SEND}{color:#ffffff !important;background-color:var(--pack-c) !important}`],
         ['K10', `${SEND}{background:currentcolor !important}`],
     ])('%s: currentcolor as a background is refused', (_name, css) => {
-        expect(refusedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
+        expect(flaggedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
         expect(reasons('chat', css).some((why) => OWN_COLOUR.test(why)), JSON.stringify(reasons('chat', css))).toBe(true)
     })
 
@@ -242,8 +244,11 @@ describe('Rule S: a background of currentcolor and a text of initial (REPRO)', (
         ['background-image', `${SEND}{color:#ffffff !important;background-image:inherit !important}`],
         ['INHERIT in a state block', `${SEND}{color:#ffffff !important;background:#000000 !important}${SEND}:hover{background-color:INHERIT !important}`],
     ])('%s: a background of inherit is refused', (_name, css) => {
-        expect(refusedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
-        expect(reasons('chat', css).some((why) => INHERITED_BACKGROUND_WHY.test(why)), JSON.stringify(reasons('chat', css))).toBe(true)
+        // a refusal, never a note: the verdict is not ok and the reason sits in errors only
+        const result = lintAreaPack('chat', css, 'probe')
+        expect(result.ok, JSON.stringify(reasons('chat', css))).toBe(false)
+        expect(result.errors.some((e) => INHERITED_BACKGROUND_WHY.test(e.why)), JSON.stringify(result.errors)).toBe(true)
+        expect((result.notes ?? []).some((e) => INHERITED_BACKGROUND_WHY.test(e.why)), JSON.stringify(result.notes)).toBe(false)
     })
     it.each(['transparent', 'none'])('GUARD: background %s next to a readable text stays accepted', (value) => {
         expect(lintAreaPack('chat', `${SEND}{color:#ffffff !important;background:${value} !important}`, 'probe').ok, value).toBe(true)
@@ -257,7 +262,7 @@ describe('Rule S: what stays as it was for backgrounds and texts that state no c
         ['background-color: initial', `${SEND}{background:#ffffff !important;color:#111111 !important}html ${SEND}{background-color:initial !important}`],
         ['background-color: transparent', `${SEND}{background:#ffffff !important;color:#111111 !important}html ${SEND}{background-color:transparent !important}`],
     ])('%s still gives the fallback surfaces and never the own-colour reason', (_name, css) => {
-        expect(refusedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
+        expect(flaggedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
         expect(reasons('chat', css).some((why) => /currentcolor/.test(why))).toBe(false)
     })
 
@@ -277,7 +282,7 @@ describe('Rule S: a translucent pack fill is judged at the text bar (MC-1626)', 
     // rgba(0,0,0,0.5) flattened over the app's four surfaces is #00010e, #070815 and #040411: the text #646464 reads on them at 3.37:1 to 3.52:1, over 3:1 and under 4.5:1.
     it('REPRO: a text at 3.37:1 to 3.52:1 on the flattened fill is refused (base ok:true at the 3:1 bar)', () => {
         const css = `${SEND}{background:rgba(0,0,0,0.5) !important;color:#646464 !important}`
-        expect(lintAreaPack('chat', css, 'probe').errors.some((e) => RULE_S.test(e.why)), JSON.stringify(reasons('chat', css))).toBe(true)
+        expect(flaggedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
         expect(reasons('chat', css).some((why) => /at 3\.[345]\d:1/.test(why))).toBe(true)
     })
 
@@ -290,14 +295,14 @@ describe('Rule S: a translucent pack fill is judged at the text bar (MC-1626)', 
     // The app text colour (rgb(255 255 255 / 0.92) over the canvas) on rgba(255,255,255,0.45) flattened over the canvas, sheet and glass surfaces reads at 3.90:1, 3.49:1 and 3.67:1.
     it('REPRO: the app text colour at 3.49:1 to 3.90:1 on a flattened fill is refused (base ok:true at the 3:1 bar)', () => {
         const css = `${SEND}{background:rgba(255,255,255,0.45) !important}`
-        expect(lintAreaPack('chat', css, 'probe').errors.some((e) => RULE_S.test(e.why)), JSON.stringify(reasons('chat', css))).toBe(true)
+        expect(flaggedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
         expect(reasons('chat', css).some((why) => /at 3\.\d\d:1 when the app's own text colour/.test(why))).toBe(true)
     })
 
     // a text that falls back to the app's own colour in the same block as the translucent fill is judged at the same bar
     it.each(['inherit', 'unset'])('GUARD (kills the 3:1 bar): color %s next to a translucent fill is refused at 3.xx:1', (keyword) => {
         const css = `${SEND}{color:${keyword} !important;background:rgba(255,255,255,0.45) !important}`
-        expect(refusedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
+        expect(flaggedBySuperset('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
         if (keyword === 'inherit') expect(reasons('chat', css).some((why) => /at 3\.\d\d:1 when the app's own text colour \(/.test(why))).toBe(true)
     })
 
@@ -314,7 +319,7 @@ describe('Rule R-c: padding-inline and the side border shorthands count per side
     const both = (a: string, b: string, declaration: string): string => `${a}{${declaration}}${b}{${declaration}}`
     const sumsOver = (css: string): boolean => {
         const result = lintAreaPack('chat', css, 'probe')
-        return !result.ok && result.errors.some((e) => /ancestor padding along/.test(e.why))
+        return [...result.errors, ...(result.notes ?? [])].some((e) => /ancestor padding along/.test(e.why))
     }
     // base observed ok:true for G20, G22, G24, G26, G41, G43 and G44
     it.each([
@@ -394,7 +399,8 @@ describe('Rule R-c, round 4', () => {
         return null
     }
     const refusedAt = (css: string, chain: keyof typeof CHAIN, sum: number): void => {
-        expect(lintAreaPack('chat', css, 'probe').ok, css).toBe(false)
+        // the chain sum is a layout note: the sheet carries the finding, and the sum it reports is what is pinned
+        expect((lintAreaPack('chat', css, 'probe').notes ?? []).some((n) => n.rule === 'layout' && CHAIN[chain].test(n.why)), css).toBe(true)
         expect(sumOf(css, chain), JSON.stringify(reasons('chat', css))).toBe(sum)
     }
     // a chain of the test's own, for the rows the engine refuses on a plain chain-part selector before the geometry pass runs
@@ -497,12 +503,22 @@ describe('Rule R-c, round 4', () => {
 
     describe('the live pass runs only on a sheet every other pass accepted (GUARD)', () => {
         // so a refusal of Rule S or Rule SCOPE never gains a geometry error, and the SCOPE entries of the parity corpus stay MC-1586 only
-        it('REPRO: a sheet refused by Rule S alone carries no live-chain error, with a host that would be refused', () => {
+        it('REPRO: a sheet refused by Rule S alone carries no live-chain finding, with a host that would be flagged', () => {
+            // color: initial is a Rule S refusal (the colour it resolves to is not known); a pair that cannot be read together is only a note
+            const css = `${SEND}{color:initial !important}${HOST}{padding-inline:64px}`
+            const result = lintAreaPack('chat', css, 'probe')
+            expect(result.errors.length).toBeGreaterThan(0)
+            expect(result.errors.every((e) => RULE_S.test(e.why)), JSON.stringify(result.errors.map((e) => e.why))).toBe(true)
+            expect(reasons('chat', css).some((why) => CHAIN.failed.test(why))).toBe(false)
+            expect((lintAreaPack('chat', `${HOST}{padding-inline:64px}`, 'probe').notes ?? []).some((n) => CHAIN.failed.test(n.why))).toBe(true)
+        })
+        it('a sheet whose Rule S findings are notes still gets the live-chain finding (a note never gates a later pass)', () => {
             const css = `${SEND}{${YELLOW_ON_DARK}}html ${SEND}{background:#111111 !important}${HOST}{padding-inline:64px}`
-            const errors = lintAreaPack('chat', css, 'probe').errors
-            expect(errors.length).toBeGreaterThan(0)
-            expect(errors.every((e) => RULE_S.test(e.why)), JSON.stringify(errors.map((e) => e.why))).toBe(true)
-            expect(lintAreaPack('chat', `${HOST}{padding-inline:64px}`, 'probe').ok).toBe(false)
+            const result = lintAreaPack('chat', css, 'probe')
+            expect(result.errors).toEqual([])
+            expect(result.ok).toBe(true)
+            expect((result.notes ?? []).some((n) => RULE_S.test(n.why))).toBe(true)
+            expect((result.notes ?? []).some((n) => CHAIN.failed.test(n.why))).toBe(true)
         })
         it('a sheet refused by Rule SCOPE alone carries no live-chain error, with a host that would be refused', () => {
             const css = `[data-part="home-shell"]{color:#ffffff}${HOST}{padding-inline:64px}`
@@ -634,7 +650,7 @@ describe('Rule P: painting over a control', () => {
     const APP_TEXT = ''
     const refusedByPaintOver = (area: ThemeArea, css: string): boolean => {
         const result = lintAreaPack(area, css, 'probe')
-        return !result.ok && result.errors.some((e) => RULE_P.test(e.why))
+        return [...result.errors, ...(result.notes ?? [])].some((e) => RULE_P.test(e.why))
     }
     const acceptedPack = (area: ThemeArea, css: string): boolean => lintAreaPack(area, css, 'probe').ok
     const seam = (area: ThemeArea, css: string): string[] => cascadePass(area, css).map((e) => e.why).filter((why) => RULE_P.test(why))
@@ -713,13 +729,21 @@ describe('Rule P: painting over a control', () => {
             ['R2e app token', 'chat', thick('var(--stroke-xheavy)')],
             ['R2f --pack- variant', 'chat', `:root{--pack-d:1px}html[data-input="hover"]{--pack-d:8px}${thick('var(--pack-d)')}`],
             ['R2g calc negation', 'chat', thick('calc(-8px * -1)')],
-            ['R2h from-font', 'chat', thick('from-font')],
             ['R2i Studio', 'studio', `${APPLY}{background:#fee500 !important;color:#191919 !important;text-decoration:underline 6px}`],
             ['R2j calc in the shorthand', 'chat', send('text-decoration:line-through calc(-20px * -1)')],
             ['R2k token in the shorthand', 'chat', send('text-decoration:line-through var(--stroke-xheavy)')],
-            ['R2l unitless 5', 'chat', send('text-decoration:underline;text-decoration-thickness:5')],
         ] as const)('%s', (_name, area, css) => {
             expect(refusedByPaintOver(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+        })
+        // a thickness that cannot be measured stays a refusal: the reason is in errors and in no note
+        it.each([
+            ['R2h from-font', thick('from-font'), /from the font file/],
+            ['R2l unitless 5', send('text-decoration:underline;text-decoration-thickness:5'), /cannot be measured/],
+        ] as const)('%s', (_name, css, why) => {
+            const result = lintAreaPack('chat', css, 'probe')
+            expect(result.ok, JSON.stringify(reasons('chat', css))).toBe(false)
+            expect(result.errors.some((e) => why.test(e.why)), JSON.stringify(result.errors)).toBe(true)
+            expect((result.notes ?? []).some((e) => why.test(e.why)), JSON.stringify(result.notes)).toBe(false)
         })
     })
 
@@ -1167,20 +1191,20 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
             expect(found.every((why) => /MC-1586/.test(why)), JSON.stringify(found)).toBe(true)
             expect(found.some((why) => E2_WHY.test(why))).toBe(false)
         })
-        it('O2 the engine or Rule S first', () => {
-            const found = whys('chat', `${SEND}{${DARK}}${NOTICE}{box-shadow:0 0 0 64px #000000}`)
+        it('O2 an engine refusal first', () => {
+            const found = whys('chat', `${SEND}{z-index:5}${NOTICE}{box-shadow:0 0 0 64px #000000}`)
             expect(found.length).toBeGreaterThan(0)
             expect(found.some((why) => E2_WHY.test(why))).toBe(false)
         })
-        it('O3 the live chain first', () => {
+        it('O3 the live chain is a note, so E-2 still judges the sheet', () => {
             const found = whys('chat', `[data-part="chat-composer-host"]{padding-inline:64px}${NOTICE}{box-shadow:0 0 0 64px #000000}`)
             expect(found.some((why) => /ancestor padding along the failed-card chain/.test(why)), JSON.stringify(found)).toBe(true)
-            expect(found.some((why) => E2_WHY.test(why))).toBe(false)
+            expect(found.some((why) => E2_WHY.test(why))).toBe(true)
         })
-        it('O4 Rule P first', () => {
+        it('O4 Rule P findings are notes, so E-2 still judges the sheet', () => {
             const found = whys('chat', `${SEND}{background:#ffffff !important;color:#000000 !important;box-shadow:inset 0 0 0 64px #000000,0 0 0 64px #000000}`)
             expect(found.some((why) => /MC-2072/.test(why)), JSON.stringify(found)).toBe(true)
-            expect(found.some((why) => E2_WHY.test(why))).toBe(false)
+            expect(found.some((why) => E2_WHY.test(why))).toBe(true)
         })
         // Records a dependency: the engine's :root-only rule for settable tokens refuses this sheet before E-2 runs, so the E-2 pass
         // sees only :root overrides and needs no attribute-scoped token resolution.
@@ -1281,15 +1305,15 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
                 expect(found.every((why) => /MC-1586/.test(why)), JSON.stringify(found)).toBe(true)
                 expect(found.some((why) => E2_WHY.test(why))).toBe(false)
             })
-            it('NO2 Rule P first', () => {
+            it('NO2 Rule P findings are notes, so E-2 still judges the sheet', () => {
                 const found = whys('chat', `${SEND}{background:#ffffff !important;color:#000000 !important;box-shadow:inset 0 0 0 64px #000000}`)
                 expect(found.some((why) => /MC-2072/.test(why)), JSON.stringify(found)).toBe(true)
-                expect(found.some((why) => E2_WHY.test(why))).toBe(false)
+                expect(found.some((why) => E2_WHY.test(why))).toBe(true)
             })
-            it('NO3 the engine first, over a light background', () => {
+            it('NO3 the engine finding over a light background is a note, so E-2 still judges the sheet', () => {
                 const found = whys('chat', '[data-part="chat-message"]{background:#9a9a9a;box-shadow:inset 0 0 0 64px #9a9a9a}')
                 expect(found.some((why) => /danger text 1\.03:1/.test(why)), JSON.stringify(found)).toBe(true)
-                expect(found.some((why) => E2_WHY.test(why))).toBe(false)
+                expect(found.some((why) => E2_WHY.test(why))).toBe(true)
             })
             it('NO4 the engine first, an em inset', () => {
                 const found = whys('chat', `${NOTICE}{box-shadow:inset 0 0 0 4em #000000}`)
@@ -1332,104 +1356,65 @@ describe('color-mix in a declaration stays refused (GUARD, S2a)', () => {
         expect(refusedOnOwnProp(lintAreaPack(area, css, 'probe')), JSON.stringify(reasons(area, css))).toBe(true)
         expect(refusedOnOwnProp(refLib.LINT[area](css, 'probe')), JSON.stringify(refLib.LINT[area](css, 'probe').errors)).toBe(true)
     })
-    it.each(PARTS)('%s: controls, white text on #767676 is accepted and the same pair written #808080 is refused by the port (Rule S has no reference twin)', (area, part) => {
+    it.each(PARTS)('%s: controls, white text on #767676 is accepted and the same pair written #808080 is a contrast note of the port (Rule S has no reference twin)', (area, part) => {
         expect(lintAreaPack(area, `${part}{background:#767676 !important;color:#ffffff !important}`, 'probe').ok).toBe(true)
+        expect(lintAreaPack(area, `${part}{background:#767676 !important;color:#ffffff !important}`, 'probe').notes).toBeUndefined()
         const grey = lintAreaPack(area, `${part}{background:#767676 !important;color:#808080 !important}`, 'probe')
-        expect(grey.ok).toBe(false)
-        expect(grey.errors.some((e) => RULE_S.test(e.why))).toBe(true)
+        expect(grey.ok).toBe(true)
+        expect((grey.notes ?? []).some((e) => RULE_S.test(e.why) && e.rule === 'contrast')).toBe(true)
     })
 })
 
-// A plain colour or fill on a reach part is refused (MC-2313 widened by MC-2370): the app's own styles for these controls can outrank a plain pack rule.
-// Classes: REPRO = accepted (ok:true) before this rule, refused after; GUARD = accepted or unchanged before and after.
-describe('plain paint on a reach part (MC-2313, MC-2370)', () => {
-    const PLAIN_PAINT = /\(MC-2313, MC-2370\)/
-    const refusedByPlainPaint = (area: ThemeArea, css: string): boolean => {
+// A plain colour or fill on a reach part is silent (MC-2370 is removed): the app's own styles for these controls can outrank it, so it is no Rule S or Rule P member (MC-2314), and no rule reports it.
+// Classes: REPRO = refused before the rule was removed, accepted without a plain-paint reason now; GUARD = accepted or unchanged before and after.
+describe('plain paint on a reach part is silent (MC-2370 removed)', () => {
+    const PLAIN_PAINT = /MC-2313, MC-2370|must be written with !important/
+    const flaggedByPlainPaint = (area: ThemeArea, css: string): boolean => {
         const result = lintAreaPack(area, css, 'probe')
-        return !result.ok && result.errors.some((e) => PLAIN_PAINT.test(e.why))
+        return [...result.errors, ...(result.notes ?? [])].some((e) => PLAIN_PAINT.test(e.why))
     }
     const accepted = (area: ThemeArea, css: string): boolean => lintAreaPack(area, css, 'probe').ok
     const whys = (area: ThemeArea, css: string): string[] => cascadePass(area, css).map((e) => e.why)
     const plainPaintWhys = (area: ThemeArea, css: string): string[] => whys(area, css).filter((why) => PLAIN_PAINT.test(why))
 
-    describe('refused (REPRO)', () => {
-        it('T1: a plain colour and a plain fill on Send are both refused, with their written values', () => {
+    describe('no reason for a plain declaration (REPRO)', () => {
+        it('T1: a plain colour and a plain fill on Send give no plain-paint reason', () => {
             const result = lintAreaPack('chat', `${SEND}{background:#ffff00;color:#000000}`, 'probe')
-            expect(result.ok).toBe(false)
-            const plain = result.errors.filter((e) => PLAIN_PAINT.test(e.why))
-            expect(plain.some((e) => e.prop === 'color' && e.why.includes('"color: #000000"')), JSON.stringify(plain)).toBe(true)
-            expect(plain.some((e) => e.prop === 'background' && e.why.includes('"background: #ffff00"')), JSON.stringify(plain)).toBe(true)
+            expect(result.errors).toEqual([])
+            expect(result.ok).toBe(true)
+            expect(flaggedByPlainPaint('chat', `${SEND}{background:#ffff00;color:#000000}`)).toBe(false)
         })
-        it.each(REACH_CHAT)('T2: chat %s refuses a plain colour', (part) => {
-            expect(refusedByPlainPaint('chat', `[data-part="${part}"]{background:#ffffff !important;color:#000000}`)).toBe(true)
+        it.each(REACH_CHAT)('T2: chat %s gives no plain-paint reason for a plain colour or a plain fill', (part) => {
+            expect(flaggedByPlainPaint('chat', `[data-part="${part}"]{background:#ffffff !important;color:#000000}`)).toBe(false)
+            expect(flaggedByPlainPaint('chat', `[data-part="${part}"]{background:#ffffff;color:#000000 !important}`)).toBe(false)
         })
-        it.each(REACH_CHAT)('T3: chat %s refuses a plain fill', (part) => {
-            expect(refusedByPlainPaint('chat', `[data-part="${part}"]{background:#ffffff;color:#000000 !important}`)).toBe(true)
-        })
-        it.each(STUDIO_REACH)('T4: studio %s refuses a plain colour', (part) => {
-            expect(refusedByPlainPaint('studio', `[data-part="${part}"]{background:#ffffff !important;color:#000000}`)).toBe(true)
-        })
-        it.each(STUDIO_REACH)('T5: studio %s refuses a plain fill', (part) => {
-            expect(refusedByPlainPaint('studio', `[data-part="${part}"]{background:#ffffff;color:#000000 !important}`)).toBe(true)
-        })
-        it('T11: inside @media', () => {
-            expect(refusedByPlainPaint('chat', `@media (min-width:1px){${SEND}{background:#ffff00 !important;color:#000000}}`)).toBe(true)
+        it.each(STUDIO_REACH)('T4: studio %s gives no plain-paint reason for a plain colour or a plain fill', (part) => {
+            expect(flaggedByPlainPaint('studio', `[data-part="${part}"]{background:#ffffff !important;color:#000000}`)).toBe(false)
+            expect(flaggedByPlainPaint('studio', `[data-part="${part}"]{background:#ffffff;color:#000000 !important}`)).toBe(false)
         })
         it.each([
-            ['hover', `${SEND}:hover{background:#ffff00 !important;color:#000000}`],
-            ['focus-visible', `${SEND}:focus-visible{background:#fee500 !important;color:#191919}`],
-        ])('T12: a %s rule', (_name, css) => {
-            expect(refusedByPlainPaint('chat', css)).toBe(true)
-        })
-        it('T13: a selector list with the part second', () => {
-            expect(refusedByPlainPaint('chat', `[data-part="chat-message-name"],${SEND}{background:#ffff00 !important;color:#000000}`)).toBe(true)
-        })
-        it('T14: a plain fill beside an !important colour', () => {
-            expect(refusedByPlainPaint('chat', '[data-part="chat-header"]{background:#fee500;color:#191919 !important}')).toBe(true)
-        })
-        it('T15: background-image', () => {
-            expect(refusedByPlainPaint('chat', '[data-part="chat-header"]{background-image:linear-gradient(#000000,#000000)}')).toBe(true)
-        })
-        it.each([
-            ['color inherit', '[data-part="chat-header"]{color:inherit}'],
-            ['background none', '[data-part="chat-header"]{background:none}'],
-            ['color unset', `${SEND}{color:unset}`],
-            ['background-color transparent', '[data-part="chat-list-row"]{background-color:transparent}'],
-        ])('T16: the keyword %s is refused too (MC-2349)', (_name, css) => {
-            expect(refusedByPlainPaint('chat', css)).toBe(true)
-        })
-        it('T17: a plain pair on the sidebar', () => {
-            expect(refusedByPlainPaint('chat', '[data-part="chat-sidebar"]{background:#fee500;color:#191919}')).toBe(true)
-        })
-        it('T18: a plain pair on the Studio side tab', () => {
-            expect(refusedByPlainPaint('studio', '[data-part="studio-side-tab"]{background:#fee500;color:#191919}')).toBe(true)
-        })
-        it('T19: a plain fill alone on Send', () => {
-            expect(refusedByPlainPaint('chat', `${SEND}{background:#101010}`)).toBe(true)
-        })
-        it('T21 (the plain-paint half of G9): the plain X1 pair names the plain-paint reason', () => {
-            const css = `${SEND}{background:#606060 !important;color:#b0b0b0}`
-            expect(refusedByPlainPaint('chat', css), JSON.stringify(reasons('chat', css))).toBe(true)
-        })
-        it.each([
-            ['descendant', ' '],
-            ['child', ' > '],
-        ])('T22: a reach subject under a reach ancestor (%s) refuses a plain colour and a plain fill', (_name, combinator) => {
-            const ancestor = '[data-part="chat-composer"]'
-            expect(refusedByPlainPaint('chat', `${ancestor}${combinator}${SEND}{background:#101010 !important;color:#ffffff}`)).toBe(true)
-            expect(refusedByPlainPaint('chat', `${ancestor}${combinator}${SEND}{background:#101010}`)).toBe(true)
-        })
-        it('T23: a Studio reach subject under a Studio reach ancestor refuses a plain pair', () => {
-            expect(refusedByPlainPaint('studio', '[data-part="studio-tree"] [data-part="studio-tree-row"]{background:#fee500;color:#191919 !important}')).toBe(true)
-        })
-        it('T24: an html prefix does not hide a plain paint', () => {
-            expect(refusedByPlainPaint('chat', `html ${SEND}{background:#101010 !important;color:#ffffff}`)).toBe(true)
-        })
-        it('T25: a :root[data-input] prefix does not hide a plain fill', () => {
-            expect(refusedByPlainPaint('chat', `:root[data-input="touch"] ${SEND}{background:#101010}`)).toBe(true)
-        })
-        it('T20: a translucent plain fill on a list row', () => {
-            expect(refusedByPlainPaint('chat', '[data-part="chat-list-row"]{border-radius:12px;background:rgb(255 255 255 / 0.05)}')).toBe(true)
+            ['T11: inside @media', 'chat', `@media (min-width:1px){${SEND}{background:#ffff00 !important;color:#000000}}`],
+            ['T12: a hover rule', 'chat', `${SEND}:hover{background:#ffff00 !important;color:#000000}`],
+            ['T12: a focus-visible rule', 'chat', `${SEND}:focus-visible{background:#fee500 !important;color:#191919}`],
+            ['T13: a selector list with the part second', 'chat', `[data-part="chat-message-name"],${SEND}{background:#ffff00 !important;color:#000000}`],
+            ['T14: a plain fill beside an !important colour', 'chat', '[data-part="chat-header"]{background:#fee500;color:#191919 !important}'],
+            ['T15: background-image', 'chat', '[data-part="chat-header"]{background-image:linear-gradient(#000000,#000000)}'],
+            ['T16: color inherit', 'chat', '[data-part="chat-header"]{color:inherit}'],
+            ['T16: background none', 'chat', '[data-part="chat-header"]{background:none}'],
+            ['T16: color unset', 'chat', `${SEND}{color:unset}`],
+            ['T16: background-color transparent', 'chat', '[data-part="chat-list-row"]{background-color:transparent}'],
+            ['T17: a plain pair on the sidebar', 'chat', '[data-part="chat-sidebar"]{background:#fee500;color:#191919}'],
+            ['T18: a plain pair on the Studio side tab', 'studio', '[data-part="studio-side-tab"]{background:#fee500;color:#191919}'],
+            ['T19: a plain fill alone on Send', 'chat', `${SEND}{background:#101010}`],
+            ['T21: a plain X1 pair', 'chat', `${SEND}{background:#606060 !important;color:#b0b0b0}`],
+            ['T22: a reach subject under a reach ancestor (descendant)', 'chat', `[data-part="chat-composer"] ${SEND}{background:#101010 !important;color:#ffffff}`],
+            ['T22: a reach subject under a reach ancestor (child)', 'chat', `[data-part="chat-composer"] > ${SEND}{background:#101010}`],
+            ['T23: a Studio reach subject under a Studio reach ancestor', 'studio', '[data-part="studio-tree"] [data-part="studio-tree-row"]{background:#fee500;color:#191919 !important}'],
+            ['T24: an html prefix', 'chat', `html ${SEND}{background:#101010 !important;color:#ffffff}`],
+            ['T25: a :root[data-input] prefix', 'chat', `:root[data-input="touch"] ${SEND}{background:#101010}`],
+            ['T20: a translucent plain fill on a list row', 'chat', '[data-part="chat-list-row"]{border-radius:12px;background:rgb(255 255 255 / 0.05)}'],
+        ] as const)('%s gives no plain-paint reason', (_name, area, css) => {
+            expect(flaggedByPlainPaint(area, css), JSON.stringify(reasons(area, css))).toBe(false)
         })
     })
 
@@ -1454,13 +1439,15 @@ describe('plain paint on a reach part (MC-2313, MC-2370)', () => {
         it('G8: a non-paint declaration on a reach part is accepted', () => {
             expect(accepted('chat', `${SEND}{border-radius:999px;font-weight:600}`)).toBe(true)
         })
-        it('G9: the plain X1 pair is refused (verdict only)', () => {
-            expect(lintAreaPack('chat', `${SEND}{background:#606060 !important;color:#b0b0b0}`, 'probe').ok).toBe(false)
+        it('G9: the plain X1 pair is accepted, and its poor contrast is a note', () => {
+            const result = lintAreaPack('chat', `${SEND}{background:#606060 !important;color:#b0b0b0}`, 'probe')
+            expect(result.errors).toEqual([])
+            expect(result.ok).toBe(true)
         })
-        it('G10: the !important X1 twin is refused by Rule S alone, with no plain-paint reason', () => {
+        it('G10: the !important X1 twin is flagged by Rule S alone, with no plain-paint reason', () => {
             const css = `${SEND}{background:#606060 !important;color:#b0b0b0 !important}`
-            expect(refusedBySuperset('chat', css)).toBe(true)
-            expect(refusedByPlainPaint('chat', css)).toBe(false)
+            expect(flaggedBySuperset('chat', css)).toBe(true)
+            expect(flaggedByPlainPaint('chat', css)).toBe(false)
         })
         it('G11: an !important private variable read by a colour is refused before and after', () => {
             expect(accepted('chat', `:root{--pack-x:#000000 !important}${SEND}{background:#ffffff !important;color:var(--pack-x)}`)).toBe(false)
@@ -1476,10 +1463,10 @@ describe('plain paint on a reach part (MC-2313, MC-2370)', () => {
 
     describe('the pass itself, cascadePass', () => {
         const ON_SEND_TEXT = `${SEND}{background:#ffff00 !important;color:#000000}`
-        it('S1: a plain colour pairs the app text with an !important fill (MC-2314)', () => {
+        it('S1: a plain colour pairs the app text with an !important fill (MC-2314), and no plain-paint reason is given', () => {
             const found = whys('chat', ON_SEND_TEXT)
             expect(found.some((why) => RULE_S.test(why) && /the app's own text colour/.test(why)), JSON.stringify(found)).toBe(true)
-            expect(found.some((why) => PLAIN_PAINT.test(why))).toBe(true)
+            expect(found.some((why) => PLAIN_PAINT.test(why))).toBe(false)
         })
         it('S2: a plain colour leaves a Rule P inset paired with the app text (MC-2314)', () => {
             const found = whys('chat', `${SEND}{background:#808080 !important;color:#000000;box-shadow:inset 0 0 0 64px #e0e0e0}`)
@@ -1491,38 +1478,23 @@ describe('plain paint on a reach part (MC-2313, MC-2370)', () => {
         it('S3: an !important pair is clean (GUARD)', () => {
             expect(whys('chat', `${SEND}{background:#ffff00 !important;color:#000000 !important}`)).toEqual([])
         })
-        it('S4: a doubled !important is one error and names the invalid form', () => {
-            const found = plainPaintWhys('chat', `${SEND}{background:#ffff00 !important;color:#000000 !important !important}`)
-            expect(found.length, JSON.stringify(found)).toBe(1)
-            expect(found[0]).toContain('is not a valid !important declaration')
-            expect(found[0]).not.toContain('write it with !important')
-        })
-        it('S5: a plain value is read before private variables are inlined', () => {
-            const found = plainPaintWhys('chat', `${SEND}{background:#ffff00 !important;color:var(--pack-missing, #000000 !important)}`)
-            expect(found.length, JSON.stringify(found)).toBeGreaterThan(0)
+        it('S4: a plain value gives no plain-paint reason in any written form, doubled !important or private-variable fallback included', () => {
+            expect(plainPaintWhys('chat', `${SEND}{background:#ffff00 !important;color:#000000 !important !important}`)).toEqual([])
+            expect(plainPaintWhys('chat', `${SEND}{background:#ffff00 !important;color:var(--pack-missing, #000000 !important)}`)).toEqual([])
+            expect(plainPaintWhys('chat', `${SEND}{color:#000000}`)).toEqual([])
+            expect(plainPaintWhys('chat', `${SEND}{background:#101010}`)).toEqual([])
         })
         it('S6: -webkit-text-fill-color is no paint channel (GUARD)', () => {
             expect(plainPaintWhys('chat', `${SEND}{background:#ffff00 !important;-webkit-text-fill-color:#000000}`)).toEqual([])
         })
-        it('S7: the why texts for a plain colour and a plain fill', () => {
-            const colour = plainPaintWhys('chat', `${SEND}{color:#000000}`)
-            expect(colour.length, JSON.stringify(colour)).toBe(1)
-            expect(colour[0].startsWith('chat-send: a text colour on this control must be written with !important, because ')).toBe(true)
-            expect(colour[0]).toContain('"color: #000000" is plain')
-            expect(colour[0]).toContain('write it with !important')
-            const fill = plainPaintWhys('chat', `${SEND}{background:#101010}`)
-            expect(fill.length, JSON.stringify(fill)).toBe(1)
-            expect(fill[0].startsWith('chat-send: a background on this control must be written with !important')).toBe(true)
-            expect(fill[0]).toContain('"background: #101010" is plain')
-        })
-        it('S8: a dead plain fill leaves the app canvas behind an !important colour, in chat', () => {
+        it('S8: a dead plain fill leaves the app canvas behind an !important colour, in chat (the pairing is still judged)', () => {
             const found = whys('chat', '[data-part="chat-header"]{background:#fee500;color:#191919 !important}')
             expect(found.some((why) => RULE_S.test(why) && /text #191919/.test(why) && /the app's canvas surface/.test(why)), JSON.stringify(found)).toBe(true)
-            expect(found.some((why) => PLAIN_PAINT.test(why))).toBe(true)
+            expect(found.some((why) => PLAIN_PAINT.test(why))).toBe(false)
         })
         it('S9: a dead plain fill leaves the app canvas behind an !important colour, in Studio', () => {
             const found = whys('studio', '[data-part="studio-item-apply"]{background:#fee500;color:#191919 !important}')
-            expect(found.some((why) => PLAIN_PAINT.test(why))).toBe(true)
+            expect(found.some((why) => PLAIN_PAINT.test(why))).toBe(false)
             expect(found.some((why) => RULE_S.test(why) && /text #191919/.test(why) && /surface/.test(why)), JSON.stringify(found)).toBe(true)
         })
     })

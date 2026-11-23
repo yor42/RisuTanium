@@ -5,7 +5,8 @@
     import type { LoreTestEntry, LoreTestReason } from '../../ts/studio/loreTest'
     import { isLoreTestStale, loreTestSlot, resetLoreTestFor, runLoreTester, setLoreTestText } from '../../ts/studio/loreTestSession.svelte'
     import type { OwnerModel, OwnerNode } from '../../ts/studio/ownerModel'
-    import { TREE_PAGE_SIZE, selectStudioNode, setStudioExpanded, showMoreStudioRows, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { combinedKeyOf } from './StudioCombined.svelte'
+    import { TREE_PAGE_SIZE, openStudioListRow, setStudioExpanded, showMoreStudioRows, studioScreen } from '../../ts/studio/studioScreen.svelte'
 
     interface Props {
         model: OwnerModel
@@ -113,7 +114,7 @@
     function openEntry(entry: LoreTestEntry): void {
         const node = ownerNodeOf(entry)
         if (!node || !entry.owner) return
-        selectStudioNode(node.key, 'lore', `${node.id}/lore:${entry.owner.index}`)
+        openStudioListRow({ ownerKey: combinedKeyOf('lore'), kind: 'lore' }, node.key, `${node.id}/lore:${entry.owner.index}`, `lt:${entry.index}`)
     }
 </script>
 
@@ -125,6 +126,7 @@
                 <button
                     type="button"
                     data-part="studio-lore-test-open"
+                    data-reveal-id={`lt:${entry.index}`}
                     class="min-h-11 min-w-0 flex-1 cursor-pointer truncate rounded px-2 text-start hover:bg-selected"
                     onclick={() => openEntry(entry)}
                 >{entry.label}</button>

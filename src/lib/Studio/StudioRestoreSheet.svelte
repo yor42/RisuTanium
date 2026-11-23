@@ -2,7 +2,7 @@
     import { onMount, untrack } from 'svelte'
     import { language } from '../../lang'
     import { openStudioModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
-    import { createLiveReader, createModuleLiveReader, isModuleTarget, resolveLiveTarget } from '../../ts/studio/edit/studioSetters'
+    import { liveReaderOf, resolveOwnerTarget } from '../../ts/studio/edit/ownerTargets'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath } from '../../ts/studio/history/historyModel'
@@ -31,16 +31,33 @@
     const service = $derived(getStudioHistoryService())
     const owner = $derived(selectedHistoryOwner())
     const restore = $derived(service && owner !== null ? service.view(owner).restore : null)
+    // The note about chats applies to a character's restore point only.
+    const hasChatNote = $derived.by((): boolean => {
+        const parsed = parseOwnerKey(owner ?? '')
+        if (parsed === null) return false
+        switch (parsed.kind) {
+            case 'character':
+                return true
+            case 'chat':
+            case 'module':
+                return false
+            default: {
+                // Adding an owner kind must decide its note here; the fallback is no note.
+                const unhandled: never = parsed
+                void unhandled
+                return false
+            }
+        }
+    })
     const paths = $derived(restore ? RESTORE_PATH_ORDER.filter((path) => restore.fields[path] !== undefined) : [])
     // Paths whose live value was changed outside Studio's history since the visit.
     const changed = $derived.by((): RestorePath[] => {
         if (!restore || owner === null) return []
         // A module owner resolves only through the published open-module id, as the service resolves it; the read of that
         // id makes this derivation follow the publish.
-        const resolved = resolveLiveTarget(owner, openStudioModuleId)
+        const resolved = resolveOwnerTarget(owner, openStudioModuleId)
         if (!resolved.ok) return []
-        const { target } = resolved
-        return listChangedElsewhere(restore, isModuleTarget(target) ? createModuleLiveReader(target.module) : createLiveReader(target))
+        return listChangedElsewhere(restore, liveReaderOf(resolved.target))
     })
     // A changed path is kept unless the user chooses to overwrite it.
     let overwritten = $state<RestorePath[]>([])
@@ -83,7 +100,7 @@
     <div role="dialog" aria-labelledby="studio-restore-title" data-part="studio-restore-sheet" class="flex max-h-full w-full max-w-md flex-col gap-3 overflow-y-auto rounded-md border border-darkborderc bg-darkbg p-4 text-textcolor">
         <h2 id="studio-restore-title" class="text-lg font-bold">{language.studioRestoreTitle}</h2>
         <p class="text-sm text-textcolor2">{language.studioRestoreBody}</p>
-        {#if parseOwnerKey(owner ?? '')?.kind === 'character'}
+        {#if hasChatNote}
             <p data-part="studio-restore-chat-note" class="text-sm text-textcolor2">{language.studioRestoreChatNote}</p>
         {/if}
         {#if paths.length > 0}

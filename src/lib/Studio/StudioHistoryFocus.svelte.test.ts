@@ -54,6 +54,7 @@ import { makeCharacter, makeChat, makeInput, studioDbOf } from 'src/ts/studio/st
 import { openStudio, resetStudioScreenForTests, setStudioHistoryOpen, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey, chatOwnerKey } from '../../ts/studio/history/ownerPhase'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
@@ -159,10 +160,11 @@ class ResizeObserverStub {
     observe(): void {
         this.callback([{ contentRect: { width: 1200 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
     }
+    unobserve(): void {}
     disconnect(): void {}
 }
 
-const part = (name: string) => document.querySelector<HTMLElement>(`[data-part="${name}"]`)
+const part =(name: string) => document.querySelector<HTMLElement>(`[data-part="${name}"]`)
 const parts = (name: string) => Array.from(document.querySelectorAll<HTMLElement>(`[data-part="${name}"]`))
 
 function click(name: string): void {
@@ -191,6 +193,7 @@ beforeEach(() => {
     selection.selId = 0
     setStudioEnabled(true)
     vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    setWindowGeometryForTests(allRowsGeometry())
 })
 
 afterEach(async () => {
@@ -201,6 +204,7 @@ afterEach(async () => {
     resetBackHandlersForTests()
     resetToastHostForTests()
     setStudioEnabled(false)
+    setWindowGeometryForTests(undefined)
     vi.unstubAllGlobals()
 })
 
@@ -214,6 +218,7 @@ function narrow(width: number): void {
         observe(): void {
             this.callback([{ contentRect: { width } } as ResizeObserverEntry], this as unknown as ResizeObserver)
         }
+        unobserve(): void {}
         disconnect(): void {}
     }
     vi.stubGlobal('ResizeObserver', Narrow)
@@ -265,6 +270,34 @@ describe('F: focus lands on the first message an Undo, Redo or Restore put back 
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
         expect(document.activeElement).toBe(inputs()[1])
         expect(inputs()[1].value).toBe('g1')
+    })
+
+    test('F1b Undo of an edit to a row outside the list window focuses that row, not the Nth mounted card', async () => {
+        const many = Array.from({ length: 80 }, (_, i) => `g${i}`)
+        setWindowGeometryForTests({
+            rectOf: () => ({ top: 0, height: 0 }),
+            viewport: () => 300,
+            scrollBy: () => {},
+            schedule: (callback) => {
+                callback()
+                return () => {}
+            },
+        })
+        const rig = await screenWithPanel({ patch: { alternateGreetings: many } })
+        expect(inputs().length).toBeLessThan(40)
+        expect(inputs().some((input) => input.dataset.index === '62')).toBe(false)
+        expect(rig.service.greetingEdit(A, 62, 'changed').ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        flushSync()
+        await press('studio-history-undo')
+        // The list mounts the card after the History action's own flush; a reveal waits for a frame or a timer.
+        await new Promise((resolve) => setTimeout(resolve, 60))
+        await settle()
+        expect(live().alternateGreetings[62]).toBe('g62')
+        const focused = document.activeElement as HTMLTextAreaElement
+        expect(focused.dataset.part).toBe('studio-greeting-input')
+        expect(focused.dataset.index).toBe('62')
+        expect(focused.value).toBe('g62')
     })
 
     test('F2 Redo of a delete focuses the row that took the slot', async () => {

@@ -87,6 +87,7 @@ import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studi
 import { createClaimDouble, createMemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
 import type { LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
 import LongTextField from './LongTextField.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import StudioScreen from './StudioScreen.svelte'
 
 function fixtureDb() {
@@ -151,6 +152,7 @@ class ResizeObserverStub {
     observe(): void {
         this.callback([{ contentRect: { width: 1200 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
     }
+    unobserve(): void {}
     disconnect(): void {}
 }
 
@@ -182,6 +184,7 @@ beforeEach(() => {
     selection.selId = 0
     setStudioEnabled(true)
     vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    setWindowGeometryForTests(allRowsGeometry())
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     vi.mocked(tokenSpans).mockClear()
     vi.mocked(checkCbs).mockClear()
@@ -210,6 +213,7 @@ afterEach(async () => {
     resetToastHostForTests()
     setStudioEnabled(false)
     vi.useRealTimers()
+    setWindowGeometryForTests(undefined)
     vi.unstubAllGlobals()
 })
 

@@ -45,7 +45,7 @@ vi.mock('./TogglesPanel.svelte', () => ({ default: () => ({}), toggleSummary: ()
 vi.mock('./SendFailureCard.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../ts/chatShell/sendFailure.svelte', () => ({ failureOf: () => null, retrySendFailure: vi.fn() }))
 vi.mock('../Setting/settingsRoute', () => ({ openSettingsForFix: vi.fn() }))
-vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, branchAt: vi.fn() }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, isComposerBusyIn: () => false, branchAt: vi.fn() }))
 
 function chats(): TestChat[] {
     return state.db.characters[0].chats as TestChat[]

@@ -12,6 +12,7 @@
  * is a regression reproducer for the behaviour it names.
  */
 import { flushSync, mount, unmount } from 'svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { writable } from 'svelte/store'
 import { describe, test, expect, vi, afterEach } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -108,7 +109,7 @@ import BotPreset from './botpreset.svelte'
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
 
-function mountPresets(presetNames: string[]): HTMLElement {
+async function mountPresets(presetNames: string[]): Promise<HTMLElement> {
     DBState.db = {
         formatversion: 5,
         botPresets: presetNames.map((name) => ({ name, aiModel: 'm' })),
@@ -119,8 +120,14 @@ function mountPresets(presetNames: string[]): HTMLElement {
     } as unknown as Database
     const target = document.createElement('div')
     document.body.appendChild(target)
+    // The windowed rows mount once the host has read the band: every row falls in it, as these tests are not about which rows are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     const app = mount(BotPreset, { target, props: { close: vi.fn() } }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
+    flushSync()
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
     flushSync()
     return target
 }
@@ -148,19 +155,19 @@ afterEach(async () => {
 })
 
 describe('the drag image of a bot preset row', () => {
-    test('guard: a named preset is labelled with its name', () => {
-        const target = mountPresets(['Alpha', 'Beta'])
+    test('guard: a named preset is labelled with its name', async () => {
+        const target = await mountPresets(['Alpha', 'Beta'])
         expect(dragLabel(target, 1)).toBe('Beta')
     })
 
-    test('guard: English labels a nameless preset "Unnamed Preset"', () => {
-        const target = mountPresets(['Alpha', ''])
+    test('guard: English labels a nameless preset "Unnamed Preset"', async () => {
+        const target = await mountPresets(['Alpha', ''])
         expect(dragLabel(target, 1)).toBe('Unnamed Preset')
     })
 
-    test('regression reproducer: Korean labels a nameless preset in Korean', () => {
+    test('regression reproducer: Korean labels a nameless preset in Korean', async () => {
         changeLanguage('ko')
-        const target = mountPresets(['Alpha', ''])
+        const target = await mountPresets(['Alpha', ''])
         expect(dragLabel(target, 1)).toBe('이름 없는 프리셋')
     })
 })

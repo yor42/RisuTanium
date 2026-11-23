@@ -84,14 +84,25 @@
         }
         // After an update the list holds no scan, but the result line still names owners.
         const parsed = parseOwnerKey(key)
-        if (parsed?.kind === 'module') {
-            const name = (moduleSlotsWithId(DBState.db.modules, parsed.moduleId)[0]?.module as { name?: unknown } | undefined)?.name
-            return typeof name === 'string' && name !== '' ? name : parsed.moduleId
+        if (parsed === null) {
+            return key
         }
-        if (parsed?.kind === 'character') {
-            return DBState.db.characters?.find((character) => character?.chaId === parsed.chaId)?.name ?? parsed.chaId
+        switch (parsed.kind) {
+            case 'module': {
+                const name = (moduleSlotsWithId(DBState.db.modules, parsed.moduleId)[0]?.module as { name?: unknown } | undefined)?.name
+                return typeof name === 'string' && name !== '' ? name : parsed.moduleId
+            }
+            case 'character':
+                return DBState.db.characters?.find((character) => character?.chaId === parsed.chaId)?.name ?? parsed.chaId
+            case 'chat':
+                return key
+            default: {
+                // Adding an owner kind must decide its name here; the fallback is the raw key.
+                const unhandled: never = parsed
+                void unhandled
+                return key
+            }
         }
-        return key
     }
 
     // A regex pattern is listed under its replacement field, the place the registry labels and opens.
@@ -102,15 +113,42 @@
 
     function jumpOf(use: ListedUse) {
         const parsed = parseOwnerKey(use.owner)
-        if (parsed === null || (parsed.kind !== 'character' && parsed.kind !== 'module')) {
+        if (parsed === null) {
             return null
         }
-        return jumpTargetOf(parsed.kind, parsed.kind === 'module' ? parsed.moduleId : parsed.chaId, usePlaceOf(use.path))
+        switch (parsed.kind) {
+            case 'character':
+                return jumpTargetOf('character', parsed.chaId, usePlaceOf(use.path))
+            case 'module':
+                return jumpTargetOf('module', parsed.moduleId, usePlaceOf(use.path))
+            case 'chat':
+                return null
+            default: {
+                const unhandled: never = parsed
+                void unhandled
+                return null
+            }
+        }
     }
 
     function placeOf(use: ListedUse): string {
         const parsed = parseOwnerKey(use.owner)
-        return placeLabelOf(parsed?.kind === 'module' ? 'module' : 'character', usePlaceOf(use.path))
+        const path = usePlaceOf(use.path)
+        if (parsed === null) {
+            return placeLabelOf('character', path)
+        }
+        switch (parsed.kind) {
+            case 'module':
+                return placeLabelOf('module', path)
+            case 'character':
+            case 'chat':
+                return placeLabelOf('character', path)
+            default: {
+                const unhandled: never = parsed
+                void unhandled
+                return placeLabelOf('character', path)
+            }
+        }
     }
 
     function reasonText(reason: ListedReason): string {

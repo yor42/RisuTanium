@@ -14,7 +14,7 @@ import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
 import { factsOf, freshSeed, isHeldBy, isUsableContainer, propertyOf, slotOf } from '../history/fieldAccess'
 import { fmAfterRemove, textFieldOf, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
-import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
+import { parseStoredOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './assetSetters'
 
 export type SetterRefusal =
@@ -96,7 +96,9 @@ function resolveModuleTarget(moduleId: string, openModuleId: () => string | null
 export function resolveLiveTarget(owner: OwnerKey): { ok: true; target: LiveTarget } | { ok: false; reason: SetterRefusal }
 export function resolveLiveTarget(owner: OwnerKey, openModuleId: () => string | null): { ok: true; target: OwnerTarget } | { ok: false; reason: SetterRefusal }
 export function resolveLiveTarget(owner: OwnerKey, openModuleId?: () => string | null): { ok: true; target: OwnerTarget } | { ok: false; reason: SetterRefusal } {
-    const parsed = parseOwnerKey(owner)
+    // A session key is not a live character or module: it answers `gone` here and is resolved only through
+    // ownerTargets.ts, so no adapter is reached from this file.
+    const parsed = parseStoredOwnerKey(owner)
     if (!parsed) {
         return { ok: false, reason: 'gone' }
     }

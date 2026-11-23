@@ -13,7 +13,7 @@ const VAR = /var\(\s*(--[\w-]+)\s*(?:,\s*((?:[^()]|\([^()]*\))*))?\)/;
 const num = (s) => { s = String(s).trim(); let m = /^(-?\d*\.?\d+)(px|rem|em)?$/.exec(s); if (m) return parseFloat(m[1]) * (m[2] === 'rem' || m[2] === 'em' ? 16 : 1); m = /^calc\((.*)\)$/.exec(s); if (m) { const e = m[1].replace(/(-?\d*\.?\d+)(px|rem|em)\b/g, (x, n, u) => String(parseFloat(n) * (u === 'px' ? 1 : 16))); if (/^[\d.\s+\-*\/()]+$/.test(e)) { try { return Function(`return (${e})`)(); } catch { return NaN; } } } return NaN; };
 
 export function geometryPass(text, reg) {
-  const errs = []; const fail = (selector, prop, why) => errs.push({ selector, prop, why });
+  const errs = []; const fail = (selector, prop, why) => errs.push({ selector, prop, why }); const note = (selector, prop, why) => errs.push({ selector, prop, why, rule: 'layout' });
   const all = decls(text).filter((d) => !d.ctx.keyframes);
   const app = reg.app || new Map();
   const byName = new Map(); for (const d of all) if (d.prop.startsWith('--')) { if (!byName.has(d.prop)) byName.set(d.prop, []); byName.get(d.prop).push({ v: d.value.replace(/\s*!important\s*$/, '').trim(), cond: d.ctx.at.length > 0 || !/^(:root|html)$/.test(d.ctx.selector.trim()) }); }
@@ -41,7 +41,7 @@ export function geometryPass(text, reg) {
     for (const [sel, block] of blocks) for (const s of sel.split(',')) { const ps = partsOf(s); if (!hasInset(block)) continue; const i = inset(block); for (const p of ps) if (per.has(p) && i > (packSet.get(p) ?? -1)) packSet.set(p, i); }
     for (const [p, v] of packSet) per.set(p, v);
     const sum = [...per.values()].reduce((a, b) => a + b, 0), budget = ch.budget ?? 120;
-    if (sum > budget) fail(ch.parts.filter((p) => per.get(p) > 0).map((p) => `[data-part="${p}"]`).join(' '), 'padding', `ancestor padding along ${ch.name} sums to ${Math.round(sum)} px of ${VIEW_W} (${[...per].filter(([, v]) => v).map(([p, v]) => p + ' ' + Math.round(v)).join(', ')}): over the ${budget} px budget that keeps ${ch.minInner ?? 240} px for the protected block on a phone (DD-260)`);
+    if (sum > budget) note(ch.parts.filter((p) => per.get(p) > 0).map((p) => `[data-part="${p}"]`).join(' '), 'padding', `ancestor padding along ${ch.name} sums to ${Math.round(sum)} px of ${VIEW_W} (${[...per].filter(([, v]) => v).map(([p, v]) => p + ' ' + Math.round(v)).join(', ')}): over the ${budget} px budget that keeps ${ch.minInner ?? 240} px for the protected block on a phone (DD-260)`);
   }
 
   // 2. the worst-case height of each protected sheet
@@ -65,11 +65,11 @@ export function geometryPass(text, reg) {
       const fixed = sh.fixed ? sum(sh.fixed, (b) => { bad = b; }) : 0;
       if (bad || fixed === null) { fail(':root', bad || sh.name, `${sh.name}: the fixed part of the sheet cannot be judged (${bad})`); continue; }
       (errs.heights ||= []).push([sh.name, Math.round(content), Math.round(Math.min(content, sh.cap)), Math.round(fixed)]);
-      if (fixed + (sh.minScroll ?? 96) > sh.cap) fail(':root', sh.name, `${sh.name}: with every size at the largest value this pack gives it, the part of the sheet that does not scroll is about ${Math.round(fixed)} px and leaves no room for the scrolling actions under the ${Math.round(sh.cap)} px the page allows (DD-256)`);
+      if (fixed + (sh.minScroll ?? 96) > sh.cap) note(':root', sh.name, `${sh.name}: with every size at the largest value this pack gives it, the part of the sheet that does not scroll is about ${Math.round(fixed)} px and leaves no room for the scrolling actions under the ${Math.round(sh.cap)} px the page allows (DD-256)`);
       continue;
     }
     (errs.heights ||= []).push([sh.name, Math.round(content)]);
-    if (content > VIEW_H) fail(':root', sh.name, `${sh.name}: with every size at the largest value this pack gives it, the sheet is about ${Math.round(content)} px tall and does not fit a ${VIEW_W}x${VIEW_H} phone (${VIEW_H} px): its buttons would leave the screen (DD-256)`);
+    if (content > VIEW_H) note(':root', sh.name, `${sh.name}: with every size at the largest value this pack gives it, the sheet is about ${Math.round(content)} px tall and does not fit a ${VIEW_W}x${VIEW_H} phone (${VIEW_H} px): its buttons would leave the screen (DD-256)`);
   }
   return errs;
 }

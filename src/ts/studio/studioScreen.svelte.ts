@@ -283,13 +283,33 @@ export function setStudioNotice(message: string | null): void {
     studioScreen.noticePlaces = null
 }
 
+function noticeOwnerKindOf(owner: OwnerKey): 'module' | 'character' {
+    const parsed = parseOwnerKey(owner)
+    if (parsed === null) {
+        return 'character'
+    }
+    switch (parsed.kind) {
+        case 'module':
+            return 'module'
+        case 'character':
+        case 'chat':
+            return 'character'
+        default: {
+            // Adding an owner kind must decide its place kind here; the fallback is the character wording.
+            const unhandled: never = parsed
+            void unhandled
+            return 'character'
+        }
+    }
+}
+
 /**
  * The notice of a merge undo that left places as they were: `message` ("{j} places not restored") with the list behind
  * Show. Ctrl+Z and the History panel call it from their own replay, which has already checked its visit and owner.
  */
 export function setStudioNotRestoredNotice(owner: OwnerKey, message: string, places: readonly string[]): void {
     studioScreen.notice = message
-    studioScreen.noticePlaces = { ownerKind: parseOwnerKey(owner)?.kind === 'module' ? 'module' : 'character', places: [...places] }
+    studioScreen.noticePlaces = { ownerKind: noticeOwnerKindOf(owner), places: [...places] }
 }
 
 /**
@@ -377,11 +397,12 @@ export function selectStudioNode(ownerKey: string, kind: StudioKind | null, item
 
 /**
  * A row chosen in a merged list: opens the entry in its owner, and Back on a phone returns to `list` at that row.
- * `list` is the merged list's own selection (its key and kind), which the entry's selection replaces.
+ * `list` is the merged list's own selection (its key and kind), which the entry's selection replaces. `revealId` names
+ * what the list shows again when it is not the entry's own row (a source of the merged toggles view, a lore test result).
  */
-export function openStudioListRow(list: { ownerKey: string, kind: StudioKind }, ownerKey: string, itemId: string): void {
+export function openStudioListRow(list: { ownerKey: string, kind: StudioKind }, ownerKey: string, itemId: string | null, revealId: string | null = itemId): void {
     selectStudioNode(ownerKey, list.kind, itemId)
-    studioScreen.listReturn = { ownerKey: list.ownerKey, kind: list.kind, rowId: itemId }
+    studioScreen.listReturn = revealId === null ? null : { ownerKey: list.ownerKey, kind: list.kind, rowId: revealId }
 }
 
 export function setStudioExpanded(rowId: string, expanded: boolean): void {

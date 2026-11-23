@@ -8,7 +8,7 @@
 // gets a new token, which is how the worker's adapter tells a changed entry from an unchanged one.
 
 import type { DeletedItem, RestorePoint, Step } from './historyModel'
-import type { OwnerKey } from './ownerPhase'
+import type { StoredOwnerKey } from './ownerPhase'
 import type { LoadResult, OpenResult, SaveResult } from './studioHistoryStore'
 
 export type Tok = string
@@ -35,7 +35,7 @@ export interface OpenMessage {
 export interface LoadMessage {
     t: 'load'
     seq: number
-    owner: OwnerKey
+    owner: StoredOwnerKey
 }
 
 // A path into an entry: object keys and array indexes.
@@ -61,10 +61,10 @@ export interface DeltaEntry {
 export interface SaveMessage {
     t: 'save'
     seq: number
-    owner: OwnerKey
-    ownerKey: OwnerKey
+    owner: StoredOwnerKey
+    ownerKey: StoredOwnerKey
     touchedAt: number
-    protect: OwnerKey[]
+    protect: StoredOwnerKey[]
     done: Tok[]
     undone: Tok[]
     deleted: Tok[]

@@ -2,6 +2,7 @@
 // End-to-end translation faithfulness: the port must return, for the same stylesheet, exactly the verdict and the
 // errors (content and order) of the reference lint in docs/design. The reference tree is read in place (an accepted
 // coupling): when a file is missing the suite fails with its path instead of skipping.
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -32,7 +33,7 @@ for (const rel of [...REFERENCE_FILES, ...LEGACY_SETTINGS.map((n) => `settings/c
 }
 
 interface RefError { selector: string, prop: string, why: string }
-interface RefResult { ok: boolean, errors: RefError[], name: string }
+interface RefResult { ok: boolean, errors: RefError[], notes?: (RefError & { rule: string })[], name: string }
 type RefLint = (css: string, name: string) => RefResult
 interface RefLoader {
     LINT: Record<ThemeArea, RefLint>
@@ -107,6 +108,14 @@ const verdicts = { accepted: 0, rejected: 0 }
 const note = (r: RefResult): void => { comparisons++; if (r.ok) verdicts.accepted++; else verdicts.rejected++ }
 
 // each test lints the whole corpus twice (reference and port), which exceeds the default 5 s limit
+// The REJECT entries of the values file whose only findings are contrast, readability or layout notes since #560 PR2: the reference accepts them with notes, the engine agrees, and every other REJECT entry is still refused.
+const NOTED_REJECT: ReadonlySet<string> = new Set([
+    'tok-dialog-padding-400', 'tok-dialog-actions-gap', 'tok-dialog-actions-margin', 'tok-dur-60s', 'tok-dur-fast-60s', 'tok-dur-slow-ms', 'tok-dialog-width-120', 'tok-dialog-width-5000', 'layout-dialog-width-120', 'tok-page-max-10',
+    'tok-body-columns-5000', 'tok-rows-gap-300', 'tok-row-min-3000', 'tok-header-0', 'tok-field-min-1', 'tok-section-title-2', 'tok-hairline-100', 'tok-radius-900', 'tok-icon-0', 'tok-field-border-transparent',
+    'tok-accent-tint-1', 'tok-ring-transparent', 'tok-selection-hidden', 'tok-alpha-dim-0', 'tok-danger-on-canvas', 'tok-text-low', 'safe-header-height-big', 'safe-header-width-2000', 'color-black-dlg', 'color-black-row',
+    'color-black-body', 'color-black-shell', 'color-black-page', 'color-name-navy', 'color-hsl-black', 'bg-white-row', 'bg-white-name-row', 'bg-gradient-row', 'bg-white-own-pair', 'bg-white-shell',
+])
+
 describe('parity with the reference: area lints, engine lint and sheet report', { timeout: 120_000 }, () => {
     it('reads every corpus the brief names', () => {
         expect(Object.keys(lib.PACKS)).toHaveLength(8)
@@ -147,7 +156,8 @@ describe('parity with the reference: area lints, engine lint and sheet report', 
                 const expected = chat.lintPack(css, key, values.SETTINGS_REGISTRY)
                 expect(portLintPack(css, key, values.SETTINGS_REGISTRY), `${group} ${key}`).toEqual(expected)
                 // the reference suite's expectation: the accept set is accepted, the reject set is rejected
-                expect(expected.ok, `${group} ${key} verdict`).toBe(group === 'ACCEPT')
+                expect(expected.ok, `${group} ${key} verdict`).toBe(group === 'ACCEPT' || NOTED_REJECT.has(key))
+                if (NOTED_REJECT.has(key)) expect(expected.notes?.length, `${group} ${key} notes`).toBeGreaterThan(0)
                 note(expected)
             }
         }
@@ -208,6 +218,22 @@ describe('parity with the reference: area lints, engine lint and sheet report', 
         expect(fuzzed).toBeGreaterThan(300)
     })
 
+    // The comparisons above are whole-result `toEqual`s, so a result that carries notes is compared with its notes; this proves the corpus makes the comparison non-vacuous.
+    it('some corpus result carries notes in both the engine and the reference, and each note carries a kind', () => {
+        let noted = 0
+        for (const input of inputs) {
+            for (const area of THEME_AREAS) {
+                const expected = lib.LINT[area](input.css, input.label)
+                if (!expected.notes?.length) continue
+                const actual = AREA_LINT[area](input.css, input.label)
+                expect(actual.notes, `${area} / ${input.label}`).toEqual(expected.notes)
+                expect(expected.notes.every((n) => ['contrast', 'readability', 'layout'].includes(n.rule)), `${area} / ${input.label}`).toBe(true)
+                noted++
+            }
+        }
+        expect(noted).toBeGreaterThan(100)
+    })
+
     it('the compared inputs include accepted and rejected verdicts and more than 300 comparisons in total', () => {
         // runs last in file order: every earlier test has recorded its comparisons
         expect(comparisons).toBeGreaterThan(300)
@@ -240,8 +266,8 @@ const DIVERGENCES: readonly { label: string, area: ThemeArea, css: string, why: 
     { label: 'var-empty-fb', area: 'chat', css: `${SAFE_PART}{padding:var(--nexus-nope,)}`, why: /without a fallback/ },
     { label: 'calc-product', area: 'chat', css: `${TEXT_PART}{margin:calc(10px * 100)}`, why: /calc\(\) is not allowed in a pack/ },
     { label: 'font-1000pct', area: 'chat', css: `${TEXT_PART}{font-size:1000%}`, why: /font size must be one px or rem length above 0/ },
-    { label: 'sysfont', area: 'chat', css: `${TEXT_PART}{font-family:"Wingdings"}`, why: /MC-1550/ },
-    { label: 'chatfont-sysfont', area: 'chat', css: ':root{--chat-message-font:Wingdings}', why: /MC-1550/ },
+    { label: 'sysfont', area: 'chat', css: `${TEXT_PART}{font-family:"Wingdings"}`, why: /MC-1568/ },
+    { label: 'chatfont-sysfont', area: 'chat', css: ':root{--chat-message-font:Wingdings}', why: /MC-1568/ },
     { label: 'chatfont-apptoken', area: 'chat', css: ':root{--chat-message-font:var(--font)}', why: /font family "var\(--font\)" is not allowed/ },
 ]
 
@@ -357,6 +383,9 @@ const E2_REFUSALS: readonly string[] = [
     'studio reach: R6 sheet-root border 16 + shadow 64|studio',
 ]
 const E2_WHY = /may reach at most 2 px past its element/
+// Measured on this change: the pairs the reference accepts, the app refuses, and no list above names (WIDENED_COUNT), with the first 16 hex digits of the SHA-256 of their sorted names joined by newlines.
+const WIDENED_COUNT = 235
+const WIDENED_DIGEST = '12eb9bbe01b5bfc3'
 describe('PT1: comment placement keeps a verdict (A19)', () => {
     // A comment only stands where a space means the same to the browser, so deleting every comment outside strings keeps the
     // verdict of an accepted input. A compatibility guard over the corpus; the NF17 reproducers are in packRules.test.ts.
@@ -387,7 +416,18 @@ describe('P2: the corpus sweep of where lintAreaPack is stricter than the refere
         const fontPacks = flips.filter((f) => /H52|studio reach: R9/.test(f))
         const others = flips.filter((f) => !fontPacks.includes(f))
         // REPRO for the E-2 entries: the base sweep holds 74 entries, this one 75 (the R6 sheet-root inset).
-        expect(others.sort()).toEqual([...NAMED_REFUSALS, ...SCOPE_REFUSALS, ...E2_REFUSALS].sort())
+        // Since #560 PR2 the reference accepts more inputs (a contrast, readability or layout finding is a note), so more (input, area) pairs are accepted by the reference and refused by the app, each for a reason the app
+        // already refused it for: Rule SCOPE (a part of another screen) or the pack normal form. The entries listed above stay refused; the widened remainder is pinned by its size and a digest of its names.
+        const listed = new Set([...NAMED_REFUSALS, ...SCOPE_REFUSALS, ...E2_REFUSALS])
+        expect([...listed].filter((entry) => !others.includes(entry)), 'a listed entry is no longer refused').toEqual([])
+        const widened = others.filter((entry) => !listed.has(entry)).sort()
+        expect(widened).toHaveLength(WIDENED_COUNT)
+        expect(createHash('sha256').update(widened.join('\n')).digest('hex').slice(0, 16)).toBe(WIDENED_DIGEST)
+        for (const entry of widened) {
+            const [label, area] = entry.split('|')
+            const errors = lintAreaPack(area as ThemeArea, inputs.find((i) => i.label === label)!.css, label).errors
+            expect(errors.every((e) => /MC-1586|MC-1549|MC-1555|MC-1556|MC-1564|MC-1565|MC-1566|MC-1568|a pack may set tokens only/.test(e.why)), `${entry}: ${JSON.stringify(errors.map((e) => e.why))}`).toBe(true)
+        }
         // The census of system-font packs the reference accepts and the app refuses: a new one is a stop-and-report.
         expect(fontPacks).toHaveLength(9)
         // The system-font packs are refused for the font rule, in every area that accepts them.

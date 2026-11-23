@@ -13,6 +13,17 @@
     import { openRealmUpload } from "src/ts/characterCards";
     import PromptDiffModal from "../Others/PromptDiffModal.svelte";
     import { RISU_PRESET_DRAG_TYPE } from "src/ts/dragTypes";
+    import WindowedSegment from "../UI/Windowed/WindowedSegment.svelte";
+    import { createWindowHost } from "src/ts/windowing/windowHost.svelte";
+    import { onDestroy } from "svelte";
+
+    // Only the rows near the view are mounted. A row key is its position, and the drag handlers
+    // address data by the snippet index, so unmounted rows never matter to a reorder.
+    let listRoot = $state<HTMLElement | null>(null)
+    const windowHost = createWindowHost({ root: () => listRoot })
+    onDestroy(() => windowHost.dispose())
+    const PRESET_ROW_FALLBACK_PX = 44
+    const rowKeys = $derived(DBState.db.botPresets.map((_, i) => String(i)))
 
     let editMode = $state(false)
     // Select mode ticks presets for a bundle export. The selection holds preset ids, so it survives a reorder or a removal.
@@ -146,7 +157,7 @@
 </script>
 
 <div class="absolute w-full h-full z-40 bg-black/50 flex justify-center items-center">
-    <div class="bg-darkbg p-4 break-any rounded-md flex flex-col max-w-3xl w-124 max-h-full overflow-y-auto">
+    <div class="bg-darkbg p-4 break-any rounded-md flex flex-col max-w-3xl w-124 max-h-full overflow-y-auto" bind:this={listRoot}>
         <div class="flex items-center text-textcolor mb-4">
             <h2 class="mt-0 mb-0">{language.presets}</h2>
             <div class="grow flex justify-end">
@@ -155,7 +166,9 @@
                 </button>
             </div>
         </div>
-        {#each DBState.db.botPresets as preset, i}
+        <WindowedSegment host={windowHost} tag="ul" keys={rowKeys} height={{ fallback: PRESET_ROW_FALLBACK_PX }} pinned={isDragging ? rowKeys : []} class="list-none p-0 m-0">
+        {#snippet item(key, i)}
+            {@const preset = DBState.db.botPresets[i]}
             <div class="w-full transition-all duration-200"
                 class:h-0.5={!isDragging || dragOverIndex !== i}
                 class:h-1={isDragging && dragOverIndex === i}
@@ -335,7 +348,8 @@
                     {/if}
                 </div>
             </button>
-        {/each}
+        {/snippet}
+        </WindowedSegment>
 
         <div class="w-full transition-all duration-200"
             class:h-0.5={!isDragging || dragOverIndex !== DBState.db.botPresets.length}

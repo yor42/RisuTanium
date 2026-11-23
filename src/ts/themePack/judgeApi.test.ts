@@ -180,7 +180,8 @@ describe('Ts-2: a resource span indexes the canonical text exactly', () => {
             for (const area of THEME_AREAS) {
                 const judged = judgeAreaSheet(area, input.css, undefined, input.label)
                 expect(judged.result, `${area} / ${input.label}`).toEqual(lintAreaPack(area, input.css, input.label))
-                expect(judged.warnings, `${area} / ${input.label}`).toEqual([])
+                // the engine-side warnings read only a sheet no refusal stops; a sheet that carries only notes is read too since #560 PR2
+                if (!judged.result.ok) expect(judged.warnings, `${area} / ${input.label}`).toEqual([])
                 expect(judged.canonical, `${area} / ${input.label}`).toBe(canonical.text)
                 expect(judged.resources, `${area} / ${input.label}`).toEqual(canonical.resources)
                 for (const block of judged.fontFaceBlocks) expect(judged.canonical.slice(block.start, block.end), `${area} / ${input.label}`).toBe(block.text)
@@ -206,15 +207,16 @@ describe('Ts-3: judgePackSheets judges each sheet with its own font families', (
         expect(judgeAreaSheet('settings', SETTINGS_SHEET, new Set(['pack-f'])).warnings).toEqual([])
     })
 
-    it('V-T8: a warning never changes the verdict, a symbol font alongside one still refuses the sheet', () => {
+    it('V-T8: a warning never changes the verdict, a symbol font alongside one is a readability note and the sheet stays accepted', () => {
         const unbundled = judgeAreaSheet('chat', '[data-part="chat-message-text"]{font-family:"pack-missing", serif}')
         expect(unbundled.result.ok).toBe(true)
         expect(unbundled.result.ok).toBe(unbundled.result.errors.length === 0)
         expect(unbundled.warnings).toHaveLength(1)
         const mixed = judgeAreaSheet('chat', '[data-part="chat-message-text"]{font-family:"pack-missing", wingdings}')
-        expect(mixed.result.ok).toBe(false)
-        expect(mixed.result.errors.some((e) => /it is a symbol font/.test(e.why))).toBe(true)
-        expect(mixed.result.errors.some((e) => /is not bundled/.test(e.why))).toBe(false)
+        expect(mixed.result.ok).toBe(true)
+        expect(mixed.result.errors).toEqual([])
+        expect((mixed.result.notes ?? []).some((n) => /it is a symbol font/.test(n.why) && n.rule === 'readability')).toBe(true)
+        expect((mixed.result.notes ?? []).some((n) => /is not bundled/.test(n.why))).toBe(false)
         expect(mixed.warnings.some((w) => /"pack-missing" is not bundled/.test(w.why))).toBe(true)
         expect(mixed.warnings.some((w) => /symbol font/.test(w.why))).toBe(false)
     })

@@ -10,7 +10,8 @@ import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
 import { factsOf, isHeldBy, registryPaths } from './fieldAccess'
 import { FIELD_SPECS, type SetPath } from './fieldRegistry'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
-import { parseOwnerKey, type OwnerKey, type ParsedOwnerKey } from './ownerPhase'
+import { parseStoredOwnerKey, type OwnerKey, type ParsedOwnerKey, type StoredOwnerKey } from './ownerPhase'
+import { SESSION_OWNER_KINDS, type SessionOwnerKind, type SessionOwnerKindSpec } from './sessionKinds'
 
 // Typing in one field extends the open step while each write follows the previous one by less
 // than this. The model never reads Date.now: callers pass `now`.
@@ -38,15 +39,35 @@ const REGISTRY_PATHS: readonly SetPath[] = registryPaths()
 // The one table of the set paths each owner kind accepts, derived from the field registry: a kind's row is the
 // registered paths whose holders include it, in registry order. The `set` acceptance of `parseOp`, `isOpAllowedFor`
 // and the restore table all derive from it; nothing else decides which set paths an owner kind accepts. A record
-// holding a `set` op on a path outside its kind's row is refused whole.
+// holding a `set` op on a path outside its kind's row is refused whole. A session kind's row is the set paths its
+// table entry names.
+type SessionRows = { readonly [K in SessionOwnerKind]: readonly SetPath[] }
+function isSessionRows(rows: Readonly<Record<string, readonly SetPath[]>>): rows is SessionRows {
+    return Object.keys(SESSION_OWNER_KINDS).every((kind) => Object.hasOwn(rows, kind))
+}
+function sessionSetRows(): SessionRows {
+    const rows: Record<string, readonly SetPath[]> = {}
+    for (const [kind, spec] of Object.entries<SessionOwnerKindSpec>(SESSION_OWNER_KINDS)) {
+        rows[kind] = [...spec.setPaths]
+    }
+    // Built from the same table the type derives from, so every kind has its row.
+    if (!isSessionRows(rows)) {
+        throw new Error('A session kind has no set row.')
+    }
+    return rows
+}
+const SESSION_SET_ROWS: SessionRows = sessionSetRows()
 export const SET_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly SetPath[] } = {
+    ...SESSION_SET_ROWS,
     character: REGISTRY_PATHS.filter((path) => isHeldBy(path, 'character')),
     chat: REGISTRY_PATHS.filter((path) => isHeldBy(path, 'chat')),
     module: REGISTRY_PATHS.filter((path) => isHeldBy(path, 'module')),
 }
 export const LIST_PATH: ListPath = 'alternateGreetings'
-// The paths a restore point may hold per owner kind: every set path, plus the greeting list for a character.
+// The paths a restore point may hold per owner kind: every set path, plus the greeting list for a character. A
+// session kind's restore row equals its set row.
 export const RESTORE_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly RestorePath[] } = {
+    ...SESSION_SET_ROWS,
     character: [...SET_PATHS_BY_KIND.character, LIST_PATH],
     chat: SET_PATHS_BY_KIND.chat,
     module: SET_PATHS_BY_KIND.module,
@@ -345,7 +366,7 @@ export function isOpAllowedFor(kind: OwnerKind, op: Op): boolean {
         case 'assetFolderSet':
         case 'assetFolderOrder':
         case 'textEdit':
-            return kind !== 'chat'
+            return kind === 'character' || kind === 'module'
     }
 }
 
@@ -589,8 +610,8 @@ function parseRestore(value: unknown, kind: OwnerKind): RestorePoint | null {
 
 // Strict reader of the record fields. Anything outside the closed union (an unknown op or path,
 // a wrong type, an owner key that differs from the expected one) makes the whole record unreadable.
-export function parseOwnerRecord(value: unknown, ownerKey: OwnerKey): OwnerRecord | null {
-    const parsedKey = parseOwnerKey(ownerKey)
+export function parseOwnerRecord(value: unknown, ownerKey: StoredOwnerKey): OwnerRecord | null {
+    const parsedKey = parseStoredOwnerKey(ownerKey)
     if (!parsedKey || !isObject(value) || value.ownerKey !== ownerKey || !isFiniteNumber(value.touchedAt)) {
         return null
     }

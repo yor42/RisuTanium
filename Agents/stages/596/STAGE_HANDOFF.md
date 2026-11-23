@@ -1,4 +1,4 @@
-# Stage handoff: #596 parallel replies, after stage 5b
+# Stage handoff: #596 parallel replies, after stage 5c
 
 Read this, the issue, `s5-plan-r2.md` beside this file (the accepted stage 5 plan) and the repository at origin/main. Source statements below were read at d70df2cb3 or 105915cbe and not executed, unless a test is named. Re-pin them before use.
 
@@ -7,8 +7,9 @@ Read this, the issue, `s5-plan-r2.md` beside this file (the accepted stage 5 pla
 - Stage 1 (keyed active-units registry): PR https://github.com/yor42/RisuTanium/pull/636, merged as ab535a18c.
 - Stage 2 (per-unit Stop plumbing): PR https://github.com/yor42/RisuTanium/pull/648, merged as 1b23f5d1f.
 - Stage 5a (the send gate opens per chat; engine and starters): PR https://github.com/yor42/RisuTanium/pull/669, merged as e5d5dc499.
-- Stage 5b (stop-all = per-chat Stop, MC-3790): reviewed code commit b8164c47c on `claude/596-parallel-replies-s5b`, plus a Gate 2 editorial commit. PR: see the branch.
-- Refs #596. Remaining before the MVP update, in this order (MC-3736, orchestrator's order): 5c, stage 7, 5d. The final stage closes the ticket.
+- Stage 5b (stop-all = per-chat Stop, MC-3790): PR https://github.com/yor42/RisuTanium/pull/675, merged as 8804c641d.
+- Stage 5c (per-chat UI and the O-6 re-list): reviewed code commit ea2d682b0 on `claude/596-parallel-replies-s5c`. PR: see the branch.
+- Refs #596. Remaining before the MVP update, in this order (MC-3736, orchestrator's order): DV-596-S5-1, stage 7, 5d. The final stage closes the ticket.
 
 ## 2. Decisions
 
@@ -70,7 +71,7 @@ For every stage: the unit's AbortController signal is the unit id; mint no other
 - R5b: keys waiting for a unit refuse Send in their chat from that chat's release until the requested pass finishes; an auto run there breaks at its next tick.
 - R9: a throw before an apply's write returns `'failed'`, and its one-time "failed elsewhere" note can mislead for a reply a later pass places.
 - R10: a recovered apply can take chat A between the composer Send's push and its `sendChat`; the send is refused and the user message has no reply. Existed under the global rule; per-chat deferral makes it reachable while other chats write. Closing it needs a wake-up on window close.
-- O-6 (checked in source, `src-tauri/src/streamed_fetch.rs`): when `builder.send()` fails before the response head, the owned reply writes its end record and returns a result but emits no event. After a reload no page receives that result, so the running entry keeps Send refused until a visibility change. 5c must add the plan's bounded re-list while a shown chat is blocked by a native reply. A panic exit is unverified.
+- O-6: closed in 5c by `src/ts/nativeReply/runningRelist.svelte.ts` (re-list at 2, 4, 8, 16, 30 s, then every 30 s, only while the shown chat is refused by a native entry and not busy; stops on clear, chat change or hide). The re-list widens the retry rate of kept records while a chat is blocked (5c Gate 2 E8). A panic exit is healed by the same re-list.
 - E-r2-4: v3's cold-chat re-check is plugin-visible.
 - From stage 2: about 35 test mocks of `index.svelte.ts` keep an unused `chatProcessStage` key (remove in files a sub-stage edits); R7's 60 ms timer in `stopDelete.svelte.test.ts`; `ChatShell.headerIntent` T-A3a and `ChatShell.longChatHint` T4.4 can time out under load; re-grep for new `doingChat.set` after each merge of main.
 
@@ -92,6 +93,11 @@ As `s5-plan-r2.md` (r1 steps carried): enumerate the chats that show Stop (`comp
 As the plan: ShellComposer, DefaultChatScreen, BookmarkList, ChatShell (busy reader and header, MC-3740), Suggestion, `isComposerLockedIn`; delete `chatShellSendBlockedWriting`; add `chatShellSendWaitsForNativeReply` ('A reply is still being written in this chat. Send when it finishes.') in all 8 locales (translator, same PR); tree controls busy in a reload-edge chat (MC-3794); the O-6 re-list. About 27 one-line mock factory edits.
 
 After 5c merges: device row DV-596-S5-1 (this ticket's own session asks for it, leases a Note 9 through the main checkout's controller by absolute path and writes the row; lane B is retired, MC-3774; `Agents/Tools/device/BRIEF-TEMPLATE.md` sections 5 and 8; synthetic data): two native replies in two chats; the notification Stop for both; a reload with one still running (B refused with the new string, A works, B's Send returns when its native reply ends, without a reload). A fail stops stage 7's plan acceptance until dispositioned.
+
+### 5c result (done)
+
+- Send, textarea and suggestions follow the shown chat (`isComposerLockedIn`, `isComposerBusyIn`, `sendRefusalIn`); ChatShell header and `getBusy` follow the shown chat (MC-3740), with the native row for tree busy (MC-3794); BookmarkList busy re-evaluates on chat switch. `requestReconcile()` now returns the pass promise so the re-list never has two requests outstanding.
+- Gate 2: Opus r1 REJECT on test fidelity only (S1 C4b, S2 C7, S3 ChatShell half of C5); remediated; Sonnet r2 APPROVE. Accepted limitations: E2 (visible-restart only tested from step 0), E3 (the re-list `epoch` guard has no test), E4 (bootstrap wiring of the awaited pass has no test), E5 (DefaultChatScreen's busy exclusion for the re-list untested), E9 (a suggestion click in a native-blocked chat).
 
 ### Stage 7: plugin and hook stall (design starts after 5b merges)
 

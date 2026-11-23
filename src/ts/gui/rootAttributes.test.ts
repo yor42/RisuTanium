@@ -57,7 +57,7 @@ vi.mock('../process/index.svelte', async () => {
     return { doingChat: store(false) }
 })
 vi.mock('../process/composerActions.svelte', () => ({
-    branchAt: vi.fn(), stepSibling: vi.fn(), regenerateNewest: vi.fn(), isComposerBusy: () => false, isAutoModeActive: () => false,
+    branchAt: vi.fn(), stepSibling: vi.fn(), regenerateNewest: vi.fn(), isComposerBusy: () => false, isComposerBusyIn: () => false, isAutoModeActive: () => false,
 }))
 vi.mock('../chatShell/stopDelete.svelte', () => ({ requestStopDelete: vi.fn(() => true), isStopDeletePending: () => false }))
 vi.mock('../chatShell/haptics', () => ({ tickHaptic: vi.fn(), readHaptics: () => true, writeHaptics: vi.fn(), hapticsSupported: () => true }))
