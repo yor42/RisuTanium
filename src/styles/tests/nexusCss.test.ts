@@ -31,8 +31,6 @@ const S0_NEW_PATHS = [
     'src/ts/gui/nexusColorScheme.test.ts',
     'src/ts/gui/colorscheme.nexusHidden.test.ts',
     'src/lib/Setting/Pages/Display/ColorSchemeSelect.nexusHidden.svelte.test.ts',
-    'src/ts/patternPrompt.ts',
-    'src/ts/patternPrompt.test.ts',
     'src/ts/patternPromptAnswer.ts',
 ]
 

@@ -19,7 +19,7 @@ import type { ThemePackApplyState } from 'src/ts/themePack/activePack.svelte'
 import type { ThemePackRecordV1 } from 'src/ts/themePack/packRecord'
 import { BUILTIN_PACKS } from 'src/ts/themePack/builtins'
 import { pngBytes } from 'src/ts/themePack/fixtures/imageBuilder'
-import { manifestText, validPackFiles, zipPack } from 'src/ts/themePack/fixtures/packBuilder'
+import { manifestText, PLAIN_CHAT_SHEET, validPackFiles, zipPack } from 'src/ts/themePack/fixtures/packBuilder'
 import { PACK_SIZE_WARN_BYTES } from 'src/ts/themePack/packSize'
 import { focusFirstControl } from 'src/ts/settingsShell/settingsArrival'
 
@@ -66,9 +66,10 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 // The pack safe-mode module reads the light colour module directly, so it is stubbed like the colour module.
 vi.mock(import('src/ts/gui/colorschemeCore'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorschemeCore'))
-vi.mock(import('src/ts/stores.svelte'), () => {
+vi.mock(import('src/ts/stores.svelte'), async () => {
+    const { writable } = await import('svelte/store')
     const state = $state({ db: {} as unknown as Database })
-    return { DBState: state } as unknown as typeof import('src/ts/stores.svelte')
+    return { DBState: state, SafeModeStore: writable(false) } as unknown as typeof import('src/ts/stores.svelte')
 })
 vi.mock(import('src/ts/themePack/activePack.svelte'), () => {
     const status: ThemePackApplyState = $state({ activeId: undefined, phase: 'none' })
@@ -110,9 +111,10 @@ vi.mock(import('src/ts/themePack/install'), async (importOriginal) => {
 
 vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorscheme'))
 
-import { DBState } from 'src/ts/stores.svelte'
-import { themePackApplyState } from 'src/ts/themePack/activePack.svelte'
-import { installFlowState, resetThemePackInstallFlowForTests } from './themePackInstallFlow.svelte'
+import { DBState, SafeModeStore } from 'src/ts/stores.svelte'
+import { requestPackScheme, themePackApplyState } from 'src/ts/themePack/activePack.svelte'
+import { packSafe, type PackSafeSource } from 'src/ts/themePack/packSafeFlag.svelte'
+import { installFlowState, resetThemePackInstallFlowForTests, runThemePackInstall } from './themePackInstallFlow.svelte'
 import ThemePackRow from './ThemePackRow.svelte'
 
 const mounted: Array<ReturnType<typeof mount>> = []
@@ -227,6 +229,10 @@ beforeEach(() => {
     world.requestSaveNow.mockClear()
     world.alertNormal.mockClear()
     world.alertToast.mockClear()
+    vi.mocked(requestPackScheme).mockClear()
+    packSafe.on = false
+    packSafe.source = null
+    SafeModeStore.set(false)
     world.pickFile = async () => {
         await fakeDialog(() => true)
         harness.pickReturned = true
@@ -556,12 +562,12 @@ describe('T4-12 focus after every dialog', () => {
 
     test('a declined Replace', async () => {
         world.existing = recordOf('old')
-        harness.answers.push(false)
+        harness.answers.push(true, false)
         const target = show()
         installButton(target).click()
         await finishInstall()
-        expect(harness.asked).toEqual([language.themePackReplaceConfirm('Pack old')])
-        assertDialogHadFocus(2)
+        expect(harness.asked).toEqual([language.themePackRiskConfirm(false), language.themePackReplaceConfirm('Pack old')])
+        assertDialogHadFocus(3)
         expect(document.activeElement).toBe(installButton(target))
     })
 
@@ -587,7 +593,7 @@ describe('T4-12 focus after every dialog', () => {
         await finishInstall()
         expect(world.installed).toBe(1)
         expect(target.querySelector('[data-part="theme-pack-outcome"]')!.textContent).toContain(language.themePackInstalled('Test Pack'))
-        assertDialogHadFocus(1)
+        assertDialogHadFocus(2)
         expect(document.activeElement).toBe(installButton(target))
 
         harness.duringDialog.length = 0
@@ -711,3 +717,276 @@ describe('T4-17 mounting writes nothing', () => {
         expect(world.requestSaveNow).not.toHaveBeenCalled()
     })
 })
+
+//#region #629 pack-free sessions: the install result says so, and the checked pack can be activated again
+
+const OFF_SESSION = 'Theme packs are off for this session.'
+const SELECT_TO_TURN_ON = 'Select this pack to turn it on now.'
+const INSTALLED = 'Installed "Test Pack".'
+
+function safe(on: boolean, source: PackSafeSource = 'shortcut'): void {
+    packSafe.on = on
+    packSafe.source = on ? source : null
+}
+
+function outcomeTexts(target: HTMLElement): string[] {
+    return [...target.querySelectorAll('[data-part="theme-pack-outcome"] p')].map((line) => line.textContent ?? '')
+}
+
+async function installOnce(target: HTMLElement): Promise<void> {
+    harness.pickReturned = false
+    installButton(target).click()
+    await finishInstall()
+}
+
+function radioOf(target: HTMLElement, id: string): HTMLInputElement {
+    return radios(target).find((radio) => radio.value === id)!
+}
+
+function labelOf(target: HTMLElement, id: string): HTMLLabelElement {
+    return radioOf(target, id).closest('label')!
+}
+
+function space(radio: HTMLElement): void {
+    radio.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }))
+}
+
+describe('IS-1 an install in a pack-free session says the pack stays off and how to turn it on', () => {
+    test.each(['shortcut', 'noAnswer', 'undecided', 'boot', 'url'] as const)('IS-1 reproducer: source %s', async (source) => {
+        safe(true, source)
+        const target = show()
+        await installOnce(target)
+        expect(world.installed).toBe(1)
+        expect(outcomeTexts(target)).toEqual([INSTALLED, OFF_SESSION, SELECT_TO_TURN_ON])
+        const region = target.querySelector('[data-part="theme-pack-outcome"]')!
+        expect(region.getAttribute('role')).toBe('status')
+        for (const line of region.querySelectorAll('p')) {
+            expect(line.className).toContain('text-textcolor2')
+            expect(line.className).not.toContain('text-draculared')
+        }
+        expect(packSafe.on).toBe(true)
+        expect(vi.mocked(requestPackScheme)).not.toHaveBeenCalled()
+    })
+})
+
+describe('IS-2 the two lines follow the state at render time', () => {
+    test('IS-2 reproducer: safe mode turned on while the install runs shows them; turning it off removes them', async () => {
+        let release: () => void = () => {}
+        const gate = new Promise<void>((resolve) => { release = resolve })
+        world.readFile = async () => {
+            await gate
+            return PACK_BYTES
+        }
+        const target = show()
+        harness.pickReturned = false
+        installButton(target).click()
+        await vi.waitFor(() => expect(installFlowState.pending).toBe(true))
+        safe(true)
+        release()
+        await finishInstall()
+        expect(outcomeTexts(target)).toEqual([INSTALLED, OFF_SESSION, SELECT_TO_TURN_ON])
+        safe(false)
+        await settle()
+        expect(outcomeTexts(target)).toEqual([INSTALLED])
+    })
+
+    test('IS-2 reproducer: a success that settled while no row was open shows them at the next mount', async () => {
+        await runThemePackInstall()
+        expect(installFlowState.outcome?.tone).toBe('info')
+        safe(true)
+        const target = show()
+        await settle()
+        expect(outcomeTexts(target)).toEqual([INSTALLED, OFF_SESSION, SELECT_TO_TURN_ON])
+    })
+
+    test('IS-2 reproducer: safe mode turned off while the install runs shows no lines', async () => {
+        safe(true)
+        let release: () => void = () => {}
+        const gate = new Promise<void>((resolve) => { release = resolve })
+        world.readFile = async () => {
+            await gate
+            return PACK_BYTES
+        }
+        const target = show()
+        harness.pickReturned = false
+        installButton(target).click()
+        await vi.waitFor(() => expect(installFlowState.pending).toBe(true))
+        safe(false)
+        release()
+        await finishInstall()
+        expect(outcomeTexts(target)).toEqual([INSTALLED])
+    })
+})
+
+describe('IS-3 the lines sit directly after the installed line, before every other line', () => {
+    test('IS-3 reproducer: the skipped-areas, held-colours and warning lines keep their order and text', async () => {
+        const UNBUNDLED_SHEET = '[data-part="chat-message-text"]{font-family:"pack-missing", serif}'
+        world.readFile = async () => zipPack(validPackFiles({
+            'chat.css': UNBUNDLED_SHEET,
+            'home.css': PLAIN_CHAT_SHEET,
+            'settings.css': '[data-part="settings-section-title"]{color:#ff0000;border-radius:6px}',
+        }))
+        const target = show()
+        await installOnce(target)
+        const base = outcomeTexts(target)
+        expect(base[0]).toBe(INSTALLED)
+        expect(base).toContain(language.themePackSkippedAreas('home.css'))
+        expect(base).toContain(language.themePackColoursHeld('settings.css'))
+        expect(base).toContain(language.themePackInstalledWithWarnings('chat.css'))
+        expect(base).not.toContain(OFF_SESSION)
+
+        safe(true)
+        await settle()
+        expect(outcomeTexts(target)).toEqual([base[0], OFF_SESSION, SELECT_TO_TURN_ON, ...base.slice(1)])
+        expect(installFlowState.outcome?.lines).toEqual(base)
+    })
+})
+
+describe('IS-4 the lines never show where selecting would not turn the pack on or nothing was installed', () => {
+    test('guard: pack safe mode off, Safe Mode alone, and both on', async () => {
+        const target = show()
+        await installOnce(target)
+        expect(outcomeTexts(target)).toEqual([INSTALLED])
+        SafeModeStore.set(true)
+        await settle()
+        expect(outcomeTexts(target)).toEqual([INSTALLED])
+        safe(true)
+        await settle()
+        expect(outcomeTexts(target)).toEqual([INSTALLED])
+        SafeModeStore.set(false)
+        await settle()
+        expect(outcomeTexts(target)).toEqual([INSTALLED, OFF_SESSION, SELECT_TO_TURN_ON])
+    })
+
+    test('guard: a refusal, a failure and a declined question show no lines', async () => {
+        safe(true)
+        const target = show()
+        world.readFile = async () => new TextEncoder().encode('not a zip file, but long enough to be looked at as one')
+        await installOnce(target)
+        const refusal = outcomeTexts(target)
+        expect(refusal.length).toBeGreaterThan(0)
+        expect(refusal).not.toContain(OFF_SESSION)
+        expect(refusal).not.toContain(SELECT_TO_TURN_ON)
+
+        world.readFile = async () => { throw new Error('unreadable') }
+        await installOnce(target)
+        expect(outcomeTexts(target)).toEqual([language.themePackInstallFailed])
+
+        world.readFile = async () => PACK_BYTES
+        harness.answers.push(false)
+        await installOnce(target)
+        expect(outcomeTexts(target)).toEqual([])
+    })
+})
+
+describe('IS-6 and IS-7 re-activating the checked installed pack', () => {
+    function checkedA(): HTMLElement {
+        setPacks([recordOf('a'), recordOf('b')], 'a')
+        return show()
+    }
+
+    test('IS-6 reproducer: Space on the checked pack in a pack-free session selects it once and leaves pack safe mode', async () => {
+        const target = checkedA()
+        safe(true)
+        space(radioOf(target, 'a'))
+        await settle()
+        expect(packSafe.on).toBe(false)
+        expect(world.requestSaveNow).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(requestPackScheme).mock.calls).toEqual([['a', 'turnOn']])
+        expect(DBState.db.activeThemePack).toBe('a')
+    })
+
+    test('IS-7 reproducer: a click on the checked pack in a pack-free session selects it once', async () => {
+        const target = checkedA()
+        safe(true)
+        labelOf(target, 'a').click()
+        await settle()
+        expect(packSafe.on).toBe(false)
+        expect(world.requestSaveNow).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(requestPackScheme).mock.calls).toEqual([['a', 'turnOn']])
+        // The browser's click after Space finds the session already pack-free and does nothing more.
+        labelOf(target, 'a').click()
+        await settle()
+        expect(world.requestSaveNow).toHaveBeenCalledTimes(1)
+    })
+
+    test('IS-7 reproducer: a refused (busy) re-click keeps pack safe mode, keeps the pack checked and shows exactly one error line', async () => {
+        const target = checkedA()
+        safe(true)
+        world.busy = true
+        labelOf(target, 'a').click()
+        await settle()
+        expect(packSafe.on).toBe(true)
+        expect(world.requestSaveNow).not.toHaveBeenCalled()
+        expect(vi.mocked(requestPackScheme)).not.toHaveBeenCalled()
+        expect(radios(target).filter((radio) => radio.checked).map((radio) => radio.value)).toEqual(['a'])
+        expect(outcomeTexts(target)).toEqual([language.themePackBusy])
+    })
+
+    test('guard: outside pack safe mode a re-click or Space on the checked pack does nothing', async () => {
+        const target = checkedA()
+        labelOf(target, 'a').click()
+        space(radioOf(target, 'a'))
+        await settle()
+        expect(world.requestSaveNow).not.toHaveBeenCalled()
+        expect(vi.mocked(requestPackScheme)).not.toHaveBeenCalled()
+    })
+
+    test.each([['click', false], ['click', true], ['space and the click after it', false], ['space and the click after it', true]] as const)('guard: an unchecked pack selects exactly once by %s (pack safe mode %s)', async (how, inSafe) => {
+        const target = checkedA()
+        safe(inSafe)
+        if (how === 'click') {
+            labelOf(target, 'b').click()
+        } else {
+            space(radioOf(target, 'b'))
+            labelOf(target, 'b').click()
+        }
+        await settle()
+        expect(DBState.db.activeThemePack).toBe('b')
+        expect(world.requestSaveNow).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(requestPackScheme).mock.calls).toEqual([['b', 'turnOn']])
+        expect(packSafe.on).toBe(false)
+    })
+
+    test('guard: focus and Tab on the checked pack, Enter, and the details summary select nothing and keep pack safe mode', async () => {
+        const target = checkedA()
+        safe(true)
+        const radio = radioOf(target, 'a')
+        radio.focus()
+        radio.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
+        radio.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        entryOf(target, 'a').querySelector<HTMLElement>('summary')!.click()
+        await settle()
+        expect(packSafe.on).toBe(true)
+        expect(world.requestSaveNow).not.toHaveBeenCalled()
+        expect(vi.mocked(requestPackScheme)).not.toHaveBeenCalled()
+    })
+
+    test('guard: the built-in rows and None keep the single change handler', async () => {
+        setPacks([recordOf('a')], BUILTIN_PACKS[0].id)
+        const target = show()
+        safe(true)
+        labelOf(target, BUILTIN_PACKS[0].id).click()
+        space(radioOf(target, BUILTIN_PACKS[0].id))
+        await settle()
+        expect(world.requestSaveNow).not.toHaveBeenCalled()
+        expect(packSafe.on).toBe(true)
+    })
+})
+
+describe('RS-6 a refused pick keeps pack safe mode', () => {
+    test('guard: a busy pick of another pack leaves pack safe mode on and the stored id unchanged', async () => {
+        setPacks([recordOf('a'), recordOf('b')], 'a')
+        const target = show()
+        safe(true)
+        world.busy = true
+        labelOf(target, 'b').click()
+        await settle()
+        expect(packSafe.on).toBe(true)
+        expect(DBState.db.activeThemePack).toBe('a')
+        expect(world.requestSaveNow).not.toHaveBeenCalled()
+        expect(radios(target).filter((radio) => radio.checked).map((radio) => radio.value)).toEqual(['a'])
+    })
+})
+
+//#endregion

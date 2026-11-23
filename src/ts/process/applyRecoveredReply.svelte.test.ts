@@ -108,6 +108,7 @@ vi.mock(import('../storage/characterSaveMarks'), () => ({ markCharacterForSave: 
 import { applyRecoveredReply, doingChat, sendChat } from './index.svelte'
 import { activeUnits } from './activeUnits'
 import { isWriting } from './chatOrigin'
+import { abortChat } from './composerActions.svelte'
 import { DBState } from '../stores.svelte'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
 import { simulateRunningSend, clearRunningSends } from './tests/activeUnits.test-helpers'
@@ -338,6 +339,24 @@ describe('the unit an apply holds', () => {
 
         expect(await run).toBe(expected)
         expect(get(doingChat)).toBe(false)
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    // R9 (regression reproducer, MC-3743): the global Stop reaches a running apply, which defers before its write.
+    test('R9: the global Stop defers a running apply before its write: nothing is pushed', async () => {
+        installDb()
+        const gate = holdOutputScript()
+        const run = applyRecoveredReply(input())
+        try {
+            await gate.entered
+            abortChat()
+        } finally {
+            gate.open()
+        }
+
+        expect(await run).toBe('deferred')
+        expect(liveChat().message).toHaveLength(2)
+        expect(heldReply(KEY)).toBeUndefined()
         expect(activeUnits.any()).toBe(false)
     })
 

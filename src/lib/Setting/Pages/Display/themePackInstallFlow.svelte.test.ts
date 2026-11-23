@@ -1,6 +1,6 @@
 /**
  * The flow behind the Theme pack row: the in-flight latch, the order of the questions (size check before any read, the
- * 20 MiB confirm and Replace? before the first write), the outcome text of every result, the outcome lifetime, and Remove
+ * 20 MiB confirm, the risk warning and Replace? before the first write, in that order), the outcome text of every result, the outcome lifetime, and Remove
  * and select. All are guards for new behaviour: the flow does not exist on the base, so each fails only when a scratch
  * mutant breaks the rule it names.
  *
@@ -58,13 +58,13 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     }),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 // The pack safe-mode module reads the light colour module directly, so it is stubbed like the colour module.
-vi.mock(import('src/ts/gui/colorschemeCore'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorschemeCore'))
+vi.mock(import('src/ts/gui/colorschemeCore'), () => ({ leavePackScheme: vi.fn(), dropPackSchemeCopy: vi.fn(() => null) }) as unknown as typeof import('src/ts/gui/colorschemeCore'))
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
     return { DBState: state } as unknown as typeof import('src/ts/stores.svelte')
 })
 
-vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorscheme'))
+vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn(), dropPackSchemeCopy: vi.fn(() => null) }) as unknown as typeof import('src/ts/gui/colorscheme'))
 
 //#endregion
 
@@ -201,16 +201,19 @@ describe('T4-2a the 20 MiB question comes before any write', () => {
         expect(storedPacks()).toEqual([])
 
         await runThemePackInstall(deps)
-        expect(confirm).toHaveBeenCalledTimes(2)
+        expect(confirm).toHaveBeenCalledTimes(3)
+        expect(confirm.mock.calls[1][0]).toBe(language.themePackLargeConfirm('21.0 MiB'))
+        expect(confirm.mock.calls[2][0]).toBe(language.themePackRiskConfirm(false))
         expect(world.log).toHaveLength(1)
         expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
     })
 
-    test('a pack under the warning size asks nothing', async () => {
+    test('a pack under the warning size asks only the risk question', async () => {
         attach()
         const { deps, confirm } = runOf(validPack())
         await runThemePackInstall(deps)
-        expect(confirm).not.toHaveBeenCalled()
+        expect(confirm).toHaveBeenCalledTimes(1)
+        expect(confirm.mock.calls[0][0]).toBe(language.themePackRiskConfirm(false))
         expect(world.log).toHaveLength(1)
     })
 })
@@ -660,11 +663,11 @@ describe('W1 warnings of an accepted sheet show under the installed line', () =>
         await runThemePackInstall(runOf(bytes, [], { intake: warnIntake }).deps)
         const writes = world.log.length
 
-        await runThemePackInstall(runOf(bytes, [false], { intake: warnIntake }).deps)
+        await runThemePackInstall(runOf(bytes, [true, false], { intake: warnIntake }).deps)
         expect(installFlowState.outcome).toBeNull()
         expect(world.log).toHaveLength(writes)
 
-        await runThemePackInstall(runOf(bytes, [true], { intake: warnIntake }).deps)
+        await runThemePackInstall(runOf(bytes, [true, true], { intake: warnIntake }).deps)
         expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackInstalledWithWarnings('chat.css'), ...warningLines])
     })
 
@@ -708,14 +711,15 @@ describe('T4-5 Replace? names the pack it replaces', () => {
         expect(storedPacks()).toHaveLength(1)
         const writes = world.log.length
 
-        const declined = runOf(bytes, [false])
+        const declined = runOf(bytes, [true, false])
         await runThemePackInstall(declined.deps)
-        expect(declined.confirm).toHaveBeenCalledTimes(1)
-        expect(declined.confirm.mock.calls[0][0]).toBe(language.themePackReplaceConfirm('Test Pack'))
+        expect(declined.confirm).toHaveBeenCalledTimes(2)
+        expect(declined.confirm.mock.calls[0][0]).toBe(language.themePackRiskConfirm(false))
+        expect(declined.confirm.mock.calls[1][0]).toBe(language.themePackReplaceConfirm('Test Pack'))
         expect(world.log).toHaveLength(writes)
         expect(installFlowState.outcome).toBeNull()
 
-        await runThemePackInstall(runOf(bytes, [true]).deps)
+        await runThemePackInstall(runOf(bytes, [true, true]).deps)
         expect(world.log).toHaveLength(writes + 1)
         expect(storedPacks()).toHaveLength(1)
     })

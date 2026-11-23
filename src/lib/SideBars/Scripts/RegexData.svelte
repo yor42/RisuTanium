@@ -15,8 +15,8 @@
 interface Props {
     value: customscript;
     onRemove?: (target: customscript) => void;
-    onClose?: () => void;
-    onOpen?: () => void;
+    onClose?: (idx: number) => void;
+    onOpen?: (idx: number) => void;
     idx: number;
   }
 
@@ -82,15 +82,15 @@ interface Props {
     let open = $state(false)
 </script>
 
-<div class="w-full flex flex-col pt-2 mt-2 border-t border-t-selected first:pt-0 first:mt-0 first:border-0" data-risu-idx={idx}>
+<div class="w-full flex flex-col {idx === 0 ? '' : 'pt-2 mt-2 border-t border-t-selected'}" data-risu-idx={idx}>
     <div class="flex items-center transition-colors w-full ">
         <button class="endflex valuer border-borderc" onclick={() => {
             open = !open
             if(open){
-                onOpen()
+                onOpen(idx)
             }
             else{
-                onClose()
+                onClose(idx)
             }
         }}>
             <span>{value.comment.length === 0 ? language.sidebarUi.unnamedScript : value.comment}</span>
@@ -100,7 +100,7 @@ interface Props {
             const d = await alertConfirm(language.removeConfirm + target.comment)
             if(d){
                 if(!open){
-                    onClose()
+                    onClose(idx)
                 }
                 onRemove(target)
             }

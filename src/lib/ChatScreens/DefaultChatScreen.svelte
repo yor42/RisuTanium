@@ -12,7 +12,8 @@
     import Chat from "./Chat.svelte";
     import { DBState } from 'src/ts/stores.svelte';
     import { useCharImageLookups } from "../../ts/media/charImageLookups";
-    import { chatProcessStage, doingChat } from "../../ts/process/index.svelte";
+    import { doingChat } from "../../ts/process/index.svelte";
+    import { processStageIn } from "../../ts/process/generationOwnership.svelte";
     import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from "../../ts/process/firstMessage";
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
@@ -730,7 +731,7 @@
                             class="peer-focus:border-textcolor  flex justify-center border-y border-darkborderc items-center text-textcolor p-3 hover:bg-borderc transition-colors" onclick={abortChat}
                             style:height={inputHeight}
                     >
-                        <div class="loadmove chat-process-stage-{$chatProcessStage}" class:autoload={isAutoModeActive()} use:streamTextHold={{ origin: shownOrigin }}></div>
+                        <div class="loadmove chat-process-stage-{processStageIn(shownOrigin)}" class:autoload={isAutoModeActive()} use:streamTextHold={{ origin: shownOrigin }}></div>
                     </button>
                 {:else}
                     <button

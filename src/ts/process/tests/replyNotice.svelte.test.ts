@@ -261,7 +261,7 @@ vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
 
 import { sendChat, doingChat } from 'src/ts/process/index.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
+import { stopAllReplyWork } from 'src/ts/process/chatOrigin'
 import { resetActiveStreamsForTest } from 'src/ts/process/activeStreams'
 import { inFlightKinds, resetInFlightForTest } from 'src/ts/process/inFlightWork'
 import { resetHiddenReplySaveGuardForTest } from 'src/ts/process/hiddenReplySaveGuard'
@@ -919,7 +919,7 @@ describe('a send that fails or is stopped while its chat is not on screen (T19b,
         source.push('Partial')
         await settle()
         toB()
-        abortUnitInProgress()
+        stopAllReplyWork()
         source.close()
         await outcome
 

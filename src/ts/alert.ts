@@ -58,13 +58,11 @@ export interface alertData{
     type: 'error'|'normal'|'none'|'ask'|'wait'|'selectChar'
             |'input'|'toast'|'wait2'|'markdown'|'select'
             |'tos'|'cardexport'|'requestdata'|'addchar'|'hypaV2'|'selectModule'
-            |'chatOptions'|'pukmakkurit'|'branches'|'progress'|'pluginconfirm'|'requestlogs'
-            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply'|'updateOffer'|'presetBundle'|'toolApproval',
+            |'chatOptions'|'branches'|'progress'|'requestlogs'
+            |'staleAccountNotice'|'peerConflicts'|'parkedReply'|'updateOffer'|'presetBundle'|'toolApproval',
     msg: string,
     submsg?: string
     datalist?: [string, string][],
-    /** Options of a `patternSelect` prompt, carried structured rather than joined into `msg`. */
-    choices?: string[],
     /** The rows of a `peerConflicts` prompt; its answer is the JSON of `{ [row id]: choice }`. */
     peerConflicts?: PeerConflictRowView[],
     /** The reply of a `parkedReply` prompt: the character's name and the reply text, both shown as text. Its answer is `discard` or `later`. */

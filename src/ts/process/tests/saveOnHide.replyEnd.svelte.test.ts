@@ -241,7 +241,7 @@ vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
 
 import { sendChat } from 'src/ts/process/index.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
+import { stopAllReplyWork } from 'src/ts/process/chatOrigin'
 import { resetActiveStreamsForTest } from 'src/ts/process/activeStreams'
 import { inFlightKinds, resetInFlightForTest, subscribeInFlight } from 'src/ts/process/inFlightWork'
 import { resetHiddenReplySaveGuardForTest } from 'src/ts/process/hiddenReplySaveGuard'
@@ -614,7 +614,7 @@ describe('a reply that ends while the page is hidden', () => {
         await until(() => requestChatDataMock.mock.calls.length > 0, 'the request')
         source.push('Partial')
         await settle()
-        abortUnitInProgress()
+        stopAllReplyWork()
         source.close()
         await outcome
 

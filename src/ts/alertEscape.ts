@@ -17,7 +17,6 @@ export type AlertEscapeAction = 'ignore' | 'close' | 'idle'
  */
 export const ALERT_ESCAPE_ACTIONS: Record<alertData['type'], AlertEscapeAction> = {
     ask: 'ignore',
-    pluginconfirm: 'ignore',
     select: 'ignore',
     input: 'ignore',
     selectChar: 'ignore',
@@ -27,8 +26,6 @@ export const ALERT_ESCAPE_ACTIONS: Record<alertData['type'], AlertEscapeAction> 
     selectModule: 'ignore',
     tos: 'ignore',
     staleAccountNotice: 'ignore',
-    patternSelect: 'ignore',
-    patternInput: 'ignore',
     peerConflicts: 'ignore',
     parkedReply: 'ignore',
     updateOffer: 'ignore',
@@ -42,7 +39,6 @@ export const ALERT_ESCAPE_ACTIONS: Record<alertData['type'], AlertEscapeAction> 
     hypaV2: 'close',
     branches: 'close',
     requestlogs: 'close',
-    pukmakkurit: 'close',
     wait2: 'close',
     none: 'idle',
     toast: 'idle',
@@ -59,7 +55,6 @@ export function escapeActionFor(type: alertData['type']): AlertEscapeAction {
  */
 export const ALERT_COVERS_PAGE: Record<alertData['type'], boolean> = {
     ask: true,
-    pluginconfirm: true,
     select: true,
     input: true,
     selectChar: true,
@@ -69,8 +64,6 @@ export const ALERT_COVERS_PAGE: Record<alertData['type'], boolean> = {
     selectModule: true,
     tos: true,
     staleAccountNotice: true,
-    patternSelect: true,
-    patternInput: true,
     peerConflicts: true,
     parkedReply: true,
     updateOffer: true,
@@ -84,7 +77,6 @@ export const ALERT_COVERS_PAGE: Record<alertData['type'], boolean> = {
     hypaV2: true,
     branches: true,
     requestlogs: true,
-    pukmakkurit: true,
     wait2: true,
     wait: true,
     none: false,

@@ -10,21 +10,27 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-const safe = vi.hoisted(() => ({ enter: vi.fn(), touch: vi.fn() }))
+const safe = vi.hoisted(() => ({ enter: vi.fn(), touch: vi.fn(), hold: vi.fn(), release: vi.fn() }))
 
 vi.mock(import('src/ts/themePack/packSafeMode.svelte'), () => ({
     enterPackSafeMode: safe.enter,
     setBannerTouchExploration: safe.touch,
+    holdPackUntilDecided: safe.hold,
+    releasePackHold: safe.release,
 }) as unknown as typeof import('src/ts/themePack/packSafeMode.svelte'))
 
-import { startLaunchOptions } from './launchOptions'
+import { resetLaunchOptionsForTests, settlePackDecision, startLaunchOptions } from './launchOptions'
 
 beforeEach(() => {
     safe.enter.mockReset()
     safe.touch.mockReset()
+    safe.hold.mockReset().mockReturnValue(true)
+    safe.release.mockReset()
+    resetLaunchOptionsForTests()
 })
 
 afterEach(() => {
+    vi.useRealTimers()
     delete window.__risuTaniumLaunchOptions
     delete window.__risuTaniumPackSafeModeReady
 })
@@ -114,6 +120,169 @@ describe('TA2-1: startLaunchOptions', () => {
         const error = vi.spyOn(console, 'error').mockImplementation(() => {})
         expect(() => startLaunchOptions({ requestLaunchOptions: () => { throw new Error('refused') } })).not.toThrow()
         expect(() => window.__risuTaniumPackSafeModeReady?.()).not.toThrow()
+        error.mockRestore()
+    })
+})
+
+describe('LO-1: the hold, the decision and the bounded wait', () => {
+    /** Starts the module with an asking host and returns the ask's spy. */
+    function startAsking(onAsk: () => void = () => { }): ReturnType<typeof vi.fn> {
+        const ask = vi.fn(onAsk)
+        startLaunchOptions({ requestLaunchOptions: ask })
+        return ask
+    }
+
+    /** True once the settle promise has resolved, observed after the pending microtasks ran. */
+    async function resolvedAfterTurn(settled: Promise<void>): Promise<boolean> {
+        let done = false
+        void settled.then(() => { done = true })
+        for (let turn = 0; turn < 5; turn++) {
+            await Promise.resolve()
+        }
+        return done
+    }
+
+    test('the hold is taken once, on the first call, also for a host that cannot answer', () => {
+        startLaunchOptions(undefined)
+        startLaunchOptions({ requestLaunchOptions: vi.fn() })
+        expect(safe.hold).toHaveBeenCalledTimes(1)
+    })
+
+    test('the hold is taken before the ask, so an answer inside the ask finds it', () => {
+        const order: string[] = []
+        safe.hold.mockImplementation(() => { order.push('hold'); return true })
+        startAsking(() => { order.push('ask') })
+        expect(order).toEqual(['hold', 'ask'])
+    })
+
+    test('only an exact false releases the hold, and only an exact true enters safe mode', () => {
+        startAsking()
+        for (const value of ['false', 0, null, undefined, {}, [false], 'true', 1]) {
+            answer({ packSafeMode: value, touchExploration: false })
+        }
+        answer('false')
+        answer(false)
+        expect(safe.release).not.toHaveBeenCalled()
+        expect(safe.enter).not.toHaveBeenCalled()
+        answer({ packSafeMode: false })
+        expect(safe.release).toHaveBeenCalledTimes(1)
+        expect(safe.enter).not.toHaveBeenCalled()
+        answer({ packSafeMode: true })
+        expect(safe.enter).toHaveBeenCalledTimes(1)
+        expect(safe.enter).toHaveBeenCalledWith('shortcut')
+        expect(safe.release).toHaveBeenCalledTimes(1)
+    })
+
+    test('nothing throws into the host when the hold, the release or the entry fail', () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => { })
+        safe.hold.mockImplementation(() => { throw new Error('hold failed') })
+        safe.release.mockImplementation(() => { throw new Error('release failed') })
+        expect(() => startAsking()).not.toThrow()
+        expect(() => answer({ packSafeMode: false })).not.toThrow()
+        error.mockRestore()
+    })
+
+    test('a page that was not held settles at once, whatever the host does', async () => {
+        safe.hold.mockReturnValue(false)
+        startAsking()
+        await expect(settlePackDecision()).resolves.toBeUndefined()
+        expect(safe.enter).not.toHaveBeenCalled()
+    })
+
+    test('a settle before any start settles at once', async () => {
+        await expect(settlePackDecision()).resolves.toBeUndefined()
+        expect(safe.enter).not.toHaveBeenCalled()
+    })
+
+    test('while held it waits for the answer, and a false ends the wait without entering safe mode', async () => {
+        vi.useFakeTimers()
+        startAsking()
+        const settled = settlePackDecision()
+        expect(await resolvedAfterTurn(settled)).toBe(false)
+        answer({ packSafeMode: false, touchExploration: false })
+        await settled
+        expect(safe.release).toHaveBeenCalledTimes(1)
+        expect(safe.enter).not.toHaveBeenCalled()
+        expect(vi.getTimerCount()).toBe(0)
+    })
+
+    test('a true ends the wait and enters safe mode from the shortcut, not as no answer', async () => {
+        vi.useFakeTimers()
+        startAsking()
+        const settled = settlePackDecision()
+        answer({ packSafeMode: true, touchExploration: false })
+        await settled
+        expect(safe.enter.mock.calls).toEqual([['shortcut']])
+    })
+
+    test('an answer inside the ask is already decided, so the settle does not wait', async () => {
+        startAsking(() => answer({ packSafeMode: false }))
+        await expect(settlePackDecision()).resolves.toBeUndefined()
+        expect(safe.enter).not.toHaveBeenCalled()
+    })
+
+    test('with no answer the wait ends at 2000 ms and the page enters safe mode as no answer', async () => {
+        vi.useFakeTimers()
+        startAsking()
+        const settled = settlePackDecision()
+        await vi.advanceTimersByTimeAsync(1999)
+        expect(await resolvedAfterTurn(settled)).toBe(false)
+        expect(safe.enter).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(1)
+        await settled
+        expect(safe.enter.mock.calls).toEqual([['noAnswer']])
+    })
+
+    test('a malformed answer neither releases nor wakes the wait, and still hands touch exploration on', async () => {
+        vi.useFakeTimers()
+        startAsking()
+        const settled = settlePackDecision()
+        answer({ packSafeMode: 'false', touchExploration: true })
+        expect(await resolvedAfterTurn(settled)).toBe(false)
+        expect(safe.release).not.toHaveBeenCalled()
+        expect(safe.touch).toHaveBeenLastCalledWith(true)
+        await vi.advanceTimersByTimeAsync(2000)
+        await settled
+        expect(safe.enter.mock.calls).toEqual([['noAnswer']])
+    })
+
+    test('no host: the settle ends at once as no answer', async () => {
+        startLaunchOptions(undefined)
+        await settlePackDecision()
+        expect(safe.enter.mock.calls).toEqual([['noAnswer']])
+    })
+
+    test('a host that refuses the ask: the settle ends at once as no answer', async () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => { })
+        startLaunchOptions({ requestLaunchOptions: () => { throw new Error('refused') } })
+        await settlePackDecision()
+        expect(safe.enter.mock.calls).toEqual([['noAnswer']])
+        error.mockRestore()
+    })
+
+    test('a host without the method installs no hook and the settle ends at once as no answer', async () => {
+        startLaunchOptions({})
+        expect(window.__risuTaniumLaunchOptions).toBeUndefined()
+        await settlePackDecision()
+        expect(safe.enter.mock.calls).toEqual([['noAnswer']])
+    })
+
+    test('it never waits a second time', async () => {
+        vi.useFakeTimers()
+        startAsking()
+        const first = settlePackDecision()
+        await vi.advanceTimersByTimeAsync(2000)
+        await first
+        const second = settlePackDecision()
+        expect(await resolvedAfterTurn(second)).toBe(true)
+        expect(safe.enter.mock.calls).toEqual([['noAnswer']])
+    })
+
+    test('it never rejects, also when the entry fails', async () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => { })
+        safe.enter.mockImplementation(() => { throw new Error('entry failed') })
+        startLaunchOptions(undefined)
+        await expect(settlePackDecision()).resolves.toBeUndefined()
         error.mockRestore()
     })
 })

@@ -247,7 +247,7 @@ vi.mock('src/ts/process/chatOrigin', async (importOriginal) => {
 import { sendChat, doingChat } from 'src/ts/process/index.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { isWriting } from 'src/ts/process/chatOrigin'
-import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
+import { stopAllReplyWork } from 'src/ts/process/chatOrigin'
 
 //#region fixtures
 
@@ -645,7 +645,7 @@ describe('the interrupted flag on a streaming reply', () => {
         const { source, outcome } = await startHeldSend(() => sendChat())
         expect(lastMessage('char-0', 'chat-0').interrupted).toBe(true)
 
-        abortUnitInProgress()
+        stopAllReplyWork()
         source.close()
         await outcome
 
@@ -845,7 +845,7 @@ describe('the interrupted flag on a continued reply', () => {
         const outcome = settled(() => sendChat(-1, { continue: true }))
         await until(() => activeStreams().length === 1, 'the continue to start streaming')
 
-        abortUnitInProgress()
+        stopAllReplyWork()
         source.close()
         await outcome
 

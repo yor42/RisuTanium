@@ -260,6 +260,14 @@ vi.mock(import('../index.svelte'), () => ({
     sendChat: sendChatMock,
 }) as unknown as typeof import('../index.svelte'))
 
+// Every other export stays the real module's. `isComposerWindowOpen` is a delegating spy so one call can answer
+// false: the window is the only gate against a second take in this suite (`doingChat` is mocked), and several takes
+// in flight are what the keyed state is for.
+vi.mock(import('../generationOwnership.svelte'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return { ...actual, isComposerWindowOpen: vi.fn(actual.isComposerWindowOpen) }
+})
+
 const isExpTranslatorMock = vi.hoisted(() => vi.fn(() => false))
 const translateMock = vi.hoisted(() => vi.fn(async (_text: string, _reverse: boolean): Promise<string> => ''))
 
@@ -288,6 +296,11 @@ type ComposerDraftKey = import('../composerDrafts.svelte').ComposerDraftKey
 let DBState: { db: any }
 let selectedCharID: ReturnType<typeof writable<number>>
 let isWriting: typeof import('../chatOrigin').isWriting
+let activeUnits: typeof import('../activeUnits').activeUnits
+let stopComposerWorkIn: typeof import('../composerActions.svelte').stopComposerWorkIn
+let isComposerWindowOpen: typeof import('../generationOwnership.svelte').isComposerWindowOpen
+let composerWindowFor: typeof import('../generationOwnership.svelte').composerWindowFor
+let actualIsComposerWindowOpen: typeof import('../generationOwnership.svelte').isComposerWindowOpen
 let hasLocalDrafts: typeof import('../../localDrafts').hasLocalDrafts
 let resetLocalDraftsForTest: typeof import('../../localDrafts').resetLocalDraftsForTest
 let coldStorageHeader: string
@@ -308,6 +321,14 @@ beforeAll(async () => {
     isComposerLocked = actions.isComposerLocked
     isAutoModeActive = actions.isAutoModeActive
     resetComposerActionsForTests = actions.resetComposerActionsForTests
+    stopComposerWorkIn = actions.stopComposerWorkIn
+
+    activeUnits = (await import('../activeUnits')).activeUnits
+
+    const ownership = await import('../generationOwnership.svelte')
+    isComposerWindowOpen = ownership.isComposerWindowOpen
+    composerWindowFor = ownership.composerWindowFor
+    actualIsComposerWindowOpen = (await vi.importActual<typeof import('../generationOwnership.svelte')>('../generationOwnership.svelte')).isComposerWindowOpen
 
     const drafts2 = await import('../composerDrafts.svelte')
     composerDraftsPeek = drafts2.peek
@@ -503,6 +524,9 @@ beforeEach(() => {
     translateMock.mockReset()
     translateMock.mockResolvedValue('')
     resetLocalDraftsForTest()
+    // A one-shot answer a failed test left unused must not reach the next test.
+    vi.mocked(isComposerWindowOpen).mockReset()
+    vi.mocked(isComposerWindowOpen).mockImplementation(actualIsComposerWindowOpen)
 })
 
 afterEach(() => {
@@ -602,6 +626,27 @@ describe('a second composer action while a send is still taking its input', () =
         expect(sendChatMock).toHaveBeenCalledTimes(1)
         const passedArg = sendChatMock.mock.calls[0][1] as SendChatArg
         expect(passedArg.signal!.aborted).toBe(true)
+    })
+
+    test('stop-all runs the stop of every reply and preview registration and leaves work registrations alone', async () => {
+        const { registerWork } = await import('../chatOrigin')
+        const stopA = vi.fn()
+        const stopP = vi.fn()
+        const stopW = vi.fn()
+        const reply = registerWork({ chaId: 'stop-all-a', chatId: 'chat-a' }, stopA, 'reply')
+        const preview = registerWork({ chaId: 'stop-all-b', chatId: 'chat-b' }, stopP, 'preview')
+        const work = registerWork({ chaId: 'stop-all-a', chatId: 'chat-a' }, stopW)
+        try {
+            abortChat()
+
+            expect(stopA).toHaveBeenCalledTimes(1)
+            expect(stopP).toHaveBeenCalledTimes(1)
+            expect(stopW).not.toHaveBeenCalled()
+        } finally {
+            reply.end()
+            preview.end()
+            work.end()
+        }
     })
 
     test('reroll during another send\'s wait leaves the chat untouched and starts no generation', async () => {
@@ -1078,6 +1123,148 @@ describe('composerActions: cancelling before generation', () => {
         await pB
 
         expect(char.chats[0].message.length).toBe(0)
+    })
+})
+
+describe('composerActions: two takes in flight in two chats (stop-all and per-chat stop)', () => {
+    /**
+     * Two sends, one per character, both stalled at their editinput gate. The window is the only gate against the
+     * second take here, so the second send's check answers false once. Every immediate assertion of a case runs
+     * before any gate is released: a released gate lets the send unwind on its own and put its draft back, which
+     * would hide a stop that cancelled nothing.
+     */
+    async function twoTakes() {
+        const a = makeCharacter('c-two-a')
+        const b = makeCharacter('c-two-b')
+        installDb([a, b])
+        seedDraft(a, a.chats[0], { messageInput: 'text-a' })
+        seedDraft(b, b.chats[0], { messageInput: 'text-b' })
+        const editinput = installEditinputQueue()
+        const gateA = editinput.nextGate()
+        const gateB = editinput.nextGate()
+        const { source } = makeSource()
+        selectedCharID.set(0)
+        const pA = send(source)
+        await gateA.reached
+        selectedCharID.set(1)
+        vi.mocked(isComposerWindowOpen).mockReturnValueOnce(false)
+        const pB = send(source)
+        await gateB.reached
+        expect(draftFor(b, b.chats[0]).messageInput).toBe('')
+        expect(draftFor(a, a.chats[0]).messageInput).toBe('')
+        const settle = async () => {
+            gateA.release()
+            gateB.release()
+            await Promise.all([pA, pB])
+        }
+        return { a, b, keyA: keyFor(a, a.chats[0]), keyB: keyFor(b, b.chats[0]), settle }
+    }
+
+    test('stop-all cancels every unsettled take: each draft goes back to its own chat and every window, lock and draft key is released', async () => {
+        const { a, b, settle } = await twoTakes()
+        try {
+            abortChat()
+
+            expect(draftFor(a, a.chats[0]).messageInput).toBe('text-a')
+            expect(draftFor(b, b.chats[0]).messageInput).toBe('text-b')
+            expect(hasLocalDrafts()).toBe(false)
+            expect(isComposerBusy()).toBe(false)
+            expect(isComposerLocked()).toBe(false)
+        } finally {
+            await settle()
+        }
+        expect(a.chats[0].message).toHaveLength(0)
+        expect(b.chats[0].message).toHaveLength(0)
+        expect(sendChatMock).not.toHaveBeenCalled()
+    })
+
+    test('a per-chat stop of the later take cancels that take alone and leaves the earlier take its window, lock and draft key', async () => {
+        const { a, b, keyA, keyB, settle } = await twoTakes()
+        try {
+            stopComposerWorkIn(keyB)
+
+            expect(draftFor(b, b.chats[0]).messageInput).toBe('text-b')
+            expect(draftFor(a, a.chats[0]).messageInput).toBe('')
+            expect(hasLocalDrafts()).toBe(true)
+            expect(isComposerLocked()).toBe(true)
+            expect(composerWindowFor(keyA)).toBe(true)
+            expect(isComposerBusy()).toBe(true)
+
+            stopComposerWorkIn(keyA)
+
+            expect(draftFor(a, a.chats[0]).messageInput).toBe('text-a')
+            expect(hasLocalDrafts()).toBe(false)
+            expect(isComposerLocked()).toBe(false)
+            expect(isComposerBusy()).toBe(false)
+        } finally {
+            await settle()
+        }
+    })
+
+    test('a per-chat stop of the earlier take cancels that take alone, whichever take started last', async () => {
+        const { a, b, keyA, keyB, settle } = await twoTakes()
+        try {
+            stopComposerWorkIn(keyA)
+
+            expect(draftFor(a, a.chats[0]).messageInput).toBe('text-a')
+            expect(draftFor(b, b.chats[0]).messageInput).toBe('')
+            expect(isComposerLocked()).toBe(true)
+            expect(composerWindowFor(keyB)).toBe(true)
+            expect(composerWindowFor(keyA)).toBe(false)
+
+            stopComposerWorkIn(keyB)
+
+            expect(draftFor(b, b.chats[0]).messageInput).toBe('text-b')
+            expect(isComposerLocked()).toBe(false)
+            expect(isComposerBusy()).toBe(false)
+        } finally {
+            await settle()
+        }
+    })
+
+    // G2 (compatibility guard, passes on base): a settled take's late finally never unregisters a newer take's draft.
+    test('guard: a cancelled take that settles late leaves the newer take its draft registration', async () => {
+        const char = makeCharacter('c-g2')
+        installDb([char])
+        seedDraft(char, char.chats[0], { messageInput: 'old-text' })
+        const editinput = installEditinputQueue()
+        const gateA = editinput.nextGate()
+        const { source } = makeSource()
+        const pA = send(source)
+        await gateA.reached
+        abortChat()
+        seedDraft(char, char.chats[0], { messageInput: 'new-text' })
+        const gateB = editinput.nextGate()
+        const pB = send(source)
+        await gateB.reached
+
+        gateA.release()
+        await pA
+        try {
+            expect(hasLocalDrafts()).toBe(true)
+        } finally {
+            gateB.release()
+            await pB
+        }
+    })
+
+    // G3 (compatibility guard, passes on base): a Send's take holds the window, never an active unit.
+    test('guard: a stalled Send holds the composer window and no active unit', async () => {
+        const char = makeCharacter('c-g3')
+        installDb([char])
+        seedDraft(char, char.chats[0], { messageInput: 'hello' })
+        const editinput = installEditinputQueue()
+        const gate = editinput.nextGate()
+        const { source } = makeSource()
+        const p = send(source)
+        await gate.reached
+        try {
+            expect(isComposerBusy()).toBe(true)
+            expect(activeUnits.any()).toBe(false)
+        } finally {
+            gate.release()
+            await p
+        }
     })
 })
 

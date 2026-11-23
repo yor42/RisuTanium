@@ -75,6 +75,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { enterKeydown, imeEventSequence } from 'src/ts/ime/tests/imeEventSequence'
 import HypaV3Modal from './HypaV3Modal.svelte'
 
@@ -97,11 +98,16 @@ function installDb(): void {
 
 let mounted: Array<{ target: HTMLElement, app: Record<string, unknown> }> = []
 
-function mountModal(): HTMLElement {
+async function mountModal(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(HypaV3Modal, { target, props: {} }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
+    flushSync()
+    // The windowed cards mount once the host has read the band.
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
     flushSync()
     return target
 }
@@ -119,11 +125,14 @@ function openSearch(target: HTMLElement): HTMLInputElement {
 const counter = (target: HTMLElement) => /\d+\/\d+/.exec(target.textContent ?? '')?.[0] ?? null
 
 beforeEach(() => {
+    // Every card falls in the window: these tests are about what a card does, not about which cards are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     installDb()
     Element.prototype.scrollIntoView = vi.fn()
 })
 
 afterEach(async () => {
+    setWindowGeometryForTests(undefined)
     vi.restoreAllMocks()
     for (const m of mounted) {
         await unmount(m.app as never)
@@ -133,8 +142,8 @@ afterEach(async () => {
 })
 
 describe('T-R-Hypa the Enter that follows a composition end', () => {
-    test.each([2, 200])('an Enter at +%s ms after compositionend searches once', (gap) => {
-        const target = mountModal()
+    test.each([2, 200])('an Enter at +%s ms after compositionend searches once', async (gap) => {
+        const target = await mountModal()
         const field = openSearch(target)
         const clock = vi.spyOn(performance, 'now')
         clock.mockReturnValue(1000)
@@ -146,8 +155,8 @@ describe('T-R-Hypa the Enter that follows a composition end', () => {
         expect(counter(target)).toBe('1/2')
     })
 
-    test('guard: the next button still searches right after a composition end (programmatic event)', () => {
-        const target = mountModal()
+    test('guard: the next button still searches right after a composition end (programmatic event)', async () => {
+        const target = await mountModal()
         const field = openSearch(target)
         imeEventSequence(field, 'alpha')
         flushSync()
@@ -157,8 +166,8 @@ describe('T-R-Hypa the Enter that follows a composition end', () => {
         expect(counter(target)).toBe('1/2')
     })
 
-    test('guard: a composing Enter does not search', () => {
-        const target = mountModal()
+    test('guard: a composing Enter does not search', async () => {
+        const target = await mountModal()
         const field = openSearch(target)
         imeEventSequence(field, 'alpha')
         flushSync()

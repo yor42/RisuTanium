@@ -635,7 +635,7 @@ describe('a file opened during an opened-file restore', () => {
         androidOpenedFilesImport()
         await waitForCondition(close.closeCalled)
         expect(reloadMark.marked, 'the reload was requested').toBe(true)
-        setShown('pluginconfirm')
+        setShown('select')
         native.push(openedFile('card1.charx'))
         window.__risuTaniumOpenedFiles?.()
         await settleFew()

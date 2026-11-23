@@ -11,6 +11,7 @@
     "authority": "docs/workflow/2026-11-03-parallel-tracks.md",
     "maxRecordsTracks": 1,
     "maxDeviceTracks": 3,
+    "deviceRoles": ["sonnet-coder", "device-runner"],
     "recordsPrimary": { "provider": "claude", "role": "record-clerk", "model": "haiku", "effort": "low" },
     "devicePrimary": { "provider": "claude", "role": "sonnet-coder", "model": "sonnet", "effort": "medium" },
     "testPrimary": { "provider": "claude", "role": "test-warrior", "model": "sonnet", "effort": "medium" }
@@ -41,11 +42,72 @@
   "nativeModelChoices": { "designer": ["sonnet"] },
   "nativeFallbackRoles": {
     "scout": { "investigator": "sonnet", "code-reader": "sonnet", "code-searcher": "haiku", "haiku-triager": "haiku", "perf-analyzer": "sonnet" },
-    "implement": { "sonnet-coder": "sonnet", "haiku-editor": "haiku", "doc-writer": "sonnet", "record-clerk": "haiku", "translator": "sonnet", "test-warrior": "sonnet" },
+    "implement": { "sonnet-coder": "sonnet", "haiku-editor": "haiku", "doc-writer": "sonnet", "record-clerk": "haiku", "translator": "sonnet", "test-warrior": "sonnet", "device-runner": "haiku" },
     "review": { "adversarial-reviewer": "sonnet", "doc-verifier": "sonnet", "test-warrior": "sonnet" }
   },
   "nativePaidUsage": false,
   "deviceDiagnosticRetries": 1,
+  "devicePool": {
+    "authority": "MC-3773, MC-3774; #647",
+    "pools": {
+      "note9": { "members": [
+        { "resource": "device:29f3cde9193f7ece", "ports": [6270, 6309] },
+        { "resource": "device:2ac80128013f7ece", "ports": [6310, 6329] }
+      ] },
+      "android-build": { "members": [ { "resource": "build:%TEMP%/risu-b715/cargo-target-android", "prefix": true } ] }
+    },
+    "lockOrder": ["android-build", "note9"],
+    "priorityClasses": ["mvp-blocker", "normal"],
+    "leaseTtlSeconds": 1800,
+    "heartbeatSeconds": 300,
+    "queueTtlSeconds": 300,
+    "pollSeconds": 60,
+    "maxWaiting": 16,
+    "retainEndedHours": 72,
+    "keepHelpers": [
+      { "package": "dev.risu.dv603", "note": "Test app the #603 rerun still needs; keep it installed and unmarked, and drop this entry once #603 is accepted." }
+    ],
+    "standingPackages": [
+      "io.github.yor42.risutanium",
+      "io.github.yor42.tbdriver",
+      "com.sec.android.app.voicenote",
+      "com.google.android.verifier",
+      "com.samsung.accessory.zenithmgr",
+      "com.microsoft.skydrive",
+      "com.samsung.android.app.watchmanager",
+      "com.google.android.apps.docs",
+      "com.microsoft.office.word",
+      "com.microsoft.office.powerpoint",
+      "com.google.android.contactkeys",
+      "com.google.android.videos",
+      "com.google.android.apps.photos",
+      "com.sec.android.app.sbrowser",
+      "com.samsung.android.oneconnect",
+      "com.sec.android.app.popupcalculator",
+      "com.samsung.android.voc",
+      "com.sec.android.app.shealth",
+      "com.sec.penup",
+      "com.samsung.android.spay",
+      "com.google.android.safetycore",
+      "com.samsung.android.waterplugin",
+      "com.google.android.inputmethod.latin",
+      "com.sec.android.inputmethod.beta",
+      "com.samsung.android.app.panel.naver.v",
+      "com.samsung.android.email.provider",
+      "io.github.yor42.tbprobe",
+      "com.samsung.android.widgetapp.daumedge.sports",
+      "com.samsung.android.app.panel.naver.tv",
+      "com.samsung.android.widgetapp.daumedge.news",
+      "com.samsung.android.timezone.autoupdate_O",
+      "com.samsung.android.widgetapp.daumedge.kakao",
+      "org.mozilla.firefox",
+      "com.sec.android.autodoodle.service",
+      "com.samsung.android.app.notes.addons",
+      "com.sec.android.easyMover",
+      "com.google.vr.vrcore",
+      "com.samsung.accessory.fridaymgr"
+    ]
+  },
   "openrouter": { "enabled": false, "model": "deepseek/deepseek-v4.1-flash", "perJobUSD": 0.5, "perDayUSD": 5, "perMonthUSD": 30, "timezone": "Asia/Seoul", "activationFile": ".claude/scratch/openrouter-activation.json", "ledgerFile": ".claude/scratch/budget/openrouter.json" },
   "cheapAgentEnabled": false
 }

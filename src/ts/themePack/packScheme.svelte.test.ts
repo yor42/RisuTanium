@@ -8,13 +8,13 @@
  * (MC-329). Titles say `reproducer` (fails on the pre-change code at the named assertion) or `guard` (passes before and after).
  */
 import { createHash } from 'node:crypto'
-import { flushSync } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Database } from '../storage/database.svelte'
 import { resetBusyActionsForTest } from '../process/memory/busyActions'
 import { resetRestoreInProgressForTests } from '../drive/restoreInProgress'
-import { resetPageStorageModeForTests } from '../storage/pageStorageMode'
+import { resetPageStorageModeForTests, setPageStorageMode } from '../storage/pageStorageMode'
 import { manifestText, PNG_1X1, validPackFiles, zipPack } from './fixtures/packBuilder'
 import studioScratchWhite from '../../../docs/design/studio/themes/scratch-white.css?raw'
 
@@ -90,6 +90,12 @@ vi.mock('./worker/spawnJudgeWorker', async () => {
 import { DBState, SafeModeStore } from '../stores.svelte'
 import { changeColorScheme, colorSchemePresets, defaultColorScheme, updateColorScheme, type ColorScheme } from '../gui/colorscheme'
 import { runThemePackInstall, removeThemePack, selectThemePack, resetThemePackInstallFlowForTests } from '../../lib/Setting/Pages/Display/themePackInstallFlow.svelte'
+import ThemePackRow from '../../lib/Setting/Pages/Display/ThemePackRow.svelte'
+import { requestSaveNow } from '../globalApi.svelte'
+import { syncSystemBars } from '../gui/systemBars'
+import { isLite } from '../lite'
+import { bootThemePackStep, enterPackSafeMode, holdPackUntilDecided, releasePackHold, resetPackSafeModeForTests, tapTurnOff } from './packSafeMode.svelte'
+import { packSafe } from './packSafeFlag.svelte'
 import { judgePackSheets, judgeAreaSheet } from './index'
 import { installThemePack } from './install'
 import { intakePackBytes } from './intake'
@@ -97,7 +103,7 @@ import { listThemePacks } from './packRecord'
 import { BUILTIN_PACKS } from './builtins'
 import { resetPackSheetForTests } from './apply'
 import {
-    adoptActivePackScheme, pendingPackSchemeRequestForTests, resetThemePackApplyForTests, startThemePackApply, themePackApplyState,
+    adoptActivePackScheme, cancelPackSchemeRequest, pendingPackSchemeRequestForTests, resetThemePackApplyForTests, startThemePackApply, themePackApplyState,
 } from './activePack.svelte'
 import { declareSurface, installThemePackGate, resetThemePackGateForTests } from './surfaceGate.svelte'
 import { decls } from './csslit'
@@ -651,5 +657,599 @@ describe('S4a the swap never gives the studio element a base (MC-3121)', () => {
         flushSync()
         expect(chat.getAttribute('media')).toBe('all')
         expect(baseAttribute()).toBe('')
+    })
+})
+
+describe('#629 leaving pack safe mode paints nothing of the pack (RS-1 to RS-3)', () => {
+    const PACK_BG = '#101820'
+    let painted: string[] = []
+    let setProperty: CSSStyleDeclaration['setProperty'] | null = null
+
+    /** Records every value the root receives and every system bar colour from now on. */
+    function watchPaint(): void {
+        painted = []
+        vi.mocked(syncSystemBars).mockClear()
+        const style = document.documentElement.style
+        setProperty = style.setProperty.bind(style)
+        const original = setProperty
+        style.setProperty = (name: string, value: string | null, priority?: string): void => {
+            painted.push(`${name}=${String(value)}`)
+            original(name, value, priority)
+        }
+    }
+
+    /** Every root value or system bar colour that carried the pack colour. */
+    function packPaints(): string[] {
+        const bars = vi.mocked(syncSystemBars).mock.calls.map((call) => `bar=${String(call[0])}`)
+        return [...painted, ...bars].filter((entry) => entry.toLowerCase().includes(PACK_BG))
+    }
+
+    async function packActiveInSafeMode(): Promise<void> {
+        changeColorScheme('light')
+        flushSync()
+        await installPack(archive(CORE_V1, 'R', 'r'))
+        expect(bgcolor()).toBe(PACK_BG)
+        enterPackSafeMode('shortcut')
+        flushSync()
+        expect(bgcolor()).not.toBe(PACK_BG)
+    }
+
+    afterEach(() => {
+        delete (document.documentElement.style as { setProperty?: unknown }).setProperty
+        resetPackSafeModeForTests()
+    })
+
+    it('RS-1 reproducer: choosing None in a pack-free session never paints the pack colour, reads no archive and ends in the own scheme', async () => {
+        await packActiveInSafeMode()
+        const reads = vi.spyOn(world.files, 'get')
+        watchPaint()
+        expect(selectThemePack(undefined, { notify: vi.fn() })).toBe('selected')
+        flushSync()
+        await new Promise<void>((resolve) => setTimeout(resolve, 20))
+        flushSync()
+        expect(packPaints()).toEqual([])
+        expect(reads).not.toHaveBeenCalled()
+        expect(packElements()).toHaveLength(0)
+        expect(packSafe.on).toBe(false)
+        expect('activeThemePack' in db()).toBe(false)
+        expect('themePackSchemeSnapshot' in db()).toBe(false)
+        expect(db().colorSchemeName).toBe('light')
+        expect(bgcolor()).toBe(colorSchemePresets.light.bgcolor)
+    })
+
+    it('RS-1 guard: picking another installed pack in a pack-free session ends safe mode and paints that pack', async () => {
+        await installPack(archive(CORE_V2, 'Other', 'other'))
+        const other = db().activeThemePack as string
+        await packActiveInSafeMode()
+        watchPaint()
+        expect(selectThemePack(other, { notify: vi.fn() })).toBe('selected')
+        await settle()
+        expect(packSafe.on).toBe(false)
+        expect(bgcolor()).toBe('#203040')
+    })
+
+    it('RS-2 guard: removing the active pack in a pack-free session paints no pack colour and restores the own scheme', async () => {
+        await packActiveInSafeMode()
+        watchPaint()
+        const item = listThemePacks(db().themePacks)[0]
+        expect(await removeThemePack(item.entry, 'R', { confirm: async () => true, notify: vi.fn() })).toBe('removed')
+        flushSync()
+        expect(packPaints()).toEqual([])
+        expect(db().colorSchemeName).toBe('light')
+        expect('activeThemePack' in db()).toBe(false)
+    })
+
+    it('RS-3 guard: the banner turn-off paints no pack colour and ends in the own scheme with the pack off', async () => {
+        await packActiveInSafeMode()
+        watchPaint()
+        tapTurnOff()
+        flushSync()
+        await new Promise<void>((resolve) => setTimeout(resolve, 20))
+        flushSync()
+        expect(packPaints()).toEqual([])
+        expect(packSafe.on).toBe(false)
+        expect('activeThemePack' in db()).toBe(false)
+        expect(db().colorSchemeName).toBe('light')
+    })
+})
+
+describe('IS-5 activating the checked pack in a pack-free session turns it on, colours included (MC-3758)', () => {
+    afterEach(() => {
+        resetPackSafeModeForTests()
+    })
+
+    for (const kind of ['first', 'updateInPackScheme', 'updateInOwnScheme'] as const) {
+        it(`IS-5 reproducer: a tap on the checked installed pack ends pack safe mode and applies it, then None and a new pick work (${kind})`, async () => {
+            changeColorScheme('light')
+            if (kind !== 'first') {
+                await installPack(archive(CORE_V1, 'Example pack', 'pk.example'))
+                if (kind === 'updateInOwnScheme') {
+                    changeColorScheme('light')
+                }
+            }
+            flushSync()
+            enterPackSafeMode('shortcut')
+            flushSync()
+            const oldId = db().activeThemePack
+            await installPack(archive(CORE_V2, 'Example pack', 'pk.example'))
+            const id = db().activeThemePack as string
+            expect(id).not.toBe(oldId)
+            expect(packElements()).toHaveLength(0)
+            expect(pendingPackSchemeRequestForTests()).toBeNull()
+
+            const target = document.createElement('div')
+            document.body.appendChild(target)
+            const row = mount(ThemePackRow, { target })
+            flushSync()
+            try {
+                const radio = target.querySelector<HTMLInputElement>(`input[value="${id}"]`)!
+                expect(radio.checked).toBe(true)
+                radio.closest('label')!.click()
+                flushSync()
+                expect(packSafe.on, 'a tap on the checked pack must leave pack safe mode').toBe(false)
+                await until(() => status().phase === 'applied', 'the tapped apply')
+                expect(bgcolor()).toBe('#203040')
+                expect(db().colorSchemeName).toBe('theme-pack')
+                expect(plain(db().themePackSchemeSnapshot)).toMatchObject({ name: 'light' })
+
+                expect(selectThemePack(undefined, { notify: vi.fn() })).toBe('selected')
+                flushSync()
+                expect(radio.checked).toBe(false)
+                vi.mocked(requestSaveNow).mockClear()
+                radio.closest('label')!.click()
+                flushSync()
+                expect(vi.mocked(requestSaveNow)).toHaveBeenCalledTimes(1)
+            } finally {
+                unmount(row)
+                target.remove()
+            }
+        })
+    }
+})
+
+describe('#629 the stored pack colours never outlive their pack (CS-1 to CS-10)', () => {
+    const A = '#101820'
+    const LIGHT = colorSchemePresets.light
+    let seen: string[] = []
+    let backgrounds: string[] = []
+    const watch = (): void => {
+        seen = []
+        backgrounds = []
+        vi.mocked(syncSystemBars).mockClear()
+        const style = document.documentElement.style
+        Reflect.deleteProperty(style, 'setProperty')
+        const original = style.setProperty.bind(style)
+        style.setProperty = (name: string, value: string | null, priority?: string): void => {
+            if (name === '--risu-theme-bgcolor') {
+                backgrounds.push(String(value).toLowerCase())
+            }
+            seen.push(String(value).toLowerCase())
+            original(name, value, priority)
+        }
+    }
+    const ofA = (): string[] => [...seen, ...vi.mocked(syncSystemBars).mock.calls.map((call) => String(call[0]).toLowerCase())].filter((value) => value === A)
+    const tick = async (): Promise<void> => {
+        flushSync()
+        await new Promise<void>((resolve) => setTimeout(resolve, 6))
+        flushSync()
+    }
+    /** A page start from the saved profile: the stored JSON, the boot hold, then the boot step; `source` enters pack safe mode first. */
+    const boot = (source?: 'shortcut' | 'noAnswer', edit?: () => void): void => {
+        const saved = JSON.parse(JSON.stringify(plain(db())))
+        channel.held.length = 0
+        channel.deferred = false
+        resetThemePackApplyForTests()
+        resetPackSheetForTests()
+        resetPackSafeModeForTests()
+        resetPageStorageModeForTests()
+        DBState.db = saved
+        edit?.()
+        document.documentElement.removeAttribute('style')
+        watch()
+        if (holdPackUntilDecided()) {
+            if (source === undefined) {
+                releasePackHold()
+            } else {
+                enterPackSafeMode(source)
+            }
+        }
+        bootThemePackStep(DBState.db, async () => ({ startThemePackApply }))
+    }
+    const normalStart = async (): Promise<void> => {
+        boot()
+        await tick()
+        await settle()
+    }
+    const sha = (bytes: Uint8Array): string => `assets/tp-${createHash('sha256').update(bytes).digest('hex')}.risutheme`
+    const rec = (id: string): Record<string, unknown> => (DBState.db.themePacks as Array<Record<string, unknown>>).find((record) => record.id === id)!
+    const remove = async (id: string): Promise<void> => {
+        const item = listThemePacks(db().themePacks).find((entry) => (entry.entry as { id?: string }).id === id)!
+        expect(await removeThemePack(item.entry, 'x', { confirm: async () => true, notify: vi.fn() })).toBe('removed')
+    }
+    /** Installs an inactive pack: installs it, then turns the pack off. Returns its id. */
+    const offPack = async (sheet: string, name = 'Other', packId = 'other'): Promise<string> => {
+        await installPack(archive(sheet, name, packId))
+        const id = db().activeThemePack as string
+        turnOff()
+        return id
+    }
+    const install = async (bytes: Uint8Array, yes = true): Promise<void> => {
+        await runThemePackInstall({
+            pickFile: async () => ({ name: 'p.risutheme', size: bytes.length }) as unknown as File,
+            readFile: async () => bytes,
+            intake: (verified) => intakePackBytes(verified, async (sheets) => judgePackSheets(sheets)),
+            install: installThemePack,
+            confirm: async () => yes,
+            notify: vi.fn(),
+        })
+    }
+    /** From its second read on, the archive `bytes` is unreadable: the install stores it, then the driver cannot verify it. */
+    const failSecondRead = (bytes: Uint8Array, onFail?: () => void): void => {
+        const key = sha(bytes)
+        const real = world.files.get.bind(world.files)
+        let reads = 0
+        world.files.get = ((requested: string) => {
+            if (requested === key) {
+                reads += 1
+                if (reads >= 2) {
+                    if (reads === 2) {
+                        onFail?.()
+                    }
+                    return new Uint8Array([1, 2, 3])
+                }
+            }
+            return real(requested)
+        }) as typeof world.files.get
+    }
+    afterEach(() => {
+        Reflect.deleteProperty(document.documentElement.style, 'setProperty')
+        Reflect.deleteProperty(world.files, 'get')
+        isLite.set(false)
+        SafeModeStore.set(false)
+        channel.deferred = false
+        resetPackSafeModeForTests()
+        resetPageStorageModeForTests()
+    })
+
+    const OPS = ['pickCore', 'pickNoCore', 'pickBuiltin', 'pickLost', 'newCore', 'newNoCore', 'newLost', 'updateCore', 'updateNoCore', 'updateLost'] as const
+    async function act(op: typeof OPS[number], other: string): Promise<string> {
+        if (op.startsWith('pick')) {
+            const id = op === 'pickBuiltin' ? 'builtin:banana-cocoa' : other
+            expect(selectThemePack(id, { notify: vi.fn() })).toBe('selected')
+            return id
+        }
+        const name = op.startsWith('new') ? 'N' : 'R'
+        await install(archive(op.endsWith('NoCore') ? NO_CORE : CORE_V2, name, name.toLowerCase()))
+        return db().activeThemePack as string
+    }
+
+    for (const op of OPS) {
+        for (const way of ['safe', 'restart', 'warm', 'ctrl'] as const) {
+            it(`CS-1 reproducer: ${op} then ${way} stores no colour of the pack left`, async () => {
+                changeColorScheme('light')
+                const other = op.startsWith('pick') && op !== 'pickBuiltin' ? await offPack(op === 'pickNoCore' ? NO_CORE : CORE_V2) : ''
+                await installPack(archive(CORE_V1, 'R', 'r'))
+                const left = db().activeThemePack as string
+                const snapshot = plain(db().themePackSchemeSnapshot)
+                if (op === 'pickLost') {
+                    world.files.delete(rec(other).archive as string)
+                }
+                if (way === 'safe') {
+                    boot('noAnswer')
+                    await tick()
+                }
+                if (way === 'ctrl') {
+                    SafeModeStore.set(true)
+                    await tick()
+                }
+                channel.deferred = true
+                watch()
+                const id = await act(op, other)
+                flushSync()
+                if (way === 'safe') {
+                    expect(ofA(), 'a pack-free pick or install paints no colour of the pack left').toEqual([])
+                }
+                expect(db().colorSchemeName).toBe('theme-pack')
+                expect(plain(db().colorScheme), 'the stored copy of the pack left is gone').toEqual(LIGHT)
+                expect(plain(db().themePackSchemeSnapshot)).toEqual(snapshot)
+                if (op === 'newLost' || op === 'updateLost') {
+                    world.files.delete(rec(id).archive as string)
+                }
+                if (way === 'warm') {
+                    enterPackSafeMode('shortcut')
+                    await tick()
+                }
+                if (way === 'ctrl') {
+                    SafeModeStore.set(false)
+                }
+                await normalStart()
+                expect(ofA(), 'a pack that is off never paints at a later start').toEqual([])
+                if (op === 'pickCore' || op === 'newCore' || op === 'updateCore') {
+                    expect(bgcolor()).toBe('#203040')
+                }
+                if (op.endsWith('NoCore') || op.endsWith('Lost')) {
+                    expect(bgcolor()).toBe(LIGHT.bgcolor)
+                }
+                if (!op.startsWith('update')) {
+                    boot('shortcut')
+                    await tick()
+                    await remove(left)
+                    await normalStart()
+                    expect(ofA(), 'a removed pack never paints').toEqual([])
+                }
+                turnOff()
+                expect(db().colorSchemeName).toBe('light')
+                expect(plain(db().customColorScheme)).toEqual(CUSTOM)
+            })
+        }
+    }
+
+    it('CS-1 guard: picking a record this build cannot read stores no colour of the pack left (passes before and after)', async () => {
+        changeColorScheme('light')
+        await installPack(archive(CORE_V1, 'A', 'a'))
+        ;(db().themePacks as unknown[]).push({ v: 99, id: 'unreadable-record' })
+        selectThemePack('unreadable-record', { notify: vi.fn() })
+        flushSync()
+        updateColorScheme()
+        expect((db().colorScheme as ColorScheme).bgcolor, 'the stored copy of the pack left is gone').toBe(LIGHT.bgcolor)
+        expect(bgcolor()).toBe(LIGHT.bgcolor)
+    })
+
+    for (const env of ['plain', 'lite', 'readOnly', 'ctrl', 'noAnswer', 'builtin'] as const) {
+        it(`CS-2 reproducer: a held pick in pack safe mode cleans the copy at the pick (${env})`, async () => {
+            changeColorScheme('light')
+            const id = env === 'builtin' ? 'builtin:banana-cocoa' : await offPack(CORE_V2)
+            await installPack(archive(CORE_V1, 'R', 'r'))
+            boot(env === 'noAnswer' ? 'noAnswer' : 'shortcut')
+            await tick()
+            if (env === 'lite') {
+                isLite.set(true)
+                updateColorScheme()
+            }
+            if (env === 'readOnly') {
+                setPageStorageMode({ kind: 'read-only', reason: 'too-new' } as never)
+            }
+            if (env === 'ctrl') {
+                SafeModeStore.set(true)
+                flushSync()
+            }
+            channel.deferred = true
+            watch()
+            expect(selectThemePack(id, { notify: vi.fn() })).toBe('selected')
+            await tick()
+            expect(plain(db().colorScheme), 'the copy is clean at the pick').toEqual(LIGHT)
+            if (env === 'lite') {
+                isLite.set(false)
+                updateColorScheme()
+            }
+            if (env === 'ctrl') {
+                SafeModeStore.set(false)
+                await tick()
+            }
+            await releaseAll()
+            expect(ofA(), 'no colour of the pack being left').toEqual([])
+            const colour = env === 'builtin' ? '#b2c7da' : '#203040'
+            expect(bgcolor()).toBe(colour)
+            if (env !== 'ctrl') {
+                expect((db().colorScheme as ColorScheme).bgcolor).toBe(colour)
+            }
+        })
+    }
+
+    it('CS-3 reproducer: tapping the checked pack of a profile that holds the residue cleans the copy', async () => {
+        changeColorScheme('light')
+        const other = await offPack(NO_CORE)
+        await installPack(archive(CORE_V1, 'R', 'r'))
+        boot('shortcut', () => { db().activeThemePack = other })
+        await tick()
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const row = mount(ThemePackRow, { target })
+        flushSync()
+        try {
+            channel.deferred = true
+            watch()
+            target.querySelector<HTMLInputElement>(`input[value="${other}"]`)!.closest('label')!.click()
+            await tick()
+            expect(packSafe.on).toBe(false)
+            expect(ofA(), 'a checked tap cleans the copy').toEqual([])
+            expect(plain(db().colorScheme)).toEqual(LIGHT)
+            await releaseAll()
+            expect(db().colorSchemeName).toBe('light')
+        } finally {
+            unmount(row)
+            target.remove()
+        }
+    })
+
+    for (const left of ['live', 'broken'] as const) {
+        for (const kind of ['pick', 'install', 'update'] as const) {
+            it(`CS-4 guard: an ordinary ${kind} keeps the paint while pending, left ${left} (passes before and after)`, async () => {
+                changeColorScheme('light')
+                const other = kind === 'pick' ? await offPack(CORE_V2) : ''
+                await installPack(archive(CORE_V1, 'R', 'r'))
+                if (left === 'broken') {
+                    world.files.delete(rec(db().activeThemePack as string).archive as string)
+                    await normalStart()
+                }
+                expect(bgcolor()).toBe(A)
+                const base = baseAttribute()
+                const snapshot = plain(db().themePackSchemeSnapshot)
+                channel.deferred = true
+                watch()
+                await act(kind === 'pick' ? 'pickCore' : kind === 'install' ? 'newCore' : 'updateCore', other)
+                await until(() => channel.held.length > 0, 'held')
+                updateColorScheme()
+                expect(bgcolor(), 'same page, same paint').toBe(A)
+                expect(backgrounds.filter((value) => value === LIGHT.bgcolor), 'no own paint in between').toEqual([])
+                expect(baseAttribute()).toBe(base)
+                expect(db().colorSchemeName).toBe('theme-pack')
+                expect(plain(db().themePackSchemeSnapshot)).toEqual(snapshot)
+                await releaseAll()
+                expect((db().colorScheme as ColorScheme).bgcolor).toBe('#203040')
+                expect(plain(db().themePackSchemeSnapshot)).toEqual(snapshot)
+            })
+        }
+    }
+
+    for (const left of ['live', 'broken'] as const) {
+        it(`CS-5 reproducer: a failed update of B during a switch from ${left} A never brings A's colours back`, async () => {
+            changeColorScheme('light')
+            const other = await offPack(CORE_V2, 'b', 'b')
+            const first = archive(CORE_V1, 'A', 'a')
+            await installPack(first)
+            if (left === 'broken') {
+                world.files.delete(sha(first))
+                await normalStart()
+            }
+            expect(bgcolor()).toBe(A)
+            channel.deferred = true
+            selectThemePack(other, { notify: vi.fn() })
+            await until(() => channel.held.length > 0, 'held')
+            const next = archive(coreSheet('#183040'), 'b', 'b')
+            failSecondRead(next)
+            await install(next)
+            await releaseAll()
+            expect(status().phase).toBe('broken')
+            expect((db().colorScheme as ColorScheme).bgcolor, 'the colours of A never return').toBe(LIGHT.bgcolor)
+            expect(bgcolor()).toBe(LIGHT.bgcolor)
+            await normalStart()
+            expect(bgcolor(), 'the next start').toBe(LIGHT.bgcolor)
+        })
+    }
+
+    it('CS-5 guard: a pick made while an update is pending wins over the displaced copy when the update fails (passes before and after)', async () => {
+        changeColorScheme('light')
+        await installPack(archive(CORE_V1, 'A', 'a'))
+        const next = archive(CORE_V2, 'A', 'a')
+        failSecondRead(next, () => changeColorScheme('dark'))
+        await install(next)
+        await settle()
+        expect(status().phase).toBe('broken')
+        expect(db().colorSchemeName, 'a pick made while the update was pending wins').toBe('dark')
+        expect(plain(db().colorScheme)).toEqual(colorSchemePresets.dark)
+    })
+
+    it('CS-5 guard: a failed update with no pick keeps the previous version\'s colours under the pack scheme (passes before and after)', async () => {
+        changeColorScheme('light')
+        await installPack(archive(CORE_V1, 'A', 'a'))
+        const next = archive(CORE_V2, 'A', 'a')
+        failSecondRead(next)
+        await install(next)
+        await settle()
+        expect(status().phase).toBe('broken')
+        expect(db().colorSchemeName).toBe('theme-pack')
+        expect((db().colorScheme as ColorScheme).bgcolor).toBe(A)
+    })
+
+    it('CS-6 guard: a broken turn-on leaves the pack scheme (passes before and after)', async () => {
+        changeColorScheme('light')
+        const other = await offPack(CORE_V2)
+        await installPack(archive(CORE_V1, 'R', 'r'))
+        world.files.delete(rec(other).archive as string)
+        await turnOn(other)
+        expect(schemeFields()).toEqual({ name: 'light', scheme: LIGHT })
+    })
+
+    for (const from of ['own', 'pack'] as const) {
+        it(`CS-7 reproducer: the tile during a pending switch stores no colour of the pack being left, from ${from}`, async () => {
+            changeColorScheme('light')
+            const other = await offPack(from === 'own' ? NO_CORE : CORE_V2)
+            await installPack(archive(CORE_V1, 'R', 'r'))
+            if (from === 'own') {
+                changeColorScheme('light')
+                flushSync()
+            }
+            channel.deferred = true
+            selectThemePack(other, { notify: vi.fn() })
+            await until(() => channel.held.length > 0, 'held')
+            adoptActivePackScheme()
+            expect(bgcolor()).toBe(A)
+            expect(plain(db().colorScheme), 'the tile stores no colour of the pack being left').toEqual(LIGHT)
+            await releaseAll()
+            if (from === 'pack') {
+                expect((db().colorScheme as ColorScheme).bgcolor, 'no cancel').toBe('#203040')
+                return
+            }
+            expect(db().colorSchemeName).toBe('theme-pack')
+            await normalStart()
+            expect(ofA()).toEqual([])
+        })
+    }
+
+    it('CS-8 guard: the tile of a settled pack stores its colours (passes before and after)', async () => {
+        await installPack(archive(CORE_V1, 'R', 'r'))
+        changeColorScheme('light')
+        adoptActivePackScheme()
+        expect((db().colorScheme as ColorScheme).bgcolor).toBe(A)
+    })
+
+    for (const own of ['custom', 'unknown'] as const) {
+        it(`CS-9 reproducer: an install in pack safe mode, then None, restores the user's ${own} scheme`, async () => {
+            if (own === 'custom') {
+                changeColorScheme('custom')
+            } else {
+                db().colorSchemeName = 'future-scheme'
+                db().colorScheme = structuredClone(OWN_COPY)
+            }
+            const before = schemeFields()
+            await installPack(archive(CORE_V1, 'R', 'r'))
+            enterPackSafeMode('shortcut')
+            flushSync()
+            await install(archive(NO_CORE, 'N', 'n'))
+            expect(plain(db().colorScheme), 'the stored colours are not the pack\'s').toEqual(before.scheme)
+            turnOff()
+            expect(schemeFields()).toEqual(before)
+            expect(plain(db().customColorScheme)).toEqual(CUSTOM)
+        })
+    }
+
+    for (const kind of ['busy', 'declined', 'decision'] as const) {
+        it(`CS-10 guard: ${kind} writes nothing (passes before and after)`, async () => {
+            changeColorScheme('light')
+            await installPack(archive(CORE_V1, 'R', 'r'))
+            const before = plain(db())
+            boot('shortcut')
+            await tick()
+            if (kind === 'busy') {
+                expect(selectThemePack('builtin:banana-cocoa', { notify: vi.fn(), isBusy: () => true })).toBe('busy')
+            }
+            if (kind === 'declined') {
+                await install(archive(CORE_V2, 'N', 'n'), false)
+            }
+            expect(plain(db())).toEqual(before)
+        })
+    }
+
+    it('CS-12 guard: a live default paints over a waiting request\'s displaced copy (passes before and after)', async () => {
+        changeColorScheme('light')
+        const other = await offPack(CORE_V2, 'b', 'b')
+        await installPack(archive(CORE_V1, 'A', 'a'))
+        ;(db().colorScheme as ColorScheme).bgcolor = '#0d141c'
+        updateColorScheme()
+        expect(bgcolor()).toBe(A)
+        channel.deferred = true
+        selectThemePack(other, { notify: vi.fn() })
+        updateColorScheme()
+        expect(bgcolor(), 'the live default of the applied pack, not the stale copy').toBe(A)
+        await releaseAll()
+        expect(bgcolor()).toBe('#203040')
+    })
+
+    it('CS-13 reproducer: a cancelled request leaves no displaced copy to paint', async () => {
+        changeColorScheme('light')
+        const other = await offPack(CORE_V2)
+        const first = archive(CORE_V1, 'R', 'r')
+        await installPack(first)
+        world.files.delete(sha(first))
+        await normalStart()
+        channel.deferred = true
+        selectThemePack(other, { notify: vi.fn() })
+        await until(() => channel.held.length > 0, 'held')
+        expect(pendingPackSchemeRequestForTests()).not.toBeNull()
+        cancelPackSchemeRequest()
+        updateColorScheme()
+        expect(pendingPackSchemeRequestForTests()).toBeNull()
+        expect(bgcolor(), 'with no request and no live pack the stored copy paints').toBe(LIGHT.bgcolor)
     })
 })

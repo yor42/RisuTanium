@@ -551,7 +551,8 @@ pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\ris
   phone 2 as 6310-6329, so the default sits inside lane A's reservation and collides with neither phone range. It is still a
   shared default: two runs that both rely on it can pick the same port (the scan skips a port that already has a forward and
   uses `--no-rebind`, but two agents starting together are not coordinated). Pass `-PortMin` and `-PortMax` from the agent's own
-  range when more than one device agent works at once. (Before CHORE-204 the default was 9500-9599, outside every
+  range when more than one device agent works at once. The range comes from the device lease grant (`ports.min` to `ports.max`;
+  [live-checks](../../../docs/workflow/live-checks.md#device-leases)); the phone ranges below are the policy values behind it. (Before CHORE-204 the default was 9500-9599, outside every
   reservation.)
 - **Devices (orchestrator-restated memory rules, not in the scripts).** Phone 1 is serial `29f3cde9193f7ece`, ports 6270-6309;
   phone 2 is `2ac80128013f7ece`, ports 6310-6329. No script defaults to a device: pass `-Serial <serial>` every time
@@ -571,8 +572,11 @@ pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\ris
   600 s kill (`Get-GuardCallCap`): the installs, the app-data `find`/`stat`, the snapshot stream and the restore extraction and
   `sha256sum` are bounded that way, and a call the guard did kill shows as exit 1 with an empty reason. A snapshot stream is
   started from `Get-AdbInvocation` (executable plus guard arguments, `--kit` included) because its output goes to a file.
-- **One agent per device.** Only lane A drives the phones (`Agents/Lanes/README.md`); other lanes ask the maintainer to pass the
-  request, with a data ceiling, a time limit and a pass/fail exit (MC-330). A per-device lock
+- **One agent per device.** A Note 9 is driven only by the session holding its device lease (the `note9` pool; MC-3773, MC-3774;
+  [live-checks](../../../docs/workflow/live-checks.md#device-leases)), with a data ceiling, a time limit and a pass/fail exit
+  in the brief ([BRIEF-TEMPLATE.md](BRIEF-TEMPLATE.md)). Until the lease is live (transition note in live-checks), lane B
+  keeps the queue and the older rule holds (`Agents/Lanes/README.md`; requests carry a data ceiling, a time limit and a
+  pass/fail exit, MC-330). The lease does not replace the file locks below. A per-device lock
   (`<SnapshotRoot>\device-<serial>.lock`) is held by snapshot, restore and import-bin; a stale lock of a dead process is replaced.
   The lock is not continuous in import-bin (see the lock gap below).
 - **Process kills.** Scripts stop only PIDs they recorded (the child and its descendants) and remove only the adb forwards they

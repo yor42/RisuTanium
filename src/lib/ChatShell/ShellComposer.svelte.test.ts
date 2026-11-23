@@ -3,6 +3,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import * as drafts from '../../ts/process/composerDrafts.svelte'
+import { setProcessStage } from '../../ts/process/generationOwnership.svelte'
 import { hasLocalDrafts, resetLocalDraftsForTest } from '../../ts/localDrafts'
 import { pendingChatFileUploads, trackChatFileAttachment } from '../../ts/process/composerSurface.svelte'
 import type { InlayWriteProgress } from '../../ts/process/files/inlays'
@@ -16,7 +17,6 @@ const state = $state({ db: {
 const selection = $state({ selId: 0 })
 const popup = $state({ value: '', mode: '', language: '', open: false })
 const busy = writable(false)
-const stage = writable(0)
 const sendMain = vi.fn(async () => {})
 const abortChat = vi.fn()
 const stopComposerWorkIn = vi.fn()
@@ -25,7 +25,7 @@ const work = $state({ shown: false, window: false })
 const postChatFile = vi.fn(async (..._args: unknown[]) => [{ type: 'asset' as const, data: 'asset-id' }])
 
 vi.mock('../../ts/stores.svelte', () => ({ DBState: state, selIdState: selection, popUpEditorStore: popup }))
-vi.mock('../../ts/process/index.svelte', () => ({ doingChat: busy, chatProcessStage: stage }))
+vi.mock('../../ts/process/index.svelte', () => ({ doingChat: busy }))
 vi.mock('../../ts/process/composerActions.svelte', () => ({ sendMain, abortChat, stopComposerWorkIn, isComposerBusy: () => work.window, isComposerBusyIn: () => work.shown, isComposerLocked: () => false, reroll: vi.fn(), updateInputTransateMessage: vi.fn() }))
 const pendingDelete = $state({ chatId: null as string | null })
 vi.mock('../../ts/process/chatOrigin', () => ({ beginWork: vi.fn(), originOf: (owner: { chaId: string }, chat: { id: string }) => ({ chaId: owner.chaId, chatId: chat.id }) }))
@@ -88,6 +88,15 @@ describe('ShellComposer draft and actions', () => {
         if (app) await unmount(app)
         app = null
         expect(hasLocalDrafts()).toBe(false)
+    })
+
+    // G12 (post-fix guard): the progress ring shows the shown chat's own stage, not another chat's.
+    test('the Stop button shows the stage of the shown chat', async () => {
+        setProcessStage({ chaId: 'c', chatId: 'chat' }, 3)
+        setProcessStage({ chaId: 'other', chatId: 'other-chat' }, 1)
+        work.shown = true
+        const node = await show()
+        expect(node.querySelector('[data-part="chat-composer-progress"]')?.getAttribute('data-stage')).toBe('3')
     })
 
     test('the plus button is named Tools, the name of the sheet it opens, and not the message action name', async () => {
