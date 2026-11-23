@@ -20,7 +20,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
 
 import SideBarArrow from './SideBarArrow.svelte'
 import { homeChrome } from 'src/lib/UI/Home/homeChrome.svelte'
-import { DynamicGUI, sideBarStore } from 'src/ts/stores.svelte'
+import { DynamicGUI, sideBarClosing, sideBarStore } from 'src/ts/stores.svelte'
 
 const mounted: { instance: unknown, target: HTMLElement }[] = []
 
@@ -39,6 +39,7 @@ afterEach(async () => {
     }
     homeChrome.phoneDrawer = false
     sideBarStore.set(false)
+    sideBarClosing.set(false)
     DynamicGUI.set(false)
 })
 
@@ -61,6 +62,12 @@ describe('SideBarArrow', () => {
         const openState = mountArrow()
         expect(openState.querySelectorAll('button').length).toBe(1)
         expect(openState.querySelector('button')!.hasAttribute('data-panel-handle')).toBe(false)
+    })
+
+    test('T-612: in overlay mode with the sidebar open the arrow renders no button, since Sidebar draws it in the backdrop strip', () => {
+        DynamicGUI.set(true)
+        sideBarStore.set(true)
+        expect(mountArrow().querySelector('button')).toBeNull()
     })
 
     test('T-B13d: the flag is false by default, before any HomeShell mount, so the arrow shows in a chat opened first', async () => {

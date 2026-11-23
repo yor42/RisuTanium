@@ -60,12 +60,20 @@ describe('SideBarArrow names', () => {
         expect(button.querySelector('svg')!.getAttribute('aria-hidden')).toBe('true')
     })
 
-    test('under the dynamic GUI the handle shows while open and reports expanded', () => {
+    test('under the dynamic GUI the open overlay owns its own arrow, so the handle renders nothing', () => {
         DynamicGUI.set(true)
         sideBarStore.set(true)
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mounted.push({ instance: mount(SideBarArrow, { target }), target })
+        flushSync()
+        expect(target.querySelector('button')).toBeNull()
+    })
+
+    test('under the dynamic GUI the closed handle is named Sidebar and reports collapsed', () => {
+        DynamicGUI.set(true)
         const button = onlyButton()
         expect(button.hasAttribute('data-panel-handle')).toBe(true)
-        expect(button.getAttribute('aria-label')).toBe(language.chatShellSidebar)
-        expect(button.getAttribute('aria-expanded')).toBe('true')
+        expect(button.getAttribute('aria-expanded')).toBe('false')
     })
 })
