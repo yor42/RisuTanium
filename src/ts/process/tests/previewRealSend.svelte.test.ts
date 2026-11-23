@@ -14,9 +14,8 @@
  * on a miss, as production does. The helper that restores a cold-storage
  * member is mocked: a test simulates a failed restore by resolving false.
  *
- * A stage is aborted the way the busy button aborts it: `abortUnitInProgress`
- * from `generationOwnership.svelte`, called from inside the mock that stands
- * for that stage.
+ * A stage is aborted the way the busy button aborts it: `stopAllReplyWork`
+ * from `chatOrigin`, called from inside the mock that stands for that stage.
  *
  * Tests whose title starts with `guard:` pass with or without the fix: they
  * pin behaviour that must be preserved.
@@ -257,7 +256,7 @@ vi.mock('../coldMemberRestore', () => ({
 
 import { sendChat, doingChat } from 'src/ts/process/index.svelte'
 import { runPreviewPrompt } from 'src/ts/process/devToolActions'
-import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
+import { stopAllReplyWork } from 'src/ts/process/chatOrigin'
 import { alertStore, DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { runLuaEditTrigger } from 'src/ts/process/scriptings'
 import { language } from 'src/lang'
@@ -510,7 +509,7 @@ describe('the DevTool preview over the real send', () => {
     test('an abort that lands after the request\'s last abort check shows nothing', async () => {
         installCharWorld()
         requestChatDataMock.mockImplementation(async () => {
-            abortUnitInProgress()
+            stopAllReplyWork()
             return { type: 'success', result: REQUEST_BODY }
         })
         const alerts = recordAlerts()
@@ -531,7 +530,7 @@ describe.each([
     test('an abort before the start trigger does not run the trigger, and ends the send with no alert', async () => {
         installCharWorld()
         exampleMessageMock.mockImplementation(() => {
-            abortUnitInProgress()
+            stopAllReplyWork()
             return []
         })
 
@@ -550,7 +549,7 @@ describe.each([
         installCharWorld({ supaMemory: true }, { supaModelType: 'openAI' })
         runTriggerMock.mockImplementation(async (_char: unknown, mode: string) => {
             if (mode === 'start') {
-                abortUnitInProgress()
+                stopAllReplyWork()
             }
             return triggerReturn
         })
@@ -567,7 +566,7 @@ describe.each([
     test('an abort during memory summarisation sends no request, and ends the send with no alert', async () => {
         installCharWorld({ supaMemory: true }, { supaModelType: 'openAI' })
         supaMemoryMock.mockImplementation(async (chats: OpenAIChat[], currentTokens: number) => {
-            abortUnitInProgress()
+            stopAllReplyWork()
             return { chats, currentTokens }
         })
 
@@ -584,7 +583,7 @@ describe('a formatted preview aborted at a stage boundary', () => {
     test('guard: an abort during memory summarisation ends it with no request and no alert', async () => {
         installCharWorld({ supaMemory: true }, { supaModelType: 'openAI' })
         supaMemoryMock.mockImplementation(async (chats: OpenAIChat[], currentTokens: number) => {
-            abortUnitInProgress()
+            stopAllReplyWork()
             return { chats, currentTokens }
         })
 
@@ -605,7 +604,7 @@ describe.each([
         installGroupWorld({ cold: ['member-1', 'member-2'] })
         restoreColdCharacterMock.mockImplementation(async (chaId: string) => {
             if (chaId === 'member-1') {
-                abortUnitInProgress()
+                stopAllReplyWork()
                 DBState.db.characters.splice(indexOfCharacter(chaId), 1)
                 return false
             }
@@ -633,7 +632,7 @@ describe('a real group send aborted while a member still reports success', () =>
         })
         runTriggerMock.mockImplementation(async (_char: unknown, mode: string) => {
             if (mode === 'output') {
-                abortUnitInProgress()
+                stopAllReplyWork()
             }
             return undefined
         })
@@ -889,7 +888,7 @@ describe('a formatted preview aborted after its last stage', () => {
         installCharWorld()
         vi.mocked(runLuaEditTrigger).mockImplementation(async (_char: unknown, type: string, formated: unknown) => {
             if (type === 'editRequest') {
-                abortUnitInProgress()
+                stopAllReplyWork()
             }
             return formated as never
         })

@@ -70,7 +70,7 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
 
 import { previewMayStart } from 'src/ts/process/previewRunner'
 import { resetAlertPromptsForTests } from 'src/ts/alertPrompts'
-import { setComposerWindow } from 'src/ts/process/generationOwnership.svelte'
+import { openComposerWindow, resetComposerWindowsForTests } from 'src/ts/process/generationOwnership.svelte'
 import { alertTask, answerTask, resetTaskHostForTests } from 'src/ts/alertTask.svelte'
 import { alertStore } from 'src/ts/stores.svelte'
 import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
@@ -83,7 +83,7 @@ beforeEach(() => {
     resetAlertPromptsForTests()
     resetTaskHostForTests()
     doingChat.set(false)
-    setComposerWindow(false)
+    resetComposerWindowsForTests()
     alertStore.set({ type: 'none', msg: '' })
 })
 

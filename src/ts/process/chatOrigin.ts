@@ -1123,7 +1123,28 @@ export function isShownChat(origin: { chaId: string, chatId: string }): boolean 
  * and does not keep the others from running.
  */
 export function stopWorkIn(target: { chaId: string, chatId?: string }): void {
-    const matching = registrations.filter((registration) => ownedBy(registration, target))
+    stopRegistrations((registration) => ownedBy(registration, target))
+}
+
+/**
+ * Stops every `reply` and `preview` registration, whatever chat it is bound to
+ * (stop-all, MC-3309, MC-3743): every outermost send and preview, and every
+ * recovered apply. `work` registrations (takes, tree edits, commands, trigger
+ * runs, auto runs) are left alone. Same once-only mark as `stopWorkIn`, so a
+ * later per-chat stop or delete skips what this stopped, and the other way
+ * round.
+ */
+export function stopAllReplyWork(): void {
+    stopRegistrations((registration) => registration.kind === 'reply' || registration.kind === 'preview')
+}
+
+/**
+ * The matching registrations are fixed first, then each one's stop is called
+ * once; ended and already stopped registrations are skipped, and a throwing
+ * stop is logged without keeping the others from running.
+ */
+function stopRegistrations(matches: (registration: Registration) => boolean): void {
+    const matching = registrations.filter(matches)
     for (const registration of matching) {
         if (registration.ended || registration.stopped) {
             continue

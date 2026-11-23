@@ -92,18 +92,27 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
     sendChat: sendChatMock,
 }) as unknown as typeof import('src/ts/process/index.svelte'))
 
+// Every other export stays the real module's. `isComposerWindowOpen` is a delegating spy so one call can answer
+// false: a second auto run can then start while an earlier toggled-off run still holds its window.
+vi.mock(import('src/ts/process/generationOwnership.svelte'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return { ...actual, isComposerWindowOpen: vi.fn(actual.isComposerWindowOpen) }
+})
+
 //#endregion
 
 import { runAutoMode, abortChat, isAutoModeActive, isComposerBusy, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
-import { noteTurnReached } from 'src/ts/process/generationOwnership.svelte'
+import { noteTurnReached, composerWindowFor, isComposerWindowOpen } from 'src/ts/process/generationOwnership.svelte'
 import type { Writable } from 'svelte/store'
 const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures
 
 const RUNAWAY_LIMIT = 200
+/** The chat the fixture's auto mode runs in. */
+const RUN_CHAT = { chaId: 'group-0', chatId: 'chat-0' }
 
 function installGroupChat(): void {
     const chat = { id: 'chat-0', message: [], note: '', localLore: [], scriptstate: {} } as unknown as Chat
@@ -145,8 +154,13 @@ function scriptTicks(source: ComposerActionsSource, outcome: (call: number, arg:
     return { calls: () => calls }
 }
 
+const actualIsComposerWindowOpen = (await vi.importActual<typeof import('src/ts/process/generationOwnership.svelte')>('src/ts/process/generationOwnership.svelte')).isComposerWindowOpen
+
 beforeEach(() => {
     sendChatMock.mockReset()
+    // A one-shot answer a failed test left unused must not reach the next test.
+    vi.mocked(isComposerWindowOpen).mockReset()
+    vi.mocked(isComposerWindowOpen).mockImplementation(actualIsComposerWindowOpen)
     installGroupChat()
 })
 
@@ -176,7 +190,7 @@ describe('auto mode and the count of quiet ticks', () => {
         const source = makeSource()
         const ticks = scriptTicks(source, (call) => {
             if (call === 50) {
-                noteTurnReached()
+                noteTurnReached(RUN_CHAT)
             }
             return true
         })
@@ -193,7 +207,7 @@ describe('auto mode between two ticks', () => {
         DBState.db.characters.push({ chaId: 'other-0', name: 'other-0', type: 'character', chatPage: 0, chats: [{ id: 'other-chat', message: [] }] } as unknown as character)
         let callsAtSwitch: number | undefined
         const ticks = scriptTicks(source, () => {
-            noteTurnReached()
+            noteTurnReached(RUN_CHAT)
             return true
         })
         postProbe(() => {
@@ -210,7 +224,7 @@ describe('auto mode between two ticks', () => {
     test('a send that takes the flag while the loop has handed control back stops it before another tick is handed over', async () => {
         const source = makeSource()
         const ticks = scriptTicks(source, () => {
-            noteTurnReached()
+            noteTurnReached(RUN_CHAT)
             return true
         })
         postProbe(() => { doingChat.set(true) })
@@ -234,7 +248,7 @@ describe('auto mode between two ticks', () => {
             })
         }
         const ticks = scriptTicks(source, (call) => {
-            noteTurnReached()
+            noteTurnReached(RUN_CHAT)
             if (call === 10 && isAutoModeActive()) {
                 void runAutoMode(source)
             }
@@ -315,6 +329,109 @@ describe('auto mode and the busy button', () => {
         await runAutoMode(source)
 
         expect(ticks.calls()).toBe(3)
+        expect(isAutoModeActive()).toBe(false)
+    })
+})
+
+describe('auto mode toggled off while a tick is in flight', () => {
+    const OTHER_CHAT = { chaId: 'group-1', chatId: 'chat-1' }
+
+    function addOtherChat(): void {
+        const chat = { id: 'chat-1', message: [], note: '', localLore: [], scriptstate: {} } as unknown as Chat
+        DBState.db.characters.push({ chaId: 'group-1', name: 'group-1', type: 'group', chatPage: 0, chats: [chat] } as unknown as character)
+    }
+
+    /** Ticks listed in `held` stop at their own gate until released; every other tick returns at once. */
+    function gatedTicks(source: ComposerActionsSource, held: number[]): { calls: () => number, gate: (call: number) => { reached: Promise<void>, release: () => void } } {
+        const gates = new Map<number, { reached: Promise<void>, markReached: () => void, wait: Promise<void>, release: () => void }>()
+        for (const call of held) {
+            let release: () => void = () => {}
+            const wait = new Promise<void>((res) => { release = res })
+            let markReached: () => void = () => {}
+            const reached = new Promise<void>((res) => { markReached = res })
+            gates.set(call, { reached, markReached, wait, release })
+        }
+        const ticks = scriptTicks(source, async (call) => {
+            const entry = gates.get(call)
+            if (entry) {
+                entry.markReached()
+                await entry.wait
+            }
+            return true
+        })
+        return { calls: ticks.calls, gate: (call) => gates.get(call)! }
+    }
+
+    const macrotask = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+    // R12a (regression reproducer): the toggled-off run's late exit cleared the newer run's flag and window.
+    test('a toggled-off run that ends after a newer run started leaves the newer run active and its window open', async () => {
+        const source = makeSource()
+        addOtherChat()
+        const ticks = gatedTicks(source, [1, 2])
+        const runA = runAutoMode(source)
+        await ticks.gate(1).reached
+        await runAutoMode(source)
+        expect(isAutoModeActive()).toBe(false)
+
+        selectedCharID.set(1)
+        vi.mocked(isComposerWindowOpen).mockReturnValueOnce(false)
+        const runB = runAutoMode(source)
+        await ticks.gate(2).reached
+
+        ticks.gate(1).release()
+        await runA
+        try {
+            expect(isAutoModeActive()).toBe(true)
+            expect(composerWindowFor(OTHER_CHAT)).toBe(true)
+        } finally {
+            await runAutoMode(source)
+            ticks.gate(2).release()
+            await runB
+        }
+    })
+
+    // R12b (regression reproducer): the toggled-off run read the newer run's flag and went on ticking.
+    test('a toggled-off run does not tick again once a newer run in the same chat is active', async () => {
+        const source = makeSource()
+        const ticks = gatedTicks(source, [1, 2])
+        const runA = runAutoMode(source)
+        await ticks.gate(1).reached
+        await runAutoMode(source)
+        expect(isAutoModeActive()).toBe(false)
+
+        vi.mocked(isComposerWindowOpen).mockReturnValueOnce(false)
+        const runB = runAutoMode(source)
+        await ticks.gate(2).reached
+
+        ticks.gate(1).release()
+        await macrotask()
+        await macrotask()
+        try {
+            expect(ticks.calls()).toBe(2)
+        } finally {
+            await runAutoMode(source)
+            ticks.gate(2).release()
+            await Promise.all([runA, runB])
+        }
+    })
+
+    // G6 (compatibility guard, passes on base): the toggle pressed in another chat still stops the running loop.
+    test('guard: the toggle pressed in another chat stops the running loop and starts no tick there', async () => {
+        const source = makeSource()
+        addOtherChat()
+        const ticks = gatedTicks(source, [1])
+        const run = runAutoMode(source)
+        await ticks.gate(1).reached
+
+        selectedCharID.set(1)
+        await runAutoMode(source)
+        expect(isAutoModeActive()).toBe(false)
+        expect(ticks.calls()).toBe(1)
+
+        ticks.gate(1).release()
+        await run
+        expect(ticks.calls()).toBe(1)
         expect(isAutoModeActive()).toBe(false)
     })
 })

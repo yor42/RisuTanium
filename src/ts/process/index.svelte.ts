@@ -1,4 +1,4 @@
-import { get, writable, type Readable } from "svelte/store";
+import { get, type Readable } from "svelte/store";
 import { type character, type groupChat, type ChatAltMemory, type MessageGenerationInfo, type Chat, type MessagePresetInfo, changeToPreset, type Message, type StreamingDisplayOptimizationMode } from "../storage/database.svelte";
 import { DBState } from '../stores.svelte';
 import { CharEmotion, selectedCharID } from "../stores.svelte";
@@ -74,7 +74,7 @@ import { MEASURE } from "./memory/measureFlag";
 import { noteReplyArrived } from "../storage/saveRequestProbe";
 import { activeUnits, type ActiveUnitKey } from "./activeUnits";
 import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkKind, type WorkStop } from "./chatOrigin";
-import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
+import { noteTurnReached, publishUnit, releaseUnit, setProcessStage } from "./generationOwnership.svelte";
 import { addActiveStream, addReplySpeaker, noteStreamReceived, noteStreamText } from "./activeStreams";
 import { splitAtOpenCbsSpan } from "../chatShell/streamSpans";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
@@ -130,7 +130,6 @@ export interface MultiModal{
  * it, through the unit's own take and release.
  */
 export const doingChat: Readable<boolean> = activeUnits.active
-export const chatProcessStage = writable(0)
 
 /**
  * Test-only observation of the positions a streamed reply's flush wrote at.
@@ -362,12 +361,13 @@ function sendAdmissible(arg: SendChatArg): boolean {
 
 /**
  * Outer wrapper (CHORE-01). An outermost call is a unit: it holds a unit of
- * `activeUnits` (which `doingChat` reports) and the abort controller published
- * as the unit in progress, from the moment it is accepted until it settles. It
+ * `activeUnits` (which `doingChat` reports) and its abort controller's signal
+ * published as a tag for the native chat Stop, from the moment it is accepted
+ * until it settles. The unit's stop is its work registration's. It
  * is refused while another unit is held, when its caller's signal is already
  * aborted, and by the refusals that depend on the chat it writes to (a cold
  * chat still loading, nothing selected, an origin that is gone). A refused call
- * changes neither the registry nor the published controller and registers
+ * changes neither the registry nor the published tags and registers
  * nothing.
  *
  * The admission check and the take happen in one synchronous stretch: nothing
@@ -382,7 +382,6 @@ function sendAdmissible(arg: SendChatArg): boolean {
  * caller's signal or by the busy button.
  */
 export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Promise<boolean> {
-    chatProcessStage.set(0)
     if(!sendAdmissible(arg) || arg.signal?.aborted){
         return false
     }
@@ -393,6 +392,9 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     if(!entry){
         return false
     }
+    // Reset after admission and every refusal, for the chat this unit writes
+    // to, so a refused call never clears the running send's progress.
+    setProcessStage(entry.context.origin, 0)
     // Inert until taken; the release below affects this handle only.
     const active = activeUnits.unit(entry.context.origin)
     const callerSignal = arg.signal
@@ -478,11 +480,11 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
  * unit.
  */
 async function sendChatRecursion(chatProcessIndex: number, arg: SendChatArg): Promise<boolean> {
-    chatProcessStage.set(0)
     const entry = enterSendChat(chatProcessIndex, arg)
     if(!entry){
         return false
     }
+    setProcessStage(entry.context.origin, 0)
     try {
         return await sendChatBody(chatProcessIndex, arg, entry.context)
     } finally {
@@ -557,7 +559,7 @@ function rerunDeferredApply(): void {
  * that is not on screen sets the unseen mark (MC-2358).
  *
  * It runs only while no unit is held (`doingChat`): the apply takes a unit, so a send is refused meanwhile, and a
- * busy Stop finds nothing to stop. A deleted or trashed chat stops it through its work registration.
+ * stop-all, a delete or a trashed chat stops it through its work registration, which defers it before its write.
  */
 export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<ApplyOutcome> {
     const { key, blob, text } = input
@@ -1230,7 +1232,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     else{
         currentChar = nowChatroom
     }
-    noteTurnReached()
+    noteTurnReached(origin)
 
     let chatAdditonalTokens = arg.chatAdditonalTokens ?? caculatedChatTokens
     const tokenizer = new ChatTokenizer(chatAdditonalTokens, DBState.db.aiModel.startsWith('gpt') ? 'noName' : 'name')
@@ -1244,7 +1246,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     const jailbreakOn = effectiveJailbreak(currentChat)
     let maxContextTokens = DBState.db.maxContext
 
-    chatProcessStage.set(1)
+    setProcessStage(origin, 1)
     stageTimings.stage1Start = Date.now()
     let unformated = {
         'main':([] as OpenAIChat[]),
@@ -2082,7 +2084,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             currentTokens = await totalInSendOrder(countArgs)
         }
         stageTimings.stage1Duration = Date.now() - stageTimings.stage1Start
-        chatProcessStage.set(2)
+        setProcessStage(origin, 2)
         stageTimings.stage2Start = Date.now()
         if(DBState.db.hanuraiEnable){
             const hn = await hanuraiMemory(chats, {
@@ -2162,7 +2164,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             memoryCtx.chat.lastMemory = sp.lastId ?? memoryCtx.chat.lastMemory;
         }
         stageTimings.stage2Duration = Date.now() - stageTimings.stage2Start
-        chatProcessStage.set(1)
+        setProcessStage(origin, 1)
     }
     else{
         stageTimings.stage1Duration = Date.now() - stageTimings.stage1Start
@@ -2702,7 +2704,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
     }
 
-    chatProcessStage.set(3)
+    setProcessStage(origin, 3)
     stageTimings.stage3Start = Date.now()
     if(arg.preview){
         if(abortSignal.aborted){
@@ -3345,7 +3347,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     if(generationInfo.stageTiming) {
         generationInfo.stageTiming.stage3 = stageTimings.stage3Duration
     }
-    chatProcessStage.set(4)
+    setProcessStage(origin, 4)
     stageTimings.stage4Start = Date.now()
 
     if(resendChat){

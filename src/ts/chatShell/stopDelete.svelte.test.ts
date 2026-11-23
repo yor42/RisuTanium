@@ -319,6 +319,43 @@ describe('T24 stop and delete', () => {
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'u3'])
     })
 
+    it('keeps one request per chat: a request in another chat is accepted and each resolves on its own', async () => {
+        const { owner, chat, origin } = setup()
+        const chatB = { id: 'chat-b', name: '', note: '', localLore: [], message: [message('b1', 'user'), message('b2')] }
+        const ownerB = { chaId: 'owner-b', chats: [chatB], chatPage: 0 }
+        DBState.db.characters.push(ownerB as never)
+        const liveB = DBState.db.characters[1]
+        const originB = { chaId: 'owner-b', chatId: 'chat-b' }
+        const stopB = vi.fn<() => void>()
+        doingChat.set(true)
+        const handleA = registerWork(origin, flag.stop)
+        const handleB = registerWork(originB, stopB)
+        try {
+            expect(requestStopDelete(owner, chat, chat.message[3], 'one')).toBe(true)
+            expect(requestStopDelete(liveB, liveB.chats[0], liveB.chats[0].message[1], 'one')).toBe(true)
+            expect(requestStopDelete(owner, chat, chat.message[1], 'one')).toBe(false)
+            expect(isStopDeletePending(origin)).toBe(true)
+            expect(isStopDeletePending(originB)).toBe(true)
+
+            settleSend(handleA, owner.chaId)
+            await macrotask()
+            expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3'])
+            expect(isStopDeletePending(origin)).toBe(false)
+            expect(isStopDeletePending(originB)).toBe(true)
+            expect(liveB.chats[0].message).toHaveLength(2)
+
+            settleSend(handleB, 'owner-b')
+            await new Promise<void>((resolve) => setTimeout(resolve, 60))
+            expect(liveB.chats[0].message.map((item) => item.chatId)).toEqual(['b1'])
+        } finally {
+            handleA.end()
+            handleB.end()
+            await macrotask()
+            await macrotask()
+        }
+        expect(isStopDeletePending()).toBe(false)
+    })
+
     it('stops only the work of its own chat: a reply in another chat keeps writing', async () => {
         const { owner, chat, origin } = setup()
         const otherStop = vi.fn<() => void>()

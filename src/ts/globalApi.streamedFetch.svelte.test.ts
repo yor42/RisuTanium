@@ -626,6 +626,27 @@ describe('fetchNative marks a request for the chat Stop (MC-1435)', () => {
         }
     })
 
+    // V-1c (regression reproducer): two published units each keep their own mark and target.
+    test('each of two published unit signals carries its own chatStop and chat target', async () => {
+        const unitA = new AbortController()
+        const unitB = new AbortController()
+        publishUnit(unitA, { chaId: 'a', chatId: '1' })
+        publishUnit(unitB, { chaId: 'b', chatId: '2' })
+        try {
+            await begin({ signal: unitA.signal })
+            const argsA = streamedFetchArgs()
+            await begin({ signal: unitB.signal })
+            const argsB = streamedFetchArgs()
+            expect(argsA.chatStop).toBe(true)
+            expect(argsA.chatTarget).toEqual({ chaId: 'a', chatId: '1' })
+            expect(argsB.chatStop).toBe(true)
+            expect(argsB.chatTarget).toEqual({ chaId: 'b', chatId: '2' })
+        } finally {
+            releaseUnit(unitA)
+            releaseUnit(unitB)
+        }
+    })
+
     // V-2 (guard on the selection; on base it fails only because the field is absent).
     // The request is left pending: the stub command never settles and nothing here reads its stream.
     const expectUnmarked = async (label: string, signal: AbortSignal | undefined) => {
