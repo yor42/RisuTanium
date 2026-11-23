@@ -1102,7 +1102,7 @@ type RunTriggerDisplayArg = {
 // system-prompt text of such a run is parsed as part of the prompt.
 // `signal` stops the run's command lines before their next command and the run
 // itself before its next trigger, effect or loop step (the effect already
-// running finishes), and `ownsWindow` marks work that opened the composer's
+// running finishes, but saves no chat variable after the abort), and `ownsWindow` marks work that opened the composer's
 // window; both are carried on by every run this one starts.
 export type RunTriggerArg = RunTriggerLiveArg | RunTriggerDisplayArg
 
@@ -1481,7 +1481,8 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                 continue
             }
 
-            // The effect already running when the signal aborts finishes. A loop
+            // The effect already running when the signal aborts finishes, and
+            // setVar refuses its chat-variable write after the abort. A loop
             // step re-enters here, and a nested run carries the same signal, so
             // both end at their next effect too.
             if(arg.signal?.aborted || !refreshSubject()){
