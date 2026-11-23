@@ -2614,6 +2614,7 @@ export const languageKorean = {
     "studioBannerKeptUnreadable": "이 캐릭터의 저장된 기록을 읽을 수 없어 그대로 두었습니다. 새 기록은 메모리에만 유지됩니다.",
     "studioBannerUnreadable": "이 캐릭터의 저장된 기록을 읽을 수 없었습니다. 사본을 따로 보관하고 새 기록을 시작했습니다.",
     "studioBannerTrimmed": "이 기기에는 기록 일부만 저장됩니다 (용량 초과)",
+    "studioBannerPresetSession": "프리셋 편집 기록은 이 페이지를 닫을 때까지만 유지됩니다.",
     "studioChipSaved": "저장됨",
     "studioChipSaving": "저장 중…",
     "studioChipFailed": "저장 안 됨",

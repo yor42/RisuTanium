@@ -2614,6 +2614,7 @@ export const languageChinese = {
     "studioBannerKeptUnreadable": "无法读取此角色已保存的历史记录，因此保持原样不动。新的历史记录仅保留在内存中。",
     "studioBannerUnreadable": "无法读取此角色已保存的历史记录。已另存一份副本，并开始了新的历史记录。",
     "studioBannerTrimmed": "最早的历史记录已被裁剪，以符合此设备的限制。",
+    "studioBannerPresetSession": "预设编辑历史记录将保留到关闭此页面为止。",
     "studioChipSaved": "已保存",
     "studioChipSaving": "正在保存…",
     "studioChipFailed": "未保存",

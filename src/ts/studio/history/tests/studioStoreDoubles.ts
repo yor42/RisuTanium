@@ -35,6 +35,7 @@ import {
     type OpenResult,
     type SaveResult,
     type StoredHeader,
+    type StoredOwnerRecord,
     type StudioClaimPort,
     type StudioHistoryStore,
     type WriteRequest,
@@ -255,7 +256,7 @@ export function createMemoryStudioStore(options: MemoryStudioStoreOptions = {}):
 // ---------------------------------------------------------------- reading a Map as the stored state
 
 export interface StoredOwnerView {
-    record: OwnerRecord
+    record: StoredOwnerRecord
     header: StoredHeader
     // Every key of the header's generation, in listing order.
     keys: string[]
@@ -276,7 +277,7 @@ export function storedRecord(shared: ReadonlyMap<string, string>, owner: StoredO
         keys,
         keys.map((key) => shared.get(key)),
     )
-    return stored ? { record: stored.record, header: stored.header, keys } : null
+    return stored ? { record: asStoredRecord(stored.record), header: stored.header, keys } : null
 }
 
 // Writes `record` into `shared` through the store's own writers, as a full rewrite under the gen
@@ -301,10 +302,17 @@ export function seedOwner(
     return plan.header
 }
 
+// A record built through the model, which types its key as any owner key. The tests build every record from a
+// StoredOwnerKey (a test of a refused foreign key casts one on purpose and expects the store to refuse it), so the
+// store-typed view is the one the caller already holds.
+export function asStoredRecord(record: OwnerRecord): StoredOwnerRecord {
+    return record as StoredOwnerRecord
+}
+
 // The record the keep walk must store at `ownerCap`: the longest prefix of the priority order
 // (restore point, then deleted, undone and done, each newest to oldest) whose stored size fits. Built
 // by measuring prefixes with the untrimmed size, so it shares no code with the walk itself.
-export function walkOracle(record: OwnerRecord, ownerCap: number): OwnerRecord {
+export function walkOracle(record: StoredOwnerRecord, ownerCap: number): StoredOwnerRecord {
     const order: { part: 'restore' | 'deleted' | 'undone' | 'done'; at: number }[] = []
     if (record.restore !== null) {
         order.push({ part: 'restore', at: 0 })
@@ -314,7 +322,7 @@ export function walkOracle(record: OwnerRecord, ownerCap: number): OwnerRecord {
             order.push({ part, at })
         }
     }
-    const build = (count: number): OwnerRecord => {
+    const build = (count: number): StoredOwnerRecord => {
         const taken = order.slice(0, count)
         const has = (part: 'deleted' | 'undone' | 'done', at: number) => taken.some((item) => item.part === part && item.at === at)
         return {

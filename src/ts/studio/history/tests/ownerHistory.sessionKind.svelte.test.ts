@@ -3,6 +3,7 @@
 // probe entry, and the probe's adapter is registered by writing into the exported adapter table; every helper
 // body (key parsing, target resolution, the service) is the real one.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { language } from 'src/lang'
 import { DBState, selIdState } from 'src/ts/stores.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
@@ -234,7 +235,7 @@ describe('T-S1: a session owner never touches the store', () => {
         expect(claim.tryClaim).not.toHaveBeenCalled()
         const view = service.view(PROBE)
         expect(view).toMatchObject({ phase: 'memoryOnly', banner: 'session', persisted: false, editable: true, restricted: false })
-        expect(historyBannerText('session')).toBeNull()
+        expect(historyBannerText('session')).toBe(language.studioBannerPresetSession)
     })
 })
 

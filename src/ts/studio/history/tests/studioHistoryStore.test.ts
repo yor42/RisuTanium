@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import type { OwnerRecord, Step } from '../historyModel'
-import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type OwnerKey } from '../ownerPhase'
+import type { Step } from '../historyModel'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import {
     CAP_BYTES,
     ENTRY_OVERHEAD,
@@ -19,6 +19,7 @@ import {
     stepPart,
     storedSizeOf,
     type StoredHeader,
+    type StoredOwnerRecord,
 } from '../studioHistoryStore'
 import {
     createClaimDouble,
@@ -44,28 +45,28 @@ function descStep(id: string, before: string, after: string): Step {
     }
 }
 
-function recordOf(ownerKey: OwnerKey, touchedAt: number, done: Step[], extra: Partial<OwnerRecord> = {}): OwnerRecord {
+function recordOf(ownerKey: StoredOwnerKey, touchedAt: number, done: Step[], extra: Partial<StoredOwnerRecord> = {}): StoredOwnerRecord {
     return { ownerKey, touchedAt, done, undone: [], deleted: [], restore: null, ...extra }
 }
 
 // The untrimmed stored size of a record, from the store's own sizing.
-function sizeOf(record: OwnerRecord): number {
+function sizeOf(record: StoredOwnerRecord): number {
     return storedSizeOf(record, record.ownerKey, Infinity)
 }
 
 // A record of one `set desc` step whose before and after are `fill` characters each.
-function filled(ownerKey: OwnerKey, touchedAt: number, fill: number, letter = 'a'): OwnerRecord {
+function filled(ownerKey: StoredOwnerKey, touchedAt: number, fill: number, letter = 'a'): StoredOwnerRecord {
     return recordOf(ownerKey, touchedAt, [descStep('p:1', letter.repeat(fill), 'z'.repeat(fill))])
 }
 
 // Solves the filler length from the measured per-owner overhead so the stored size is about `target`
 // bytes. Each filler character appears twice in the entry (before and after) and counts 2 bytes.
-function fillFor(ownerKey: OwnerKey, target: number): number {
+function fillFor(ownerKey: StoredOwnerKey, target: number): number {
     const overhead = sizeOf(filled(ownerKey, 0, 0))
     return Math.max(0, Math.round((target - overhead) / 4))
 }
 
-function sized(ownerKey: OwnerKey, touchedAt: number, target: number, letter = 'a'): OwnerRecord {
+function sized(ownerKey: StoredOwnerKey, touchedAt: number, target: number, letter = 'a'): StoredOwnerRecord {
     return filled(ownerKey, touchedAt, fillFor(ownerKey, target), letter)
 }
 
@@ -73,17 +74,17 @@ function snapshot(map: Map<string, string>): Map<string, string> {
     return new Map(map)
 }
 
-function header(ownerKey: OwnerKey, size: number, touchedAt: number): StoredHeader {
+function header(ownerKey: StoredOwnerKey, size: number, touchedAt: number): StoredHeader {
     return { wid: 'h', gen: 'g', ownerKey, size, touchedAt }
 }
 
-async function loadThenSave(store: MemoryStudioStore, record: OwnerRecord, protect: ReadonlySet<OwnerKey> = new Set([record.ownerKey])) {
+async function loadThenSave(store: MemoryStudioStore, record: StoredOwnerRecord, protect: ReadonlySet<StoredOwnerKey> = new Set([record.ownerKey])) {
     await store.load(record.ownerKey)
     return store.save(record.ownerKey, record, protect)
 }
 
 // Every key and value that belongs to the owner: its header and its generation.
-function ownerEntries(shared: Map<string, string>, owner: OwnerKey): [string, string][] {
+function ownerEntries(shared: Map<string, string>, owner: StoredOwnerKey): [string, string][] {
     const stored = storedRecord(shared, owner)
     if (!stored) {
         return []
@@ -807,8 +808,8 @@ describe('the strict reader and the folder ops of a stored step', () => {
     const owner = characterOwnerKey('c1')
 
     // The record is built from JSON so a malformed op reaches the writer as stored text would.
-    function readBack(op: object): OwnerRecord | null {
-        const record: OwnerRecord = JSON.parse(
+    function readBack(op: object): StoredOwnerRecord | null {
+        const record: StoredOwnerRecord = JSON.parse(
             JSON.stringify({ ownerKey: owner, touchedAt: 1, done: [{ id: 'p:1', at: 1, label: { kind: 'folderDelete', name: 'F' }, ops: [op] }], undone: [], deleted: [], restore: null }),
         )
         const shared = new Map<string, string>()

@@ -11,7 +11,10 @@ export interface SessionOwnerKindSpec {
     readonly setPaths: readonly SetPath[]
 }
 
-export const SESSION_OWNER_KINDS = {} as const satisfies Record<string, SessionOwnerKindSpec>
+export const SESSION_OWNER_KINDS = {
+    // A bot preset's toggle text, by the preset's stable id (see presetTarget.ts).
+    preset: { setPaths: ['customModuleToggle'] },
+} as const satisfies Record<string, SessionOwnerKindSpec>
 
 export type SessionOwnerKind = keyof typeof SESSION_OWNER_KINDS
 

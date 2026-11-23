@@ -19,7 +19,7 @@ import {
     type Step,
     type StepPlan,
 } from '../historyModel'
-import { characterOwnerKey, moduleOwnerKey, type OwnerKey } from '../ownerPhase'
+import { characterOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import {
     asideMarkKey,
     headerKey,
@@ -27,6 +27,7 @@ import {
     type LoadResult,
     type SaveResult,
     type StudioHistoryStore,
+    type StoredOwnerRecord,
 } from '../studioHistoryStore'
 import { createStudioStoreHost } from '../studioStoreHost'
 import { createStudioStoreIdb } from '../studioStoreIdb'
@@ -40,7 +41,7 @@ import {
     type SaveMessage,
 } from '../studioStoreProtocol'
 import { createStudioStoreProxy } from '../studioStoreProxy'
-import { storedRecord, seedOwner } from './studioStoreDoubles'
+import { asStoredRecord, storedRecord, seedOwner } from './studioStoreDoubles'
 import { createStudioChannel, readStoredMap, writeStoredEntries, type StudioChannel, type StudioChannelOptions } from './studioStoreChannel'
 
 const A = characterOwnerKey('A')
@@ -103,7 +104,7 @@ function replay(state: ModelState, direction: 'undo' | 'redo', at: number): Mode
 }
 
 // `count` edits past the coalescing window, each with `fill` Hangul characters.
-function chainState(owner: OwnerKey, count: number, fill = 0): ModelState {
+function chainState(owner: StoredOwnerKey, count: number, fill = 0): ModelState {
     let state = createModelState(emptyRecord(owner, 0))
     for (let i = 0; i < count; i++) {
         state = editDesc(state, `st${i}`, (i + 1) * 1500, `${'가'.repeat(fill)}${i - 1}`, `${'가'.repeat(fill)}${i}`)
@@ -111,16 +112,16 @@ function chainState(owner: OwnerKey, count: number, fill = 0): ModelState {
     return state
 }
 
-function chain(owner: OwnerKey, count: number, fill = 0): OwnerRecord {
-    return chainState(owner, count, fill).record
+function chain(owner: StoredOwnerKey, count: number, fill = 0): StoredOwnerRecord {
+    return asStoredRecord(chainState(owner, count, fill).record)
 }
 
-function sizeOf(record: OwnerRecord): number {
+function sizeOf(record: StoredOwnerRecord): number {
     return storedSizeOf(record, record.ownerKey, Infinity)
 }
 
 // A record of `steps` steps whose stored size is about `target` bytes.
-function sizedChain(owner: OwnerKey, steps: number, target: number): OwnerRecord {
+function sizedChain(owner: StoredOwnerKey, steps: number, target: number): StoredOwnerRecord {
     const small = sizeOf(chain(owner, steps, 0))
     const large = sizeOf(chain(owner, steps, 1000))
     return chain(owner, steps, Math.max(0, Math.round(((target - small) * 1000) / (large - small))))
@@ -138,11 +139,11 @@ function proxyRig(options: StudioChannelOptions = {}): Rig {
     return { channel, proxy: createStudioStoreProxy({ spawn: channel.spawn }) }
 }
 
-function protectOnly(owner: OwnerKey): ReadonlySet<OwnerKey> {
+function protectOnly(owner: StoredOwnerKey): ReadonlySet<StoredOwnerKey> {
     return new Set([owner])
 }
 
-async function openAndLoad(rig: Rig, owner: OwnerKey): Promise<LoadResult> {
+async function openAndLoad(rig: Rig, owner: StoredOwnerKey): Promise<LoadResult> {
     expect(await rig.proxy.open()).toBe('ok')
     return rig.proxy.load(owner)
 }
@@ -460,7 +461,7 @@ describe('T-W1b / T-W1c the main realm builds no database request and loads no f
         const rig = proxyRig()
         await openAndLoad(rig, A)
         const posted = rig.channel.posted.length
-        const foreign = 'preset:x' as string as OwnerKey
+        const foreign = 'preset:x' as string as StoredOwnerKey
         expect(await rig.proxy.save(A, chain(foreign, 2), protectOnly(A))).toEqual({ kind: 'unwritable' })
         expect(rig.channel.posted).toHaveLength(posted)
         expect((await readStoredMap(rig.channel.factory)).size).toBe(0)
@@ -1523,7 +1524,7 @@ describe('asset steps and moved steps through the worker', () => {
         )
     }
 
-    async function sameOnBothLegs(owner: OwnerKey, states: ModelState[]): Promise<void> {
+    async function sameOnBothLegs(owner: StoredOwnerKey, states: ModelState[]): Promise<void> {
         const direct = directLeg()
         const viaWorker = workerLeg()
         for (const leg of [direct, viaWorker]) {

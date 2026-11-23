@@ -4,8 +4,8 @@
 // scenarios run over the IndexedDB adapter in studioStoreIdb.test.ts and over the real service in
 // ownerHistory.storeDelta.svelte.test.ts.
 import { describe, expect, test } from 'vitest'
-import type { DeletedItem, OwnerRecord, RestorePoint, Step } from '../historyModel'
-import { characterOwnerKey, moduleOwnerKey, type Expectation, type OwnerKey } from '../ownerPhase'
+import type { DeletedItem, RestorePoint, Step } from '../historyModel'
+import { characterOwnerKey, moduleOwnerKey, type Expectation, type StoredOwnerKey } from '../ownerPhase'
 import { applyEdits, diffEntry } from '../studioStoreProtocol'
 import {
     CAP_BYTES,
@@ -31,6 +31,7 @@ import {
     type HeaderRead,
     type PlannedSave,
     type WriteRequest,
+    type StoredOwnerRecord,
 } from '../studioHistoryStore'
 import {
     createMemoryStudioStore,
@@ -52,11 +53,11 @@ function descStep(id: string, before: string, after: string): Step {
     }
 }
 
-function recordOf(ownerKey: OwnerKey, touchedAt: number, done: Step[], extra: Partial<OwnerRecord> = {}): OwnerRecord {
+function recordOf(ownerKey: StoredOwnerKey, touchedAt: number, done: Step[], extra: Partial<StoredOwnerRecord> = {}): StoredOwnerRecord {
     return { ownerKey, touchedAt, done, undone: [], deleted: [], restore: null, ...extra }
 }
 
-function sizeOf(record: OwnerRecord): number {
+function sizeOf(record: StoredOwnerRecord): number {
     return storedSizeOf(record, record.ownerKey, Infinity)
 }
 
@@ -77,7 +78,7 @@ function restoreOf(visitId: string, fill: number, greetings = 0): RestorePoint {
 }
 
 // All four parts populated.
-function fullRecord(owner: OwnerKey, touchedAt: number, counts = { done: 6, undone: 3, deleted: 3 }, fill = 60): OwnerRecord {
+function fullRecord(owner: StoredOwnerKey, touchedAt: number, counts = { done: 6, undone: 3, deleted: 3 }, fill = 60): StoredOwnerRecord {
     return recordOf(owner, touchedAt, steps('d', counts.done, fill), {
         undone: steps('u', counts.undone, fill),
         deleted: deletedItems('x', counts.deleted, fill),
@@ -95,13 +96,13 @@ function deepFreeze<T>(value: T): T {
     return value
 }
 
-async function loadThenSave(store: MemoryStudioStore, record: OwnerRecord, protect: ReadonlySet<OwnerKey> = new Set([record.ownerKey])) {
+async function loadThenSave(store: MemoryStudioStore, record: StoredOwnerRecord, protect: ReadonlySet<StoredOwnerKey> = new Set([record.ownerKey])) {
     await store.load(record.ownerKey)
     return store.save(record.ownerKey, record, protect)
 }
 
 // The parts a record's stored form holds, as they appear after the generation prefix.
-function partsOf(record: OwnerRecord): string[] {
+function partsOf(record: StoredOwnerRecord): string[] {
     return [
         ...record.done.map((step) => `s:${step.id}`),
         ...record.undone.map((step) => `s:${step.id}`),
@@ -111,7 +112,7 @@ function partsOf(record: OwnerRecord): string[] {
 }
 
 // What a request list does, as parts: puts (the header as `h`) and deletes (a range as `range`).
-function summarize(requests: readonly WriteRequest[], owner: OwnerKey): { puts: string[]; deletes: string[] } {
+function summarize(requests: readonly WriteRequest[], owner: StoredOwnerKey): { puts: string[]; deletes: string[] } {
     const strip = (key: string): string => {
         if (key === headerKey(owner)) return 'h'
         const at = key.indexOf('|', key.indexOf('|') + 1)
@@ -123,7 +124,7 @@ function summarize(requests: readonly WriteRequest[], owner: OwnerKey): { puts: 
     }
 }
 
-function lastWrite(store: MemoryStudioStore, owner: OwnerKey) {
+function lastWrite(store: MemoryStudioStore, owner: StoredOwnerKey) {
     return summarize(store.writes.at(-1)!.requests, owner)
 }
 
@@ -148,7 +149,7 @@ describe('T-PD4 / T-PD6 planDelta puts exactly the entries whose object changed'
         restore: restoreOf('v1', 5),
     })
 
-    function planned(record: OwnerRecord): PlannedSave {
+    function planned(record: StoredOwnerRecord): PlannedSave {
         const full = planFull(base, 'w:1', Infinity, new WeakMap())
         return planDelta(record, full.baseline, 'w:2', Infinity, new WeakMap())
     }
@@ -443,7 +444,7 @@ describe('T-F1 no planner changes the record, in any of its four parts', () => {
 // ---------------------------------------------------------------- the measurement budget
 
 describe('T-PM1 every entry is serialized at most once per save', () => {
-    function counted(): { record: OwnerRecord; calls: () => number; reset: () => void } {
+    function counted(): { record: StoredOwnerRecord; calls: () => number; reset: () => void } {
         let calls = 0
         const wrap = <T extends object>(value: T): T =>
             Object.defineProperty({ ...value }, 'toJSON', {
@@ -504,7 +505,7 @@ describe('T-PM1 every entry is serialized at most once per save', () => {
 // ---------------------------------------------------------------- the strict owner reader
 
 describe('T-S2b readOwner rejects every shape a strict reader must', () => {
-    function written(record: OwnerRecord = fullRecord(A, 4, { done: 3, undone: 1, deleted: 1 })): { headerText: string; keys: string[]; values: string[]; record: OwnerRecord } {
+    function written(record: StoredOwnerRecord = fullRecord(A, 4, { done: 3, undone: 1, deleted: 1 })): { headerText: string; keys: string[]; values: string[]; record: StoredOwnerRecord } {
         const shared = new Map<string, string>()
         const header = seedOwner(shared, record, 'w:1')
         const keys = keysInBounds(shared, genBounds(A, header.gen))
@@ -624,7 +625,7 @@ describe('T-S2b readOwner rejects every shape a strict reader must', () => {
 
 describe('each owner keeps at most half the store (double)', () => {
     const CAP = 10000
-    const owned = (owner: OwnerKey, touchedAt: number, count = 8, fill = 100) => recordOf(owner, touchedAt, steps(`${owner.slice(10)}:`, count, fill))
+    const owned = (owner: StoredOwnerKey, touchedAt: number, count = 8, fill = 100) => recordOf(owner, touchedAt, steps(`${owner.slice(10)}:`, count, fill))
 
     test('T-OC1 the cap pins: the owner cap is half the store and the sizing constants are the pinned numbers', () => {
         expect(OWNER_CAP_BYTES).toBe(CAP_BYTES / 2)
@@ -679,7 +680,7 @@ describe('each owner keeps at most half the store (double)', () => {
         await store.load(A)
         await store.load(B)
         let time = 10
-        const saved = new Set<OwnerKey>()
+        const saved = new Set<StoredOwnerKey>()
         for (let round = 0; round < 3; round++) {
             for (const owner of [A, B]) {
                 time += 10
@@ -709,12 +710,12 @@ describe('each owner keeps at most half the store (double)', () => {
     test('T-OC3 three owners rotating: each return is a full rewrite within the owner cap that evicts exactly the owner saved two saves earlier', async () => {
         const store = createMemoryStudioStore({ capBytes: CAP })
         const owners = [A, B, C]
-        const records = new Map<OwnerKey, OwnerRecord>(owners.map((owner, at) => [owner, owned(owner, at)]))
+        const records = new Map<StoredOwnerKey, StoredOwnerRecord>(owners.map((owner, at) => [owner, owned(owner, at)]))
         for (const owner of owners) {
             expect(sizeOf(records.get(owner)!)).toBeGreaterThan(ownerCapFor(CAP))
             await store.load(owner)
         }
-        const saved: OwnerKey[] = []
+        const saved: StoredOwnerKey[] = []
         for (let save = 0; save < 8; save++) {
             const owner = owners[save % 3]
             const previous = records.get(owner)!
@@ -915,7 +916,7 @@ describe('T70 / T71 the delta of a step with asset ops', () => {
 
     test('a module owner record is saved whole and read back by the strict reader', () => {
         const owner = moduleOwnerKey('m1')
-        const record: OwnerRecord = { ownerKey: owner, touchedAt: 1, done: [assetStep('s:1', ['a', 'p1'])], undone: [], deleted: [], restore: null }
+        const record: StoredOwnerRecord = { ownerKey: owner, touchedAt: 1, done: [assetStep('s:1', ['a', 'p1'])], undone: [], deleted: [], restore: null }
         const shared = new Map<string, string>()
         seedOwner(shared, record, 'w:1')
         expect(storedRecord(shared, owner)?.record).toEqual(record)
