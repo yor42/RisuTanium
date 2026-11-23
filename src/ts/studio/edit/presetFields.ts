@@ -4,7 +4,7 @@
 // and the working copy lives in presetTarget.ts.
 
 import type { PromptSettings } from '../../process/prompt'
-import type { Database, DynamicOutput, botPreset } from '../../storage/database.svelte'
+import type { Database, DynamicOutput, FormatingOrderItem, botPreset } from '../../storage/database.svelte'
 import { valueMatchesKind } from '../history/fieldAccess'
 import type { SESSION_OWNER_KINDS } from '../history/sessionKinds'
 
@@ -17,9 +17,9 @@ export type PresetPath = (typeof SESSION_OWNER_KINDS.preset.setPaths)[number]
 // - `keeps`: `setPreset` keeps the working value (`?? db.x`), so the slot has no own value; reads not set. A
 //   `{ had: false }` write onto the active copy is refused, because the working copy never loses a required setting.
 // - `notSet`: a plain copy or an optional container key; the absence is the value (off) and may be written back.
-export type PresetAbsent = { readonly default: string | boolean | number } | 'keeps' | 'notSet'
+export type PresetAbsent = { readonly default: string | boolean | number | readonly string[] } | 'keeps' | 'notSet'
 
-export type PresetContainerName = 'promptSettings' | 'dynamicOutput' | 'seperateModels'
+export type PresetContainerName = 'promptSettings' | 'dynamicOutput' | 'seperateModels' | 'fallbackModels'
 
 // The numbers a form control may write to a number path. `disableable` admits classic's "off" sentinel on top of the
 // range; `integer` refuses a fraction. Undo, redo and restore never check any of it.
@@ -34,7 +34,7 @@ export interface PresetNumberRange {
 export const DISABLED_NUMBER = -1000
 
 export interface PresetFieldSpec {
-    readonly value: 'text' | 'bool' | 'number'
+    readonly value: 'text' | 'bool' | 'number' | 'textList' | 'biasList'
     // The `botPreset` property of the slot (the container property for a container key).
     readonly slot: keyof botPreset
     // The working property of the active preset, or `slotOnly` for a value the working settings do not carry.
@@ -45,7 +45,11 @@ export interface PresetFieldSpec {
     // The values the form offers for an enum; the writer accepts any value of the field's kind so that an imported
     // unknown value can be put back by an undo.
     readonly options?: readonly (string | number)[]
+    // The range of a number path, and of each bias value of a bias list.
     readonly range?: PresetNumberRange
+    // The entries a text list may be given by the form (the format order's items). An entry already in the list is
+    // always allowed, so an unknown stored item can be moved and put back.
+    readonly items?: readonly string[]
     // What a `{ had: false }` write leaves in the property: the key is deleted unless the producer writes `null`
     // (`setPreset` and the save do for the thinking token budget).
     readonly unset?: 'null'
@@ -54,6 +58,7 @@ export interface PresetFieldSpec {
 interface PlainExtras {
     readonly options?: readonly (string | number)[]
     readonly range?: PresetNumberRange
+    readonly items?: readonly string[]
     readonly unset?: 'null'
 }
 
@@ -69,11 +74,16 @@ function inDynamicOutput(key: keyof DynamicOutput & string): PresetFieldSpec {
     return { value: 'bool', slot: 'dynamicOutput', db: 'dynamicOutput', key, absent: 'notSet' }
 }
 
+function inFallbackModels(key: keyof Database['fallbackModels'] & string): PresetFieldSpec {
+    return { value: 'textList', slot: 'fallbackModels', db: 'fallbackModels', key, absent: { default: [] } }
+}
+
 function inSeperateModels(key: keyof Database['seperateModels'] & string): PresetFieldSpec {
     return { value: 'text', slot: 'seperateModels', db: 'seperateModels', key, absent: { default: '' } }
 }
 
 const REASON_EFFORTS = [-1, 0, 1, 2, 3] as const
+const FORMATING_ORDER_ITEMS = ['main', 'jailbreak', 'chats', 'lorebook', 'globalNote', 'authorNote', 'lastChat', 'description', 'postEverything', 'personaPrompt'] as const satisfies readonly FormatingOrderItem[]
 const ADAPTIVE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 
 export const PRESET_FIELDS: { readonly [P in PresetPath]: PresetFieldSpec } = {
@@ -137,6 +147,16 @@ export const PRESET_FIELDS: { readonly [P in PresetPath]: PresetFieldSpec } = {
     presetFrequencyPenalty: plain('frequencyPenalty', 'number', 'keeps', { range: { min: 0, max: 200, disableable: true } }),
     presetPresencePenalty: plain('PresensePenalty', 'number', 'keeps', { range: { min: 0, max: 200, disableable: true } }),
     presetMaxThoughtTagDepth: inPromptSettings('maxThoughtTagDepth', 'number', { default: -1 }, { integer: true }),
+    presetModelTools: plain('modelTools', 'textList', { default: [] }),
+    // `null` and absent both mean off; an empty list is on with no entries.
+    presetLocalStopStrings: plain('localStopStrings', 'textList', 'notSet', { unset: 'null' }),
+    presetBias: plain('bias', 'biasList', 'keeps', { range: { min: -101, max: 100 } }),
+    presetFormatingOrder: plain('formatingOrder', 'textList', 'keeps', { items: FORMATING_ORDER_ITEMS }),
+    presetFallbackModel: inFallbackModels('model'),
+    presetFallbackMemory: inFallbackModels('memory'),
+    presetFallbackTranslate: inFallbackModels('translate'),
+    presetFallbackEmotion: inFallbackModels('emotion'),
+    presetFallbackOtherAx: inFallbackModels('otherAx'),
 }
 
 // The value a container is created with by the first write into an absent or null one: what `setPreset` gives a slot
@@ -153,7 +173,8 @@ const PRESET_CONTAINER_SEEDS = {
         dynamicRequest: false,
     },
     seperateModels: { memory: '', emotion: '', translate: '', otherAx: '' },
-} as const satisfies { promptSettings: PromptSettings; dynamicOutput: DynamicOutput; seperateModels: Database['seperateModels'] }
+    fallbackModels: { memory: [], emotion: [], translate: [], otherAx: [], model: [] },
+} as const satisfies { promptSettings: PromptSettings; dynamicOutput: DynamicOutput; seperateModels: Database['seperateModels']; fallbackModels: { readonly [K in keyof Database['fallbackModels']]: readonly string[] } }
 
 export function isPresetContainerName(name: string): name is PresetContainerName {
     return Object.hasOwn(PRESET_CONTAINER_SEEDS, name)
@@ -181,13 +202,22 @@ function numberAllowed(range: PresetNumberRange | undefined, value: number): boo
     return (range.min === undefined || value >= range.min) && (range.max === undefined || value <= range.max)
 }
 
-// Whether the form may write `value` to `path`: the field's kind, one of the offered options for an enum and a number
-// inside the field's range. Undo, redo and restore never ask: a value that was read from a slot is put back exactly.
-export function presetValueAllowed(path: PresetPath, value: unknown): boolean {
+// Whether the form may write `value` to `path`: the field's kind, one of the offered options for an enum, a number
+// inside the field's range, every bias value inside the range and every entry of a restricted text list one of the
+// offered items or already in `current` (the list the form read). Undo, redo and restore never ask: a value that was
+// read from a slot is put back exactly.
+export function presetValueAllowed(path: PresetPath, value: unknown, current: readonly string[] = []): boolean {
     if (!valueMatchesKind(path, value)) {
         return false
     }
     const spec = PRESET_FIELDS[path]
+    if (Array.isArray(value)) {
+        if (spec.value === 'biasList') {
+            return (value as readonly (readonly [string, number])[]).every((row) => numberAllowed(spec.range, row[1]))
+        }
+        const items = spec.items
+        return items === undefined || (value as readonly string[]).every((entry) => items.includes(entry) || current.includes(entry))
+    }
     if (spec.options !== undefined && (typeof value === 'string' || typeof value === 'number') && !spec.options.includes(value)) {
         return false
     }

@@ -48,12 +48,18 @@ export function isBiasList(value: unknown): value is BiasRow[] {
     )
 }
 
-// A value a registered path may carry: text, a boolean, a finite number or a bias list.
-export type SetValue = string | boolean | number | BiasRow[]
+// An array of strings (blank entries allowed). The parse guard of a stored record and the live reader share this one
+// predicate.
+export function isTextList(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
 
-// Whether `value` is of the kind the path registers: a string, a boolean, a finite number or a bias list. The one
-// decision every reader, writer, edit builder and intent guard asks, so no code splits "boolean against everything
-// else" and lets a value of the wrong kind through (a string on a number path, a number on a text path).
+// A value a registered path may carry: text, a boolean, a finite number, a list of strings or a bias list.
+export type SetValue = string | boolean | number | string[] | BiasRow[]
+
+// Whether `value` is of the kind the path registers: a string, a boolean, a finite number, a list of strings or a bias
+// list. The one decision every reader, writer, edit builder and intent guard asks, so no code splits "boolean against
+// everything else" and lets a value of the wrong kind through (a string on a number path, a list on a text path).
 export function valueMatchesKind(path: SetPath, value: unknown): value is SetValue {
     switch (factsOf(path).value) {
         case 'bool':
@@ -62,12 +68,14 @@ export function valueMatchesKind(path: SetPath, value: unknown): value is SetVal
             return typeof value === 'number' && Number.isFinite(value)
         case 'biasList':
             return isBiasList(value)
+        case 'textList':
+            return isTextList(value)
         case 'text':
             return typeof value === 'string'
     }
 }
 
-// The `typeof` result of a plain value of the kind (a bias list is an array and has none).
+// The `typeof` result of a plain value of the kind (a list is an array and has none).
 export function typeofKind(path: SetPath): 'string' | 'boolean' | 'number' | null {
     switch (factsOf(path).value) {
         case 'bool':
@@ -77,11 +85,12 @@ export function typeofKind(path: SetPath): 'string' | 'boolean' | 'number' | nul
         case 'text':
             return 'string'
         case 'biasList':
+        case 'textList':
             return null
     }
 }
 
-// Equality of two set values: structural for a bias list, strict for a string or a boolean.
+// Equality of two set values: structural for a list, strict for a string, a number or a boolean.
 export function valuesEqual(a: unknown, b: unknown): boolean {
     if (Array.isArray(a) || Array.isArray(b)) {
         if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
@@ -92,10 +101,13 @@ export function valuesEqual(a: unknown, b: unknown): boolean {
     return a === b
 }
 
-// A fresh plain copy: a bias list gets new row arrays, anything else is returned as it is. Never shares an array with
-// the live holder or a reactive proxy.
+// A fresh plain copy: a bias list gets new row arrays and a text list a new array, anything else is returned as it is.
+// Never shares an array with the live holder or a reactive proxy.
 export function cloneValue<T extends SetValue>(value: T): T {
-    return (Array.isArray(value) ? value.map((row) => [row[0], row[1]]) : value) as T
+    if (!Array.isArray(value)) {
+        return value
+    }
+    return (value as readonly (string | BiasRow)[]).map((item) => (typeof item === 'string' ? item : [item[0], item[1]])) as T
 }
 
 export function fieldLabelKey(path: SetPath): FieldPresentation['labelKey'] {

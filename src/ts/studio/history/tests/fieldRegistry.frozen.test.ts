@@ -2,8 +2,8 @@
 // them, and an existing path's facts decide how records written earlier replay, so a row of FROZEN_FIELD_FACTS is
 // never edited or removed: a later PR appends its own row (with its own readBack and whole-record refusal tests) and
 // lifts the rule assertions (F-d′, F-e) only when it implements further nested containers or value kinds. F-e admits
-// text, bool, `number` and `biasList`; `biasList` has its own reader, writer, parse guard and structural comparison, and
-// `number` (S4b) is carried by session-only paths alone. This table is a literal on purpose: deriving it from the registry would make the guard pass for any registry.
+// text, bool, `number`, `textList` and `biasList`; `biasList` has its own reader, writer, parse guard and structural
+// comparison, and `number` (S4b) and `textList` (S4c) are carried by session-only paths alone. This table is a literal on purpose: deriving it from the registry would make the guard pass for any registry.
 import { describe, expect, test } from 'vitest'
 import { CONTAINER_SEEDS, FIELD_SPECS, type FieldFacts } from '../fieldRegistry'
 import { RESTORE_PATH_ORDER } from '../historyModel'
@@ -99,6 +99,16 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['presetFrequencyPenalty', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
     ['presetPresencePenalty', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
     ['presetMaxThoughtTagDepth', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    // The preset advanced form's list paths (S4c): session-only, no builtin holder.
+    ['presetModelTools', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetLocalStopStrings', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetBias', { value: 'biasList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFormatingOrder', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackModel', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackMemory', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackTranslate', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackEmotion', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackOtherAx', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
 ]
 
 // The containers a dotted path names, with the value an absent container reads as. An undo replays a seed reading, so
@@ -155,11 +165,11 @@ describe('T-FZ: the persisted facts of the registered paths are frozen', () => {
             expect(specs[path].holders, path).toEqual(['module'])
         }
     })
-    test('F-e: every value type is text, bool, number or biasList; a number path is session-only (no builtin holder)', () => {
+    test('F-e: every value type is text, bool, number, textList or biasList; a number or textList path is session-only (no builtin holder)', () => {
         const specs: Record<string, FieldFacts> = FIELD_SPECS
         for (const path of Object.keys(specs)) {
-            expect(['text', 'bool', 'number', 'biasList'], path).toContain(specs[path].value)
-            if (specs[path].value === 'number') {
+            expect(['text', 'bool', 'number', 'textList', 'biasList'], path).toContain(specs[path].value)
+            if (specs[path].value === 'number' || specs[path].value === 'textList') {
                 expect(specs[path].holders, path).toEqual([])
             }
         }

@@ -296,6 +296,28 @@ export function buildFieldEdit(path: SetPath, input: SetValue, live: LiveReader,
     }
 }
 
+// A whole-value edit that leaves the path "not set" (`{ had: false }`): one `set` op whose `after` is absent. Only a
+// session-only path (no builtin holder) can be cleared; the session adapter decides whether its copy accepts the removal,
+// and an absent value is already what is asked for (`unchanged`).
+export function buildFieldClear(path: SetPath, live: LiveReader): EditBuildResult {
+    if (factsOf(path).holders.length > 0) {
+        return { ok: false, reason: 'precondition' }
+    }
+    const before = live.field(path)
+    if (!before.had) {
+        return { ok: false, reason: 'unchanged' }
+    }
+    const after: FieldValue = { had: false }
+    return {
+        ok: true,
+        label: { kind: 'field', field: path },
+        ops: [{ op: 'set', path, before, after }],
+        writes: [{ op: 'set', path, value: after }],
+        coalesceKey: null,
+        pageFm: null,
+    }
+}
+
 // The step part that moves the context chat (`chats[chatPage]`) to `after`: its `chatFm` op, the write when the chat
 // has a unique id, and the page write when it has none (the op then records `chatId: null`, which an undo cannot
 // replay). Null when the character has no context chat.

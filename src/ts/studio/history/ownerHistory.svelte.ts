@@ -31,6 +31,7 @@ import { buildGreetingAppendMany, buildGreetingMove, buildGreetingSwap } from '.
 import {
     applyCharacterWrites,
     applyChatWrites,
+    buildFieldClear,
     buildFieldEdit,
     buildGreetingAdd,
     buildGreetingDelete,
@@ -268,6 +269,9 @@ export interface OwnerHistoryService {
     // not carry is refused precondition. Turning a risky flag on needs `confirmed` to name it, as for `editField`;
     // otherwise it is refused riskyConfirm.
     editValue(owner: OwnerKey, path: SetPath, value: boolean | number, options?: { confirmed?: readonly SetPath[]; coalesce?: boolean }): StudioResult
+    // Leaves a session-only path not set, as a step of its own (a preset's stop strings off). A path a builtin kind holds
+    // or an owner kind does not carry is refused precondition; a path that is already not set changes nothing.
+    clearField(owner: OwnerKey, path: SetPath): StudioResult
     greetingAdd(owner: OwnerKey): StudioResult
     greetingEdit(owner: OwnerKey, index: number, value: string): StudioResult
     greetingDelete(owner: OwnerKey, index: number): StudioResult
@@ -414,6 +418,8 @@ type Intent =
     | { kind: 'field'; path: SetPath; value: SetValue; confirmed?: readonly SetPath[]; coalesce: boolean | string; reportStep?: boolean }
     // A whole-value edit of a path that carries a boolean or a number; like `text`, it reads only the live reader and needs no character target.
     | { kind: 'value'; path: SetPath; value: boolean | number; confirmed?: readonly SetPath[]; coalesce: boolean }
+    // Leaves a session-only path not set; like `field` it reads only the live reader and always makes a step of its own.
+    | { kind: 'clear'; path: SetPath }
     | { kind: 'replay'; direction: 'undo' | 'redo'; confirmed?: readonly SetPath[] }
     | { kind: 'revert'; stepId: string; confirmed?: readonly SetPath[] }
     | { kind: 'restore'; keep: ReadonlySet<RestorePath>; confirmed?: readonly SetPath[] }
@@ -933,7 +939,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     }, hashFor),
             }
         }
-        if (intent.kind === 'edit' || intent.kind === 'text' || intent.kind === 'field' || intent.kind === 'value') {
+        if (intent.kind === 'edit' || intent.kind === 'text' || intent.kind === 'field' || intent.kind === 'value' || intent.kind === 'clear') {
             const ownerKind = parseOwnerKey(slot.key)?.kind
             if (ownerKind === undefined) {
                 return refused('unknown')
@@ -947,7 +953,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 return refused('precondition')
             }
             // A field intent of a path outside the owner kind's row is refused before the build reads anything.
-            if (intent.kind === 'field' && !SET_PATHS_BY_KIND[ownerKind].includes(intent.path)) {
+            if ((intent.kind === 'field' || intent.kind === 'clear') && !SET_PATHS_BY_KIND[ownerKind].includes(intent.path)) {
                 return refused('precondition')
             }
             // A text, field or value intent reads only the live reader, so it needs no character target: a module owner
@@ -964,6 +970,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 built = buildFieldEdit(intent.path, intent.value, live, intent.coalesce)
             } else if (intent.kind === 'field') {
                 built = buildFieldEdit(intent.path, intent.value, live, intent.coalesce)
+            } else if (intent.kind === 'clear') {
+                built = buildFieldClear(intent.path, live)
             } else if (target === null) {
                 // Unreachable: an edit intent without a target was refused above.
                 built = { ok: false, reason: 'precondition' }
@@ -1528,6 +1536,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 reportStep: options?.reportStep,
             }),
         editValue: (owner, path, value, options) => applyStudioWrite(owner, { kind: 'value', path, value, confirmed: options?.confirmed, coalesce: options?.coalesce === true }),
+        clearField: (owner, path) => applyStudioWrite(owner, { kind: 'clear', path }),
         editText: (owner, path, value, mode = 'typing') =>
             applyStudioWrite(owner, { kind: 'text', path, value, coalesce: mode === 'typing' }),
         greetingAdd: (owner) => applyStudioWrite(owner, { kind: 'edit', build: (_id, live, target) => buildGreetingAdd(live, target) }),

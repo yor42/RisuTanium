@@ -7,6 +7,7 @@
     import { checkSchemaText } from '../../ts/process/templates/jsonSchemaParse'
     import { openInClassicEditor } from '../../ts/studio/classicLinks.svelte'
     import { DISABLED_NUMBER, PRESET_FIELDS, presetValueAllowed, type PresetPath } from '../../ts/studio/edit/presetFields'
+    import { modelTakesStopStrings } from '../../ts/studio/edit/presetLists'
     import { presetParamContext, presetResolvedThinkingType, presetSegments, visiblePresetParams } from '../../ts/studio/edit/presetParams'
     import { presetEffectiveModel, presetHasTemplate, presetNameOf, presetOwnerKey, presetStateOf, readPresetField } from '../../ts/studio/edit/presetTarget'
     import { exceedsActualMax, formatTokenCount } from '../../ts/model/modelData/openrouterData'
@@ -29,6 +30,8 @@
     import SegmentedControl from '../UI/GUI/SegmentedControl.svelte'
     import SliderInput from '../UI/GUI/SliderInput.svelte'
     import LongTextField from './LongTextField.svelte'
+    import StudioPresetBiasField from './StudioPresetBiasField.svelte'
+    import StudioPresetListField from './StudioPresetListField.svelte'
 
     // The advanced form of one bot preset, addressed by its stable id. The form holds only the id: every value is read
     // through the preset adapter at render time and every control writes through the history service, which routes
@@ -47,7 +50,7 @@
     const AUX_PATHS = ['presetAuxMemory', 'presetAuxTranslate', 'presetAuxEmotion', 'presetAuxOtherAx'] as const satisfies readonly PresetPath[]
     const SECTION_PATHS: Readonly<Record<SectionId, readonly PresetPath[]>> = {
         nameIcon: ['presetName'],
-        model: ['presetAiModel', 'presetSubModel', ...AUX_PATHS],
+        model: ['presetAiModel', 'presetSubModel', ...AUX_PATHS, 'presetModelTools'],
         parameters: [
             'presetMaxContext',
             'presetMaxResponse',
@@ -66,8 +69,10 @@
             'presetTopP',
             'presetFrequencyPenalty',
             'presetPresencePenalty',
+            'presetLocalStopStrings',
+            'presetBias',
         ],
-        prompt: ['presetMainPrompt', 'presetJailbreak', 'presetGlobalNote', 'presetPromptPreprocess'],
+        prompt: ['presetMainPrompt', 'presetJailbreak', 'presetGlobalNote', 'presetFormatingOrder', 'presetPromptPreprocess'],
         promptOptions: [
             'presetPostEndInnerFormat',
             'presetSendChatAsSystem',
@@ -88,7 +93,7 @@
             'presetSystemContentReplacement',
             'presetSystemRoleReplacement',
         ],
-        fallback: ['presetFallbackWhenBlank'],
+        fallback: ['presetFallbackWhenBlank', 'presetFallbackModel', 'presetFallbackMemory', 'presetFallbackTranslate', 'presetFallbackEmotion', 'presetFallbackOtherAx'],
         other: [
             'presetModuleIntegration',
             'presetUseInstructPrompt',
@@ -111,6 +116,8 @@
         presetMainPrompt: 'mainprompt',
         presetJailbreak: 'jailbreak',
         presetGlobalNote: 'globalNote',
+        presetFormatingOrder: 'formatOrder',
+        presetBias: 'bias',
         presetCustomChainOfThought: 'customChainOfThought',
         presetStrictJsonSchema: 'strictJsonSchema',
         presetJsonSchema: 'jsonSchema',
@@ -201,6 +208,7 @@
     const hasTemplate = $derived(presetHasTemplate(id))
     const schemaOn = $derived(boolOf('presetJsonSchemaEnabled'))
     const schemaCheck = $derived(schemaOn && textOf('presetJsonSchema') !== '' ? checkSchemaText(textOf('presetJsonSchema')) : null)
+    const showsStops = $derived(modelTakesStopStrings(presetEffectiveModel(id) ?? ''))
     const showsInstruct = $derived((presetEffectiveModel(id) ?? '').startsWith('openrouter'))
     const fallbackKept = $derived(!active && DBState.db.doNotChangeFallbackModels === true)
     const auxKept = $derived(DBState.db.doNotChangeSeperateModels === true)
@@ -593,6 +601,23 @@
     </div>
 {/snippet}
 
+{#snippet listField(path: PresetPath, variant: 'models' | 'stops' | 'tools' | 'order' | null)}
+    <div data-path={path} class="flex flex-col gap-1">
+        <div class="flex items-center gap-1">
+            <span class="font-bold">{labelOf(path)}</span>
+            {@render help(path)}
+        </div>
+        {@render helpText(path)}
+        <div data-part={partOf(path)} tabindex="-1" class="outline-none">
+            {#if variant === null}
+                <StudioPresetBiasField presetId={id} {owner} {service} {editable} {active} />
+            {:else}
+                <StudioPresetListField presetId={id} {owner} {path} {variant} {service} {editable} {active} />
+            {/if}
+        </div>
+    </div>
+{/snippet}
+
 {#snippet segmentField(path: PresetPath, item: SettingItem, ctx: SettingContext)}
     {@const offered = presetSegments(item, ctx)}
     {@const stored = segmentValueOf(path)}
@@ -661,6 +686,7 @@
                             {#each AUX_PATHS as path (path)}
                                 {@render modelField(path, true)}
                             {/each}
+                            {@render listField('presetModelTools', 'tools')}
                             <ModelDataRefresh />
                             <button type="button" data-part="studio-preset-connections-link" class="self-start min-h-11 text-sm text-textcolor2 hover:text-textcolor underline cursor-pointer" onclick={openConnections}>{language.connectionsManageLink}</button>
                             <p data-part="studio-preset-provider-classic" class="text-sm text-textcolor2">{language.studioPresetProviderClassic}</p>
@@ -677,6 +703,10 @@
                                     {/if}
                                 {/each}
                             {/if}
+                            {#if showsStops}
+                                {@render listField('presetLocalStopStrings', 'stops')}
+                            {/if}
+                            {@render listField('presetBias', null)}
                         {:else if section === 'prompt'}
                             {#if hasTemplate}
                                 <p role="status" data-part="studio-preset-uses-template" class="text-sm text-textcolor2">{language.studioPresetUsesTemplate}</p>
@@ -685,6 +715,7 @@
                                 {@render longField('presetMainPrompt', 'cbs')}
                                 {@render longField('presetJailbreak', 'cbs')}
                                 {@render longField('presetGlobalNote', 'cbs')}
+                                {@render listField('presetFormatingOrder', 'order')}
                                 {@render boolField('presetPromptPreprocess')}
                             {/if}
                         {:else if section === 'promptOptions'}
@@ -723,6 +754,11 @@
                                 <p role="status" data-part="studio-preset-fallback-kept" class="text-sm text-textcolor2">{language.studioPresetFallbackKept}</p>
                             {/if}
                             {@render boolField('presetFallbackWhenBlank')}
+                            {@render listField('presetFallbackModel', 'models')}
+                            {@render listField('presetFallbackMemory', 'models')}
+                            {@render listField('presetFallbackTranslate', 'models')}
+                            {@render listField('presetFallbackEmotion', 'models')}
+                            {@render listField('presetFallbackOtherAx', 'models')}
                         {:else}
                             {@render longField('presetModuleIntegration', 'plain')}
                             {#if showsInstruct}

@@ -11,7 +11,7 @@ import { DBState } from '../../stores.svelte'
 import type { botPreset } from '../../storage/database.svelte'
 import type { FieldValue, LiveReader, WriteOp } from '../history/historyModel'
 import { sessionOwnerKey } from '../history/ownerPhase'
-import { valueMatchesKind } from '../history/fieldAccess'
+import { cloneValue, valueMatchesKind, valuesEqual } from '../history/fieldAccess'
 import { freshPresetContainerSeed, isPresetContainerName, isPresetPath, PRESET_FIELDS, type PresetFieldSpec, type PresetPath } from './presetFields'
 import type { SessionOwnerAdapter } from './sessionAdapters'
 
@@ -81,10 +81,15 @@ function readPath(resolved: { slot: botPreset; active: boolean }, path: PresetPa
         }
         raw = raw[spec.key]
     }
+    // A list is read as a fresh plain copy: no history op ever holds the live array or a reactive proxy.
     if (valueMatchesKind(path, raw)) {
-        return { had: true, value: raw }
+        return { had: true, value: cloneValue(raw) }
     }
-    return typeof spec.absent === 'object' ? { had: true, value: spec.absent.default } : { had: false }
+    if (typeof spec.absent !== 'object') {
+        return { had: false }
+    }
+    const fallback = spec.absent.default
+    return { had: true, value: typeof fallback === 'object' ? [...fallback] : fallback }
 }
 
 // The value of a path as the live copy holds it, read now; a gone preset reads as absent, except the toggle text,
@@ -96,6 +101,19 @@ export function readPresetField(id: string, path: PresetPath): FieldValue {
         return path === 'customModuleToggle' ? { had: true, value: '' } : { had: false }
     }
     return readPath(resolved, path)
+}
+
+// The value a path holds in the live copy exactly as stored (not validated, not copied); undefined when the preset is
+// gone or holds none. Only for showing a value the strict reader refuses; it is never written back.
+export function presetStoredValue(id: string, path: PresetPath): unknown {
+    const resolved = resolvePreset(id)
+    if (resolved.ok === false) {
+        return undefined
+    }
+    const spec = PRESET_FIELDS[path]
+    const { holder, property } = homeOf(resolved, spec)
+    const raw: unknown = holder[property]
+    return spec.key !== undefined && isPlainObject(raw) ? raw[spec.key] : spec.key !== undefined ? undefined : raw
 }
 
 // The toggle text the builder shows: the live copy's, read on every call.
@@ -171,8 +189,8 @@ function assignOp(op: PresetSet, resolved: { slot: botPreset; active: boolean })
     const spec = PRESET_FIELDS[op.path]
     const { holder, property } = homeOf(resolved, spec)
     if (spec.key === undefined) {
-        if (op.value.had) {
-            holder[property] = op.value.value
+        if (op.value.had === true) {
+            holder[property] = cloneValue(op.value.value)
         } else if (spec.unset === 'null') {
             holder[property] = null
         } else {
@@ -181,18 +199,18 @@ function assignOp(op: PresetSet, resolved: { slot: botPreset; active: boolean })
         return
     }
     const box = holder[property]
-    if (op.value.had) {
+    if (op.value.had === true) {
         const wanted = op.value.value
         const live = readPath(resolved, op.path)
         // A container is never created for a value the live reading already holds.
-        if (live.had && live.value === wanted) {
+        if (live.had && valuesEqual(live.value, wanted)) {
             return
         }
         if (isPlainObject(box)) {
-            box[spec.key] = wanted
+            box[spec.key] = cloneValue(wanted)
         } else if (isPresetContainerName(property)) {
             const seed = freshPresetContainerSeed(property)
-            seed[spec.key] = wanted
+            seed[spec.key] = cloneValue(wanted)
             holder[property] = seed
         }
     } else if (isPlainObject(box)) {
