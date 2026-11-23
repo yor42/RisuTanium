@@ -620,7 +620,12 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
             stopped = true
             unit.abort()
         }, 'reply')
-        let result = (await processScriptFull(currentChar, text.trim(), 'editoutput', entryCtx.chat.message.length, {}, undefined, subject, null)).data
+        // The pass is raced on the unit's Stop; an abandoned pass changes nothing and the apply is deferred.
+        const passRaced = await raceAbort(unit.signal, (abandoned) => processScriptFull(currentChar, text.trim(), 'editoutput', entryCtx.chat.message.length, {}, undefined, subject, null, undefined, 'use', undefined, abandoned), { label: 'The output script pass' })
+        if(!passRaced.settled){
+            return 'deferred'
+        }
+        let result = passRaced.value.data
         if(DBState.db.removeIncompleteResponse){
             result = trimUntilPunctuation(result)
         }
@@ -754,7 +759,11 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
         }
         const scriptIndex = upgrade ? entryIndex : entryCtx.chat.message.length
         const scriptRef: MessageRef | null = upgrade ? { message: entryCtx.chat.message[entryIndex], index: entryIndex } : null
-        const processed = await processScriptFull(currentChar, head.trim(), 'editoutput', scriptIndex, {}, undefined, subject, scriptRef, undefined, 'bypass')
+        const processedRaced = await raceAbort(unit.signal, (abandoned) => processScriptFull(currentChar, head.trim(), 'editoutput', scriptIndex, {}, undefined, subject, scriptRef, undefined, 'bypass', undefined, abandoned), { label: 'The output script pass' })
+        if(!processedRaced.settled){
+            return 'deferred'
+        }
+        const processed = processedRaced.value
         // The target may have gone or changed during the awaits: resolve and check again in the stretch that writes.
         const writeCtx = subject.resolve()
         if(stopped || !writeCtx){
@@ -1839,11 +1848,15 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     if(firstMessageSent){
         const firstMsg = firstMessageOf(nowChatroom, currentChat)
 
+        const firstRaced = await raceAbort(abortSignal, (abandoned) => processScript(nowChatroom,
+            risuChatParser(firstMsg, {chara: currentChar, subject, promptView}),
+        'editprocess', {}, undefined, subject, promptView, abandoned), { label: 'The edit-process script pass' })
+        if(!firstRaced.settled){
+            return false
+        }
         const chat:OpenAIChat = {
             role: 'assistant',
-            content: await (processScript(nowChatroom,
-                risuChatParser(firstMsg, {chara: currentChar, subject, promptView}),
-            'editprocess', {}, undefined, subject, promptView))
+            content: firstRaced.value
         }
         chroFirst = { chat, preWrap: chat.content, raw: firstMsg }
 
@@ -1927,9 +1940,13 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     const tooLarge = new Map<string, { name: string, limitBytes: number }>()
     for(const msg of ms){
         const chatIndex = msChatIndexes[index]
-        let formatedChat = (await processScriptFull(nowChatroom,risuChatParser(msg.data, {chara: currentChar, role: msg.role, subject, promptView: promptViewAt(promptView, chatIndex)}), 'editprocess', chatIndex, {
+        const editRaced = await raceAbort(abortSignal, (abandoned) => processScriptFull(nowChatroom,risuChatParser(msg.data, {chara: currentChar, role: msg.role, subject, promptView: promptViewAt(promptView, chatIndex)}), 'editprocess', chatIndex, {
             chatRole: msg.role,
-        }, undefined, subject, {message: msg, index: chatIndex, locator: messageLocator}, promptView, 'use', moduleScripts)).data
+        }, undefined, subject, {message: msg, index: chatIndex, locator: messageLocator}, promptView, 'use', moduleScripts, abandoned), { label: 'The edit-process script pass' })
+        if(!editRaced.settled){
+            return false
+        }
+        let formatedChat = editRaced.value.data
         let name = ''
         if(msg.role === 'char'){
             if(msg.saying){
@@ -2739,10 +2756,18 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         })
     }
 
-    formated = await runLuaEditTrigger(currentChar, 'editRequest', formated, undefined, undefined, subject)
+    const editRequestRaced = await raceAbort(abortSignal, (abandoned) => runLuaEditTrigger(currentChar, 'editRequest', formated, undefined, undefined, subject, abandoned), { label: 'The edit-request script' })
+    if(!editRequestRaced.settled){
+        return false
+    }
+    formated = editRequestRaced.value
 
     if(DBState.db.promptInfoInsideChat && DBState.db.promptTextInfoInsideChat){
-        promptBodyformatedForChatStore = await runLuaEditTrigger(currentChar, 'editRequest', promptBodyformatedForChatStore, undefined, undefined, subject)
+        const textRaced = await raceAbort(abortSignal, (abandoned) => runLuaEditTrigger(currentChar, 'editRequest', promptBodyformatedForChatStore, undefined, undefined, subject, abandoned), { label: 'The edit-request script' })
+        if(!textRaced.settled){
+            return false
+        }
+        promptBodyformatedForChatStore = textRaced.value
         promptInfo.promptText = promptBodyformatedForChatStore
     }
 
@@ -3388,7 +3413,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 // The reply can be deleted while the translation is pending; a Stop or a deleted chat ends the wait.
                 // The chat can also be left meanwhile, and a chat that is not on screen is not spoken.
                 if(text !== null && !abortSignal.aborted && resolveReply() && isShownChat(origin)){
-                    await sayTTS(currentChar, text, { skipTextFilter: true })
+                    await sayTTS(currentChar, text, { skipTextFilter: true, signal: abortSignal })
                 }
             }
         }
