@@ -503,7 +503,7 @@ describe('prefilter (T31)', () => {
     const idless = (key: string, content: string): LoreRecallEntry => ({ key, content, mode: 'normal' })
     const D = idless('d', 'frozen cannons here')
 
-    test('T31 a: when every live entry of the doc length is activated, no hash is computed and the result matches the prefilter-off result', async () => {
+    test('T31 a: when every live entry of the doc length is activated, no hash is computed and the next eligible miss is recalled', async () => {
         const E: LoreRecallEntry = { key: 'e', content: 'frozen docks of the north padding padding', id: 'e', mode: 'normal' }
         const entries = [...fillers(30), D, E]
         const r = await recall(entries, { tau: null, missed: [31] })

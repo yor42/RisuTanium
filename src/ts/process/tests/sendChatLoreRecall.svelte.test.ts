@@ -567,7 +567,9 @@ afterEach(() => {
     h.countOverride = null
     h.modelInfo = {}
     h.onModelInfo = null
-})/** Message numbers (the `[Mnnnn]` tag) present in the last request's prompt, in order. */
+})
+
+/** Message numbers (the `[Mnnnn]` tag) present in the last request's prompt, in order. */
 function keptNumbers(): number[] {
     const formated = lastBody()?.formated ?? []
     const out: number[] = []
@@ -877,4 +879,51 @@ describe('lore recall on the send path', () => {
             expect(a.trace!.makeRoom).toEqual(b.trace!.makeRoom)
             expect(a.facts).toEqual(b.facts)
         })
-    })})
+
+        test('T23 row template with a lorebook card regression reproducer: lore that cannot fit is removed and the request is the engine-off one', async () => {
+            const lorebookTemplate = {
+                promptTemplate: [
+                    { type: 'plain', type2: 'main', text: 'TEMPLATE-MAIN', role: 'system' },
+                    { type: 'lorebook' },
+                    { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+                ],
+                promptSettings: {},
+            }
+            const db = { ...lorebookTemplate, maxContext: 400, maxResponse: 10 }
+            const off = await sendWith(db, {}, messagesFor(6, true), loreSet(5, HUGE))
+            expect(off.ok).toBe(true)
+            const inj = await recallSend({ ...db, ...on }, {}, messagesFor(6, true), loreSet(5, HUGE))
+            expect(inj.ok).toBe(true)
+            expect(inj.lore!.outcome).toBe('placed')
+            expect(trimmedOf(inj)).toEqual({ removed: 1 })
+            expect(requestHas('wwwwwwww')).toBe(false)
+            expect(inj.facts).toEqual(off.facts)
+        })
+
+        test('T23 used: a placed recall is in the reply lore-use list and a recall step 1 removed is not', async () => {
+            const latest = (await import('../loreUse')).latestLoreUse
+            const placed = await recallSend(on, {}, messagesFor(COUNT, true), loreSet())
+            expect(placed.lore!.outcome).toBe('placed')
+            expect(get(latest)!.entries.map((e) => e.name)).toContain('target')
+            const removed = await recallSend({ maxContext: 400, maxResponse: 10, ...on }, {}, messagesFor(6, true), loreSet(5, HUGE))
+            expect(removed.ok).toBe(true)
+            expect(trimmedOf(removed)).toEqual({ removed: 1 })
+            expect((get(latest)?.entries ?? []).map((e) => e.name)).not.toContain('target')
+        })
+    })
+
+    describe('a send that runs no recall', () => {
+        test('regression reproducer: the lore trace of an earlier send is cleared when searchLore is off', async () => {
+            const first = await recallSend(on, {}, messagesFor(COUNT, true), loreSet())
+            expect(first.lore!.outcome).toBe('placed')
+            const A = makeChar('char-A', 'Alice', [makeChat('chat-A', messagesFor(COUNT, true))], { supaMemory: true, globalLore: loreSet() })
+            installDb([A], { maxContext: 999999, ltmEngine: true, ltmSettings: { searchLore: false } })
+            selectedCharID.set(0)
+            h.request.mockReset()
+            shadow.resetChroMemoryShadowForTests()
+            expect(await sendOnce(A, A.chats[0])).toBe(true)
+            expect(requestHas('sky citadel')).toBe(false)
+            expect(get(loreTraceStore)).toBeNull()
+        })
+    })
+})

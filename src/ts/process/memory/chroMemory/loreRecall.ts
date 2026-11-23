@@ -255,6 +255,17 @@ export function markLoreRecallTrimmed(chatKey: string, removed: number): void {
     }
 }
 
+/** Drops this chat's lore trace when a send ran no recall, so the modal never shows a send that carried no lore as injected. */
+export function clearLoreRecallTrace(chatKey: string): void {
+    try {
+        if (!lastLoreTrace || lastLoreTrace.chatKey !== chatKey) return
+        lastLoreTrace = null
+        chroLoreTrace.set(null)
+    } catch {
+        // A trace clear never fails a send.
+    }
+}
+
 function sourceOfIndex(view: LoreScanEntries, i: number): { from: 'character' | 'chat' | 'module', index: number } {
     if (i < view.characterCount) return { from: 'character', index: i }
     const chatIndex = i - view.characterCount

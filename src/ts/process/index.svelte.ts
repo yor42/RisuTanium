@@ -52,7 +52,7 @@ import { createSendCapture, type FirstMessageSource } from "./memory/chroMemory/
 import { HISTORY_FLOOR, markChroMemoryDroppedAtRecheck, runChroMemorySafely } from "./memory/chroMemory/shadow";
 import { readLtmSettings } from "./memory/chroMemory/settings";
 import { createLoreIndexStore, defaultLoreIndexScheduler } from "./memory/chroMemory/loreIndex";
-import { createLoreRecallStep, loreQueryOf, markLoreRecallTrimmed, type LoreRecallTap } from "./memory/chroMemory/loreRecall";
+import { clearLoreRecallTrace, createLoreRecallStep, loreQueryOf, markLoreRecallTrimmed, type LoreRecallTap } from "./memory/chroMemory/loreRecall";
 import { recheckToContext } from "./recheck";
 import { runLuaEditTrigger } from "./scriptings";
 import { getModelInfo, LLMFlags } from "../model/modellist";
@@ -1463,6 +1463,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
     // Lore recall is optional: any failure while building its step leaves the literal scan call of an engine-off send.
     let loreTap: LoreRecallTap | undefined
+    const loreChatKey = `${nowChatroom.chaId}:${currentChat.id ?? ''}`
     try{
         const loreMode = chroMemoryModeOf(DBState.db, effectiveMemory(nowChatroom, currentChat), DBState.db.ltmSettings)
         const loreSettings = readLtmSettings(DBState.db.ltmSettings, maxContextTokens)
@@ -1472,13 +1473,16 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 settings: loreSettings,
                 query: loreQueryOf(currentChat.message, splitSentMessages),
                 ownerKey: nowChatroom.chaId,
-                chatKey: `${nowChatroom.chaId}:${currentChat.id}`,
+                chatKey: loreChatKey,
                 deps: { store: loreIndexStore, hash: (content) => pickHashRand(5555, content), now: () => performance.now() },
             })
         }
     }
     catch{
         loreTap = undefined
+    }
+    if(!loreTap){
+        clearLoreRecallTrace(loreChatKey)
     }
     const lorepmt = loreTap ? await loadLoreBookV3Prompt(subject, promptView, undefined, loreTap) : await loadLoreBookV3Prompt(subject, promptView)
 
@@ -2319,7 +2323,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 })
             }
             if(loreRemoved > 0){
-                markLoreRecallTrimmed(`${nowChatroom.chaId}:${currentChat.id}`, loreRemoved)
+                markLoreRecallTrimmed(loreChatKey, loreRemoved)
             }
             step1 = trimmed
             currentTokens = trimmed.currentTokens
