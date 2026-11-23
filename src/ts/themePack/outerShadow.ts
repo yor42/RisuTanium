@@ -1,5 +1,5 @@
-// Rule E-2 (CHORE-738 stages 2 and 4, MC-2073, MC-2309, MC-2317, MC-2318): in a chat or Studio stylesheet every box-shadow layer and every
-// text-shadow layer may reach at most 2 px from its element's edge: an outer box-shadow layer past its border edge, a text-shadow layer
+// Rule E-2 (CHORE-738 stages 2 and 4, MC-2073, MC-2309, MC-2317, MC-2318; the limit is the 64 px total reach of MC-3427 and MC-3431): in a chat or Studio stylesheet every box-shadow layer and every
+// text-shadow layer may reach at most 64 px from its element's edge, offset, blur and spread together: an outer box-shadow layer past its border edge, a text-shadow layer
 // past its glyphs, an inset layer into it from its padding edge. The rule is keyed on the declaration: every subject of these areas names
 // a part, so no part list is read, and no colour is read either, so a transparent, translucent or unreadable colour does not exempt a layer.
 // An unmeasurable layer is refused (the whitelist reader of paintOver.ts fails closed on any token of no listed shape), and so
@@ -16,7 +16,7 @@ import { shadowLayers, shadowReach, MAX_OUTER_REACH_PX } from './paintOver'
 import { STUDIO_REGISTRY } from './registries/studio'
 import type { ThemeArea } from './index'
 
-const RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 2 px past its element and an inset box-shadow at most 2 px into it, whatever its colour, so that it cannot lie under or over a control (MC-2073, MC-2309, MC-2317, MC-2318)'
+const RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 64 px past its element and an inset box-shadow at most 64 px into it, offset, blur and spread together, whatever its colour (MC-3427, MC-3431)'
 const LABEL_MAX = 200
 const clip = (text: string): string => text.slice(0, 60)
 const short = (text: string): string => text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX)}…` : text
