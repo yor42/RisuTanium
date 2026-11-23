@@ -17,8 +17,9 @@ const MAX_URI_BYTES: usize = 4096;
 
 /// The target as the URL type the file-system plugin opens. The URI must parse to exactly the text given: a parse that
 /// rewrites its input (dot segments, stripped whitespace, an escaped NUL) names a document the caller did not write, so
-/// it is refused. A plain path, another scheme and a URI with no host are refused too.
-pub fn check_target(uri: &str) -> Result<url::Url, String> {
+/// it is refused. A plain path, another scheme and a URI with no host are refused too, and so is a link that
+/// `fs_guard::foreign_content_uri` does not accept (the app's own provider, a local host, an odd authority).
+pub fn check_target(uri: &str, own: &str) -> Result<url::Url, String> {
     if uri.is_empty() {
         return Err("refused-target: the target is empty".to_string());
     }
@@ -37,6 +38,9 @@ pub fn check_target(uri: &str) -> Result<url::Url, String> {
     }
     if parsed.as_str() != uri {
         return Err("refused-target: the target is not in its canonical form".to_string());
+    }
+    if !crate::fs_guard::foreign_content_uri(uri, own) {
+        return Err("refused-target: the target is not a content link of another app".to_string());
     }
     Ok(parsed)
 }
@@ -111,14 +115,14 @@ pub fn merge_reopen(reply: Value, note: Value) -> Value {
 /// and reports the size of that descriptor. The result is `{ "written": n }`, with `"synced": bool` and a reopen
 /// field (`"reopenSize"` or `"reopen"`) on a last chunk. A failed reopen never changes the result of the write.
 #[tauri::command]
-pub async fn export_append_b64(
-    app: tauri::AppHandle,
+pub async fn export_append_b64<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     uri: String,
     data: String,
     create: bool,
     last: bool,
 ) -> Result<Value, String> {
-    let target = check_target(&uri)?;
+    let target = check_target(&uri, &app.config().identifier)?;
     let bytes = decode_chunk(&data)?;
     drop(data);
     let reopen_target = if last { Some(target.clone()) } else { None };
@@ -167,18 +171,20 @@ mod tests {
     use super::*;
     use std::io;
 
+    const OWN: &str = "io.github.yor42.risutanium";
+
     const SAF_URI: &str =
         "content://com.android.externalstorage.documents/document/primary%3ADownload%2Frisu-backup.bin";
 
     #[test]
     fn check_target_accepts_a_real_document_uri() {
-        assert!(check_target(SAF_URI).is_ok());
+        assert!(check_target(SAF_URI, OWN).is_ok());
     }
 
     #[test]
     fn check_target_accepts_a_document_id_holding_two_dots() {
         let uri = "content://com.android.externalstorage.documents/document/primary%3ADownload%2Fa..bin";
-        assert!(check_target(uri).is_ok());
+        assert!(check_target(uri, OWN).is_ok());
     }
 
     #[test]
@@ -198,7 +204,7 @@ mod tests {
             "content://auth/a\tb",
         ];
         for uri in refused {
-            let err = check_target(uri).expect_err(uri);
+            let err = check_target(uri, OWN).expect_err(uri);
             assert!(err.starts_with("refused-target:"), "{uri}: {err}");
         }
     }

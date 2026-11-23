@@ -21,7 +21,7 @@
 //!   its deadline; no generation was issued and the counter is unchanged;
 //! - `gate-key-refused:` the key is not one this command may change;
 //! - `not-raw:` and `malformed:` as in `asset_batch`, a body or header problem;
-//! - `refused key:` the key fails the creatable or addressable rules.
+//! - `refused key:` the key fails the creatable or addressable rules, or lies outside the app's store.
 //!
 //! The gated write commands answer `{ "flushed": bool }`: `false` when a directory
 //! flush after the rename failed (the write still landed). `store2_remove` answers

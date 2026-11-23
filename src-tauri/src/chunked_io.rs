@@ -283,6 +283,7 @@ pub fn resolve_addressable(base: &Path, key: &str) -> Result<PathBuf, String> {
     if let Some(reason) = addressable_violation(key) {
         return Err(format!("refused key: {}", reason));
     }
+    crate::store_keys::require_inside(key)?;
     let mut path = base.to_path_buf();
     for segment in key.split('/') {
         path.push(segment);
@@ -1036,16 +1037,17 @@ mod tests {
     #[test]
     fn a_read_past_the_end_or_of_an_empty_file_is_an_empty_piece_with_the_size() {
         let base = scratch("past-end");
-        fs::write(base.join("empty"), b"").unwrap();
-        fs::write(base.join("four"), b"abcd").unwrap();
+        fs::create_dir_all(base.join("assets")).unwrap();
+        fs::write(base.join("assets").join("empty"), b"").unwrap();
+        fs::write(base.join("assets").join("four"), b"abcd").unwrap();
 
-        let empty = read_key_range(&base, "empty", 0, 100).unwrap();
+        let empty = read_key_range(&base, "assets/empty", 0, 100).unwrap();
         assert!(piece(&empty).is_empty());
         assert_eq!(trailer(&empty)[0], 0);
-        let past = read_key_range(&base, "four", 10, 100).unwrap();
+        let past = read_key_range(&base, "assets/four", 10, 100).unwrap();
         assert!(piece(&past).is_empty());
         assert_eq!(trailer(&past)[0], 4);
-        let whole = read_key_range(&base, "four", 0, 4).unwrap();
+        let whole = read_key_range(&base, "assets/four", 0, 4).unwrap();
         assert_eq!(piece(&whole), b"abcd");
         fs::remove_dir_all(&base).unwrap();
     }
@@ -1053,11 +1055,12 @@ mod tests {
     #[test]
     fn one_call_never_returns_more_than_the_range_cap() {
         let base = scratch("cap");
-        let file = File::create(base.join("big")).unwrap();
+        fs::create_dir_all(base.join("assets")).unwrap();
+        let file = File::create(base.join("assets").join("big")).unwrap();
         file.set_len(MAX_RANGE_BYTES + 5).unwrap();
         drop(file);
 
-        let response = read_key_range(&base, "big", 0, u64::MAX).unwrap();
+        let response = read_key_range(&base, "assets/big", 0, u64::MAX).unwrap();
 
         assert_eq!(piece(&response).len() as u64, MAX_RANGE_BYTES);
         assert_eq!(trailer(&response)[0], MAX_RANGE_BYTES + 5);
@@ -1070,8 +1073,8 @@ mod tests {
         fs::create_dir_all(base.join("assets")).unwrap();
 
         let in_existing_directory = read_key_range(&base, "assets/gone", 0, 10).unwrap_err();
-        let in_missing_directory = read_key_range(&base, "gone/dir/file", 0, 10).unwrap_err();
-        let top_level = read_key_range(&base, "gone", 0, 10).unwrap_err();
+        let in_missing_directory = read_key_range(&base, "inlays/dir/file", 0, 10).unwrap_err();
+        let top_level = read_key_range(&base, "store2-fence", 0, 10).unwrap_err();
 
         // The page treats `(os error 2)` or `(os error 3)` at the very end of the message as "no such file".
         for message in [&in_existing_directory, &top_level] {
@@ -1116,9 +1119,10 @@ mod tests {
     #[test]
     fn the_trailer_layout_is_seven_little_endian_words_with_the_size_first() {
         let base = scratch("layout");
-        fs::write(base.join("f"), b"hello").unwrap();
+        fs::create_dir_all(base.join("assets")).unwrap();
+        fs::write(base.join("assets").join("f"), b"hello").unwrap();
 
-        let response = read_key_range(&base, "f", 1, 2).unwrap();
+        let response = read_key_range(&base, "assets/f", 1, 2).unwrap();
 
         assert_eq!(response.len(), 2 + TRAILER_BYTES);
         assert_eq!(&response[..2], b"el");
@@ -1130,10 +1134,18 @@ mod tests {
     fn a_text_read_is_the_base64_of_the_raw_read_trailer_included() {
         let base = scratch("text-equal");
         let bytes = patterned(300);
-        fs::write(base.join("f"), &bytes).unwrap();
-        fs::write(base.join("empty"), b"").unwrap();
+        fs::create_dir_all(base.join("assets")).unwrap();
+        fs::write(base.join("assets").join("f"), &bytes).unwrap();
+        fs::write(base.join("assets").join("empty"), b"").unwrap();
 
-        for (key, offset, len) in [("f", 0u64, 300u64), ("f", 0, 7), ("f", 100, 50), ("f", 290, 100), ("f", 999, 10), ("empty", 0, 10)] {
+        for (key, offset, len) in [
+            ("assets/f", 0u64, 300u64),
+            ("assets/f", 0, 7),
+            ("assets/f", 100, 50),
+            ("assets/f", 290, 100),
+            ("assets/f", 999, 10),
+            ("assets/empty", 0, 10),
+        ] {
             let raw = read_key_range(&base, key, offset, len).unwrap();
             let text = read_key_range_text(&base, key, offset, len).unwrap();
             assert_eq!(general_purpose::STANDARD.decode(&text).unwrap(), raw, "{} {} {}", key, offset, len);
@@ -1145,9 +1157,10 @@ mod tests {
     #[test]
     fn a_text_read_never_returns_more_than_the_text_cap() {
         let base = scratch("text-cap");
-        fs::write(base.join("big"), patterned(TEXT_RANGE_MAX_BYTES as usize + 10)).unwrap();
+        fs::create_dir_all(base.join("assets")).unwrap();
+        fs::write(base.join("assets").join("big"), patterned(TEXT_RANGE_MAX_BYTES as usize + 10)).unwrap();
 
-        let text = read_key_range_text(&base, "big", 0, u64::MAX).unwrap();
+        let text = read_key_range_text(&base, "assets/big", 0, u64::MAX).unwrap();
         let decoded = general_purpose::STANDARD.decode(&text).unwrap();
 
         assert_eq!(piece(&decoded).len() as u64, TEXT_RANGE_MAX_BYTES);
@@ -1159,7 +1172,7 @@ mod tests {
     fn a_text_read_of_a_missing_key_keeps_the_os_error_ending() {
         let base = scratch("text-missing");
 
-        let error = read_key_range_text(&base, "gone", 0, 10).unwrap_err();
+        let error = read_key_range_text(&base, "store2-fence", 0, 10).unwrap_err();
 
         assert!(error.ends_with("(os error 2)"), "{}", error);
         fs::remove_dir_all(&base).unwrap();
@@ -1169,11 +1182,12 @@ mod tests {
     fn tauri_delivers_the_text_reply_as_a_json_string_never_an_object_or_array() {
         use tauri::ipc::{InvokeResponseBody, IpcResponse};
         let base = scratch("text-body");
-        fs::write(base.join("f"), patterned(5000)).unwrap();
+        fs::create_dir_all(base.join("assets")).unwrap();
+        fs::write(base.join("assets").join("f"), patterned(5000)).unwrap();
 
         // Tauri sends a JSON body that starts with `{` or `[` through the channel that a frozen page never
         // answers, and any other JSON body by script evaluation.
-        let text = read_key_range_text(&base, "f", 0, 5000).unwrap();
+        let text = read_key_range_text(&base, "assets/f", 0, 5000).unwrap();
         match IpcResponse::body(text).unwrap() {
             InvokeResponseBody::Json(json) => {
                 assert!(json.starts_with('"'), "{}", &json[..20.min(json.len())]);

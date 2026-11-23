@@ -14,6 +14,7 @@ const spies = vi.hoisted(() => ({
     alertError: vi.fn(),
     init: vi.fn(async (_name: string, _ext: string[]) => true),
     exportCard: vi.fn(async (..._args: unknown[]) => true),
+    close: vi.fn(async () => {}),
 }))
 const platformBox = vi.hoisted(() => ({ isTauri: false }))
 
@@ -40,11 +41,17 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
     setDatabase: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
-    AppendableBuffer: class { },
+    AppendableBuffer: class {
+        buffer = new Uint8Array(0)
+        append(_chunk: Uint8Array) {}
+    },
     downloadFile: vi.fn(async () => {}),
     forageStorage: {},
     LocalWriter: class {
         init(name: string, ext: string[]) { return spies.init(name, ext) }
+        async write(_chunk: Uint8Array) {}
+        close() { return spies.close() }
+        async abort(_error: unknown) {}
     },
     readImage: vi.fn(async () => new Uint8Array([1])),
     saveAsset: vi.fn(),
@@ -83,7 +90,8 @@ vi.mock(import('src/ts/characterCards'), () => ({
 }) as unknown as typeof import('src/ts/characterCards'))
 
 import { language } from 'src/lang'
-import { exportModule, type RisuModule } from './modules'
+import { exportModule, exportModuleLegacy, type RisuModule } from './modules'
+import { readImage } from 'src/ts/globalApi.svelte'
 import { resetTaskHostForTests, taskHostView, taskShown } from 'src/ts/alertTask.svelte'
 
 const module = { name: 'M', description: '', id: 'm1' } as unknown as RisuModule
@@ -135,5 +143,28 @@ describe('exportModule result handling', () => {
         expect(spies.alertError).not.toHaveBeenCalled()
         expect(taskShown()).toBe(false)
         expect(taskHostView()).toBeNull()
+    })
+})
+
+describe('a module asset the access control list refuses (G)', () => {
+    const refusals = [
+        'Command plugin:fs|read_file not allowed by ACL',
+        'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file',
+    ]
+    const withAsset = { name: 'M', description: '', id: 'm1', assets: [['a', '/data/user/0/app/shared_prefs/x.png', 'png']] } as unknown as RisuModule
+
+    test.each(refusals)('the .risum export fails with the refusal, closes no file and reports no success: %s', async (refusal) => {
+        vi.mocked(readImage).mockRejectedValue(refusal)
+        await exportModuleLegacy(withAsset)
+        expect(taskHostView()?.failure?.detail).toContain(refusal)
+        expect(taskHostView()?.result).toBeUndefined()
+        expect(spies.close).not.toHaveBeenCalled()
+        expect(spies.alertNormal).not.toHaveBeenCalled()
+    })
+
+    test.each(refusals)('the in-memory .risum for a card rejects with the refusal: %s', async (refusal) => {
+        vi.mocked(readImage).mockRejectedValue(refusal)
+        await expect(exportModuleLegacy(withAsset, { saveData: false })).rejects.toBe(refusal)
+        expect(spies.alertNormal).not.toHaveBeenCalled()
     })
 })

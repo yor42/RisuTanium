@@ -2722,6 +2722,25 @@ describe('CHORE-685 S1b: the playMessage chime after an off-screen notice (T18)'
         logged.mockRestore()
         expect(plays.count).toBe(0)
     })
+
+    test.each([
+        ['release', 'Command plugin:fs|read_file not allowed by ACL'],
+        ['debug', 'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file'],
+    ])('G: a send that rejects with the access control list string (%s wording) alerts with that exact string and returns false', async (_wording, refusal) => {
+        const char = makeCharacter('c-acl-refusal')
+        installDb([char])
+        const { sendChatMain } = await import('../composerActions.svelte')
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        vi.mocked(alertError).mockClear()
+        sendChatMock.mockImplementationOnce(async () => { throw refusal })
+
+        const completed = await sendChatMain(targetOf(char))
+
+        logged.mockRestore()
+        expect(completed).toBe(false)
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith(refusal)
+    })
 })
 //#region 5a seam 2: starters refuse per chat
 

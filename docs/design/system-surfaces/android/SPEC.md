@@ -208,14 +208,14 @@ All identity content is withheld from the public version (§4).
 
 ## 7. Launcher icon
 
-Today: legacy PNG mipmaps only. No adaptive icon, so Android 8+ launchers mask the square PNG and Android 13+ themed-icon mode shows it untinted.
+"Night core" (#643, maintainer choice 2026-11-23 of three directions). All files come from [tools/make-icons.mjs](tools/make-icons.mjs), which draws the vector layers, the legacy mipmaps, the desktop master and the preview from one layer spec. Preview under circle, squircle, rounded-square and teardrop masks, themed, on light and dark wallpaper: [launcher-night-core-preview.png](icons/launcher-night-core-preview.png).
 
-Proposal ([icons/](icons/)):
-
-- `mipmap-anydpi-v26/ic_launcher.xml` (and `_round`) → adaptive icon with background `ic_launcher_background` (the existing teal→blue gradient, `#00A1AD → #587BFF`, 135°), foreground `ic_launcher_foreground` (white mark with gradient core, centroid-centred, 54 dp wide, every vertex 31.2 dp from centre, inside the 33 dp safe radius) and monochrome `ic_launcher_monochrome` (frame + solid centre).
-- The unused template drawables (`drawable/ic_launcher_background.xml`, `drawable-v24/ic_launcher_foreground.xml`, the green droid grid) are replaced by these files of the same names.
-- Today's `mipmap-*` folders also hold `ic_launcher_foreground.png` (a full teal→blue tile, not a transparent layer, so it cannot be reused as an adaptive foreground) and `ic_launcher_round.png`; neither is referenced and the manifest has no `roundIcon`. The launcher PNG's inner triangle is hollow, while the splash and the proposal use the solid centre with the gradient core: the proposal aligns the launcher to the splash/status mark.
-- PNG mipmaps stay for API 24–25. Previews: [launcher-adaptive-preview.svg](icons/launcher-adaptive-preview.svg), [launcher-monochrome-preview.svg](icons/launcher-monochrome-preview.svg).
+- Background `ic_launcher_background`: the splash canvas `#151836`, lit toward `#26307A` at the bottom of the visible 72 dp, with a radial `#587BFF`/`#00A1AD` glow under the mark. The glow is what makes the two layers worth having: launcher parallax and pulse move the mark against it.
+- Foreground `ic_launcher_foreground`: the branding mark's geometry, centroid-centred, 50 dp wide, every vertex 28.9 dp from the centre (the 33 dp safe radius leaves room under circle and teardrop masks). The white frame stays; the centre triangle becomes the gradient core (`#3FE0E8 → #7C9BFF`) at its full size, so the core still reads at 48 px, where the earlier 7 dp core vanished. This core is the icon's one bold element.
+- Monochrome `ic_launcher_monochrome`: frame plus solid centre, for Android 13+ themed icons.
+- `mipmap-anydpi-v26/ic_launcher.xml` and `_round` are unchanged. Legacy PNG mipmaps (API 24-25): `ic_launcher.png` a rounded square, `ic_launcher_round.png` a circle, `ic_launcher_foreground.png` the transparent foreground layer (unreferenced; kept because `tauri icon` writes it).
+- Desktop and iOS (`src-tauri/icons`) come from the generator's 1024 px master through `pnpm tauri icon <master> -o src-tauri/icons --ios-color "#151836"`. That command also rewrites the Android res tree (a raster adaptive XML and `values/ic_launcher_background.xml`): after it, restore `mipmap-anydpi-v26/ic_launcher.xml`, delete the new colour file and run the generator again.
+- The splash mark (`splash_logo`, §8) keeps its small core for now.
 
 ## 8. Splash screen
 

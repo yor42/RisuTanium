@@ -4654,6 +4654,11 @@ export const languageEnglish = {
         promptText: "Prompt Text",
         summarized: "Summarized",
         inactive: "Inactive",
+        chunks: "Chunks",
+        requestBody: "Request Body",
+        requestHeader: "Request Header",
+        response: "Response",
+        bytes: "Bytes",
         realmShareNotice: "Use RisuRealm to share the preset. Preset with image or regexes cannot be exported for now.",
     },
     loadoutModal: {
