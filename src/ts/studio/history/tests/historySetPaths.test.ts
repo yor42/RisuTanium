@@ -12,6 +12,7 @@ import {
 } from '../historyModel'
 import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import { HISTORY_FORMAT_VERSION, asideMarkKey, entryKey, headerKey, stepPart, type StoredOwnerRecord } from '../studioHistoryStore'
+import { PRESET_FORM_PATHS } from './presetPaths.test-helpers'
 import { createMemoryStudioStore, seedOwner, storedRecord } from './studioStoreDoubles'
 
 // ---------------------------------------------------------------- fixtures (built by the real writers)
@@ -53,9 +54,9 @@ describe('the character set paths', () => {
         const s2b = ['lowLevelAccess', 'utilityBot', 'escapeOutput']
         const s2c = ['bias']
         expect(CHARACTER_SET_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...s1, ...s2a, ...s2b, ...s2c])
-        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'creatorNotes'])
+        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding', 'creatorNotes'])
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...s1, ...s2a, ...s2b, ...s2c, 'alternateGreetings'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...s1, 'moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding', ...PRESET_FORM_PATHS, ...s2a, ...s2b, ...s2c, 'alternateGreetings'])
     })
 
     test('a character record keeps a first message set op, an example message set op, their labels and their restore keys', () => {

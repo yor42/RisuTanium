@@ -26,6 +26,8 @@ const FORWARDING_COMPONENTS: Readonly<Record<string, string>> = {
 /** A Studio form whose part names come from the history field registry (`FIELD_PRESENTATION`) through one lookup: the expression is the only non-literal form it renders, and the names it yields are Studio parts, so they never reach a chat screen. */
 const REGISTRY_PART_FORMS: Readonly<Record<string, string>> = {
     '/src/lib/Studio/StudioAdvancedForm.svelte': 'partOf(spec.path)',
+    '/src/lib/Studio/StudioModuleAdvancedForm.svelte': 'partOf(path)',
+    '/src/lib/Studio/StudioPresetAdvancedForm.svelte': 'partOf(path)',
 }
 
 interface Rendered {

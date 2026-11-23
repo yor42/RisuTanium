@@ -27,6 +27,47 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['nickname', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
     ['defaultVariables', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
     ['translatorNote', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['moduleName', { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'name', keepForeign: true }],
+    ['moduleDescription', { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'description', keepForeign: true }],
+    ['moduleNamespace', { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'namespace', keepForeign: true }],
+    ['moduleHideIcon', { value: 'bool', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'hideIcon', keepForeign: true }],
+    ['moduleLowLevelAccess', { value: 'bool', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'lowLevelAccess', keepForeign: true }],
+    ['backgroundEmbedding', { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, keepForeign: true }],
+    // The preset advanced form's session-only paths (S4a): no builtin holder, listed by the preset session kind.
+    ['presetName', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetMainPrompt', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetJailbreak', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetGlobalNote', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetPromptPreprocess', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetPostEndInnerFormat', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetSendChatAsSystem', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetSendName', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetTrimStartNewChat', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetUtilOverride', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetCustomChainOfThought', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetJsonSchemaEnabled', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetOutputImageModal', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetStrictJsonSchema', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetJsonSchema', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetExtractJson', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetGroupOtherBotRole', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetTemplateDefaultVariables', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetAutoSuggestPrompt', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetGroupTemplate', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetSystemContentReplacement', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetSystemRoleReplacement', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackWhenBlank', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetModuleIntegration', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetUseInstructPrompt', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetAutoSuggestPrefix', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetAutoSuggestClean', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetDynamicAutoAdjustSchema', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetDynamicMessages', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetDynamicMemory', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetDynamicResponseTiming', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetDynamicOutputPrompt', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetDynamicShowTypingEffect', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetDynamicRequest', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
     ['creatorNotes', { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
     ['removedQuotes', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
     ['lowLevelAccess', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
@@ -80,6 +121,15 @@ describe('T-FZ: the persisted facts of the registered paths are frozen', () => {
         expect(Object.keys(CONTAINER_SEEDS)).toEqual(Object.keys(FROZEN_CONTAINER_SEEDS))
     })
 
+    test('F-g: keepForeign is set on the module rows of S5 only, and only with editWhenAbsent', () => {
+        const specs: Record<string, FieldFacts> = FIELD_SPECS
+        const foreignPaths = Object.keys(specs).filter((path) => specs[path].keepForeign === true)
+        expect(foreignPaths).toEqual(['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding'])
+        for (const path of foreignPaths) {
+            expect(specs[path].editWhenAbsent, path).toBe(true)
+            expect(specs[path].holders, path).toEqual(['module'])
+        }
+    })
     test('F-e: every value type is text, bool or biasList (number values are not implemented)', () => {
         const specs: Record<string, FieldFacts> = FIELD_SPECS
         for (const path of Object.keys(specs)) {

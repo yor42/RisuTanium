@@ -48,10 +48,11 @@
     // The screen's end cancels a pending risky question, so no turn-on outlives the screen it was asked on.
     onDestroy(() => { destroyed = true; cancelRiskyQuestion() })
 
-    // A visit change or another selected character cancels a pending risky question.
+    // A visit change, another selected character or another selected owner cancels a pending risky question.
     $effect(() => {
         void studioScreen.visitId
         void studioScreen.chaId
+        void studioScreen.selectedOwnerKey
         untrack(cancelRiskyQuestionIfMoved)
     })
 
@@ -155,7 +156,7 @@
         const visitId = studioScreen.visitId
         let result: StudioResult
         try {
-            const still = (): boolean => !destroyed && studioScreen.visitId === visitId && selectedHistoryOwner() === owner
+            const still =(): boolean => !destroyed && studioScreen.visitId === visitId && selectedHistoryOwner() === owner
             const settled = await withRiskyConfirm(
                 owner,
                 (confirmed, pin) =>
@@ -199,7 +200,7 @@
         void placeFocusAfterHistory(read.before, readOwnerFields(owner), () => root ?? null, () => root)
     }
 
-    // Esc closes one layer and never leaves Studio: the restore sheet, then search, the drawer and the History
+    // Esc closes one layer and never leaves Studio: the risky confirm sheet, then the restore sheet, search, the drawer and the History
     // panel, in that fixed order (Back instead closes the newest-opened layer first). A composition's Esc belongs
     // to the IME.
     function onkeydown(event: KeyboardEvent): void {

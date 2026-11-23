@@ -10,6 +10,7 @@ import { hasOpenShell } from '../../../lib/Nexus/pattern/patternFocus'
 import type { SetPath } from '../history/historyModel'
 import type { OwnerKey } from '../history/ownerPhase'
 import { studioScreen } from '../studioScreen.svelte'
+import { lowLevelAskName } from './riskyText'
 
 // 'yes': every asked flag was confirmed. 'no': the user declined or the question was cancelled. 'blocked': no question
 // could be shown (a shell layer is open), so nothing was asked.
@@ -27,11 +28,14 @@ export interface RiskyQuestionView {
     readonly path: SetPath
     readonly paths: readonly SetPath[]
     readonly index: number
+    // The module's name for a module owner, read once when the question opens; null for a character.
+    readonly name: string | null
 }
 
 interface Pending extends RiskyQuestionView {
     readonly visitId: string
     readonly chaId: string
+    readonly selectedOwnerKey: string | null
     readonly returnTo: HTMLElement | null
     readonly finish: (answer: 'yes' | 'no') => void
     readonly advance: () => void
@@ -57,6 +61,8 @@ export function askRiskyTurnOn(owner: OwnerKey, paths: readonly SetPath[]): Risk
     const returnTo = active instanceof HTMLElement ? active : null
     const visitId = studioScreen.visitId
     const chaId = studioScreen.chaId
+    const selectedOwnerKey = studioScreen.selectedOwnerKey
+    const name = paths.includes('moduleLowLevelAccess') ? lowLevelAskName(owner) : null
     let settle!: (answer: RiskyAnswer) => void
     const answer = new Promise<RiskyAnswer>((resolve) => {
         settle = resolve
@@ -70,8 +76,10 @@ export function askRiskyTurnOn(owner: OwnerKey, paths: readonly SetPath[]): Risk
             path: paths[index],
             paths,
             index,
+            name,
             visitId,
             chaId,
+            selectedOwnerKey,
             returnTo,
             finish(result) {
                 if (ended || pending !== question) {
@@ -125,9 +133,10 @@ export function cancelRiskyQuestion(): void {
     pending?.finish('no')
 }
 
-// Ends the question when the visit or the selected character it was asked in is no longer the current one.
+// Ends the question when the visit, the selected character or the selected owner it was asked in is no longer the
+// current one.
 export function cancelRiskyQuestionIfMoved(): void {
-    if (pending !== null && (pending.visitId !== studioScreen.visitId || pending.chaId !== studioScreen.chaId)) {
+    if (pending !== null && (pending.visitId !== studioScreen.visitId || pending.chaId !== studioScreen.chaId || pending.selectedOwnerKey !== studioScreen.selectedOwnerKey)) {
         pending.finish('no')
     }
 }

@@ -24,6 +24,10 @@
 // - `absent` is applied by the builtin-holder writers only. `editWhenAbsent` is enforced by the kind-independent edit
 //   builder for every kind.
 // - Adding an existing path to another builtin kind's row is a widening for older builds too.
+// - `keepForeign` is set on new rows only, requires `editWhenAbsent: true`, and is never changed on an existing row: a
+//   present value of another type is then recorded as a foreign reading and an undo writes it back, instead of the
+//   value reading as absent. The frozen-facts test pins it with the other facts. It is never set on a `biasList`
+//   row: a foreign reading is a boolean or text reading, and a bias list has no such reading.
 
 import type { languageEnglish } from '../../../lang/en'
 import type { Chat, character } from '../../storage/database.svelte'
@@ -47,6 +51,9 @@ export interface FieldFacts {
     editWhenAbsent: boolean
     // The holder property; absent means the path itself.
     property?: string
+    // True: a present value of another type than `value` is read as a foreign value (kept as plain JSON) instead of as
+    // absent. Absent means false.
+    keepForeign?: boolean
 }
 
 export interface FieldPresentation {
@@ -76,6 +83,49 @@ export const FIELD_SPECS = {
     nickname: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     defaultVariables: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     translatorNote: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    moduleName: { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'name', keepForeign: true },
+    moduleDescription: { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'description', keepForeign: true },
+    moduleNamespace: { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'namespace', keepForeign: true },
+    moduleHideIcon: { value: 'bool', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'hideIcon', keepForeign: true },
+    moduleLowLevelAccess: { value: 'bool', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'lowLevelAccess', keepForeign: true },
+    backgroundEmbedding: { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, keepForeign: true },
+    // The preset advanced form's paths. `holders: []` makes each one session-only: no builtin kind's rows, readers or
+    // writers include it, and only the preset session kind (sessionKinds.ts) lists it. Its `absent` is unused (that is
+    // applied by builtin-holder writers only); the preset adapter owns the routing and the absent rules.
+    presetName: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetMainPrompt: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetJailbreak: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetGlobalNote: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetPromptPreprocess: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetPostEndInnerFormat: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetSendChatAsSystem: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetSendName: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetTrimStartNewChat: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetUtilOverride: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetCustomChainOfThought: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetJsonSchemaEnabled: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetOutputImageModal: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetStrictJsonSchema: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetJsonSchema: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetExtractJson: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetGroupOtherBotRole: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetTemplateDefaultVariables: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAutoSuggestPrompt: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetGroupTemplate: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetSystemContentReplacement: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetSystemRoleReplacement: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackWhenBlank: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetModuleIntegration: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetUseInstructPrompt: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAutoSuggestPrefix: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAutoSuggestClean: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDynamicAutoAdjustSchema: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDynamicMessages: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDynamicMemory: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDynamicResponseTiming: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDynamicOutputPrompt: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDynamicShowTypingEffect: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDynamicRequest: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
     creatorNotes: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
     removedQuotes: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     lowLevelAccess: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
@@ -113,6 +163,46 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     nickname: { labelKey: 'nickname', focus: { form: 'studio-advanced-form', part: 'studio-form-nickname' } },
     defaultVariables: { labelKey: 'defaultVariables', focus: { form: 'studio-advanced-form', part: 'studio-form-default-variables' } },
     translatorNote: { labelKey: 'translatorNote', focus: { form: 'studio-advanced-form', part: 'studio-form-translator-note' } },
+    moduleName: { labelKey: 'name', focus: { form: 'studio-module-advanced-form', part: 'studio-module-name' } },
+    moduleDescription: { labelKey: 'description', focus: { form: 'studio-module-advanced-form', part: 'studio-module-description' } },
+    moduleNamespace: { labelKey: 'namespace', focus: { form: 'studio-module-advanced-form', part: 'studio-module-namespace' } },
+    moduleHideIcon: { labelKey: 'hideChatIcon', focus: { form: 'studio-module-advanced-form', part: 'studio-module-hide-icon' } },
+    moduleLowLevelAccess: { labelKey: 'lowLevelAccess', focus: { form: 'studio-module-advanced-form', part: 'studio-module-low-level' } },
+    backgroundEmbedding: { labelKey: 'backgroundHTML', focus: { form: 'studio-module-html-form', part: 'studio-module-background' } },
+    presetName: { labelKey: 'name', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetName' } },
+    presetMainPrompt: { labelKey: 'mainPrompt', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMainPrompt' } },
+    presetJailbreak: { labelKey: 'jailbreakPrompt', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetJailbreak' } },
+    presetGlobalNote: { labelKey: 'globalNote', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetGlobalNote' } },
+    presetPromptPreprocess: { labelKey: 'promptPreprocess', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetPromptPreprocess' } },
+    presetPostEndInnerFormat: { labelKey: 'postEndInnerFormat', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetPostEndInnerFormat' } },
+    presetSendChatAsSystem: { labelKey: 'sendChatAsSystem', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetSendChatAsSystem' } },
+    presetSendName: { labelKey: 'formatGroupInSingle', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetSendName' } },
+    presetTrimStartNewChat: { labelKey: 'trimStartNewChat', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetTrimStartNewChat' } },
+    presetUtilOverride: { labelKey: 'utilOverride', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetUtilOverride' } },
+    presetCustomChainOfThought: { labelKey: 'customChainOfThought', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetCustomChainOfThought' } },
+    presetJsonSchemaEnabled: { labelKey: 'enableJsonSchema', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetJsonSchemaEnabled' } },
+    presetOutputImageModal: { labelKey: 'outputImageModal', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetOutputImageModal' } },
+    presetStrictJsonSchema: { labelKey: 'strictJsonSchema', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetStrictJsonSchema' } },
+    presetJsonSchema: { labelKey: 'jsonSchema', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetJsonSchema' } },
+    presetExtractJson: { labelKey: 'extractJson', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetExtractJson' } },
+    presetGroupOtherBotRole: { labelKey: 'groupOtherBotRole', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetGroupOtherBotRole' } },
+    presetTemplateDefaultVariables: { labelKey: 'defaultVariables', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetTemplateDefaultVariables' } },
+    presetAutoSuggestPrompt: { labelKey: 'autoSuggest', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAutoSuggestPrompt' } },
+    presetGroupTemplate: { labelKey: 'groupInnerFormat', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetGroupTemplate' } },
+    presetSystemContentReplacement: { labelKey: 'systemContentReplacement', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetSystemContentReplacement' } },
+    presetSystemRoleReplacement: { labelKey: 'systemRoleReplacement', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetSystemRoleReplacement' } },
+    presetFallbackWhenBlank: { labelKey: 'fallbackWhenBlankResponse', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackWhenBlank' } },
+    presetModuleIntegration: { labelKey: 'moduleIntergration', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetModuleIntegration' } },
+    presetUseInstructPrompt: { labelKey: 'useInstructPrompt', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetUseInstructPrompt' } },
+    presetAutoSuggestPrefix: { labelKey: 'studioPresetAutoSuggestPrefix', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAutoSuggestPrefix' } },
+    presetAutoSuggestClean: { labelKey: 'studioPresetAutoSuggestClean', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAutoSuggestClean' } },
+    presetDynamicAutoAdjustSchema: { labelKey: 'studioPresetDynamicAutoAdjustSchema', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDynamicAutoAdjustSchema' } },
+    presetDynamicMessages: { labelKey: 'studioPresetDynamicMessages', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDynamicMessages' } },
+    presetDynamicMemory: { labelKey: 'studioPresetDynamicMemory', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDynamicMemory' } },
+    presetDynamicResponseTiming: { labelKey: 'studioPresetDynamicResponseTiming', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDynamicResponseTiming' } },
+    presetDynamicOutputPrompt: { labelKey: 'studioPresetDynamicOutputPrompt', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDynamicOutputPrompt' } },
+    presetDynamicShowTypingEffect: { labelKey: 'studioPresetDynamicShowTypingEffect', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDynamicShowTypingEffect' } },
+    presetDynamicRequest: { labelKey: 'studioPresetDynamicRequest', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDynamicRequest' } },
     creatorNotes: { labelKey: 'creatorNotes', focus: { form: 'studio-advanced-form', part: 'studio-form-creator-notes' } },
     removedQuotes: { labelKey: 'studioFieldRemovedQuotes', focus: { form: 'studio-advanced-form', part: 'studio-form-creator-notes' } },
     lowLevelAccess: { labelKey: 'lowLevelAccess', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },

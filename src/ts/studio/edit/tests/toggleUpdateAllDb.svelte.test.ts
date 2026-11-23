@@ -226,6 +226,22 @@ describe('the module write (DB2, DB2b)', () => {
         expect(h.bump).toHaveBeenCalledTimes(1)
     })
 
+    test('T5-ROUTE-UA: the background embedding is written as a text write of the module (no history step), over a string only, and Undo puts it back', async () => {
+        seed([moduleRow('M1', { backgroundEmbedding: BEFORE('bg') }), moduleRow('M2', { backgroundEmbedding: 0 })])
+        const plan = planOf({ kind: 'module', moduleId: 'M1' })
+        expect(plan.writes.filter((write) => write.path === 'backgroundEmbedding').map((write) => write.owner)).toEqual(['module:M1'])
+        await primeStudioModuleSlots()
+        const applied = applyUpdate(plan, createUpdateDbPort())
+        expect(applied.ok).toBe(true)
+        if (!applied.ok) {
+            return
+        }
+        expect((modulesOf()[0] as { backgroundEmbedding?: unknown }).backgroundEmbedding).toBe(AFTER('bg'))
+        // A value that is not text is never rewritten.
+        expect((modulesOf()[1] as { backgroundEmbedding?: unknown }).backgroundEmbedding).toBe(0)
+        expect(restoreUpdate(applied.journal, createUpdateDbPort())).toEqual({ ok: true })
+        expect((modulesOf()[0] as { backgroundEmbedding?: unknown }).backgroundEmbedding).toBe(BEFORE('bg'))
+    })
     test('the reach alone loads the slot port, so settle resets the memo before it returns', async () => {
         seed([moduleRow('M1')])
         resetStudioHistoryAccessorForTests()

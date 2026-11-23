@@ -374,7 +374,9 @@ export function setStudioRestoreSheetOpen(open: boolean): void {
  */
 export function setStudioSelection(ownerKey: string, kind: StudioKind | null, itemId: string | null): void {
     flushStudioFields('leave')
-    if (studioScreen.selectedOwnerKey !== ownerKey) studioScreen.restoreSheetOpen = false
+    if (studioScreen.selectedOwnerKey !== ownerKey) {
+        studioScreen.restoreSheetOpen = false
+    }
     // A line selection inside a builder changes neither the owner nor the kind, so the sheet stays open across it.
     if (studioScreen.selectedOwnerKey !== ownerKey || studioScreen.selectedKind !== kind) studioScreen.togglePreviewOpen = false
     // A new selection leaves the merged list the detail came from; only `openStudioListRow` sets it again.

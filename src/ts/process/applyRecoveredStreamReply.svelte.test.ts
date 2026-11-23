@@ -253,7 +253,7 @@ describe('an interrupted message that is present (the upgrade)', () => {
         expect(messages[1].interrupted).toBeUndefined()
         expect(messages[1].chatId).toBe(KEY)
         expect(processScriptFullMock).toHaveBeenCalledTimes(1)
-        expect(processScriptFullMock).toHaveBeenCalledWith(expect.anything(), 'Hello, world.', 'editoutput', 1, {}, undefined, expect.anything(), { message: messages[1], index: 1 }, undefined, 'bypass')
+        expect(processScriptFullMock).toHaveBeenCalledWith(expect.anything(), 'Hello, world.', 'editoutput', 1, {}, undefined, expect.anything(), { message: messages[1], index: 1 }, undefined, 'bypass', undefined, expect.any(AbortSignal))
         expect(runTriggerMock).toHaveBeenCalledTimes(1)
         expect(listener).toHaveBeenCalledTimes(1)
         expect(listener).toHaveBeenCalledWith(expect.objectContaining({ messageIndex: 1 }))
@@ -396,7 +396,7 @@ describe('an absent message (the append)', () => {
         expect(messages).toHaveLength(2)
         expect(messages[1]).toMatchObject({ role: 'char', data: 'Hello, world.', saying: 'cha', chatId: KEY, generationInfo: base.generationInfo, promptInfo: base.promptInfo })
         expect(messages[1].interrupted).toBeUndefined()
-        expect(processScriptFullMock).toHaveBeenCalledWith(expect.anything(), 'Hello, world.', 'editoutput', 1, {}, undefined, expect.anything(), null, undefined, 'bypass')
+        expect(processScriptFullMock).toHaveBeenCalledWith(expect.anything(), 'Hello, world.', 'editoutput', 1, {}, undefined, expect.anything(), null, undefined, 'bypass', undefined, expect.any(AbortSignal))
         expect(listener).toHaveBeenCalledWith(expect.objectContaining({ messageIndex: 1 }))
         // The same record applied again finds its message and is present.
         expect(await applyRecoveredStreamReply(input())).toBe('present')

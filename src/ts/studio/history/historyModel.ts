@@ -7,6 +7,8 @@ import { applyFolderOps, folderOpAtTarget, invertFolderOp, type FolderFieldValue
 import type { AssetArrayName } from '../assets/mergePreview'
 import { scanReferences } from '../assets/referenceScan'
 import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
+import type { JsonValue } from '../../storage/blockFrame'
+import { sameJsonValue, toPlainJson } from '../../storage/store2/codec/normalize'
 import { cloneValue, factsOf, isBiasList, isHeldBy, registryPaths, valuesEqual } from './fieldAccess'
 import { FIELD_SPECS, type BiasRow, type SetPath } from './fieldRegistry'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
@@ -80,8 +82,9 @@ export const BOOLEAN_SET_PATHS: readonly SetPath[] = REGISTRY_PATHS.filter((path
 export function isBooleanSetPath(path: SetPath): boolean {
     return factsOf(path).value === 'bool'
 }
-// The character text fields whose whole value a set op carries: the merge-recording rule (an explicit list, not
-// derived from the registry). A target addresses a nested field with `/` where its path has a `.`.
+// The owner text fields (the character's and the module's `backgroundEmbedding`) whose whole value a set op carries:
+// the merge-recording rule (an explicit list, not derived from the registry). A target addresses a nested field with
+// `/` where its path has a `.`.
 export type TextFieldPath =
     | 'desc'
     | 'firstMessage'
@@ -94,6 +97,7 @@ export type TextFieldPath =
     | 'depth_prompt.prompt'
     | 'defaultVariables'
     | 'translatorNote'
+    | 'backgroundEmbedding'
     | 'creatorNotes'
 export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
     'desc',
@@ -107,16 +111,25 @@ export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
     'depth_prompt.prompt',
     'defaultVariables',
     'translatorNote',
+    'backgroundEmbedding',
     'creatorNotes',
 ]
 
 // `had: false` is an absent optional key. Writing it deletes the key; it never assigns false or undefined.
-export type FieldValue = { had: false } | { had: true; value: string | boolean | BiasRow[] }
+// `had: 'foreign'` is a present value of another type than the path's, as plain JSON; only a path whose facts carry
+// `keepForeign` reads or records it. Writing it puts the stored value back.
+export type FieldValue = { had: false } | { had: true; value: string | boolean | BiasRow[] } | { had: 'foreign'; value: JsonValue }
 export type FmValue = { had: false } | { had: true; value: number }
 
 export function fieldValueEquals(a: FieldValue, b: FieldValue): boolean {
-    if (!a.had || !b.had) {
-        return a.had === b.had
+    if (a.had !== b.had) {
+        return false
+    }
+    if (a.had === false || b.had === false) {
+        return true
+    }
+    if (a.had === 'foreign' || b.had === 'foreign') {
+        return sameJsonValue(a.value, b.value)
     }
     return valuesEqual(a.value, b.value)
 }
@@ -273,14 +286,21 @@ function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
     if (value.had === false) {
         return { had: false }
     }
+    const facts = factsOf(path)
+    const isBool = facts.value === 'bool'
+    if (value.had === 'foreign') {
+        // A foreign reading exists only on a `keepForeign` path, holds a present value that is not of the path's type
+        // (a value of that type is malformed here), and is never `undefined`. It is read as plain JSON, a fresh copy.
+        const plain = facts.keepForeign === true ? toPlainJson(value.value) : undefined
+        return plain !== undefined && typeof plain !== (isBool ? 'boolean' : 'string') ? { had: 'foreign', value: plain } : null
+    }
     if (value.had !== true) {
         return null
     }
-    const kind = factsOf(path).value
-    if (kind === 'bool') {
+    if (isBool) {
         return typeof value.value === 'boolean' ? { had: true, value: value.value } : null
     }
-    if (kind === 'biasList') {
+    if (facts.value === 'biasList') {
         return isBiasList(value.value) ? { had: true, value: cloneValue(value.value) } : null
     }
     return typeof value.value === 'string' ? { had: true, value: value.value } : null
@@ -379,6 +399,12 @@ export function isOpAllowedFor(kind: OwnerKind, op: Op): boolean {
 // The set paths of an owner kind that carry text: its row of the table minus the boolean and bias-list paths.
 export function textPathsFor(kind: OwnerKind): readonly SetPath[] {
     return SET_PATHS_BY_KIND[kind].filter((path) => factsOf(path).value === 'text')
+}
+
+// The set paths of an owner kind that carry a boolean: the paths editValue reaches. textPathsFor holds the kind's text
+// paths; a bias-list path is in neither and is edited through editField.
+export function valuePathsFor(kind: OwnerKind): readonly SetPath[] {
+    return SET_PATHS_BY_KIND[kind].filter((path) => isBooleanSetPath(path))
 }
 
 const ASSET_ARRAYS: readonly string[] = ['additionalAssets', 'emotionImages', 'assets']

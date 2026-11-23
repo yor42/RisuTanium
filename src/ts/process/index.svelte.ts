@@ -10,7 +10,7 @@ import { parseChatML } from "../parser/chatML";
 import { promptViewAt, promptViewOf, splitSentMessages, type PromptView, type SentMessages } from "../cbs";
 import { loadLoreBookV3Prompt } from "./lorebook.svelte";
 import { noteLoreUse, renameLoreUseReply } from "./loreUse";
-import { findCharacterbyId, getUserName, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand } from "../util";
+import { findCharacterbyId, getUserName, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand, pickHashRand } from "../util";
 import { requestChatData } from "./request/request";
 import { stableDiff } from "./stableDiff";
 import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef, type PromptModuleScripts } from "./scripts";
@@ -50,6 +50,9 @@ import { openMemorySettings } from "./memory/memorySettingsLink";
 import { chroMemoryModeOf, memoryTakesChatsOf } from "./memory/memoryEngine";
 import { createSendCapture, type FirstMessageSource } from "./memory/chroMemory/records";
 import { HISTORY_FLOOR, markChroMemoryDroppedAtRecheck, runChroMemorySafely } from "./memory/chroMemory/shadow";
+import { readLtmSettings } from "./memory/chroMemory/settings";
+import { createLoreIndexStore, defaultLoreIndexScheduler } from "./memory/chroMemory/loreIndex";
+import { clearLoreRecallTrace, createLoreRecallStep, loreQueryOf, markLoreRecallTrimmed, type LoreRecallTap } from "./memory/chroMemory/loreRecall";
 import { recheckToContext } from "./recheck";
 import { runLuaEditTrigger } from "./scriptings";
 import { getModelInfo, LLMFlags } from "../model/modellist";
@@ -81,7 +84,7 @@ import { splitAtOpenCbsSpan } from "../chatShell/streamSpans";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
 import { classifyReplyOutcome, noteUnitAlerted, noteUnitFailure, recordReplyOutcome, setReplyMark, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, nativeNoticeArmOf, noteReplySound } from "./replyNotice";
-import { raceAbort } from "./abortRace";
+import { raceAbort, raceUntil, createStopDeadline, STOPPED_PASS_GRACE_MS, STOPPED_UNIT_WATCHDOG_MS, type StopDeadline } from "./abortRace";
 
 export interface OpenAIChat{
     role: 'system'|'user'|'assistant'|'function'
@@ -154,6 +157,12 @@ export interface StreamFlushUse {
 
 let streamFlushObserver: ((use: StreamFlushUse) => void) | null = null
 
+// One lore index slot for the app; sends share it and never wait for a build.
+const loreIndexStore = createLoreIndexStore({
+    hash: (content) => pickHashRand(5555, content),
+    schedule: defaultLoreIndexScheduler,
+    now: () => performance.now(),
+})
 let messageMapRebuilds = 0
 
 /** Test-only count of the message-to-index maps the prompt pass has built. */
@@ -429,6 +438,9 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     let nativeAnnounced = false
     // The same classification, for the keep-alive notification's Stopped and Failed lingers. A preview send has none.
     let replyOutcome: ReplyOutcome | undefined
+    // Created after the module check and disposed with the unit; one of each per unit, never per body.
+    let passDeadline: StopDeadline | undefined
+    let watchdog: StopDeadline | undefined
     try {
         // Reset after admission, for the chat this unit writes to, so a refused call never clears the running send's
         // progress.
@@ -443,6 +455,12 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
             modulesFailed = true
             return false
         }
+        // The grace the output passes share starts at the Stop, wherever the unit is then; the recursion runs on the
+        // same signal and finds this deadline.
+        passDeadline = createStopDeadline(unit.signal, STOPPED_PASS_GRACE_MS)
+        stopDeadlineOfUnit.set(unit.signal, passDeadline)
+        const stoppedChatId = entry.context.origin.chatId
+        watchdog = createStopDeadline(unit.signal, STOPPED_UNIT_WATCHDOG_MS, () => console.warn('A stopped reply is still running', stoppedChatId))
         completed = await sendChatBody(chatProcessIndex, { ...arg, signal: unit.signal }, entry.context)
         return completed && !unit.signal.aborted
     } catch (error) {
@@ -451,6 +469,10 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     } finally {
         try {
             try {
+                // Neither outlives the unit: no timer or listener is left once the body has returned.
+                passDeadline?.dispose()
+                watchdog?.dispose()
+                stopDeadlineOfUnit.delete(unit.signal)
                 // First, before the hidden-page flush and while the registration is live: the mark it writes is then saved by
                 // that flush, and a put-back that waits on the registration cannot race it. Never throws.
                 if(!(arg.preview || arg.previewPrompt)){
@@ -538,6 +560,12 @@ function expandChatVariables(ctx: OriginContext, subject: SendSubject, currentCh
 /** The keys of the replies each running unit was granted, by the unit's signal; the outermost call settles them. */
 const replyKeysOfUnit = new WeakMap<AbortSignal, string[]>()
 
+/** The stop deadline of each running unit, by the unit's signal; the unit's outermost call owns and disposes it. */
+const stopDeadlineOfUnit = new WeakMap<AbortSignal, StopDeadline>()
+
+/** Used by a body that no unit wrapper started: it never expires, so its passes are awaited as before. */
+const unboundedDeadline: StopDeadline = { expired: false, dispose() {} }
+
 /**
  * The chats (`chaId` and `chatId` joined) a recovered reply was deferred for because a unit held them: the release of that
  * chat asks the reconcile to run again, and the release of another chat does not.
@@ -620,7 +648,12 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
             stopped = true
             unit.abort()
         }, 'reply')
-        let result = (await processScriptFull(currentChar, text.trim(), 'editoutput', entryCtx.chat.message.length, {}, undefined, subject, null)).data
+        // The pass is raced on the unit's Stop; an abandoned pass changes nothing and the apply is deferred.
+        const passRaced = await raceAbort(unit.signal, (abandoned) => processScriptFull(currentChar, text.trim(), 'editoutput', entryCtx.chat.message.length, {}, undefined, subject, null, undefined, 'use', undefined, abandoned), { label: 'The output script pass' })
+        if(!passRaced.settled){
+            return 'deferred'
+        }
+        let result = passRaced.value.data
         if(DBState.db.removeIncompleteResponse){
             result = trimUntilPunctuation(result)
         }
@@ -754,7 +787,11 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
         }
         const scriptIndex = upgrade ? entryIndex : entryCtx.chat.message.length
         const scriptRef: MessageRef | null = upgrade ? { message: entryCtx.chat.message[entryIndex], index: entryIndex } : null
-        const processed = await processScriptFull(currentChar, head.trim(), 'editoutput', scriptIndex, {}, undefined, subject, scriptRef, undefined, 'bypass')
+        const processedRaced = await raceAbort(unit.signal, (abandoned) => processScriptFull(currentChar, head.trim(), 'editoutput', scriptIndex, {}, undefined, subject, scriptRef, undefined, 'bypass', undefined, abandoned), { label: 'The output script pass' })
+        if(!processedRaced.settled){
+            return 'deferred'
+        }
+        const processed = processedRaced.value
         // The target may have gone or changed during the awaits: resolve and check again in the stretch that writes.
         const writeCtx = subject.resolve()
         if(stopped || !writeCtx){
@@ -861,7 +898,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
     const { origin, hint, subject } = callCtx
     const abortSignal = arg.signal ?? (new AbortController()).signal
-    
+    // Shared by every output pass of this unit: they all give up at the same moment after a Stop.
+    const passDeadline = stopDeadlineOfUnit.get(abortSignal) ?? unboundedDeadline
+
     // NOTE: `throwError()` can be called before these are populated (e.g. HypaV3 early validation errors).
     // Keep them declared up-front to avoid TDZ ReferenceErrors in production builds.
     let currentChar:character
@@ -1463,7 +1502,30 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
     }
 
-    const lorepmt = await loadLoreBookV3Prompt(subject, promptView)
+    // Lore recall is optional: any failure while building its step leaves the literal scan call of an engine-off send.
+    let loreTap: LoreRecallTap | undefined
+    const loreChatKey = `${nowChatroom.chaId}:${currentChat.id ?? ''}`
+    try{
+        const loreMode = chroMemoryModeOf(DBState.db, effectiveMemory(nowChatroom, currentChat), DBState.db.ltmSettings)
+        const loreSettings = readLtmSettings(DBState.db.ltmSettings, maxContextTokens)
+        if(loreMode !== 'off' && loreSettings.searchLore){
+            loreTap = createLoreRecallStep({
+                mode: loreMode,
+                settings: loreSettings,
+                query: loreQueryOf(currentChat.message, splitSentMessages),
+                ownerKey: nowChatroom.chaId,
+                chatKey: loreChatKey,
+                deps: { store: loreIndexStore, hash: (content) => pickHashRand(5555, content), now: () => performance.now() },
+            })
+        }
+    }
+    catch{
+        loreTap = undefined
+    }
+    if(!loreTap){
+        clearLoreRecallTrace(loreChatKey)
+    }
+    const lorepmt = loreTap ? await loadLoreBookV3Prompt(subject, promptView, undefined, loreTap) : await loadLoreBookV3Prompt(subject, promptView)
 
     const positionRegex = /{{position::(.+?)}}/g
     const replaceposition = (text:string):{text:string, replaced:boolean} => {
@@ -1499,11 +1561,24 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     })
     console.log(normalActives)
 
+    // The lore chat made for each recalled entry, and what each cost where the send counted it. A recalled chat that no
+    // count site counted was never part of `tokensBeforeMessages` and is never sent, so it counts 0.
+    const recalledLore = lorepmt.recalled ?? []
+    const recalledActives = new Set(recalledLore.map((r) => r.active))
+    const chatOfRecalled = new Map<(typeof recalledLore)[number]['active'], OpenAIChat>()
+    const recalledChats = new Set<OpenAIChat>()
+    const loreCounts = new Map<OpenAIChat, number>()
+
     for(const lorebook of normalActives){
-        unformated.lorebook.push({
+        const loreChat: OpenAIChat = {
             role: lorebook.role,
             content: risuChatParser(resolvePosition(lorebook.prompt), {chara: currentChar, subject, promptView})
-        })
+        }
+        unformated.lorebook.push(loreChat)
+        if(recalledActives.has(lorebook)){
+            chatOfRecalled.set(lorebook, loreChat)
+            recalledChats.add(loreChat)
+        }
     }
 
     const descActives = lorepmt.actives.filter(v => {
@@ -1652,6 +1727,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             for(const chat of chats){
                 const tokens = await tokenizer.tokenizeChat(chat)
                 currentTokens += tokens
+                if(recalledChats.has(chat)){
+                    loreCounts.set(chat, (loreCounts.get(chat) ?? 0) + tokens)
+                }
             }
         }
 
@@ -1795,7 +1873,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         for(const key in unformated){
             const chats = unformated[key] as OpenAIChat[]
             for(const chat of chats){
-                currentTokens += await tokenizer.tokenizeChat(chat)
+                const tokens = await tokenizer.tokenizeChat(chat)
+                currentTokens += tokens
+                if(recalledChats.has(chat)){
+                    loreCounts.set(chat, (loreCounts.get(chat) ?? 0) + tokens)
+                }
             }
         }
     }
@@ -1839,11 +1921,15 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     if(firstMessageSent){
         const firstMsg = firstMessageOf(nowChatroom, currentChat)
 
+        const firstRaced = await raceAbort(abortSignal, (abandoned) => processScript(nowChatroom,
+            risuChatParser(firstMsg, {chara: currentChar, subject, promptView}),
+        'editprocess', {}, undefined, subject, promptView, abandoned), { label: 'The edit-process script pass' })
+        if(!firstRaced.settled){
+            return false
+        }
         const chat:OpenAIChat = {
             role: 'assistant',
-            content: await (processScript(nowChatroom,
-                risuChatParser(firstMsg, {chara: currentChar, subject, promptView}),
-            'editprocess', {}, undefined, subject, promptView))
+            content: firstRaced.value
         }
         chroFirst = { chat, preWrap: chat.content, raw: firstMsg }
 
@@ -1910,6 +1996,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     let chroPlaced = false
     const firstMessageChat = chats.length
     const tokensBeforeMessages = currentTokens
+    // What step 1 took back from `tokensBeforeMessages` by removing recalled lore, and how many entries that was.
+    let loreRemovedTokens = 0
+    let loreRemoved = 0
     const tokensAfterMessages:number[] = []
     const countedMessages = new Map<OpenAIChat, number>()
 
@@ -1927,9 +2016,13 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     const tooLarge = new Map<string, { name: string, limitBytes: number }>()
     for(const msg of ms){
         const chatIndex = msChatIndexes[index]
-        let formatedChat = (await processScriptFull(nowChatroom,risuChatParser(msg.data, {chara: currentChar, role: msg.role, subject, promptView: promptViewAt(promptView, chatIndex)}), 'editprocess', chatIndex, {
+        const editRaced = await raceAbort(abortSignal, (abandoned) => processScriptFull(nowChatroom,risuChatParser(msg.data, {chara: currentChar, role: msg.role, subject, promptView: promptViewAt(promptView, chatIndex)}), 'editprocess', chatIndex, {
             chatRole: msg.role,
-        }, undefined, subject, {message: msg, index: chatIndex, locator: messageLocator}, promptView, 'use', moduleScripts)).data
+        }, undefined, subject, {message: msg, index: chatIndex, locator: messageLocator}, promptView, 'use', moduleScripts, abandoned), { label: 'The edit-process script pass' })
+        if(!editRaced.settled){
+            return false
+        }
+        let formatedChat = editRaced.value.data
         let name = ''
         if(msg.role === 'char'){
             if(msg.saying){
@@ -2258,8 +2351,49 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         const chroBefore = chroCapture ? chats.slice() : null
         let step1: Awaited<ReturnType<typeof trimChatsToContext>> | null = null
         let chroPlacedBlock: { block: string } | null = null
-        if(countMessagesInTrim || chroMode === 'inject'){
-            const trimmed = await trimChatsToContext({ ...countArgs, maxContextTokens })
+        // Recalled lore is the first thing step 1 gives up: one entry at a time, lowest-ranked first, until the trim fits
+        // with the history floor held. With none left this is the engine-off trim.
+        const recalledLeft = recalledLore.slice()
+        if(countMessagesInTrim || chroMode === 'inject' || recalledLeft.length > 0){
+            const floorKeep = Math.max(1, Math.min(HISTORY_FLOOR, chats.length - firstMessageChat))
+            let trimCounts: ReadonlyMap<OpenAIChat, number> = countedMessages
+            let trimmed = await trimChatsToContext({
+                ...countArgs,
+                tokensBeforeMessages: tokensBeforeMessages - loreRemovedTokens,
+                countedMessages: trimCounts,
+                keepAtLeast: recalledLeft.length > 0 ? floorKeep : 1,
+                maxContextTokens,
+            })
+            while(!trimmed.fits && recalledLeft.length > 0){
+                trimCounts = trimmed.counts
+                const gone = recalledLeft.pop()
+                const goneChat = chatOfRecalled.get(gone.active)
+                // Every splice is guarded: an entry another path already removed is skipped, never a neighbour.
+                const chatAt = goneChat ? unformated.lorebook.indexOf(goneChat) : -1
+                if(chatAt >= 0){
+                    unformated.lorebook.splice(chatAt, 1)
+                }
+                const activeAt = lorepmt.actives.indexOf(gone.active)
+                if(activeAt >= 0){
+                    lorepmt.actives.splice(activeAt, 1)
+                }
+                const usedAt = gone.used ? lorepmt.used.indexOf(gone.used) : -1
+                if(usedAt >= 0){
+                    lorepmt.used.splice(usedAt, 1)
+                }
+                loreRemovedTokens += (goneChat ? loreCounts.get(goneChat) : 0) ?? 0
+                loreRemoved++
+                trimmed = await trimChatsToContext({
+                    ...countArgs,
+                    tokensBeforeMessages: tokensBeforeMessages - loreRemovedTokens,
+                    countedMessages: trimCounts,
+                    keepAtLeast: recalledLeft.length > 0 ? floorKeep : 1,
+                    maxContextTokens,
+                })
+            }
+            if(loreRemoved > 0){
+                markLoreRecallTrimmed(loreChatKey, loreRemoved)
+            }
             step1 = trimmed
             currentTokens = trimmed.currentTokens
             if(!trimmed.fits){
@@ -2332,7 +2466,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 ltmSettings: DBState.db.ltmSettings, maxContextTokens, countVaries,
                 tokenizerKey: () => [DBState.db.aiModel, DBState.db.customTokenizer, DBState.db.currentPluginProvider, pluginV2.providerOptions?.get(DBState.db.currentPluginProvider)?.tokenizer ?? 'none', DBState.db.googleClaudeTokenizing ? '1' : '0', chatAdditonalTokens].join('|'),
                 inject: chroMode === 'inject' && step1 ? {
-                    chats, step1, firstMessageChat, tokensBeforeMessages, tokensAfterMessages,
+                    chats, step1, firstMessageChat, tokensBeforeMessages: tokensBeforeMessages - loreRemovedTokens, tokensAfterMessages,
                     reserveTokens, floor: HISTORY_FLOOR,
                     count: (chat) => tokenizer.tokenizeChat(chat),
                 } : null,
@@ -2739,10 +2873,18 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         })
     }
 
-    formated = await runLuaEditTrigger(currentChar, 'editRequest', formated, undefined, undefined, subject)
+    const editRequestRaced = await raceAbort(abortSignal, (abandoned) => runLuaEditTrigger(currentChar, 'editRequest', formated, undefined, undefined, subject, abandoned), { label: 'The edit-request script' })
+    if(!editRequestRaced.settled){
+        return false
+    }
+    formated = editRequestRaced.value
 
     if(DBState.db.promptInfoInsideChat && DBState.db.promptTextInfoInsideChat){
-        promptBodyformatedForChatStore = await runLuaEditTrigger(currentChar, 'editRequest', promptBodyformatedForChatStore, undefined, undefined, subject)
+        const textRaced = await raceAbort(abortSignal, (abandoned) => runLuaEditTrigger(currentChar, 'editRequest', promptBodyformatedForChatStore, undefined, undefined, subject, abandoned), { label: 'The edit-request script' })
+        if(!textRaced.settled){
+            return false
+        }
+        promptBodyformatedForChatStore = textRaced.value
         promptInfo.promptText = promptBodyformatedForChatStore
     }
 
@@ -3000,21 +3142,27 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         let settleText: string | null = null
         // With `holdOpenSpan` the text from the opener of a CBS block that is still open stays raw, so the chat view can hide
         // it until the block closes; only the text before it is processed.
-        const processAndWriteReply = async (text:string, holdOpenSpan:boolean, bumpKeys = true):Promise<boolean> => {
+        // 'abandoned': the unit's stop deadline expired before the pass finished, so nothing was written and the reply keeps
+        // the text it last stored. The pass runs with the abandon signal, not the unit's, so a Stop does not disable its Lua.
+        const processAndWriteReply = async (text:string, holdOpenSpan:boolean, bumpKeys = true):Promise<'written'|'gone'|'abandoned'> => {
             const before = resolveReply()
             if(!before){
-                return false
+                return 'gone'
             }
             const { head, held } = holdOpenSpan ? splitAtOpenCbsSpan(text) : { head: text, held: '' }
             // Every text here is a partial or deferred reply that is never looked up again; caching it would only evict entries that are.
-            const processed = await processScriptFull(nowChatroom, head, 'editoutput', before.index, {}, undefined, subject, replyMessageRef(before), undefined, 'bypass')
+            const raced = await raceUntil(passDeadline, (abandoned) => processScriptFull(nowChatroom, head, 'editoutput', before.index, {}, undefined, subject, replyMessageRef(before), undefined, 'bypass', undefined, abandoned), { label: 'The output script pass' })
+            if(!raced.settled){
+                return 'abandoned'
+            }
+            const processed = raced.value
             emoChanged = processed.emoChanged
             const written = writeReplyData(processed.data + held, bumpKeys)
             // A pass that threw never reaches here, so the settle text stays the last one that was written.
             if(written){
                 settleText = held === '' ? null : text
             }
-            return written
+            return written ? 'written' : 'gone'
         }
         const flushStreamingDisplay = async () => {
             clearStreamingFlushSchedule()
@@ -3034,7 +3182,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         replyGone = !writeReplyData(reformatContent(prefix + nextResult))
                         continue
                     }
-                    replyGone = !(await processAndWriteReply(reformatContent(prefix + nextResult), true))
+                    const flushed = await processAndWriteReply(reformatContent(prefix + nextResult), true)
+                    replyGone = flushed === 'gone'
+                    if(flushed === 'abandoned'){
+                        break
+                    }
                 } while(streamingFlushQueued || pendingStreamingResult !== null)
             })().finally(() => {
                 streamingFlushPromise = null
@@ -3097,16 +3249,20 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         }
                         scheduleStreamingDisplayFlush()
                     }
-                    else if(!(await processAndWriteReply(reformatContent(prefix + result), true))){
-                        replyGone = true
-                        break
-                    }
-                    else if(!streamAborted){
-                        // One posted-message task, never a timer, frame or scheduler.yield: a hidden page must still finish
-                        // the reply, and native events queued during the pass must reach the snapshot reader first so the
-                        // next pass takes the newest snapshot. Superseded snapshots skip the scripts; unless Stop or a gone
-                        // reply ends the loop, the last snapshot is always written (MC-1451, MC-2990, MC-2991).
-                        await yieldTask()
+                    else {
+                        const written = await processAndWriteReply(reformatContent(prefix + result), true)
+                        if(written !== 'written'){
+                            // Gone: nothing more is written. Abandoned: the reply keeps its last stored text.
+                            replyGone = written === 'gone'
+                            break
+                        }
+                        if(!streamAborted){
+                            // One posted-message task, never a timer, frame or scheduler.yield: a hidden page must still finish
+                            // the reply, and native events queued during the pass must reach the snapshot reader first so the
+                            // next pass takes the newest snapshot. Superseded snapshots skip the scripts; unless Stop or a gone
+                            // reply ends the loop, the last snapshot is always written (MC-1451, MC-2990, MC-2991).
+                            await yieldTask()
+                        }
                     }
                 }
                 if(readed.done){
@@ -3129,12 +3285,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     throw streamingFlushError
                 }
                 if(deferStreamingPostProcessing && receivedStreamingResult && !replyGone){
-                    replyGone = !(await processAndWriteReply(reformatContent(prefix + result), false, false))
+                    replyGone = (await processAndWriteReply(reformatContent(prefix + result), false, false)) === 'gone'
                 }
                 // The last write held an open block raw: the stored reply is the pass over its whole text, as when no
                 // block was held. Done, Stop and a reader error all end here; a flush error has already thrown above.
                 if(!replyGone && settleText !== null && !deferStreamingPostProcessing){
-                    replyGone = !(await processAndWriteReply(settleText, false, false))
+                    replyGone = (await processAndWriteReply(settleText, false, false)) === 'gone'
                 }
             }
             finally {
@@ -3219,6 +3375,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     : (req.type === 'multiline') ? req.result
                     : []
         let mrerolls:string[] = []
+        // Set once a pass is abandoned at the stop deadline; every later pass is then not started either.
+        let outputAbandoned = false
         for(let i=0;i<msgs.length;i++){
             let msg = msgs[i]
             let mess = msg[1]
@@ -3233,13 +3391,28 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     trackReply(startCtx.chat, continuedIndex)
                 }
             }
-            let result2 = await processScriptFull(nowChatroom, reformatContent(mess), 'editoutput', startCtx.chat.message.length, {}, undefined, subject, null)
+            // A pass the stop deadline abandons (or never starts) gives back its own input: the reply is stored raw, like
+            // a stopped stream's, and nothing that follows starts a new hook.
+            const firstInput = reformatContent(mess)
+            const firstRaced = await raceUntil(passDeadline, (abandoned) => processScriptFull(nowChatroom, firstInput, 'editoutput', startCtx.chat.message.length, {}, undefined, subject, null, undefined, 'use', undefined, abandoned), { label: 'The output script pass' })
+            if(!firstRaced.settled){
+                outputAbandoned = true
+            }
+            let result2: { data: string, emoChanged: boolean } = firstRaced.settled ? firstRaced.value : { data: firstInput, emoChanged: false }
             if(continuing){
                 const continuedTarget = resolveReply()
                 if(continuedTarget){
                     const beforeData = continuedTarget.ctx.chat.message[continuedTarget.index].data
                     ttsBefore = beforeData
-                    result2 = await processScriptFull(nowChatroom, reformatContent(beforeData + mess), 'editoutput', continuedTarget.index, {}, undefined, subject, replyMessageRef(continuedTarget))
+                    const continuedInput = reformatContent(beforeData + mess)
+                    const continuedRaced = await raceUntil(passDeadline, (abandoned) => processScriptFull(nowChatroom, continuedInput, 'editoutput', continuedTarget.index, {}, undefined, subject, replyMessageRef(continuedTarget), undefined, 'use', undefined, abandoned), { label: 'The output script pass' })
+                    if(continuedRaced.settled){
+                        result2 = continuedRaced.value
+                    }
+                    else{
+                        outputAbandoned = true
+                        result2 = { data: continuedInput, emoChanged: false }
+                    }
                 }
             }
             modelText = DBState.db.removeIncompleteResponse ? trimUntilPunctuation(mess) : mess
@@ -3247,7 +3420,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 result2.data = trimUntilPunctuation(result2.data)
             }
             result = result2.data
-            const inlayResult = runInlayScreen(currentChar, result)
+            // An abandoned pass means a Stop: the inlay step would start an image generation, which a stopped unit does not.
+            const inlayResult = outputAbandoned ? { text: result, promise: undefined } : runInlayScreen(currentChar, result)
             result = inlayResult.text
             emoChanged = result2.emoChanged
             if(continuing){
@@ -3334,6 +3508,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             addRerolls(generationId, mrerolls, { chaId: origin.chaId, chatId: origin.chatId }, candidateStartState)
         }
 
+        // A Stop ends the unit here, as it does after a stopped stream: the variable CBS of the stored reply is expanded
+        // by the next send's entry, not by this stopped unit.
+        if(abortSignal.aborted){
+            return false
+        }
+
         const parsedChat = runCurrentChatFunction()
         if(!parsedChat){
             return endGone()
@@ -3388,7 +3568,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 // The reply can be deleted while the translation is pending; a Stop or a deleted chat ends the wait.
                 // The chat can also be left meanwhile, and a chat that is not on screen is not spoken.
                 if(text !== null && !abortSignal.aborted && resolveReply() && isShownChat(origin)){
-                    await sayTTS(currentChar, text, { skipTextFilter: true })
+                    await sayTTS(currentChar, text, { skipTextFilter: true, signal: abortSignal })
                 }
             }
         }

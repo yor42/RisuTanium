@@ -5,9 +5,9 @@
     import { liveReaderOf, resolveOwnerTarget } from '../../ts/studio/edit/ownerTargets'
     import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
     import { resolveRiskyRefusal } from '../../ts/studio/edit/riskyReplay'
-    import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
+    import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
-    import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath } from '../../ts/studio/history/historyModel'
+    import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath, type SetPath } from '../../ts/studio/history/historyModel'
     import type { StudioRefusal } from '../../ts/studio/history/ownerHistory.svelte'
     import { hasChatNote as hasChatNoteOf } from '../../ts/studio/history/ownerKindRules'
     import { parseOwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -48,7 +48,8 @@
     })
     // A changed path is kept unless the user chooses to overwrite it.
     let overwritten = $state<RestorePath[]>([])
-    let refusal = $state<StudioRefusal | null>(null)
+    // The refused result's reason and the paths it names: a risky-flag refusal's text depends on them.
+    let refusal = $state<{ reason: StudioRefusal; paths?: SetPath[] } | null>(null)
     let cancelButton = $state<HTMLButtonElement | undefined>()
     let layer = $state<HTMLElement | undefined>()
     let confirmButton = $state<HTMLButtonElement | undefined>()
@@ -107,14 +108,14 @@
             result = settled
         }
         if (result.ok === false) {
-            refusal = result.reason
+            refusal = { reason: result.reason, paths: result.paths }
             return
         }
         // The sheet unmounts with the close, so the scope is taken from it first; a restore that changed nothing
         // leaves focus to the panel's opener rule.
         const scope = layer?.closest('[data-part="studio"]') ?? null
         setStudioRestoreSheetOpen(false)
-        void placeFocusAfterHistory(before, readOwnerFields(owner), () => scope, () => null)
+        void placeFocusAfterHistory(before, readOwnerFields(key), () => scope, () => null)
     }
 
     const buttonClass = 'min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer disabled:cursor-default disabled:opacity-50'
@@ -143,7 +144,7 @@
             </ul>
         {/if}
         {#if refusal}
-            <p role="alert" data-part="studio-restore-refusal" class="text-sm text-draculared">{refusalText(refusal)}</p>
+            <p role="alert" data-part="studio-restore-refusal" class="text-sm text-draculared">{refusalTextOf(refusal)}</p>
         {/if}
         <div class="flex justify-end gap-2">
             <button bind:this={cancelButton} type="button" class={buttonClass} data-part="studio-restore-cancel" onclick={() => setStudioRestoreSheetOpen(false)}>{language.cancel}</button>

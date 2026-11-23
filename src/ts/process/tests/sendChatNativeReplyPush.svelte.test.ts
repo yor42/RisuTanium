@@ -232,7 +232,10 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 
 import { sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { noteReplyPushed, noteBound, noteInvoked, resetPageStateForTests } from '../../nativeReply/pageState'
+import { noteReplyPushed, noteBound, noteInvoked, heldReply, resetPageStateForTests } from '../../nativeReply/pageState'
+import { processScriptFull } from '../scripts'
+import { stopAllReplyWork } from '../chatOrigin'
+import { STOPPED_PASS_GRACE_MS } from '../abortRace'
 import { clearRunningSends } from './activeUnits.test-helpers'
 
 function installDb(useStreaming: boolean): void {
@@ -368,5 +371,93 @@ describe('sendChat: the live push of an owned send', () => {
     test('a streaming send on Android never notes the non-stream push', async () => {
         await sendOnce({ android: true, useStreaming: true })
         expect(noteReplyPushed).not.toHaveBeenCalled()
+    })
+})
+
+describe('sendChat: a stopped send whose output pass never settles', () => {
+    test('D-7c: the raw reply is pushed and marked, and its record is consumed only after the save that covers the mark', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        try {
+            const actualPage = await vi.importActual<typeof import('../../nativeReply/pageState')>('../../nativeReply/pageState')
+            const consume = vi.fn(async (_key: string) => ({ result: 'removed' as const, flushed: true }))
+            let committed = 0
+            let onCommit: (() => void) | undefined
+            actualPage.configurePageState({
+                store: { consume },
+                waiter: {
+                    committedMarkCount: () => committed,
+                    markCount: () => world.markCount,
+                    verdict: () => 'saved',
+                    afterNextCommit: (callback) => { onCommit = callback },
+                    markCharacter: () => {},
+                    requestSaveNow: () => {},
+                },
+                onUnreadable: () => {},
+            })
+            vi.mocked(noteReplyPushed).mockImplementationOnce((key: string, chaId: string, target: number) => {
+                world.log.push({ kind: 'note', key, chaId, target })
+                actualPage.noteReplyPushed(key, chaId, target)
+            })
+            vi.mocked(processScriptFull).mockClear()
+            vi.mocked(processScriptFull).mockImplementation((async (_char: unknown, text: string, mode: string) => (
+                mode === 'editoutput' ? new Promise<never>(() => {}) : { data: text, emoChanged: false }
+            )) as unknown as typeof processScriptFull)
+            world.android = true
+            installDb(false)
+            selectedCharID.set(0)
+            clearRunningSends()
+            let generationId = ''
+            requestChatDataMock.mockImplementationOnce(async (args: { chatId: string }) => {
+                generationId = args.chatId
+                noteBound(args.chatId)
+                noteInvoked(args.chatId)
+                return { type: 'success', result: '  Reply  ' }
+            })
+
+            const run: { done: boolean, value: boolean | undefined } = { done: false, value: undefined }
+            void sendChat().then((value) => {
+                run.done = true
+                run.value = value
+            })
+            for (let i = 0; i < 400 && !vi.mocked(processScriptFull).mock.calls.some((call) => call[2] === 'editoutput'); i++) {
+                await vi.advanceTimersByTimeAsync(0)
+            }
+            expect(vi.mocked(processScriptFull).mock.calls.some((call) => call[2] === 'editoutput')).toBe(true)
+            stopAllReplyWork()
+            await vi.advanceTimersByTimeAsync(STOPPED_PASS_GRACE_MS - 1)
+            expect(run.done).toBe(false)
+            await vi.advanceTimersByTimeAsync(1)
+            for (let i = 0; i < 30; i++) {
+                await vi.advanceTimersByTimeAsync(0)
+            }
+
+            expect(run.done).toBe(true)
+            expect(run.value).toBe(false)
+            expect(DBState.db.characters[0].chats[0].message[1].data).toBe('Reply')
+            const notes = world.log.filter((entry) => entry.kind === 'note')
+            expect(notes).toHaveLength(1)
+            const noteAt = world.log.findIndex((entry) => entry.kind === 'note')
+            const before = world.log[noteAt - 1]
+            if (before.kind !== 'mark' || notes[0].kind !== 'note') {
+                throw new Error('the push must be a mark followed by a note')
+            }
+            expect(notes[0].key).toBe(generationId)
+            expect(notes[0].chaId).toBe('char-0')
+            expect(notes[0].target).toBe(before.countAfter)
+            // The record waits for the save: nothing consumed it at the Stop or at the end of the unit.
+            expect(heldReply(generationId)?.state).toBe('awaiting-save')
+            expect(consume).not.toHaveBeenCalled()
+
+            committed = world.markCount
+            onCommit?.()
+            for (let i = 0; i < 10; i++) {
+                await vi.advanceTimersByTimeAsync(0)
+            }
+            expect(consume).toHaveBeenCalledTimes(1)
+            expect(consume).toHaveBeenCalledWith(generationId)
+        } finally {
+            vi.useRealTimers()
+            vi.mocked(processScriptFull).mockImplementation((async (_char: unknown, text: string) => ({ data: text, emoChanged: false })) as unknown as typeof processScriptFull)
+        }
     })
 })

@@ -3,7 +3,7 @@
     import { TriangleAlert } from '@lucide/svelte'
     import { language } from '../../lang'
     import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
-    import { RISKY_FLAG_PATHS, type RiskyFlagPath } from '../../ts/studio/edit/riskyFlags'
+    import { CHARACTER_RISKY_FLAG_PATHS, type CharacterRiskyFlagPath } from '../../ts/studio/edit/riskyFlags'
     import { riskyExplainOf, riskyNameOf } from '../../ts/studio/edit/riskyText'
     import { refusalText } from '../../ts/studio/edit/studioToasts'
     import type { OwnerHistoryService, StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
@@ -24,20 +24,20 @@
     let { chaId, owner, service, editable }: Props = $props()
 
     // The stored value as it is, without the history reader's boolean-only view.
-    function rawOf(path: RiskyFlagPath): unknown {
+    function rawOf(path: CharacterRiskyFlagPath): unknown {
         const found = DBState.db.characters?.find((candidate) => candidate?.chaId === chaId)
         return found && found.type !== 'group' ? (found as unknown as Record<string, unknown>)[path] : undefined
     }
 
     // Present and not a boolean: the engine reads its truthiness, Studio cannot change it.
-    function unreadable(path: RiskyFlagPath): boolean {
+    function unreadable(path: CharacterRiskyFlagPath): boolean {
         const raw = rawOf(path)
         return raw !== undefined && typeof raw !== 'boolean'
     }
 
     // `escapeOutput` is read as truthy on one path and as strictly `true` on another, so a stored non-boolean is neither
     // plainly on nor off: it is `mixed`.
-    function checkedOf(path: RiskyFlagPath): boolean | 'mixed' {
+    function checkedOf(path: CharacterRiskyFlagPath): boolean | 'mixed' {
         if (path === 'escapeOutput' && unreadable(path)) return 'mixed'
         return Boolean(rawOf(path))
     }
@@ -46,7 +46,7 @@
     let announcement = $state('')
     let destroyed = false
     const asks = new Set<RiskyAsk>()
-    const switches: Partial<Record<RiskyFlagPath, HTMLButtonElement>> = {}
+    const switches: Partial<Record<CharacterRiskyFlagPath, HTMLButtonElement>> = {}
 
     onDestroy(() => {
         destroyed = true
@@ -58,7 +58,7 @@
         return result.ok
     }
 
-    async function press(path: RiskyFlagPath): Promise<void> {
+    async function press(path: CharacterRiskyFlagPath): Promise<void> {
         if (!service || !editable || unreadable(path)) return
         announcement = ''
         if (rawOf(path) === true) {
@@ -81,7 +81,7 @@
         switches[path]?.focus()
     }
 
-    function track(element: HTMLButtonElement, path: RiskyFlagPath): { destroy(): void } {
+    function track(element: HTMLButtonElement, path: CharacterRiskyFlagPath): { destroy(): void } {
         switches[path] = element
         return { destroy: () => { if (switches[path] === element) delete switches[path] } }
     }
@@ -95,7 +95,7 @@
         <h3>{language.studioRiskyTitle}</h3>
     </div>
     <p data-part="studio-risky-warning" id="{idBase}-warning" class="text-sm">{language.studioRiskyWarn}</p>
-    {#each RISKY_FLAG_PATHS as path (path)}
+    {#each CHARACTER_RISKY_FLAG_PATHS as path (path)}
         <div data-part="studio-risky-flag" class="flex flex-col gap-1">
             <button
                 type="button"

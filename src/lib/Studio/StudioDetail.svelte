@@ -15,10 +15,12 @@
     import StudioAssetList, { type EnabledModuleAssets } from './assets/StudioAssetList.svelte'
     import StudioEmotionList from './assets/StudioEmotionList.svelte'
     import StudioModuleAssetForm from './assets/StudioModuleAssetForm.svelte'
+    import StudioModuleAdvancedForm from './StudioModuleAdvancedForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
     import StudioAdvancedForm from './StudioAdvancedForm.svelte'
     import StudioExampleForm from './StudioExampleForm.svelte'
+    import StudioPresetAdvancedForm from './StudioPresetAdvancedForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
     import StudioToggleBuilder from './StudioToggleBuilder.svelte'
@@ -116,9 +118,18 @@
     const moduleToggleBuilderLive = $derived(openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'toggles')
     const presetToggleBuilderLive = $derived(owner?.type === 'preset' && studioScreen.selectedPresetId !== null && kindNode?.kind === 'toggles')
     const toggleBuilderLive = $derived(characterToggleBuilderLive || moduleToggleBuilderLive || presetToggleBuilderLive)
+    // The advanced form of the preset the selection pinned by id. It is no part of `formLive`: a preset has no save chip.
+    const presetAdvancedFormLive = $derived(owner?.type === 'preset' && studioScreen.selectedPresetId !== null && kindNode?.kind === 'advanced')
     // A module whose id several rows share: its toggles stay read-only text, as its assets do.
     const moduleToggleShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'toggles')
     // A loaded module's asset list. It is no part of `formLive`: that carries the character's save chip.
+    // The module's 고급 and 배경 HTML forms mount on the kind, so the html kind has its form while it has no item yet. A module whose
+    // id several rows share gets the same component as a read-only view of the given slot.
+    const moduleAdvancedFormLive = $derived(openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'advanced')
+    const moduleHtmlFormLive = $derived(openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'html')
+    const moduleAdvancedShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'advanced')
+    const moduleHtmlShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'html')
+    const moduleFormMounted = $derived(moduleAdvancedFormLive || moduleHtmlFormLive || moduleAdvancedShared || moduleHtmlShared)
     const moduleAssetFormLive = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub && kindNode?.kind === 'display' && moduleRawId !== null && moduleSlotIndex !== null)
 
     // A selected owner the model no longer has (the chat page moved, a module was removed) leaves the detail
@@ -213,7 +224,7 @@
             {/if}
             {#if kindNode}
                 <p data-part="studio-detail-kind" class="font-bold">{kindLabelOf(kindNode.kind)}</p>
-                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive && !toggleBuilderLive}
+                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive && !toggleBuilderLive && !moduleFormMounted}
                     <p class="text-textcolor2">{language.studioEmptyKind}</p>
                 {:else if kindNode.kind === 'lore' || kindNode.kind === 'regex'}
                     <p class="text-textcolor2">{language.studioItemCount(kindNode.count)}</p>
@@ -222,7 +233,7 @@
             {#if item}
                 <p data-part="studio-detail-item" class="break-words font-bold">{itemLabelOf(item)}</p>
             {/if}
-            {#if itemText && !toggleBuilderLive}
+            {#if itemText && !toggleBuilderLive && !moduleFormMounted && !presetAdvancedFormLive}
                 <pre data-part="studio-detail-text" class="whitespace-pre-wrap break-words rounded-md border border-darkborderc bg-darkbg p-3 font-sans">{itemText.shown}</pre>
                 {#if itemText.cut}
                     <p data-part="studio-detail-truncated" class="text-sm text-textcolor2">{language.studioTruncated(DETAIL_TEXT_LIMIT)}</p>
@@ -270,6 +281,24 @@
                 <!-- Keyed by the owner, as the character's list is; the module's id and slot are primitives, never the owner node. -->
                 {#key ownerKey}
                     <StudioModuleAssetForm moduleId={moduleRawId} slotIndex={moduleSlotIndex} enabledModules={enabledModuleAssets} />
+                {/key}
+            {:else if moduleAdvancedFormLive || moduleHtmlFormLive}
+                {#if moduleRawId !== null && moduleSlotIndex !== null}
+                    <StudioStatusChip ack={currentModuleAck()} />
+                    {#key ownerKey}
+                        <StudioModuleAdvancedForm section={moduleAdvancedFormLive ? 'advanced' : 'html'} moduleId={moduleRawId} slotIndex={moduleSlotIndex} />
+                    {/key}
+                {/if}
+            {:else if moduleAdvancedShared || moduleHtmlShared}
+                {#if moduleRawId !== null && moduleSlotIndex !== null}
+                    {#key ownerKey}
+                        <StudioModuleAdvancedForm section={moduleAdvancedShared ? 'advanced' : 'html'} moduleId={moduleRawId} slotIndex={moduleSlotIndex} readOnlyShared />
+                    {/key}
+                {/if}
+            {:else if presetAdvancedFormLive && studioScreen.selectedPresetId !== null}
+                <!-- Keyed by the pinned id, not the row: a reorder keeps this form, another preset builds a new one. -->
+                {#key studioScreen.selectedPresetId}
+                    <StudioPresetAdvancedForm presetId={studioScreen.selectedPresetId} />
                 {/key}
             {:else if !toggleBuilderLive}
                 <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>

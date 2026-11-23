@@ -6,6 +6,7 @@ import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import { runVITS } from "./transformers";
 import { cancelTTSPlayback, currentTTSSignal, playEncodedAudio } from "./ttsPlayback";
+import { linkedAbort, raceAbort } from "./abortRace";
 import { beginInFlight } from "./inFlightWork";
 import {
     getTTSPreprocessors,
@@ -126,14 +127,17 @@ async function runPostprocessorPipeline(
         const disposable = currentAudio.slice(0); // fresh clone per hook
         let result: AfterTTSResult | void;
         try {
-            result = await Promise.resolve().then(() =>
+            // A hook that never settles must not hold the speech after a Stop.
+            const raced = await raceAbort(signal, () => Promise.resolve().then(() =>
                 hook({
                     audio: disposable,
                     mimeType: currentMime,
                     ttsMode: ctx.ttsMode,
                     characterId: ctx.characterId,
                 })
-            );
+            ), { label: 'The TTS postprocessor' });
+            if (!raced.settled) return { audio: currentAudio, mimeType: currentMime, skip: true };
+            result = raced.value;
         } catch (err) {
             console.error('[TTS postprocessor] threw, continuing with next hook:', err);
             continue;
@@ -162,8 +166,10 @@ async function playAudio(
     await playEncodedAudio(processed.audio, signal, gain);
 }
 
-export async function sayTTS(character:character,text:string, options?: { skipTextFilter?: boolean }) {
-    const signal = currentTTSSignal()
+export async function sayTTS(character:character,text:string, options?: { skipTextFilter?: boolean, signal?: AbortSignal }) {
+    // The speech ends at a TTS stop and at the caller's own signal (a unit's Stop).
+    const stop = linkedAbort(currentTTSSignal(), options?.signal)
+    const signal = stop.signal
     // Covers synthesis and decoding; the clip or utterance that carries the
     // audio afterwards holds its own token, begun before this one ends.
     const endInFlight = beginInFlight('tts')
@@ -185,14 +191,14 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
             text = filterTTSText(text, !!character.ttsReadOnlyQuoted)
         }
 
-        const beforeResult = await runHookPipeline<BeforeTTSContext, BeforeTTSResult>(
+        const beforeRaced = await raceAbort(signal, () => runHookPipeline<BeforeTTSContext, BeforeTTSResult>(
             getTTSPreprocessors(),
             { text, ttsMode: character.ttsMode ?? '', characterId: character.chaId },
-        );
-        if (signal.aborted || beforeResult.skip) {
+        ), { label: 'The TTS preprocessor' });
+        if (!beforeRaced.settled || signal.aborted || beforeRaced.value.skip) {
             return;
         }
-        text = beforeResult.ctx.text;
+        text = beforeRaced.value.ctx.text;
         // A provider is never asked to speak nothing: the filter and the hooks
         // may leave empty, blank or non-string text.
         if(typeof text !== 'string' || !text.trim()){
@@ -621,6 +627,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
         // The cause text has no "Failed to fetch", so the alert adds no plain-fetch hint to it.
         alertError(fillLang(language.errors.ttsError, { error: error instanceof AndroidHttpBlockedError ? error.message : `${error}` }))
     } finally {
+        stop.dispose()
         endInFlight()
     }
 }

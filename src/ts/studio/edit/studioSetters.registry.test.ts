@@ -26,7 +26,8 @@ const ABSENT: FieldValue = { had: false }
 
 const KEEP_ON_CHARACTER = ['desc', 'firstMessage', 'exampleMessage'] as const
 const DELETE_ON_CHARACTER = ['customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'] as const
-const VALUE_OF: Record<SetPath, string | boolean | BiasRow[]> = {
+// The stored paths: the preset form's session-only paths have no builtin holder to write.
+const VALUE_OF: Record<Exclude<SetPath, `preset${string}`>, string | boolean | BiasRow[]> = {
     desc: 'new desc',
     firstMessage: 'new first',
     exampleMessage: 'new example',
@@ -45,6 +46,12 @@ const VALUE_OF: Record<SetPath, string | boolean | BiasRow[]> = {
     nickname: 'new nickname',
     defaultVariables: 'new variables',
     translatorNote: 'new translator note',
+    moduleName: 'new module name',
+    moduleDescription: 'new module description',
+    moduleNamespace: 'new namespace',
+    moduleHideIcon: true,
+    moduleLowLevelAccess: true,
+    backgroundEmbedding: 'new embedding',
     creatorNotes: 'new creator notes',
     removedQuotes: true,
     lowLevelAccess: true,

@@ -5,7 +5,7 @@
 
 import { language } from '../../../lang'
 import { toastHost, type ToastHost, type ToastId, type UndoOutcome } from '../../toast/toastHost.svelte'
-import type { ListSkipReason } from '../history/historyModel'
+import type { ListSkipReason, SetPath } from '../history/historyModel'
 import type { OwnerHistoryService, StudioRefusal, StudioResult } from '../history/ownerHistory.svelte'
 import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
 
@@ -71,7 +71,12 @@ function isPresetOwner(owner: OwnerKey): boolean {
     return parseOwnerKey(owner)?.kind === 'preset'
 }
 
-export function refusalTextOf(result: { reason: StudioRefusal; name?: string; listReason?: ListSkipReason }, owner?: OwnerKey): string {
+export function refusalTextOf(result: { reason: StudioRefusal; name?: string; listReason?: ListSkipReason; paths?: readonly SetPath[] }, owner?: OwnerKey): string {
+    // The one `riskyConfirm` code maps to its per-kind text through the paths it names: Low Level Access of a module
+    // keeps its own wording, every other flag uses the generic one.
+    if (result.reason === 'riskyConfirm' && result.paths?.includes('moduleLowLevelAccess')) {
+        return language.studioRefusalConfirmLowLevel
+    }
     if (owner !== undefined && result.reason === 'gone' && isPresetOwner(owner)) {
         return language.studioRefusalPresetGone
     }

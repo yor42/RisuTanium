@@ -51,7 +51,8 @@ vi.mock('src/ts/process/memory/chroMemory/shadow', async (importOriginal) => {
 
 import { DBState, hypaV3ModalOpen, selectedCharID } from 'src/ts/stores.svelte'
 import { installBackGuard, resetBackHandlersForTests } from 'src/ts/backHandlers'
-import { chroMemoryDiscarded, chroMemoryTrace } from 'src/ts/process/memory/chroMemory/traceStore'
+import { chroLoreTrace, chroMemoryDiscarded, chroMemoryTrace } from 'src/ts/process/memory/chroMemory/traceStore'
+import type { ChroLoreTrace } from 'src/ts/process/memory/chroMemory/loreRecall'
 import { discardChroMemoryIndex, type ChroMemoryTrace } from 'src/ts/process/memory/chroMemory/shadow'
 import ChroMemoryModal from './ChroMemoryModal.svelte'
 
@@ -97,6 +98,23 @@ function traceFor(chatKey: string, patch: Partial<ChroMemoryTrace> = {}): ChroMe
     }
 }
 
+function loreTraceFor(chatKey: string, patch: Partial<ChroLoreTrace> = {}): ChroLoreTrace {
+    return {
+        v: 1, chatKey, at: 1, ms: 2, mode: 'inject', outcome: 'placed',
+        query: { chars: 40, terms: 5 },
+        budget: { loreToken: 2000, unused: 1500, cap: 5000, limit: 1500, used: 64 },
+        candidates: { missed: 9, staticExcluded: 1, linked: 0, duplicate: 0, identityMiss: 0, eligible: 8 },
+        admission: { tau: 0.02, rejected: 3 },
+        index: { state: 'ready', entries: 77, buildMs: 3 },
+        items: [
+            { source: { kind: 'lore', from: 'chat', index: 4, name: 'Wyvern roost' }, rank: { lexical: 1, dense: null, fused: null }, score: 2.5, tokens: 40 },
+            { source: { kind: 'lore', from: 'module', index: 9, name: 'Sky citadel' }, rank: { lexical: 2, dense: null, fused: null }, score: 1.5, tokens: 24 },
+        ],
+        renders: 2, droppedEmpty: 0, trimmed: null,
+        ...patch,
+    }
+}
+
 function mountModal(): { target: HTMLElement, destroy: () => void } {
     const target = document.createElement('div')
     document.body.appendChild(target)
@@ -123,6 +141,7 @@ beforeEach(() => {
     installBackGuard({ showToast })
     hypaV3ModalOpen.set(true)
     chroMemoryTrace.set(null)
+    chroLoreTrace.set(null)
     chroMemoryDiscarded.set(null)
     vi.mocked(discardChroMemoryIndex).mockClear()
     installDb()
@@ -313,5 +332,120 @@ describe('Index tab', () => {
         chroMemoryDiscarded.set(null)
         flushSync()
         expect(target.textContent).toContain(language.chroMemoryUnits)
+    })
+})
+
+describe('Recalled lore (S18)', () => {
+    test('S18 (R): this chat lore trace shows the outcome, items with name, source, tokens and rank, and used of limit', () => {
+        chroLoreTrace.set(loreTraceFor(KEY))
+        const { target } = mountModal()
+        const text = target.textContent ?? ''
+        expect(text).toContain(language.chroMemoryLoreSection)
+        expect(text).toContain(language.chroMemoryOutcomeInjected)
+        expect(text).toContain(fillLang(language.chroMemoryLoreUsed, { used: 64, limit: 1500 }))
+        expect(text).toContain('Wyvern roost')
+        expect(text).toContain('Sky citadel')
+        expect(text).toContain(language.chroMemoryLoreFromChat)
+        expect(text).toContain(language.chroMemoryLoreFromModule)
+        expect(text).toContain(fillLang(language.chroMemoryItemMeta, { tokens: 40, rank: 1 }))
+        expect(text).not.toContain(language.chroMemoryNoSend)
+    })
+
+    test('S18 (R): another chat lore trace shows nothing of it', () => {
+        chroLoreTrace.set(loreTraceFor('other:chat'))
+        const { target } = mountModal()
+        expect(target.textContent).not.toContain(language.chroMemoryLoreSection)
+        expect(target.textContent).not.toContain('Wyvern roost')
+        expect(target.textContent).toContain(language.chroMemoryNoSend)
+    })
+
+    test('S18 (R): the removed-at-trim count shows only when entries were removed', () => {
+        chroLoreTrace.set(loreTraceFor(KEY, { trimmed: { removed: 2 } }))
+        const { target, destroy } = mountModal()
+        expect(target.textContent).toContain(fillLang(language.chroMemoryLoreRemoved, { count: 2 }))
+        destroy()
+        chroLoreTrace.set(loreTraceFor(KEY, { trimmed: { removed: 0 } }))
+        const second = mountModal()
+        expect(second.target.textContent).not.toContain(fillLang(language.chroMemoryLoreRemoved, { count: 0 }))
+    })
+
+    test('S18 (R): each of the ten outcomes maps to its own text; an error shows in the error colour', () => {
+        const cases: Array<[ChroLoreTrace['outcome'], string]> = [
+            ['placed', language.chroMemoryOutcomeInjected],
+            ['would-place', language.chroMemoryOutcomePacked],
+            ['budget-cut', language.chroMemoryLoreOutcomeBudgetCut],
+            ['no-budget', language.chroMemoryLoreOutcomeNoBudget],
+            ['no-query', language.chroMemoryOutcomeNoQuery],
+            ['index-building', language.chroMemoryLoreOutcomeIndexBuilding],
+            ['no-candidates', language.chroMemoryLoreOutcomeNoCandidates],
+            ['nothing-admitted', language.chroMemoryOutcomeNothing],
+            ['nothing-fit', language.chroMemoryLoreOutcomeNothingFit],
+        ]
+        for (const [outcome, label] of cases) {
+            chroLoreTrace.set(loreTraceFor(KEY, { outcome }))
+            const { target, destroy } = mountModal()
+            expect(target.textContent, outcome).toContain(label)
+            destroy()
+        }
+        chroLoreTrace.set(loreTraceFor(KEY, { outcome: 'error', error: 'boom' }))
+        const { target } = mountModal()
+        const el = Array.from(target.querySelectorAll('div')).find((d) => d.textContent === fillLang(language.chroMemoryOutcomeError, { error: 'boom' }))!
+        expect(el.classList.contains('text-draculared')).toBe(true)
+    })
+
+    test('S18 (G): the memory section and the lore section show together, and a live lore trace appears without remounting', () => {
+        chroMemoryTrace.set(traceFor(KEY))
+        const { target } = mountModal()
+        expect(target.textContent).not.toContain(language.chroMemoryLoreSection)
+        chroLoreTrace.set(loreTraceFor(KEY))
+        flushSync()
+        expect(target.textContent).toContain(language.chroMemoryLoreSection)
+        expect(target.textContent).toContain(language.chroMemoryOutcomeInjected)
+        expect(target.querySelector('[role=meter]')).not.toBeNull()
+    })
+
+    test('S18 (R): the Index tab shows the lore index size, building, failed and not-built states', () => {
+        const states: Array<[ChroLoreTrace['index']['state'], string]> = [
+            ['ready', '77'],
+            ['building', language.chroMemoryLoreIndexBuilding],
+            ['failed', language.chroMemoryLoreIndexFailed],
+            ['none', language.chroMemoryLoreIndexNone],
+        ]
+        for (const [state, label] of states) {
+            chroLoreTrace.set(loreTraceFor(KEY, { index: { state, entries: 77, buildMs: 1 } }))
+            const { target, destroy } = mountModal()
+            tab(target, language.chroMemoryTabIndex).click()
+            flushSync()
+            expect(target.textContent, state).toContain(language.chroMemoryLoreIndex)
+            expect(target.textContent, state).toContain(label)
+            if (state !== 'ready') expect(target.textContent, state).not.toContain('77')
+            destroy()
+        }
+    })
+
+    test('S18 (R): with no lore trace the Index tab shows no lore tile', () => {
+        const { target } = mountModal()
+        tab(target, language.chroMemoryTabIndex).click()
+        flushSync()
+        expect(target.textContent).not.toContain(language.chroMemoryLoreIndex)
+    })
+
+    test('S18 (R): the searchLore check writes only through writeLtmSettings, keeps every other key, and mounting writes nothing', () => {
+        const before = JSON.stringify(DBState.db.ltmSettings)
+        const { target } = mountModal()
+        tab(target, language.chroMemoryTabIndex).click()
+        flushSync()
+        expect(JSON.stringify(DBState.db.ltmSettings)).toBe(before)
+        const checks = target.querySelectorAll<HTMLInputElement>('input[type=checkbox]')
+        expect(checks).toHaveLength(2)
+        const lore = checks[1]
+        expect(lore.checked).toBe(false)
+        lore.click()
+        flushSync()
+        expect(DBState.db.ltmSettings).toEqual({ budgetTokens: 900, future: { x: 1 }, searchLore: true })
+        expect(target.textContent).toContain(language.chroMemorySearchLoreDesc)
+        lore.click()
+        flushSync()
+        expect(DBState.db.ltmSettings).toEqual({ budgetTokens: 900, future: { x: 1 }, searchLore: false })
     })
 })

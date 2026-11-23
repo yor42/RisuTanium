@@ -159,12 +159,19 @@ describe('C2: every other module intent stays refused, with the reason pinned an
         expect(harness.service.view(M1).done).toHaveLength(0)
     })
 
-    test('a field edit and a greeting intent have no character target and are refused as gone', async () => {
+    test('a field edit on a path outside the module row is refused as a precondition (T5-C2, amended on purpose: it was gone)', async () => {
+        await ready()
+        const before = JSON.stringify(DBState.db.modules)
+        expect(harness.service.editField(M1, 'desc', 'x')).toEqual({ ok: false, reason: 'precondition' })
+        expect(JSON.stringify(DBState.db.modules)).toBe(before)
+        expect(harness.replaced).toBe(0)
+        expect(harness.service.view(M1).done).toHaveLength(0)
+    })
+
+    test('greeting intents have no character target and are refused as gone', async () => {
         await ready()
         const before = JSON.stringify(DBState.db.modules)
         const results: [string, StudioResult][] = [
-            ['editField desc', harness.service.editField(M1, 'desc', 'x')],
-            ['editField customModuleToggle', harness.service.editField(M1, 'customModuleToggle', 'x')],
             ['greetingAdd', harness.service.greetingAdd(M1)],
             ['greetingEdit', harness.service.greetingEdit(M1, 0, 'x')],
             ['greetingDelete', harness.service.greetingDelete(M1, 0)],
@@ -178,6 +185,48 @@ describe('C2: every other module intent stays refused, with the reason pinned an
     })
 })
 
+describe('T5-PLAN: a module field edit needs no character target', () => {
+    test('a module field edit lands without a character target: one slot replacement, one step, undo deletes the key', async () => {
+        putModules(makeModule('M1'))
+        await ready()
+        const old = slot()
+        expect(harness.service.editField(M1, 'customModuleToggle', 'a=A')).toEqual({ ok: true })
+        expect(slot()).not.toBe(old)
+        expect(slot().customModuleToggle).toBe('a=A')
+        expect(harness.replaced).toBe(1)
+        expect(harness.service.view(M1).done).toHaveLength(1)
+        expect(harness.service.undo(M1)).toMatchObject({ ok: true })
+        expect('customModuleToggle' in slot()).toBe(false)
+    })
+})
+
+describe('T5-PLAN-S (b, c): a field edit outside the owner row is refused before the build', () => {
+    test('a chat owner editing the character\'s current desc is a precondition, not unchanged', async () => {
+        DBState.db.characters = [{ chaId: 'c1', name: 'c1', desc: 'resident desc', chats: [{ id: 'chat1', name: 'x', message: [], note: '' }], chatPage: 0 }] as unknown as typeof DBState.db.characters
+        const { chatOwnerKey } = await import('../ownerPhase')
+        const { studioScreen } = await import('src/ts/studio/studioScreen.svelte')
+        studioScreen.chaId = 'c1'
+        const chat = chatOwnerKey('c1', 'chat1')
+        await harness.service.whenReady(chat)
+        const before = JSON.stringify(DBState.db.characters)
+        expect(harness.service.editField(chat, 'desc', 'resident desc')).toEqual({ ok: false, reason: 'precondition' })
+        expect(JSON.stringify(DBState.db.characters)).toBe(before)
+        expect(harness.replaced).toBe(0)
+        expect(harness.service.view(chat).done).toHaveLength(0)
+    })
+
+    test('(c) a character owner editing a chat path is a precondition', async () => {
+        DBState.db.characters = [{ chaId: 'c1', name: 'c1', desc: 'resident desc', chats: [], chatPage: 0 }] as unknown as typeof DBState.db.characters
+        const { characterOwnerKey } = await import('../ownerPhase')
+        const { studioScreen } = await import('src/ts/studio/studioScreen.svelte')
+        studioScreen.chaId = 'c1'
+        const character = characterOwnerKey('c1')
+        await harness.service.whenReady(character)
+        const before = JSON.stringify(DBState.db.characters)
+        expect(harness.service.editField(character, 'note', 'x')).toEqual({ ok: false, reason: 'precondition' })
+        expect(JSON.stringify(DBState.db.characters)).toBe(before)
+    })
+})
 describe('C3: an absent key is created by the first edit and deleted again by undo', () => {
     test('undo deletes the key and redo creates it', async () => {
         putModules(makeModule('M1'))

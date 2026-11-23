@@ -4,15 +4,20 @@
     import { answerRiskyQuestion, cancelRiskyQuestion, riskyQuestion } from '../../ts/studio/edit/riskyConfirm.svelte'
     import { isRiskyFlagPath } from '../../ts/studio/edit/riskyFlags'
     import { riskyAskOf, riskyExplainOf } from '../../ts/studio/edit/riskyText'
-    import { registerStudioBackLayer } from '../../ts/studio/studioBack.svelte'
+    import { registerStudioRiskyBack } from '../../ts/studio/studioBack.svelte'
 
-    // The question sheet of a risky turn-on. The screen mounts it only while a question is pending, so its Back layer is
-    // the newest one for exactly that long. The scrim covers the Studio body and a tap on it means cancel; Esc and Back
-    // cancel too, and default focus is Cancel. Nothing here writes: the answer goes to the question, whose asker acts.
-    registerStudioBackLayer({ isOpen: () => riskyQuestion() !== null, close: cancelRiskyQuestion })
+    // The question sheet of a risky turn-on, for a character flag and for a module's Low Level Access. The screen mounts
+    // it only while a question is pending, so its Back layer is the newest one for exactly that long. The scrim covers
+    // the Studio body and a tap on it means cancel; Esc and Back cancel too, and default focus is Cancel. Nothing here
+    // writes: the answer goes to the question, whose asker acts.
+    registerStudioRiskyBack()
 
     const question = $derived(riskyQuestion())
     const path = $derived(question !== null && isRiskyFlagPath(question.path) ? question.path : null)
+    // A module's Low Level Access keeps its own wording and names the module; every other flag is a character flag.
+    const title = $derived(path === null ? '' : path === 'moduleLowLevelAccess' ? language.studioModAdvLowLevelAskTitle : riskyAskOf(path))
+    const body = $derived(path === null ? '' : path === 'moduleLowLevelAccess' ? language.studioModAdvLowLevelAskBody(question?.name ?? '') : riskyExplainOf(path))
+    const confirmLabel = $derived(path === 'moduleLowLevelAccess' ? language.studioModAdvLowLevelAskConfirm : language.studioRiskyTurnOn)
 
     let cancelButton = $state<HTMLButtonElement | undefined>()
     let okButton = $state<HTMLButtonElement | undefined>()
@@ -59,16 +64,16 @@
             class="flex max-h-full w-full max-w-md flex-col gap-3 overflow-y-auto rounded-md border-2 border-draculared bg-darkbg p-4 text-textcolor"
             {onkeydown}
         >
-            <h2 data-part="studio-risky-confirm-title" id="studio-risky-confirm-title-{path}" class="text-lg font-bold">{riskyAskOf(path)}</h2>
+            <h2 data-part="studio-risky-confirm-title" id="studio-risky-confirm-title-{path}" class="text-lg font-bold">{title}</h2>
             <div data-part="studio-risky-confirm-body" id="studio-risky-confirm-body-{path}" class="flex flex-col gap-2 text-sm">
-                <p>{riskyExplainOf(path)}</p>
+                <p>{body}</p>
                 {#if path === 'lowLevelAccess'}
                     <p class="font-bold">{language.studioRiskyLowConsequence}</p>
                 {/if}
             </div>
             <div class="flex justify-end gap-2">
                 <button bind:this={cancelButton} type="button" class={buttonClass} data-part="studio-risky-confirm-cancel" onclick={cancelRiskyQuestion}>{language.cancel}</button>
-                <button bind:this={okButton} type="button" class={buttonClass} data-part="studio-risky-confirm-ok" onclick={() => answerRiskyQuestion(true)}>{language.studioRiskyTurnOn}</button>
+                <button bind:this={okButton} type="button" class={buttonClass} data-part="studio-risky-confirm-ok" onclick={() => answerRiskyQuestion(true)}>{confirmLabel}</button>
             </div>
         </div>
     </div>

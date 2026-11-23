@@ -246,7 +246,7 @@ export function planFromScan(reach: UpdateReach, scan: UseScan, renames: readonl
     return { writes, listed, skipped: skippedList, blocked, count, signature: signatureOf(active, optIn, blocked, writes, listed, skippedList) }
 }
 
-/** The write a history replay would make for a registry path of this owner kind. */
+/** The write for a registry path of this owner kind; a module text is always a `textSet`, which lands the same value a replay's `set` would. */
 export function writeOpFor(kind: UseOwnerRef['kind'], path: string, value: string): WriteOp {
     return kind === 'character' ? textWriteFor(path, value) : { op: 'textSet', target: path, value }
 }

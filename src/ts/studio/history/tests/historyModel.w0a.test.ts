@@ -17,6 +17,7 @@ import {
 } from '../historyModel'
 import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import type { SessionOwnerKind } from '../sessionKinds'
+import { PRESET_FORM_PATHS } from './presetPaths.test-helpers'
 
 // The stored kinds: a session kind has no stored key, record or restore row.
 type OwnerKind = Exclude<AnyOwnerKind, SessionOwnerKind>
@@ -32,18 +33,20 @@ const S2A_PATHS: readonly SetPath[] = ['creatorNotes', 'removedQuotes']
 const S2B_PATHS: readonly SetPath[] = ['lowLevelAccess', 'utilityBot', 'escapeOutput']
 const S2C_PATHS: readonly SetPath[] = ['bias']
 
-const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS]
+const S5_PATHS: readonly SetPath[] = ['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding']
+
+const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S5_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS]
 
 const EXPECTED_SET: Record<OwnerKind, readonly SetPath[]> = {
     character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS],
     chat: ['note'],
-    module: ['customModuleToggle'],
+    module: ['customModuleToggle', ...S5_PATHS],
 }
 
 const EXPECTED_RESTORE: Record<OwnerKind, readonly RestorePath[]> = {
     character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'alternateGreetings'],
     chat: ['note'],
-    module: ['customModuleToggle'],
+    module: ['customModuleToggle', ...S5_PATHS],
 }
 
 function fieldValue(path: RestorePath, value: string): unknown {
@@ -53,7 +56,7 @@ function fieldValue(path: RestorePath, value: string): unknown {
     if (path === 'bias') {
         return { had: true, value: [[value, 1]] }
     }
-    return { had: true, value: path === 'hideChatIcon' || path === 'risutanium_render_when_complete' || path === 'removedQuotes' || S2B_PATHS.includes(path as SetPath) ? true : value }
+    return { had: true, value: path === 'hideChatIcon' || path === 'risutanium_render_when_complete' || path === 'moduleHideIcon' || path === 'moduleLowLevelAccess' || path === 'removedQuotes' || S2B_PATHS.includes(path as SetPath) ? true : value }
 }
 
 function rawRecord(kind: OwnerKind, parts: { done?: unknown[]; restore?: unknown }): unknown {
@@ -107,7 +110,7 @@ describe('A2: the set-path table is the only list of what each owner kind accept
 
 describe('A8 (model half): the restore order lists every restore key once, the toggle before hideChatIcon', () => {
     test('RESTORE_PATH_ORDER is the literal order', () => {
-        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'alternateGreetings'])
+        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S5_PATHS, ...PRESET_FORM_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'alternateGreetings'])
     })
 
     test('every restore key of every owner kind has a place in the order', () => {
@@ -145,19 +148,19 @@ describe('rule K: isOpAllowedFor is the acceptance the parser applies', () => {
         }
     })
 
-    test('a chat owner holds only set note; a module holds only asset ops, text edits and set customModuleToggle; a character holds every op but module-only paths', () => {
+    test('a chat owner holds only set note; a module holds only asset ops, text edits and the set paths of its row; a character holds every op but module-only paths', () => {
         const allowed = (kind: OwnerKind): string[] => ops.filter(({ op }) => isOpAllowedFor(kind, op)).map(({ name }) => name)
         expect(allowed('chat')).toEqual(['set note'])
         expect(allowed('module')).toEqual(
-            ops.map(({ name }) => name).filter((name) => name === 'set customModuleToggle' || (!name.startsWith('set ') && !LIST_NAMES.includes(name))),
+            ops.map(({ name }) => name).filter((name) => (name.startsWith('set ') ? EXPECTED_SET.module.some((path) => name === `set ${path}`) : !LIST_NAMES.includes(name))),
         )
-        expect(allowed('character')).toEqual(ops.map(({ name }) => name).filter((name) => name !== 'set note'))
+        expect(allowed('character')).toEqual(ops.map(({ name }) => name).filter((name) => name !== 'set note' && !S5_PATHS.some((path) => name === `set ${path}`)))
     })
 
     test('the text paths of a kind are its row without the boolean field', () => {
         expect([...textPathsFor('character')]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1_PATHS, 'creatorNotes'])
         expect([...textPathsFor('chat')]).toEqual(['note'])
-        expect([...textPathsFor('module')]).toEqual(['customModuleToggle'])
+        expect([...textPathsFor('module')]).toEqual(['customModuleToggle', 'moduleName', 'moduleDescription', 'moduleNamespace', 'backgroundEmbedding'])
     })
 })
 
@@ -175,8 +178,8 @@ describe('CD-1: records holding the new constructs on the merged base', () => {
         expect(readable('character', { done: [rawStep([op])] })?.done[0].ops).toEqual([op])
     })
 
-    test('a module record with a set on any path but customModuleToggle, or a restore key of one, is refused whole', () => {
-        for (const path of ALL_SET_PATHS.filter((entry) => entry !== 'customModuleToggle')) {
+    test('a module record with a set on any path outside the module row, or a restore key of one, is refused whole', () => {
+        for (const path of ALL_SET_PATHS.filter((entry) => !EXPECTED_SET.module.includes(entry))) {
             expect(readable('module', { done: [rawStep([rawSet(path)])] }), `set ${path}`).toBeNull()
             const fields = { [path]: { before: fieldValue(path, 'a'), last: fieldValue(path, 'b') } }
             expect(readable('module', { restore: { visitId: 'v1', at: 1, fields } }), `restore ${path}`).toBeNull()

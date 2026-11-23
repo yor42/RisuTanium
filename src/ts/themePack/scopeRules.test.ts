@@ -122,7 +122,7 @@ describe('T0a-27: scope.ts parses with the engine grammar (GUARD: the engine ref
         `${SEND}:is([data-part="settings-shell"]){color:#000000}`,
         ':where([data-part="settings-shell"]){color:#000000}',
         '[data-part]:not([data-part="chat-send"]){color:#ebebed}',
-        `${SEND}::before{content:"x"}`,
+        `${SEND}::marker{color:#000000}`,
         '::selection{background:#000000}',
         '*{color:#000000}',
         '.text-textcolor{color:#000000}',
@@ -145,6 +145,15 @@ describe('T0a-27: scope.ts parses with the engine grammar (GUARD: the engine ref
         expect(parsed.compounds[2].pseudo).toBe(':hover')
         expect(parseSelectorEntry('[data-part]').compounds[0].attrs).toEqual([['data-part', undefined]])
         expect(parseSelectorEntry('a b').grammarWhy).not.toBe('')
+        // ::before and ::after directly end the last compound; after whitespace or a combinator they are not stripped and the grammar refuses them
+        const before = parseSelectorEntry(`${NAME}:hover::before`)
+        expect(before.grammarWhy).toBe('')
+        expect(before.element).toBe('before')
+        expect(before.compounds[0].pseudo).toBe(':hover')
+        expect(parseSelectorEntry(`${NAME} ::after`).grammarWhy).not.toBe('')
+        expect(parseSelectorEntry(`${NAME}>::after`).grammarWhy).not.toBe('')
+        expect(parseSelectorEntry(`${NAME}::before::after`).grammarWhy).not.toBe('')
+        expect(parseSelectorEntry(`${NAME}::marker`).grammarWhy).not.toBe('')
         expect(parseSelectorEntry('').grammarWhy).not.toBe('')
         expect(parseSelectorEntry(`${AVATAR} ~ ${NAME}`).siblings).toBe(true)
     })
