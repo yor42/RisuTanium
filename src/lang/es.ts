@@ -4507,6 +4507,11 @@ export const languageSpanish = {
         promptText: "Texto del Prompt",
         summarized: "Resumido",
         inactive: "Inactivo",
+        chunks: "Fragmentos",
+        requestBody: "Cuerpo de la solicitud",
+        requestHeader: "Encabezado de la solicitud",
+        response: "Respuesta",
+        bytes: "Bytes",
         realmShareNotice: "Usa RisuRealm para compartir el preset. Por ahora no se pueden exportar presets con imágenes o regex."
     },
     loadoutModal: {

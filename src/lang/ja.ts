@@ -4655,6 +4655,11 @@ export const languageJapanese = {
         promptText: "プロンプトテキスト",
         summarized: "要約済み",
         inactive: "非アクティブ",
+        chunks: "チャンク",
+        requestBody: "リクエストボディ",
+        requestHeader: "リクエストヘッダー",
+        response: "レスポンス",
+        bytes: "バイト",
         realmShareNotice: "プリセットを共有するにはRisuRealmを使用してください。画像や正規表現を含むプリセットは、現在エクスポートできません。",
     },
     loadoutModal: {

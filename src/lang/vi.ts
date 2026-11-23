@@ -4504,6 +4504,11 @@ export const languageVietnamese = {
         promptText: "Nội dung lời nhắc",
         summarized: "Đã tóm tắt",
         inactive: "Không hoạt động",
+        chunks: "Đoạn",
+        requestBody: "Nội dung yêu cầu",
+        requestHeader: "Tiêu đề yêu cầu",
+        response: "Phản hồi",
+        bytes: "Byte",
         realmShareNotice: "Hãy dùng RisuRealm để chia sẻ cài đặt trước. Hiện chưa thể xuất cài đặt trước có chứa hình ảnh hoặc regex."
     },
     loadoutModal: {

@@ -4505,6 +4505,11 @@ export const languageKorean = {
         promptText: "프롬프트 텍스트",
         summarized: "요약됨",
         inactive: "비활성",
+        chunks: "청크",
+        requestBody: "요청 본문",
+        requestHeader: "요청 헤더",
+        response: "응답",
+        bytes: "바이트",
         realmShareNotice: "프리셋을 공유하려면 RisuRealm을 사용하세요. 이미지나 정규식이 포함된 프리셋은 현재 내보낼 수 없습니다."
     },
     loadoutModal: {
