@@ -5251,6 +5251,21 @@ export const languageEnglish = {
     connectionsRenameNoticeBody: "These were named after their service or address when keys moved here. Tap one to rename it.",
     connectionsRenameNoticeDismiss: "Got it",
     connectionsUseForCurrent: "Use in the current settings",
+    connectionsTest: "Test",
+    connectionsTesting: "Testing…",
+    connectionsTestNone: "Not tested",
+    connectionsTestOk: "Working · {n} models found · {ms} ms",
+    connectionsTestOkPlain: "Working · {ms} ms",
+    connectionsTestBadKey: "The key was refused",
+    connectionsTestRate: "Rate limit reached",
+    connectionsTestUnreachable: "Can't reach it",
+    connectionsTestUnsupported: "This service can't be tested from here",
+    connectionsModels: "Custom models",
+    connectionsModelsNone: "No custom models yet",
+    connectionsModelAdd: "Add model",
+    connectionsModelName: "Model name",
+    connectionsModelId: "Model ID",
+    connectionsModelRemove: "Remove {name}",
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;
