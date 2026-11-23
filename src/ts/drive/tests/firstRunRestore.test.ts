@@ -408,6 +408,20 @@ describe('a failed Welcome restore reaches the installed rejection handler', () 
         expect(alertErrorMock).toHaveBeenCalledWith(failure)
     })
 
+    test.each([
+        ['release', 'Command plugin:fs|read_file not allowed by ACL'],
+        ['debug', 'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file'],
+    ])('G: an unhandled rejection whose reason is the access control list string (%s wording) reaches alertError with that exact string', async (_wording, refusal) => {
+        installRealHandlers()
+        const entry = Promise.reject(refusal)
+        const reason = await entry.then(() => undefined, (error: unknown) => error)
+        expect(reason).toBe(refusal)
+        raiseUnhandledRejection(entry, reason)
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith(refusal)
+    })
+
     test('a run end that throws after the fallback already resolved the entry is rethrown and reaches alertError', async () => {
         installRealHandlers()
         // The runner's own rejection listeners are set aside so this deliberate unhandled rejection is not reported as a

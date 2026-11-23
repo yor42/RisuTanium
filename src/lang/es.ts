@@ -2216,6 +2216,11 @@ export const languageSpanish = {
     "homePersonaChipUnnamed": "Configura tu persona",
     "homePersonaChipHint": "Se usa en chats sin una asignada",
     "homePersonaChipGo": "Gestionar en Ajustes › Personas",
+    "homeTasks": "Tareas",
+    "homeTasksName": (count: number) => `Tareas, ${count} en curso`,
+    "homeTasksTitle": "Respuestas en curso",
+    "homeTasksEmpty": "No hay respuestas en curso",
+    "homeTasksCount": (count: number) => count === 1 ? "1 respuesta en curso" : `${count} respuestas en curso`,
     "homeEmptyHeading": "Tu primera historia empieza aquí.",
     "homeEmptyBody": "Crea un personaje o importa uno que ya tengas.",
     "homeEmptyCreate": "Crear personaje",
@@ -4507,6 +4512,11 @@ export const languageSpanish = {
         promptText: "Texto del Prompt",
         summarized: "Resumido",
         inactive: "Inactivo",
+        chunks: "Fragmentos",
+        requestBody: "Cuerpo de la solicitud",
+        requestHeader: "Encabezado de la solicitud",
+        response: "Respuesta",
+        bytes: "Bytes",
         realmShareNotice: "Usa RisuRealm para compartir el preset. Por ahora no se pueden exportar presets con imágenes o regex."
     },
     loadoutModal: {

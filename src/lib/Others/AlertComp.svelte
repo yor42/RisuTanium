@@ -883,7 +883,7 @@
                         <dt>{language.alertComp.saying}</dt>
                         <dd>{DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].saying}</dd>
                         <dt>{language.alertComp.size}</dt>
-                        <dd>{JSON.stringify(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx]).length} Bytes</dd>
+                        <dd>{JSON.stringify(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx]).length} {language.alertComp.bytes}</dd>
                         <dt>{language.alertComp.time}</dt>
                         <dd>{(new Date(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].time ?? 0)).toLocaleString()}</dd>
                         {#if $alertGenerationInfoStore.genInfo.stageTiming}
@@ -916,8 +916,8 @@
                             {@const responseBody = beautifyJSON(data.response) ?? ''}
                             <div data-part="pattern-alert-stack">
                                 {@render codePanel('URL', data.url)}
-                                {@render codePanel('Request Body', requestBody, highlightJson(requestBody))}
-                                {@render codePanel('Response', responseBody, highlightJson(responseBody))}
+                                {@render codePanel(language.alertComp.requestBody, requestBody, highlightJson(requestBody))}
+                                {@render codePanel(language.alertComp.response, responseBody, highlightJson(responseBody))}
                             </div>
                         {/if}
                     {/await}
@@ -963,7 +963,7 @@
                 {/if}
             {:else if a.type === 'hypaV2'}
                 <div data-part="pattern-alert-tabs">
-                    {@render tabButton(0, 'Chunks', `${uid}-chunks-tab`)}
+                    {@render tabButton(0, language.alertComp.chunks, `${uid}-chunks-tab`)}
                     {@render tabButton(1, language.alertComp.summarized)}
                 </div>
                 {#if generationInfoMenuIndex === 0}
@@ -1041,9 +1041,9 @@
                                 {#if isExpanded}
                                     <div data-part="pattern-alert-log-detail">
                                         {@render codePanel('URL', log.url, undefined, `${i}-url`)}
-                                        {@render codePanel('Request Body', log.body, highlightJson(log.body), `${i}-body`)}
-                                        {@render codePanel('Request Header', log.header, highlightJson(log.header), `${i}-header`)}
-                                        {@render codePanel('Response', log.response, highlightJson(log.response), `${i}-response`)}
+                                        {@render codePanel(language.alertComp.requestBody, log.body, highlightJson(log.body), `${i}-body`)}
+                                        {@render codePanel(language.alertComp.requestHeader, log.header, highlightJson(log.header), `${i}-header`)}
+                                        {@render codePanel(language.alertComp.response, log.response, highlightJson(log.response), `${i}-response`)}
                                     </div>
                                 {/if}
                             </div>

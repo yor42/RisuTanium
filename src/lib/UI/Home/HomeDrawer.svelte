@@ -11,6 +11,7 @@
     import { holdReturnedFocus } from './homeFocusHold'
     import { ownScheme } from '../ownScheme.svelte'
     import { homeDrawerItems, type HomeDrawerItem } from './homeDrawerItems'
+    import { backgroundOf } from './homeLayer'
 
     interface Props {
         /** The panel's id, referenced by the menu button's aria-controls. */
@@ -62,20 +63,6 @@
         close()
         flushSync()
         item.run()
-    }
-
-    /** Every sibling along the path from `node` up to the enclosing `<main>` (or the body). */
-    function backgroundOf(node: HTMLElement): HTMLElement[] {
-        const held: HTMLElement[] = []
-        let current = node
-        for (let parent = current.parentElement; parent && parent !== document.body; parent = current.parentElement) {
-            for (const sibling of Array.from(parent.children)) {
-                if (sibling !== current && sibling instanceof HTMLElement) held.push(sibling)
-            }
-            if (parent.tagName === 'MAIN') break
-            current = parent
-        }
-        return held
     }
 
     // Open: Back closes this drawer first, the shell holds a modal layer (toast timers pause), the

@@ -428,8 +428,8 @@ describe('HomeShell top bar centring and wordmark', () => {
         expect(classesOf(brand.querySelector('[data-seasonal-host]')).some((c) => c.startsWith('@max-'))).toBe(false)
     })
 
-    // Class guard, red on the base (the base first track has a zero minimum): the mid first-track minimum keeps the wordmark
-    // above the hide threshold (en at 1280 open stays "Ris…", MC-1436).
+    // Class guard on the mid layout's first track: the minimum keeps the wordmark above the hide threshold, so a clipped
+    // "Ris…" stays visible. The mid layout also serves a wide band whose bar is narrower than the switch width (MC-3670).
     test.each([768, 900, 1279])('T-H2: at %i the first track minimum leaves the wordmark above 24 px', (width) => {
         const root = mountShellAt(width)
         const first = gridColumnsOf(topBarOf(root)!)[0]
@@ -475,6 +475,245 @@ describe('HomeShell top bar centring and wordmark', () => {
         expect(barClasses).not.toContain('pr-14')
         expect(classesOf(chipWrapperOf(root))).not.toContain('-mr-10')
         expect(classesOf(switcherWrapperOf(root))).not.toContain('-ml-10')
+    })
+})
+
+/**
+ * The wide bar's two-row fallback and the chip cluster's 44 px floor. The bar's own width is read through
+ * `clientWidth` (jsdom reports 0), stubbed for the top bar only; a width change arrives through a recording
+ * ResizeObserver that delivers only to the observers whose target is the bar's parent, because other code
+ * (the seasonal host, lattice, jump) creates observers of its own. The pixel result is a real-browser check;
+ * this block proves the classes and the wiring.
+ */
+describe('HomeShell wide bar fallback', () => {
+    interface BarObserver {
+        owner: ResizeObserver
+        callback: ResizeObserverCallback
+        targets: Element[]
+        active: boolean
+    }
+
+    let observers: BarObserver[] = []
+    let headerWidth = 0
+    let widthDescriptor: PropertyDescriptor | undefined
+
+    class RecordingObserver implements ResizeObserver {
+        private readonly record: BarObserver
+        constructor(callback: ResizeObserverCallback) {
+            this.record = { owner: this, callback, targets: [], active: true }
+            observers.push(this.record)
+        }
+        observe(target: Element): void {
+            this.record.targets.push(target)
+        }
+        unobserve(target: Element): void {
+            this.record.targets = this.record.targets.filter((t) => t !== target)
+        }
+        disconnect(): void {
+            this.record.active = false
+        }
+    }
+
+    beforeEach(() => {
+        observers = []
+        headerWidth = 0
+        widthDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth')
+        Object.defineProperty(Element.prototype, 'clientWidth', {
+            configurable: true,
+            get(this: Element): number {
+                if (this.getAttribute('data-part') === 'home-topbar') return headerWidth
+                return (widthDescriptor?.get?.call(this) as number | undefined) ?? 0
+            },
+        })
+    })
+
+    afterEach(() => {
+        vi.unstubAllGlobals()
+        if (widthDescriptor) {
+            Object.defineProperty(Element.prototype, 'clientWidth', widthDescriptor)
+        } else {
+            Reflect.deleteProperty(Element.prototype, 'clientWidth')
+        }
+    })
+
+    const classesOf = (element: Element | null): string[] => Array.from(element?.classList ?? [])
+    const gridColumnsOf = (bar: HTMLElement): string[] => {
+        const tokens = classesOf(bar).filter((c) => c.startsWith('grid-cols-['))
+        expect(tokens.length).toBe(1)
+        return tokens[0].slice('grid-cols-['.length, -1).split('_')
+    }
+    const switcherWrapperOf = (root: HTMLElement): Element | null => topBarOf(root)!.querySelector('fieldset')!.parentElement
+    const chipWrapperOf = (root: HTMLElement): Element | null => chipOf(root)!.parentElement
+    const layoutOf = (root: HTMLElement): string | null => topBarOf(root)!.getAttribute('data-layout')
+    const stubObserver = (): void => {
+        vi.stubGlobal('ResizeObserver', RecordingObserver)
+    }
+    const parentObservers = (root: HTMLElement): BarObserver[] =>
+        observers.filter((o) => o.active && o.targets.includes(topBarOf(root)!.parentElement!))
+
+    /** Delivers a new bar width to the observers of the bar's parent, the way the browser reports a resize. */
+    function deliver(root: HTMLElement, width: number): void {
+        headerWidth = width
+        for (const o of parentObservers(root)) o.callback([], o.owner)
+        flushSync()
+    }
+
+    function expectMidClasses(root: HTMLElement): void {
+        const bar = topBarOf(root)!
+        const barClasses = classesOf(bar)
+        expect(barClasses).toContain('pl-14')
+        expect(barClasses).toContain('pr-4')
+        expect(barClasses).not.toContain('pr-14')
+        expect(gridColumnsOf(bar)).toEqual(['minmax(6rem,1fr)', 'minmax(0,auto)'])
+        const switcherWrapper = classesOf(switcherWrapperOf(root))
+        expect(switcherWrapper).toContain('col-span-2')
+        expect(switcherWrapper).toContain('-ml-10')
+        const chipWrapper = classesOf(chipWrapperOf(root))
+        expect(chipWrapper).toContain('col-start-2')
+        expect(chipWrapper).not.toContain('-mr-10')
+    }
+
+    function expectWideClasses(root: HTMLElement): void {
+        const bar = topBarOf(root)!
+        const barClasses = classesOf(bar)
+        expect(barClasses).toContain('pr-14')
+        expect(barClasses).not.toContain('pr-4')
+        expect(gridColumnsOf(bar)).toEqual(['minmax(2.75rem,1fr)', 'auto', 'minmax(2.75rem,1fr)'])
+        expect(classesOf(switcherWrapperOf(root))).not.toContain('-ml-10')
+        expect(classesOf(chipWrapperOf(root))).toContain('-mr-10')
+    }
+
+    // Reproducer for the class contract only: the floor keeps each cluster child from shrinking under 44 px, and the
+    // pixel result is a real-browser check. Red on the base because the floor class does not exist.
+    test.each([768, 900, 1280])('T-S6-60: at %i the chip cluster wrapper floors its children at 44 px', (width) => {
+        const root = mountShellAt(width)
+        expect(classesOf(chipWrapperOf(root))).toContain('*:min-w-11')
+    })
+
+    // Compatibility guard (passes before and after): the phone chip stays without the floor.
+    test('T-S6-60c: at 360 the phone chip wrapper has no floor', () => {
+        const root = mountShellAt(360)
+        expect(classesOf(chipWrapperOf(root))).not.toContain('*:min-w-11')
+    })
+
+    // Reproducer: a wide bar narrower than 1248 px takes the mid classes, and the wide classes return once it is
+    // wide enough. The window widths are larger than the bar widths (a docked sidebar) so a test that compared the
+    // window width would not switch.
+    test.each([
+        [1280, 811],
+        [1440, 971],
+        [1920, 1247],
+    ])('T-S6-43: a wide band with a %i window and an %i bar takes the mid layout', (viewport, bar) => {
+        stubObserver()
+        headerWidth = bar
+        const root = mountShellAt(viewport)
+        expect(layoutOf(root)).toBe('mid')
+        expectMidClasses(root)
+        expect(topBarOf(root)!.querySelector('[data-part="home-tasks-button"]')).not.toBeNull()
+
+        const watching = parentObservers(root)
+        expect(watching.length).toBeGreaterThanOrEqual(1)
+        expect(watching.every((o) => !o.targets.includes(topBarOf(root)!))).toBe(true)
+
+        deliver(root, 1275)
+        expect(layoutOf(root)).toBe('wide')
+        expectWideClasses(root)
+        deliver(root, 811)
+        expect(layoutOf(root)).toBe('mid')
+        expectMidClasses(root)
+    })
+
+    // Reproducer: entering the wide band reads the bar width synchronously, so the switch is in the same flush as the
+    // band change and no observer delivery is needed.
+    test('T-S6-43b: entering the wide band reads the bar width before any delivery', () => {
+        stubObserver()
+        headerWidth = 900
+        const root = mountShellAt(900)
+        expect(layoutOf(root)).toBe('mid')
+        headerWidth = 811
+        resizeTo(1280)
+        expect(landingOf(root)!.getAttribute('data-layout')).toBe('wide')
+        expect(layoutOf(root)).toBe('mid')
+        expectMidClasses(root)
+    })
+
+    // Compatibility guard (passes before and after, except the width cases that guard the new rule): wide stays wide
+    // at an unmeasured bar, at the minimum and above it, and the mount needs no ResizeObserver global.
+    test('T-S6-44: an unmeasured bar, 1248 and wider stay wide, and a mount without ResizeObserver works', () => {
+        expect(typeof ResizeObserver).toBe('undefined')
+        const unmeasured = mountShellAt(1280)
+        expect(layoutOf(unmeasured)).toBe('wide')
+        expectWideClasses(unmeasured)
+
+        stubObserver()
+        for (const [viewport, bar] of [[1280, 1248], [1280, 1275], [1440, 1435]]) {
+            headerWidth = bar
+            const root = mountShellAt(viewport)
+            expect(layoutOf(root), `${viewport}/${bar}`).toBe('wide')
+            expectWideClasses(root)
+        }
+    })
+
+    // Reproducer: without a ResizeObserver global, a measured narrow bar still takes the mid layout, because the
+    // synchronous read happens before the observer guard.
+    test('T-S6-44b: without ResizeObserver a measured narrow bar takes the mid layout', () => {
+        expect(typeof ResizeObserver).toBe('undefined')
+        headerWidth = 811
+        const root = mountShellAt(1280)
+        expect(layoutOf(root)).toBe('mid')
+    })
+
+    // Compatibility guard (passes before and after): the landing, the drawer and the lattice read the band, which a
+    // narrow wide bar does not change.
+    test('T-S6-45: the landing stays wide while the bar takes the mid layout', () => {
+        stubObserver()
+        headerWidth = 811
+        const root = mountShellAt(1280)
+        expect(layoutOf(root)).toBe('mid')
+        expect(landingOf(root)!.getAttribute('data-layout')).toBe('wide')
+        expect(menuButtonOf(root)).toBeNull()
+    })
+
+    // Compatibility guard (passes before and after): the rule applies to the wide band only. A mid band is mid at any
+    // bar width, and a wide band resized to a phone width is phone.
+    test('T-S6-62: a mid band is mid at a narrow bar, and a narrow wide bar resized to 360 is phone', () => {
+        stubObserver()
+        headerWidth = 763
+        const mid = mountShellAt(768)
+        expect(layoutOf(mid)).toBe('mid')
+        expect(landingOf(mid)!.getAttribute('data-layout')).toBe('mid')
+
+        headerWidth = 811
+        const root = mountShellAt(1280)
+        expect(layoutOf(root)).toBe('mid')
+        headerWidth = 360
+        resizeTo(360)
+        expect(landingOf(root)!.getAttribute('data-layout')).toBe('phone')
+        expect(layoutOf(root)).toBe('phone')
+        expect(menuButtonOf(root)).not.toBeNull()
+    })
+
+    // Reproducer: the bar's parent is observed only while the band is wide, and the observer goes when the band leaves
+    // wide. Only observers that target the parent count; other code creates observers of its own.
+    test('T-S6-62b: the bar parent is observed in the wide band only and released on leaving it', () => {
+        stubObserver()
+        headerWidth = 360
+        const phone = mountShellAt(360)
+        expect(parentObservers(phone)).toHaveLength(0)
+        headerWidth = 768
+        const mid = mountShellAt(768)
+        expect(parentObservers(mid)).toHaveLength(0)
+
+        headerWidth = 1280
+        const root = mountShellAt(1280)
+        expect(parentObservers(root)).toHaveLength(1)
+        expect(parentObservers(root)[0].targets).toEqual([topBarOf(root)!.parentElement])
+        const created = observers.filter((o) => o.targets.includes(topBarOf(root)!.parentElement!))
+        expect(created).toHaveLength(1)
+
+        resizeTo(900)
+        expect(parentObservers(root)).toHaveLength(0)
+        expect(created[0].active).toBe(false)
     })
 })
 

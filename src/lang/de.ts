@@ -2216,6 +2216,11 @@ export const languageGerman = {
     "homePersonaChipUnnamed": "Richte dein Profil ein",
     "homePersonaChipHint": "Gilt für Chats ohne eigene Auswahl",
     "homePersonaChipGo": "Verwalten unter Einstellungen › Mein Profil",
+    "homeTasks": "Aufgaben",
+    "homeTasksName": (count: number) => count === 1 ? "Aufgaben, 1 läuft" : `Aufgaben, ${count} laufen`,
+    "homeTasksTitle": "Laufende Antworten",
+    "homeTasksEmpty": "Keine laufenden Antworten",
+    "homeTasksCount": (count: number) => count === 1 ? "1 Antwort läuft" : `${count} Antworten laufen`,
     "homeEmptyHeading": "Deine erste Geschichte beginnt hier.",
     "homeEmptyBody": "Erstelle einen Charakter oder importiere einen, den du schon hast.",
     "homeEmptyCreate": "Charakter erstellen",
@@ -4524,6 +4529,11 @@ export const languageGerman = {
         "promptText": "Anweisungstext",
         "summarized": "Zusammengefasst",
         "inactive": "Inaktiv",
+        "chunks": "Textblöcke",
+        "requestBody": "Anfragetext",
+        "requestHeader": "Anfrage-Header",
+        "response": "Antwort",
+        "bytes": "Bytes",
         "realmShareNotice": "Verwenden Sie RisuRealm, um die Voreinstellung zu teilen. Voreinstellungen mit Bild oder Regex können derzeit nicht exportiert werden."
     },
     "loadoutModal": {

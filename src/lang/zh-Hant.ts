@@ -2261,6 +2261,11 @@ export const languageChineseTraditional = {
     "homePersonaChipUnnamed": "設定你的人設",
     "homePersonaChipHint": "用於沒有指定人設的聊天",
     "homePersonaChipGo": "在「設定 › 人設」中管理",
+    "homeTasks": "任務",
+    "homeTasksName": (count: number) => `任務，${count} 個正在執行`,
+    "homeTasksTitle": "進行中的回覆",
+    "homeTasksEmpty": "沒有進行中的回覆",
+    "homeTasksCount": (count: number) => `${count} 則回覆正在進行中`,
     "homeEmptyHeading": "你的第一個故事從這裡開始。",
     "homeEmptyBody": "建立角色，或匯入你已有的角色。",
     "homeEmptyCreate": "建立角色",
@@ -4549,6 +4554,11 @@ export const languageChineseTraditional = {
         "promptText": "提示詞文字",
         "summarized": "已摘要",
         "inactive": "未啟用",
+        "chunks": "區塊",
+        "requestBody": "請求內容",
+        "requestHeader": "請求標頭",
+        "response": "回應",
+        "bytes": "位元組",
         "realmShareNotice": "請使用 RisuRealm 分享預設集。目前無法匯出含有圖片或 Regex 的預設集。"
     },
     "loadoutModal": {

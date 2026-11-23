@@ -111,6 +111,7 @@ pub fn resolve_key(base: &Path, key: &str) -> Result<PathBuf, String> {
     if let Some(reason) = key_violation(key) {
         return Err(format!("refused key: {}", reason));
     }
+    crate::store_keys::require_inside(key)?;
     let mut path = base.to_path_buf();
     for segment in key.split('/') {
         path.push(segment);
