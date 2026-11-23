@@ -214,6 +214,7 @@ test('T15 release without a census marks the phone for reset; stranded and helpe
   assert.equal((await release(root, 'r1')).needsReset, true);
   const g = await acquire(root, 'r5'); assert.deepEqual([g.member, g.resetRequired], [PHONE1, true]);
   assert.ok(g.standingPackages.includes('io.github.yor42.risutanium') && g.standingPackages.includes('io.github.yor42.tbdriver'));
+  assert.deepEqual(g.keepHelpers, JSON.parse(fs.readFileSync(new URL('../workflow-policy.json', import.meta.url), 'utf8')).devicePool.keepHelpers.map(k => k.package));
   assert.equal(g.helperPattern, '^dev\\.risu\\.[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$');
   const census = evidence('census.txt');
   for (const bad of ['dev.risu.x', 'dev.risu.a_b.c2', 'io.github.yor42.tbdriver', 'dev.risu.', 'dev.risu..x', 'not a package']) await assert.rejects(resetDone(root, 'r5', census, bad), /Cannot mark|stranded/, bad);
