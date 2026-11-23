@@ -22,6 +22,8 @@
     import PatternWarning from '../Nexus/pattern/PatternWarning.svelte'
     import type { PatternAnswer, PatternWarningDef } from '../Nexus/pattern/patternWarning'
     import Check from '../UI/GUI/CheckInput.svelte'
+    import WindowedSegment from '../UI/Windowed/WindowedSegment.svelte'
+    import { createWindowHost } from '../../ts/windowing/windowHost.svelte'
 
     // Establishes the mirror invariant and distinct ids before any card or field reads the list.
     normalizePersonas(DBState.db)
@@ -71,12 +73,18 @@
     let dragPointer = -1
     let dragFrame = 0
 
+    /** A grid line of cards before it is measured. */
+    const LINE_FALLBACK_PX = 84
+    const windowHost = createWindowHost({ root: () => listEl ?? null })
+    onDestroy(() => windowHost.dispose())
+
     const split = $derived(innerWidth >= SPLIT_WIDTH)
     const rows = $derived.by((): PersonaRow[] => {
         const list = DBState.db.personas
         const keys = personaRenderKeys(list)
         return list.map((persona, index) => ({ persona, index, key: keys[index] }))
     })
+    const cols = $derived(innerWidth < 768 ? 1 : 2)
     const searchable = $derived(rows.length >= SEARCH_FROM)
     const visibleRows = $derived.by((): PersonaRow[] => {
         const needle = query.trim().toLowerCase()
@@ -85,6 +93,15 @@
     })
     // A filtered list shows a subset, so a drop position there would not name a list index.
     const draggable = $derived(rows.length > 1 && visibleRows.length === rows.length)
+    // The window holds grid lines of `cols` cards, keyed by line position.
+    const lineKeys = $derived(Array.from({ length: Math.ceil(visibleRows.length / cols) }, (_, line) => String(line)))
+    // A drag reads every card's rect to find the drop index, and an open card menu keeps its opener in the page.
+    const pinnedLines = $derived.by((): string[] => {
+        if (drag !== null) return lineKeys
+        const open = cardMenu?.id
+        const at = open === undefined ? -1 : visibleRows.findIndex((row) => row.persona.id === open)
+        return at === -1 ? [] : [String(Math.floor(at / cols))]
+    })
     const bindings = $derived(countBindings(DBState.db.characters))
     // The editor shows the open persona while it exists, otherwise the persona in use.
     const shown = $derived(DBState.db.personas.find((entry) => entry.id === openId) ?? DBState.db.personas[DBState.db.selectedPersona])
@@ -116,9 +133,22 @@
         return bindings.orMore ? language.settingsShellPersonaChatsOrMore(n) : language.settingsShellPersonaChats(n)
     }
 
-    function focusCard(key: string): void {
+    function cardButton(key: string): HTMLElement | undefined {
         const buttons = Array.from(listEl?.querySelectorAll<HTMLElement>('[data-persona-open]') ?? [])
-        buttons.find((button) => button.getAttribute('data-persona-open') === key)?.focus()
+        return buttons.find((button) => button.getAttribute('data-persona-open') === key)
+    }
+
+    // A card outside the window is not in the page: its line is revealed (mounted and scrolled to) before the focus.
+    async function focusCard(key: string): Promise<void> {
+        const mounted = cardButton(key)
+        if (mounted) {
+            mounted.focus()
+            return
+        }
+        const at = visibleRows.findIndex((row) => row.key === key)
+        if (at === -1) return
+        await windowHost.reveal(String(Math.floor(at / cols)))
+        cardButton(key)?.focus()
     }
 
     async function openById(id: string): Promise<void> {
@@ -134,7 +164,7 @@
         const key = shownKey
         drilled = false
         await afterFlush()
-        if (key) focusCard(key)
+        if (key) await focusCard(key)
     }
 
     // The registration reads the width at call time, so a rotation or resize while drilled in leaves no sub-level at the split width.
@@ -173,8 +203,10 @@
     }
 
     function cardRects(): CardRect[] {
-        const items = listEl?.querySelectorAll<HTMLElement>('[data-part="settings-persona-card"]') ?? []
-        return Array.from(items, (item) => item.getBoundingClientRect())
+        // Data order, not DOM order: the mounted cards are read by their list index.
+        const items = Array.from(listEl?.querySelectorAll<HTMLElement>('[data-part="settings-persona-card"]') ?? [])
+        const at = (item: HTMLElement): number => Number(item.getAttribute('data-persona-index'))
+        return items.sort((a, b) => at(a) - at(b)).map((item) => item.getBoundingClientRect())
     }
 
     /** The nearest scrolling ancestor of the list with its visible band, else the page viewport. */
@@ -395,10 +427,12 @@
 
     <div class="flex gap-4 min-w-0" class:flex-row={split} class:flex-col={!split}>
         <div class="min-w-0" style:width={split ? '40%' : undefined} class:shrink-0={split} class:hidden={!split && drilled} bind:this={listEl}>
-            <ul class="grid gap-2 list-none p-0 m-0" class:grid-cols-1={innerWidth < 768} class:grid-cols-2={innerWidth >= 768} data-part="settings-persona-list">
-                {#each visibleRows as row (row.key)}
+            <WindowedSegment host={windowHost} tag="ul" keys={lineKeys} height={{ fallback: LINE_FALLBACK_PX }} pinned={pinnedLines} class="flex flex-col gap-2 list-none p-0 m-0">
+              {#snippet item(lineKey, line)}
+              <ul class="grid gap-2 list-none p-0 m-0" class:grid-cols-1={cols === 1} class:grid-cols-2={cols === 2} data-part="settings-persona-list">
+                {#each visibleRows.slice(line * cols, line * cols + cols) as row (row.key)}
                     {@const active = row.index === DBState.db.selectedPersona}
-                    <li class="flex items-stretch gap-1 rounded-md border bg-darkbg min-w-0" class:border-borderc={row.persona === shown} class:border-darkborderc={row.persona !== shown} class:opacity-60={drag?.id === row.persona.id} class:outline-2={isDropTarget(row)} class:outline-selected={isDropTarget(row)} data-part="settings-persona-card">
+                    <li class="flex items-stretch gap-1 rounded-md border bg-darkbg min-w-0" class:border-borderc={row.persona === shown} class:border-darkborderc={row.persona !== shown} class:opacity-60={drag?.id === row.persona.id} class:outline-2={isDropTarget(row)} class:outline-selected={isDropTarget(row)} data-part="settings-persona-card" data-persona-index={row.index}>
                         {#if draggable}
                             <span
                                 class="flex shrink-0 items-center justify-center min-w-11 touch-none select-none rounded-md text-textcolor2 hover:text-textcolor"
@@ -450,7 +484,9 @@
                         >⋯</button>
                     </li>
                 {/each}
-            </ul>
+              </ul>
+              {/snippet}
+            </WindowedSegment>
         </div>
 
         <div class="grow min-w-0" class:hidden={!split && !drilled}>

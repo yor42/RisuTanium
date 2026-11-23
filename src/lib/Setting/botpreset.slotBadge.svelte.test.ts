@@ -6,6 +6,7 @@
  * The real `botpreset.svelte` over the real `DBState` object.
  */
 import { flushSync, mount, unmount } from 'svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -103,11 +104,17 @@ function install(presets: Array<{ name: string, slot?: unknown }>): void {
     } as unknown as Database
 }
 
-function mountPresets(): HTMLElement {
+async function mountPresets(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
+    // The windowed rows mount once the host has read the band: every row falls in it, as these tests are not about which rows are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     const app = mount(BotPreset, { target, props: { close: vi.fn() } }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
+    flushSync()
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
     flushSync()
     return target
 }
@@ -130,19 +137,19 @@ afterEach(async () => {
 })
 
 describe('the legacy list slot badge', () => {
-    test('L1 the badge is the slot the resolver lands on: slots 2, 1, none, and a later duplicate of 2 shows none', () => {
+    test('L1 the badge is the slot the resolver lands on: slots 2, 1, none, and a later duplicate of 2 shows none', async () => {
         install([{ name: 'B', slot: 2 }, { name: 'A', slot: 1 }, { name: 'C' }, { name: 'D', slot: 2 }])
-        expect(badges(mountPresets(), ['B', 'A', 'C', 'D'])).toEqual(['2', '1', null, null])
+        expect(badges(await mountPresets(), ['B', 'A', 'C', 'D'])).toEqual(['2', '1', null, null])
     })
 
-    test('an invalid slot value shows no number, and the position never does', () => {
+    test('an invalid slot value shows no number, and the position never does', async () => {
         install([{ name: 'X', slot: 0 }, { name: 'Y', slot: 12 }, { name: 'Z', slot: '3' }, { name: 'W', slot: 9 }])
-        expect(badges(mountPresets(), ['X', 'Y', 'Z', 'W'])).toEqual([null, null, null, '9'])
+        expect(badges(await mountPresets(), ['X', 'Y', 'Z', 'W'])).toEqual([null, null, null, '9'])
     })
 
-    test('the badge follows a slot that is reassigned while the list is open', () => {
+    test('the badge follows a slot that is reassigned while the list is open', async () => {
         install([{ name: 'A', slot: 1 }, { name: 'B', slot: 2 }])
-        const target = mountPresets()
+        const target = await mountPresets()
         DBState.db.botPresets[0].slot = 5
         flushSync()
         expect(badges(target, ['A', 'B'])).toEqual(['5', '2'])
