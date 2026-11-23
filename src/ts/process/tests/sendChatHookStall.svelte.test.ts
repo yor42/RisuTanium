@@ -320,6 +320,7 @@ vi.mock('../coldMemberRestore', () => ({
 
 import { sendChat } from '../index.svelte'
 import { stopAllReplyWork } from '../chatOrigin'
+import { STOPPED_PASS_GRACE_MS, STOPPED_UNIT_WATCHDOG_MS } from '../abortRace'
 import { sendRefusalIn } from '../sendAdmission'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { clearRunningSends } from './activeUnits.test-helpers'
@@ -874,6 +875,475 @@ describe('a memory, search or image step that never settles', () => {
         expect(run.state.value).toBe(false)
         expect(unhandled).toEqual([])
         expect(console.warn).toHaveBeenCalledWith('The inlay image', failure)
+    })
+})
+
+//#endregion
+
+//#region output passes after a Stop
+
+describe('an output script pass that never settles after a Stop', () => {
+    let frames: { request: typeof requestAnimationFrame, cancel: typeof cancelAnimationFrame }
+
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        frames = { request: globalThis.requestAnimationFrame, cancel: globalThis.cancelAnimationFrame }
+        globalThis.requestAnimationFrame = ((callback: () => void) => setTimeout(callback, 0)) as unknown as typeof requestAnimationFrame
+        globalThis.cancelAnimationFrame = ((id: ReturnType<typeof setTimeout>) => clearTimeout(id)) as unknown as typeof cancelAnimationFrame
+    })
+
+    afterEach(() => {
+        globalThis.requestAnimationFrame = frames.request
+        globalThis.cancelAnimationFrame = frames.cancel
+        vi.useRealTimers()
+    })
+
+    // Fake timers only: the real-timer `until` and `settle` above would wait forever on a faked setTimeout.
+    async function turn(): Promise<void> {
+        await vi.advanceTimersByTimeAsync(0)
+    }
+
+    async function pump(turns = 30): Promise<void> {
+        for (let i = 0; i < turns; i++) {
+            await turn()
+        }
+    }
+
+    async function waitFor(condition: () => boolean, what: string): Promise<void> {
+        for (let i = 0; i < 400; i++) {
+            if (condition()) {
+                return
+            }
+            await turn()
+        }
+        throw new Error(`timed out waiting for: ${what}`)
+    }
+
+    async function advance(ms: number): Promise<void> {
+        await vi.advanceTimersByTimeAsync(ms)
+        await pump()
+    }
+
+    interface PassResult { data: string, emoChanged: boolean }
+    type PassHandler = (call: number, text: string, abandoned: AbortSignal) => Promise<PassResult>
+
+    /** Routes the `editoutput` passes of the send to `handler`; any other pass returns its text unchanged. */
+    function outputPasses(handler: PassHandler): void {
+        let call = 0
+        processScriptFullMock.mockImplementation(async (_char: unknown, text: string, mode: string, _index: number, _vars: unknown, _a: unknown, _subject: unknown, _ref: unknown, _b: unknown, _cache: unknown, _modules: unknown, abandoned: AbortSignal) => {
+            if (mode !== 'editoutput') {
+                return { data: text, emoChanged: false }
+            }
+            call += 1
+            return handler(call, text, abandoned)
+        })
+    }
+
+    function outputPassCalls() {
+        return processScriptFullMock.mock.calls.filter((call) => call[2] === 'editoutput')
+    }
+
+    const same = (text: string): PassResult => ({ data: text, emoChanged: false })
+
+    function liveStream() {
+        let controller!: ReadableStreamDefaultController<{ data: string }>
+        const stream = new ReadableStream<{ data: string }>({ start(c) { controller = c } })
+        return {
+            stream,
+            push: (text: string) => controller.enqueue({ data: text }),
+            close: () => controller.close(),
+        }
+    }
+
+    function replyOf(): Message {
+        return chatById('char-0', 'chat-origin').message.at(-1)!
+    }
+
+    function stopWarnings(): unknown[][] {
+        return vi.mocked(console.warn).mock.calls.filter((call) => call[0] === 'A stopped reply is still running')
+    }
+
+    function abandonedPassWarnings(): number {
+        return vi.mocked(console.warn).mock.calls.filter((call) => call[0] === 'The output script pass').length
+    }
+
+    test('D-1: a pass hanging on the second snapshot ends the send 10 s after the Stop with the first processed text stored', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        const live = liveStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: live.stream })
+        outputPasses(async (call, text) => (call === 2 ? hang() : same(text)))
+
+        const run = startSend()
+        await waitFor(() => requests() > 0, 'the request')
+        live.push('He')
+        await waitFor(() => outputPassCalls().length === 1, 'the first pass')
+        live.push('Hello')
+        await waitFor(() => outputPassCalls().length === 2, 'the hung pass')
+        await pump()
+        stopAllReplyWork()
+        await advance(STOPPED_PASS_GRACE_MS - 1)
+        expect(run.state.done).toBe(false)
+        await advance(1)
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        expect(replyOf().data).toBe('He')
+        expect(replyOf().interrupted).toBeUndefined()
+        expect(chatById('char-0', 'chat-origin').isStreaming).toBe(false)
+        expect(sendRefusalIn(ORIGIN)).toBeNull()
+    })
+
+    test('D-2: a settle pass that hangs after the stream ended by itself ends the send 10 s after the Stop with the raw held span stored', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        const live = liveStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: live.stream })
+        outputPasses(async (call, text) => (call === 2 ? hang() : same(text)))
+
+        const run = startSend()
+        await waitFor(() => requests() > 0, 'the request')
+        live.push('Hi {{#if 1}}open')
+        live.close()
+        await waitFor(() => outputPassCalls().length === 2, 'the hung settle pass')
+        await pump()
+        expect(run.state.done).toBe(false)
+        stopAllReplyWork()
+        await advance(STOPPED_PASS_GRACE_MS - 1)
+        expect(run.state.done).toBe(false)
+        await advance(1)
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        expect(replyOf().data).toBe('Hi {{#if 1}}open')
+        expect(replyOf().interrupted).toBeUndefined()
+        expect(chatById('char-0', 'chat-origin').isStreaming).toBe(false)
+    })
+
+    test('D-9: the grace is shared by the passes of a unit: a pass finishing 9 s after the Stop leaves the settle pass only 1 s', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        const live = liveStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: live.stream })
+        let finishFirst: (result: PassResult) => void = () => {}
+        const first = new Promise<PassResult>((resolve) => { finishFirst = resolve })
+        outputPasses(async (call, text) => (call === 1 ? first : call === 2 ? hang() : same(text)))
+
+        const run = startSend()
+        await waitFor(() => requests() > 0, 'the request')
+        live.push('Hi {{#if 1}}open')
+        await waitFor(() => outputPassCalls().length === 1, 'the first pass')
+        stopAllReplyWork()
+        await advance(9000)
+        finishFirst(same('Hi '))
+        await waitFor(() => outputPassCalls().length === 2, 'the settle pass')
+        await pump()
+        expect(run.state.done).toBe(false)
+        await advance(STOPPED_PASS_GRACE_MS - 9000 - 1)
+        expect(run.state.done).toBe(false)
+        await advance(1)
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        expect(replyOf().data).toBe('Hi {{#if 1}}open')
+    })
+
+    test('D-8: after a flush pass was abandoned in balanced mode the settle pass is not started', async () => {
+        installSingle({}, [msg('user', 'Hi')], { streamingDisplayOptimizationMode: 'balanced' })
+        const live = liveStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: live.stream })
+        outputPasses(async (call, text) => (call === 2 ? hang() : same(text)))
+
+        const run = startSend()
+        await waitFor(() => requests() > 0, 'the request')
+        live.push('Hi {{#if 1}}open')
+        await advance(300)
+        await waitFor(() => outputPassCalls().length === 1, 'the first flush')
+        live.push('Hi {{#if 1}}open{{/if}} there')
+        await advance(300)
+        await waitFor(() => outputPassCalls().length === 2, 'the hung flush')
+        stopAllReplyWork()
+        await advance(STOPPED_PASS_GRACE_MS)
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        expect(outputPassCalls().length).toBe(2)
+        expect(replyOf().interrupted).toBeUndefined()
+    })
+
+    test('D-8b: a flush abandoned at the grace ends the flush loop, so a snapshot queued behind it starts no further pass', async () => {
+        installSingle({}, [msg('user', 'Hi')], { streamingDisplayOptimizationMode: 'balanced' })
+        const live = liveStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: live.stream })
+        outputPasses(async (call, text) => (call === 2 ? hang() : same(text)))
+
+        const run = startSend()
+        await waitFor(() => requests() > 0, 'the request')
+        live.push('Hi {{#if 1}}open')
+        await advance(300)
+        await waitFor(() => outputPassCalls().length === 1, 'the first flush')
+        live.push('Hi {{#if 1}}open{{/if}} there')
+        await advance(300)
+        await waitFor(() => outputPassCalls().length === 2, 'the hung flush')
+        live.push('Hi {{#if 1}}open{{/if}} there again')
+        await advance(300)
+        stopAllReplyWork()
+        await advance(STOPPED_PASS_GRACE_MS)
+
+        expect(run.state.done).toBe(true)
+        expect(outputPassCalls().length).toBe(2)
+        // The flush and the settle pass that is not started: a loop that went on would add one more.
+        expect(abandonedPassWarnings()).toBe(2)
+    })
+    test.each([['strong', 1], ['balanced', 1]] as const)('D-4/D-5: a normal Stop in %s mode stores the processed partial, and its post-Stop pass runs with an unaborted signal', async (mode, passes) => {
+        installSingle({}, [msg('user', 'Hi')], { streamingDisplayOptimizationMode: mode })
+        const live = liveStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: live.stream })
+        outputPasses(async (_call, text) => same(`${text}#`))
+
+        const run = startSend()
+        await waitFor(() => requests() > 0, 'the request')
+        live.push('Hello')
+        await pump()
+        expect(outputPassCalls().length).toBe(0)
+        stopAllReplyWork()
+        await pump()
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        expect(replyOf().data).toBe('Hello#')
+        expect(outputPassCalls().length).toBe(passes)
+        for (const call of outputPassCalls()) {
+            const abandoned = call[11] as AbortSignal
+            expect(abandoned).toBeInstanceOf(AbortSignal)
+            expect(abandoned.aborted).toBe(false)
+        }
+    })
+
+    test('D-6: in off mode a pass in flight at the Stop that finishes inside the grace is written processed', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        const live = liveStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: live.stream })
+        let finish: (result: PassResult) => void = () => {}
+        const pending = new Promise<PassResult>((resolve) => { finish = resolve })
+        outputPasses(async () => pending)
+
+        const run = startSend()
+        await waitFor(() => requests() > 0, 'the request')
+        live.push('Hello')
+        await waitFor(() => outputPassCalls().length === 1, 'the pass')
+        stopAllReplyWork()
+        await advance(2000)
+        expect(run.state.done).toBe(false)
+        finish(same('Hello#'))
+        await pump()
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        expect(replyOf().data).toBe('Hello#')
+    })
+
+    test('D-7: a non-stream pass that never settles stores the raw trimmed reply 10 s after the Stop, with no inlay generation, trigger, listener or variable expansion', async () => {
+        installSingle({ viewScreen: 'imggen' }, [msg('user', 'Hi')])
+        mockReplyIn('non-streaming', '  Hello {{setvar::late::1}} <ImgGen="cat">  ')
+        outputPasses(() => hang())
+        const listener = vi.fn()
+        chatOutputListeners.add(listener)
+
+        const run = startSend()
+        await waitFor(() => outputPassCalls().length === 1, 'the pass')
+        stopAllReplyWork()
+        await advance(STOPPED_PASS_GRACE_MS - 1)
+        expect(run.state.done).toBe(false)
+        await advance(1)
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        const chat = chatById('char-0', 'chat-origin')
+        expect(datas(chat)).toEqual(['Hi', 'Hello {{setvar::late::1}} <ImgGen="cat">'])
+        expect(chat.message[1].role).toBe('char')
+        expect(runInlayMock).not.toHaveBeenCalled()
+        expect(stableDiffMock).not.toHaveBeenCalled()
+        expect(listener).not.toHaveBeenCalled()
+        expect(runTriggerMock.mock.calls.some((call) => call[1] === 'output')).toBe(false)
+        expect(Object.keys(chat.scriptstate ?? {})).not.toContain('$late')
+        expect(sendRefusalIn(ORIGIN)).toBeNull()
+    })
+
+    test('D-7b: a continue whose continued pass never settles stores the whole trimmed continued text', async () => {
+        installSingle({}, [msg('user', 'Hi'), msg('char', 'Part one.', { chatId: 'reply-id', saying: 'char-0' })])
+        mockReplyIn('non-streaming', '  Part two.  ')
+        outputPasses(async (call, text) => (call === 1 ? same(text) : hang()))
+
+        const run = startSend({ continue: true })
+        await waitFor(() => outputPassCalls().length === 2, 'the continued pass')
+        stopAllReplyWork()
+        await advance(STOPPED_PASS_GRACE_MS)
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        expect(datas(chatById('char-0', 'chat-origin'))).toEqual(['Hi', 'Part one.  Part two.'])
+        expect(runInlayMock).not.toHaveBeenCalled()
+    })
+
+    test('D-7d: a multi-message reply whose first pass never settles stores every message raw and starts no later pass', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        requestChatDataMock.mockResolvedValueOnce({ type: 'multiline', result: [['char', '  One.  '], ['char', 'Two.']] })
+        outputPasses(() => hang())
+
+        const run = startSend()
+        await waitFor(() => outputPassCalls().length === 1, 'the pass')
+        stopAllReplyWork()
+        await advance(STOPPED_PASS_GRACE_MS)
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        expect(datas(chatById('char-0', 'chat-origin'))).toEqual(['Hi', 'One.'])
+        expect(outputPassCalls().length).toBe(1)
+        expect(runInlayMock).not.toHaveBeenCalled()
+    })
+
+    test('D-11: guard, a reply the request returns after the Stop is neither passed nor stored', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        let answer: (value: unknown) => void = () => {}
+        requestChatDataMock.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve }))
+        outputPasses(() => hang())
+
+        const run = startSend()
+        await waitFor(() => requests() > 0, 'the request')
+        stopAllReplyWork()
+        await advance(9000)
+        answer({ type: 'success', result: 'Hello.' })
+        await pump()
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        expect(outputPassCalls().length).toBe(0)
+        expect(datas(chatById('char-0', 'chat-origin'))).toEqual(['Hi'])
+    })
+
+    test('D-10: guard, a send that is never stopped leaves no timer behind', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        mockReplyIn('non-streaming', 'Hello.')
+        const baseline = vi.getTimerCount()
+
+        const run = startSend()
+        await waitFor(() => run.state.done, 'the send')
+
+        expect(run.state.value).toBe(true)
+        expect(vi.getTimerCount()).toBe(baseline)
+        expect(stopWarnings()).toEqual([])
+    })
+
+    test('W-1: a stopped unit still running 20 s after the Stop logs one line naming the chat', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        mockReplyIn('non-streaming', 'Hello.')
+        let entered = false
+        tokenizeMock.mockImplementation(async (text: string) => {
+            if (text === 'Hello.') {
+                entered = true
+                return hang()
+            }
+            return text.length
+        })
+
+        const run = startSend()
+        await waitFor(() => entered, 'the reply count to start')
+        stopAllReplyWork()
+        await advance(STOPPED_UNIT_WATCHDOG_MS - 1)
+        expect(stopWarnings()).toEqual([])
+        await advance(1)
+        expect(stopWarnings()).toEqual([['A stopped reply is still running', 'chat-origin']])
+        await advance(60_000)
+
+        expect(stopWarnings().length).toBe(1)
+        expect(run.state.done).toBe(false)
+    })
+
+    test('W-1b: a unit that returns inside the grace logs no watchdog line and leaves no timer', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        mockReplyIn('non-streaming', 'Hello.')
+        let finish: (result: PassResult) => void = () => {}
+        const pending = new Promise<PassResult>((resolve) => { finish = resolve })
+        outputPasses(async () => pending)
+        const baseline = vi.getTimerCount()
+
+        const run = startSend()
+        await waitFor(() => outputPassCalls().length === 1, 'the pass')
+        stopAllReplyWork()
+        await advance(9000)
+        finish(same('Hello.'))
+        await pump()
+        expect(run.state.done).toBe(true)
+        // The unit's own end clears both timers; neither waits for its deadline to pass.
+        expect(vi.getTimerCount()).toBe(baseline)
+        await advance(30_000)
+
+        expect(run.state.value).toBe(false)
+        expect(stopWarnings()).toEqual([])
+        expect(vi.getTimerCount()).toBe(baseline)
+    })
+
+    test('S-I2b: an inlay image started after a Stop by a pass that finished inside the grace is handled once', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        mockReplyIn('non-streaming', 'Hello.')
+        let rejectImage: (error: Error) => void = () => {}
+        const image = new Promise<string>((_resolve, reject) => { rejectImage = reject })
+        runInlayMock.mockImplementation((_char: unknown, text: string) => ({ text: `${text}[Generating...]`, promise: image }))
+        let finish: (result: PassResult) => void = () => {}
+        const pending = new Promise<PassResult>((resolve) => { finish = resolve })
+        outputPasses(async () => pending)
+
+        const run = startSend()
+        await waitFor(() => outputPassCalls().length === 1, 'the pass')
+        stopAllReplyWork()
+        await advance(2000)
+        finish(same('Hello.'))
+        await pump()
+        expect(run.state.done).toBe(true)
+        const failure = new Error('imggen failed')
+        rejectImage(failure)
+        await pump()
+
+        expect(run.state.value).toBe(false)
+        expect(unhandled).toEqual([])
+        expect(console.warn).toHaveBeenCalledWith('The inlay image', failure)
+    })
+
+    test('D-12: a non-stream Stop during a pass that finishes inside the grace keeps the pass signal unaborted and expands no variable', async () => {
+        installSingle({}, [msg('user', 'Hi')])
+        mockReplyIn('non-streaming', 'Hello {{setvar::late::1}}')
+        let finish: () => void = () => {}
+        const pending = new Promise<void>((resolve) => { finish = resolve })
+        outputPasses(async (_call, text) => { await pending; return same(text) })
+
+        const run = startSend()
+        await waitFor(() => outputPassCalls().length === 1, 'the pass')
+        stopAllReplyWork()
+        await pump()
+        const signal = outputPassCalls()[0][11] as AbortSignal
+        expect(signal).toBeInstanceOf(AbortSignal)
+        expect(signal.aborted).toBe(false)
+        await advance(2000)
+        finish()
+        await pump()
+
+        expect(run.state.done).toBe(true)
+        expect(run.state.value).toBe(false)
+        expect(Object.keys(chatById('char-0', 'chat-origin').scriptstate ?? {})).not.toContain('$late')
+    })
+
+    test('D-12b: a continue Stopped during its continued pass keeps that pass signal unaborted until the grace', async () => {
+        installSingle({}, [msg('user', 'Hi'), msg('char', 'Part one.', { chatId: 'reply-id', saying: 'char-0' })])
+        mockReplyIn('non-streaming', '  Part two.  ')
+        outputPasses(async (call, text) => (call === 1 ? same(text) : hang()))
+
+        const run = startSend({ continue: true })
+        await waitFor(() => outputPassCalls().length === 2, 'the continued pass')
+        stopAllReplyWork()
+        await pump()
+        const signal = outputPassCalls()[1][11] as AbortSignal
+        expect(signal).toBeInstanceOf(AbortSignal)
+        expect(signal.aborted).toBe(false)
+        await advance(STOPPED_PASS_GRACE_MS)
+        expect(run.state.done).toBe(true)
     })
 })
 
