@@ -22,6 +22,10 @@ import { bumpModuleGui } from '../moduleGuiBump'
 const h = vi.hoisted(() => ({
     state: { db: {} as Record<string, unknown> },
     alerts: [] as string[],
+    /** Every `alertError` call with all of its arguments. */
+    alertCalls: [] as unknown[][],
+    /** Every `replyChatLabel` call with all of its arguments. */
+    labelCalls: [] as unknown[][],
     waits: 0,
     persona: false as false | { embeddedModule?: { id: string } },
     breakDatabase: false,
@@ -34,9 +38,13 @@ vi.mock(import('../../stores.svelte'), () => ({
 }) as unknown as typeof import('../../stores.svelte'))
 
 vi.mock(import('../../alert'), () => ({
-    alertError: vi.fn((msg: string) => { h.alerts.push(msg) }),
+    alertError: vi.fn((msg: string, ...rest: unknown[]) => { h.alerts.push(msg); h.alertCalls.push([msg, ...rest]) }),
     alertWait: vi.fn(() => { h.waits++ }),
 }) as unknown as typeof import('../../alert'))
+
+vi.mock(import('../replyErrorLabel'), () => ({
+    replyChatLabel: vi.fn((...args: unknown[]) => { h.labelCalls.push(args); return 'X: Y' }),
+}) as unknown as typeof import('../replyErrorLabel'))
 
 vi.mock(import('../../util'), () => ({
     checkPersonaBinded: vi.fn(() => h.persona),
@@ -125,6 +133,8 @@ async function settleTasks() {
 beforeEach(() => {
     calls = []
     h.alerts.length = 0
+    h.alertCalls.length = 0
+    h.labelCalls.length = 0
     h.waits = 0
     h.persona = false
     h.breakDatabase = false
@@ -317,6 +327,38 @@ describe('ensureModulesOrAlert', () => {
         expect(h.alerts).toHaveLength(1)
         expect(h.alerts[0]).toContain('Alpha')
         expect(h.alerts[0]).toContain('Beta')
+    })
+
+    test('E17 a reply failure alerts with the chat label', async () => {
+        installDb([stub('m1', 'Alpha')], { enabled: ['m1'] })
+        registerInstallingLoader({ fail: (id) => new ModuleLoadError('unreadable', id, id) })
+        await expect(ensureModulesOrAlert(ORIGIN, undefined, undefined, { asReply: true })).resolves.toBe(false)
+        expect(h.alertCalls).toEqual([[moduleLoadFailedText(['Alpha']), { reply: { chat: 'X: Y' } }]])
+        expect(h.labelCalls).toEqual([[ORIGIN, undefined]])
+    })
+
+    test('E17c the label is read after the module await, and a call without asReply gives alertError one argument', async () => {
+        installDb([stub('m1', 'Alpha')], { enabled: ['m1'] })
+        let release: () => void = () => {}
+        registerInstallingLoader({
+            hold: () => new Promise<void>((resolve) => { release = resolve }),
+            fail: (id) => new ModuleLoadError('unreadable', id, id),
+        })
+        const pending = ensureModulesOrAlert(ORIGIN, undefined, undefined, { asReply: true })
+        await settleTasks()
+        expect(h.labelCalls).toHaveLength(0)
+        release()
+        await pending
+        expect(h.labelCalls).toHaveLength(1)
+
+        unregisterModuleLoader()
+        h.alertCalls.length = 0
+        h.labelCalls.length = 0
+        installDb([stub('m1', 'Alpha')], { enabled: ['m1'] })
+        registerInstallingLoader({ fail: (id) => new ModuleLoadError('unreadable', id, id) })
+        await expect(ensureModulesOrAlert(ORIGIN)).resolves.toBe(false)
+        expect(h.alertCalls).toEqual([[moduleLoadFailedText(['Alpha'])]])
+        expect(h.labelCalls).toHaveLength(0)
     })
 
     test('M ensure-or-alert-true-when-everything-loads', async () => {

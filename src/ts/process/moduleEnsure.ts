@@ -3,6 +3,7 @@ import { writable } from 'svelte/store'
 import { acquireModule, ModuleLoadError } from '../storage/store2/moduleAcquire'
 import { createRunSubject, createSendSubject, originOf, type Origin, type OriginHint } from './chatOrigin'
 import { alertError } from '../alert'
+import { replyChatLabel } from './replyErrorLabel'
 import { getCurrentChat, getCurrentCharacter } from '../storage/database.svelte'
 import type { RisuModule } from './modules'
 import { hasModuleStubs, moduleListOf, moduleLoadFailedText, moduleRefIdsOf, unloadedModulesOf } from './moduleRefList'
@@ -68,14 +69,22 @@ export async function ensureModulesForOrigin(origin: Origin, signal?: AbortSigna
 /**
  * True when nothing was needed or every module loaded. A failure shows one combined alert and returns false; an abort
  * returns false silently. Call sites guard with hasModuleStubs() first so that a database without stubs adds no await.
+ * With `asReply` the failure is a reply's error: it queues behind closable alerts and names the chat, whose label is
+ * read here, after the module await, so it carries the chat's name at the moment of failure.
  */
-export async function ensureModulesOrAlert(origin: Origin, signal?: AbortSignal, hint?: OriginHint): Promise<boolean> {
+export async function ensureModulesOrAlert(origin: Origin, signal?: AbortSignal, hint?: OriginHint, opts?: { asReply?: boolean }): Promise<boolean> {
     try {
         await ensureModulesForOrigin(origin, signal, hint)
         return true
     } catch (error) {
         if(error instanceof ModuleEnsureError){
-            alertError(moduleLoadFailedText(error.names))
+            const text = moduleLoadFailedText(error.names)
+            if(opts?.asReply){
+                alertError(text, { reply: { chat: replyChatLabel(origin, hint) } })
+            }
+            else{
+                alertError(text)
+            }
             return false
         }
         if(signal?.aborted){

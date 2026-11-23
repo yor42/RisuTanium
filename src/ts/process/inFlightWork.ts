@@ -27,8 +27,18 @@ export interface InFlightTarget {
 /** How a chat unit ended, as the reply classification reports it. */
 export type InFlightOutcome = 'reply' | 'failed' | 'stopped' | 'none'
 
-/** What the last chat to end says about the run: only a stop or a failure is recorded. */
+/**
+ * What the chats that ended say about the run: only a stop or a failure is recorded. With one bad chat
+ * `target` names it; with several `target` is null and `count` is how many (see `takeRunOutcome`).
+ */
 export interface RunOutcome {
+    outcome: 'stopped' | 'failed'
+    target: InFlightTarget | null
+    count: number
+}
+
+/** The recorded end of one chat: only a stop or a failure. */
+interface ChatEnd {
     outcome: 'stopped' | 'failed'
     target: InFlightTarget | null
 }
@@ -37,16 +47,25 @@ interface InFlightEntry {
     readonly kind: InFlightKind
     readonly startedAt: number
     readonly target: InFlightTarget | null
+    /** The chat's identity in the outcome map: its target, or a key of its own when it has none. */
+    readonly key: string
     timer: ReturnType<typeof setTimeout> | null
 }
 
 const entries = new Set<InFlightEntry>()
 const listeners = new Set<() => void>()
 
-// Set by a chat end, before the subscribers hear of it; reset by every begin of a kind other than
-// 'save' (a hidden reply's save begins after its chat ended and must not erase the outcome), and
-// consumed by `takeRunOutcome`, so it never outlives the all-ended sync that reads it.
-let runOutcome: RunOutcome | null = null
+// One stop or failure per chat, set by a chat end before the subscribers hear of it. A chat's own next
+// begin replaces its entry, so another chat's end or another kind's begin never erases it. A begin of
+// a kind other than 'save' (a hidden reply's save begins after its chat ended and must not erase the
+// outcome) clears the map only when nothing is live, which starts a new run and bounds the map where
+// no consumer takes it. `takeRunOutcome` consumes it, so it never outlives the all-ended sync.
+const chatEnds = new Map<string, ChatEnd>()
+let untargetedCounter = 0
+
+function chatKey(target: InFlightTarget | null): string {
+    return target === null ? `\u0000token:${untargetedCounter++}` : `${target.chaId}\u0000${target.chatId}`
+}
 
 function notify(): void {
     for (const listener of [...listeners]) {
@@ -63,8 +82,8 @@ function notify(): void {
  * Ending is idempotent. With `maxAgeMs` the token ends itself (and logs) once
  * that time has passed. A chat token may carry its `target`, of which only the
  * owner's id and the chat's id are kept. Ending a chat token with an outcome
- * records a stop or a failure as the run outcome; any other end of a chat
- * clears it, so the last chat to end describes the run.
+ * records a stop or a failure for its chat; any other end of a chat clears
+ * only that chat's record, so every chat that ended badly stays in the run outcome.
  */
 export function beginInFlight(
     kind: InFlightKind,
@@ -73,9 +92,12 @@ export function beginInFlight(
     const target = kind === 'chat' && options.target
         ? { chaId: options.target.chaId, chatId: options.target.chatId }
         : null
-    const entry: InFlightEntry = { kind, startedAt: Date.now(), target, timer: null }
-    if (kind !== 'save') {
-        runOutcome = null
+    const entry: InFlightEntry = { kind, startedAt: Date.now(), target, key: chatKey(target), timer: null }
+    if (kind !== 'save' && entries.size === 0) {
+        chatEnds.clear()
+    }
+    if (kind === 'chat') {
+        chatEnds.delete(entry.key)
     }
     entries.add(entry)
     const end = (outcome?: InFlightOutcome): void => {
@@ -87,9 +109,11 @@ export function beginInFlight(
             entry.timer = null
         }
         if (kind === 'chat') {
-            runOutcome = outcome === 'stopped' || outcome === 'failed'
-                ? { outcome, target: entry.target }
-                : null
+            if (outcome === 'stopped' || outcome === 'failed') {
+                chatEnds.set(entry.key, { outcome, target: entry.target })
+            } else {
+                chatEnds.delete(entry.key)
+            }
         }
         notify()
     }
@@ -139,11 +163,35 @@ export function inFlightChatTarget(): InFlightTarget | null {
     return latest
 }
 
-/** The run outcome, once: reading it clears it. */
+/** How many chats are live: distinct targets, with a token that has no target counting as one of its own. */
+export function inFlightChatCount(): number {
+    const keys = new Set<string>()
+    for (const entry of entries) {
+        if (entry.kind === 'chat') {
+            keys.add(entry.key)
+        }
+    }
+    return keys.size
+}
+
+/**
+ * The run outcome, once: reading it clears it. Failed chats outrank stopped ones. One failed chat is
+ * reported by itself, whatever else stopped; several failed give a count of the failed ones. With none
+ * failed, one stopped chat is named and several give a count.
+ */
 export function takeRunOutcome(): RunOutcome | null {
-    const taken = runOutcome
-    runOutcome = null
-    return taken
+    const ends = [...chatEnds.values()]
+    chatEnds.clear()
+    const failed = ends.filter((end) => end.outcome === 'failed')
+    const bad = failed.length > 0 ? failed : ends
+    if (bad.length === 0) {
+        return null
+    }
+    return {
+        outcome: bad[0].outcome,
+        target: bad.length === 1 ? bad[0].target : null,
+        count: bad.length,
+    }
 }
 
 /** Calls `callback` after every begin and end; the returned function unsubscribes. */
@@ -172,5 +220,5 @@ export function resetInFlightForTest(): void {
     }
     entries.clear()
     listeners.clear()
-    runOutcome = null
+    chatEnds.clear()
 }

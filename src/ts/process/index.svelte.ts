@@ -84,6 +84,7 @@ import { splitAtOpenCbsSpan } from "../chatShell/streamSpans";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
 import { classifyReplyOutcome, noteUnitAlerted, noteUnitFailure, recordReplyOutcome, setReplyMark, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, nativeNoticeArmOf, noteReplySound } from "./replyNotice";
+import { replyChatLabel } from "./replyErrorLabel";
 import { raceAbort, raceUntil, createStopDeadline, STOPPED_PASS_GRACE_MS, STOPPED_UNIT_WATCHDOG_MS, type StopDeadline } from "./abortRace";
 
 export interface OpenAIChat{
@@ -451,7 +452,7 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
         endInFlight = beginInFlight('chat', { target: entry.context.origin })
         // Awaited only after the unit is taken, so the check and the take stay one synchronous stretch. The busy
         // button aborts the wait through the unit's signal; a failure alerts once and the finally releases the unit.
-        if(hasModuleStubs() && !(await ensureModulesOrAlert(entry.context.origin, unit.signal, entry.context.hint))){
+        if(hasModuleStubs() && !(await ensureModulesOrAlert(entry.context.origin, unit.signal, entry.context.hint, { asReply: true }))){
             modulesFailed = true
             return false
         }
@@ -1073,15 +1074,17 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
     function throwError(error:string, link?:{label:string, open:() => void}){
         noteUnitFailure(abortSignal)
+        // Read where the failure is raised, through this send's own origin and hint, never the selection.
+        const reply = { chat: replyChatLabel(origin, hint) }
         // An error with a place to fix it is always the alert, so its link stays reachable.
         if(link){
             noteUnitAlerted(abortSignal)
-            alertError(error, {link})
+            alertError(error, {link, reply})
             return
         }
         if(!DBState?.db?.inlayErrorResponse){
             noteUnitAlerted(abortSignal)
-            alertError(error)
+            alertError(error, {reply})
             return
         }
 
@@ -1089,7 +1092,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             const ctx = subject.resolve()
             if(!ctx || !Array.isArray(ctx.chat.message)){
                 noteUnitAlerted(abortSignal)
-                alertError(error)
+                alertError(error, {reply})
                 return
             }
 
@@ -1133,7 +1136,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         catch(e){
             console.error(e)
             noteUnitAlerted(abortSignal)
-            alertError(error)
+            alertError(error, {reply})
             return
         }
     }
