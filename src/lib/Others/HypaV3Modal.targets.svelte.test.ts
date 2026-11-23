@@ -107,6 +107,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { translateHTML } from 'src/ts/translator/translator'
 import { processScriptFull } from 'src/ts/process/scripts'
 import { getCurrentHypaV3Preset } from 'src/ts/process/memory/hypav3'
@@ -148,11 +149,16 @@ const texts = (c = 0) => data(c).summaries.map((s) => s.text)
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
 
-function mountModal(): HTMLElement {
+async function mountModal(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(HypaV3Modal, { target, props: {} }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
+    flushSync()
+    // The windowed cards mount once the host has read the band.
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
     flushSync()
     return target
 }
@@ -242,6 +248,8 @@ async function answer(value: boolean): Promise<void> {
 }
 
 beforeEach(() => {
+    // Every card falls in the window: these tests are about what a card does, not about which cards are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     confirms.pending.length = 0
     summarizer.pending.length = 0
     summarizer.rejecters.length = 0
@@ -257,6 +265,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+    setWindowGeometryForTests(undefined)
     for (const m of mounted) {
         await unmount(m.app as never)
         m.target.remove()
@@ -271,7 +280,7 @@ const four = () => ['s0', 's1', 's2', 's3']
 describe('a summary "delete this"', () => {
     test('guard: with nothing else changing, the confirmed summary is removed and no other', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteThis(target, 's1')
         expect(confirms.pending.length).toBe(1)
         await answer(true)
@@ -280,7 +289,7 @@ describe('a summary "delete this"', () => {
 
     test('guard: refusing the confirmation removes nothing', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteThis(target, 's1')
         await answer(false)
         expect(texts()).toEqual(four())
@@ -288,7 +297,7 @@ describe('a summary "delete this"', () => {
 
     test('guard: a summary inserted above it while the confirmation is open does not change which summary is removed', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteThis(target, 's2')
         data().summaries.unshift(summary('new'))
         flushSync()
@@ -298,7 +307,7 @@ describe('a summary "delete this"', () => {
 
     test('two pending deletes of the same summary remove it once', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteThis(target, 's1')
         await clickDeleteThis(target, 's1')
         expect(confirms.pending.length).toBe(2)
@@ -309,7 +318,7 @@ describe('a summary "delete this"', () => {
 
     test('a summary removed by something else while its confirmation is open leaves every other summary in place', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteThis(target, 's1')
         data().summaries.splice(1, 1)
         flushSync()
@@ -319,7 +328,7 @@ describe('a summary "delete this"', () => {
 
     test('guard: summaries replaced wholesale while the confirmation is open (a send writing its result back) are left as they are', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteThis(target, 's1')
         DBState.db.characters[0].chats[0].hypaV3Data = { summaries: ['t0', 't1', 't2', 't3'].map(summary) } as never
         flushSync()
@@ -329,7 +338,7 @@ describe('a summary "delete this"', () => {
 
     test('a removal clears the bulk selection', async () => {
         installDb(['s0', 's1', 's2', 's3', 's4'])
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tick(target, 's2')
         await tick(target, 's3')
@@ -343,7 +352,7 @@ describe('a summary "delete this"', () => {
 describe('a summary "delete after"', () => {
     test('guard: with nothing else changing, everything after the confirmed summary is removed', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteAfter(target, 's1')
         await answer(true)
         await answer(true)
@@ -352,7 +361,7 @@ describe('a summary "delete after"', () => {
 
     test('guard: refusing either confirmation removes nothing', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteAfter(target, 's1')
         await answer(true)
         await answer(false)
@@ -361,7 +370,7 @@ describe('a summary "delete after"', () => {
 
     test('guard: a summary inserted above it while the confirmations are open does not change which summaries are removed', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteAfter(target, 's1')
         await answer(true)
         data().summaries.unshift(summary('new'))
@@ -372,7 +381,7 @@ describe('a summary "delete after"', () => {
 
     test('a summary removed by something else while its confirmations are open removes nothing', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteAfter(target, 's1')
         await answer(true)
         data().summaries.splice(1, 1)
@@ -383,7 +392,7 @@ describe('a summary "delete after"', () => {
 
     test('guard: summaries replaced wholesale while the confirmations are open (a send writing its result back) are left as they are', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await clickDeleteAfter(target, 's1')
         await answer(true)
         DBState.db.characters[0].chats[0].hypaV3Data = { summaries: ['t0', 't1', 't2', 't3'].map(summary) } as never
@@ -403,7 +412,7 @@ describe('the bulk re-summarize apply', () => {
 
     test('guard: applying merges the selected summaries into the first of them and removes the others', async () => {
         installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
-        const target = mountModal()
+        const target = await mountModal()
         await selectAndResummarize(target, ['s3', 's4'])
         applyResult(target)!.click()
         await settle()
@@ -435,7 +444,7 @@ describe('the bulk re-summarize apply', () => {
             installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
             const T = [NOW - 10 * DAY, NOW - 11 * DAY, NOW - 12 * DAY, NOW - DAY, NOW - 5 * DAY, NOW - 15 * DAY]
             giveTimes(T)
-            const target = mountModal()
+            const target = await mountModal()
             await selectAndResummarize(target, ['s3', 's4'])
             applyResult(target)!.click()
             await settle()
@@ -446,7 +455,7 @@ describe('the bulk re-summarize apply', () => {
         // compatibility guard: passes before and after (base never writes the key)
         test('none timed: the merged summary has no createdAt property', async () => {
             installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
-            const target = mountModal()
+            const target = await mountModal()
             await selectAndResummarize(target, ['s3', 's4'])
             applyResult(target)!.click()
             await settle()
@@ -458,7 +467,7 @@ describe('the bulk re-summarize apply', () => {
         test('mixed: an untimed source makes the merged summary untimed', async () => {
             installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
             giveTimes([undefined, undefined, undefined, NOW - DAY])
-            const target = mountModal()
+            const target = await mountModal()
             await selectAndResummarize(target, ['s2', 's3'])
             applyResult(target)!.click()
             await settle()
@@ -469,7 +478,7 @@ describe('the bulk re-summarize apply', () => {
 
     test('after a summary above the selection is deleted, applying never overwrites or removes a summary that was not selected', async () => {
         installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
-        const target = mountModal()
+        const target = await mountModal()
         await selectAndResummarize(target, ['s3', 's4'])
         await clickDeleteThis(target, 's0')
         await answer(true)
@@ -480,7 +489,7 @@ describe('the bulk re-summarize apply', () => {
 
     test('a selected summary removed while the summarizer runs leaves every summary as it is and says so', async () => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tick(target, 's1')
         await tick(target, 's2')
@@ -499,7 +508,7 @@ describe('the bulk re-summarize apply', () => {
 describe('the HypaV3 reset', () => {
     test('guard: a confirmed reset empties the current chat\'s summaries', async () => {
         installDb(four(), ['u0'])
-        const target = mountModal()
+        const target = await mountModal()
         await openResetFromMenu(target)
         expect(confirms.pending.length).toBe(1)
         await answer(true)
@@ -510,7 +519,7 @@ describe('the HypaV3 reset', () => {
 
     test('guard: refusing a confirmation resets nothing', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await openResetFromMenu(target)
         await answer(true)
         await answer(false)
@@ -519,7 +528,7 @@ describe('the HypaV3 reset', () => {
 
     test('a selection that moves to another character during the confirmations resets the character the user aimed at and leaves the new one alone', async () => {
         installDb(four(), ['u0', 'u1'])
-        const target = mountModal()
+        const target = await mountModal()
         await openResetFromMenu(target)
         await answer(true)
         selectedCharID.set(1)
@@ -531,7 +540,7 @@ describe('the HypaV3 reset', () => {
 
     test('a reset of a character that has been deselected marks that character for save', async () => {
         installDb(four(), ['u0', 'u1'])
-        const target = mountModal()
+        const target = await mountModal()
         await openResetFromMenu(target)
         await answer(true)
         selectedCharID.set(1)
@@ -542,7 +551,7 @@ describe('the HypaV3 reset', () => {
 
     test('a character removed during the confirmations resets nothing', async () => {
         installDb(four(), ['u0', 'u1'])
-        const target = mountModal()
+        const target = await mountModal()
         await openResetFromMenu(target)
         await answer(true)
         DBState.db.characters.splice(0, 1)
@@ -553,7 +562,7 @@ describe('the HypaV3 reset', () => {
 
     test('a chat that has left the character during the confirmations resets nothing', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await openResetFromMenu(target)
         await answer(true)
         DBState.db.characters[0].chats[0] = chat(['v0', 'v1']) as never
@@ -615,7 +624,7 @@ async function tickBulk(target: HTMLElement, ...selected: string[]): Promise<voi
 describe('the bulk re-summarize and re-roll runs', () => {
     test('a re-roll that returns after Cancel shows no result bar and writes nothing', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tickBulk(target, 's1', 's2')
         await resummarize(target)
@@ -630,7 +639,7 @@ describe('the bulk re-summarize and re-roll runs', () => {
 
     test('guard: fewer than two selected summaries left starts no summarizer call', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tickBulk(target, 's2', 's3')
         data().summaries.splice(3, 1)
@@ -643,7 +652,7 @@ describe('the bulk re-summarize and re-roll runs', () => {
 
     test('guard: with fewer than two selected summaries left, re-summarize reports a failure', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tickBulk(target, 's2', 's3')
         data().summaries.splice(3, 1)
@@ -656,7 +665,7 @@ describe('the bulk re-summarize and re-roll runs', () => {
 
     test('a summary delete while a re-summarize runs drops its result when the summarizer returns', async () => {
         installDb(['s0', 's1', 's2', 's3', 's4'])
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tickBulk(target, 's2', 's3')
         await resummarize(target)
@@ -670,7 +679,7 @@ describe('the bulk re-summarize and re-roll runs', () => {
 
     test('a summary delete while a re-roll runs drops its result when the summarizer returns', async () => {
         installDb(['s0', 's1', 's2', 's3', 's4'])
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tickBulk(target, 's2', 's3')
         await resummarize(target)
@@ -685,7 +694,7 @@ describe('the bulk re-summarize and re-roll runs', () => {
 
     test('a new selection while a re-summarize runs drops that run\'s result when the summarizer returns', async () => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tickBulk(target, 's1', 's2')
         await resummarize(target)
@@ -697,7 +706,7 @@ describe('the bulk re-summarize and re-roll runs', () => {
 
     test('Cancel then a new re-summarize: the cancelled run\'s result, returning after the new one, does not replace it', async () => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tickBulk(target, 's0', 's1')
         await resummarize(target)
@@ -715,7 +724,7 @@ describe('the bulk re-summarize and re-roll runs', () => {
 
     test('Cancel then a new re-summarize: the cancelled run\'s result, returning first, is not offered for the new selection', async () => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tickBulk(target, 's0', 's1')
         await resummarize(target)
@@ -730,7 +739,7 @@ describe('the bulk re-summarize and re-roll runs', () => {
 
     test('a re-roll that returns after Cancel and a new re-summarize does not offer its text for the new selection', async () => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await toggleBulkEdit(target)
         await tickBulk(target, 's1', 's2')
         await resummarize(target)
@@ -768,7 +777,7 @@ describe('the bulk run supersession rules', () => {
 
     test('a re-summarize whose summarizer call fails after Cancel and a new run neither alerts nor disturbs the new run', async () => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await runningSelection(target, 's0', 's1')
         await cancelResult(target)
         await tickBulk(target, 's2', 's3')
@@ -782,7 +791,7 @@ describe('the bulk run supersession rules', () => {
 
     test('a re-roll whose summarizer call fails after Cancel and a new run neither alerts nor disturbs the new run', async () => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await runningSelection(target, 's1', 's2')
         await finishSummarizerAt(0, 'FIRST')
         await rerollResult(target)
@@ -798,7 +807,7 @@ describe('the bulk run supersession rules', () => {
 
     test('two re-summarize clicks without Cancel offer only the second run\'s result', async () => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await runningSelection(target, 's0', 's1')
         await resummarize(target)
         expect(summarizer.pending.length).toBe(2)
@@ -809,7 +818,7 @@ describe('the bulk run supersession rules', () => {
 
     test('ticking a summary during a run removes the processing bar', async () => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await runningSelection(target, 's1', 's2')
         expect(resultBarShown(target)).toBe(true)
         await tick(target, 's3')
@@ -818,7 +827,7 @@ describe('the bulk run supersession rules', () => {
 
     test('guard: ticking a summary while a finished result is shown keeps that result', async () => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await runningSelection(target, 's1', 's2')
         await finishSummarizerAt(0, 'merged')
         await tick(target, 's3')
@@ -846,7 +855,7 @@ describe('the bulk run supersession rules', () => {
 
     test.each(supersedes)('%s supersedes the run in flight, so its result is not shown when the summarizer returns', async (_name, act) => {
         installDb(['s0', 's1', 's2', 's3'])
-        const target = mountModal()
+        const target = await mountModal()
         await runningSelection(target, 's1', 's2')
         await act(target)
         expect(resultBarShown(target)).toBe(false)
@@ -910,7 +919,7 @@ describe('the bulk re-summarize waits for the chat\'s referenced modules', () =>
         installDb(four())
         moduleWait.hasStubs.mockImplementation(() => true)
         const gate = gateNextEnsure()
-        const target = mountModal()
+        const target = await mountModal()
         await bulkSelection(target, 's1', 's2')
         await resummarize(target)
         expect(moduleWait.ensure).toHaveBeenCalledTimes(1)
@@ -926,7 +935,7 @@ describe('the bulk re-summarize waits for the chat\'s referenced modules', () =>
         installDb(four())
         moduleWait.hasStubs.mockImplementation(() => true)
         moduleWait.ensure.mockImplementation(async () => false)
-        const target = mountModal()
+        const target = await mountModal()
         await bulkSelection(target, 's1', 's2')
         await resummarize(target)
         expect(moduleWait.ensure).toHaveBeenCalledTimes(1)
@@ -941,7 +950,7 @@ describe('the bulk re-summarize waits for the chat\'s referenced modules', () =>
         installDb(four())
         moduleWait.hasStubs.mockImplementation(() => true)
         const gate = gateNextEnsure()
-        const target = mountModal()
+        const target = await mountModal()
         await bulkSelection(target, 's1', 's2')
         await resummarize(target)
         await cancelResult(target)
@@ -956,7 +965,7 @@ describe('the bulk re-summarize waits for the chat\'s referenced modules', () =>
         installDb(four())
         moduleWait.hasStubs.mockImplementation(() => true)
         const firstGate = gateNextEnsure()
-        const target = mountModal()
+        const target = await mountModal()
         await bulkSelection(target, 's1', 's2')
         await resummarize(target)
         await tick(target, 's3')
@@ -972,7 +981,7 @@ describe('the bulk re-summarize waits for the chat\'s referenced modules', () =>
 
     test('guard: with no module stubs the wait is not entered and the summarizer is called at once', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await bulkSelection(target, 's1', 's2')
         await resummarize(target)
         expect(moduleWait.ensure).not.toHaveBeenCalled()
@@ -990,7 +999,7 @@ describe('the bulk re-roll waits for the chat\'s referenced modules', () => {
 
     test('waits for the referenced modules before the summarizer call, with the processing panel showing', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await withFirstResult(target)
         const gate = gateNextEnsure()
         await rerollResult(target)
@@ -1005,7 +1014,7 @@ describe('the bulk re-roll waits for the chat\'s referenced modules', () => {
 
     test('a failed load restores the earlier result, makes no summarizer call, shows no failure notice and ends the busy state', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await withFirstResult(target)
         moduleWait.ensure.mockImplementation(async () => false)
         await rerollResult(target)
@@ -1018,7 +1027,7 @@ describe('the bulk re-roll waits for the chat\'s referenced modules', () => {
 
     test('Cancel during a waiting load, then a failed load, leaves the panel cleared and no summary saved', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await withFirstResult(target)
         const gate = gateNextEnsure()
         await rerollResult(target)
@@ -1031,7 +1040,7 @@ describe('the bulk re-roll waits for the chat\'s referenced modules', () => {
 
     test('summaries removed during a waiting load leave the panel cleared when the load then fails', async () => {
         installDb(['s0', 's1', 's2', 's3', 's4'])
-        const target = mountModal()
+        const target = await mountModal()
         await withFirstResult(target)
         const gate = gateNextEnsure()
         await rerollResult(target)
@@ -1045,7 +1054,7 @@ describe('the bulk re-roll waits for the chat\'s referenced modules', () => {
 
     test('a re-roll started while a translation runs, stopped by a failed load, leaves a working translate button', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await withFirstResult(target)
         vi.mocked(translateHTML).mockImplementationOnce(() => new Promise<string>(() => {}))
         resultButton(target, language.hypaV3Modal.translate).click()
@@ -1061,7 +1070,7 @@ describe('the bulk re-roll waits for the chat\'s referenced modules', () => {
 
     test('guard: with no module stubs the wait is not entered and the summarizer is called at once', async () => {
         installDb(four())
-        const target = mountModal()
+        const target = await mountModal()
         await withFirstResult(target)
         moduleWait.hasStubs.mockImplementation(() => false)
         await rerollResult(target)
@@ -1071,14 +1080,14 @@ describe('the bulk re-roll waits for the chat\'s referenced modules', () => {
 })
 
 describe('a summary\'s own re-roll waits for the chat\'s referenced modules', () => {
-    function mountWithMessages(): HTMLElement {
+    async function mountWithMessages(): Promise<HTMLElement> {
         installDb(four())
         giveSummariesTheirMessages()
-        return mountModal()
+        return await mountModal()
     }
 
     test('waits for the referenced modules before the summarizer call, with the placeholder showing', async () => {
-        const target = mountWithMessages()
+        const target = await mountWithMessages()
         moduleWait.hasStubs.mockImplementation(() => true)
         const gate = gateNextEnsure()
         await clickReroll(target, 's1')
@@ -1092,7 +1101,7 @@ describe('a summary\'s own re-roll waits for the chat\'s referenced modules', ()
     })
 
     test('a failed load makes no summarizer call, restores the earlier rerolled text, shows no notice and allows a new re-roll', async () => {
-        const target = mountWithMessages()
+        const target = await mountWithMessages()
         await clickReroll(target, 's1')
         await finishSummarizer('RR1')
         moduleWait.hasStubs.mockImplementation(() => true)
@@ -1106,7 +1115,7 @@ describe('a summary\'s own re-roll waits for the chat\'s referenced modules', ()
     })
 
     test('a failed load on a first re-roll removes the placeholder', async () => {
-        const target = mountWithMessages()
+        const target = await mountWithMessages()
         moduleWait.hasStubs.mockImplementation(() => true)
         moduleWait.ensure.mockImplementationOnce(async () => false)
         await clickReroll(target, 's1')
@@ -1117,7 +1126,7 @@ describe('a summary\'s own re-roll waits for the chat\'s referenced modules', ()
     })
 
     test('guard: Cancel during a waiting load, then a failed load, keeps the cancelled state', async () => {
-        const target = mountWithMessages()
+        const target = await mountWithMessages()
         await clickReroll(target, 's1')
         await finishSummarizer('RR1')
         moduleWait.hasStubs.mockImplementation(() => true)
@@ -1138,7 +1147,7 @@ describe('a summary\'s own re-roll waits for the chat\'s referenced modules', ()
             return { data: 'processed', emoChanged: false }
         }) as never)
         try {
-            const target = mountWithMessages()
+            const target = await mountWithMessages()
             moduleWait.hasStubs.mockImplementation(() => true)
             moduleWait.ensure.mockImplementationOnce(async () => { order.push('ensure'); return true })
             await clickReroll(target, 's1')
@@ -1149,7 +1158,7 @@ describe('a summary\'s own re-roll waits for the chat\'s referenced modules', ()
     })
 
     test('a failed load after a failed re-roll puts the failed text back and keeps Apply disabled', async () => {
-        const target = mountWithMessages()
+        const target = await mountWithMessages()
         await clickReroll(target, 's1')
         summarizer.pending.shift()
         summarizer.rejecters.shift()!(new Error('summarizer failed'))
@@ -1170,7 +1179,7 @@ describe('a summary\'s own re-roll waits for the chat\'s referenced modules', ()
     })
 
     test('guard: with no module stubs the wait is not entered and the summarizer is called at once', async () => {
-        const target = mountWithMessages()
+        const target = await mountWithMessages()
         await clickReroll(target, 's1')
         expect(moduleWait.ensure).not.toHaveBeenCalled()
         expect(summarizer.pending.length).toBe(1)
@@ -1181,7 +1190,7 @@ describe('a chat switch to a chat without hypaV3Data', () => {
     test('regression reproducer: the chat gets the default hypaV3Data and the empty state shows without throwing (a chat shaped like createNewChat adds)', async () => {
         installDb(['s0', 's1'])
         DBState.db.characters[0].chats.push({ id: 'chat-b', message: [], note: '', name: 'New Chat 2', localLore: [], fmIndex: -1 } as never)
-        const target = mountModal()
+        const target = await mountModal()
         expect(target.querySelectorAll('textarea').length).toBe(2)
 
         DBState.db.characters[0].chatPage = 1

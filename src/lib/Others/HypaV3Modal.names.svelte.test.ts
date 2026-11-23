@@ -72,6 +72,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 
 import { language } from 'src/lang'
 import { DBState } from 'src/ts/stores.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { controlName, exposedIcons, paletteClasses, unnamedControls } from 'src/lib/a11yNames.test-helpers'
 import HypaV3Modal from './HypaV3Modal.svelte'
 
@@ -103,21 +104,29 @@ function installDb(summaryTexts: string[]): void {
 
 let mounted: Array<{ target: HTMLElement, app: Record<string, unknown> }> = []
 
-function mountModal(): HTMLElement {
+async function mountModal(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(HypaV3Modal, { target, props: {} }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
     flushSync()
+    // The windowed cards mount once the host has read the band.
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
+    flushSync()
     return target
 }
 
 beforeEach(() => {
+    // Every card falls in the window: these tests are about what a card does, not about which cards are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     installDb(['s0', 's1', 's2'])
     Element.prototype.scrollIntoView = () => {}
 })
 
 afterEach(async () => {
+    setWindowGeometryForTests(undefined)
     for (const m of mounted) {
         await unmount(m.app as never)
         m.target.remove()
@@ -136,7 +145,7 @@ async function openSearch(target: HTMLElement): Promise<void> {
 
 describe('HypaV3Modal accessible names', () => {
     test('regression reproducer: the search bar names its previous and next buttons and its field', async () => {
-        const target = mountModal()
+        const target = await mountModal()
         await openSearch(target)
         const field = target.querySelector('input[placeholder]') as HTMLInputElement
         expect(controlName(field)).toBe(language.search)
@@ -147,7 +156,7 @@ describe('HypaV3Modal accessible names', () => {
     })
 
     test('regression reproducer: the search field uses the shared focus ring, not a zinc ring', async () => {
-        const target = mountModal()
+        const target = await mountModal()
         await openSearch(target)
         const field = target.querySelector('input[placeholder]') as HTMLInputElement
         expect(field.classList.contains('risu-focus-ring')).toBe(true)
@@ -155,7 +164,7 @@ describe('HypaV3Modal accessible names', () => {
     })
 
     test('regression reproducer: the open modal with the dropdown, metrics, bulk bar and search has no unnamed control or field', async () => {
-        const target = mountModal()
+        const target = await mountModal()
         await openSearch(target)
         moreButton(target).click()
         await settle()
@@ -170,7 +179,7 @@ describe('HypaV3Modal accessible names', () => {
     })
 
     test('regression reproducer: the glyphs of the whole modal are hidden', async () => {
-        const target = mountModal()
+        const target = await mountModal()
         await openSearch(target)
         moreButton(target).click()
         await settle()
@@ -178,7 +187,7 @@ describe('HypaV3Modal accessible names', () => {
     })
 
     test('regression reproducer: no default-palette class is left beyond the scrim and the metric badges', async () => {
-        const target = mountModal()
+        const target = await mountModal()
         await openSearch(target)
         moreButton(target).click()
         await settle()
@@ -196,7 +205,7 @@ describe('HypaV3Modal accessible names', () => {
         const memo = 'abcd1234'
         installDb(['s0', 's1'])
         DBState.db.characters[0].chats[0].hypaV3Data.summaries[1].chatMemos = [memo]
-        const target = mountModal()
+        const target = await mountModal()
         // Summaries start collapsed; the connected-message buttons exist only while a summary is expanded.
         for (const toggle of Array.from(target.querySelectorAll('button.gap-2.text-sm.text-textcolor2'))) {
             (toggle as HTMLButtonElement).click()
@@ -214,6 +223,8 @@ describe('HypaV3Modal accessible names', () => {
         vi.useFakeTimers()
         try {
             nextButton.click()
+            // The jump first mounts its card, which takes a microtask.
+            await vi.advanceTimersByTimeAsync(0)
             flushSync()
             expect(button.classList.contains('ring-2')).toBe(true)
             expect(button.classList.contains('ring-borderc')).toBe(true)
@@ -230,7 +241,7 @@ describe('HypaV3Modal accessible names', () => {
     test('guard: the empty state with a possible conversion keeps its text-named button and has no palette class', async () => {
         installDb([])
         DBState.db.characters[0].chats[0].hypaV3Data = { summaries: [], categories: [], lastSelectedSummaries: [] } as never
-        const target = mountModal()
+        const target = await mountModal()
         expect(unnamedControls(target, { fields: true })).toEqual([])
         expect(paletteClasses(target, { allow: E6 })).toEqual([])
     })
