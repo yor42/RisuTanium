@@ -16,7 +16,8 @@ import { ASSET_RETAINED_KEY } from '../studio/assets/assetOwnerKeys'
  *
  * Keeping the stub: a plugin that read a module and writes it back unchanged hands this write a full copy. When the live
  * slot is the recorded stub of the module and the copy is exactly what the stored unit and lists would be reused for, the
- * copy is replaced by the live stub, so nothing of the module is rewritten and it stays unloaded.
+ * copy is replaced by the live stub, so nothing of the module is rewritten and it stays unloaded. The residency proves
+ * "exactly what the stored unit would be reused for" from the payload print it recorded when the module was read.
  *
  * This module is shared by `plugins.svelte.ts` (the write) and `apiV3/moduleStubCopy.svelte.ts` (the read) and imports neither.
  */
@@ -115,13 +116,21 @@ export function withRecordedStubs<T>(live: readonly RisuModule[] | undefined, in
     const list: readonly unknown[] = incoming
     const liveCounts = countIds(live)
     const incomingCounts = countIds(list)
+    // The live slot of each id; only an id held once is looked up below, so the slot is that id's single holder.
+    const holders = new Map<string, RisuModule>()
+    for (const slot of live) {
+        const slotId = idOf(slot)
+        if (slotId !== undefined) {
+            holders.set(slotId, slot)
+        }
+    }
     let changed: unknown[] | null = null
     list.forEach((module, index) => {
         const id = idOf(module)
         if (id === undefined || isModuleStub(module) || liveCounts.get(id) !== 1 || incomingCounts.get(id) !== 1) {
             return
         }
-        const holder = live.find((candidate) => idOf(candidate) === id)
+        const holder = holders.get(id)
         if (holder !== undefined && keepsStub(residency, id, holder, module)) {
             changed ??= list.slice()
             changed[index] = holder

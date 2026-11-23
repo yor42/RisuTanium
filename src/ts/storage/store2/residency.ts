@@ -2,12 +2,13 @@ import type { JsonObject } from '../blockFrame'
 import type { character, groupChat } from '../database.svelte'
 import type { Store2Backend } from './backend/types'
 import {
-    assembleCharacter, assembleModule, characterMatchesAcknowledged, CodecAssembleError, moduleHandles, moduleIsStoredUnit, overlayStub, stubFromEntry,
+    assembleCharacter, assembleModule, characterMatchesAcknowledged, CodecAssembleError, IDENTITY, moduleHandles, moduleIsStoredUnit, overlayStub, stubFromEntry,
     type AcknowledgedVerdict, type UnitSource,
 } from './codec'
-import { defaultKeyEnv, type ModuleEntry, type ShardEntry } from './format'
+import { payloadPrint, type StoredPayloadPrint } from './codec/payloadPrint'
+import { defaultKeyEnv, FRAME_HEADER_BYTES, keyOfRef, type ModuleEntry, type ShardEntry } from './format'
 import { createLeafFallback } from './leafFallback'
-import { hydrateEntityDigests, hydrateModuleDigests } from './previousOfTree'
+import { checkedBytes, hydrateEntityDigests, hydrateModuleDigests } from './previousOfTree'
 import type { Store2SaveContext } from './saveActive'
 import type { SaveEncoder } from './saveEncoder'
 import { readEntityBytes, readModuleBytes, type FlaggedLeaf } from './treeBytes'
@@ -51,13 +52,17 @@ export interface Residency {
     /**
      * Gives the module unit and lists of a read made earlier by `readModule` their digests in place, so an unedited
      * loaded module is reused whole by its first pass. A unit whose key or Ref is no longer the acknowledged
-     * encoding's is left as it is, so a read that went stale hydrates nothing it should not.
+     * encoding's is left as it is, so a read that went stale hydrates nothing it should not. It also records the length
+     * and a print of the module unit's payload, pinned to the unit's key and digest, for `moduleIsStored`; a read whose
+     * module unit was withheld or not digested records nothing.
      */
     hydrateModule(read: Extract<ResidencyModuleRead, { status: 'ok' }>): void
     /**
      * Whether a save of `module` would reuse the stored module unit of `handle` and carry its asset and inlay lists, judged
-     * against the acknowledged encoding now. False when that cannot be proved (no entry, an edit, a unit or list without
-     * a digest, a list version this build does not carry); it never throws.
+     * against the acknowledged encoding now. The module counts as the stored unit only when its canonical payload has the
+     * length and print recorded by `hydrateModule` for that very unit; a module never hydrated on this page is not proved.
+     * False when that cannot be proved (no entry, no record, an edit, a unit or list without a digest, a list version this
+     * build does not carry); it never throws.
      */
     moduleIsStored(handle: string, module: unknown): boolean
     /** Reads and assembles the character of `u` as a copy: nothing is hydrated. */
@@ -190,14 +195,41 @@ export function createResidency(options: ResidencyOptions): Residency {
         }
     }
 
+    // The length and payload print of the module unit each handle was last read from; only a record of the unit the acknowledged encoding holds counts.
+    const prints = new Map<string, StoredPayloadPrint>()
+
+    function hydrateModule(read: Extract<ResidencyModuleRead, { status: 'ok' }>): void {
+        const previous = encoder.acknowledged()
+        hydrateModuleDigests(previous, read.entry, read.handle, read.source)
+        try {
+            const unit = previous.units.get(`${IDENTITY.module}${read.handle}`)
+            const unitKey = keyOfRef(read.entry.unit)
+            if (unit === undefined || unit.digest === undefined || unit.key !== unitKey) {
+                return
+            }
+            const held = prints.get(read.handle)
+            if (held !== undefined && held.unitKey === unitKey && held.digest === unit.digest) {
+                return
+            }
+            const frame = checkedBytes(read.source, read.entry.unit)
+            if (frame === undefined) {
+                return
+            }
+            const payload = frame.subarray(FRAME_HEADER_BYTES, frame.length - 4)
+            prints.set(read.handle, { unitKey, digest: unit.digest, length: payload.length, print: payloadPrint(payload) })
+        } catch {
+            prints.delete(read.handle)
+        }
+    }
+
     return {
         entryOf,
         moduleEntryOf,
         readModule,
-        hydrateModule: read => hydrateModuleDigests(encoder.acknowledged(), read.entry, read.handle, read.source),
+        hydrateModule,
         moduleIsStored(handle, module) {
             const entry = moduleEntryOf(handle)
-            return entry !== null && moduleIsStoredUnit(module, entry, handle, encoder.acknowledged(), lists.moduleListVersions, env)
+            return entry !== null && moduleIsStoredUnit(module, entry, handle, encoder.acknowledged(), lists.moduleListVersions, prints.get(handle))
         },
         readCharacter,
         async load(u) {

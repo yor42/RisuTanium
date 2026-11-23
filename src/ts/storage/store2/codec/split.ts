@@ -2,8 +2,8 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
-    carryUnknownFields, KNOWN_FIELDS, keyOfTail, parseStore2Key, randomId26, UNIT_TYPE,
-    type ChatEntry, type ContentBody, type KeyEnv, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType, type WorkspaceRecord,
+    carryUnknownFields, encodeCanonicalJson, KNOWN_FIELDS, keyOfTail, parseStore2Key, randomId26, UNIT_TYPE,
+    type ChatEntry, type ContentBody, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType, type WorkspaceRecord,
 } from '../format'
 import {
     chatDraftsBody, CONFIG_PARTITIONED_FIELDS, DERIVED_COLD_FIELDS, ENTRY_MOVED_FIELDS, ENTRY_REQUIRED_MOVED_FIELDS, LORE_FIELDS, PLUGIN_LISTS,
@@ -17,6 +17,7 @@ import { buildManifest, carryManifest } from './manifest'
 import { carryModuleIndex, hasCurrentEntryFields, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef, uniqueIdHandles } from './modules'
 import { MODULE_INDEX_PARAMS } from './moduleIndexParams'
 import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, sameJsonValue, toPlainJson } from './normalize'
+import { payloadPrint, type StoredPayloadPrint } from './payloadPrint'
 import { bucketOfKey, groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
 import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, noteShardDigest, refTuple, shardCountFor, shardDigestOf } from './shard'
@@ -933,18 +934,28 @@ export function moduleListsCarriable(
 
 /**
  * Whether a save of `module` would reuse the module unit that `entry` names under `handle` and carry its lists. False
- * whenever that cannot be proved, and it never throws: a module this cannot read as plain JSON, or one whose bytes are
+ * whenever that cannot be proved, and it never throws: a module this cannot read as plain JSON, or one whose payload is
  * not the stored unit's, is not the stored module.
+ *
+ * The save frames the canonical payload of the module body, so a module whose payload equals the stored unit's payload
+ * is the stored unit. `stored` is the length and print of that stored payload, taken when the unit was read; it counts
+ * only for the very unit the previous encoding holds now (same key, same digest). The payload is built by the save's own
+ * normalisation, with no frame, checksum or digest.
  */
 export function moduleIsStoredUnit(
-    module: unknown, entry: ModuleEntry, handle: string, previous: PreviousEncoding, versions: ListDerivation['moduleListVersions'], env: KeyEnv,
+    module: unknown, entry: ModuleEntry, handle: string, previous: PreviousEncoding, versions: ListDerivation['moduleListVersions'],
+    stored: StoredPayloadPrint | undefined,
 ): boolean {
     try {
-        if (moduleListsCarriable(previous, entry, handle, versions) === null) {
+        if (stored === undefined || moduleListsCarriable(previous, entry, handle, versions) === null) {
             return false
         }
-        new UnitSink(env, previous, undefined, { reuseOnly: true }).put(`${IDENTITY.module}${handle}`, UNIT_TYPE.module, moduleBodyOf(plainObject(module, 'module')))
-        return true
+        const unit = previous.units.get(`${IDENTITY.module}${handle}`)
+        if (unit === undefined || unit.digest === undefined || unit.key !== stored.unitKey || unit.digest !== stored.digest) {
+            return false
+        }
+        const payload = encodeCanonicalJson(moduleBodyOf(plainObject(module, 'module')))
+        return payload.length === stored.length && payloadPrint(payload) === stored.print
     } catch {
         return false
     }

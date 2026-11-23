@@ -228,6 +228,7 @@ vi.mock(import('../../../process/moduleLorebookRepair'), async (importOriginal) 
 
 //#endregion
 
+import { Sha256 } from '../../../assetHash'
 import { makeRisuaiAPIV3 } from '../v3.svelte'
 import { DBState, selectedCharID } from '../../../stores.svelte'
 import { alertConfirm, alertError } from '../../../alert'
@@ -1590,3 +1591,51 @@ describe('the plugin API waits for the modules of the open chat', () => {
 })
 
 //#endregion
+
+describe('the proof that a written copy is the stored module is made from the read-time print', () => {
+    test('W21 reproducer: writing three stored copies over their stubs computes no SHA-256 from the call to the awaited setDatabase', async () => {
+        await bootWithStubs([0, 1, 2])
+        const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const update = vi.spyOn(Sha256.prototype, 'update')
+
+        await api().setDatabase({ modules: copies })
+
+        expect(liveShape()).toEqual([true, true, true])
+        expect(update).not.toHaveBeenCalled()
+        expect(moduleUnitsWritten(await planLive())).toEqual([])
+    })
+
+    test('W22 guard: a same-length edit of one stub installs that module, saves the edit, and keeps the others stubs', async () => {
+        await bootWithStubs([0, 1, 2])
+        const [a, b, c] = await storedCopies(['id-a', 'id-b', 'id-c'])
+        b.lorebook![0].content = 'text of x'
+
+        await api().setDatabase({ modules: [a, b, c] })
+
+        expect(liveShape()).toEqual([true, false, true])
+        await commitLive()
+        const saved = await residencyOrThrow().readModule('id-b#0')
+        expect(saved.status === 'ok' && (saved.value as unknown as RisuModule).lorebook?.[0].content).toBe('text of x')
+    })
+
+    test('RS4 guard, new surface: a copy of a unit that has moved installs, and a copy of the new unit keeps the stub', async () => {
+        await bootWithStubs([0, 2])
+        const [a, , c] = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const old = await storedCopy('id-b')
+        const oldKey = keyOfRef(savedEntry('id-b').unit)
+        liveModules()[1].description = 'edited and saved'
+        await commitLive()
+        expect(keyOfRef(savedEntry('id-b').unit)).not.toBe(oldKey)
+        liveModules()[1] = moduleStubOf(savedEntry('id-b')) as unknown as RisuModule
+
+        await api().setDatabase({ modules: [a, old, c] })
+
+        expect(liveShape()).toEqual([true, false, true])
+
+        liveModules()[1] = moduleStubOf(savedEntry('id-b')) as unknown as RisuModule
+        const current = await storedCopy('id-b')
+        await api().setDatabase({ modules: [a, current, c] })
+
+        expect(liveShape()).toEqual([true, true, true])
+    })
+})
