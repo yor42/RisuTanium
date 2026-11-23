@@ -419,10 +419,6 @@
     </div>
 {/snippet}
 
-{#snippet noteLine(text: string, part: string)}
-    <p role="status" data-part={part} class="text-sm text-textcolor2">{text}</p>
-{/snippet}
-
 {#if !hidden}
     <div data-part="studio-preset-advanced-form" class="flex flex-col gap-3" aria-busy={editable ? undefined : 'true'}>
         {#if loadFailed}
@@ -432,7 +428,7 @@
             <p role="status" data-part="studio-form-banner" class="rounded-md border border-darkborderc p-2 text-sm text-textcolor2">{banner}</p>
         {/if}
         {#if !active}
-            {@render noteLine(language.studioPresetNotInChat, 'studio-preset-not-in-chat')}
+            <p role="status" data-part="studio-preset-not-in-chat" class="text-sm text-textcolor2">{language.studioPresetNotInChat}</p>
         {/if}
         {#if refusal}
             <p role="alert" data-part="studio-form-refusal" class="text-sm text-draculared">{refusalTextOf({ reason: refusal }, owner)}</p>
@@ -459,12 +455,12 @@
                         {#if section === 'nameIcon'}
                             {@render lineField('presetName')}
                         {:else if section === 'model'}
-                            <button type="button" data-part="settings-connections-link" class="self-start min-h-11 text-sm text-textcolor2 hover:text-textcolor underline cursor-pointer" onclick={openConnections}>{language.connectionsManageLink}</button>
+                            <button type="button" data-part="studio-preset-connections-link" class="self-start min-h-11 text-sm text-textcolor2 hover:text-textcolor underline cursor-pointer" onclick={openConnections}>{language.connectionsManageLink}</button>
                             <p data-part="studio-preset-provider-classic" class="text-sm text-textcolor2">{language.studioPresetProviderClassic}</p>
                             <button type="button" data-part="studio-preset-provider-classic-button" class={BUTTON_CLASS} onclick={() => openInClassicEditor('preset', null)}>{language.studioOpenClassic}</button>
                         {:else if section === 'prompt'}
                             {#if hasTemplate}
-                                {@render noteLine(language.studioPresetUsesTemplate, 'studio-preset-uses-template')}
+                                <p role="status" data-part="studio-preset-uses-template" class="text-sm text-textcolor2">{language.studioPresetUsesTemplate}</p>
                                 <button type="button" data-part="studio-preset-edit-template" class={BUTTON_CLASS} onclick={() => openInClassicEditor('preset', 'advanced')}>{language.studioPresetEditTemplateItems}</button>
                             {:else}
                                 {@render longField('presetMainPrompt', 'cbs')}
@@ -487,9 +483,9 @@
                             {#if schemaOn}
                                 {@render longField('presetJsonSchema', 'plain')}
                                 {#if schemaCheck?.kind === 'invalid'}
-                                    {@render noteLine(language.studioPresetSchemaInvalid(schemaCheck.error), 'studio-preset-schema-hint')}
+                                    <p role="status" data-part="studio-preset-schema-hint" class="text-sm text-textcolor2">{language.studioPresetSchemaInvalid(schemaCheck.error)}</p>
                                 {:else if schemaCheck?.kind === 'macros'}
-                                    {@render noteLine(language.studioPresetSchemaMacros, 'studio-preset-schema-hint')}
+                                    <p role="status" data-part="studio-preset-schema-hint" class="text-sm text-textcolor2">{language.studioPresetSchemaMacros}</p>
                                 {/if}
                                 {@render lineField('presetExtractJson')}
                             {/if}
@@ -504,7 +500,7 @@
                             </div>
                         {:else if section === 'fallback'}
                             {#if fallbackKept}
-                                {@render noteLine(language.studioPresetFallbackKept, 'studio-preset-fallback-kept')}
+                                <p role="status" data-part="studio-preset-fallback-kept" class="text-sm text-textcolor2">{language.studioPresetFallbackKept}</p>
                             {/if}
                             {@render boolField('presetFallbackWhenBlank')}
                         {:else}
@@ -513,11 +509,11 @@
                                 {@render boolField('presetUseInstructPrompt')}
                             {/if}
                             {@render lineField('presetAutoSuggestPrefix')}
-                            {@render noteLine(language.studioPresetNotUsed, 'studio-preset-not-used')}
+                            <p role="status" data-part="studio-preset-not-used" class="text-sm text-textcolor2">{language.studioPresetNotUsed}</p>
                             {@render boolField('presetAutoSuggestClean')}
-                            {@render noteLine(language.studioPresetAutoSuggestCleanModels, 'studio-preset-auto-suggest-clean-models')}
+                            <p role="status" data-part="studio-preset-auto-suggest-clean-models" class="text-sm text-textcolor2">{language.studioPresetAutoSuggestCleanModels}</p>
                             <p class="font-bold">{language.studioPresetDynamicOutput}</p>
-                            {@render noteLine(language.studioPresetNotUsed, 'studio-preset-not-used')}
+                            <p role="status" data-part="studio-preset-not-used" class="text-sm text-textcolor2">{language.studioPresetNotUsed}</p>
                             {#each DYNAMIC_PATHS as path (path)}
                                 {@render boolField(path)}
                             {/each}

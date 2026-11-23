@@ -228,7 +228,7 @@ describe('S4a-T12: what the form shows for the preset\'s own settings', () => {
         for (const name of ['nameIcon', 'model', 'prompt', 'promptOptions', 'fallback', 'other']) {
             expect(section(name), name).not.toBeNull()
         }
-        expect(part('settings-connections-link')?.textContent).toBe('connectionsManageLink')
+        expect(part('studio-preset-connections-link')?.textContent).toBe('connectionsManageLink')
         expect(part('studio-preset-provider-classic')?.textContent).toBe('studioPresetProviderClassic')
         expect(part('studio-preset-toggles-row')?.textContent).toBe('studioPresetTogglesRow(customPromptTemplateToggle,1)')
     })
