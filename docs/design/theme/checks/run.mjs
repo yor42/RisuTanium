@@ -43,7 +43,7 @@ const STUDIO_EXPECT = {
   T13: /critical minimum/, T14: /fully transparent/, T15: /not a pack-settable/, T16: /would be [\d.]+:1/, T17: /would be [\d.]+:1/, T18: /critical maximum/, T19: /would be [\d.]+:1/, T20: /would be [\d.]+:1/, T21: /not a pack-settable/, T22: /not a pack-settable/, T23: /not a pack-settable/, T24: /would be [\d.]+:1/, T25: /would be [\d.]+:1/, T26: /would be [\d.]+:1/,
 };
 // accepted BY DECISION: DD-243 protects the key controls only; "other safe parts keep DD-155's freedom". These stay accepted and are reported as residual risk (review M4), not failures.
-const STUDIO_DECIDED_ACCEPT = new Set(['H06', 'H07', 'H08', 'P06', 'P07', 'P08', 'P09', 'P10', 'P11', 'P17']);   // P04 (4000 px padding on an ordinary toast) is rejected since DD-260 bounded safe-tier padding
+const STUDIO_DECIDED_ACCEPT = new Set(['H06', 'H07', 'H08', 'P06', 'P07', 'P08', 'P09', 'P10', 'P11', 'P16', 'P17', 'S07']);   // P16 outline, S07 pseudo-element: accepted since #560 PR3 (MC-3422, MC-3881); P04 (4000 px padding on an ordinary toast) is rejected since DD-260 bounded safe-tier padding
 const sh = fx('studio-hostile.json'); let sRej = 0, sRight = 0; const sWrong = [], sAcc = [];
 for (const f of sh) {
   for (const [label, css] of [['bare', f.css], ['on Navy', NAVY_STUDIO + '\n' + f.css]]) {
@@ -68,19 +68,19 @@ sec('3 home review packs');
 const HOME_RIGHT = (id) => {
   if (/^K(1|2|5|6|7|8|9|10|11|12|14|17|18|19|21|22|23)$/.test(id)) return /cannot be resolved to a concrete sRGB|would be [\d.]+:1|cannot be checked/;
   if (/^K(3|4|13|15|16|20|24)$/.test(id)) return /fully transparent|opaque|would be [\d.]+:1|cannot be resolved|primary button label/;
-  if (/^L[1-7]$/.test(id)) return /outlines|indication of focus|allowlist|visibility|not allowed in a pack selector/;   // L3 uses :focus, which no pack selector may use at all
+  if (/^L[1-7]$/.test(id)) return /outlines|indication of focus|larger than 64|allowlist|visibility|not allowed in a pack selector/;   // L3 uses :focus, which no pack selector may use at all
   if (/^(H\d+|V\d|W\d|T\d|N\d+|G\d+|M\d+)$/.test(id) || id === 'A8') return /allowlist|can place|position|negative margin|outline|cursor|transform|clip|filter|z-index|animation|transition|font size|translucent|not allowed|beyond|inset|float|can cover, fade or disable|larger than 64|text colour that is|background that makes|writing-mode/;
   if (/^F\d+$/.test(id)) return /critical m|cannot be|not a pack-settable|not allowed|@/;
   if (/^C\d+$/.test(id)) return /would be [\d.]+:1|fully transparent|cannot be resolved|not allowed|@media|not a pack-settable/;
   if (/^[ARS]\d+$/.test(id)) return /protected part|data-part-critical|not allowed|allowlist|url|@|transform|position|animation|transition|content|z-index|background|opaque/;
   return /./;
 };
-const HOME_DECIDED_ACCEPT = new Set(['H52', 'K19']);   // H52: font-family "Wingdings" on Send: a font family is a pack's freedom (fonts are out of scope for lint); reported as residual. K19: --nexus-field-border as color-mix(in srgb, #000 5%, #fff) is #f2f2f2, a colour the validator accepts written as hex in every area (OQ4: color-mix in srgb resolves)
+const HOME_DECIDED_ACCEPT = new Set(['H52', 'K19', 'L1', 'L2', 'L6', 'N9', 'A8', 'H17', 'H38']);   // L1, L2, L6, N9 outline and A8, H17, H38 mask or clip-path: accepted since #560 PR3 (MC-3422, MC-3881)   // H52: font-family "Wingdings" on Send: a font family is a pack's freedom (fonts are out of scope for lint); reported as residual. K19: --nexus-field-border as color-mix(in srgb, #000 5%, #fff) is #f2f2f2, a colour the validator accepts written as hex in every area (OQ4: color-mix in srgb resolves)
 const hh = fx('home-hostile.json'); let hRej = 0, hRight = 0; const hWrong = [], hViaHelper = [];
 for (const f of hh) {
   const key = f.id;
   const r = LINT.home(f.css, key);
-  if (HOME_DECIDED_ACCEPT.has(key)) { A('home:' + key, 'accepted by decision (H52 a font family is free; K19 a colour the validator accepts as hex)', r.ok, f.name); continue; }
+  if (HOME_DECIDED_ACCEPT.has(key)) { A('home:' + key, 'accepted by decision (H52 a font family is free; K19 a colour the validator accepts as hex; outline, mask and clip-path since #560 PR3)', r.ok, f.name); continue; }
   const re = HOME_RIGHT(key); let ok = !r.ok && r.errors.some((e) => re.test(e.why));
   let via = '';
   if (!r.ok && !ok && r.errors.some((e) => /not a pack-settable/.test(e.why))) {   // rejected because it chains through a helper variable: show that the original mechanism still rejects it once the helpers are listed
@@ -135,7 +135,7 @@ const PRIV = [   // [name, css, accepted?, reason]
   ['a part-scoped private value that reaches a ceiling', '[data-part="chat-send"]{--pack-a:900px}:root{--header-height:var(--pack-a)}', false, /critical maximum/],
   ['an unlisted name that only looks private', ':root{--packs-x:#fff}', false, /not a pack-settable/],
   ['background through a private variable on a kind selector', ':root{--pack-b:#fff}[data-kind="restore"]{background:var(--pack-b)}', false, /background on a selector that names no part/],
-  ['outline through a private variable', ':root{--pack-o:none}[data-part="chat-message-name"]{outline:var(--pack-o)}', false, /outlines/],
+  ['outline through a private variable', ':root{--pack-o:none}[data-part="chat-message-name"]{outline:var(--pack-o)}', true],
   ['display through a private variable on Send', ':root{--pack-d:none}[data-part="chat-send"]{display:var(--pack-d)}', false, /allowlist/],
   ['a text colour through a private variable on a reach part', ':root{--pack-c:#0e0f2b}[data-part="chat-list-row"]{color:var(--pack-c)}', false, /text colour that is/],
 ];
@@ -224,8 +224,11 @@ for (const a of Object.keys(LINT)) for (const [n, css] of [...NEW_BENIGN.all, ..
 sec('6 legacy');
 {
   const ch = await imp('chat/checks/th/packlint-hostile.mjs');
-  const miss = [...ch.HOSTILE, ...ch.HOSTILE_3, ...ch.HOSTILE_2.filter(([n]) => !ch.BORDERLINE_OK.includes(n))].filter(([, css]) => LINT.chat(css, '').ok).map(([n]) => n);
-  A('legacy-chat:hostile', `chat's ${ch.HOSTILE.length + ch.HOSTILE_3.length + ch.HOSTILE_2.length - ch.BORDERLINE_OK.length} hostile rules are still rejected`, miss.length === 0, miss.join(', '));
+  // Accepted by decision (MC-3422, MC-3638): an empty-content pseudo-element on a part is allowed; the old hostile row for it stays in the list for history.
+  const DECIDED_ACCEPT = ['H16 pseudo-element'];
+  const hostile = [...ch.HOSTILE.filter(([n]) => !DECIDED_ACCEPT.includes(n)), ...ch.HOSTILE_3, ...ch.HOSTILE_2.filter(([n]) => !ch.BORDERLINE_OK.includes(n))];
+  const miss = hostile.filter(([, css]) => LINT.chat(css, '').ok).map(([n]) => n);
+  A('legacy-chat:hostile', `chat's ${hostile.length} hostile rules are still rejected`, miss.length === 0, miss.join(', '));
   const sv = await imp('chat/checks/th/packlint-values.mjs');
   const missS = Object.entries(sv.REJECT).filter(([k, [css]]) => REG.chat.lintPack(css, k, sv.SETTINGS_REGISTRY).ok).map(([k]) => k);
   A('legacy-settings:values', `Settings' ${Object.keys(sv.REJECT).length} value-space fixtures are still rejected`, missS.length === 0, missS.join(', '));

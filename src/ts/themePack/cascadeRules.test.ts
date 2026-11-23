@@ -26,7 +26,7 @@ const RULE_S = /MC-1569/
 // Rule S's contrast and currentcolor findings are notes, so every helper reads a sheet's refusals and its notes together.
 const reasons = (area: ThemeArea, css: string): string[] => { const result = lintAreaPack(area, css, 'probe'); return [...result.errors, ...(result.notes ?? [])].map((e) => e.why) }
 // Rule E-2 (MC-2309): the reason text every E-2 refusal carries. The helpers use only the public lint, so they fail by assertion on a base without the rule.
-const E2_WHY = /may reach at most 2 px past its element/
+const E2_WHY = /may reach at most 64 px past its element/
 const refusedOnlyByE2 = (area: ThemeArea, css: string): boolean => {
     const result = lintAreaPack(area, css, 'probe')
     return !result.ok && result.errors.length > 0 && result.errors.every((e) => E2_WHY.test(e.why))
@@ -836,7 +836,7 @@ describe('Rule P: painting over a control', () => {
     // chat or Studio pack; since MC-2317 an inset layer over 2 px no longer keeps it either, so only an inset of 2 px or less does. Each row keeps its fixture and says two things:
     // the Rule P pass alone still finds nothing (SEAM GUARD, same before and after), and the whole pack is refused for the E-2 reason alone (REPRO,
     // ok:true on the base).
-    describe('stage-1 accepts that the E-2 flat limit refuses (CHORE-738 stage 2, MC-2309)', () => {
+    describe('stage-1 accepts that the former 2 px E-2 limit refused (CHORE-738 stage 2, MC-2309; MC-3427 raised the limit to 64 px)', () => {
         it.each([
             ['G2 outer shadow in the text colour', 'chat', send('box-shadow:0 0 0 64px #111111')],
             ['G2 outer shadow in currentcolor', 'chat', send('box-shadow:0 2px 8px currentcolor')],
@@ -857,15 +857,16 @@ describe('Rule P: painting over a control', () => {
         ] as const)('%s', (_name, area, css) => {
             // SEAM GUARD: Rule P and Rule S stay silent on this sheet, before and after.
             expect(cascadePass(area, css), css).toEqual([])
-            // REPRO: the whole pack is refused for E-2 alone.
-            expect(refusedOnlyByE2(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+            // REPRO: the pack is accepted now that the limit is 64 px total reach (MC-3427); only a box-shadow that copies the parent's shadow is still refused, for E-2 alone.
+            if (/inherit/.test(css)) expect(refusedOnlyByE2(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+            else expect(lintAreaPack(area, css, 'probe').ok, JSON.stringify(reasons(area, css))).toBe(true)
         })
     })
 
     // Rule P judges an inset at its own colour, so a fade through the text's lightness is accepted residue (R26 and R26b, MC-2117) for an inset of
     // 2 px or less; these stage-1 accepts, whose inset reaches over 2 px, are now refused by E-2. Each row keeps its fixture and says two things:
     // Rule P alone still finds nothing (SEAM GUARD, same before and after), and the whole pack is refused for the E-2 reason alone (REPRO).
-    describe('stage-1 inset accepts that the E-2 limit on insets refuses (CHORE-738 stage 4, MC-2317)', () => {
+    describe('stage-1 inset accepts that the former 2 px E-2 limit on insets refused (CHORE-738 stage 4, MC-2317; MC-3427 raised the limit to 64 px)', () => {
         it.each([
             ['G16 conditional-only text colour, inset', 'chat', `${APP_TEXT}${SEND}{background:#808080 !important;box-shadow:inset 0 0 0 64px #e0e0e0}${SEND}:hover{background:#808080 !important;color:#000000 !important}`],
             ['G16c dead-context form', 'chat', `@media (max-width:0px){${SEND}{background:#ffffff !important;color:#000000 !important}}${SEND}{box-shadow:inset 0 0 0 64px #ffffff}`],
@@ -878,8 +879,9 @@ describe('Rule P: painting over a control', () => {
         ] as const)('%s', (_name, area, css) => {
             // SEAM GUARD: Rule P and Rule S stay silent on this sheet, before and after.
             expect(cascadePass(area, css), css).toEqual([])
-            // REPRO: the whole pack is refused for E-2 alone.
-            expect(refusedOnlyByE2(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+            // REPRO: the pack is accepted now that the limit is 64 px total reach (MC-3427); only a box-shadow that copies the parent's shadow is still refused, for E-2 alone.
+            if (/inherit/.test(css)) expect(refusedOnlyByE2(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+            else expect(lintAreaPack(area, css, 'probe').ok, JSON.stringify(reasons(area, css))).toBe(true)
         })
     })
 
@@ -1025,56 +1027,51 @@ describe('Rule P: painting over a control', () => {
     })
 })
 
-// Rule E-2 (CHORE-738 stage 2, MC-2309): in a chat or Studio sheet every outer box-shadow layer and every text-shadow layer may reach at most
-// 2 px past its element, whatever its colour and whatever part it sits on. Classes: REPRO = the pack is ok:true on the base and refused for the
+// Rule E-2 (CHORE-738 stage 2, MC-2309; the limit is 64 px since MC-3427): in a chat or Studio sheet every outer box-shadow layer and every text-shadow layer may reach at most
+// 64 px past its element, whatever its colour and whatever part it sits on. Classes: REPRO = the pack is ok:true on the base and refused for the
 // E-2 reason alone now; GUARD = accepted or refused identically before and after. Every fixture is a pack stylesheet as an author writes one.
 // Inset layers are judged by the same limit, measured inward from the padding edge, in the describe nested at the end of this one.
-describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)', () => {
+describe('E-2: the 64 px total reach limit on outer shadows (CHORE-738 stage 2, MC-2309; MC-3427, MC-3431)', () => {
     const NOTICE = '[data-part="chat-ai-law-notice"]'
     const STUDIO = '[data-part="studio"]'
     const rep = (n: number, layer: string): string => Array.from({ length: n }, () => layer).join(',')
-    const E2_RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 2 px past its element and an inset box-shadow at most 2 px into it, whatever its colour, so that it cannot lie under or over a control (MC-2073, MC-2309, MC-2317, MC-2318)'
+    const E2_RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 64 px past its element and an inset box-shadow at most 64 px into it, offset, blur and spread together, whatever its colour (MC-3427, MC-3431)'
     const INHERIT_WHY = `box-shadow: inherit copies the parent's shadow, which the check cannot measure; ${E2_RULE}`
     const UNMEASURED = /cannot be measured/
     const accepted = (area: ThemeArea, css: string): boolean => lintAreaPack(area, css, 'probe').ok
     const whys = (area: ThemeArea, css: string): string[] => reasons(area, css)
 
     const REFUSED: readonly (readonly [string, ThemeArea, string, RegExp | null])[] = [
-        ['E1 a control', 'chat', `${SEND}{box-shadow:0 0 0 64px #ffffff}`, null],
-        ['E2 a non-control neighbour', 'chat', `${NOTICE}{box-shadow:0 0 0 64px #ffffff}`, null],
-        ['E3 ancestor of every control', 'chat', '[data-part="chat-shell"]{box-shadow:0 0 0 64px #ffffff}', null],
-        ['E4 expression part', 'chat', '[data-part="chat-message-tts"]{box-shadow:0 0 0 64px #000000}', null],
-        ['E5 header fixture', 'chat', `[data-part="chat-header"]{background:transparent !important;color:#808080 !important}${NOTICE}{box-shadow:0 0 0 64px #303030}`, null],
-        ['E6 sidebar', 'chat', '[data-part="chat-sidebar"]{box-shadow:0 0 0 64px #000000}', null],
-        ['E7 Studio root', 'studio', `${STUDIO}{box-shadow:0 0 0 64px #000000}`, null],
-        ['E8 Studio forwarded name', 'studio', '[data-part="studio-form-desc"]{box-shadow:0 0 0 64px #000000}', null],
-        ['E9 a name that never renders', 'chat', '[data-part="chat-list-row"]{box-shadow:0 0 0 64px #ffffff}', null],
-        ['E10 inherited halo', 'chat', '[data-part="chat-message-list"]{text-shadow:0 0 12px #808080}', null],
-        ['E11 hard-offset text-shadow', 'chat', '[data-part="chat-message-text"]{text-shadow:3px 3px 0 #111111}', null],
-        ['E12 second layer', 'chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,0 4px 8px #000000}`, /"0 4px 8px[^"]*" reaches 12 px/],
-        ['E13a --pack- value in a state', 'chat', `:root{--pack-s:0 0 0 1px #000000}html[data-input="hover"]{--pack-s:0 0 0 64px #000000}${NOTICE}{box-shadow:var(--pack-s)}`, null],
-        ['E13b --pack- value in @media', 'chat', `:root{--pack-s:0 0 0 1px #000000}@media (min-width:1px){:root{--pack-s:0 0 0 64px #000000}}${NOTICE}{box-shadow:var(--pack-s)}`, null],
-        ['E13c big value as the root default', 'chat', `:root{--pack-s:0 0 0 64px #000000}html[data-input="hover"]{--pack-s:0 0 0 1px #000000}${NOTICE}{box-shadow:var(--pack-s)}`, null],
-        ['E14 @media', 'chat', `@media (min-width:1px){${NOTICE}{box-shadow:0 0 0 64px #000000}}`, null],
-        ['E15 a state', 'chat', `${SEND}:hover{box-shadow:0 0 8px #000000}`, null],
-        ['E16 !important', 'chat', `${NOTICE}{box-shadow:0 0 0 64px #000000 !important}`, null],
-        ['E18 app token measured', 'chat', `${NOTICE}{box-shadow:var(--shadow-float)}`, /reaches 12 px/],
-        ['E19 transparent', 'chat', `${NOTICE}{box-shadow:0 0 0 64px transparent}`, null],
-        ['E20 currentcolor', 'chat', `${NOTICE}{box-shadow:0 0 0 64px currentcolor}`, null],
-        ['E21a 3 px from spread alone', 'chat', `${NOTICE}{box-shadow:0 0 0 3px #000000}`, null],
-        ['E21b 3 px from blur alone', 'chat', `${NOTICE}{box-shadow:0 0 3px #000000}`, null],
-        ['E21c 3 px from offset alone', 'chat', `${NOTICE}{box-shadow:3px 0 0 #000000}`, null],
-        ['E22a calc spread at its magnitude, inner negation', 'chat', `${NOTICE}{box-shadow:0 0 0 calc(-64px * -1) #000000}`, null],
-        ['E22b calc spread at its magnitude, outer negation', 'chat', `${NOTICE}{box-shadow:0 0 0 calc(64px * -1) #000000}`, null],
-        ['E23 outer focus ring over 2 px (decided cost)', 'chat', `${SEND}:focus-visible{box-shadow:0 0 0 3px #ffffff}`, null],
-        ['E24 rem at 16', 'chat', `${NOTICE}{box-shadow:0 0 0 0.25rem #000000}`, /reaches 4 px/],
-        ['E25 elevation idiom with a negative spread (decided cost)', 'chat', `${NOTICE}{box-shadow:0 2px 4px -4px #000000}`, /reaches 6 px/],
+        ['E1 a control', 'chat', `${SEND}{box-shadow:1px 0 0 64px #ffffff}`, null],
+        ['E2 a non-control neighbour', 'chat', `${NOTICE}{box-shadow:1px 0 0 64px #ffffff}`, null],
+        ['E3 ancestor of every control', 'chat', '[data-part="chat-shell"]{box-shadow:1px 0 0 64px #ffffff}', null],
+        ['E4 expression part', 'chat', '[data-part="chat-message-tts"]{box-shadow:1px 0 0 64px #000000}', null],
+        ['E5 header fixture', 'chat', `[data-part="chat-header"]{background:transparent !important;color:#808080 !important}${NOTICE}{box-shadow:1px 0 0 64px #303030}`, null],
+        ['E6 sidebar', 'chat', '[data-part="chat-sidebar"]{box-shadow:1px 0 0 64px #000000}', null],
+        ['E7 Studio root', 'studio', `${STUDIO}{box-shadow:1px 0 0 64px #000000}`, null],
+        ['E8 Studio forwarded name', 'studio', '[data-part="studio-form-desc"]{box-shadow:1px 0 0 64px #000000}', null],
+        ['E9 a name that never renders', 'chat', '[data-part="chat-list-row"]{box-shadow:1px 0 0 64px #ffffff}', null],
+        ['E10 inherited halo', 'chat', '[data-part="chat-message-list"]{text-shadow:1px 0 64px #808080}', null],
+        ['E11 hard-offset text-shadow', 'chat', '[data-part="chat-message-text"]{text-shadow:3px 3px 62px #111111}', null],
+        ['E12 second layer', 'chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,0 4px 61px #000000}`, /"0 4px 61px[^"]*" reaches 65 px/],
+        ['E13a --pack- value in a state', 'chat', `:root{--pack-s:0 0 0 1px #000000}html[data-input="hover"]{--pack-s:1px 0 0 64px #000000}${NOTICE}{box-shadow:var(--pack-s)}`, null],
+        ['E13b --pack- value in @media', 'chat', `:root{--pack-s:0 0 0 1px #000000}@media (min-width:1px){:root{--pack-s:1px 0 0 64px #000000}}${NOTICE}{box-shadow:var(--pack-s)}`, null],
+        ['E13c big value as the root default', 'chat', `:root{--pack-s:1px 0 0 64px #000000}html[data-input="hover"]{--pack-s:0 0 0 1px #000000}${NOTICE}{box-shadow:var(--pack-s)}`, null],
+        ['E14 @media', 'chat', `@media (min-width:1px){${NOTICE}{box-shadow:1px 0 0 64px #000000}}`, null],
+        ['E15 a state', 'chat', `${SEND}:hover{box-shadow:1px 0 64px #000000}`, null],
+        ['E16 !important', 'chat', `${NOTICE}{box-shadow:1px 0 0 64px #000000 !important}`, null],
+        ['E19 transparent', 'chat', `${NOTICE}{box-shadow:1px 0 0 64px transparent}`, null],
+        ['E20 currentcolor', 'chat', `${NOTICE}{box-shadow:1px 0 0 64px currentcolor}`, null],
+        ['E22a calc spread at its magnitude, inner negation', 'chat', `${NOTICE}{box-shadow:1px 0 0 calc(-64px * -1) #000000}`, null],
+        ['E22b calc spread at its magnitude, outer negation', 'chat', `${NOTICE}{box-shadow:1px 0 0 calc(64px * -1) #000000}`, null],
+        ['E24 rem at 16', 'chat', `${NOTICE}{box-shadow:1px 0 0 4rem #000000}`, /reaches 65 px/],
+        ['E25 elevation idiom with a negative spread (decided cost)', 'chat', `${NOTICE}{box-shadow:0 2px 64px -4px #000000}`, /reaches 66 px/],
         ['J1 juxtaposed colour function, box', 'chat', `${NOTICE}{box-shadow:rgb(0 0 0)64px 0 0 0}`, UNMEASURED],
         ['J6 juxtaposed, Studio', 'studio', `${STUDIO}{box-shadow:rgb(0 0 0)48px 0 0 0}`, UNMEASURED],
         ['J8 juxtaposed, text', 'chat', `${NOTICE}{text-shadow:rgb(0 0 0)12px 0 0}`, UNMEASURED],
         ['J10 juxtaposed calc', 'chat', `${NOTICE}{box-shadow:rgb(0 0 0)calc(64px * -1) 0 0 0}`, UNMEASURED],
         ['J11 juxtaposed in a second layer', 'chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,hsl(0 0% 0%)64px 0 0 0}`, UNMEASURED],
-        ['J1s spaced control of J1', 'chat', `${NOTICE}{box-shadow:rgb(0 0 0) 64px 0 0 0}`, /reaches 64 px/],
+        ['J1s spaced control of J1', 'chat', `${NOTICE}{box-shadow:rgb(0 0 0) 64px 0 0 1px}`, /reaches 65 px/],
         ['W1 + length after a hex hash', 'chat', `${NOTICE}{box-shadow:#ffffff+64px 0 0 0}`, UNMEASURED],
         ['W2 + length after an identifier', 'chat', `${NOTICE}{box-shadow:white+64px 0 0 0}`, UNMEASURED],
         ['W3 . length after a hex hash', 'chat', `${NOTICE}{box-shadow:#ffffff.99rem 0 0 0}`, UNMEASURED],
@@ -1088,14 +1085,12 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
         ['W11 through a --pack- value', 'chat', `:root{--pack-s:#ffffff+64px 0 0 0}${NOTICE}{box-shadow:var(--pack-s)}`, UNMEASURED],
         ['W12 on chat-transcript', 'chat', '[data-part="chat-transcript"]{box-shadow:#ffffff+64px 0 0 0}', UNMEASURED],
         ['W13 transparent', 'chat', `${NOTICE}{box-shadow:transparent+64px 0 0 0}`, UNMEASURED],
-        ['W14 spaced + control', 'chat', `${NOTICE}{box-shadow:red +64px 0 0 0}`, /reaches 64 px/],
+        ['W14 spaced + control', 'chat', `${NOTICE}{box-shadow:red +64px 0 0 1px}`, /reaches 65 px/],
         // --message-gap is a settable app token whose own ceiling (64 px) is above the probe value, so only E-2 refuses the sheet
-        ['RT1 pack :root override of an app token, box', 'chat', `:root{--message-gap:60px}${NOTICE}{box-shadow:0 0 0 var(--message-gap) #000000}`, /reaches 60 px/],
-        ['RT2 the same, text', 'chat', `:root{--focus-ring-w:3px}${NOTICE}{text-shadow:0 0 var(--focus-ring-w) #000000}`, /reaches 3 px/],
-        ['RT3 the same, Studio', 'studio', `:root{--message-gap:60px}${STUDIO}{box-shadow:0 0 0 var(--message-gap) #000000}`, /reaches 60 px/],
-        ['ST1 stacked blurred negative spread', 'chat', `${NOTICE}{box-shadow:${rep(300, '0 0 20px -18px #ffffff')}}`, /reaches 20 px/],
-        ['ST4 the same on chat-transcript', 'chat', `[data-part="chat-transcript"]{box-shadow:${rep(300, '0 0 64px -62px #ffffff')}}`, /reaches 64 px/],
-        ['ST5 one such layer', 'chat', `${NOTICE}{box-shadow:0 0 64px -62px #ffffff}`, null],
+        ['RT1 pack :root override of an app token, box', 'chat', `:root{--message-gap:64px}${NOTICE}{box-shadow:1px 0 0 var(--message-gap) #000000}`, /reaches 65 px/],
+        ['RT3 the same, Studio', 'studio', `:root{--message-gap:64px}${STUDIO}{box-shadow:1px 0 0 var(--message-gap) #000000}`, /reaches 65 px/],
+        ['ST4 the same on chat-transcript', 'chat', `[data-part="chat-transcript"]{box-shadow:${rep(300, '1px 0 64px -62px #ffffff')}}`, /reaches 65 px/],
+        ['ST5 one such layer', 'chat', `${NOTICE}{box-shadow:1px 0 64px -62px #ffffff}`, null],
     ]
     describe('what is refused (REPRO: ok:true on the base, refused for the E-2 reason alone now)', () => {
         it.each(REFUSED)('%s', (_id, area, css, re) => {
@@ -1104,19 +1099,19 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
         })
 
         it('E12b two over layers of one declaration give one error', () => {
-            expect(e2Count('chat', `${NOTICE}{box-shadow:0 0 0 3px #000000,0 0 0 4px #000000}`)).toBe(1)
+            expect(e2Count('chat', `${NOTICE}{box-shadow:1px 0 0 64px #000000,2px 0 0 64px #000000}`)).toBe(1)
         })
         it('E12c an unmeasurable layer followed by another bad layer gives one error', () => {
-            expect(e2Count('chat', `${NOTICE}{box-shadow:#000000+64px 0 0 0,0 0 0 64px #000000}`)).toBe(1)
+            expect(e2Count('chat', `${NOTICE}{box-shadow:#000000+64px 0 0 0,1px 0 0 64px #000000}`)).toBe(1)
         })
         it('E17 a selector list gives one error', () => {
-            expect(e2Count('chat', `${SAFE},${NOTICE}{box-shadow:0 0 0 64px #000000}`)).toBe(1)
+            expect(e2Count('chat', `${SAFE},${NOTICE}{box-shadow:1px 0 0 64px #000000}`)).toBe(1)
         })
         it('I4 box-shadow: inherit !important is refused with exactly the inherit reason', () => {
             expect(whys('chat', `${NOTICE}{box-shadow:inherit !important}`)).toEqual([INHERIT_WHY])
         })
         it('V1 4000 layers: one error, judged quickly', () => {
-            const css = `${NOTICE}{box-shadow:${rep(4000, '0 0 0 1px #000000')},0 0 0 3px #000000}`
+            const css = `${NOTICE}{box-shadow:${rep(4000, '0 0 0 1px #000000')},1px 0 0 64px #000000}`
             const start = performance.now()
             const count = e2Count('chat', css)
             const ms = performance.now() - start
@@ -1124,7 +1119,7 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
             expect(ms).toBeLessThan(1000)
         })
         it('V2 2000 selector entries: one error, short, judged quickly', () => {
-            const css = `${Array.from({ length: 2000 }, () => `${NOTICE}:hover`).join(',')}{box-shadow:0 0 0 64px #000000}`
+            const css = `${Array.from({ length: 2000 }, () => `${NOTICE}:hover`).join(',')}{box-shadow:1px 0 0 64px #000000}`
             const start = performance.now()
             const result = lintAreaPack('chat', css, 'probe')
             const ms = performance.now() - start
@@ -1134,7 +1129,7 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
             expect(ms).toBeLessThan(1000)
         })
         it('V3 2000 declarations are deduped to one error per distinct reach', () => {
-            const css = Array.from({ length: 2000 }, (_v, i) => `@media (min-width:${i + 1}px){${NOTICE}{box-shadow:0 0 0 ${3 + (i % 60)}px #000000}}`).join('')
+            const css = Array.from({ length: 2000 }, (_v, i) => `@media (min-width:${i + 1}px){${NOTICE}{box-shadow:${1 + (i % 60)}px 0 0 64px #000000}}`).join('')
             const start = performance.now()
             const count = e2Count('chat', css)
             const ms = performance.now() - start
@@ -1144,6 +1139,14 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
     })
 
     const ACCEPTED: readonly (readonly [string, ThemeArea, string])[] = [
+        // E18 to ST1: REPRO, refused at the former 2 px limit and accepted since MC-3427; the other rows are GUARDs
+        ['E18 app token measured', 'chat',`${NOTICE}{box-shadow:var(--shadow-float)}`],
+        ['E21a 3 px from spread alone', 'chat', `${NOTICE}{box-shadow:0 0 0 3px #000000}`],
+        ['E21b 3 px from blur alone', 'chat', `${NOTICE}{box-shadow:0 0 3px #000000}`],
+        ['E21c 3 px from offset alone', 'chat', `${NOTICE}{box-shadow:3px 0 0 #000000}`],
+        ['E23 outer focus ring over 2 px (decided cost)', 'chat', `${SEND}:focus-visible{box-shadow:0 0 0 3px #ffffff}`],
+        ['RT2 the same, text', 'chat', `:root{--focus-ring-w:3px}${NOTICE}{text-shadow:0 0 var(--focus-ring-w) #000000}`],
+        ['ST1 stacked blurred negative spread', 'chat', `${NOTICE}{box-shadow:${rep(300, '0 0 20px -18px #ffffff')}}`],
         ['K1 box exactly 2 px', 'chat', `${NOTICE}{box-shadow:0 0 0 2px #000000}`],
         ['K2 text blur exactly 2 px', 'chat', `${NOTICE}{text-shadow:0 0 2px #000000}`],
         ['K3 text offsets 1px 1px blur 1px', 'chat', `${NOTICE}{text-shadow:1px 1px 1px #000000}`],
@@ -1173,8 +1176,8 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
         ['I3 text-shadow inherit !important', 'chat', `${NOTICE}{text-shadow:inherit !important}`],
         ['ST2 1000 stacked 0 0 2px (accepted residue: stacked blur tails)', 'chat', `${NOTICE}{box-shadow:${rep(1000, '0 0 2px #ffffff')}}`],
         ['ST3 300 stacked text 0 0 2px (accepted residue: stacked blur tails)', 'chat', `${NOTICE}{text-shadow:${rep(300, '0 0 2px #ffffff')}}`],
-        ['O5a Home is not judged', 'home', '[data-part="home-card"]{box-shadow:0 0 0 64px #000000}'],
-        ['O5b Settings is not judged', 'settings', '[data-part="settings-index"]{box-shadow:0 0 0 64px #000000}'],
+        ['O5a Home is not judged', 'home', '[data-part="home-card"]{box-shadow:1px 0 0 64px #000000}'],
+        ['O5b Settings is not judged', 'settings', '[data-part="settings-index"]{box-shadow:1px 0 0 64px #000000}'],
         // accepted by the reader and by the engine; the browser drops the declaration, so nothing paints
         ['F1 an unreadable-in-the-browser length is accepted and dropped', 'chat', `${NOTICE}{box-shadow:0 0 0 1.px #ffffff}`],
     ]
@@ -1186,23 +1189,23 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
 
     describe('a sheet another pass refuses reports exactly its own reasons and no E-2 reason (GUARD: same before and after)', () => {
         it('O1 Rule SCOPE first', () => {
-            const found = whys('chat', `${STUDIO}{box-shadow:0 0 0 64px #000000}`)
+            const found = whys('chat', `${STUDIO}{box-shadow:1px 0 0 64px #000000}`)
             expect(found.length).toBeGreaterThan(0)
             expect(found.every((why) => /MC-1586/.test(why)), JSON.stringify(found)).toBe(true)
             expect(found.some((why) => E2_WHY.test(why))).toBe(false)
         })
         it('O2 an engine refusal first', () => {
-            const found = whys('chat', `${SEND}{z-index:5}${NOTICE}{box-shadow:0 0 0 64px #000000}`)
+            const found = whys('chat', `${SEND}{z-index:5}${NOTICE}{box-shadow:1px 0 0 64px #000000}`)
             expect(found.length).toBeGreaterThan(0)
             expect(found.some((why) => E2_WHY.test(why))).toBe(false)
         })
         it('O3 the live chain is a note, so E-2 still judges the sheet', () => {
-            const found = whys('chat', `[data-part="chat-composer-host"]{padding-inline:64px}${NOTICE}{box-shadow:0 0 0 64px #000000}`)
+            const found = whys('chat', `[data-part="chat-composer-host"]{padding-inline:64px}${NOTICE}{box-shadow:1px 0 0 64px #000000}`)
             expect(found.some((why) => /ancestor padding along the failed-card chain/.test(why)), JSON.stringify(found)).toBe(true)
             expect(found.some((why) => E2_WHY.test(why))).toBe(true)
         })
         it('O4 Rule P findings are notes, so E-2 still judges the sheet', () => {
-            const found = whys('chat', `${SEND}{background:#ffffff !important;color:#000000 !important;box-shadow:inset 0 0 0 64px #000000,0 0 0 64px #000000}`)
+            const found = whys('chat', `${SEND}{background:#ffffff !important;color:#000000 !important;box-shadow:inset 1px 0 0 64px #000000,1px 0 0 64px #000000}`)
             expect(found.some((why) => /MC-2072/.test(why)), JSON.stringify(found)).toBe(true)
             expect(found.some((why) => E2_WHY.test(why))).toBe(true)
         })
@@ -1218,45 +1221,37 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
     // Inset layers (CHORE-738 stage 4, MC-2317, MC-2318): every inset box-shadow layer in chat and Studio is judged by the same 2 px limit as an
     // outer layer, measured into the element from its padding edge, on every part and for any colour, with no part list. Classes: REPRO = ok:true
     // on a base whose E-2 skips inset layers, refused for the E-2 reason alone now; GUARD = accepted or refused identically before and after.
-    describe('E-2 on inset layers: the same 2 px limit, measured into the element (CHORE-738 stage 4, MC-2317, MC-2318)', () => {
-        const STATIC_BIG = ':root{--pack-s:inset 0 0 0 1px #000000}html[data-input="hover"]{--pack-s:inset 0 0 0 64px #000000}'
+    describe('E-2 on inset layers: the same 64 px limit, measured into the element (CHORE-738 stage 4, MC-2317, MC-2318; MC-3427, MC-3431)', () => {
+        const STATIC_BIG = ':root{--pack-s:inset 0 0 0 1px #000000}html[data-input="hover"]{--pack-s:inset 1px 0 0 64px #000000}'
         const INSET_REFUSED: readonly (readonly [string, ThemeArea, string, RegExp | null])[] = [
-            ['N1 non-control neighbour', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 64px #ffffff}`, /"inset 0 0 0 64px #ffffff" reaches 64 px into its element/],
-            ['N2 hairline ring beside an inset', 'chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,inset 0 0 0 64px #ffffff}`, /"inset 0 0 0 64px #ffffff" reaches 64 px into/],
-            ['N3 chat-message', 'chat', '[data-part="chat-message"]{box-shadow:inset 0 0 0 64px #9a9a9a}', null],
-            ['N4 chat-message-list', 'chat', '[data-part="chat-message-list"]{box-shadow:inset 0 0 0 64px #808080}', null],
-            ['N5 chat-transcript', 'chat', '[data-part="chat-transcript"]{box-shadow:inset 0 0 0 64px #ffffff}', null],
-            ['N6 chat-shell', 'chat', '[data-part="chat-shell"]{box-shadow:inset 0 0 0 64px #000000}', null],
-            ['N7 chat-composer-row', 'chat', '[data-part="chat-composer-row"]{box-shadow:inset 0 0 0 64px #808080}', null],
-            ['N8 reach container over a recoloured label', 'chat', '[data-part="chat-composer-plus"]{color:#808080 !important}[data-part="chat-composer"]{box-shadow:inset 0 0 0 64px #808080}', null],
-            ['N9 Studio root', 'studio', `${STUDIO}{box-shadow:inset 0 0 0 64px #000000}`, null],
-            ['N10 studio-body', 'studio', '[data-part="studio-body"]{box-shadow:inset 0 0 0 64px #9a9a9a}', null],
-            ['N11 studio-detail', 'studio', '[data-part="studio-detail"]{box-shadow:inset 0 0 0 64px #ffffff}', null],
-            ['N12a 3 px from spread alone', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 3px #000000}`, /reaches 3 px into/],
-            ['N12b 3 px from blur alone', 'chat', `${NOTICE}{box-shadow:inset 0 0 3px #000000}`, /reaches 3 px into/],
-            ['N12c 3 px from an x offset alone', 'chat', `${NOTICE}{box-shadow:inset 3px 0 0 #000000}`, /reaches 3 px into/],
-            ['N12d 3 px from a negative y offset alone', 'chat', `${NOTICE}{box-shadow:inset 0 -3px 0 #000000}`, /reaches 3 px into/],
-            ['N13a inset written last', 'chat', `${NOTICE}{box-shadow:0 0 0 64px #ffffff inset}`, /reaches 64 px into/],
-            ['N13b inset between colour and lengths', 'chat', `${NOTICE}{box-shadow:#ffffff inset 0 0 0 64px}`, /reaches 64 px into/],
-            ['N14 transparent', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 64px transparent}`, null],
-            ['N14b unreadable colour', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 64px oklch(0.2 0 0)}`, /reaches 64 px into/],
-            ['N15a currentcolor', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 64px currentcolor}`, null],
-            ['N15b no colour', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 64px}`, null],
+            ['N1 non-control neighbour', 'chat', `${NOTICE}{box-shadow:inset 1px 0 0 64px #ffffff}`, /"inset 1px 0 0 64px #ffffff" reaches 65 px into its element/],
+            ['N2 hairline ring beside an inset', 'chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,inset 1px 0 0 64px #ffffff}`, /"inset 1px 0 0 64px #ffffff" reaches 65 px into/],
+            ['N3 chat-message', 'chat', '[data-part="chat-message"]{box-shadow:inset 1px 0 0 64px #9a9a9a}', null],
+            ['N4 chat-message-list', 'chat', '[data-part="chat-message-list"]{box-shadow:inset 1px 0 0 64px #808080}', null],
+            ['N5 chat-transcript', 'chat', '[data-part="chat-transcript"]{box-shadow:inset 1px 0 0 64px #ffffff}', null],
+            ['N6 chat-shell', 'chat', '[data-part="chat-shell"]{box-shadow:inset 1px 0 0 64px #000000}', null],
+            ['N7 chat-composer-row', 'chat', '[data-part="chat-composer-row"]{box-shadow:inset 1px 0 0 64px #808080}', null],
+            ['N8 reach container over a recoloured label', 'chat', '[data-part="chat-composer-plus"]{color:#808080 !important}[data-part="chat-composer"]{box-shadow:inset 1px 0 0 64px #808080}', null],
+            ['N9 Studio root', 'studio', `${STUDIO}{box-shadow:inset 1px 0 0 64px #000000}`, null],
+            ['N10 studio-body', 'studio', '[data-part="studio-body"]{box-shadow:inset 1px 0 0 64px #9a9a9a}', null],
+            ['N11 studio-detail', 'studio', '[data-part="studio-detail"]{box-shadow:inset 1px 0 0 64px #ffffff}', null],
+            ['N13a inset written last', 'chat', `${NOTICE}{box-shadow:1px 0 0 64px #ffffff inset}`, /reaches 65 px into/],
+            ['N13b inset between colour and lengths', 'chat', `${NOTICE}{box-shadow:#ffffff inset 1px 0 0 64px}`, /reaches 65 px into/],
+            ['N14 transparent', 'chat', `${NOTICE}{box-shadow:inset 1px 0 0 64px transparent}`, null],
+            ['N14b unreadable colour', 'chat', `${NOTICE}{box-shadow:inset 1px 0 0 64px oklch(0.2 0 0)}`, /reaches 65 px into/],
+            ['N15a currentcolor', 'chat', `${NOTICE}{box-shadow:inset 1px 0 0 64px currentcolor}`, null],
+            ['N15b no colour', 'chat', `${NOTICE}{box-shadow:inset 1px 0 0 64px}`, null],
             ['N16b non-whitelisted token', 'chat', `${NOTICE}{box-shadow:inset #ffffff+64px 0 0 0}`, UNMEASURED],
             ['N17a --pack- big value in a state', 'chat', `${STATIC_BIG}${NOTICE}{box-shadow:var(--pack-s)}`, null],
-            ['N17c --pack- big value as the root default', 'chat', `:root{--pack-s:inset 0 0 0 64px #000000}html[data-input="hover"]{--pack-s:inset 0 0 0 1px #000000}${NOTICE}{box-shadow:var(--pack-s)}`, null],
-            ['N18a app selection-bar idiom through app tokens, chat', 'chat', `${NOTICE}{box-shadow:inset var(--stroke-heavy) 0 0 var(--nexus-accent)}`, /reaches 3 px into/],
-            ['N18b app selection-bar idiom through app tokens, Studio', 'studio', `${STUDIO}{box-shadow:inset var(--stroke-heavy) 0 0 var(--nexus-accent)}`, /reaches 3 px into/],
-            ['N19 pack :root override of an app token', 'chat', `:root{--message-gap:60px}${NOTICE}{box-shadow:inset 0 0 0 var(--message-gap) #000000}`, /reaches 60 px into/],
-            ['N20 readable inset focus ring over 2 px (decided cost)', 'chat', `${SEND}:focus-visible{background:#ffff00 !important;color:#111111 !important;box-shadow:inset 0 0 0 3px #ffffff}`, /reaches 3 px into/],
-            ['N21 @media', 'chat', `@media (min-width:1px){${NOTICE}{box-shadow:inset 0 0 0 64px #000000}}`, null],
-            ['N22 !important', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 64px #000000 !important}`, null],
-            ['N23 rem at 16', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 0.25rem #000000}`, /reaches 4 px into/],
-            ['N24 calc spread at its magnitude', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 calc(64px * -1) #000000}`, /reaches 64 px into/],
-            ['N25 blurred negative spread', 'chat', `${NOTICE}{box-shadow:inset 0 0 64px -62px #ffffff}`, /reaches 64 px into/],
-            ['N26 300 stacked blurred negative spreads', 'chat', `${NOTICE}{box-shadow:${rep(300, 'inset 0 0 20px -18px #ffffff')}}`, /reaches 20 px into/],
-            ['N27 inset first, hairline after', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 3px #000000,0 0 0 1px #000000}`, /"inset 0 0 0 3px #000000" reaches 3 px into/],
-            ['N30 a state', 'chat', `${NOTICE}:hover{box-shadow:inset 0 0 8px #000000}`, /reaches 8 px into/],
+            ['N17c --pack- big value as the root default', 'chat', `:root{--pack-s:inset 1px 0 0 64px #000000}html[data-input="hover"]{--pack-s:inset 0 0 0 1px #000000}${NOTICE}{box-shadow:var(--pack-s)}`, null],
+            ['N19 pack :root override of an app token', 'chat', `:root{--message-gap:64px}${NOTICE}{box-shadow:inset 1px 0 0 var(--message-gap) #000000}`, /reaches 65 px into/],
+            ['N21 @media', 'chat', `@media (min-width:1px){${NOTICE}{box-shadow:inset 1px 0 0 64px #000000}}`, null],
+            ['N22 !important', 'chat', `${NOTICE}{box-shadow:inset 1px 0 0 64px #000000 !important}`, null],
+            ['N23 rem at 16', 'chat', `${NOTICE}{box-shadow:inset 1px 0 0 4rem #000000}`, /reaches 65 px into/],
+            ['N24 calc spread at its magnitude', 'chat', `${NOTICE}{box-shadow:inset 1px 0 0 calc(64px * -1) #000000}`, /reaches 65 px into/],
+            ['N25 blurred negative spread', 'chat', `${NOTICE}{box-shadow:inset 1px 0 64px -62px #ffffff}`, /reaches 65 px into/],
+            ['N27 inset first, hairline after', 'chat', `${NOTICE}{box-shadow:inset 1px 0 0 64px #000000,0 0 0 1px #000000}`, /"inset 1px 0 0 64px #000000" reaches 65 px into/],
+            ['N30 a state', 'chat', `${NOTICE}:hover{box-shadow:inset 1px 0 64px #000000}`, /reaches 65 px into/],
         ]
         describe('what is refused (REPRO: ok:true on a base that skips inset layers, refused for the E-2 reason alone now)', () => {
             it.each(INSET_REFUSED)('%s', (_id, area, css, re) => {
@@ -1265,18 +1260,27 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
             })
 
             it('N28 two over inset layers of one declaration give one error', () => {
-                expect(e2Count('chat', `${NOTICE}{box-shadow:inset 0 0 0 3px #000000,inset 0 0 0 4px #000000}`)).toBe(1)
+                expect(e2Count('chat', `${NOTICE}{box-shadow:inset 1px 0 0 64px #000000,inset 2px 0 0 64px #000000}`)).toBe(1)
             })
             it('N29 a selector list gives one error', () => {
-                expect(e2Count('chat', `${SAFE},${NOTICE}{box-shadow:inset 0 0 0 64px #000000}`)).toBe(1)
+                expect(e2Count('chat', `${SAFE},${NOTICE}{box-shadow:inset 1px 0 0 64px #000000}`)).toBe(1)
             })
             it('N31 an over outer and an over inset declaration in one sheet give two errors', () => {
-                expect(e2Count('chat', `${NOTICE}{box-shadow:0 0 0 3px #000000}${SAFE}{box-shadow:inset 0 0 0 3px #000000}`)).toBe(2)
+                expect(e2Count('chat', `${NOTICE}{box-shadow:1px 0 0 64px #000000}${SAFE}{box-shadow:inset 1px 0 0 64px #000000}`)).toBe(2)
             })
         })
 
         describe('what stays accepted (GUARD: ok:true before and after)', () => {
             it.each([
+                // N12a to N26: REPRO, refused at the former 2 px limit and accepted since MC-3427; the other rows are GUARDs
+                ['N12a 3 px from spread alone','chat', `${NOTICE}{box-shadow:inset 0 0 0 3px #000000}`],
+                ['N12b 3 px from blur alone', 'chat', `${NOTICE}{box-shadow:inset 0 0 3px #000000}`],
+                ['N12c 3 px from an x offset alone', 'chat', `${NOTICE}{box-shadow:inset 3px 0 0 #000000}`],
+                ['N12d 3 px from a negative y offset alone', 'chat', `${NOTICE}{box-shadow:inset 0 -3px 0 #000000}`],
+                ['N18a app selection-bar idiom through app tokens, chat', 'chat', `${NOTICE}{box-shadow:inset var(--stroke-heavy) 0 0 var(--nexus-accent)}`],
+                ['N18b app selection-bar idiom through app tokens, Studio', 'studio', `${STUDIO}{box-shadow:inset var(--stroke-heavy) 0 0 var(--nexus-accent)}`],
+                ['N20 readable inset focus ring over 2 px (decided cost)', 'chat', `${SEND}:focus-visible{background:#ffff00 !important;color:#111111 !important;box-shadow:inset 0 0 0 3px #ffffff}`],
+                ['N26 300 stacked blurred negative spreads', 'chat', `${NOTICE}{box-shadow:${rep(300, 'inset 0 0 20px -18px #ffffff')}}`],
                 ['NG1 inset spread 2 px', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 2px #ffffff}`],
                 ['NG2 inset blur 2 px', 'chat', `${NOTICE}{box-shadow:inset 0 0 2px #000000}`],
                 ['NG3 inset offset -2px', 'chat', `${NOTICE}{box-shadow:inset -2px 0 0 #000000}`],
@@ -1289,8 +1293,8 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
                 ['NG10 the app value of --focus-ring-w as an inset', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 var(--focus-ring-w) #000000}`],
                 ['NG11 inset 2 px !important', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 2px #ffffff !important}`],
                 ['NG12 readable 2 px ring on a control', 'chat', `${SEND}{${YELLOW_ON_DARK};box-shadow:inset 0 0 0 2px #ffffff}`],
-                ['NG13a Home is not judged', 'home', '[data-part="home-card"]{box-shadow:inset 0 0 0 64px #000000}'],
-                ['NG13b Settings is not judged', 'settings', '[data-part="settings-index"]{box-shadow:inset 0 0 0 64px #000000}'],
+                ['NG13a Home is not judged', 'home', '[data-part="home-card"]{box-shadow:inset 1px 0 0 64px #000000}'],
+                ['NG13b Settings is not judged', 'settings', '[data-part="settings-index"]{box-shadow:inset 1px 0 0 64px #000000}'],
                 ['NG14 --stroke-bold inset ring', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 var(--stroke-bold) #ffffff}`],
                 ['NG15 1000 stacked inset 0 0 2px (accepted residue: stacked blur tails)', 'chat', `${NOTICE}{box-shadow:${rep(1000, 'inset 0 0 2px #ffffff')}}`],
             ] as const)('%s', (_id, area, css) => {
@@ -1300,18 +1304,18 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
 
         describe('a sheet another pass refuses reports exactly its own reasons and no E-2 reason (GUARD: same before and after)', () => {
             it('NO1 Rule SCOPE first', () => {
-                const found = whys('chat', `${STUDIO}{box-shadow:inset 0 0 0 64px #000000}`)
+                const found = whys('chat', `${STUDIO}{box-shadow:inset 1px 0 0 64px #000000}`)
                 expect(found.length).toBeGreaterThan(0)
                 expect(found.every((why) => /MC-1586/.test(why)), JSON.stringify(found)).toBe(true)
                 expect(found.some((why) => E2_WHY.test(why))).toBe(false)
             })
             it('NO2 Rule P findings are notes, so E-2 still judges the sheet', () => {
-                const found = whys('chat', `${SEND}{background:#ffffff !important;color:#000000 !important;box-shadow:inset 0 0 0 64px #000000}`)
+                const found = whys('chat', `${SEND}{background:#ffffff !important;color:#000000 !important;box-shadow:inset 1px 0 0 64px #000000}`)
                 expect(found.some((why) => /MC-2072/.test(why)), JSON.stringify(found)).toBe(true)
                 expect(found.some((why) => E2_WHY.test(why))).toBe(true)
             })
             it('NO3 the engine finding over a light background is a note, so E-2 still judges the sheet', () => {
-                const found = whys('chat', '[data-part="chat-message"]{background:#9a9a9a;box-shadow:inset 0 0 0 64px #9a9a9a}')
+                const found = whys('chat', '[data-part="chat-message"]{background:#9a9a9a;box-shadow:inset 1px 0 0 64px #9a9a9a}')
                 expect(found.some((why) => /danger text 1\.03:1/.test(why)), JSON.stringify(found)).toBe(true)
                 expect(found.some((why) => E2_WHY.test(why))).toBe(true)
             })

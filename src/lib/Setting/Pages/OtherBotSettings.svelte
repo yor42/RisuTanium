@@ -41,7 +41,7 @@
         renameHypaV3Preset,
     } from "src/ts/process/memory/hypaV3Presets";
     import { chroMemoryOn, legacyEngineFields, memoryEngineOf, setMemoryEngine, type MemoryEngine } from "src/ts/process/memory/memoryEngine";
-    import { budgetInputValue, defaultBudgetTokens, normalizeBudgetInput, writeLtmSettings } from "src/ts/process/memory/chroMemory/settings";
+    import { budgetInputValue, defaultBudgetTokens, LORE_RECALL_CAP_DEFAULT, loreRecallCapInputValue, normalizeBudgetInput, writeLtmSettings } from "src/ts/process/memory/chroMemory/settings";
 
     // One hold per reference image; they end with the page.
     const lookups = useCharImageLookups();
@@ -1104,6 +1104,14 @@
                 input.value = budget === null ? "" : String(budget)
             }} />
             <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full" id="{uid}-chro-budget-desc">{fillLang(language.chroMemoryBudgetDesc, { tokens: defaultBudgetTokens(DBState.db.maxContext) })}</span>
+            <span class="text-textcolor" id="{uid}-chro-lore-cap">{language.chroMemoryLoreRecallCap}</span>
+            <NumberInput labelId="{uid}-chro-lore-cap" describedBy="{uid}-chro-lore-cap-desc" size="sm" min={1} value={loreRecallCapInputValue(DBState.db.ltmSettings)} onChange={(e) => {
+                const input = e.currentTarget
+                const cap = normalizeBudgetInput(input.valueAsNumber)
+                writeLtmSettings(DBState.db, { loreRecallCap: cap })
+                input.value = cap === null ? "" : String(cap)
+            }} />
+            <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full" id="{uid}-chro-lore-cap-desc">{fillLang(language.chroMemoryLoreRecallCapDesc, { tokens: LORE_RECALL_CAP_DEFAULT })}</span>
         {/if}
         {#if lv.hanuraiEnable}
             <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.hanuraiDesc}</span>

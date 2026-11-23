@@ -1,6 +1,7 @@
 import { type Message, type character, type Chat } from "../storage/database.svelte";
 import { runTrigger } from "./triggers";
 import { processScript } from "./scripts";
+import { raceAbort } from "./abortRace";
 import { createSendSubject, originStatus, writeAt, type WorkHandle } from "./chatOrigin";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 
@@ -30,16 +31,25 @@ import { markCharacterForSave } from "../storage/characterSaveMarks";
  * must stop looking cancelable the moment the append happens, rather than
  * after the caller's `await` resumes.
  *
+ * The input trigger and the `editinput` pass are raced on `signal`: a hook that never settles does not hold the composer after a cancel, and the pass is told when it was abandoned.
+ *
  * Returns false, appending nothing, when `signal` is already aborted by the
  * time the append would run, or when that chat is gone by then. An
  * ambiguous origin still appends, to `startChat`, read at the moment of the
  * append.
  */
 export async function sendCharacterMessage(workHandle: WorkHandle, char: character, startChat: Chat, messageInput: string, signal: AbortSignal, onAppended: () => void): Promise<boolean> {
-    await runTrigger(char, 'input', { chat: startChat, origin: workHandle.origin, signal, ownsWindow: true })
+    const triggerRaced = await raceAbort(signal, () => runTrigger(char, 'input', { chat: startChat, origin: workHandle.origin, signal, ownsWindow: true }), { label: 'The input trigger' })
+    if (!triggerRaced.settled) {
+        return false
+    }
 
     const subject = createSendSubject(workHandle.origin, { owner: char, chat: startChat })
-    const data = await processScript(char, messageInput, 'editinput', {}, undefined, subject)
+    const dataRaced = await raceAbort(signal, (abandoned) => processScript(char, messageInput, 'editinput', {}, undefined, subject, undefined, abandoned), { label: 'The edit-input script pass' })
+    if (!dataRaced.settled) {
+        return false
+    }
+    const data = dataRaced.value
 
     if (signal.aborted) {
         return false

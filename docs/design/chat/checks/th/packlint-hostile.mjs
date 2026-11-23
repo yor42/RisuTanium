@@ -1,4 +1,5 @@
 // Hostile and benign pack rules for packlint (th section "packlint"). HOSTILE: every one must be rejected. BENIGN: every one must be accepted.
+// Exception: "H16 pseudo-element" is accepted by decision (MC-3422, MC-3638): an empty-content ::after on a part is allowed. Runners skip it.
 // The first block is the reviewer's own set (reviews/2026-10-27-chat-theme-review.md M3, probes/p4-critical.mjs); the rest are further ways to reach a protected surface.
 export const HOSTILE = [
   ['R1 choices of the delete confirmation by their ordinary part name', '[data-part="chat-sheet-item"] { display: none !important }'],

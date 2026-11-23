@@ -8,12 +8,12 @@ import { describe, expect, it } from 'vitest'
 import { outerShadowPass } from './outerShadow'
 import { shadowReach } from './paintOver'
 
-const E2_WHY = /may reach at most 2 px past its element/
+const E2_WHY = /may reach at most 64 px past its element/
 const NOTICE = '[data-part="chat-ai-law-notice"]'
 // The rule sentence every E-2 reason ends with, written out so a change of wording fails here.
-const RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 2 px past its element and an inset box-shadow at most 2 px into it, whatever its colour, so that it cannot lie under or over a control (MC-2073, MC-2309, MC-2317, MC-2318)'
+const RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 64 px past its element and an inset box-shadow at most 64 px into it, offset, blur and spread together, whatever its colour (MC-3427, MC-3431)'
 const INHERIT_WHY = `box-shadow: inherit copies the parent's shadow, which the check cannot measure; ${RULE}`
-const RT1 = `:root{--focus-ring-w:60px}${NOTICE}{box-shadow:0 0 0 var(--focus-ring-w) #000000}`
+const RT1 = `:root{--focus-ring-w:64px}${NOTICE}{box-shadow:1px 0 0 var(--focus-ring-w) #000000}`
 const whysOf = (area: 'chat' | 'studio' | 'settings' | 'home', css: string): string[] => outerShadowPass(area, css).map((e) => e.why)
 
 describe('U1: shadowReach reads the per-layer bound and refuses any token that is not a measurable shape (SEAM GUARD)', () => {
@@ -78,13 +78,13 @@ describe('S1-S8: an unmeasurable layer is refused with the unmeasured reason (SE
 
 describe('S9: only chat and Studio are judged (SEAM GUARD)', () => {
     it.each(['settings', 'home'] as const)('%s gives no error for a 64 px shadow', (area) => {
-        expect(outerShadowPass(area, `${NOTICE}{box-shadow:0 0 0 64px #000000}`)).toEqual([])
+        expect(outerShadowPass(area, `${NOTICE}{box-shadow:1px 0 0 64px #000000}`)).toEqual([])
     })
 })
 
 describe('S10: the reason texts are exactly the decided ones (SEAM GUARD)', () => {
     it('over: names the property, the layer and the reach', () => {
-        expect(whysOf('chat', `${NOTICE}{box-shadow:0 0 0 3px #000000}`)).toEqual([`box-shadow layer "0 0 0 3px #000000" reaches 3 px past its element; ${RULE}`])
+        expect(whysOf('chat', `${NOTICE}{box-shadow:1px 0 0 64px #000000}`)).toEqual([`box-shadow layer "1px 0 0 64px #000000" reaches 65 px past its element; ${RULE}`])
     })
     it('unmeasured: asks for px or rem lengths with a space between values', () => {
         expect(whysOf('chat', `${NOTICE}{box-shadow:#ffffff+64px 0 0 0}`)).toEqual([`box-shadow layer "#ffffff+64px 0 0 0" cannot be measured, so its reach cannot be judged; write px or rem lengths with a space between values; ${RULE}`])
@@ -94,20 +94,20 @@ describe('S10: the reason texts are exactly the decided ones (SEAM GUARD)', () =
     })
     it('no reason cites another rule', () => {
         const all = [
-            ...whysOf('chat', `${NOTICE}{box-shadow:0 0 0 3px #000000}`),
+            ...whysOf('chat', `${NOTICE}{box-shadow:1px 0 0 64px #000000}`),
             ...whysOf('chat', `${NOTICE}{box-shadow:#ffffff+64px 0 0 0}`),
             ...whysOf('chat', `${NOTICE}{box-shadow:inherit}`),
         ]
         for (const why of all) expect(why).not.toMatch(/MC-2072|MC-1569|MC-1586/)
     })
     it('a 300-character layer is clipped to 60 characters and a 100 KB selector to 201', () => {
-        const layer = `0 0 0 3px ${'a'.repeat(290)}`
+        const layer = `1px 0 0 64px ${'a'.repeat(290)}`
         const clipped = outerShadowPass('chat', `${NOTICE}{box-shadow:${layer}}`)
         expect(clipped).toHaveLength(1)
-        expect(clipped[0].why).toContain(`"${layer.slice(0, 60)}" reaches 3 px`)
+        expect(clipped[0].why).toContain(`"${layer.slice(0, 60)}" reaches 65 px`)
         expect(clipped[0].why).not.toContain(layer.slice(0, 61))
         const selector = `${NOTICE}${':hover'.repeat(20000)}`
-        const long = outerShadowPass('chat', `${selector}{box-shadow:0 0 0 64px #000000}`)
+        const long = outerShadowPass('chat', `${selector}{box-shadow:1px 0 0 64px #000000}`)
         expect(long).toHaveLength(1)
         expect(long[0].selector).toHaveLength(201)
     })
@@ -136,29 +136,29 @@ describe('S13: a pack :root override of an app token is resolved at the seam (SE
     it('gives one error naming the overridden reach', () => {
         const found = whysOf('chat', RT1)
         expect(found).toHaveLength(1)
-        expect(found[0]).toMatch(/reaches 60 px/)
+        expect(found[0]).toMatch(/reaches 65 px/)
         expect(found[0]).toMatch(E2_WHY)
     })
 })
 
-describe('SI: inset layers are judged by the same 2 px limit, measured into the element (CHORE-738 stage 4, MC-2317, MC-2318)', () => {
+describe('SI: inset layers are judged by the same 64 px limit, measured into the element (CHORE-738 stage 4, MC-2317, MC-2318)', () => {
     describe('SEAM REPRO: an over-limit or unmeasurable inset layer gives a reason; no reason on a base that skips inset layers', () => {
-        it('SI1 an inset over 2 px gives the full "into" reason', () => {
-            expect(whysOf('chat', `${NOTICE}{box-shadow:inset 0 0 0 3px #000000}`)).toEqual([`box-shadow layer "inset 0 0 0 3px #000000" reaches 3 px into its element; ${RULE}`])
+        it('SI1 an inset over 64 px gives the full "into" reason', () => {
+            expect(whysOf('chat', `${NOTICE}{box-shadow:inset 1px 0 0 64px #000000}`)).toEqual([`box-shadow layer "inset 1px 0 0 64px #000000" reaches 65 px into its element; ${RULE}`])
         })
         it('SI2 inset written last', () => {
-            expect(whysOf('chat', `${NOTICE}{box-shadow:0 0 0 3px #000000 inset}`)).toEqual([`box-shadow layer "0 0 0 3px #000000 inset" reaches 3 px into its element; ${RULE}`])
+            expect(whysOf('chat', `${NOTICE}{box-shadow:1px 0 0 64px #000000 inset}`)).toEqual([`box-shadow layer "1px 0 0 64px #000000 inset" reaches 65 px into its element; ${RULE}`])
         })
         it('SI3 an unmeasurable inset layer gives the unmeasured reason', () => {
             expect(whysOf('chat', `${NOTICE}{box-shadow:inset 0 0 0 4em #000000}`)).toEqual([`box-shadow layer "inset 0 0 0 4em #000000" cannot be measured, so its reach cannot be judged; write px or rem lengths with a space between values; ${RULE}`])
         })
         it('SI4 a Studio inset blur', () => {
-            expect(whysOf('studio', '[data-part="studio"]{box-shadow:inset 0 0 64px #000000}')).toEqual([`box-shadow layer "inset 0 0 64px #000000" reaches 64 px into its element; ${RULE}`])
+            expect(whysOf('studio', '[data-part="studio"]{box-shadow:inset 1px 0 64px #000000}')).toEqual([`box-shadow layer "inset 1px 0 64px #000000" reaches 65 px into its element; ${RULE}`])
         })
         it('SI9 an inset after an outer layer gives exactly one error', () => {
-            const found = whysOf('chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,inset 0 0 0 3px #000000}`)
+            const found = whysOf('chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,inset 1px 0 0 64px #000000}`)
             expect(found).toHaveLength(1)
-            expect(found[0]).toMatch(/"inset 0 0 0 3px #000000" reaches 3 px into its element/)
+            expect(found[0]).toMatch(/"inset 1px 0 0 64px #000000" reaches 65 px into its element/)
         })
     })
 

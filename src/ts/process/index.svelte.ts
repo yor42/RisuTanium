@@ -10,7 +10,7 @@ import { parseChatML } from "../parser/chatML";
 import { promptViewAt, promptViewOf, splitSentMessages, type PromptView, type SentMessages } from "../cbs";
 import { loadLoreBookV3Prompt } from "./lorebook.svelte";
 import { noteLoreUse, renameLoreUseReply } from "./loreUse";
-import { findCharacterbyId, getUserName, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand } from "../util";
+import { findCharacterbyId, getUserName, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand, pickHashRand } from "../util";
 import { requestChatData } from "./request/request";
 import { stableDiff } from "./stableDiff";
 import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef, type PromptModuleScripts } from "./scripts";
@@ -50,6 +50,9 @@ import { openMemorySettings } from "./memory/memorySettingsLink";
 import { chroMemoryModeOf, memoryTakesChatsOf } from "./memory/memoryEngine";
 import { createSendCapture, type FirstMessageSource } from "./memory/chroMemory/records";
 import { HISTORY_FLOOR, markChroMemoryDroppedAtRecheck, runChroMemorySafely } from "./memory/chroMemory/shadow";
+import { readLtmSettings } from "./memory/chroMemory/settings";
+import { createLoreIndexStore, defaultLoreIndexScheduler } from "./memory/chroMemory/loreIndex";
+import { clearLoreRecallTrace, createLoreRecallStep, loreQueryOf, markLoreRecallTrimmed, type LoreRecallTap } from "./memory/chroMemory/loreRecall";
 import { recheckToContext } from "./recheck";
 import { runLuaEditTrigger } from "./scriptings";
 import { getModelInfo, LLMFlags } from "../model/modellist";
@@ -154,6 +157,12 @@ export interface StreamFlushUse {
 
 let streamFlushObserver: ((use: StreamFlushUse) => void) | null = null
 
+// One lore index slot for the app; sends share it and never wait for a build.
+const loreIndexStore = createLoreIndexStore({
+    hash: (content) => pickHashRand(5555, content),
+    schedule: defaultLoreIndexScheduler,
+    now: () => performance.now(),
+})
 let messageMapRebuilds = 0
 
 /** Test-only count of the message-to-index maps the prompt pass has built. */
@@ -620,7 +629,12 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
             stopped = true
             unit.abort()
         }, 'reply')
-        let result = (await processScriptFull(currentChar, text.trim(), 'editoutput', entryCtx.chat.message.length, {}, undefined, subject, null)).data
+        // The pass is raced on the unit's Stop; an abandoned pass changes nothing and the apply is deferred.
+        const passRaced = await raceAbort(unit.signal, (abandoned) => processScriptFull(currentChar, text.trim(), 'editoutput', entryCtx.chat.message.length, {}, undefined, subject, null, undefined, 'use', undefined, abandoned), { label: 'The output script pass' })
+        if(!passRaced.settled){
+            return 'deferred'
+        }
+        let result = passRaced.value.data
         if(DBState.db.removeIncompleteResponse){
             result = trimUntilPunctuation(result)
         }
@@ -754,7 +768,11 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
         }
         const scriptIndex = upgrade ? entryIndex : entryCtx.chat.message.length
         const scriptRef: MessageRef | null = upgrade ? { message: entryCtx.chat.message[entryIndex], index: entryIndex } : null
-        const processed = await processScriptFull(currentChar, head.trim(), 'editoutput', scriptIndex, {}, undefined, subject, scriptRef, undefined, 'bypass')
+        const processedRaced = await raceAbort(unit.signal, (abandoned) => processScriptFull(currentChar, head.trim(), 'editoutput', scriptIndex, {}, undefined, subject, scriptRef, undefined, 'bypass', undefined, abandoned), { label: 'The output script pass' })
+        if(!processedRaced.settled){
+            return 'deferred'
+        }
+        const processed = processedRaced.value
         // The target may have gone or changed during the awaits: resolve and check again in the stretch that writes.
         const writeCtx = subject.resolve()
         if(stopped || !writeCtx){
@@ -1463,7 +1481,30 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
     }
 
-    const lorepmt = await loadLoreBookV3Prompt(subject, promptView)
+    // Lore recall is optional: any failure while building its step leaves the literal scan call of an engine-off send.
+    let loreTap: LoreRecallTap | undefined
+    const loreChatKey = `${nowChatroom.chaId}:${currentChat.id ?? ''}`
+    try{
+        const loreMode = chroMemoryModeOf(DBState.db, effectiveMemory(nowChatroom, currentChat), DBState.db.ltmSettings)
+        const loreSettings = readLtmSettings(DBState.db.ltmSettings, maxContextTokens)
+        if(loreMode !== 'off' && loreSettings.searchLore){
+            loreTap = createLoreRecallStep({
+                mode: loreMode,
+                settings: loreSettings,
+                query: loreQueryOf(currentChat.message, splitSentMessages),
+                ownerKey: nowChatroom.chaId,
+                chatKey: loreChatKey,
+                deps: { store: loreIndexStore, hash: (content) => pickHashRand(5555, content), now: () => performance.now() },
+            })
+        }
+    }
+    catch{
+        loreTap = undefined
+    }
+    if(!loreTap){
+        clearLoreRecallTrace(loreChatKey)
+    }
+    const lorepmt = loreTap ? await loadLoreBookV3Prompt(subject, promptView, undefined, loreTap) : await loadLoreBookV3Prompt(subject, promptView)
 
     const positionRegex = /{{position::(.+?)}}/g
     const replaceposition = (text:string):{text:string, replaced:boolean} => {
@@ -1499,11 +1540,24 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     })
     console.log(normalActives)
 
+    // The lore chat made for each recalled entry, and what each cost where the send counted it. A recalled chat that no
+    // count site counted was never part of `tokensBeforeMessages` and is never sent, so it counts 0.
+    const recalledLore = lorepmt.recalled ?? []
+    const recalledActives = new Set(recalledLore.map((r) => r.active))
+    const chatOfRecalled = new Map<(typeof recalledLore)[number]['active'], OpenAIChat>()
+    const recalledChats = new Set<OpenAIChat>()
+    const loreCounts = new Map<OpenAIChat, number>()
+
     for(const lorebook of normalActives){
-        unformated.lorebook.push({
+        const loreChat: OpenAIChat = {
             role: lorebook.role,
             content: risuChatParser(resolvePosition(lorebook.prompt), {chara: currentChar, subject, promptView})
-        })
+        }
+        unformated.lorebook.push(loreChat)
+        if(recalledActives.has(lorebook)){
+            chatOfRecalled.set(lorebook, loreChat)
+            recalledChats.add(loreChat)
+        }
     }
 
     const descActives = lorepmt.actives.filter(v => {
@@ -1652,6 +1706,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             for(const chat of chats){
                 const tokens = await tokenizer.tokenizeChat(chat)
                 currentTokens += tokens
+                if(recalledChats.has(chat)){
+                    loreCounts.set(chat, (loreCounts.get(chat) ?? 0) + tokens)
+                }
             }
         }
 
@@ -1795,7 +1852,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         for(const key in unformated){
             const chats = unformated[key] as OpenAIChat[]
             for(const chat of chats){
-                currentTokens += await tokenizer.tokenizeChat(chat)
+                const tokens = await tokenizer.tokenizeChat(chat)
+                currentTokens += tokens
+                if(recalledChats.has(chat)){
+                    loreCounts.set(chat, (loreCounts.get(chat) ?? 0) + tokens)
+                }
             }
         }
     }
@@ -1839,11 +1900,15 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     if(firstMessageSent){
         const firstMsg = firstMessageOf(nowChatroom, currentChat)
 
+        const firstRaced = await raceAbort(abortSignal, (abandoned) => processScript(nowChatroom,
+            risuChatParser(firstMsg, {chara: currentChar, subject, promptView}),
+        'editprocess', {}, undefined, subject, promptView, abandoned), { label: 'The edit-process script pass' })
+        if(!firstRaced.settled){
+            return false
+        }
         const chat:OpenAIChat = {
             role: 'assistant',
-            content: await (processScript(nowChatroom,
-                risuChatParser(firstMsg, {chara: currentChar, subject, promptView}),
-            'editprocess', {}, undefined, subject, promptView))
+            content: firstRaced.value
         }
         chroFirst = { chat, preWrap: chat.content, raw: firstMsg }
 
@@ -1910,6 +1975,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     let chroPlaced = false
     const firstMessageChat = chats.length
     const tokensBeforeMessages = currentTokens
+    // What step 1 took back from `tokensBeforeMessages` by removing recalled lore, and how many entries that was.
+    let loreRemovedTokens = 0
+    let loreRemoved = 0
     const tokensAfterMessages:number[] = []
     const countedMessages = new Map<OpenAIChat, number>()
 
@@ -1927,9 +1995,13 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     const tooLarge = new Map<string, { name: string, limitBytes: number }>()
     for(const msg of ms){
         const chatIndex = msChatIndexes[index]
-        let formatedChat = (await processScriptFull(nowChatroom,risuChatParser(msg.data, {chara: currentChar, role: msg.role, subject, promptView: promptViewAt(promptView, chatIndex)}), 'editprocess', chatIndex, {
+        const editRaced = await raceAbort(abortSignal, (abandoned) => processScriptFull(nowChatroom,risuChatParser(msg.data, {chara: currentChar, role: msg.role, subject, promptView: promptViewAt(promptView, chatIndex)}), 'editprocess', chatIndex, {
             chatRole: msg.role,
-        }, undefined, subject, {message: msg, index: chatIndex, locator: messageLocator}, promptView, 'use', moduleScripts)).data
+        }, undefined, subject, {message: msg, index: chatIndex, locator: messageLocator}, promptView, 'use', moduleScripts, abandoned), { label: 'The edit-process script pass' })
+        if(!editRaced.settled){
+            return false
+        }
+        let formatedChat = editRaced.value.data
         let name = ''
         if(msg.role === 'char'){
             if(msg.saying){
@@ -2258,8 +2330,49 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         const chroBefore = chroCapture ? chats.slice() : null
         let step1: Awaited<ReturnType<typeof trimChatsToContext>> | null = null
         let chroPlacedBlock: { block: string } | null = null
-        if(countMessagesInTrim || chroMode === 'inject'){
-            const trimmed = await trimChatsToContext({ ...countArgs, maxContextTokens })
+        // Recalled lore is the first thing step 1 gives up: one entry at a time, lowest-ranked first, until the trim fits
+        // with the history floor held. With none left this is the engine-off trim.
+        const recalledLeft = recalledLore.slice()
+        if(countMessagesInTrim || chroMode === 'inject' || recalledLeft.length > 0){
+            const floorKeep = Math.max(1, Math.min(HISTORY_FLOOR, chats.length - firstMessageChat))
+            let trimCounts: ReadonlyMap<OpenAIChat, number> = countedMessages
+            let trimmed = await trimChatsToContext({
+                ...countArgs,
+                tokensBeforeMessages: tokensBeforeMessages - loreRemovedTokens,
+                countedMessages: trimCounts,
+                keepAtLeast: recalledLeft.length > 0 ? floorKeep : 1,
+                maxContextTokens,
+            })
+            while(!trimmed.fits && recalledLeft.length > 0){
+                trimCounts = trimmed.counts
+                const gone = recalledLeft.pop()
+                const goneChat = chatOfRecalled.get(gone.active)
+                // Every splice is guarded: an entry another path already removed is skipped, never a neighbour.
+                const chatAt = goneChat ? unformated.lorebook.indexOf(goneChat) : -1
+                if(chatAt >= 0){
+                    unformated.lorebook.splice(chatAt, 1)
+                }
+                const activeAt = lorepmt.actives.indexOf(gone.active)
+                if(activeAt >= 0){
+                    lorepmt.actives.splice(activeAt, 1)
+                }
+                const usedAt = gone.used ? lorepmt.used.indexOf(gone.used) : -1
+                if(usedAt >= 0){
+                    lorepmt.used.splice(usedAt, 1)
+                }
+                loreRemovedTokens += (goneChat ? loreCounts.get(goneChat) : 0) ?? 0
+                loreRemoved++
+                trimmed = await trimChatsToContext({
+                    ...countArgs,
+                    tokensBeforeMessages: tokensBeforeMessages - loreRemovedTokens,
+                    countedMessages: trimCounts,
+                    keepAtLeast: recalledLeft.length > 0 ? floorKeep : 1,
+                    maxContextTokens,
+                })
+            }
+            if(loreRemoved > 0){
+                markLoreRecallTrimmed(loreChatKey, loreRemoved)
+            }
             step1 = trimmed
             currentTokens = trimmed.currentTokens
             if(!trimmed.fits){
@@ -2332,7 +2445,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 ltmSettings: DBState.db.ltmSettings, maxContextTokens, countVaries,
                 tokenizerKey: () => [DBState.db.aiModel, DBState.db.customTokenizer, DBState.db.currentPluginProvider, pluginV2.providerOptions?.get(DBState.db.currentPluginProvider)?.tokenizer ?? 'none', DBState.db.googleClaudeTokenizing ? '1' : '0', chatAdditonalTokens].join('|'),
                 inject: chroMode === 'inject' && step1 ? {
-                    chats, step1, firstMessageChat, tokensBeforeMessages, tokensAfterMessages,
+                    chats, step1, firstMessageChat, tokensBeforeMessages: tokensBeforeMessages - loreRemovedTokens, tokensAfterMessages,
                     reserveTokens, floor: HISTORY_FLOOR,
                     count: (chat) => tokenizer.tokenizeChat(chat),
                 } : null,
@@ -2739,10 +2852,18 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         })
     }
 
-    formated = await runLuaEditTrigger(currentChar, 'editRequest', formated, undefined, undefined, subject)
+    const editRequestRaced = await raceAbort(abortSignal, (abandoned) => runLuaEditTrigger(currentChar, 'editRequest', formated, undefined, undefined, subject, abandoned), { label: 'The edit-request script' })
+    if(!editRequestRaced.settled){
+        return false
+    }
+    formated = editRequestRaced.value
 
     if(DBState.db.promptInfoInsideChat && DBState.db.promptTextInfoInsideChat){
-        promptBodyformatedForChatStore = await runLuaEditTrigger(currentChar, 'editRequest', promptBodyformatedForChatStore, undefined, undefined, subject)
+        const textRaced = await raceAbort(abortSignal, (abandoned) => runLuaEditTrigger(currentChar, 'editRequest', promptBodyformatedForChatStore, undefined, undefined, subject, abandoned), { label: 'The edit-request script' })
+        if(!textRaced.settled){
+            return false
+        }
+        promptBodyformatedForChatStore = textRaced.value
         promptInfo.promptText = promptBodyformatedForChatStore
     }
 
@@ -3388,7 +3509,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 // The reply can be deleted while the translation is pending; a Stop or a deleted chat ends the wait.
                 // The chat can also be left meanwhile, and a chat that is not on screen is not spoken.
                 if(text !== null && !abortSignal.aborted && resolveReply() && isShownChat(origin)){
-                    await sayTTS(currentChar, text, { skipTextFilter: true })
+                    await sayTTS(currentChar, text, { skipTextFilter: true, signal: abortSignal })
                 }
             }
         }

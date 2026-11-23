@@ -12,7 +12,7 @@
      2. The reach-tier parts (home-shell, home-main, home-library, home-library-tools, home-empty-hero, home-realm, home-trash-row, home-tasks-panel, home-run-card, home-run-actions, home-dialog*) take only colour, border, radius,
         font, spacing and a few widths: no display, flex, grid, order, height or overflow. So the library toolbar cannot be re-laid out, the run bubbles cannot flip their mark to the other side (a bubble is moved right with
         margin-left: auto and width: fit-content, which the allowlist does admit), and the shell cannot give the rail a top strip (.shell is a reach-tier grid).
-     3. No pseudo-elements, :not, :nth-child or :first-child, so no unread dots drawn with ::before, no tail drawn with ::after (a tail is a smaller corner radius), no "first row of the list" rules.
+     3. No :not, :nth-child or :first-child, so no "first row of the list" rules. This pack draws no pseudo-elements: no unread dots with ::before, and a tail is a smaller corner radius. (A pack may now use ::before or ::after on a part, with empty content.)
      4. No transition or animation on any subject (they are banned globally), so hover and selection changes are instant in this pack.
      5. The page's own rules are class-compound selectors of up to three classes (for example .modes[data-current] .mode-thumb), so a bare [data-part] rule loses; the pack prefixes html[data-theme] and repeats state attributes to win.
         That is a pack-author cost the contract does not say out loud.
