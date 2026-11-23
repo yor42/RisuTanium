@@ -77,6 +77,7 @@ Always, in addition:
 - `shell pm clear io.github.yor42.risutanium`.
 - Reinstall of the pinned APK (`install -r <apk>`), then read the device `base.apk` hash back as live-checks "State and data" says.
 - `uninstall` of the `dev.risu.*` packages the census (section 8) finds.
+- On a Note 9 only (MC-3874): when `install -r <apk>` fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because the installed `io.github.yor42.risutanium` is signed with a different key than the pinned APK, `uninstall io.github.yor42.risutanium` (no `-k`, one call) and then `install -r <apk>`. This destroys the app's data, so it needs synthetic data only on that phone. Record the old signer and the new signer (certificate SHA-256, read from the installed `base.apk` and the pinned APK with `apksigner verify --print-certs`, or the signer the install step reports) in the result before the uninstall. Stop and report instead on any other serial, on the Fold 7 and the Tab S9, on any other failure, or when the phone holds data that is not synthetic.
 
 Never a factory reset, never another package, never a settings reset beyond restoring the values the run changed.
 
