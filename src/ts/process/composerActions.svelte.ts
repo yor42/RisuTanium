@@ -920,8 +920,8 @@ function stopTake(controller: AbortController): void {
 export function abortChat(): void {
     // Stop-all: every send, preview and recovered apply, the auto run, every
     // unsettled take and every held generation controller. Each step works on
-    // a snapshot, and the loops never stop at the first entry, so one take
-    // never shields another.
+    // a snapshot, and the loops never stop at the first entry. A throw inside
+    // one step is not isolated and still skips the later steps.
     stopAllReplyWork()
     autoRun = null
     // A Send still between its take and its push is cancelled at once here,
