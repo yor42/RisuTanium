@@ -246,7 +246,7 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 
 import { applyRecoveredReply, applyRecoveredStreamReply, doingChat, sendChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { abortUnitInProgress } from '../generationOwnership.svelte'
+import { stopAllReplyWork } from '../chatOrigin'
 import {
     configurePageState, heldReply, holdInflight, noteAnnounced, noteBound, noteInvoked, noteUnowned, resetPageStateForTests,
     setReconcileTrigger, takeAnnounced,
@@ -570,7 +570,7 @@ describe('sendChat stream branch: end bookkeeping of an owned stream', () => {
 
     test('Stop with the reply in memory waits for its commit and abandons nothing here', async () => {
         const run = await startOwnedSend()
-        abortUnitInProgress()
+        stopAllReplyWork()
         run.source.close()
         await run.outcome
         expect(run.abandon).not.toHaveBeenCalled()
@@ -580,7 +580,7 @@ describe('sendChat stream branch: end bookkeeping of an owned stream', () => {
     test('a native stopped stamp followed by the page abort waits for its commit', async () => {
         const run = await startOwnedSend()
         run.probe.onStamp!(stamp(run.key, { outcome: 'stopped', stored: false }))
-        abortUnitInProgress()
+        stopAllReplyWork()
         run.source.close()
         await run.outcome
         await expectAwaitingTheCommit(run)
@@ -654,7 +654,7 @@ describe('sendChat stream branch: end bookkeeping of an owned stream', () => {
             firstChunk: false,
             onRequest: (key, signal) => {
                 signal.addEventListener('abort', () => endOwnedRead(key))
-                abortUnitInProgress()
+                stopAllReplyWork()
             },
         })
         await run.outcome
@@ -669,7 +669,7 @@ describe('sendChat stream branch: end bookkeeping of an owned stream', () => {
     test('an abort before the push that nothing noted is ended by the unit settle: abandoned once, then consumed', async () => {
         const run = await startOwnedSend({
             firstChunk: false,
-            onRequest: () => { abortUnitInProgress() },
+            onRequest: () => { stopAllReplyWork() },
         })
         await run.outcome
         await settle()

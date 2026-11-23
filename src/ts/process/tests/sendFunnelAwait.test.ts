@@ -232,7 +232,7 @@ vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
 
 import { sendChat, doingChat } from 'src/ts/process/index.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
+import { stopAllReplyWork } from 'src/ts/process/chatOrigin'
 import { MODULE_STUB_KEY } from 'src/ts/storage/moduleStub'
 import { ModuleLoadError, registerModuleLoader, unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
 import { get } from 'svelte/store'
@@ -352,7 +352,7 @@ describe('sendChat waits for the referenced module stubs', () => {
         registerGatedLoader()
         const outcome = sendChat()
         await settle()
-        abortUnitInProgress()
+        stopAllReplyWork()
         await expect(outcome).resolves.toBe(false)
         expect(requestChatDataMock).not.toHaveBeenCalled()
         expect(alertErrorMock).not.toHaveBeenCalled()
