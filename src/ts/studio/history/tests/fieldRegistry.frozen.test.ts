@@ -1,8 +1,8 @@
 // Append-only guard of the persisted facts of every registered set path. A path new to older builds is refused whole by
 // them, and an existing path's facts decide how records written earlier replay, so a row of FROZEN_FIELD_FACTS is
 // never edited or removed: a later PR appends its own row (with its own readBack and whole-record refusal tests) and
-// lifts the rule assertions (F-d′, F-e) only when it implements further nested containers or number values. F-e was
-// lifted once, for the bias list (`biasList`), together with its reader, writer, parse guard and structural comparison. This table is a
+// lifts the rule assertions (F-d′, F-e) only when it implements further nested containers or number values. F-e admits
+// text, bool and `biasList`; `biasList` has its own reader, writer, parse guard and structural comparison. This table is a
 // literal on purpose: deriving it from the registry would make the guard pass for any registry.
 import { describe, expect, test } from 'vitest'
 import { CONTAINER_SEEDS, FIELD_SPECS, type FieldFacts } from '../fieldRegistry'

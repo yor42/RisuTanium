@@ -485,7 +485,7 @@ describe('T2-RF-UI-2f: the restore sheet reads `before` after the answer', () =>
     })
 })
 
-// ---------------------------------------------------------------- the retry stays on its target (R2, AS-B6)
+// ---------------------------------------------------------------- the retry stays on its target (AS-B6)
 
 describe('the retry of a refused replay is pinned at each call site', () => {
     test('the Studio screen: a step that lands during the question is not undone by the confirmed retry', async () => {
