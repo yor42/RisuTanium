@@ -377,11 +377,12 @@ export function selectStudioNode(ownerKey: string, kind: StudioKind | null, item
 
 /**
  * A row chosen in a merged list: opens the entry in its owner, and Back on a phone returns to `list` at that row.
- * `list` is the merged list's own selection (its key and kind), which the entry's selection replaces.
+ * `list` is the merged list's own selection (its key and kind), which the entry's selection replaces. `revealId` names
+ * what the list shows again when it is not the entry's own row (a source of the merged toggles view, a lore test result).
  */
-export function openStudioListRow(list: { ownerKey: string, kind: StudioKind }, ownerKey: string, itemId: string): void {
+export function openStudioListRow(list: { ownerKey: string, kind: StudioKind }, ownerKey: string, itemId: string | null, revealId: string | null = itemId): void {
     selectStudioNode(ownerKey, list.kind, itemId)
-    studioScreen.listReturn = { ownerKey: list.ownerKey, kind: list.kind, rowId: itemId }
+    studioScreen.listReturn = revealId === null ? null : { ownerKey: list.ownerKey, kind: list.kind, rowId: revealId }
 }
 
 export function setStudioExpanded(rowId: string, expanded: boolean): void {

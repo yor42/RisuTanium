@@ -10,6 +10,8 @@ import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { makeCharacter, makeChat, makeInput, studioDbOf } from '../../ts/studio/studioFixtures.test-helpers'
 
+const h = vi.hoisted(() => ({ run: vi.fn() }))
+
 const db = $state({ db: {} as ReturnType<typeof studioDbOf> })
 const selection = $state({ selId: 0 })
 const MobileGUI = writable(false)
@@ -39,6 +41,7 @@ vi.mock('../../ts/process/moduleRefList', () => ({ moduleListOf: () => [] }))
 vi.mock('../../ts/alertPrompts', () => ({ pageCovered: () => false }))
 vi.mock('../../ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))
 vi.mock('../../ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
+vi.mock('../../ts/studio/loreTest', () => ({ runLoreTest: h.run }))
 vi.mock('../../lang', async () => {
     const helpers = await import('../../ts/studio/studioFixtures.test-helpers')
     return { language: helpers.studioLanguageMock() }
@@ -224,6 +227,59 @@ describe('#572 Back from a merged-list entry', () => {
         // A jump out of the opened entry (search, a toggle use) selects another place: Back goes to the tree from there.
         selectStudioNode('character:cha-1', 'lore', 'cha-1/lore:3')
         flushSync()
+        expect(back()).toBe(true)
+        expect(studioScreen.detailShown).toBe(false)
+        expect(part('studio-tree')).not.toBeNull()
+    })
+})
+
+// #586: the merged toggles view and the lore tester are opened from the same merged list, so Back returns to them.
+describe('#586 Back from the merged toggles view and from the lore tester', () => {
+    test('an entry opened from the merged toggles view returns to that view with the entry focused', async () => {
+        db.db = studioDbOf(makeInput({ character: makeCharacter({ customModuleToggle: 'ch=Char=check\nch2=Second=check', chats: [makeChat({ id: 'chat-1', name: 'First chat' })] } as Parameters<typeof makeCharacter>[0]) }))
+        openStudio({ from: 'chat' }, null)
+        show(400)
+        selectStudioNode(combinedKeyOf('toggles'), 'toggles', null)
+        flushSync()
+        await vi.waitFor(() => expect(part('studio-tg-combined')).not.toBeNull())
+        const entry = document.querySelector<HTMLElement>('[data-part="studio-tg-combined-entry"][data-key="ch2"]')
+        expect(entry).not.toBeNull()
+        entry!.click()
+        flushSync()
+        expect(studioScreen.selectedOwnerKey).toBe('character:cha-1')
+        expect(part('studio-tg-combined')).toBeNull()
+
+        expect(back()).toBe(true)
+        await vi.waitFor(() => expect(document.activeElement).toBe(document.querySelector('[data-part="studio-tg-combined-entry"][data-key="ch2"]')))
+        expect(studioScreen.selectedOwnerKey).toBe(combinedKeyOf('toggles'))
+        expect(part('studio-tree')).toBeNull()
+
+        expect(back()).toBe(true)
+        expect(studioScreen.detailShown).toBe(false)
+        expect(part('studio-tree')).not.toBeNull()
+    })
+
+    test('an entry opened from a lore test result returns to the lore list with that result focused', async () => {
+        h.run.mockResolvedValue({
+            status: 'ok', contextChat: { name: 'First chat' }, messageAdded: true, budget: { used: 1, limit: 1000 }, scanDepth: 5, attribution: 'ok',
+            entries: [{ index: 3, label: 'tested', folder: false, owner: { type: 'character', id: null, index: 7 }, activated: true, reason: { kind: 'always', linked: false }, outcome: 'kept', mergedInto: null, warnings: [], tokens: 1, order: 1, chance: null }],
+        })
+        await openMergedLoreAtRow()
+        const input = part('studio-lore-test-input') as HTMLTextAreaElement
+        input.value = 'hello'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        ;(part('studio-lore-test-run') as HTMLButtonElement).click()
+        await vi.waitFor(() => { flushSync(); expect(part('studio-lore-test-open')).not.toBeNull() })
+        part('studio-lore-test-open')!.click()
+        flushSync()
+        expect(studioScreen.selectedItemId).toBe('cha-1/lore:7')
+        expect(part('studio-combined')).toBeNull()
+
+        expect(back()).toBe(true)
+        await vi.waitFor(() => expect(document.activeElement).toBe(part('studio-lore-test-open')))
+        expect(studioScreen.selectedOwnerKey).toBe(combinedKeyOf('lore'))
+
         expect(back()).toBe(true)
         expect(studioScreen.detailShown).toBe(false)
         expect(part('studio-tree')).not.toBeNull()

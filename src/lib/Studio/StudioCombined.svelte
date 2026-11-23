@@ -48,6 +48,7 @@
     const rowByKey = $derived(new Map(rows.map((row): [string, MergedRow] => [row.item.id, row])))
 
     let listRoot = $state<HTMLElement | null>(null)
+    let combinedRoot = $state<HTMLElement | null>(null)
     const windowHost = createWindowHost({ root: () => listRoot })
     onDestroy(() => windowHost.dispose())
 
@@ -55,7 +56,16 @@
     // once the segment holds the rows. A row that is no longer in the list spends the request with nothing to show.
     $effect(() => {
         const rowId = studioScreen.revealListRow
-        if (rowId === null || listRoot === null) return
+        if (rowId === null || combinedRoot === null) return
+        // A source of the merged toggles view or a lore test result is not a list row: it is found by its own id.
+        if (rowId.startsWith('tg:') || rowId.startsWith('lt:')) {
+            const target = Array.from(combinedRoot?.querySelectorAll<HTMLElement>('[data-reveal-id]') ?? []).find((element) => element.dataset.revealId === rowId) ?? null
+            if (target === null && kind === 'toggles' && togglesView === null) return
+            takeStudioListReveal(rowId)
+            target?.focus()
+            return
+        }
+        if (listRoot === null) return
         if (!rowByKey.has(rowId)) {
             takeStudioListReveal(rowId)
             return
@@ -81,7 +91,7 @@
 </script>
 
 {#if group}
-    <div data-part="studio-combined" data-kind={kind} class="flex flex-col gap-3 p-4">
+    <div bind:this={combinedRoot} data-part="studio-combined" data-kind={kind} class="flex flex-col gap-3 p-4">
         <h2 data-part="studio-combined-title" class="text-lg font-bold">{kindLabelOf(kind)} - {language.studioMerged}</h2>
         <p class="text-sm text-textcolor2">{language.studioMergedOrdered}</p>
         {#if group.unshownSegments > 0}
