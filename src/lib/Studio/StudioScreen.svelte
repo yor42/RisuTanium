@@ -7,6 +7,7 @@
     import { dispatchBack } from '../../ts/backHandlers'
     import { provideOwnerSource } from '../../ts/studio/ownerSource.svelte'
     import { studioLayoutOf } from '../../ts/studio/studioLayout'
+    import { lowLevelAskName, runWithLowLevelConfirm } from '../../ts/studio/edit/lowLevelConfirm.svelte'
     import { createStudioToasts, refusalTextOf, runDismissingConsumed, withListReason } from '../../ts/studio/edit/studioToasts'
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import type { OwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -16,7 +17,7 @@
     import { readOwnerFields, type OwnerFields } from '../../ts/studio/ownerFields'
     import { trackStudioFocus } from '../../ts/studio/layerFocus'
     import { closeStudioDrawer, closeStudioHistory, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
-    import { selectedHistoryOwner, setStudioHistoryOpen, setStudioLayout, setStudioNotice, setStudioNotRestoredNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { answerStudioRisky, selectedHistoryOwner, setStudioHistoryOpen, setStudioLayout, setStudioNotice, setStudioNotRestoredNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
     import { declareSurface } from '../../ts/themePack/surfaceGate.svelte'
     import StudioHeader from './StudioHeader.svelte'
@@ -24,6 +25,7 @@
     import StudioHistoryPanel from './StudioHistoryPanel.svelte'
     import StudioNotice from './StudioNotice.svelte'
     import StudioRestoreSheet from './StudioRestoreSheet.svelte'
+    import StudioRiskyConfirm from './StudioRiskyConfirm.svelte'
     import StudioSearch from './StudioSearch.svelte'
     import StudioTree from './StudioTree.svelte'
 
@@ -142,10 +144,12 @@
         const visitId = studioScreen.visitId
         let result: StudioResult
         try {
-            result = await service.replay(owner, { kind: direction }, (apply) => {
+            const around = (apply: () => StudioResult): StudioResult => {
                 read.before = readOwnerFields(owner)
                 return runDismissingConsumed(service, toasts, owner, apply)
-            })
+            }
+            const first = await service.replay(owner, { kind: direction }, around)
+            result = await runWithLowLevelConfirm(first, lowLevelAskName(owner), (confirm, expectTop) => service.replay(owner, { kind: direction, expectTop, confirm }, around))
         } catch (error) {
             // A rejected replay may already have landed its write; the error is shown, whatever became of the screen.
             alertError(error instanceof Error ? error : String(error))
@@ -156,6 +160,8 @@
         if (destroyed || studioScreen.visitId !== visitId) return
         // A replay that outlasts a switch to another owner has nothing to say on the new screen.
         if (selectedHistoryOwner() !== owner) return
+        // A declined Low Level Access confirm changed nothing and says nothing.
+        if (result.ok === false && result.cancelled) return
         // Exactly one message: the refusal, a gone file, the places a merge undo left, or the note of a step that moved or
         // dropped without a write. A gone file comes first, because it is the reason a step was dropped; the places a merge
         // undo left follow it, and only an undo says them (a redo of a merge shows nothing of its own). A queued replay
@@ -172,7 +178,7 @@
         void placeFocusAfterHistory(read.before, readOwnerFields(owner), () => root ?? null, () => root)
     }
 
-    // Esc closes one layer and never leaves Studio: the restore sheet, then search, the drawer and the History
+    // Esc closes one layer and never leaves Studio: the risky confirm sheet, then the restore sheet, search, the drawer and the History
     // panel, in that fixed order (Back instead closes the newest-opened layer first). A composition's Esc belongs
     // to the IME.
     function onkeydown(event: KeyboardEvent): void {
@@ -191,7 +197,10 @@
             return
         }
         if (event.key !== 'Escape') return
-        if (studioScreen.restoreSheetOpen) {
+        if (studioScreen.riskyAsk !== null) {
+            answerStudioRisky(false)
+            event.preventDefault()
+        } else if (studioScreen.restoreSheetOpen) {
             closeStudioRestoreSheet()
             event.preventDefault()
         } else if (studioScreen.searchOpen) {
@@ -267,6 +276,9 @@
         {/if}
         {#if studioScreen.restoreSheetOpen}
             <StudioRestoreSheet host={toastHost} />
+        {/if}
+        {#if studioScreen.riskyAsk !== null}
+            <StudioRiskyConfirm name={studioScreen.riskyAsk.name} />
         {/if}
     </div>
 </div>

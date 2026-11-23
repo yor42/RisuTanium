@@ -3,6 +3,7 @@ import { backCloseHandler, registerBackHandler } from '../backHandlers'
 import { SettingsMenuIndex, settingsOpen } from '../stores.svelte'
 import { returnFocusAfterClose } from './layerFocus'
 import {
+    answerStudioRisky,
     closeStudio,
     closeStudioTogglePreview,
     setStudioHistoryOpen,
@@ -92,6 +93,14 @@ export function installStudioBack(): void {
  */
 export function registerStudioSheetBack(): void {
     registerStudioBackLayer({ isOpen: () => studioScreen.restoreSheetOpen, close: closeStudioRestoreSheet })
+}
+
+/**
+ * The risky confirm sheet's Back layer, called from the sheet's own initialisation. The sheet registers after the restore
+ * sheet and the History panel it can open over, so Back closes it first, as Cancel.
+ */
+export function registerStudioRiskyBack(): void {
+    registerStudioBackLayer({ isOpen: () => studioScreen.riskyAsk !== null, close: () => answerStudioRisky(false) })
 }
 
 export function closeStudioSearch(): void {

@@ -21,6 +21,7 @@ export function refusalText(reason: StudioRefusal): string {
         case 'no-unique-chat': return language.studioRefusalNoUniqueChat
         case 'precondition': return language.studioRefusalPrecondition
         case 'pairSplit': return language.studioRefusalPairSplit
+        case 'confirm-low-level': return language.studioRefusalConfirmLowLevel
         case 'asset-no-undo': return language.studioAssetRefusalNoUndo
         case 'asset-other-tab-character': return language.studioAssetRefusalOtherTabCharacter
         case 'asset-other-tab-module': return language.studioAssetRefusalOtherTabModule
