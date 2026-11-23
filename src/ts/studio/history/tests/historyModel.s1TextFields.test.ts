@@ -82,7 +82,7 @@ describe('T1-TX (a)(b): the router membership', () => {
     test('(a) the text field paths are the literal list', () => {
         expect([...TEXT_FIELD_PATHS]).toEqual([
             'desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario',
-            'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding',
+            'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding', 'creatorNotes',
         ])
     })
 

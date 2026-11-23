@@ -3,8 +3,10 @@
     import { language } from '../../lang'
     import type { RisuModule } from '../../ts/process/modules'
     import { isModuleStub } from '../../ts/storage/moduleStub'
-    import { lowLevelAskName, runWithLowLevelConfirm } from '../../ts/studio/edit/lowLevelConfirm.svelte'
     import { integrationNoteOf, namespaceUnmatchable, readStored, sharedNamespaceNames } from '../../ts/studio/edit/moduleNamespaceNotes'
+    import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
+    import { resolveRiskyRefusal } from '../../ts/studio/edit/riskyReplay'
+    import { lowLevelAskName } from '../../ts/studio/edit/riskyText'
     import { refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { FIELD_PRESENTATION, type SetPath } from '../../ts/studio/history/fieldRegistry'
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
@@ -81,7 +83,7 @@
     let announcement = $state('')
 
     function noted(result: StudioResult | null): boolean {
-        refusal = result !== null && result.ok === false && result.cancelled !== true ? result : null
+        refusal = result !== null && result.ok === false ? result : null
         return result !== null && result.ok
     }
 
@@ -156,14 +158,33 @@
         confirming = true
         try {
             const first = active.editField(owner, path, next)
-            const result = next ? await runWithLowLevelConfirm(first, lowLevelAskName(owner), (confirm) => active.editField(owner, path, true, confirm)) : first
+            // A declined or cancelled question is silent: `null` clears the refusal line and writes nothing.
+            const result = next
+                ? await resolveRiskyRefusal(
+                      owner,
+                      first,
+                      (confirmed) => active.editField(owner, path, true, { confirmed }),
+                      () => !destroyed,
+                      (asker, paths) => {
+                          const ask = askRiskyTurnOn(asker, paths)
+                          asks.add(ask)
+                          void ask.answer.then(() => asks.delete(ask))
+                          return ask
+                      },
+                  )
+                : first
             if (noted(result) && next && result.ok && result.unchanged !== true) announcement = language.studioModAdvLowLevelOn(lowLevelAskName(owner))
         } finally {
             confirming = false
         }
     }
 
+    // The questions this form asked end with it, so none outlives the form that asked.
+    let destroyed = false
+    const asks = new Set<RiskyAsk>()
     onDestroy(() => {
+        destroyed = true
+        for (const ask of [...asks]) ask.cancel()
         nameGate.flush()
         commitNamespace()
         if (!readOnlyShared) {

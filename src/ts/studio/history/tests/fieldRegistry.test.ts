@@ -57,20 +57,29 @@ describe('T-P1: the derived tables equal the literal lists (compatibility guard)
     test('set rows, restore rows, restore order, boolean paths, text paths per kind and the merge text paths', () => {
         const S5 = ['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding']
         const S1 = ['systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'additionalData.creator', 'additionalData.character_version', 'nickname', 'defaultVariables', 'translatorNote']
-        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1])
+        const S2A = ['creatorNotes', 'removedQuotes']
+        const S2B = ['lowLevelAccess', 'utilityBot', 'escapeOutput']
+        const S2C = ['bias']
+        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C])
         expect(SET_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(SET_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
         expect(CHARACTER_SET_PATHS).toEqual(SET_PATHS_BY_KIND.character)
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, 'alternateGreetings'])
+        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'alternateGreetings'])
         expect(RESTORE_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(RESTORE_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, 'alternateGreetings'])
-        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess', ...PRESET_FORM_BOOLEAN_PATHS])
-        expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, ...S2A, ...S2B, ...S2C, 'alternateGreetings'])
+        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess', ...PRESET_FORM_BOOLEAN_PATHS, 'removedQuotes', ...S2B])
+        expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1, 'creatorNotes'])
         expect(textPathsFor('chat')).toEqual(['note'])
         expect(textPathsFor('module')).toEqual(['customModuleToggle', 'moduleName', 'moduleDescription', 'moduleNamespace', 'backgroundEmbedding'])
-        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding'])
+        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding', 'creatorNotes'])
+    })
+
+    test('no row combines keepForeign with a biasList value', () => {
+        for (const [path, facts] of Object.entries(FIELD_SPECS)) {
+            expect(facts.value === 'biasList' && 'keepForeign' in facts, path).toBe(false)
+        }
     })
 })
 
@@ -111,8 +120,8 @@ describe('T-P3: a value of the wrong type for a registered path refuses the reco
 
     test.each(rows)('$path', ({ path, facts }) => {
         const kind = KINDS.find((candidate) => SET_PATHS_BY_KIND[candidate].includes(path)) as OwnerKind
-        const right = facts.value === 'bool' ? true : 'x'
-        const wrong = facts.value === 'bool' ? 'x' : true
+        const right = facts.value === 'bool' ? true : facts.value === 'biasList' ? [['tok', 5]] : 'x'
+        const wrong = facts.value === 'bool' ? 'x' : facts.value === 'biasList' ? 'x' : true
         const restoreOf = (value: unknown): unknown => ({ visitId: 'v1', at: 2, fields: { [path]: { before: { had: false }, last: { had: true, value } } } })
         expect(parseOwnerRecord(rawRecord(kind, { path, label: { kind: 'field', field: path }, after: { had: true, value: right } }), KEYS[kind]), 'right set').not.toBeNull()
         expect(parseOwnerRecord(rawRecord(kind, { path, label: { kind: 'field', field: path }, after: { had: true, value: wrong } }), KEYS[kind]), 'wrong set').toBeNull()
@@ -181,6 +190,12 @@ describe('T-L1: the label key of every registered path (diagnostic)', () => {
         presetDynamicOutputPrompt: 'studioPresetDynamicOutputPrompt',
         presetDynamicShowTypingEffect: 'studioPresetDynamicShowTypingEffect',
         presetDynamicRequest: 'studioPresetDynamicRequest',
+        creatorNotes: 'creatorNotes',
+        removedQuotes: 'studioFieldRemovedQuotes',
+        lowLevelAccess: 'lowLevelAccess',
+        utilityBot: 'utilityBot',
+        escapeOutput: 'escapeOutput',
+        bias: 'studioFieldBias',
     }
 
     test.each(Object.entries(EXPECTED))('%s', (path, key) => {

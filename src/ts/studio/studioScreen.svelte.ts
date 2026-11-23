@@ -25,11 +25,6 @@ export interface StudioOpener {
     selector?: string
 }
 
-/** What the risky confirm sheet asks about. */
-export interface StudioRiskyAsk {
-    name: string
-}
-
 /** The registry targets a merge undo left as they were, and the kind of owner whose labels name them. */
 export interface StudioNoticePlaces {
     ownerKind: 'character' | 'module'
@@ -84,9 +79,6 @@ export const studioScreen = $state({
     searchOpen: false,
     historyOpen: false,
     restoreSheetOpen: false,
-    // The risky-setting confirm sheet, with the name of the module it asks about. It sits above the restore sheet and
-    // closes, answering Cancel, with the visit and when the selected owner changes.
-    riskyAsk: null as StudioRiskyAsk | null,
     togglePreviewOpen: false,
     toggleEditorPageOpen: false,
     settingsReturn: null as number | null,
@@ -123,31 +115,7 @@ export function selectedStudioCharacterId(): string | null {
     return DBState.db.characters?.[selIdState.selId]?.chaId ?? null
 }
 
-// The one pending answer of the risky confirm sheet: set while `studioScreen.riskyAsk` is open.
-let riskyResolver: ((answer: boolean) => void) | null = null
-
-/**
- * Opens the risky confirm sheet for `name` and resolves with the user's answer: true for Turn on, false for Cancel, Back,
- * Esc, a newer ask, the end of the visit or a change of the selected owner. A second ask answers the older one false first.
- */
-export function askStudioRisky(name: string): Promise<boolean> {
-    answerStudioRisky(false)
-    return new Promise<boolean>((resolve) => {
-        riskyResolver = resolve
-        studioScreen.riskyAsk = { name }
-    })
-}
-
-/** Closes the risky confirm sheet with `answer`; nothing happens while no ask is pending. */
-export function answerStudioRisky(answer: boolean): void {
-    const resolve = riskyResolver
-    riskyResolver = null
-    studioScreen.riskyAsk = null
-    resolve?.(answer)
-}
-
 function resetVisitState(): void {
-    answerStudioRisky(false)
     studioScreen.pickedInVisit = false
     studioScreen.detailShown = false
     studioScreen.drawerOpen = false
@@ -408,7 +376,6 @@ export function setStudioSelection(ownerKey: string, kind: StudioKind | null, it
     flushStudioFields('leave')
     if (studioScreen.selectedOwnerKey !== ownerKey) {
         studioScreen.restoreSheetOpen = false
-        answerStudioRisky(false)
     }
     // A line selection inside a builder changes neither the owner nor the kind, so the sheet stays open across it.
     if (studioScreen.selectedOwnerKey !== ownerKey || studioScreen.selectedKind !== kind) studioScreen.togglePreviewOpen = false
@@ -444,7 +411,6 @@ export function followStudioPreset(index: number): void {
 /** Drops the selection, for an owner that no longer exists in the model; `notice` says why the detail emptied. */
 export function clearStudioSelection(notice: string): void {
     studioScreen.restoreSheetOpen = false
-    answerStudioRisky(false)
     studioScreen.togglePreviewOpen = false
     studioScreen.selectedOwnerKey = null
     studioScreen.selectedPresetId = null

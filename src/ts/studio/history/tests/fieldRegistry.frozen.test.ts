@@ -1,7 +1,8 @@
 // Append-only guard of the persisted facts of every registered set path. A path new to older builds is refused whole by
 // them, and an existing path's facts decide how records written earlier replay, so a row of FROZEN_FIELD_FACTS is
 // never edited or removed: a later PR appends its own row (with its own readBack and whole-record refusal tests) and
-// lifts the rule assertions (F-d′, F-e) only when it implements further nested containers or number values. This table is a
+// lifts the rule assertions (F-d′, F-e) only when it implements further nested containers or number values. F-e admits
+// text, bool and `biasList`; `biasList` has its own reader, writer, parse guard and structural comparison. This table is a
 // literal on purpose: deriving it from the registry would make the guard pass for any registry.
 import { describe, expect, test } from 'vitest'
 import { CONTAINER_SEEDS, FIELD_SPECS, type FieldFacts } from '../fieldRegistry'
@@ -67,6 +68,12 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['presetDynamicOutputPrompt', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
     ['presetDynamicShowTypingEffect', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
     ['presetDynamicRequest', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['creatorNotes', { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
+    ['removedQuotes', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['lowLevelAccess', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['utilityBot', { value: 'bool', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
+    ['escapeOutput', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['bias', { value: 'biasList', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
 ]
 
 // The containers a dotted path names, with the value an absent container reads as. An undo replays a seed reading, so
@@ -123,10 +130,10 @@ describe('T-FZ: the persisted facts of the registered paths are frozen', () => {
             expect(specs[path].holders, path).toEqual(['module'])
         }
     })
-    test('F-e: every value type is text or bool (number values are not implemented)', () => {
+    test('F-e: every value type is text, bool or biasList (number values are not implemented)', () => {
         const specs: Record<string, FieldFacts> = FIELD_SPECS
         for (const path of Object.keys(specs)) {
-            expect(['text', 'bool'], path).toContain(specs[path].value)
+            expect(['text', 'bool', 'biasList'], path).toContain(specs[path].value)
         }
     })
 })

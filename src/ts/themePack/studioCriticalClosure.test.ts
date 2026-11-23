@@ -65,9 +65,9 @@ describe('the census scan', () => {
 describe('K1 the closure of the real Studio components', () => {
     const census = censusOfFiles(files)
 
-    it('marks exactly the two merge roots and follows every construct under them', () => {
+    it('marks exactly the merge roots and the risky section and question roots and follows every construct under them', () => {
         expect(census.problems).toEqual([])
-        expect([...census.roots].sort()).toEqual(['studio-asset-merge-confirm', 'studio-asset-merge-preview'])
+        expect([...census.roots].sort()).toEqual(['studio-asset-merge-confirm', 'studio-asset-merge-preview', 'studio-risky', 'studio-risky-confirm'])
     })
 
     it('every part at or under a marked root is in STUDIO_CRITICAL', () => {

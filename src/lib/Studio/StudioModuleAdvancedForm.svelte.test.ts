@@ -168,19 +168,19 @@ describe('T5-RISKY: the Low Level Access switch asks before it turns on', () => 
     test('Cancel leaves the flag absent with no step; Turn on writes it and announces; turning off never asks', async () => {
         const rig = await mountForm({ ...createShaped(), name: 'Mod One' })
         await press('studio-module-low-level')
-        expect(part('studio-risky-sheet')).not.toBeNull()
+        expect(part('studio-risky-confirm')).not.toBeNull()
         expect(input('studio-module-low-level').checked).toBe(false)
         expect('lowLevelAccess' in live()).toBe(false)
-        part('studio-risky-cancel')!.click()
+        part('studio-risky-confirm-cancel')!.click()
         await settle()
-        expect(part('studio-risky-sheet')).toBeNull()
+        expect(part('studio-risky-confirm')).toBeNull()
         expect('lowLevelAccess' in live()).toBe(false)
         expect(rig.service.view(M1).done).toHaveLength(0)
         expect(input('studio-module-low-level').checked).toBe(false)
         expect(part('studio-module-announce')!.textContent).toBe('')
 
         await press('studio-module-low-level')
-        part('studio-risky-confirm')!.click()
+        part('studio-risky-confirm-ok')!.click()
         await settle()
         expect(live().lowLevelAccess).toBe(true)
         expect(input('studio-module-low-level').checked).toBe(true)
@@ -188,7 +188,7 @@ describe('T5-RISKY: the Low Level Access switch asks before it turns on', () => 
         expect(rig.service.view(M1).done).toHaveLength(1)
 
         await press('studio-module-low-level')
-        expect(part('studio-risky-sheet')).toBeNull()
+        expect(part('studio-risky-confirm')).toBeNull()
         expect(live().lowLevelAccess).toBe(false)
         expect(input('studio-module-low-level').checked).toBe(false)
     })
@@ -340,7 +340,7 @@ describe('T5-FOREIGN-FORM: absent and wrong-typed values are edited, never read-
         ]))
 
         await press('studio-module-low-level')
-        expect(part('studio-risky-sheet')).toBeNull()
+        expect(part('studio-risky-confirm')).toBeNull()
         expect(live().lowLevelAccess).toBe(false)
         expect(notes()).not.toContain('studioModAdvValueForeign(1)')
 

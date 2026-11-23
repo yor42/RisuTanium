@@ -10,7 +10,11 @@
     import type { LongTextMode, LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
     import { createCompositionGate } from '../../ts/studio/toggleBuilderModel'
     import { DBState } from '../../ts/stores.svelte'
+    import type { ToastHost } from '../../ts/toast/toastHost.svelte'
     import LongTextField from './LongTextField.svelte'
+    import StudioBiasList from './StudioBiasList.svelte'
+    import StudioCreatorNotesField from './StudioCreatorNotesField.svelte'
+    import StudioRiskySection from './StudioRiskySection.svelte'
     import type { PreviewSourceInput } from './LongTextPreview.svelte'
 
     // The text fields of the advanced kind that are not the example dialogue: the prompt texts and the character's
@@ -35,9 +39,11 @@
     interface Props {
         chaId: string
         section: 'prompts' | 'details'
+        // The toast host of the bias delete toast; the app's own host when absent (tests pass one on a fake clock).
+        host?: ToastHost
     }
 
-    let { chaId, section }: Props = $props()
+    let { chaId, section, host }: Props = $props()
 
     const PROMPTS: readonly LongSpec[] = [
         { path: 'systemPrompt', label: () => language.systemPrompt, mode: 'cbs', gated: false },
@@ -210,6 +216,11 @@
                 />
             {/if}
         {/each}
+        {#if section === 'details'}
+            <StudioCreatorNotesField {chaId} {owner} {service} {editable} ownerLabel={live.name} {previewSource} onresult={onFieldResult} />
+            <StudioBiasList {chaId} {owner} {service} {editable} {host} />
+            <StudioRiskySection {chaId} {owner} {service} {editable} />
+        {/if}
         {#if refusal}
             <p role="alert" data-part="studio-form-refusal" class="text-sm text-draculared">{refusalText(refusal)}</p>
         {/if}

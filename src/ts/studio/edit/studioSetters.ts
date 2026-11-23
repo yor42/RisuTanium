@@ -14,7 +14,8 @@ import type { Chat, character, groupChat } from '../../storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
 import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
-import { factsOf, freshSeed, isHeldBy, isUsableContainer, propertyOf, slotOf } from '../history/fieldAccess'
+import { cloneValue, factsOf, freshSeed, isBiasList, isHeldBy, isUsableContainer, isValueOf, propertyOf, slotOf, valuesEqual } from '../history/fieldAccess'
+import type { BiasRow } from '../history/fieldRegistry'
 import { fmAfterRemove, textFieldOf, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
 import { parseStoredOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './assetSetters'
@@ -180,6 +181,11 @@ function readHeld(holder: object | null | undefined, path: SetPath): FieldValue 
         }
         return typeof plain === 'string' ? { had: true, value: plain } : { had: 'foreign', value: plain }
     }
+    // The reader copies a bias list and never normalizes it: a list that is not strictly readable (a `null` cell, a
+    // non-finite number, a 3-tuple, a non-array) reads as absent, so no edit of it is ever built.
+    if (facts.value === 'biasList') {
+        return isBiasList(value) ? { had: true, value: cloneValue(value) } : { had: false }
+    }
     if (facts.value === 'bool') {
         return typeof value === 'boolean' ? { had: true, value } : { had: false }
     }
@@ -258,27 +264,43 @@ export interface EditBuild {
 
 export type EditBuildResult = EditBuild | { ok: false; reason: 'precondition' | 'unchanged' }
 
-// `coalesce: false` gives a step that never joins, and is never joined by, a neighbouring typing step.
-export function buildFieldEdit(path: SetPath, value: string | boolean, live: LiveReader, coalesce = true): EditBuildResult {
-    if (typeof value !== (factsOf(path).value === 'bool' ? 'boolean' : 'string')) {
+// `coalesce: false` gives a step that never joins, and is never joined by, a neighbouring typing step. `true` joins
+// by the path, and a string is the open-step key itself.
+export function buildFieldEdit(path: SetPath, input: string | boolean | BiasRow[], live: LiveReader, coalesce: boolean | string = true): EditBuildResult {
+    if (!isValueOf(path, input)) {
         return { ok: false, reason: 'precondition' }
     }
+    // A bias list is copied here, so no op, write or record holds the caller's array (a reactive proxy, or one the
+    // classic editor mutates in place).
+    const value = cloneValue(input)
     const before = live.field(path)
     // An absent required key cannot be put back by an undo (the builtin writers never delete it), so the edit is
     // refused before anything is written, marked or recorded.
     if (!before.had && !factsOf(path).editWhenAbsent) {
         return { ok: false, reason: 'precondition' }
     }
-    if (before.had && before.value === value) {
+    if (before.had && valuesEqual(before.value, value)) {
         return { ok: false, reason: 'unchanged' }
     }
     const after: FieldValue = { had: true, value }
+    const ops: Op[] = [{ op: 'set', path, before, after }]
+    const writes: WriteOp[] = [{ op: 'set', path, value: after }]
+    // An edit of the creator notes re-shows them in chat: when the quote was dismissed, the same step clears that
+    // flag, so one undo restores both. A merge `textEdit` does not pass through this builder and leaves it alone.
+    if (path === 'creatorNotes') {
+        const dismissed = live.field('removedQuotes')
+        if (dismissed.had && dismissed.value === true) {
+            const cleared: FieldValue = { had: true, value: false }
+            ops.push({ op: 'set', path: 'removedQuotes', before: dismissed, after: cleared })
+            writes.push({ op: 'set', path: 'removedQuotes', value: cleared })
+        }
+    }
     return {
         ok: true,
         label: { kind: 'field', field: path },
-        ops: [{ op: 'set', path, before, after }],
-        writes: [{ op: 'set', path, value: after }],
-        coalesceKey: coalesce ? path : null,
+        ops,
+        writes,
+        coalesceKey: typeof coalesce === 'string' ? coalesce : coalesce ? path : null,
         pageFm: null,
     }
 }
@@ -413,15 +435,18 @@ function writeHeld(holder: object, path: SetPath, value: FieldValue): void {
                 delete (fields[container] as Record<string, unknown>)[key]
             }
         }
-    } else if (typeof value.value === (factsOf(path).value === 'bool' ? 'boolean' : 'string')) {
+    } else if (isValueOf(path, value.value)) {
+        // A bias list is assigned as a plain array copy: the classic editor binds its rows in place, so the stored step
+        // must never share them.
+        const written = cloneValue(value.value)
         if (container === null) {
-            fields[key] = value.value
+            fields[key] = written
             return
         }
         if (!isUsableContainer(fields[container])) {
             fields[container] = freshSeed(container)
         }
-        ;(fields[container] as Record<string, unknown>)[key] = value.value
+        ;(fields[container] as Record<string, unknown>)[key] = written
     }
 }
 
@@ -619,8 +644,8 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
             if (write.value.had === 'foreign') {
                 // A foreign write puts the stored value back as a fresh plain copy, never the record's own object.
                 fields[propertyOf(write.path)] = toPlainJson(write.value.value)
-            } else if (write.value.had && typeof write.value.value === (factsOf(write.path).value === 'bool' ? 'boolean' : 'string')) {
-                fields[propertyOf(write.path)] = write.value.value
+            } else if (write.value.had && isValueOf(write.path, write.value.value)) {
+                fields[propertyOf(write.path)] = cloneValue(write.value.value)
             } else if (factsOf(write.path).absent === 'delete') {
                 delete fields[propertyOf(write.path)]
             }

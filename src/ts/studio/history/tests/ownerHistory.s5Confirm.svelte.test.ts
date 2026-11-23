@@ -1,20 +1,15 @@
 // @vitest-environment jsdom
-// The Low Level Access confirm guard of Studio S5 through the real history service, history model and setters over the
-// memory store double, on a reactive database with the real save-mark hook. One guard in `applyStudioWrite` reads the last
-// planned `set` of the flag against the live engine reading: a direct turn-on, an undo, a redo, a revert and a restore that
-// would turn the engine reading on are refused `confirm-low-level` with nothing changed, unless they carry the confirm.
+// The module Low Level Access confirm guard through the real history service, history model and setters over the memory
+// store double, on a reactive database with the real save-mark hook. The one risky-flag guard in `applyStudioWrite`
+// applies the last-write rule to this path (a module is written as one copy assigned once): a direct turn-on, an undo, a
+// redo, a revert and a restore that would turn the engine reading on are refused `riskyConfirm` naming the path, with
+// nothing changed, unless the call's own `confirmed` names it.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-const h = vi.hoisted(() => ({ marks: 0, ask: undefined as unknown as (name: string) => Promise<boolean> }))
+const h = vi.hoisted(() => ({ marks: 0 }))
 
 vi.mock('src/ts/globalApi.svelte', () => ({ getSaveMarkCount: () => h.marks }))
 vi.mock('src/ts/alert', () => ({ alertSelect: vi.fn() }))
-
-// The sheet's own state is not under test here: the helper's question is answered by the test.
-vi.mock('src/ts/studio/studioScreen.svelte', async (importOriginal) => {
-    const original = await importOriginal<typeof import('src/ts/studio/studioScreen.svelte')>()
-    return { ...original, askStudioRisky: (name: string) => h.ask(name) }
-})
 
 // Filled by `beforeEach`.
 const db = $state({ db: { characters: [], modules: [] } as { characters: Record<string, unknown>[]; modules: Record<string, unknown>[] } })
@@ -37,9 +32,10 @@ import type { RisuModule } from 'src/ts/process/modules'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWriteHook'
 import type { toSaveType } from 'src/ts/storage/risuSave'
-import { runWithLowLevelConfirm } from 'src/ts/studio/edit/lowLevelConfirm.svelte'
+import type { RiskyAsk } from 'src/ts/studio/edit/riskyConfirm.svelte'
+import { pinnedDesc, resolveRiskyRefusal } from 'src/ts/studio/edit/riskyReplay'
 import { resetStudioScreenForTests } from 'src/ts/studio/studioScreen.svelte'
-import { createOwnerHistoryService, type OwnerHistoryService, type StudioResult } from '../ownerHistory.svelte'
+import { createOwnerHistoryService, type OwnerHistoryService, type RiskyPin, type StudioResult } from '../ownerHistory.svelte'
 import { moduleOwnerKey, type OwnerKey } from '../ownerPhase'
 import { createFakeClock, type FakeClock } from './historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, type MemoryStudioStore } from './studioStoreDoubles'
@@ -48,6 +44,8 @@ type Obj = Record<string, unknown>
 
 const M1 = moduleOwnerKey('M1')
 const LOW = 'moduleLowLevelAccess'
+const CONFIRM = { confirmed: [LOW] } as const
+const NEEDS = { ok: false, reason: 'riskyConfirm', paths: [LOW] } as const
 const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
 
 // Create: `{name: '', description: '', id}` (ModuleSettings' new module).
@@ -108,15 +106,17 @@ const put = (...modules: Obj[]): void => {
 const slot = (): Obj => db.db.modules[0]
 const ready = (owner: OwnerKey = M1): Promise<void> => harness.service.whenReady(owner)
 // Each action is followed by a pause longer than the typing window, so two edits of the flag are two steps.
-const setLow = (value: boolean, confirm?: 'lowLevelOn'): StudioResult => {
-    const result = harness.service.editField(M1, LOW, value, confirm)
+const setLow = (value: boolean, options?: { confirmed: readonly (typeof LOW)[] }): StudioResult => {
+    const result = harness.service.editField(M1, LOW, value, options)
     harness.clock.tick(2000)
     return result
 }
-const on = (): StudioResult => setLow(true, 'lowLevelOn')
+const on = (): StudioResult => setLow(true, CONFIRM)
 const text = (path: 'moduleName' | 'moduleDescription', value: string) => harness.service.editText(M1, path, value, 'single')
 const topOf = (list: 'done' | 'undone'): string => harness.service.view(M1)[list].at(-1)?.id ?? ''
-const expectTopOf = (result: StudioResult): string | undefined => (result.ok === false ? result.expectTop : undefined)
+const pinOf = (result: StudioResult): RiskyPin | undefined => (result.ok === false ? result.pin : undefined)
+// A question that is answered at once; `resolveRiskyRefusal` is the host's retry loop under test.
+const answering = (answer: 'yes' | 'no'): ((owner: OwnerKey, paths: readonly string[]) => Pick<RiskyAsk, 'answer'>) => () => ({ answer: Promise.resolve(answer) })
 
 interface Snapshot {
     slot: Obj
@@ -165,7 +165,6 @@ function expectUnchanged(before: Snapshot): void {
 
 beforeEach(() => {
     h.marks = 0
-    h.ask = () => Promise.resolve(false)
     tracker.character.length = 0
     tracker.modules = false
     resetCharacterSaveMarksForTest()
@@ -187,10 +186,10 @@ describe('T5-GUARD-DIRECT: a direct turn-on asks', () => {
         await ready()
         tracker.modules = false
         const before = take()
-        expect(setLow(true)).toEqual({ ok: false, reason: 'confirm-low-level' })
+        expect(setLow(true)).toEqual(NEEDS)
         expectUnchanged(before)
         expect(Object.hasOwn(slot(), 'lowLevelAccess')).toBe(false)
-        expect(setLow(true, 'lowLevelOn')).toEqual({ ok: true })
+        expect(setLow(true, CONFIRM)).toEqual({ ok: true })
         expect(slot().lowLevelAccess).toBe(true)
         expect(setLow(false)).toEqual({ ok: true })
         expect(slot().lowLevelAccess).toBe(false)
@@ -198,8 +197,8 @@ describe('T5-GUARD-DIRECT: a direct turn-on asks', () => {
 })
 
 describe('T5-GUARD-VALUE: the value intent passes the same guard as the field intent', () => {
-    const setValue = (value: boolean, confirm?: 'lowLevelOn'): StudioResult => {
-        const result = harness.service.editValue(M1, LOW, value, confirm)
+    const setValue = (value: boolean, options?: { confirmed: readonly (typeof LOW)[] }): StudioResult => {
+        const result = harness.service.editValue(M1, LOW, value, options)
         harness.clock.tick(2000)
         return result
     }
@@ -208,10 +207,10 @@ describe('T5-GUARD-VALUE: the value intent passes the same guard as the field in
         await ready()
         tracker.modules = false
         const before = take()
-        expect(setValue(true)).toEqual({ ok: false, reason: 'confirm-low-level' })
+        expect(setValue(true)).toEqual(NEEDS)
         expectUnchanged(before)
         expect(Object.hasOwn(slot(), 'lowLevelAccess')).toBe(false)
-        expect(setValue(true, 'lowLevelOn')).toEqual({ ok: true })
+        expect(setValue(true, CONFIRM)).toEqual({ ok: true })
         expect(slot().lowLevelAccess).toBe(true)
         expect(harness.service.view(M1).done.length).toBe(before.doneIds.length + 1)
         expect(setValue(false)).toEqual({ ok: true })
@@ -230,9 +229,9 @@ describe('T5-GUARD-UNDO: a replay that turns the flag on asks, also after a repl
         tracker.modules = false
         const before = take()
         const refused = await harness.service.replay(M1, { kind: 'undo' })
-        expect(refused).toEqual({ ok: false, reason: 'confirm-low-level', expectTop: turnOff })
+        expect(refused).toEqual({ ...NEEDS, pin: { expectTop: turnOff } })
         expectUnchanged(before)
-        const landed = await harness.service.replay(M1, { kind: 'undo', expectTop: turnOff, confirm: 'lowLevelOn' })
+        const landed = await harness.service.replay(M1, { kind: 'undo', expectTop: turnOff, ...CONFIRM })
         expect(landed).toMatchObject({ ok: true })
         expect(slot().lowLevelAccess).toBe(true)
         expect(topOf('undone')).toBe(turnOff)
@@ -246,9 +245,9 @@ describe('T5-GUARD-REDO: a redo that turns the flag on asks', () => {
         expect(await harness.service.replay(M1, { kind: 'undo' })).toMatchObject({ ok: true })
         const before = take()
         const refused = await harness.service.replay(M1, { kind: 'redo' })
-        expect(refused).toMatchObject({ ok: false, reason: 'confirm-low-level', expectTop: topOf('undone') })
+        expect(refused).toMatchObject({ ...NEEDS, pin: { expectTop: topOf('undone') } })
         expectUnchanged(before)
-        expect(await harness.service.replay(M1, { kind: 'redo', expectTop: expectTopOf(refused), confirm: 'lowLevelOn' })).toMatchObject({ ok: true })
+        expect(await harness.service.replay(M1, pinnedDesc({ kind: 'redo' }, [LOW], pinOf(refused)))).toMatchObject({ ok: true })
         expect(slot().lowLevelAccess).toBe(true)
     })
 })
@@ -261,12 +260,16 @@ describe('T5-GUARD-REVERT: a revert that crosses a turn-off asks and lands whole
         expect(setLow(false)).toEqual({ ok: true })
         expect(text('moduleName', 'N')).toEqual({ ok: true })
         const before = take()
-        expect(harness.service.revertTo(M1, turnOn)).toEqual({ ok: false, reason: 'confirm-low-level' })
+        // The retry is pinned to the step and every step above it.
+        const done = harness.service.view(M1).done.map((step) => step.id)
+        const expectIds = done.slice(done.indexOf(turnOn))
+        expect(harness.service.revertTo(M1, turnOn)).toEqual({ ...NEEDS, pin: { expectIds } })
         expectUnchanged(before)
         expect(slot().name).toBe('N')
         expect(slot().lowLevelAccess).toBe(false)
-        expect(await harness.service.replay(M1, { kind: 'revert', stepId: turnOn })).toEqual({ ok: false, reason: 'confirm-low-level' })
-        expect(await harness.service.replay(M1, { kind: 'revert', stepId: turnOn, confirm: 'lowLevelOn' })).toMatchObject({ ok: true })
+        const refused = await harness.service.replay(M1, { kind: 'revert', stepId: turnOn })
+        expect(refused).toEqual({ ...NEEDS, pin: { expectIds } })
+        expect(await harness.service.replay(M1, pinnedDesc({ kind: 'revert', stepId: turnOn }, [LOW], pinOf(refused)))).toMatchObject({ ok: true })
         expect(slot().name).toBe('')
         expect(slot().lowLevelAccess).toBe(true)
     })
@@ -278,10 +281,10 @@ describe('T5-GUARD-RESTORE: a restore whose before reads on asks', () => {
         await ready()
         expect(setLow(false)).toEqual({ ok: true })
         const before = take()
-        expect(harness.service.restore(M1, new Set())).toEqual({ ok: false, reason: 'confirm-low-level' })
+        expect(harness.service.restore(M1, new Set())).toEqual(NEEDS)
         expectUnchanged(before)
         expect(slot().lowLevelAccess).toBe(false)
-        expect(harness.service.restore(M1, new Set(), 'lowLevelOn')).toMatchObject({ ok: true })
+        expect(harness.service.restore(M1, new Set(), CONFIRM)).toMatchObject({ ok: true })
         expect(slot().lowLevelAccess).toBe(true)
     })
 })
@@ -300,9 +303,9 @@ describe('T5-GUARD-FOREIGN: the engine reading, not the stored type, decides', (
         expect(setLow(false)).toEqual({ ok: true })
         const before = take()
         const refused = await harness.service.replay(M1, { kind: 'undo' })
-        expect(refused).toEqual({ ok: false, reason: 'confirm-low-level', expectTop: topOf('done') })
+        expect(refused).toEqual({ ...NEEDS, pin: { expectTop: topOf('done') } })
         expectUnchanged(before)
-        expect(await harness.service.replay(M1, { kind: 'undo', expectTop: expectTopOf(refused), confirm: 'lowLevelOn' })).toMatchObject({ ok: true })
+        expect(await harness.service.replay(M1, pinnedDesc({ kind: 'undo' }, [LOW], pinOf(refused)))).toMatchObject({ ok: true })
         expect(slot().lowLevelAccess).toBe(1)
     })
 
@@ -391,64 +394,37 @@ describe('T5-GUARD-QUIET: what does not turn the engine reading on never asks', 
 })
 
 describe('T5-GUARD-STALE: a confirmed re-run of an undo checks that the stack did not move', () => {
-    test('through the helper: a new edit landed while the sheet was open, so Turn on lands nothing', async () => {
+    test('through the helper: a new edit landed while the question was open, so Turn on lands nothing', async () => {
         await ready()
         expect(on()).toEqual({ ok: true })
         expect(setLow(false)).toEqual({ ok: true })
         const first = await harness.service.replay(M1, { kind: 'undo' })
-        expect(first).toMatchObject({ ok: false, reason: 'confirm-low-level' })
-        let answer: (value: boolean) => void = () => {}
-        h.ask = () => new Promise<boolean>((resolve) => {
-            answer = resolve
+        expect(first).toMatchObject({ ok: false, reason: 'riskyConfirm' })
+        let answer: (value: 'yes' | 'no') => void = () => {}
+        const ask = () => ({
+            answer: new Promise<'yes' | 'no'>((resolve) => {
+                answer = resolve
+            }),
         })
-        const pending = runWithLowLevelConfirm(first, 'M', (confirm, expectTop) => harness.service.replay(M1, { kind: 'undo', expectTop, confirm }))
+        const pending = resolveRiskyRefusal(M1, first, (confirmed, pin) => harness.service.replay(M1, pinnedDesc({ kind: 'undo' }, confirmed, pin)), () => true, ask)
         expect(text('moduleName', 'N')).toEqual({ ok: true })
         const newest = topOf('done')
-        answer(true)
+        answer('yes')
         expect(await pending).toEqual({ ok: false, reason: 'precondition', targetChanged: true })
         expect(slot().lowLevelAccess).toBe(false)
         expect(slot().name).toBe('N')
         expect(topOf('done')).toBe(newest)
     })
 
-    test('a re-run without the refusal\'s expectTop would undo the new top (the mutant the stale check kills)', async () => {
+    test('a re-run that ignores the refusal\'s pin would undo the new top (the mutant the stale check kills)', async () => {
         await ready()
         expect(on()).toEqual({ ok: true })
         expect(setLow(false)).toEqual({ ok: true })
         const first = await harness.service.replay(M1, { kind: 'undo' })
-        h.ask = () => Promise.resolve(true)
-        // The host's callback ignores expectTop, as the mutant does; the name step is on top now.
+        // The host's attempt ignores the pin, as the mutant does; the name step is on top now.
         expect(text('moduleName', 'N')).toEqual({ ok: true })
-        const result = await runWithLowLevelConfirm(first, 'M', (confirm) => harness.service.replay(M1, { kind: 'undo', confirm }))
+        const result = await resolveRiskyRefusal(M1, first, (confirmed) => harness.service.replay(M1, { kind: 'undo', confirmed }), () => true, answering('yes'))
         expect(result).toMatchObject({ ok: true })
         expect(slot().name).toBe('')
-    })
-})
-
-describe('runWithLowLevelConfirm', () => {
-    test('a result that is not the refusal comes back as it is, with no ask', async () => {
-        const asked = vi.fn(() => Promise.resolve(true))
-        h.ask = asked
-        const landed: StudioResult = { ok: true }
-        expect(await runWithLowLevelConfirm(landed, 'M', () => ({ ok: true, unchanged: true }))).toBe(landed)
-        const other: StudioResult = { ok: false, reason: 'precondition' }
-        expect(await runWithLowLevelConfirm(other, 'M', () => ({ ok: true }))).toBe(other)
-        expect(asked).not.toHaveBeenCalled()
-    })
-
-    test('Cancel returns the refusal marked cancelled and never re-runs', async () => {
-        h.ask = () => Promise.resolve(false)
-        const rerun = vi.fn(() => ({ ok: true }) as StudioResult)
-        const result = await runWithLowLevelConfirm({ ok: false, reason: 'confirm-low-level', expectTop: 's1' }, 'M', rerun)
-        expect(result).toEqual({ ok: false, reason: 'confirm-low-level', cancelled: true })
-        expect(rerun).not.toHaveBeenCalled()
-    })
-
-    test('Turn on re-runs once with the confirm and the refusal\'s expectTop', async () => {
-        h.ask = () => Promise.resolve(true)
-        const rerun = vi.fn(() => ({ ok: true }) as StudioResult)
-        expect(await runWithLowLevelConfirm({ ok: false, reason: 'confirm-low-level', expectTop: 's1' }, 'M', rerun)).toEqual({ ok: true })
-        expect(rerun).toHaveBeenCalledTimes(1)
-        expect(rerun).toHaveBeenCalledWith('lowLevelOn', 's1')
     })
 })
