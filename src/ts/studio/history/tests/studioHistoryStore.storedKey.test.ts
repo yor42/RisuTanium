@@ -61,6 +61,12 @@ describe('prepareSave refuses a non-stored key', () => {
         expect(prepared).toEqual({ kind: 'result', result: { kind: 'unwritable' } })
     })
 
+    test('T-ST1 a non-stored owner is unwritable even when the record names a stored key', () => {
+        const stored = characterOwnerKey('c')
+        const prepared = prepareSave(prepareInput(FOREIGN, recordFor(stored)))
+        expect(prepared).toEqual({ kind: 'result', result: { kind: 'unwritable' } })
+    })
+
     test('a stored owner still plans a write', () => {
         const owner = characterOwnerKey('c')
         expect(prepareSave(prepareInput(owner, recordFor(owner))).kind).toBe('write')
