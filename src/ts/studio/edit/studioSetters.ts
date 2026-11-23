@@ -14,8 +14,7 @@ import type { Chat, character, groupChat } from '../../storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
 import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
-import { cloneValue, factsOf, freshSeed, isBiasList, isHeldBy, isUsableContainer, isValueOf, propertyOf, slotOf, valuesEqual } from '../history/fieldAccess'
-import type { BiasRow } from '../history/fieldRegistry'
+import { cloneValue, factsOf, freshSeed, isHeldBy, isUsableContainer, propertyOf, slotOf, valueMatchesKind, valuesEqual, type SetValue } from '../history/fieldAccess'
 import { fmAfterRemove, textFieldOf, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
 import { parseStoredOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './assetSetters'
@@ -176,20 +175,12 @@ function readHeld(holder: object | null | undefined, path: SetPath): FieldValue 
         if (plain === undefined) {
             return { had: false }
         }
-        if (facts.value === 'bool') {
-            return typeof plain === 'boolean' ? { had: true, value: plain } : { had: 'foreign', value: plain }
-        }
-        return typeof plain === 'string' ? { had: true, value: plain } : { had: 'foreign', value: plain }
+        return valueMatchesKind(path, plain) ? { had: true, value: plain } : { had: 'foreign', value: plain }
     }
-    // The reader copies a bias list and never normalizes it: a list that is not strictly readable (a `null` cell, a
-    // non-finite number, a 3-tuple, a non-array) reads as absent, so no edit of it is ever built.
-    if (facts.value === 'biasList') {
-        return isBiasList(value) ? { had: true, value: cloneValue(value) } : { had: false }
-    }
-    if (facts.value === 'bool') {
-        return typeof value === 'boolean' ? { had: true, value } : { had: false }
-    }
-    return typeof value === 'string' ? { had: true, value } : { had: false }
+    // The reader copies a bias list and never normalizes it: a value that is not strictly of the path's kind (a `null`
+    // cell, a non-finite number, a 3-tuple, a non-array, a string on a number path) reads as absent, so no edit of it is
+    // ever built.
+    return valueMatchesKind(path, value) ? { had: true, value: cloneValue(value) } : { had: false }
 }
 
 export function createLiveReader(target: LiveTarget): LiveReader {
@@ -266,8 +257,8 @@ export type EditBuildResult = EditBuild | { ok: false; reason: 'precondition' | 
 
 // `coalesce: false` gives a step that never joins, and is never joined by, a neighbouring typing step. `true` joins
 // by the path, and a string is the open-step key itself.
-export function buildFieldEdit(path: SetPath, input: string | boolean | BiasRow[], live: LiveReader, coalesce: boolean | string = true): EditBuildResult {
-    if (!isValueOf(path, input)) {
+export function buildFieldEdit(path: SetPath, input: SetValue, live: LiveReader, coalesce: boolean | string = true): EditBuildResult {
+    if (!valueMatchesKind(path, input)) {
         return { ok: false, reason: 'precondition' }
     }
     // A bias list is copied here, so no op, write or record holds the caller's array (a reactive proxy, or one the
@@ -435,7 +426,7 @@ function writeHeld(holder: object, path: SetPath, value: FieldValue): void {
                 delete (fields[container] as Record<string, unknown>)[key]
             }
         }
-    } else if (isValueOf(path, value.value)) {
+    } else if (valueMatchesKind(path, value.value)) {
         // A bias list is assigned as a plain array copy: the classic editor binds its rows in place, so the stored step
         // must never share them.
         const written = cloneValue(value.value)
@@ -644,7 +635,7 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
             if (write.value.had === 'foreign') {
                 // A foreign write puts the stored value back as a fresh plain copy, never the record's own object.
                 fields[propertyOf(write.path)] = toPlainJson(write.value.value)
-            } else if (write.value.had && isValueOf(write.path, write.value.value)) {
+            } else if (write.value.had && valueMatchesKind(write.path, write.value.value)) {
                 fields[propertyOf(write.path)] = cloneValue(write.value.value)
             } else if (factsOf(write.path).absent === 'delete') {
                 delete fields[propertyOf(write.path)]

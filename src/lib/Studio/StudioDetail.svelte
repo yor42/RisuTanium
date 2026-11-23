@@ -20,7 +20,6 @@
     import StudioCharacterForm from './StudioCharacterForm.svelte'
     import StudioAdvancedForm from './StudioAdvancedForm.svelte'
     import StudioExampleForm from './StudioExampleForm.svelte'
-    import StudioPresetAdvancedForm from './StudioPresetAdvancedForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
     import StudioToggleBuilder from './StudioToggleBuilder.svelte'
@@ -297,8 +296,14 @@
                 {/if}
             {:else if presetAdvancedFormLive && studioScreen.selectedPresetId !== null}
                 <!-- Keyed by the pinned id, not the row: a reorder keeps this form, another preset builds a new one. -->
+                <!-- Loaded on first use: the form reaches the model picker and the model catalog, which no other Studio screen needs. -->
                 {#key studioScreen.selectedPresetId}
-                    <StudioPresetAdvancedForm presetId={studioScreen.selectedPresetId} />
+                    {#await import('./StudioPresetAdvancedForm.svelte') then loaded}
+                        {@const PresetForm = loaded.default}
+                        <PresetForm presetId={studioScreen.selectedPresetId} />
+                    {:catch}
+                        <p role="alert" data-part="studio-preset-form-load-failed" class="text-sm text-draculared">{language.error}</p>
+                    {/await}
                 {/key}
             {:else if !toggleBuilderLive}
                 <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>

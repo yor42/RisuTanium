@@ -17,7 +17,7 @@
 //   deleted. A restore onto an existing container writes into it, and a restore whose live reading already equals
 //   `before` writes nothing, so it creates no container. A session owner kind that lists a dotted path owns the seed
 //   and container rule in its own adapter. The generic reader and writer support text, boolean
-//   and bias-list values.
+//   and bias-list values; a number path (session-only today) reads and records a finite number, nothing else.
 // - Never rename or remove a path, and never change an existing path's `value`, `absent`, `editWhenAbsent`,
 //   `holders` or `property`: older builds refuse a record whole on a path they do not know, and the frozen-facts test
 //   (append-only) pins every existing row. A path new to older builds is a widening they refuse whole.
@@ -42,7 +42,7 @@ export type BiasRow = [string, number]
 
 // The persisted facts of a path: frozen by the append-only guard.
 export interface FieldFacts {
-    value: 'text' | 'bool' | 'biasList'
+    value: 'text' | 'bool' | 'number' | 'biasList'
     // The builtin owner kinds whose set row and restore row hold the path, and whose writers write it.
     holders: readonly Holder[]
     // What a builtin-holder writer does with `{ had: false }`: leave the key or delete it.
@@ -132,6 +132,33 @@ export const FIELD_SPECS = {
     utilityBot: { value: 'bool', holders: ['character'], absent: 'keep', editWhenAbsent: false },
     escapeOutput: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     bias: { value: 'biasList', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    // The preset advanced form's model and parameter paths (S4b): session-only like the rows above. The `number` rows are
+    // the first number kind; no builtin holder carries one, so a stored character, chat or module record never holds a
+    // number.
+    presetAiModel: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetSubModel: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAuxMemory: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAuxTranslate: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAuxEmotion: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAuxOtherAx: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetMaxContext: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetMaxResponse: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetThinkingType: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDeepseekThinkingType: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetThinkingTokens: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAdaptiveThinkingEffort: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDeepseekReasoningEffort: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetTemperature: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetTopK: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetMinP: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetTopA: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetRepetitionPenalty: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetReasonEffort: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetVerbosity: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetTopP: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFrequencyPenalty: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetPresencePenalty: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetMaxThoughtTagDepth: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -209,6 +236,30 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     utilityBot: { labelKey: 'utilityBot', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
     escapeOutput: { labelKey: 'escapeOutput', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
     bias: { labelKey: 'studioFieldBias', focus: { form: 'studio-advanced-form', part: 'studio-form-bias' } },
+    presetAiModel: { labelKey: 'model', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAiModel' } },
+    presetSubModel: { labelKey: 'submodel', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetSubModel' } },
+    presetAuxMemory: { labelKey: 'studioPresetAuxMemory', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAuxMemory' } },
+    presetAuxTranslate: { labelKey: 'studioPresetAuxTranslate', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAuxTranslate' } },
+    presetAuxEmotion: { labelKey: 'studioPresetAuxEmotion', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAuxEmotion' } },
+    presetAuxOtherAx: { labelKey: 'studioPresetAuxOtherAx', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAuxOtherAx' } },
+    presetMaxContext: { labelKey: 'maxContextSize', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMaxContext' } },
+    presetMaxResponse: { labelKey: 'maxResponseSize', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMaxResponse' } },
+    presetThinkingType: { labelKey: 'thinkingType', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetThinkingType' } },
+    presetDeepseekThinkingType: { labelKey: 'studioPresetDeepseekThinking', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDeepseekThinkingType' } },
+    presetThinkingTokens: { labelKey: 'thinkingTokens', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetThinkingTokens' } },
+    presetAdaptiveThinkingEffort: { labelKey: 'adaptiveThinkingEffort', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAdaptiveThinkingEffort' } },
+    presetDeepseekReasoningEffort: { labelKey: 'studioPresetDeepseekEffort', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDeepseekReasoningEffort' } },
+    presetTemperature: { labelKey: 'temperature', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetTemperature' } },
+    presetTopK: { labelKey: 'studioPresetTopK', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetTopK' } },
+    presetMinP: { labelKey: 'studioPresetMinP', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMinP' } },
+    presetTopA: { labelKey: 'studioPresetTopA', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetTopA' } },
+    presetRepetitionPenalty: { labelKey: 'studioPresetRepetitionPenalty', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetRepetitionPenalty' } },
+    presetReasonEffort: { labelKey: 'studioPresetReasoningEffort', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetReasonEffort' } },
+    presetVerbosity: { labelKey: 'studioPresetVerbosity', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetVerbosity' } },
+    presetTopP: { labelKey: 'studioPresetTopP', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetTopP' } },
+    presetFrequencyPenalty: { labelKey: 'frequencyPenalty', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFrequencyPenalty' } },
+    presetPresencePenalty: { labelKey: 'presensePenalty', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetPresencePenalty' } },
+    presetMaxThoughtTagDepth: { labelKey: 'maxThoughtTagDepth', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMaxThoughtTagDepth' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed

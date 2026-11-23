@@ -6,8 +6,10 @@
     import { defaultAutoSuggestPrompt } from '../../ts/storage/defaultPrompts'
     import { checkSchemaText } from '../../ts/process/templates/jsonSchemaParse'
     import { openInClassicEditor } from '../../ts/studio/classicLinks.svelte'
-    import { PRESET_FIELDS, isPresetPath, presetValueAllowed, type PresetPath } from '../../ts/studio/edit/presetFields'
+    import { DISABLED_NUMBER, PRESET_FIELDS, presetValueAllowed, type PresetPath } from '../../ts/studio/edit/presetFields'
+    import { presetParamContext, presetResolvedThinkingType, presetSegments, visiblePresetParams } from '../../ts/studio/edit/presetParams'
     import { presetEffectiveModel, presetHasTemplate, presetNameOf, presetOwnerKey, presetStateOf, readPresetField } from '../../ts/studio/edit/presetTarget'
+    import { exceedsActualMax, formatTokenCount } from '../../ts/model/modelData/openrouterData'
     import { refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { FIELD_PRESENTATION, type SetPath } from '../../ts/studio/history/fieldRegistry'
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
@@ -20,6 +22,12 @@
     import { createCompositionGate } from '../../ts/studio/toggleBuilderModel'
     import { parseDefinition, rowsOf } from '../../ts/studio/toggleDef'
     import { DBState, SettingsMenuIndex, settingsOpen } from '../../ts/stores.svelte'
+    import type { SettingContext, SettingItem } from '../../ts/setting/types'
+    import ModelDataRefresh from '../Setting/Pages/Model/ModelDataRefresh.svelte'
+    import ModelList from '../UI/ModelList.svelte'
+    import NumberInput from '../UI/GUI/NumberInput.svelte'
+    import SegmentedControl from '../UI/GUI/SegmentedControl.svelte'
+    import SliderInput from '../UI/GUI/SliderInput.svelte'
     import LongTextField from './LongTextField.svelte'
 
     // The advanced form of one bot preset, addressed by its stable id. The form holds only the id: every value is read
@@ -32,13 +40,33 @@
 
     let { presetId }: Props = $props()
 
-    type SectionId = 'nameIcon' | 'model' | 'prompt' | 'promptOptions' | 'fallback' | 'other'
+    type SectionId = 'nameIcon' | 'model' | 'parameters' | 'prompt' | 'promptOptions' | 'fallback' | 'other'
     type HelpKey = keyof typeof language.help
 
-    const SECTION_ORDER: readonly SectionId[] = ['nameIcon', 'model', 'prompt', 'promptOptions', 'fallback', 'other']
+    const SECTION_ORDER: readonly SectionId[] = ['nameIcon', 'model', 'parameters', 'prompt', 'promptOptions', 'fallback', 'other']
+    const AUX_PATHS = ['presetAuxMemory', 'presetAuxTranslate', 'presetAuxEmotion', 'presetAuxOtherAx'] as const satisfies readonly PresetPath[]
     const SECTION_PATHS: Readonly<Record<SectionId, readonly PresetPath[]>> = {
         nameIcon: ['presetName'],
-        model: [],
+        model: ['presetAiModel', 'presetSubModel', ...AUX_PATHS],
+        parameters: [
+            'presetMaxContext',
+            'presetMaxResponse',
+            'presetThinkingType',
+            'presetDeepseekThinkingType',
+            'presetThinkingTokens',
+            'presetAdaptiveThinkingEffort',
+            'presetDeepseekReasoningEffort',
+            'presetTemperature',
+            'presetTopK',
+            'presetMinP',
+            'presetTopA',
+            'presetRepetitionPenalty',
+            'presetReasonEffort',
+            'presetVerbosity',
+            'presetTopP',
+            'presetFrequencyPenalty',
+            'presetPresencePenalty',
+        ],
         prompt: ['presetMainPrompt', 'presetJailbreak', 'presetGlobalNote', 'presetPromptPreprocess'],
         promptOptions: [
             'presetPostEndInnerFormat',
@@ -47,6 +75,7 @@
             'presetTrimStartNewChat',
             'presetUtilOverride',
             'presetCustomChainOfThought',
+            'presetMaxThoughtTagDepth',
             'presetJsonSchemaEnabled',
             'presetOutputImageModal',
             'presetStrictJsonSchema',
@@ -76,6 +105,9 @@
     }
     const DYNAMIC_PATHS = SECTION_PATHS.other.filter((path) => path.startsWith('presetDynamic'))
     const HELP: Readonly<Partial<Record<PresetPath, HelpKey>>> = {
+        presetAiModel: 'model',
+        presetSubModel: 'submodel',
+        presetTemperature: 'tempature',
         presetMainPrompt: 'mainprompt',
         presetJailbreak: 'jailbreak',
         presetGlobalNote: 'globalNote',
@@ -147,6 +179,19 @@
         return read.had && read.value === true
     }
 
+    // A number, or null when the preset holds none (not set, or a value of another type).
+    function numberOf(path: PresetPath): number | null {
+        const read = readPresetField(id, path)
+        return read.had === true && typeof read.value === 'number' ? read.value : null
+    }
+
+    // A control's current value as the segmented control compares it: the stored number or text, else nothing selected.
+    // The thinking type shows what the request resolves it to for this preset's model.
+    function segmentValueOf(path: PresetPath): string | number {
+        if (path === 'presetThinkingType') return presetResolvedThinkingType(id)
+        return numberOf(path) ?? textOf(path)
+    }
+
     // A field whose slot absence keeps the working value reads "not set" on an inactive preset: switching to it leaves the
     // current value, which the note says. The active preset has no switch to describe.
     function notSetNoted(path: PresetPath): boolean {
@@ -158,6 +203,10 @@
     const schemaCheck = $derived(schemaOn && textOf('presetJsonSchema') !== '' ? checkSchemaText(textOf('presetJsonSchema')) : null)
     const showsInstruct = $derived((presetEffectiveModel(id) ?? '').startsWith('openrouter'))
     const fallbackKept = $derived(!active && DBState.db.doNotChangeFallbackModels === true)
+    const auxKept = $derived(DBState.db.doNotChangeSeperateModels === true)
+    // Classic's parameter rows for this preset's own model; null while the preset is gone.
+    const paramContext = $derived(presetParamContext(id))
+    const paramRows = $derived(paramContext === null ? [] : visiblePresetParams(paramContext))
     const toggleCount = $derived(rowsOf(parseDefinition(textOf('customModuleToggle'))).length)
 
     // The chain-of-thought switch is shown while the unrecommended-fields setting is on, and stays shown for the visit
@@ -196,6 +245,7 @@
         switch (section) {
             case 'nameIcon': return language.studioPresetSectionNameIcon
             case 'model': return language.model
+            case 'parameters': return language.parameters
             case 'prompt': return language.prompt
             case 'promptOptions': return language.studioPresetSectionPromptOptions
             case 'fallback': return language.fallbackModel
@@ -242,6 +292,46 @@
             return
         }
         service.closeOpenStep(owner)
+    }
+
+    // A model picked in the shared picker (which asks first for a model known from one source only). A refused write
+    // changes nothing: the picker shows the live value on its next render.
+    function onModelPick(path: PresetPath, model: string): void {
+        if (!service || !editable || !presetValueAllowed(path, model)) return
+        if (noted(service.editText(owner, path, model, 'single'))) service.closeOpenStep(owner)
+    }
+
+    // The bounds a typed number is clamped to, as classic's controls clamp; the sentinel for "off" passes untouched.
+    function clampNumber(path: PresetPath, value: number): number {
+        const range = PRESET_FIELDS[path].range
+        if (range === undefined || (range.disableable === true && value === DISABLED_NUMBER)) return value
+        const whole = range.integer === true ? Math.round(value) : value
+        return Math.min(range.max ?? Infinity, Math.max(range.min ?? -Infinity, whole))
+    }
+
+    // A number from a slider or a number input. Typing and dragging coalesce by path into one step; switching a
+    // disableable slider on or off is a discrete step (`switching`: the slider shows a value the preset does not hold).
+    // A value that is not a finite number writes nothing.
+    function writeNumber(path: PresetPath, raw: unknown, switching = false): void {
+        if (typeof raw !== 'number' || !Number.isFinite(raw) || !service || !editable) return
+        const next = clampNumber(path, raw)
+        if (!presetValueAllowed(path, next)) return
+        const discrete = switching || next === DISABLED_NUMBER || numberOf(path) === DISABLED_NUMBER
+        if (noted(service.editValue(owner, path, next, { coalesce: !discrete })) && discrete) service.closeOpenStep(owner)
+    }
+
+    // After a number input is left, the field shows the live value again (a clamped or refused entry is not kept on screen).
+    function onNumberSettled(path: PresetPath, event: Event & { currentTarget: HTMLInputElement }): void {
+        service?.closeOpenStep(owner)
+        const live = numberOf(path)
+        event.currentTarget.value = live === null ? '' : String(live)
+    }
+
+    // A segmented choice: a number option is a value edit, a text option a text edit; each is its own step.
+    function writeSegment(path: PresetPath, choice: string | number): void {
+        if (!service || !editable || !presetValueAllowed(path, choice)) return
+        const result = typeof choice === 'number' ? service.editValue(owner, path, choice) : service.editText(owner, path, choice, 'single')
+        if (noted(result)) service.closeOpenStep(owner)
     }
 
     // The single-line fields write through a composition gate: nothing is written while an IME composes, the composed
@@ -419,6 +509,114 @@
     </div>
 {/snippet}
 
+{#snippet modelField(path: PresetPath, blankable: boolean)}
+    <div
+        data-path={path}
+        data-part={partOf(path)}
+        tabindex="-1"
+        class="flex flex-col gap-1"
+    >
+        <div class="flex items-center gap-1">
+            <span class="font-bold">{labelOf(path)}</span>
+            {@render help(path)}
+        </div>
+        {@render helpText(path)}
+        <ModelList
+            bind:value={() => textOf(path), () => {}}
+            onChange={(model) => onModelPick(path, model)}
+            {blankable}
+        />
+        {@render notSet(path)}
+    </div>
+{/snippet}
+
+{#snippet numberField(path: PresetPath, item: SettingItem | null, ctx: SettingContext | null)}
+    {@const range = PRESET_FIELDS[path].range}
+    {@const current = numberOf(path)}
+    {@const actual = item?.options?.actualMax && ctx ? item.options.actualMax(ctx) : undefined}
+    {@const knownMax = typeof actual === 'number' && Number.isFinite(actual) && actual > 0 ? actual : undefined}
+    <div data-path={path} class="flex flex-col gap-1">
+        <div class="flex items-center gap-1">
+            <label for="{idBase}-{path}" class="font-bold">{labelOf(path)}</label>
+            {#if knownMax !== undefined && current !== null}
+                <span data-part="studio-preset-actual-max" class="text-xs text-textcolor2">{formatTokenCount(current)} / {formatTokenCount(knownMax)}</span>
+            {/if}
+            {@render help(path)}
+        </div>
+        {@render helpText(path)}
+        <div
+            data-part={partOf(path)}
+            tabindex="-1"
+        >
+            <NumberInput
+                id="{idBase}-{path}"
+                size="md"
+                fullwidth
+                min={range?.min}
+                max={range?.max}
+                disabled={!editable}
+                bind:value={() => current ?? undefined, (value) => writeNumber(path, value)}
+                onChange={(event) => onNumberSettled(path, event)}
+            />
+        </div>
+        {#if knownMax !== undefined && item?.options?.actualMaxWarning && exceedsActualMax(current, knownMax)}
+            <p data-part="studio-preset-actual-max-warning" role="status" class="text-sm text-draculared">{item.options.actualMaxWarning(formatTokenCount(knownMax))}</p>
+        {/if}
+        {@render notSet(path)}
+    </div>
+{/snippet}
+
+{#snippet sliderField(path: PresetPath, item: SettingItem)}
+    <div data-path={path} class="flex flex-col gap-1">
+        <div class="flex items-center gap-1">
+            <span id="{idBase}-{path}-label" class="font-bold">{labelOf(path)}</span>
+            {@render help(path)}
+        </div>
+        {@render helpText(path)}
+        <div
+            data-part={partOf(path)}
+            tabindex="-1"
+        >
+            <SliderInput
+                labelId="{idBase}-{path}-label"
+                label={labelOf(path)}
+                min={item.options?.min ?? 0}
+                max={item.options?.max ?? 0}
+                step={item.options?.step}
+                fixed={item.options?.fixed}
+                multiple={item.options?.multiple}
+                disableable={item.options?.disableable}
+                bind:value={() => numberOf(path) ?? DISABLED_NUMBER, (value) => writeNumber(path, value, numberOf(path) === null)}
+            />
+        </div>
+        {@render notSet(path)}
+    </div>
+{/snippet}
+
+{#snippet segmentField(path: PresetPath, item: SettingItem, ctx: SettingContext)}
+    {@const offered = presetSegments(item, ctx)}
+    {@const stored = segmentValueOf(path)}
+    <div data-path={path} class="flex flex-col gap-1">
+        <div class="flex items-center gap-1">
+            <span class="font-bold">{labelOf(path)}</span>
+            {@render help(path)}
+        </div>
+        {@render helpText(path)}
+        <div
+            data-part={partOf(path)}
+            tabindex="-1"
+        >
+            <SegmentedControl
+                options={stored !== '' && !offered.some((option) => option.value === stored)
+                    ? [...offered, { value: stored, label: language.studioPresetUnknownValue(String(stored)), disabled: true }]
+                    : [...offered]}
+                bind:value={() => segmentValueOf(path), (choice) => writeSegment(path, choice)}
+            />
+        </div>
+        {@render notSet(path)}
+    </div>
+{/snippet}
+
 {#if !hidden}
     <div data-part="studio-preset-advanced-form" class="flex flex-col gap-3" aria-busy={editable ? undefined : 'true'}>
         {#if loadFailed}
@@ -455,9 +653,30 @@
                         {#if section === 'nameIcon'}
                             {@render lineField('presetName')}
                         {:else if section === 'model'}
+                            {@render modelField('presetAiModel', false)}
+                            {@render modelField('presetSubModel', false)}
+                            {#if auxKept}
+                                <p role="status" data-part="studio-preset-aux-note" class="text-sm text-textcolor2">{active ? language.studioPresetAuxNotSaved : language.studioPresetAuxKept}</p>
+                            {/if}
+                            {#each AUX_PATHS as path (path)}
+                                {@render modelField(path, true)}
+                            {/each}
+                            <ModelDataRefresh />
                             <button type="button" data-part="studio-preset-connections-link" class="self-start min-h-11 text-sm text-textcolor2 hover:text-textcolor underline cursor-pointer" onclick={openConnections}>{language.connectionsManageLink}</button>
                             <p data-part="studio-preset-provider-classic" class="text-sm text-textcolor2">{language.studioPresetProviderClassic}</p>
                             <button type="button" data-part="studio-preset-provider-classic-button" class={BUTTON_CLASS} onclick={() => openInClassicEditor('preset', null)}>{language.studioOpenClassic}</button>
+                        {:else if section === 'parameters'}
+                            {#if paramContext}
+                                {#each paramRows as row (row.path)}
+                                    {#if row.item.type === 'number'}
+                                        {@render numberField(row.path, row.item, paramContext)}
+                                    {:else if row.item.type === 'slider'}
+                                        {@render sliderField(row.path, row.item)}
+                                    {:else if row.item.type === 'segmented'}
+                                        {@render segmentField(row.path, row.item, paramContext)}
+                                    {/if}
+                                {/each}
+                            {/if}
                         {:else if section === 'prompt'}
                             {#if hasTemplate}
                                 <p role="status" data-part="studio-preset-uses-template" class="text-sm text-textcolor2">{language.studioPresetUsesTemplate}</p>
@@ -477,6 +696,7 @@
                             {#if showsCot}
                                 {@render boolField('presetCustomChainOfThought')}
                             {/if}
+                            {@render numberField('presetMaxThoughtTagDepth', null, null)}
                             {@render boolField('presetJsonSchemaEnabled')}
                             {@render boolField('presetOutputImageModal')}
                             {@render boolField('presetStrictJsonSchema')}

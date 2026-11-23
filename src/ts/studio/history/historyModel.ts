@@ -9,7 +9,7 @@ import { scanReferences } from '../assets/referenceScan'
 import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
 import type { JsonValue } from '../../storage/blockFrame'
 import { sameJsonValue, toPlainJson } from '../../storage/store2/codec/normalize'
-import { cloneValue, factsOf, isBiasList, isHeldBy, registryPaths, valuesEqual } from './fieldAccess'
+import { cloneValue, factsOf, isHeldBy, registryPaths, typeofKind, valueMatchesKind, valuesEqual } from './fieldAccess'
 import { FIELD_SPECS, type BiasRow, type SetPath } from './fieldRegistry'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
 import { parseStoredOwnerKey, type OwnerKey, type ParsedOwnerKey, type StoredOwnerKey } from './ownerPhase'
@@ -118,7 +118,7 @@ export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
 // `had: false` is an absent optional key. Writing it deletes the key; it never assigns false or undefined.
 // `had: 'foreign'` is a present value of another type than the path's, as plain JSON; only a path whose facts carry
 // `keepForeign` reads or records it. Writing it puts the stored value back.
-export type FieldValue = { had: false } | { had: true; value: string | boolean | BiasRow[] } | { had: 'foreign'; value: JsonValue }
+export type FieldValue = { had: false } | { had: true; value: string | boolean | number | BiasRow[] } | { had: 'foreign'; value: JsonValue }
 export type FmValue = { had: false } | { had: true; value: number }
 
 export function fieldValueEquals(a: FieldValue, b: FieldValue): boolean {
@@ -287,23 +287,18 @@ function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
         return { had: false }
     }
     const facts = factsOf(path)
-    const isBool = facts.value === 'bool'
     if (value.had === 'foreign') {
         // A foreign reading exists only on a `keepForeign` path, holds a present value that is not of the path's type
         // (a value of that type is malformed here), and is never `undefined`. It is read as plain JSON, a fresh copy.
         const plain = facts.keepForeign === true ? toPlainJson(value.value) : undefined
-        return plain !== undefined && typeof plain !== (isBool ? 'boolean' : 'string') ? { had: 'foreign', value: plain } : null
+        const own = typeofKind(path)
+        return plain !== undefined && own !== null && typeof plain !== own ? { had: 'foreign', value: plain } : null
     }
     if (value.had !== true) {
         return null
     }
-    if (isBool) {
-        return typeof value.value === 'boolean' ? { had: true, value: value.value } : null
-    }
-    if (facts.value === 'biasList') {
-        return isBiasList(value.value) ? { had: true, value: cloneValue(value.value) } : null
-    }
-    return typeof value.value === 'string' ? { had: true, value: value.value } : null
+    // One kind decision for every path: a number path takes a finite number only, a text path a string only, and so on.
+    return valueMatchesKind(path, value.value) ? { had: true, value: cloneValue(value.value) } : null
 }
 
 function parseFmValue(value: unknown): FmValue | null {
@@ -401,10 +396,10 @@ export function textPathsFor(kind: OwnerKind): readonly SetPath[] {
     return SET_PATHS_BY_KIND[kind].filter((path) => factsOf(path).value === 'text')
 }
 
-// The set paths of an owner kind that carry a boolean: the paths editValue reaches. textPathsFor holds the kind's text
-// paths; a bias-list path is in neither and is edited through editField.
+// The set paths of an owner kind that carry a boolean or a number: the paths editValue reaches. textPathsFor holds the
+// kind's text paths; a bias-list path is in neither and is edited through editField.
 export function valuePathsFor(kind: OwnerKind): readonly SetPath[] {
-    return SET_PATHS_BY_KIND[kind].filter((path) => isBooleanSetPath(path))
+    return SET_PATHS_BY_KIND[kind].filter((path) => factsOf(path).value === 'bool' || factsOf(path).value === 'number')
 }
 
 const ASSET_ARRAYS: readonly string[] = ['additionalAssets', 'emotionImages', 'assets']

@@ -48,13 +48,37 @@ export function isBiasList(value: unknown): value is BiasRow[] {
     )
 }
 
-// Whether `value` is of the type the path registers: a string, a boolean or a bias list.
-export function isValueOf(path: SetPath, value: unknown): value is string | boolean | BiasRow[] {
-    const kind = factsOf(path).value
-    if (kind === 'bool') {
-        return typeof value === 'boolean'
+// A value a registered path may carry: text, a boolean, a finite number or a bias list.
+export type SetValue = string | boolean | number | BiasRow[]
+
+// Whether `value` is of the kind the path registers: a string, a boolean, a finite number or a bias list. The one
+// decision every reader, writer, edit builder and intent guard asks, so no code splits "boolean against everything
+// else" and lets a value of the wrong kind through (a string on a number path, a number on a text path).
+export function valueMatchesKind(path: SetPath, value: unknown): value is SetValue {
+    switch (factsOf(path).value) {
+        case 'bool':
+            return typeof value === 'boolean'
+        case 'number':
+            return typeof value === 'number' && Number.isFinite(value)
+        case 'biasList':
+            return isBiasList(value)
+        case 'text':
+            return typeof value === 'string'
     }
-    return kind === 'biasList' ? isBiasList(value) : typeof value === 'string'
+}
+
+// The `typeof` result of a plain value of the kind (a bias list is an array and has none).
+export function typeofKind(path: SetPath): 'string' | 'boolean' | 'number' | null {
+    switch (factsOf(path).value) {
+        case 'bool':
+            return 'boolean'
+        case 'number':
+            return 'number'
+        case 'text':
+            return 'string'
+        case 'biasList':
+            return null
+    }
 }
 
 // Equality of two set values: structural for a bias list, strict for a string or a boolean.
@@ -70,7 +94,7 @@ export function valuesEqual(a: unknown, b: unknown): boolean {
 
 // A fresh plain copy: a bias list gets new row arrays, anything else is returned as it is. Never shares an array with
 // the live holder or a reactive proxy.
-export function cloneValue<T extends string | boolean | BiasRow[]>(value: T): T {
+export function cloneValue<T extends SetValue>(value: T): T {
     return (Array.isArray(value) ? value.map((row) => [row[0], row[1]]) : value) as T
 }
 

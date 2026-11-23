@@ -31,7 +31,7 @@ import { FIELD_SPECS } from 'src/ts/studio/history/fieldRegistry'
 import { SET_PATHS_BY_KIND, textPathsFor, valuePathsFor } from 'src/ts/studio/history/historyModel'
 import { keylessPreset, presetNamed, seedPresetDb } from './presetFixture.test-helpers'
 
-function setOp(path: PresetPath, value: string | boolean): WriteOp {
+function setOp(path: PresetPath, value: string | boolean | number): WriteOp {
     return { op: 'set', path, value: { had: true, value } }
 }
 function unsetOp(path: PresetPath): WriteOp {
@@ -52,7 +52,7 @@ describe('S4a-T1: the table, the registry and the kind rows', () => {
     test('the table holds exactly the preset kind row, and the model row is that list', () => {
         expect(Object.keys(PRESET_FIELDS)).toEqual([...SESSION_OWNER_KINDS.preset.setPaths])
         expect(SET_PATHS_BY_KIND.preset).toEqual([...SESSION_OWNER_KINDS.preset.setPaths])
-        expect(presetPaths).toHaveLength(34)
+        expect(presetPaths).toHaveLength(58)
     })
 
     test('each new path is in the preset row and in no builtin kind row, with no holder and no property', () => {
@@ -112,11 +112,11 @@ describe('S4a-T2: write routing by the live copy', () => {
             if (spec.key !== undefined || spec.db === 'slotOnly') {
                 continue
             }
-            const value = spec.value === 'bool' ? !readBool(ids[0], path) : `w-${path}`
+            const value = spec.value === 'bool' ? !readBool(ids[0], path) : spec.value === 'number' ? 41 : `w-${path}`
             expect(presetAdapter.write(ids[0], [setOp(path, value)]), path).toBe(true)
             expect(dbBag()[spec.db], `active ${path}`).toBe(value)
             expect(slotBag(0)[spec.slot], `active slot ${path}`).not.toBe(value)
-            const other = spec.value === 'bool' ? !readBool(ids[1], path) : `s-${path}`
+            const other = spec.value === 'bool' ? !readBool(ids[1], path) : spec.value === 'number' ? 42 : `s-${path}`
             expect(presetAdapter.write(ids[1], [setOp(path, other)]), path).toBe(true)
             expect(slotBag(1)[spec.slot], `inactive ${path}`).toBe(other)
             expect(dbBag()[spec.db], `inactive leaves working ${path}`).toBe(value)
