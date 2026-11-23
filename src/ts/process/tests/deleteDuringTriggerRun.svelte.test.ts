@@ -1244,7 +1244,7 @@ describe('the busy button and a send trigger\'s remaining effects', () => {
         const outputVariable = (theChat().scriptstate as Record<string, unknown>)['$r']
         await drain(running)
 
-        expect.soft(outputVariable, 'the model call already running finished and set its output variable').toBe('model says')
+        expect.soft(outputVariable, 'the model call already running finished, but the stopped run may no longer set chat variables (MC-3951)').toBeUndefined()
         expect.soft(posted, 'the start trigger posted its next message').toBe(false)
     })
 
