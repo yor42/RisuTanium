@@ -4,7 +4,7 @@ import { COLD_TRANSFORM_HOOK_MS } from '../../ts/tests/coldTransform.test-helper
 import { flushSync, mount, tick, unmount } from 'svelte'
 
 const composer = vi.hoisted(() => ({
-    branchAt: vi.fn(async () => {}), stepSibling: vi.fn(async () => {}), regenerateNewest: vi.fn(async () => {}), busy: false,
+    branchAt: vi.fn(async () => {}), stepSibling: vi.fn(async () => {}), regenerateNewest: vi.fn(async () => {}), busy: false, busyIn: [] as string[],
 }))
 vi.mock('../../ts/stores.svelte', async () => {
     const { writable } = await import('svelte/store')
@@ -30,13 +30,10 @@ vi.mock('../../ts/stores.svelte', async () => {
         ScrollToMessageStore, createSimpleCharacter: () => null,
     }
 })
-vi.mock('../../ts/process/index.svelte', async () => {
-    const { writable } = await import('svelte/store')
-    return { doingChat: writable(false) }
-})
 vi.mock('../../ts/process/composerActions.svelte', () => ({
     branchAt: composer.branchAt, stepSibling: composer.stepSibling, regenerateNewest: composer.regenerateNewest,
     isComposerBusy: () => composer.busy,
+    isComposerBusyIn: (target: { chaId: string, chatId: string }) => composer.busyIn.includes(`${target.chaId}/${target.chatId}`),
 }))
 vi.mock('../../ts/globalApi.svelte', () => {
     const chatFoldedState = $state<{ data: null }>({ data: null })
@@ -90,14 +87,12 @@ vi.mock('../../lang', () => ({ language: {
     chatShellMessages: 'Messages', chatShellMoreActions: 'More actions', chatShellBranch: 'Branch from here', chatShellNewReply: 'New reply',
     chatShellPreviousReply: 'Previous reply', chatShellNextReply: 'Next reply', chatShellFirstReply: 'First reply', chatShellLastReply: 'Last reply',
     chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}`, chatShellFirstMessageOf: (index: number, total: number) => `First message ${index} of ${total}`, bookmark: 'Bookmark', remove: 'Delete', cancel: 'Cancel',
-    chatShellReplyInProgress: 'Writing the reply', chatShellStopAndDelete: 'Stop and delete',
+    chatShellReplyInProgress: 'Writing the reply', chatShellStopAndDelete: 'Stop and delete', chatReplyRunning: 'Receiving a reply',
 } }))
 
 import ChatShell from './ChatShell.svelte'
-import { doingChat as doingChatStore } from '../../ts/process/index.svelte'
 import { DBState } from '../../ts/stores.svelte'
-import type { Writable } from 'svelte/store'
-const doingChat = doingChatStore as Writable<boolean>
+import { resetRunningRepliesForTests, setRunningReplies } from '../../ts/nativeReply/runningReplies.svelte'
 
 let app: ReturnType<typeof ChatShell> | undefined
 let target: HTMLElement
@@ -114,8 +109,9 @@ afterEach(async () => {
     if (app) await unmount(app)
     app = undefined
     target?.remove()
-    doingChat.set(false)
     composer.busy = false
+    composer.busyIn = []
+    resetRunningRepliesForTests()
     for (const fn of [composer.branchAt, composer.stepSibling, composer.regenerateNewest]) fn.mockClear()
 })
 function counter(): string | null | undefined { return target.querySelector('[data-part="chat-message-alts"] span[aria-live]')?.textContent }
@@ -148,11 +144,10 @@ describe('ChatShell wires the reply tree into the rows', () => {
         expect(composer.branchAt).toHaveBeenCalledWith(expect.anything(), 1, 'm')
     })
 
-    test('a running generation disables the sibling arrows and the new reply control, and a press does not generate', async () => {
+    test('a reply running in the shown chat disables the sibling arrows and the new reply control, and a press does not generate', async () => {
+        composer.busy = true
+        composer.busyIn = ['c/chat']
         await show()
-        doingChat.set(true)
-        flushSync()
-        await tick()
         const row = target.querySelector('[data-part="chat-message-alts"]')!
         expect(row.querySelector<HTMLButtonElement>('[aria-label="Next reply"]')!.disabled).toBe(true)
         const generate = row.querySelector<HTMLButtonElement>('[data-action="newReply"]')!
@@ -161,15 +156,23 @@ describe('ChatShell wires the reply tree into the rows', () => {
         expect(composer.regenerateNewest).not.toHaveBeenCalled()
     })
 
-    test('the composer window keeps the controls disabled after the generation flag clears', async () => {
-        await show()
+    test('a reply running in another chat leaves the shown chat\'s arrows and new reply control enabled', async () => {
         composer.busy = true
-        doingChat.set(true)
-        flushSync()
-        doingChat.set(false)
-        flushSync()
-        await tick()
-        expect(target.querySelector<HTMLButtonElement>('[data-part="chat-message-alts"] [aria-label="Next reply"]')!.disabled).toBe(true)
+        composer.busyIn = ['other/other-chat']
+        await show()
+        const row = target.querySelector('[data-part="chat-message-alts"]')!
+        expect(row.querySelector<HTMLButtonElement>('[aria-label="Next reply"]')!.disabled).toBe(false)
+        expect(row.querySelector<HTMLButtonElement>('[data-action="newReply"]')!.disabled).toBe(false)
+    })
+})
+
+describe('a native reply the page no longer holds', () => {
+    test('a native reply running in the shown chat disables the sibling arrows and the new reply control while no unit writes', async () => {
+        setRunningReplies([{ key: 'k', target: { chaId: 'c', chatId: 'chat', name: 'Ari' } }])
+        await show()
+        const row = target.querySelector('[data-part="chat-message-alts"]')!
+        expect(row.querySelector<HTMLButtonElement>('[aria-label="Next reply"]')!.disabled).toBe(true)
+        expect(row.querySelector<HTMLButtonElement>('[data-action="newReply"]')!.disabled).toBe(true)
     })
 })
 

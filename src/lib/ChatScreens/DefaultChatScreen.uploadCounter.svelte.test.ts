@@ -19,7 +19,7 @@ vi.mock('src/ts/process/composerActions.svelte', () => ({
     isComposerBusy: () => false,
     isComposerBusyIn: () => false,
     stopComposerWorkIn: () => {},
-    isComposerLocked: () => false,
+    isComposerLocked: () => false, isComposerLockedIn: () => false,
     isAutoModeActive: () => false,
 }))
 vi.mock('src/ts/process/coldstorage.svelte', async (importOriginal) => ({

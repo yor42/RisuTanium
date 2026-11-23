@@ -42,7 +42,7 @@ vi.mock('../../ts/process/index.svelte', async () => {
     const { writable } = await import('svelte/store')
     return { doingChat: writable(false), chatProcessStage: writable(0) }
 })
-vi.mock('../../ts/process/composerActions.svelte', () => ({ sendMain: vi.fn(async () => {}), abortChat: vi.fn(), stopComposerWorkIn: vi.fn(), isComposerBusy: () => false, isComposerBusyIn: () => false, isComposerLocked: () => false, reroll: vi.fn(), updateInputTransateMessage: vi.fn() }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ sendMain: vi.fn(async () => {}), abortChat: vi.fn(), stopComposerWorkIn: vi.fn(), isComposerBusy: () => false, isComposerBusyIn: () => false, isComposerLocked: () => false, isComposerLockedIn: () => false, reroll: vi.fn(), updateInputTransateMessage: vi.fn() }))
 vi.mock('../../ts/process/chatOrigin', () => ({ beginWork: vi.fn(), originOf: (owner: { chaId: string }, chat: { id: string }) => ({ chaId: owner.chaId, chatId: chat.id }) }))
 vi.mock('../../ts/chatShell/stopDelete.svelte', () => ({ isStopDeletePending: () => false }))
 vi.mock('../../ts/process/files/multisend', () => ({ postChatFile: vi.fn(async () => []) }))

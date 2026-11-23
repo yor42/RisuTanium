@@ -521,7 +521,7 @@ export const languageEnglish = {
     chatShellDeleteChatConfirm: (name: string, count: number) => `Delete "${name}" and its ${count} ${count === 1 ? 'message' : 'messages'}?`,
     chatShellHideNames: 'Hide names and avatars',
     chatShellEditNotSaved: 'This chat was closed or archived, so the change wasn\'t saved.',
-    chatShellSendBlockedWriting: 'Another chat is writing a reply. Send when it finishes.',
+    chatShellSendWaitsForNativeReply: 'A reply is still being written in this chat. Send when it finishes.',
     replyFinishedElsewhere: '{name} replied',
     replyFailedElsewhere: '{name}\'s reply failed',
     nativeReplyInterrupted: '{name}\'s reply was cut off when the app closed',

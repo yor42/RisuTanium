@@ -75,7 +75,7 @@ vi.mock('./PersonaSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./PlusSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ActionSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./CustomizeButtonsSheet.svelte', () => ({ default: () => ({}) }))
-vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, branchAt: vi.fn() }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, isComposerBusyIn: () => false, branchAt: vi.fn() }))
 
 import ChatShell from './ChatShell.svelte'
 import { DBState, selIdState } from '../../ts/stores.svelte'

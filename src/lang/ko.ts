@@ -521,7 +521,7 @@ export const languageKorean = {
     chatShellDeleteChatConfirm: (name: string, count: number) => `"${name}" 채팅과 메시지 ${count}개를 삭제하시겠습니까?`,
     chatShellHideNames: "이름과 아바타 숨기기",
     chatShellEditNotSaved: "이 채팅이 닫혔거나 보관되어 변경 사항이 저장되지 않았습니다.",
-    chatShellSendBlockedWriting: "다른 채팅에서 답변을 작성하는 중입니다. 끝나면 보내세요.",
+    chatShellSendWaitsForNativeReply: "이 채팅에서 아직 답변을 작성하는 중입니다. 끝나면 보내세요.",
     replyFinishedElsewhere: "{name}이(가) 답변했습니다",
     replyFailedElsewhere: "{name}의 답변이 실패했습니다",
     nativeReplyInterrupted: "앱이 종료되면서 {name}의 답변이 중단되었습니다",

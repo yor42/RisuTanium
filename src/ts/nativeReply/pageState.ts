@@ -70,7 +70,7 @@ export interface PageStateDeps {
 let consumeStore: PageStateDeps['store'] | null = null
 let waiter: CharacterSavedWaiter | null = null
 let unreadableReporter: PageStateDeps['onUnreadable'] = () => {}
-let reconcileTrigger: (() => void) | null = null
+let reconcileTrigger: (() => Promise<void> | void) | null = null
 
 /** Wires the page state to the store and to the save signals; the page does it once at boot. */
 export function configurePageState(deps: PageStateDeps): void {
@@ -80,13 +80,13 @@ export function configurePageState(deps: PageStateDeps): void {
 }
 
 /** The reconcile the page runs on its triggers; null before it is installed. */
-export function setReconcileTrigger(trigger: (() => void) | null): void {
+export function setReconcileTrigger(trigger: (() => Promise<void> | void) | null): void {
     reconcileTrigger = trigger
 }
 
-/** Asks for a reconcile pass; nothing happens before the reconcile is installed. */
-export function requestReconcile(): void {
-    reconcileTrigger?.()
+/** Asks for a reconcile pass and resolves when it ends; resolves at once before the reconcile is installed. */
+export function requestReconcile(): Promise<void> {
+    return Promise.resolve(reconcileTrigger?.())
 }
 
 export function resetPageStateForTests(): void {

@@ -43,7 +43,7 @@ vi.mock('./SendFailureCard.svelte', () => ({ default: () => ({}) }))
 vi.mock('./SwitchFrame.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../ts/chatShell/sendFailure.svelte', () => ({ failureOf: () => null, retrySendFailure: vi.fn() }))
 vi.mock('../Setting/settingsRoute', () => ({ openSettingsForFix: vi.fn() }))
-vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, branchAt: vi.fn() }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, isComposerBusyIn: () => false, branchAt: vi.fn() }))
 vi.mock('../ChatScreens/NotificationsOffNotice.svelte', () => ({ default: () => ({}) }))
 // ChatScreen's own parts and the classic screen: the classic screen is the Home stand-in of the same-flush row.
 vi.mock('../../ts/util', () => ({ getCustomBackground: async () => '', getEmotion: () => '' }))

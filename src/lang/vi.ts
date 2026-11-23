@@ -521,7 +521,7 @@ export const languageVietnamese = {
     chatShellDeleteChatConfirm: (name: string, count: number) => `Xóa "${name}" và ${count} tin nhắn của nó?`,
     chatShellHideNames: "Ẩn tên và ảnh đại diện",
     chatShellEditNotSaved: "Cuộc trò chuyện này đã bị đóng hoặc lưu trữ, nên thay đổi chưa được lưu.",
-    chatShellSendBlockedWriting: "Một cuộc trò chuyện khác đang viết phản hồi. Hãy gửi khi nó hoàn tất.",
+    chatShellSendWaitsForNativeReply: "Cuộc trò chuyện này vẫn đang viết phản hồi. Hãy gửi khi nó hoàn tất.",
     replyFinishedElsewhere: "{name} đã phản hồi",
     replyFailedElsewhere: "Phản hồi của {name} thất bại",
     nativeReplyInterrupted: "Phản hồi của {name} bị ngắt khi ứng dụng đóng",
