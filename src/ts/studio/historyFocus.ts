@@ -95,7 +95,8 @@ function elementFor(scope: ParentNode, target: FocusTarget): HTMLElement | null 
         }
         default: {
             const focus = FIELD_PRESENTATION[target.kind].focus
-            return focus !== null && typeof focus === 'object' ? scope.querySelector<HTMLElement>(`[data-part="${focus.form}"] [data-part="${focus.part}"]`) : null
+            if (focus === null || typeof focus !== 'object') return null
+            return scope.querySelector<HTMLElement>(`[data-part="${focus.form}"] [data-part="${focus.part}"]${focus.byPath ? `[data-path="${target.kind}"]` : ''}`)
         }
     }
 }

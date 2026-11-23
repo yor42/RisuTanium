@@ -7,6 +7,8 @@
     import { dispatchBack } from '../../ts/backHandlers'
     import { provideOwnerSource } from '../../ts/studio/ownerSource.svelte'
     import { studioLayoutOf } from '../../ts/studio/studioLayout'
+    import { askRiskyTurnOn, cancelRiskyQuestion, cancelRiskyQuestionIfMoved, riskyQuestion } from '../../ts/studio/edit/riskyConfirm.svelte'
+    import { pinnedDesc, withRiskyConfirm } from '../../ts/studio/edit/riskyReplay'
     import { createStudioToasts, refusalTextOf, runDismissingConsumed, withListReason } from '../../ts/studio/edit/studioToasts'
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import type { OwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -24,6 +26,7 @@
     import StudioHistoryPanel from './StudioHistoryPanel.svelte'
     import StudioNotice from './StudioNotice.svelte'
     import StudioRestoreSheet from './StudioRestoreSheet.svelte'
+    import StudioRiskyConfirm from './StudioRiskyConfirm.svelte'
     import StudioSearch from './StudioSearch.svelte'
     import StudioTree from './StudioTree.svelte'
 
@@ -42,7 +45,15 @@
 
     // Set once the screen is gone: a replay that settles after that has no screen to speak on.
     let destroyed = false
-    onDestroy(() => { destroyed = true })
+    // The screen's end cancels a pending risky question, so no turn-on outlives the screen it was asked on.
+    onDestroy(() => { destroyed = true; cancelRiskyQuestion() })
+
+    // A visit change or another selected character cancels a pending risky question.
+    $effect(() => {
+        void studioScreen.visitId
+        void studioScreen.chaId
+        untrack(cancelRiskyQuestionIfMoved)
+    })
 
     const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => toastHost) })
 
@@ -123,6 +134,8 @@
     // Every undo and redo, from a key or from a layer's button, starts here: `accept` runs synchronously before the
     // replay starts (a key's preventDefault), and the outcome is told by `replayAndNotify` alone.
     function historyStep(direction: 'undo' | 'redo', entry: HTMLInputElement | HTMLTextAreaElement | null, accept?: () => void): boolean {
+        // A pending risky question owns the history: nothing replays past it.
+        if (riskyQuestion() !== null) return false
         const target = stepTargetOf(direction)
         if (target === null) return false
         accept?.()
@@ -132,7 +145,7 @@
 
     setContext<StudioHistoryStep>(STUDIO_HISTORY_STEP, {
         step: (direction, entry) => historyStep(direction, entry),
-        can: (direction) => stepTargetOf(direction) !== null,
+        can: (direction) => riskyQuestion() === null && stepTargetOf(direction) !== null,
     })
 
     // The replay runs in the service's queue and may ask whether asset files are still there, so its outcome arrives
@@ -142,10 +155,24 @@
         const visitId = studioScreen.visitId
         let result: StudioResult
         try {
-            result = await service.replay(owner, { kind: direction }, (apply) => {
-                read.before = readOwnerFields(owner)
-                return runDismissingConsumed(service, toasts, owner, apply)
-            })
+            const still = (): boolean => !destroyed && studioScreen.visitId === visitId && selectedHistoryOwner() === owner
+            const settled = await withRiskyConfirm(
+                owner,
+                (confirmed, pin) =>
+                    service.replay(
+                        owner,
+                        pinnedDesc({ kind: direction }, confirmed, pin),
+                        (apply) => {
+                            read.before = readOwnerFields(owner)
+                            return runDismissingConsumed(service, toasts, owner, apply)
+                        },
+                    ),
+                still,
+                askRiskyTurnOn,
+            )
+            // A cancelled question is silent: no notice, no refusal line.
+            if (settled === null) return
+            result = settled
         } catch (error) {
             // A rejected replay may already have landed its write; the error is shown, whatever became of the screen.
             alertError(error instanceof Error ? error : String(error))
@@ -177,6 +204,17 @@
     // to the IME.
     function onkeydown(event: KeyboardEvent): void {
         if (event.isComposing || event.keyCode === 229) return
+        // A pending risky question owns the keys: Esc cancels it, and the search and history keys are dropped. Nothing
+        // else runs, so the restore sheet beneath is never closed by that Esc.
+        if (riskyQuestion() !== null) {
+            if (event.key === 'Escape') {
+                cancelRiskyQuestion()
+                event.preventDefault()
+            } else if (historyDirectionOf(event) !== null || ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k')) {
+                event.preventDefault()
+            }
+            return
+        }
         // Ctrl+K (Cmd+K) opens the search, or returns to its field. It is bound here, on the Studio root, so it
         // never reaches a key typed outside Studio.
         if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
@@ -267,6 +305,10 @@
         {/if}
         {#if studioScreen.restoreSheetOpen}
             <StudioRestoreSheet host={toastHost} />
+        {/if}
+        <!-- The risky turn-on question sits above the restore sheet and covers this body only. -->
+        {#if riskyQuestion() !== null}
+            <StudioRiskyConfirm />
         {/if}
     </div>
 </div>

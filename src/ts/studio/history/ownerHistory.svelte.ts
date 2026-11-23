@@ -49,6 +49,7 @@ import {
     type SetterRefusal,
 } from '../edit/studioSetters'
 import type { SaveAck } from '../edit/saveAck.svelte'
+import { riskyTurnOnsOf } from '../edit/riskyFlags'
 import { isSessionTarget, liveReaderOf, resolveOwnerTarget } from '../edit/ownerTargets'
 import { sessionAdapterOf, type SessionTarget } from '../edit/sessionAdapters'
 import { createElementHashCache, WARM_CHUNK_MS, WARM_MAX_YIELDS, WARM_MS_PER_ELEMENT, WARM_MS_PER_UNIT, type ElementHashCache, type IdleScheduler } from './elementHashCache'
@@ -121,7 +122,12 @@ export type AssetRefusal = 'asset-no-undo' | 'asset-other-tab-character' | 'asse
 // Undo is given up by its host after 10 s, so a queued replay must reach its answer well before that.
 export const REPLAY_BUDGET_MS = 8000
 
-export type StudioRefusal = 'loading' | SetterRefusal | AssetRefusal | 'empty' | 'unknown' | 'pairSplit'
+// `riskyConfirm`: the action would turn a risky flag on and the call did not confirm it (see `riskyTurnOnsOf`).
+export type StudioRefusal = 'loading' | SetterRefusal | AssetRefusal | 'empty' | 'unknown' | 'pairSplit' | 'riskyConfirm'
+
+// What a retry of a `riskyConfirm` refusal must still find: the step an undo or a redo would replay, or the step a
+// revert targets and every step above it.
+export type RiskyPin = { expectTop: string } | { expectIds: string[] }
 
 // What a landed action tells the caller. `unchanged` means the value already was the requested one:
 // nothing was written, marked or recorded.
@@ -164,11 +170,25 @@ export interface StudioWriteNotes {
 // `name` is the row a refusal is about (`asset-file-unchecked`). `targetChanged` says the steps the replay was asked for
 // are no longer the ones on top while it waited for its answers, so nothing was applied. `folderRefusal` says which folder
 // rule an explicit folder action broke; the refusal is `precondition` either way.
-export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true; folderRefusal?: FolderRefusal; listReason?: ListSkipReason }
+// `paths` and `pin` accompany a `riskyConfirm` refusal: the flags that need a confirmation, and the target the retry is
+// pinned to (absent for an edit and a restore point).
+export type StudioResult =
+    | ({ ok: true } & StudioWriteNotes)
+    | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true; folderRefusal?: FolderRefusal; listReason?: ListSkipReason; paths?: SetPath[]; pin?: RiskyPin }
 
 // What a replay is asked to do. `expectTop` makes an undo or a redo apply only while that step is still the one it
-// would replay.
-export type ReplayDesc = { kind: 'undo' | 'redo'; expectTop?: string } | { kind: 'revert'; stepId: string }
+// would replay; `expectIds` does the same for a revert (the step and every step above it). `confirmed` names the risky
+// flags this call may turn on, and admits nothing else.
+export type ReplayDesc =
+    | { kind: 'undo' | 'redo'; expectTop?: string; confirmed?: readonly SetPath[] }
+    | { kind: 'revert'; stepId: string; expectIds?: readonly string[]; confirmed?: readonly SetPath[] }
+
+export interface EditFieldOptions {
+    // The risky flags this call may turn on.
+    confirmed?: readonly SetPath[]
+    // `undefined` joins by the path (typing), `null` makes a step of its own, a string is the open-step key.
+    coalesceKey?: string | null
+}
 
 // Wraps the replay's synchronous apply. It must call `apply` exactly once, synchronously, and return its result.
 export type ReplayAround = (apply: () => StudioResult) => StudioResult
@@ -234,7 +254,7 @@ export interface OwnerHistoryService {
     setAck(chaId: string, ack: OwnerAck | null): void
     // The ack told of a landed write to module `moduleId`, kept apart from the character acks (which are keyed by chaId).
     setModuleAck(moduleId: string, ack: OwnerAck | null): void
-    editField(owner: OwnerKey, path: SetPath, value: string | boolean): StudioResult
+    editField(owner: OwnerKey, path: SetPath, value: string | boolean, options?: EditFieldOptions): StudioResult
     // A whole-value text edit. `typing` coalesces with the previous typing step of the same path; `single` is always its own step.
     editText(owner: OwnerKey, path: SetPath, value: string, mode?: 'typing' | 'single'): StudioResult
     greetingAdd(owner: OwnerKey): StudioResult
@@ -256,7 +276,7 @@ export interface OwnerHistoryService {
     // target is read when the job starts and checked again after the answers, and the apply (inside `around`, if given)
     // is one synchronous segment. A job that throws rejects its own promise only; the next job still runs.
     replay(owner: OwnerKey, desc: ReplayDesc, around?: ReplayAround): Promise<StudioResult>
-    restore(owner: OwnerKey, keep: ReadonlySet<RestorePath>): StudioResult
+    restore(owner: OwnerKey, keep: ReadonlySet<RestorePath>, options?: { confirmed?: readonly SetPath[] }): StudioResult
     restoreDeleted(owner: OwnerKey, deletedId: string): StudioResult
     // The asset intents of a character or module owner. Each is one step, one owner write and one save request; a
     // removal-type one is refused when history cannot persist, and a refusal changes nothing.
@@ -375,12 +395,12 @@ function saveEvent(result: SaveResult): OwnerEvent {
 }
 
 type Intent =
-    | { kind: 'edit'; build: (id: string, live: LiveReader, target: LiveTarget) => EditBuildResult }
+    | { kind: 'edit'; build: (id: string, live: LiveReader, target: LiveTarget) => EditBuildResult; confirmed?: readonly SetPath[] }
     // `coalesce: false` is the `single` mode: the step never merges with a neighbouring typing step.
     | { kind: 'text'; path: SetPath; value: string; coalesce: boolean }
-    | { kind: 'replay'; direction: 'undo' | 'redo' }
-    | { kind: 'revert'; stepId: string }
-    | { kind: 'restore'; keep: ReadonlySet<RestorePath> }
+    | { kind: 'replay'; direction: 'undo' | 'redo'; confirmed?: readonly SetPath[] }
+    | { kind: 'revert'; stepId: string; confirmed?: readonly SetPath[] }
+    | { kind: 'restore'; keep: ReadonlySet<RestorePath>; confirmed?: readonly SetPath[] }
     | { kind: 'restoreDeleted'; deletedId: string }
     | { kind: 'asset'; build: (live: LiveReader) => AssetBuildResult }
 
@@ -1090,6 +1110,15 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (!('writes' in planned)) {
             return planned
         }
+        // The risky-flag gate: nothing turns a flag from not-on to on unless this call names it as confirmed. It sits
+        // before the session branch, so no kind can bypass it, and a refusal writes, marks and records nothing and
+        // leaves the open step as it is.
+        const confirmed = confirmedOf(intent)
+        const unconfirmed = riskyTurnOnsOf(planned.writes, live).filter((path) => !confirmed.includes(path))
+        if (unconfirmed.length > 0) {
+            const pin = riskyPinOf(slot, intent)
+            return { ok: false, reason: 'riskyConfirm', paths: unconfirmed, ...(pin === null ? {} : { pin }) }
+        }
         if (isSessionTarget(target)) {
             return applySessionWrite(owner, slot, target, planned)
         }
@@ -1210,6 +1239,25 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         return { ok: true, ...planned.notes, ...(intent.kind === 'asset' ? { stepId: slot.record.done.at(-1)?.id } : {}) }
     }
 
+    // The flags this one call confirmed: only the intent's own list, never state kept from an earlier call.
+    function confirmedOf(intent: Intent): readonly SetPath[] {
+        return intent.kind === 'edit' || intent.kind === 'replay' || intent.kind === 'revert' || intent.kind === 'restore' ? (intent.confirmed ?? []) : []
+    }
+
+    // The target a retry of a refused replay must still find: the top of the list an undo or a redo replays, or the step a
+    // revert targets and every step above it. Null for an intent that replays nothing.
+    function riskyPinOf(slot: OwnerSlot, intent: Intent): RiskyPin | null {
+        if (intent.kind === 'replay') {
+            const ids = replayTargetIds(slot, { kind: intent.direction })
+            return ids !== null && ids.length > 0 ? { expectTop: ids[0] } : null
+        }
+        if (intent.kind === 'revert') {
+            const ids = replayTargetIds(slot, { kind: 'revert', stepId: intent.stepId })
+            return ids === null ? null : { expectIds: ids }
+        }
+        return null
+    }
+
     // The id of a module owner's slot; a module slot always has its stored part.
     function moduleIdOf(slot: OwnerSlot): string {
         return slot.stored?.claimSubject.id ?? ''
@@ -1318,11 +1366,17 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     }
 
     async function runReplay(owner: OwnerKey, desc: ReplayDesc, around: ReplayAround | undefined, deadline: number): Promise<StudioResult> {
-        const intent: Intent = desc.kind === 'revert' ? { kind: 'revert', stepId: desc.stepId } : { kind: 'replay', direction: desc.kind }
+        const intent: Intent =
+            desc.kind === 'revert'
+                ? { kind: 'revert', stepId: desc.stepId, confirmed: desc.confirmed }
+                : { kind: 'replay', direction: desc.kind, confirmed: desc.confirmed }
         // The target is read now, when this job's turn comes, not when it was asked for.
         const slot = slots.get(owner)
         const ids = replayTargetIds(slot, desc)
         if (desc.kind !== 'revert' && desc.expectTop !== undefined && ids?.[0] !== desc.expectTop) {
+            return { ok: false, reason: 'precondition', targetChanged: true }
+        }
+        if (desc.kind === 'revert' && desc.expectIds !== undefined && !sameIds(ids, desc.expectIds)) {
             return { ok: false, reason: 'precondition', targetChanged: true }
         }
         const replayed = slot ? replayedSteps(slot, intent) : null
@@ -1431,8 +1485,12 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 moduleAcks.delete(moduleId)
             }
         },
-        editField: (owner, path, value) =>
-            applyStudioWrite(owner, { kind: 'edit', build: (_id, live) => buildFieldEdit(path, value, live) }),
+        editField: (owner, path, value, options) =>
+            applyStudioWrite(owner, {
+                kind: 'edit',
+                build: (_id, live) => buildFieldEdit(path, value, live, options?.coalesceKey === undefined ? true : options.coalesceKey === null ? false : options.coalesceKey),
+                confirmed: options?.confirmed,
+            }),
         editText: (owner, path, value, mode = 'typing') =>
             applyStudioWrite(owner, { kind: 'text', path, value, coalesce: mode === 'typing' }),
         greetingAdd: (owner) => applyStudioWrite(owner, { kind: 'edit', build: (_id, live, target) => buildGreetingAdd(live, target) }),
@@ -1453,7 +1511,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         redo: (owner) => applyStudioWrite(owner, { kind: 'replay', direction: 'redo' }),
         revertTo: (owner, stepId) => applyStudioWrite(owner, { kind: 'revert', stepId }),
         replay,
-        restore: (owner, keep) => applyStudioWrite(owner, { kind: 'restore', keep }),
+        restore: (owner, keep, options) => applyStudioWrite(owner, { kind: 'restore', keep, confirmed: options?.confirmed }),
         restoreDeleted: (owner, deletedId) => applyStudioWrite(owner, { kind: 'restoreDeleted', deletedId }),
         assetDelete: (owner, array, indexes) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildAssetDelete(array, indexes, live) }),
         assetRemoveExtras: (owner, array, name, indexes, survivors) =>

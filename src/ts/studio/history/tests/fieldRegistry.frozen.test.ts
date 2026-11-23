@@ -28,6 +28,9 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['translatorNote', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
     ['creatorNotes', { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
     ['removedQuotes', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['lowLevelAccess', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['utilityBot', { value: 'bool', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
+    ['escapeOutput', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
 ]
 
 // The containers a dotted path names, with the value an absent container reads as. An undo replays a seed reading, so

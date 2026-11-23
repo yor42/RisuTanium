@@ -12,6 +12,7 @@
     import { DBState } from '../../ts/stores.svelte'
     import LongTextField from './LongTextField.svelte'
     import StudioCreatorNotesField from './StudioCreatorNotesField.svelte'
+    import StudioRiskySection from './StudioRiskySection.svelte'
     import type { PreviewSourceInput } from './LongTextPreview.svelte'
 
     // The text fields of the advanced kind that are not the example dialogue: the prompt texts and the character's
@@ -213,6 +214,7 @@
         {/each}
         {#if section === 'details'}
             <StudioCreatorNotesField {chaId} {owner} {service} {editable} ownerLabel={live.name} {previewSource} onresult={onFieldResult} />
+            <StudioRiskySection {chaId} {owner} {service} {editable} />
         {/if}
         {#if refusal}
             <p role="alert" data-part="studio-form-refusal" class="text-sm text-draculared">{refusalText(refusal)}</p>

@@ -46,6 +46,9 @@ const VALUE_OF: Record<SetPath, string | boolean> = {
     translatorNote: 'new translator note',
     creatorNotes: 'new creator notes',
     removedQuotes: true,
+    lowLevelAccess: true,
+    utilityBot: true,
+    escapeOutput: true,
 }
 
 describe('T-W1: the writers of the builtin holders', () => {

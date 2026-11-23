@@ -1,8 +1,10 @@
 <script lang="ts">
-    import { onMount, untrack } from 'svelte'
+    import { onDestroy, onMount, untrack } from 'svelte'
     import { language } from '../../lang'
     import { openStudioModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
     import { liveReaderOf, resolveOwnerTarget } from '../../ts/studio/edit/ownerTargets'
+    import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
+    import { resolveRiskyRefusal } from '../../ts/studio/edit/riskyReplay'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath } from '../../ts/studio/history/historyModel'
@@ -13,7 +15,7 @@
     import { registerStudioSheetBack } from '../../ts/studio/studioBack.svelte'
     import { placeFocusAfterHistory } from '../../ts/studio/historyFocus'
     import { readOwnerFields } from '../../ts/studio/ownerFields'
-    import { selectedHistoryOwner, setStudioRestoreSheetOpen } from '../../ts/studio/studioScreen.svelte'
+    import { selectedHistoryOwner, setStudioRestoreSheetOpen, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
 
     // The restore sheet over the History panel. It exists only while it is open: it holds the toast stack back
@@ -49,6 +51,15 @@
     let refusal = $state<StudioRefusal | null>(null)
     let cancelButton = $state<HTMLButtonElement | undefined>()
     let layer = $state<HTMLElement | undefined>()
+    let confirmButton = $state<HTMLButtonElement | undefined>()
+
+    // Set once the sheet is gone; the questions it asked end with it.
+    let destroyed = false
+    const asks = new Set<RiskyAsk>()
+    onDestroy(() => {
+        destroyed = true
+        for (const ask of [...asks]) ask.cancel()
+    })
 
     onMount(() => {
         cancelButton?.focus()
@@ -62,11 +73,39 @@
         overwritten = keep ? overwritten.filter((entry) => entry !== path) : [...overwritten, path]
     }
 
-    function confirm(): void {
+    async function confirm(): Promise<void> {
         if (!service || owner === null) return
-        const keep = new Set(changed.filter((path) => !overwritten.includes(path)))
-        const before = readOwnerFields(owner)
-        const result = service.restore(owner, keep)
+        const key = owner
+        const svc = service
+        const keepNow = (): Set<RestorePath> => new Set(changed.filter((path) => !overwritten.includes(path)))
+        let before = readOwnerFields(key)
+        let result = svc.restore(key, keepNow())
+        if (result.ok === false && result.reason === 'riskyConfirm') {
+            const visitId = studioScreen.visitId
+            // The question's answer may change what is live: the retry recomputes the kept paths and reads `before` after
+            // the answer, so focus goes to what the restore changed.
+            const settled = await resolveRiskyRefusal(
+                key,
+                result,
+                (confirmed) => {
+                    before = readOwnerFields(key)
+                    return svc.restore(key, keepNow(), { confirmed })
+                },
+                () => !destroyed && studioScreen.visitId === visitId && owner === key,
+                (asker, paths) => {
+                    const ask = askRiskyTurnOn(asker, paths)
+                    asks.add(ask)
+                    void ask.answer.then(() => asks.delete(ask))
+                    return ask
+                },
+            )
+            if (settled === null) {
+                // Declined or cancelled: the sheet stays open with no refusal line, and focus is on its confirm button.
+                if (!destroyed) confirmButton?.focus()
+                return
+            }
+            result = settled
+        }
         if (result.ok === false) {
             refusal = result.reason
             return
@@ -108,7 +147,7 @@
         {/if}
         <div class="flex justify-end gap-2">
             <button bind:this={cancelButton} type="button" class={buttonClass} data-part="studio-restore-cancel" onclick={() => setStudioRestoreSheetOpen(false)}>{language.cancel}</button>
-            <button type="button" class={buttonClass} data-part="studio-restore-confirm" disabled={!restore} onclick={confirm}>{language.studioRestoreConfirm}</button>
+            <button bind:this={confirmButton} type="button" class={buttonClass} data-part="studio-restore-confirm" disabled={!restore} onclick={() => void confirm()}>{language.studioRestoreConfirm}</button>
         </div>
     </div>
 </div>

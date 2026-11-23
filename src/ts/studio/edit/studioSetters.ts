@@ -237,8 +237,9 @@ export interface EditBuild {
 
 export type EditBuildResult = EditBuild | { ok: false; reason: 'precondition' | 'unchanged' }
 
-// `coalesce: false` gives a step that never joins, and is never joined by, a neighbouring typing step.
-export function buildFieldEdit(path: SetPath, value: string | boolean, live: LiveReader, coalesce = true): EditBuildResult {
+// `coalesce: false` gives a step that never joins, and is never joined by, a neighbouring typing step. `true` joins
+// by the path, and a string is the open-step key itself.
+export function buildFieldEdit(path: SetPath, value: string | boolean, live: LiveReader, coalesce: boolean | string = true): EditBuildResult {
     if (typeof value !== (factsOf(path).value === 'bool' ? 'boolean' : 'string')) {
         return { ok: false, reason: 'precondition' }
     }
@@ -269,7 +270,7 @@ export function buildFieldEdit(path: SetPath, value: string | boolean, live: Liv
         label: { kind: 'field', field: path },
         ops,
         writes,
-        coalesceKey: coalesce ? path : null,
+        coalesceKey: typeof coalesce === 'string' ? coalesce : coalesce ? path : null,
         pageFm: null,
     }
 }

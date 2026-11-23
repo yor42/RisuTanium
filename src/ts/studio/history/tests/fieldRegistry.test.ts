@@ -56,16 +56,17 @@ describe('T-P1: the derived tables equal the literal lists (compatibility guard)
     test('set rows, restore rows, restore order, boolean paths, text paths per kind and the merge text paths', () => {
         const S1 = ['systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'additionalData.creator', 'additionalData.character_version', 'nickname', 'defaultVariables', 'translatorNote']
         const S2A = ['creatorNotes', 'removedQuotes']
-        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A])
+        const S2B = ['lowLevelAccess', 'utilityBot', 'escapeOutput']
+        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B])
         expect(SET_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(SET_PATHS_BY_KIND.module).toEqual(['customModuleToggle'])
         expect(CHARACTER_SET_PATHS).toEqual(SET_PATHS_BY_KIND.character)
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, 'alternateGreetings'])
+        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, 'alternateGreetings'])
         expect(RESTORE_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(RESTORE_PATHS_BY_KIND.module).toEqual(['customModuleToggle'])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S2A, 'alternateGreetings'])
-        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'removedQuotes'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S2A, ...S2B, 'alternateGreetings'])
+        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'removedQuotes', ...S2B])
         expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1, 'creatorNotes'])
         expect(textPathsFor('chat')).toEqual(['note'])
         expect(textPathsFor('module')).toEqual(['customModuleToggle'])
@@ -139,6 +140,9 @@ describe('T-L1: the label key of every registered path (diagnostic)', () => {
         translatorNote: 'translatorNote',
         creatorNotes: 'creatorNotes',
         removedQuotes: 'studioFieldRemovedQuotes',
+        lowLevelAccess: 'lowLevelAccess',
+        utilityBot: 'utilityBot',
+        escapeOutput: 'escapeOutput',
     }
 
     test.each(Object.entries(EXPECTED))('%s', (path, key) => {

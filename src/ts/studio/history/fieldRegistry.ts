@@ -50,7 +50,8 @@ export interface FieldPresentation {
     labelKey: StringKeyOf<typeof languageEnglish>
     // Where focus goes after a history action changed the path: the two special first message and example list
     // targets, an element named by its form and part, or nothing.
-    focus: 'firstMessage' | 'example' | { form: string; part: string } | null
+    // `byPath` narrows the element by its `data-path` attribute (the path itself), for parts that repeat per path.
+    focus: 'firstMessage' | 'example' | { form: string; part: string; byPath?: true } | null
 }
 
 export const FIELD_SPECS = {
@@ -74,6 +75,9 @@ export const FIELD_SPECS = {
     translatorNote: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     creatorNotes: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
     removedQuotes: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    lowLevelAccess: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    utilityBot: { value: 'bool', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    escapeOutput: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -107,6 +111,9 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     translatorNote: { labelKey: 'translatorNote', focus: { form: 'studio-advanced-form', part: 'studio-form-translator-note' } },
     creatorNotes: { labelKey: 'creatorNotes', focus: { form: 'studio-advanced-form', part: 'studio-form-creator-notes' } },
     removedQuotes: { labelKey: 'studioFieldRemovedQuotes', focus: { form: 'studio-advanced-form', part: 'studio-form-creator-notes' } },
+    lowLevelAccess: { labelKey: 'lowLevelAccess', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    utilityBot: { labelKey: 'utilityBot', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    escapeOutput: { labelKey: 'escapeOutput', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed

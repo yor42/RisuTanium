@@ -4,6 +4,8 @@
     import { XIcon } from '@lucide/svelte'
     import { alertError } from '../../ts/alert'
     import { language } from '../../lang'
+    import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
+    import { pinnedDesc, withRiskyConfirm } from '../../ts/studio/edit/riskyReplay'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
     import { createStudioToasts, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
@@ -33,7 +35,12 @@
     // Set once the panel is gone: a replay that settles after that has no panel to show its outcome in, and its focus
     // placement would fall back to the whole document.
     let destroyed = false
-    onDestroy(() => { destroyed = true })
+    // The questions this panel asked: its destruction cancels them, so none outlives the panel that asked.
+    const asks = new Set<RiskyAsk>()
+    onDestroy(() => {
+        destroyed = true
+        for (const ask of [...asks]) ask.cancel()
+    })
 
     const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => host) })
 
@@ -134,12 +141,27 @@
         const key = historyOwner
         const svc = service
         const read: { before: OwnerFields | null } = { before: null }
+        const visitId = studioScreen.visitId
         let result: StudioResult
         try {
-            result = await svc.replay(key, desc, (apply) => {
-                read.before = readOwnerFields(key)
-                return runDismissingConsumed(svc, toasts, key, apply)
-            })
+            // An action that would turn a risky flag on asks first; a cancelled question is silent.
+            const settled = await withRiskyConfirm(
+                key,
+                (confirmed, pin) =>
+                    svc.replay(key, pinnedDesc(desc, confirmed, pin), (apply) => {
+                        read.before = readOwnerFields(key)
+                        return runDismissingConsumed(svc, toasts, key, apply)
+                    }),
+                () => !destroyed && studioScreen.visitId === visitId && historyOwner === key,
+                (asker, paths) => {
+                    const ask = askRiskyTurnOn(asker, paths)
+                    asks.add(ask)
+                    void ask.answer.then(() => asks.delete(ask))
+                    return ask
+                },
+            )
+            if (settled === null) return
+            result = settled
         } catch (error) {
             // A rejected replay may already have landed its write; the error is shown, whatever became of the panel.
             alertError(error instanceof Error ? error : String(error))

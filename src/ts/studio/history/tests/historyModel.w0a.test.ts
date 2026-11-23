@@ -29,17 +29,18 @@ const KEYS: Record<OwnerKind, StoredOwnerKey> = {
 
 const S1_PATHS: readonly SetPath[] = ['systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'additionalData.creator', 'additionalData.character_version', 'nickname', 'defaultVariables', 'translatorNote']
 const S2A_PATHS: readonly SetPath[] = ['creatorNotes', 'removedQuotes']
+const S2B_PATHS: readonly SetPath[] = ['lowLevelAccess', 'utilityBot', 'escapeOutput']
 
-const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S2A_PATHS]
+const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS]
 
 const EXPECTED_SET: Record<OwnerKind, readonly SetPath[]> = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS],
     chat: ['note'],
     module: ['customModuleToggle'],
 }
 
 const EXPECTED_RESTORE: Record<OwnerKind, readonly RestorePath[]> = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, 'alternateGreetings'],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, 'alternateGreetings'],
     chat: ['note'],
     module: ['customModuleToggle'],
 }
@@ -48,7 +49,7 @@ function fieldValue(path: RestorePath, value: string): unknown {
     if (path === 'alternateGreetings') {
         return { list: [value] }
     }
-    return { had: true, value: path === 'hideChatIcon' || path === 'risutanium_render_when_complete' || path === 'removedQuotes' ? true : value }
+    return { had: true, value: path === 'hideChatIcon' || path === 'risutanium_render_when_complete' || path === 'removedQuotes' || S2B_PATHS.includes(path as SetPath) ? true : value }
 }
 
 function rawRecord(kind: OwnerKind, parts: { done?: unknown[]; restore?: unknown }): unknown {
@@ -102,7 +103,7 @@ describe('A2: the set-path table is the only list of what each owner kind accept
 
 describe('A8 (model half): the restore order lists every restore key once, the toggle before hideChatIcon', () => {
     test('RESTORE_PATH_ORDER is the literal order', () => {
-        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S2A_PATHS, 'alternateGreetings'])
+        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, 'alternateGreetings'])
     })
 
     test('every restore key of every owner kind has a place in the order', () => {
