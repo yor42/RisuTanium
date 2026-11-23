@@ -9,6 +9,7 @@
  * the ids it is given.
  */
 import { flushSync, mount, unmount } from 'svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import 'src/ts/polyfill'
@@ -70,10 +71,16 @@ function installDb(): void {
     } as unknown as Database
 }
 
-function mountList(): HTMLElement {
+async function mountList(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
+    // The windowed rows mount once the host has read the band: every row falls in it, as these tests are not about which rows are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     mounted.push({ app: mount(BotPreset, { target, props: { close: vi.fn() } }), target })
+    flushSync()
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
     flushSync()
     return target
 }
@@ -101,16 +108,16 @@ afterEach(async () => {
 })
 
 describe('preset list select mode', () => {
-    test('(G) outside select mode a row click switches preset and the bar is absent', () => {
-        const target = mountList()
+    test('(G) outside select mode a row click switches preset and the bar is absent', async () => {
+        const target = await mountList()
         expect(target.querySelector('[data-select-bar]')).toBeNull()
         const first = [...target.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Beta')) as HTMLButtonElement
         first.click()
         expect(changeToPreset).toHaveBeenCalledWith(1)
     })
 
-    test('(R) a row click in select mode toggles and does not switch preset', () => {
-        const target = mountList()
+    test('(R) a row click in select mode toggles and does not switch preset', async () => {
+        const target = await mountList()
         enterSelectMode(target)
         const [alpha, beta] = rows(target)
         expect(rows(target)).toHaveLength(3)
@@ -125,7 +132,7 @@ describe('preset list select mode', () => {
     })
 
     test('(R) Export is disabled at zero, shows the count, and sends exactly the ticked ids', async () => {
-        const target = mountList()
+        const target = await mountList()
         enterSelectMode(target)
         expect(barButton(target, 'Export').disabled).toBe(true)
         const [alpha, , gamma] = rows(target)
@@ -142,8 +149,8 @@ describe('preset list select mode', () => {
         expect(target.querySelector('[data-select-bar]')).toBeNull()
     })
 
-    test('(R) All ticks every preset, a second press clears them, and Cancel leaves without exporting', () => {
-        const target = mountList()
+    test('(R) All ticks every preset, a second press clears them, and Cancel leaves without exporting', async () => {
+        const target = await mountList()
         enterSelectMode(target)
         barButton(target, language.presetBundleAll).click()
         flushSync()
@@ -158,8 +165,8 @@ describe('preset list select mode', () => {
         expect(downloadPresetBundle).not.toHaveBeenCalled()
     })
 
-    test('select mode hides the per-row copy, export and remove controls', () => {
-        const target = mountList()
+    test('select mode hides the per-row copy, export and remove controls', async () => {
+        const target = await mountList()
         expect(target.querySelector(`[aria-label="${language.copy}"]`)).not.toBeNull()
         enterSelectMode(target)
         expect(target.querySelector(`[aria-label="${language.copy}"]`)).toBeNull()

@@ -12,6 +12,7 @@
  * after the change; every other test is a regression reproducer for the behaviour it names.
  */
 import { flushSync, mount, unmount } from 'svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { writable } from 'svelte/store'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -139,11 +140,17 @@ const preset = (name: string) => DBState.db.botPresets.find((p) => p.name === na
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
 
-function mountPresets(): HTMLElement {
+async function mountPresets(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
+    // The windowed rows mount once the host has read the band: every row falls in it, as these tests are not about which rows are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     const app = mount(BotPreset, { target, props: { close: vi.fn() } }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
+    flushSync()
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
     flushSync()
     return target
 }
@@ -185,7 +192,7 @@ afterEach(async () => {
 describe('a bot preset delete', () => {
     test('guard: with nothing else changing, the confirmed preset is removed and no other', async () => {
         installDb(['P0', 'P1', 'P2', 'P3'], 0)
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P2')
         await answer(true)
         expect(names()).toEqual(['P0', 'P1', 'P3'])
@@ -193,7 +200,7 @@ describe('a bot preset delete', () => {
 
     test('guard: after a delete the first preset is selected and loaded', async () => {
         installDb(['P0', 'P1', 'P2', 'P3'], 2)
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P1')
         await answer(true)
         expect(DBState.db.botPresetsId).toBe(0)
@@ -203,7 +210,7 @@ describe('a bot preset delete', () => {
     test('guard: the live settings of the selected preset are saved into it before the first preset is loaded', async () => {
         installDb(['P0', 'P1', 'P2'], 2)
         DBState.db.aiModel = 'edited-live'
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P1')
         await answer(true)
         expect(names()).toEqual(['P0', 'P2'])
@@ -212,7 +219,7 @@ describe('a bot preset delete', () => {
 
     test('guard: deleting the selected preset removes it and selects the first', async () => {
         installDb(['P0', 'P1', 'P2'], 1)
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P1')
         await answer(true)
         expect(names()).toEqual(['P0', 'P2'])
@@ -222,7 +229,7 @@ describe('a bot preset delete', () => {
 
     test('guard: refusing the confirmation removes nothing', async () => {
         installDb(['P0', 'P1', 'P2'])
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P1')
         await answer(false)
         expect(names()).toEqual(['P0', 'P1', 'P2'])
@@ -230,7 +237,7 @@ describe('a bot preset delete', () => {
 
     test('guard: the only preset has no confirmation and is kept', async () => {
         installDb(['P0'])
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P0')
         expect(confirms.pending.length).toBe(0)
         expect(names()).toEqual(['P0'])
@@ -238,7 +245,7 @@ describe('a bot preset delete', () => {
 
     test('a preset inserted above it while the confirmation is open does not change which preset is removed', async () => {
         installDb(['P0', 'P1', 'P2', 'P3'], 0)
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P2')
         DBState.db.botPresets.unshift({ name: 'new' } as never)
         DBState.db.botPresetsId = 1
@@ -249,7 +256,7 @@ describe('a bot preset delete', () => {
 
     test('a preset removed above it while the confirmation is open does not change which preset is removed', async () => {
         installDb(['P0', 'P1', 'P2', 'P3'], 1)
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P2')
         DBState.db.botPresets.splice(0, 1)
         DBState.db.botPresetsId = 0
@@ -260,7 +267,7 @@ describe('a bot preset delete', () => {
 
     test('two pending deletes of the same preset remove it once', async () => {
         installDb(['P0', 'P1', 'P2', 'P3'], 0)
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P1')
         await clickTrash(target, 'P1')
         expect(confirms.pending.length).toBe(2)
@@ -271,7 +278,7 @@ describe('a bot preset delete', () => {
 
     test('a preset removed by something else while its confirmation is open leaves every other preset in place', async () => {
         installDb(['P0', 'P1', 'P2', 'P3'], 0)
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P1')
         DBState.db.botPresets.splice(1, 1)
         flushSync()
@@ -281,7 +288,7 @@ describe('a bot preset delete', () => {
 
     test('a delete whose confirmation outlives all but its own preset keeps that last preset', async () => {
         installDb(['P0', 'P1'], 0)
-        const target = mountPresets()
+        const target = await mountPresets()
         await clickTrash(target, 'P0')
         DBState.db.botPresets.splice(1, 1)
         flushSync()

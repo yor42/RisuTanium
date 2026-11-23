@@ -7,6 +7,7 @@
  * entry they rebuild; a single-preset export carries none of it. Titles beginning "guard:" hold before and after the change.
  */
 import { flushSync, mount, unmount } from 'svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { writable } from 'svelte/store'
 import * as fflate from 'fflate'
 import { encode as encodeMsgpack } from 'msgpackr/index-no-eval'
@@ -142,6 +143,8 @@ let mounted: Array<{ target: HTMLElement, app: Record<string, unknown> }> = []
 function mountPresets(): HTMLElement {
     const target = document.createElement('div')
     document.body.appendChild(target)
+    // The windowed rows mount once the host has read the band: every row falls in it, as these tests are not about which rows are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     const app = mount(BotPreset, { target, props: { close: vi.fn() } }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
     flushSync()

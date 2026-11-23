@@ -8,6 +8,8 @@
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import type { OwnerKey } from '../../ts/studio/history/ownerPhase'
     import type { LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
+    import { createWindowHost } from '../../ts/windowing/windowHost.svelte'
+    import WindowedSegment from '../UI/Windowed/WindowedSegment.svelte'
     import LongTextField from './LongTextField.svelte'
     import type { PreviewSourceInput } from './LongTextPreview.svelte'
     import PasteSeveralSheet from './PasteSeveralSheet.svelte'
@@ -36,6 +38,11 @@
     const rows = $derived(rowKeys.rows(greetings))
 
     let root = $state<HTMLElement | undefined>()
+    // Only the cards near the view are mounted. A card is keyed by its row id, so a DOM position is never a data
+    // index: the helpers below find a card by `data-row-index`, and reveal it before focusing one outside the window.
+    const windowHost = createWindowHost({ root: () => root ?? null })
+    onDestroy(() => windowHost.dispose())
+    const CARD_FALLBACK_PX = 120
     let menuId = $state<number | null>(null)
     let announcement = $state('')
     let pasteOpen = $state(false)
@@ -43,10 +50,34 @@
     let drag = $state<{ id: number; from: number; to: number } | null>(null)
 
     const indexOf = (id: number): number => rows.findIndex((row) => row.id === id)
+    const rowKeyList = $derived(rows.map((row) => String(row.id)))
+    // A drag reads every card's rect, and the open menu's card keeps its menu in the page.
+    const pinnedRows = $derived.by((): string[] => {
+        const open = menuId === null ? [] : [String(menuId)]
+        return drag ? [...rowKeyList, ...open] : open
+    })
     const rowElements = (): HTMLElement[] => (root ? Array.from(root.querySelectorAll<HTMLElement>('[data-part="studio-greeting-row"]')) : [])
-    const inputs = (): HTMLElement[] => (root ? Array.from(root.querySelectorAll<HTMLElement>('[data-part="studio-greeting-input"]')) : [])
-    const handleAt = (index: number): HTMLElement | undefined => root?.querySelectorAll<HTMLElement>('[data-part="studio-card-handle"]')[index]
+    const inputAt = (index: number): HTMLElement | undefined => root?.querySelector<HTMLElement>(`[data-part="studio-greeting-input"][data-index="${index}"]`) ?? undefined
+    const handleAt = (index: number): HTMLElement | undefined => root?.querySelector<HTMLElement>(`[data-part="studio-card-handle"][data-row-index="${index}"]`) ?? undefined
     const menuButtonOf = (id: number): HTMLElement | undefined => root?.querySelector<HTMLElement>(`[data-part="studio-card-menu"][data-row="${id}"]`) ?? undefined
+
+    // Focuses a part of a card; a card outside the window is revealed (mounted) first.
+    async function focusIn(index: number, find: (index: number) => HTMLElement | undefined): Promise<void> {
+        let found = find(index)
+        if (!found) {
+            // A list change that has not reached the segment's keys yet mounts the card with the next flush.
+            await afterFlush()
+            found = find(index)
+        }
+        if (found) {
+            found.focus()
+            return
+        }
+        const row = rows[index]
+        if (!row) return
+        await windowHost.reveal(String(row.id))
+        find(index)?.focus()
+    }
 
     // Bound to the row's id, not its position: a row that was removed reads null, and a row that took another
     // text fails the controller's base check, so held text never lands in a neighbouring row.
@@ -85,7 +116,7 @@
     async function add(): Promise<void> {
         if (!service || !editable || !noted(service.greetingAdd(owner))) return
         await afterFlush()
-        inputs().at(-1)?.focus()
+        await focusIn(rows.length - 1, inputAt)
     }
 
     function openPaste(): void {
@@ -106,7 +137,7 @@
         announce('')
         await afterFlush()
         // The rows already include the appended ones: the first new card is `count` from the end.
-        inputs()[rows.length - count]?.focus()
+        await focusIn(rows.length - count, inputAt)
         announce(language.ltPasteAdded(count))
     }
 
@@ -118,9 +149,9 @@
         if (op?.op === 'listRemove') toasts.postDeleted(owner, op.deletedId)
         await afterFlush()
         // Focus goes to the row that took the place, else the one before it, else the add button.
-        const fields = inputs()
-        const next = fields[index] ?? fields[index - 1] ?? root?.querySelector<HTMLElement>('[data-part="studio-greeting-add"]')
-        next?.focus()
+        const landing = index < rows.length ? index : index - 1
+        if (landing >= 0) await focusIn(landing, inputAt)
+        else root?.querySelector<HTMLElement>('[data-part="studio-greeting-add"]')?.focus()
     }
 
     async function commitMove(id: number, to: number): Promise<void> {
@@ -130,7 +161,7 @@
         announce('')
         if (!noted(service.greetingMove(owner, from, to))) return
         await afterFlush()
-        handleAt(to)?.focus()
+        await focusIn(to, handleAt)
         announce(language.ltCardMoved(to + 1, rows.length))
     }
 
@@ -147,7 +178,7 @@
         announce('')
         if (!noted(service.greetingSwapWithMain(owner, index))) return
         await afterFlush()
-        menuButtonOf(id)?.focus()
+        await focusIn(indexOf(id), () => menuButtonOf(id))
         announce(language.ltCardSwapped)
     }
 
@@ -158,7 +189,7 @@
         announce('')
         if (!noted(service.greetingAppendMany(owner, [rows[index].text]))) return
         await afterFlush()
-        inputs().at(-1)?.focus()
+        await focusIn(rows.length - 1, inputAt)
         announce(language.ltCardCopied)
     }
 
@@ -208,7 +239,9 @@
     // The position a drop at `y` would take: the number of other rows whose middle lies above it.
     function dropTarget(y: number, from: number): number {
         let to = 0
-        rowElements().forEach((element, index) => {
+        // Every card is mounted while a drag is on, and each is read by its data index.
+        rowElements().forEach((element) => {
+            const index = Number(element.getAttribute('data-row-index'))
             if (index === from) return
             const rect = element.getBoundingClientRect()
             if (rect.top + rect.height / 2 < y) to++
@@ -296,15 +329,19 @@
     {#if greetings.length === 0}
         <p class="text-sm text-textcolor2">{language.studioGreetingsEmpty}</p>
     {/if}
-    {#each rows as row, index (row.id)}
+    <WindowedSegment host={windowHost} keys={rowKeyList} height={{ fallback: CARD_FALLBACK_PX }} pinned={pinnedRows} class="flex flex-col gap-2">
+    {#snippet item(key, index)}
+        {@const row = rows[index]}
+        <div class="flex flex-col gap-2">
         {#if drag && drag.to < drag.from && drag.to === index}
             <div data-part="studio-card-drop-line" class="h-0.5 rounded-full bg-selected"></div>
         {/if}
-        <div class="group flex flex-col gap-1 rounded-md border border-darkborderc p-2" data-part="studio-greeting-row" data-dragging={drag?.id === row.id ? 'true' : undefined}>
+        <div class="group flex flex-col gap-1 rounded-md border border-darkborderc p-2" data-part="studio-greeting-row" data-row-index={index} data-dragging={drag?.id === row.id ? 'true' : undefined}>
             <div class="flex items-center gap-2">
                 <button
                     type="button"
                     data-part="studio-card-handle"
+                    data-row-index={index}
                     class="{iconButtonClass} touch-none select-none"
                     aria-label={language.ltCardHandle(index + 1)}
                     disabled={!editable}
@@ -363,5 +400,7 @@
         {#if drag && drag.to > drag.from && drag.to === index}
             <div data-part="studio-card-drop-line" class="h-0.5 rounded-full bg-selected"></div>
         {/if}
-    {/each}
+        </div>
+    {/snippet}
+    </WindowedSegment>
 </div>
