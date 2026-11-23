@@ -343,6 +343,24 @@ describe('risuai.sendChat pins the chat selected at the call', () => {
         expect(processSendChatMock).not.toHaveBeenCalled()
     })
 
+    // The throw happens after `beginWork` returned a handle, so the registration must be ended on that path too.
+    test('V8b: a pinned chat with an id that is deleted during the prompt rejects, pushes nowhere and leaves no registration', async () => {
+        installWorld(makeChar('char-a', 'chat-a'))
+        selectedCharID.set(0)
+        alertConfirmMock.mockImplementationOnce(async () => {
+            const chats = DBState.db.characters[0].chats
+            chats.splice(0, 1, { id: 'other-chat', message: [{ role: 'char', data: 'other', time: 1 }], note: '', name: '', localLore: [] })
+            return true
+        })
+        const api = makeRisuaiAPIV3({} as HTMLIFrameElement, makePlugin('v8b'))
+
+        await expect(api.sendChat('hi')).rejects.toThrow('No active chat found')
+
+        expect(dataOf(0)).toEqual(['other'])
+        expect(hasAnyWork()).toBe(false)
+        expect(processSendChatMock).not.toHaveBeenCalled()
+    })
+
     // Regression reproducer for a refusal read from the selection after the prompt instead of the pinned chat.
     test('V9: a unit held in the chat selected after the prompt does not refuse a call pinned to another chat', async () => {
         installWorld(makeChar('char-a', 'chat-a'), makeChar('char-b', 'chat-b'))

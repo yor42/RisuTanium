@@ -15,7 +15,7 @@ vi.mock(import('../../generationOwnership.svelte'), () => ({
     isComposerWindowOpen: vi.fn(() => false),
     composerWindowFor: vi.fn(() => false),
 }) as unknown as typeof import('../../generationOwnership.svelte'))
-vi.mock(import('../../../stores.svelte'), () => ({ DBState: { db: {} }, selectedCharID: { subscribe: (run: (value: number) => void) => { run(-1); return () => {} } } }) as unknown as typeof import('../../../stores.svelte'))
+vi.mock(import('../../../stores.svelte'), () => ({ DBState: { db: {} }, selectedCharID: { subscribe: (run: (value: number) => void) => { run(0); return () => {} } } }) as unknown as typeof import('../../../stores.svelte'))
 vi.mock(import('../../chatOrigin'), () => ({ createSendSubject: vi.fn(), registerWork: vi.fn() }) as unknown as typeof import('../../chatOrigin'))
 vi.mock(import('src/ts/globalApi.svelte'), () => ({ downloadFile: vi.fn() }) as unknown as typeof import('src/ts/globalApi.svelte'))
 vi.mock(import('src/ts/platform'), () => ({ isTauri: false }) as unknown as typeof import('src/ts/platform'))
@@ -36,6 +36,7 @@ import { postChatFile } from '../multisend'
 import { createSendSubject, registerWork } from '../../chatOrigin'
 import { sendChat } from '../../index.svelte'
 import { BufferToText } from 'src/ts/util'
+import { DBState } from '../../../stores.svelte'
 import { clearRunningSends, simulateRunningSend } from '../../tests/activeUnits.test-helpers'
 
 beforeEach(() => {
@@ -102,5 +103,22 @@ describe('a .po job and the per-chat send gate', () => {
 
         expect(chat.message).toHaveLength(0)
         expect(sendChat).not.toHaveBeenCalled()
+    })
+
+    // The refusal reads the job's own chat, never the selection: the selection has moved to a chat that writes.
+    test('K2: the job posts its entry while the chat selected now writes', async () => {
+        const chat = arrangeJob()
+        const selected = { chaId: 'char-b', chatId: 'chat-b' }
+        DBState.db = { characters: [{ chaId: selected.chaId, chatPage: 0, chats: [{ id: selected.chatId }] }] } as unknown as typeof DBState.db
+        simulateRunningSend(selected)
+
+        try {
+            await postChatFile({ name: 'a.po', data: new Uint8Array(1) }, own)
+        } finally {
+            DBState.db = {} as typeof DBState.db
+        }
+
+        expect(chat.message.map((message) => message.data)).toEqual(['hello'])
+        expect(sendChat).toHaveBeenCalledTimes(1)
     })
 })

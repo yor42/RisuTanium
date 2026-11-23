@@ -97,8 +97,9 @@ vi.mock(import('src/ts/process/index.svelte'), async () => {
     } as unknown as typeof import('src/ts/process/index.svelte')
 })
 
-// Every other export stays the real module's. `isComposerWindowOpen` is a delegating spy so one call can answer
-// false: a second auto run can then start while an earlier toggled-off run still holds its window.
+// Every other export stays the real module's. `composerWindowFor` and `isComposerWindowOpen` are delegating spies:
+// a row overrides `composerWindowFor` to answer for one chat, so a second auto run can start while an earlier
+// toggled-off run still holds its window.
 vi.mock(import('src/ts/process/generationOwnership.svelte'), async (importOriginal) => {
     const actual = await importOriginal()
     return { ...actual, isComposerWindowOpen: vi.fn(actual.isComposerWindowOpen), composerWindowFor: vi.fn(actual.composerWindowFor) }

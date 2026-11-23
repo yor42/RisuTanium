@@ -1086,7 +1086,7 @@ describe('a unit held in one chat and a send into another', () => {
     test.each([
         ['send', { previewResult: {} }],
         ['prompt preview', { previewPrompt: true, previewResult: {} }],
-    ] as const)('A2: a %s in chat A refuses a send into chat A, with no registration, id fill or request', async (_name, arg) => {
+    ] as const)('A2: a %s in chat A refuses a send into chat A, with no registration, published unit or request', async (_name, arg) => {
         installTwoChats()
         const held = await holdUnit({ ...arg })
         try {

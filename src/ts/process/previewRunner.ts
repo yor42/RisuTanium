@@ -22,7 +22,6 @@ function dropPendingResult(): void {
 }
 
 /**
-
  * Whether a prompt preview may start. It may not while a generation, a native
  * reply or the composer's Send holds the selected chat (another chat's work does
  * not matter), nor while a prompt is waiting for its answer
