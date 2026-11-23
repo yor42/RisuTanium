@@ -4,8 +4,9 @@
 // module record naming a new path in a set op or a restore key is refused whole, while a label alone reads.
 import { describe, expect, test, vi } from 'vitest'
 import { buildFieldEdit, createLiveReader } from '../../edit/studioSetters'
-import { parseOwnerRecord, type OwnerRecord, type SetPath, type Step } from '../historyModel'
+import { parseOwnerRecord, type SetPath, type Step } from '../historyModel'
 import { chatOwnerKey, moduleOwnerKey } from '../ownerPhase'
+import type { StoredOwnerRecord } from '../studioHistoryStore'
 import { readBack, S1_OWNER, S1_PATHS, s1Character, s1Record, s1Restore, s1Value } from './s1Records.test-helpers'
 
 vi.mock('src/ts/stores.svelte', () => ({
@@ -48,9 +49,9 @@ describe('T1-KIND: the new paths belong to the character owner only', () => {
     test.each(owners)('%s: a set op or a restore key naming any new path is refused whole', (owner) => {
         for (const path of S1_PATHS) {
             const step: Step = { id: 'p:1', at: 1, label: { kind: 'restorePoint' }, ops: [{ op: 'set', path, before: { had: false }, after: { had: true, value: 'x' } }] }
-            const withSet: OwnerRecord = { ownerKey: owner, touchedAt: 1, done: [step], undone: [], deleted: [], restore: null }
+            const withSet: StoredOwnerRecord = { ownerKey: owner, touchedAt: 1, done: [step], undone: [], deleted: [], restore: null }
             expect(readBack(withSet), `set ${path}`).toBeNull()
-            const withRestore: OwnerRecord = { ownerKey: owner, touchedAt: 1, done: [], undone: [], deleted: [], restore: { visitId: 'v1', at: 2, fields: { [path]: s1Restore().fields[path] } } }
+            const withRestore: StoredOwnerRecord = { ownerKey: owner, touchedAt: 1, done: [], undone: [], deleted: [], restore: { visitId: 'v1', at: 2, fields: { [path]: s1Restore().fields[path] } } }
             expect(readBack(withRestore), `restore ${path}`).toBeNull()
         }
     })

@@ -4,8 +4,9 @@
 import { applyCharacterDefaults } from 'src/ts/storage/characterDefaults'
 import type { character } from 'src/ts/storage/database.svelte'
 import { buildFieldEdit, createLiveReader } from '../../edit/studioSetters'
-import type { OwnerRecord, RestorePoint, SetPath, Step } from '../historyModel'
-import { characterOwnerKey, type OwnerKey } from '../ownerPhase'
+import type { RestorePoint, SetPath, Step } from '../historyModel'
+import { characterOwnerKey, type StoredOwnerKey } from '../ownerPhase'
+import type { StoredOwnerRecord } from '../studioHistoryStore'
 import { seedOwner, storedRecord } from './studioStoreDoubles'
 
 export const S1_PATHS: readonly SetPath[] = [
@@ -13,7 +14,7 @@ export const S1_PATHS: readonly SetPath[] = [
     'additionalData.creator', 'additionalData.character_version', 'nickname', 'defaultVariables', 'translatorNote',
 ]
 
-export const S1_OWNER: OwnerKey = characterOwnerKey('c1')
+export const S1_OWNER: StoredOwnerKey = characterOwnerKey('c1')
 
 export function s1Character(): character {
     return applyCharacterDefaults({
@@ -53,12 +54,12 @@ export function s1Restore(): RestorePoint {
     return { visitId: 'v1', at: 20, fields }
 }
 
-export function s1Record(): OwnerRecord {
+export function s1Record(): StoredOwnerRecord {
     return { ownerKey: S1_OWNER, touchedAt: 30, done: S1_PATHS.map((path, index) => s1Step(path, index)), undone: [], deleted: [], restore: s1Restore() }
 }
 
 // The strict reader's view of a record written by the real serializer.
-export function readBack(record: OwnerRecord): OwnerRecord | null {
+export function readBack(record: StoredOwnerRecord): StoredOwnerRecord | null {
     const shared = new Map<string, string>()
     seedOwner(shared, record, 'w:1')
     return storedRecord(shared, record.ownerKey)?.record ?? null

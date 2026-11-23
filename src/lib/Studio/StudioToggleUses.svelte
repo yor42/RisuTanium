@@ -272,6 +272,9 @@
 {#if plan !== null && scanned !== null}
     <section data-part="studio-toggle-uses" aria-label={language.studioTgUsesTitle} class="flex flex-col gap-2 rounded-md border border-borderc bg-darkbg p-3">
         <h3 class="font-bold">{language.studioTgUsesTitle}</h3>
+        {#if target.kind === 'preset'}
+            <p data-part="studio-toggle-uses-preset-note" class="text-sm text-textcolor2">{language.studioTgUpdateAllPresetNote}</p>
+        {/if}
         {#each renames as rename (rename.from + '\u0000' + rename.to)}
             <p data-part="studio-toggle-uses-rename" class="text-sm text-textcolor">{language.studioTgUsesRename(rename.from, rename.to)}</p>
         {/each}

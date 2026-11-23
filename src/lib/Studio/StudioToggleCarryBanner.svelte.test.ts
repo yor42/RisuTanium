@@ -25,6 +25,7 @@ import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
 import type { StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
 import type { ToggleTextPort } from '../../ts/studio/edit/toggleTextPort'
 import { createToggleBuilder, type CarryDeps, type ToggleBuilder } from '../../ts/studio/toggleBuilder.svelte'
+import type { OtherSource } from '../../ts/studio/toggleCarryApply'
 import { resetToggleCarrySessionForTests } from '../../ts/studio/toggleCarryPending'
 import { parseDefinition } from '../../ts/studio/toggleDef'
 import StudioToggleCarryBanner from './StudioToggleCarryBanner.svelte'
@@ -36,7 +37,7 @@ interface Rig {
     stored: Record<string, string>
 }
 
-function rigOf(initial: string, values: Record<string, string> = {}, reachKind: 'own' | 'loaded' = 'own'): Rig {
+function rigOf(initial: string, values: Record<string, string> = {}, reachKind: 'own' | 'loaded' = 'own', others: OtherSource[] = [], namesActiveKeeps = false): Rig {
     const stored = { ...values }
     const port: ToggleTextPort & { text: string } = {
         owner: characterOwnerKey('A'),
@@ -51,7 +52,7 @@ function rigOf(initial: string, values: Record<string, string> = {}, reachKind: 
         closeOpenStep() {},
     }
     const deps: CarryDeps = {
-        reach: () => ({ places: [{ ref: { kind: 'global' }, entries: stored }], others: [] }),
+        reach: () => ({ places: [{ ref: { kind: 'global' }, entries: stored }], others }),
         values: {
             read: (_ref, key) => stored[key],
             write: (_ref, key, value) => {
@@ -63,6 +64,7 @@ function rigOf(initial: string, values: Record<string, string> = {}, reachKind: 
         starSource: 'character:A',
         stars: { has: () => false, rename() {} },
         reachKind,
+        namesActiveKeeps,
     }
     return { builder: createToggleBuilder(port, { keyEditsLive: true, stem: 'x', appKeys: new Set<string>(), carry: deps }), port, stored }
 }
@@ -88,6 +90,32 @@ afterEach(async () => {
 
 const first = (text: string) => parseDefinition(text).lines[0].id
 const part = (host: HTMLElement, name: string) => host.querySelector<HTMLElement>(`[data-part="${name}"]`)
+
+describe('T13 the line under a rename that names the active preset', () => {
+    const ACTIVE: OtherSource[] = [{ id: 'prompt', name: 'Q', text: 'a=Other\n' }, { id: 'preset:2', name: 'R', text: 'a=Third\n' }]
+
+    test('shown under the key line when the active preset defines the old key', () => {
+        const rig = rigOf('a=Mode\nb=B\n', { toggle_a: '1' }, 'loaded', ACTIVE, true)
+        rig.builder.setKey(first('a=Mode\nb=B\n'), 'c')
+        rig.builder.checkpoint()
+        const host = show(rig, true)
+        expect(part(host, 'studio-toggle-carry-active-keeps')?.textContent).toBe('studioTgCarryActiveKeeps(a,Q)')
+    })
+
+    test('not shown when the question does not ask for it, or the active preset does not define the key', () => {
+        const plain = rigOf('a=Mode\nb=B\n', { toggle_a: '1' }, 'loaded', ACTIVE, false)
+        plain.builder.setKey(first('a=Mode\nb=B\n'), 'c')
+        plain.builder.checkpoint()
+        expect(part(show(plain, true), 'studio-toggle-carry-active-keeps')).toBeNull()
+        // Both rigs share the owner, so the first one's pending record must not seed the second.
+        localStorage.clear()
+        resetToggleCarrySessionForTests()
+        const other = rigOf('z=Mode\nb=B\n', { toggle_z: '1' }, 'loaded', ACTIVE, true)
+        other.builder.setKey(first('z=Mode\nb=B\n'), 'y')
+        other.builder.checkpoint()
+        expect(part(show(other, true), 'studio-toggle-carry-active-keeps')).toBeNull()
+    })
+})
 
 describe('F-A the saved-values banner', () => {
     test('a rename shows a labelled group, one line per item, the reach lines and Carry and Leave; focus stays where it was', () => {

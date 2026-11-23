@@ -30,8 +30,8 @@ type pScript = {
     actions: string[]
 }
 
-export async function processScript(char:character|groupChat, data:string, mode:ScriptMode, cbsConditions:CbsConditions = {}, origin?:Origin, subject?:RunSubject, promptView?:PromptView){
-    return (await processScriptFull(char, data, mode, -1, cbsConditions, origin, subject, undefined, promptView)).data
+export async function processScript(char:character|groupChat, data:string, mode:ScriptMode, cbsConditions:CbsConditions = {}, origin?:Origin, subject?:RunSubject, promptView?:PromptView, signal?:AbortSignal){
+    return (await processScriptFull(char, data, mode, -1, cbsConditions, origin, subject, undefined, promptView, 'use', undefined, signal)).data
 }
 
 export async function exportRegex(s?:customscript[]){
@@ -400,16 +400,21 @@ export function resetScriptCache(){
  * change to the module selection after that (a plugin's `setDatabase` of
  * `enabledModules`, `modules` or `moduleIntergration`, or a user toggle) applies
  * from the next build. Without it every pass derives the list itself.
+ *
+ * `signal` is a caller's abandon notice. Once it aborts, the pass stops at its
+ * next statement after the Lua edit trigger and after each v2 handler: it calls
+ * no further handler, runs no regex action and stores no cache entry. The caller
+ * has stopped waiting, so what the pass returns after that is discarded.
  */
-export function processScriptFull(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID = -1, cbsConditions:CbsConditions = {}, origin?:Origin, sendSubject?:RunSubject, messageRef?:MessageRef|null, promptView?:PromptView, cache:'use'|'bypass' = 'use', moduleScripts?:PromptModuleScripts): ReturnType<typeof runScriptPass>{
+export function processScriptFull(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID = -1, cbsConditions:CbsConditions = {}, origin?:Origin, sendSubject?:RunSubject, messageRef?:MessageRef|null, promptView?:PromptView, cache:'use'|'bypass' = 'use', moduleScripts?:PromptModuleScripts, signal?:AbortSignal): ReturnType<typeof runScriptPass>{
     // Not `async`: in a normal build the caller gets the body's own promise,
     // so an `await` of it resumes after the same microtask ticks as before.
     if(!MEASURE){
-        return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, cache, moduleScripts)
+        return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, cache, moduleScripts, undefined, signal)
     }
     const startT = performance.now()
     const probe: ScriptPassProbe = { cache: 'aborted', scans: 0, earlyRejects: 0 }
-    return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, cache, moduleScripts, probe)
+    return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, cache, moduleScripts, probe, signal)
         .finally(() => noteScriptPass(mode, startT, probe.cache, probe.scans, probe.earlyRejects))
 }
 
@@ -427,12 +432,17 @@ interface ScriptPassProbe {
     earlyRejects: number
 }
 
-async function runScriptPass(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID:number, cbsConditions:CbsConditions, origin:Origin|undefined, sendSubject:RunSubject|undefined, messageRef:MessageRef|null|undefined, promptView:PromptView|undefined, cache:'use'|'bypass', moduleScripts:PromptModuleScripts|undefined, probe?:ScriptPassProbe){
+async function runScriptPass(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID:number, cbsConditions:CbsConditions, origin:Origin|undefined, sendSubject:RunSubject|undefined, messageRef:MessageRef|null|undefined, promptView:PromptView|undefined, cache:'use'|'bypass', moduleScripts:PromptModuleScripts|undefined, probe?:ScriptPassProbe, signal?:AbortSignal){
     let db = getDatabase()
     let emoChanged = false
     const subject = sendSubject ?? (origin ? createRunSubject(origin) : undefined)
     const refPass = subject && messageRef !== undefined ? { subject, ref: messageRef } : undefined
-    data = await runLuaEditTrigger(char, mode, data, { index:chatID }, origin, sendSubject)
+    data = await runLuaEditTrigger(char, mode, data, { index:chatID }, origin, sendSubject, signal)
+    // An abandoned pass ends before anything below can store its result: the cache would hold a
+    // result without the Lua edit, and the regex actions would write after the caller stopped waiting.
+    if(signal?.aborted){
+        return {data, emoChanged: false}
+    }
 
     if(mode === 'editdisplay' && (!subject || subject.resolve()?.chat === getCurrentChat())){
         const currentChar = getCurrentCharacter()
@@ -457,6 +467,9 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
     if(pluginV2[mode].size > 0){
         for(const plugin of pluginV2[mode]){
             const res = await plugin(data)
+            if(signal?.aborted){
+                return {data, emoChanged: false}
+            }
             if(res !== null && res !== undefined){
                 data = res
             }

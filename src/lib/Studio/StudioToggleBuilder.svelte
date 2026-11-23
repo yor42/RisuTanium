@@ -8,7 +8,8 @@
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
-import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/toggleTextPort'
+import { presetNameOf, presetStateOf } from '../../ts/studio/edit/presetTarget'
+import { characterTogglePort, moduleTogglePort, presetTogglePort } from '../../ts/studio/edit/toggleTextPort'
     import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { beginModuleAck, endModuleAck, ensureStudioHistory, getStudioHistoryService, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import { EyeIcon } from '@lucide/svelte'
@@ -45,9 +46,12 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
     const WIDE_AT = 1000
 
     const fixed = untrack(() => target)
-    const port = fixed.kind === 'character' ? characterTogglePort(fixed.chaId) : moduleTogglePort(fixed.moduleId)
+    const port = fixed.kind === 'character' ? characterTogglePort(fixed.chaId) : fixed.kind === 'module' ? moduleTogglePort(fixed.moduleId) : presetTogglePort(fixed.presetId)
     const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => host) })
     function stemOf(): string {
+        if (fixed.kind === 'preset') {
+            return ownerStem(presetNameOf(fixed.presetId), fixed.presetId)
+        }
         if (fixed.kind === 'module') {
             const [slot] = moduleSlotsWithId(DBState.db.modules, fixed.moduleId)
             const name = slot ? (slot.module as { name?: unknown }).name : ''
@@ -60,12 +64,17 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
     const carryDeps: CarryDeps = {
         reach: () => readCarryReach(fixed),
         values: createCarryDbPort(),
-        starSource: fixed.kind === 'character' ? `character:${fixed.chaId}` : `module:${fixed.moduleId}`,
+        // Read at Carry: the active preset's favourites are kept under prompt, so a switch moves the source with it.
+        get starSource() {
+            if (fixed.kind === 'preset') return presetStateOf(fixed.presetId)?.active ? 'prompt' : `preset:${fixed.presetId}`
+            return fixed.kind === 'character' ? `character:${fixed.chaId}` : `module:${fixed.moduleId}`
+        },
         stars: {
             has: (ref) => currentFavourites().items.some((known) => sameRef(known, ref)),
             rename: (ref, to) => updateFavourites({ type: 'rename', ref, to }),
         },
         reachKind: fixed.kind === 'character' ? 'own' : 'loaded',
+        namesActiveKeeps: fixed.kind === 'preset',
     }
     const builder = createToggleBuilder(port, {
         keyEditsLive: TOGGLE_KEY_EDITS_LIVE,
@@ -174,6 +183,9 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
     }
 
     function ownerNameOf(): string {
+        if (fixed.kind === 'preset') {
+            return presetNameOf(fixed.presetId)
+        }
         if (fixed.kind === 'module') {
             const [slot] = moduleSlotsWithId(DBState.db.modules, fixed.moduleId)
             const name = slot ? (slot.module as { name?: unknown }).name : ''

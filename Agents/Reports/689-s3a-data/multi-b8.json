@@ -1,0 +1,173 @@
+{
+  "tool": "ltm-embed-spike/run-spike.mjs",
+  "startedAt": "2026-11-23T09:33:39.834Z",
+  "config": {
+    "port": "6271",
+    "base": "http://127.0.0.1:6272",
+    "model": "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+    "pooling": "mean",
+    "dtype": "q8",
+    "count": 200,
+    "batch": 8,
+    "seed": 1,
+    "idleSeconds": 20,
+    "loadTimeoutMs": 300000,
+    "indexTimeoutMs": 1800000
+  },
+  "probeVersion": "s3a-2",
+  "constructError": null,
+  "rendererLost": false,
+  "lostReason": null,
+  "pageSessionIds": [
+    "9ia5yn34zxkmwt2a67s"
+  ],
+  "pageSessionStable": true,
+  "loadMs": 9549,
+  "dims": [
+    1,
+    384
+  ],
+  "index": {
+    "requested": 200,
+    "done": 200,
+    "batchSize": 8,
+    "totalMs": 120352,
+    "msgsPerSec": 1.66,
+    "error": null,
+    "callMs": {
+      "n": 25,
+      "p50": 4950.8,
+      "p90": 5241.7,
+      "p99": 5932.8,
+      "max": 5932.8
+    }
+  },
+  "phases": {
+    "idle-baseline": {
+      "durationMs": 20296,
+      "longtask": {
+        "count": 1,
+        "totalMs": 291,
+        "maxMs": 291,
+        "over50": 1
+      },
+      "rafMaxGapMs": 50.8,
+      "rafGapsOver100": 0,
+      "intervalMaxLatenessMs": 9.8,
+      "intervalOver50": 0
+    },
+    "load": {
+      "durationMs": 10711,
+      "longtask": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0,
+        "over50": 0
+      },
+      "rafMaxGapMs": 64.9,
+      "rafGapsOver100": 0,
+      "intervalMaxLatenessMs": 4.6,
+      "intervalOver50": 0
+    },
+    "index": {
+      "durationMs": 121822,
+      "longtask": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0,
+        "over50": 0
+      },
+      "rafMaxGapMs": 43.9,
+      "rafGapsOver100": 0,
+      "intervalMaxLatenessMs": 15.1,
+      "intervalOver50": 0
+    }
+  },
+  "snapshot": {
+    "pageSessionId": "9ia5yn34zxkmwt2a67s",
+    "phase": "index",
+    "phaseStats": {
+      "idle-baseline": {
+        "durationMs": 20296,
+        "longtask": {
+          "count": 1,
+          "totalMs": 291,
+          "maxMs": 291,
+          "over50": 1
+        },
+        "rafMaxGapMs": 50.8,
+        "rafGapsOver100": 0,
+        "intervalMaxLatenessMs": 9.8,
+        "intervalOver50": 0
+      },
+      "load": {
+        "durationMs": 10711,
+        "longtask": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0,
+          "over50": 0
+        },
+        "rafMaxGapMs": 64.9,
+        "rafGapsOver100": 0,
+        "intervalMaxLatenessMs": 4.6,
+        "intervalOver50": 0
+      },
+      "index": {
+        "durationMs": 121822,
+        "longtask": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0,
+          "over50": 0
+        },
+        "rafMaxGapMs": 43.9,
+        "rafGapsOver100": 0,
+        "intervalMaxLatenessMs": 15.1,
+        "intervalOver50": 0
+      }
+    },
+    "longtasks": [
+      {
+        "start": 664.6,
+        "duration": 291
+      }
+    ],
+    "longtaskTotal": 1,
+    "longtaskDropped": 0,
+    "longtaskUnsupported": null,
+    "rafMaxGapMs": 64.9,
+    "intervalMaxLatenessMs": 15.1,
+    "workerAlive": true,
+    "workerErrors": [],
+    "constructError": null,
+    "cspHint": null,
+    "ready": true,
+    "loadMs": 9549,
+    "memory": {
+      "usedJSHeapSize": 15200000,
+      "totalJSHeapSize": 17100000
+    },
+    "deviceMemory": 4,
+    "hardwareConcurrency": 8,
+    "crossOriginIsolated": false,
+    "sharedArrayBuffer": "undefined",
+    "userAgent": "Mozilla/5.0 (Linux; Android 10; SM-N960N Build/QP1A.190711.020; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36",
+    "origin": "http://tauri.localhost",
+    "checksums": [
+      -0.0735,
+      0.041,
+      0.0303
+    ]
+  },
+  "errors": [],
+  "bars": {
+    "longtasksOver50DuringLoadAndIndex": 0,
+    "longtasksOver50IdleBaseline": 1,
+    "indexMsgsPerSec": 1.66,
+    "indexAtLeast1PerSec": true,
+    "noRendererLoss": true,
+    "rendererPeakWithin1p5GB": null
+  },
+  "finishedAt": "2026-11-23T09:36:12.994Z"
+}
