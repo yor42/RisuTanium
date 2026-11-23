@@ -40,7 +40,10 @@ Written 2026-11-22 under MC-3621 and MC-3622, updated for amendment 1 (MC-3673).
 - `pnpm check`: exit 0, 0 errors, 5 existing warnings.
 - S6a on base 3c7f81848: the new tests gave 25 failures; the coder caught all 35 planned mutants; Gate 2 r1 EDITORIAL, r2 APPROVE.
 - Amendment 1 on base eb2ec8db5: 11 new test cases failed at the intended assertions; the coder caught all 20 mutant variants; Gate 1 EDITORIAL, Gate 2 r1 EDITORIAL, r2 APPROVE.
-- PC rows D-A1..D-A6 passed on eb2ec8db5 and carry over. D-A10 failed there (overlap). D-A9, the replaced D-A10, D-A12 and D-B3 gate the merge on the new head; D-A7, D-A8 and D-A11 (Note 9) are post-merge. The PR body and comments hold the results.
+- PC rows D-A1..D-A6 passed on eb2ec8db5 and carry over. D-A10 failed there (overlap). On a production dist of 1c441fe36 (the reviewed diff merged with main a4a339191): D-A10 passed in all 96 states, judged by element boxes, and its detector control failed as required; D-A9 and D-A12 passed; D-B3 steps 2 and 3 passed (at a 1248 px header ja and vi fit one row with no intersection; no wide frame on reload at 1280 with the sidebar open).
+- D-B3 step 1: the plan's formula gave 1296 (vi; ja 1272), above the 1280 header with the sidebar closed, because it measured the persona chip with its hint on one line. The maintainer kept `WIDE_BAR_MIN` at 1248 (AskUserQuestion, 2026-11-23): between 1248 and about 1296 the vi and ja persona hint wraps to two lines inside the chip.
+- At 768 the wordmark shows "Risu" only; its cell clips it, and nothing overlaps it. S6b's phone work does not change the mid band.
+- D-A7, D-A8 and D-A11 (Note 9) are post-merge and run under the `note9` lease (MC-3774). The PR body and comments hold the results.
 - Run vitest here as `pnpm vitest`: under plain `node` the packBase suite cannot resolve `@tailwindcss/oxide`.
 - CI: the PR's checks are the record.
 
