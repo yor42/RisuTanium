@@ -28,6 +28,7 @@ import type { WorkHandle } from '../chatOrigin'
 import '../../polyfill'
 import { clearRunningSends } from './activeUnits.test-helpers'
 import { stopAllReplyWork } from '../chatOrigin'
+import { STOPPED_PASS_GRACE_MS } from '../abortRace'
 import { activeUnits } from '../activeUnits'
 import { tokenize } from '../../tokenizer'
 import { createUsageMeter } from '../../usage/usageMeter'
@@ -715,3 +716,201 @@ describe('an edit pass that never settles, at the unit\'s Stop', () => {
         expect(activeUnits.any()).toBe(false)
     })
 })
+
+//#region 7e live output passes
+
+describe('an output script pass that never settles, under the stop deadline', () => {
+    beforeEach(() => {
+        vi.mocked(tokenize).mockClear()
+        vi.spyOn(console, 'warn').mockImplementation(() => {})
+        vi.mocked(tokenize).mockImplementation(async (value: string) => value?.length ?? 0)
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    })
+
+    afterEach(() => {
+        vi.useRealTimers()
+        vi.restoreAllMocks()
+        vi.mocked(tokenize).mockImplementation(async (value: string) => value?.length ?? 0)
+    })
+
+    // Fake timers only: the real-timer `settle` and `until` above would wait forever on a faked setTimeout.
+    async function turnF(): Promise<void> {
+        await vi.advanceTimersByTimeAsync(0)
+    }
+
+    async function pumpF(turns = 30): Promise<void> {
+        for (let i = 0; i < turns; i++) {
+            await turnF()
+        }
+    }
+
+    async function untilF(cond: () => boolean, what: string, send?: Send): Promise<void> {
+        for (let i = 0; i < 400; i++) {
+            if (cond()) {
+                return
+            }
+            if (send?.failure) {
+                throw new Error(`the send threw while waiting for ${what}: ${send.failure.message}`)
+            }
+            await turnF()
+        }
+        throw new Error(`timed out waiting for ${what}`)
+    }
+
+    async function advanceF(ms: number): Promise<void> {
+        await vi.advanceTimersByTimeAsync(ms)
+        await pumpF()
+    }
+
+    async function beginStreamedSendF(owner: Owner, chat: Chat): Promise<StreamedSend> {
+        let controller!: ReadableStreamDefaultController<{ data: string }>
+        const stream = new ReadableStream<{ data: string }>({ start(c) { controller = c } })
+        h.request.mockResolvedValueOnce({ type: 'streaming', result: stream })
+        const send = startSend(owner, chat) as StreamedSend
+        send.push = (text) => controller.enqueue({ data: text })
+        send.close = () => controller.close()
+        await untilF(() => h.request.mock.calls.length > 0, 'the request', send)
+        return send
+    }
+
+    const editOutputLua = [
+        'listenEdit("editOutput", function(triggerId, data)',
+        '  getTokens(triggerId, "LATE"):await()',
+        '  setChatVar(triggerId, "late", "1")',
+        '  return data',
+        'end)',
+    ].join('\n')
+
+    test('LE-2 regression reproducer: a non-stream editOutput Lua listener awaiting a deferred call is abandoned at the grace; the raw reply is stored, and the listener writes nothing when it resumes', async () => {
+        const A = makeChar('char-A', 'Alice', [makeChat('chat-A', [msg('user', 'Hi')])], { triggerscript: [luaTrigger(editOutputLua)] })
+        installDb([A])
+        selectedCharID.set(0)
+        let release: () => void = () => {}
+        const gate = new Promise<void>((resolve) => { release = resolve })
+        vi.mocked(tokenize).mockImplementation(async (value: string) => {
+            if (value === 'LATE') {
+                await gate
+            }
+            return value?.length ?? 0
+        })
+        h.request.mockResolvedValueOnce({ type: 'success', result: 'Hello.' })
+
+        const send = startSend(A, A.chats[0])
+        const state = track(send.outcome)
+        await untilF(() => vi.mocked(tokenize).mock.calls.some((call) => call[0] === 'LATE'), 'the Lua listener to reach its deferred call', send)
+        stopAllReplyWork()
+        await advanceF(STOPPED_PASS_GRACE_MS - 1)
+        expect(state.done).toBe(false)
+        await advanceF(1)
+        send.handle.end()
+
+        expect(state.done).toBe(true)
+        expect(state.value).toBe(false)
+        expect(datas(A.chats[0])).toEqual(['Hi', 'Hello.'])
+
+        release()
+        await pumpF()
+
+        expect(scriptstateOf(A.chats[0], 'late')).toBeUndefined()
+        expect(datas(A.chats[0])).toEqual(['Hi', 'Hello.'])
+    })
+
+    test('P-9s regression reproducer: a non-stream editoutput plugin handler that never settles stores the raw model text 10 s after the Stop', async () => {
+        const A = makeChar('char-A', 'Alice', [makeChat('chat-A', [msg('user', 'Hi')])])
+        installDb([A])
+        selectedCharID.set(0)
+        const hook = vi.fn(hang)
+        pluginV2.editoutput.add(hook)
+        h.request.mockResolvedValueOnce({ type: 'success', result: '  Hello.  ' })
+
+        const send = startSend(A, A.chats[0])
+        const state = track(send.outcome)
+        await untilF(() => hook.mock.calls.length > 0, 'the editoutput handler to start', send)
+        stopAllReplyWork()
+        await advanceF(STOPPED_PASS_GRACE_MS - 1)
+        expect(state.done).toBe(false)
+        await advanceF(1)
+        send.handle.end()
+
+        expect(state.done).toBe(true)
+        expect(state.value).toBe(false)
+        expect(datas(A.chats[0])).toEqual(['Hi', 'Hello.'])
+    })
+
+    test('D-3 regression reproducer: a streamed pass hanging on the second snapshot is abandoned at the grace; its late result writes nothing, runs no later handler and marks nothing', async () => {
+        const A = makeChar('char-A', 'Alice', [makeChat('chat-A', [msg('user', 'Hi')])], { customscript: [regexScript('X', '@@inject', 'editoutput')] })
+        installDb([A])
+        selectedCharID.set(0)
+        const gate = deferred<string>()
+        let calls = 0
+        const first = vi.fn(async (data: string) => {
+            calls += 1
+            return calls === 2 ? gate.promise : data
+        })
+        const second = vi.fn(async (data: string) => data)
+        pluginV2.editoutput.add(first)
+        pluginV2.editoutput.add(second)
+
+        const send = await beginStreamedSendF(A, A.chats[0])
+        const state = track(send.outcome)
+        send.push('He')
+        await untilF(() => flushes >= 1, 'the first flush', send)
+        send.push('Hello')
+        await untilF(() => calls === 2, 'the hung pass', send)
+        stopAllReplyWork()
+        await advanceF(STOPPED_PASS_GRACE_MS - 1)
+        expect(state.done).toBe(false)
+        await advanceF(1)
+        send.handle.end()
+
+        expect(state.done).toBe(true)
+        expect(state.value).toBe(false)
+        expect(replyOf(A.chats[0])).toBe('He')
+        const secondCalls = second.mock.calls.length
+        const flushesAtSettle = flushes
+
+        gate.resolve('X')
+        await pumpF()
+
+        expect(replyOf(A.chats[0])).toBe('He')
+        expect(second.mock.calls.length).toBe(secondCalls)
+        expect(flushes).toBe(flushesAtSettle)
+    })
+})
+
+describe('a normal Stop in strong mode', () => {
+    beforeEach(() => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    test('LE-3 compatibility guard: the post-Stop deferred pass still runs the output Lua, which may write, and the processed text is stored', async () => {
+        const lua = [
+            'listenEdit("editOutput", function(triggerId, data)',
+            '  setChatVar(triggerId, "post", "1")',
+            '  return data .. "!"',
+            'end)',
+        ].join('\n')
+        const A = makeChar('char-A', 'Alice', [makeChat('chat-A', [msg('user', 'Hi')])], { triggerscript: [luaTrigger(lua)] })
+        installDb([A], { streamingDisplayOptimizationMode: 'strong' })
+        selectedCharID.set(0)
+
+        const send = await beginStreamedSend(A, A.chats[0])
+        send.push('Hello')
+        for (let i = 0; i < 5; i++) {
+            await settle()
+        }
+        stopAllReplyWork()
+        const result = await send.outcome
+        send.handle.end()
+
+        expect(result).toBe(false)
+        expect(replyOf(A.chats[0])).toBe('Hello!')
+        expect(scriptstateOf(A.chats[0], 'post')).toBe('1')
+    })
+})
+
+//#endregion
