@@ -5,7 +5,7 @@ Status: **draft 6, spec only** (2026-11-23), for yor42/RisuTanium #684 (stage S6
 - Draft 6 answers Gate 1 round 4 (S6, E-m..E-p) under `advisor-2.md`: R9 (journal tail-merge); S6's statements about seam internals become requirements on S7-0 with S6-owned tests (§5.3, §5.5); the S7-0 dependency is stated once (§8).
 - Draft 4 answered review 2 (S4, E-a..E-f) and added classic parity (§1.1). Draft 3 answered review 1 and folded in MC-3997..3999. Draft 2 folded in MC-3990..3996 and added S6e.
 
-Base: `origin/main` 71882fe16; every `file:line` is from that base unless marked `origin/main` 48691dfaa. "S7 §n" means [S7_LORE_SPEC.md](S7_LORE_SPEC.md) revision 5.
+Base: `origin/main` 71882fe16; every `file:line` is from that base unless marked `origin/main` 48691dfaa. "S7 §n" means [S7_LORE_SPEC.md](S7_LORE_SPEC.md) revision 6.
 
 Builds on:
 - [SLICE1_SPEC.md](SLICE1_SPEC.md): owner tree, live-item model, durable delete;
@@ -19,7 +19,7 @@ Decisions used:
 - MC-3890..3896, MC-3900..3902, MC-3990..3999, MC-4030, MC-4043, MC-4050..4052;
 - MC-4008 (S7's lore counterpart of MC-4051).
 
-Markers: **(design default)** is chosen here inside settled intent and is open to veto at Gate 1. **Rn** is a request to the shared seam (§5.7).
+Markers: **(design default)** is chosen here inside settled intent and is open to veto at Gate 1. **Rn** is a request to the shared seam (§5.7), answered in S7 r6.
 
 ## 0. Today (source-read)
 
@@ -56,7 +56,7 @@ Markers: **(design default)** is chosen here inside settled intent and is open t
 - Group regex: groups become Studio owners in S8 (MC-3901), and the setters refuse groups today (`studioSetters.ts:54-57, :121-123`).
 - Chat owners and `db.globalscript`.
 - An enabled switch (MC-3990) and a preset save chip (MC-3994, #666).
-- Lore (S7), and the shared op family itself (S7 §4; S6 only adds its rows and asks for R1-R9).
+- Lore (S7), and the shared op family itself (S7 §4; S6 only adds its rows; R1-R9 are answered in S7 r6, §5.7).
 - The store keep walk (MC-4052, #716).
 - Runtime regex behaviour, other than the pure flag extraction of §6.1. The classic editor and its import stay unchanged until Studio replaces classic (MC-4030).
 
@@ -238,7 +238,7 @@ On an M-a row only Delete and Move apply; an M-b row and every row of an M-c lis
 
 ## 5. History: regex in the shared seam
 
-S6 defines no op, deleted-item shape, anchor, planner or journal of its own. All of them are S7 §4. This section states only the regex rows S6 adds to S7's tables, the regex builder rules, and what S6 needs from #685.
+S6 defines no op, deleted-item shape, anchor, planner or journal of its own. All of them are S7's (§4). This section states only the regex rows S6 adds to S7's tables, the regex builder rules, and what S6 needed from #685 (§5.7, answered in S7 r6).
 
 ### 5.1 Regex rows in the S7 tables (append-only; names are stable history identities)
 
@@ -330,19 +330,19 @@ Each requires opus-reviewer at Gate 2 for the stages that change it (§8).
 | F13 | A revert mixes a regex obj step with an asset merge's `regex/<i>/out` text edit. | R5. | T42 |
 | F14 | Typing into a large `out` retains one full field value per keystroke or per step until the visit ends (a renderer OOM on a low-spec phone). | J3; R9. | T34 (g), (h) |
 
-### 5.7 Requests to the shared seam (#685)
+### 5.7 Requests to the shared seam (#685), answered in S7 r6
 
-The full fit analysis is the #684 designer note `seam-fit.md`. None of R1-R9 changes a stored lore shape; R9 changes what the lorebook line's `n` counts. If one is missing from merged S7-0, S6a carries it (§8).
+The full fit analysis is the #684 designer note `seam-fit.md`. None of R1-R9 changes a stored lore shape; R9 changes what the lorebook line's `n` counts. S7 r6 answers every request (S7 §18, 2026-11-23); each entry below ends with where, and with the S7 tests and mutants. The answer is in the S7 spec, not yet in code: if one is missing from merged S7-0, S6a carries it (§8). S6's own tests for the requests stay in §7.
 
-- **R1. Totality.** The anchor, the identity functions and the counts must not throw on a live element that is not a plain object. Such an element holds no identity. Regex lists hold such elements through classic `importRegex` (§0); lore lists can hold them through classic `importLoreBook`.
-- **R2. A per-list field table.** `OBJ_LIST_FIELDS[list]` (field kinds, `{had:false}` allowed or not) replaces `LORE_FIELDS` in the parser, the `objSet` precondition and `ObjLabelField`. The anchor's `bookVersion` exclusion becomes a per-list option.
-- **R3. Acceptance per (list, kind).** The parser and `isOpAllowedFor` accept an obj op or item only on a kind that `OBJ_LIST_HOLDERS[list]` names. S7 §7.1 states acceptance per owner kind.
-- **R4. A per-list journal and line.** The journal is kept per owner, visit and list. There is one restore line per list with entries, and **each list's line plans separately**: a refused line leaves its list as it is and shows that list's refusal, while the other lists' lines and the field writes proceed. The line, the earlier-visit note, the changed refusal and the Restore from History count refusal (`studioLoreRestoreIdTaken` for lore) take their keys from the list's row.
-- **R5. Mixed revert for every list.** The mixed-revert refusal covers each list's asset-merge prefix (`regex/` as well as `lore/`), with its key from the list's row (`studioRegexRevertMixed` for regex).
-- **R6. Session-kind holders.** `OBJ_LIST_HOLDERS` may name session kinds through their session spec. The adapter supplies `objList` and the writer, and nothing is stored.
-- **R7. Worker protocol test.** Obj payloads through `diffEntry` and `applyEdits`: an unknown key shaped `{had: true, value: 1}`, an own `__proto__` key, and nesting deeper than 8 (`studioStoreProtocol.ts:106-159`).
-- **R8. Unknown names refuse whole.** A record with an unknown list name, field or label field is refused whole.
-- **R9. Journal tail-merge.** An applied `objSet` merges into the journal's last entry when that entry is an `objSet` on the same list, index and field and its `anchorAfter` equals the new op's `anchorBefore`, whatever the route (commit, undo, redo) and regardless of step or pause. The merged entry keeps the first `before` and `anchorBefore` and the last `after` and `anchorAfter`. The merge replaces the tail with a new op object; it never mutates an op, because record steps hold the same objects. Otherwise the op appends. #685 states whether a merged entry that nets to no change is dropped, since that decides what the line's `n` counts.
+- **R1. Totality.** The anchor, the identity functions and the counts must not throw on a live element that is not a plain object. Such an element holds no identity. Regex lists hold such elements through classic `importRegex` (§0); lore lists can hold them through classic `importLoreBook`. *Answered in S7 r6 §4.1a, §4.2 (S7 T54, M63).*
+- **R2. A per-list field table.** `OBJ_LIST_FIELDS[list]` (field kinds, `{had:false}` allowed or not) replaces `LORE_FIELDS` in the parser, the `objSet` precondition and `ObjLabelField`. The anchor's `bookVersion` exclusion becomes a per-list option. *Answered in S7 r6 §4.1, §4.1a, §4.3 (S7 T56, M65, M67).*
+- **R3. Acceptance per (list, kind).** The parser and `isOpAllowedFor` accept an obj op or item only on a kind that `OBJ_LIST_HOLDERS[list]` names. S7 §7.1 states acceptance per owner kind. *Answered in S7 r6 §4.1a, §7.1 (S7 T55, M64; S7 tests it with a replaced `probe` table, and the regex rows' own tests stay with S6).*
+- **R4. A per-list journal and line.** The journal is kept per owner, visit and list. There is one restore line per list with entries, and **each list's line plans separately**: a refused line leaves its list as it is and shows that list's refusal, while the other lists' lines and the field writes proceed. The line, the earlier-visit note, the changed refusal and the Restore from History count refusal (`studioLoreRestoreIdTaken` for lore) take their keys from the list's row. *Answered in S7 r6 §4.1a (keys), §4.6 (S7 T58, M68).*
+- **R5. Mixed revert for every list.** The mixed-revert refusal covers each list's asset-merge prefix (`regex/` as well as `lore/`), with its key from the list's row (`studioRegexRevertMixed` for regex). *Answered in S7 r6 §4.2 (S7 T58, M69).*
+- **R6. Session-kind holders.** `OBJ_LIST_HOLDERS` may name session kinds through their session spec. The adapter supplies `objList` and the writer, and nothing is stored. *Answered in S7 r6 §4.1a (S7 T55, M70; S7 adds no session row, and S6c owns the preset adapter test).*
+- **R7. Worker protocol test.** Obj payloads through `diffEntry` and `applyEdits`: an unknown key shaped `{had: true, value: 1}`, an own `__proto__` key, and nesting deeper than 8 (`studioStoreProtocol.ts:106-159`). *Answered in S7 r6 §4.1a (S7 T57).*
+- **R8. Unknown names refuse whole.** A record with an unknown list name, field or label field is refused whole. *Answered in S7 r6 §4.1a, §7.2 (d) (S7 T56, M66).*
+- **R9. Journal tail-merge.** An applied `objSet` merges into the journal's last entry when that entry is an `objSet` on the same list, index and field and its `anchorAfter` equals the new op's `anchorBefore`, whatever the route (commit, undo, redo) and regardless of step or pause. The merged entry keeps the first `before` and `anchorBefore` and the last `after` and `anchorAfter`. The merge replaces the tail with a new op object; it never mutates an op, because record steps hold the same objects. Otherwise the op appends. #685 states whether a merged entry that nets to no change is dropped, since that decides what the line's `n` counts. *Answered in S7 r6 §4.6, §10.1, §11 (S7 T53, M58-M62). S7 r6 drops a netted-out entry, so `n` counts only real changes. The merge builds a new op object, so it never rewrites a recorded step (the V-1 refinement; S7 §4.6, T53 (g), M71).*
 
 ## 6. Validation, tester, import and export
 
@@ -437,7 +437,7 @@ Classes:
 - **CG, compatibility guard:** may pass before and after, and says so.
 - **NB, new-behaviour test:** the base has no such function. Its red is shown by the mutants in §7.2.
 
-RRs stay **DESIGNED, NOT DEMONSTRATED** until their pre-fix run is recorded. The seam's own properties are S7 §9's tests (T5-T12, T43-T45, T48, T50-T52) plus R1-R9. Draft 4's T9, T10, T12, T13, T16, T16b, T33 and T37 are superseded by those tests and by T38 and T41.
+RRs stay **DESIGNED, NOT DEMONSTRATED** until their pre-fix run is recorded. The seam's own properties are S7 §9's tests (T5-T12, T43-T45, T48, T50-T52) plus R1-R9 (S7 T53-T58). Draft 4's T9, T10, T12, T13, T16, T16b, T33 and T37 are superseded by those tests and by T38 and T41.
 
 **Fixtures** are built like the real producer (MC-329):
 - entries made by the Studio service;
@@ -589,7 +589,7 @@ Each PR carries all 8 locales for its keys (MC-058).
 
 ### 9.2 Open
 
-None. R1-R9 (§5.7) are requests to #685, not product questions.
+None. R1-R9 (§5.7) were requests to #685, answered in S7 r6; they are not product questions.
 
 ## 10. Design defaults to confirm (Gate 1, not product questions)
 
@@ -631,12 +631,18 @@ None. R1-R9 (§5.7) are requests to #685, not product questions.
   - the kind gates `:528, :543-609, :639-645`;
   - `listFingerprint.ts`;
   - `studioHistoryStore.ts:16-25, :613-688` (the keep walk).
-- **S7 spec r5:** §4 (whole), §7, §9 and §9.1, §10 and §11, read in `%TEMP%\risu-685\S7_LORE_SPEC.md`. The fit is recorded in the #684 note `seam-fit.md`.
+- **S7 spec r6 (merged, `b280831a4`):** §4 (whole, with §4.1a), §7, §9 and §9.1, §10, §11 and §18, read in `docs/design/studio/S7_LORE_SPEC.md`. The fit is recorded in the #684 note `seam-fit.md`.
 - **Decisions:** `Agents/mc/684.md` MC-3990..3999 and MC-4050..4052.
 
 **INHERITED:**
 - **From review 4 / `advisor-2.md`:** every non-composing `input` event commits one write (`longText/fieldWrite.ts:84, :95-106`); the journal-retention model (`%TEMP%\risu-684\r4-scratch\journal-mem2.mjs`, 48.8 MB after 1,000 keystrokes into a 25,000-character two-byte field).
 - **From review 3 / `advisor-1.md`:** the store eviction lines (`studioHistoryStore.ts:781-806`); the protocol lines (`studioStoreProtocol.ts:106-159`); MC-1119 answer 6 and MC-1812 wording (`Maintainer-Context.md:22760, :29029`); `scripts.ts:466`.
-- **From S7 r5 (not re-checked here):** `visitId` per `openStudio`; the restore panel and sheet lines; the zero-write early return.
+- **From S7 r6 (stated in S7 §4.6, not re-read in source here):** `visitId` per `openStudio`; the restore panel and sheet lines; the zero-write early return. r6 §4.6 still states all three (the lines now per list; the point creation rule and visibility table).
 - **From the brief:** the MC-4030 and MC-4043 text (`Agents/mc/682.md` on another branch).
 - **From sizing (`651-sizing.md`):** the key counts.
+
+### S7-0 dependency check (r6, merged b280831a4)
+
+All "S7 §n" cites in this spec were checked against `S7_LORE_SPEC.md` revision 6 on 2026-11-23 (the spec text, not S7's code, which is not built). Every cited section exists in r6 and says what the S6 sentence relies on; no section number moved. Cites changed:
+- §5 intro: "All of them are S7 §4." was malformed and now reads "All of them are S7's (§4)."; no section changed.
+- Elsewhere only status wording changed (R1-R9 answered in S7 r6 in the header, §1, §5 intro, §5.7, §7 and §9.2, with S7 test and mutant ids added); no cite changed.
