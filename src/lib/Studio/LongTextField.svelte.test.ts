@@ -33,6 +33,10 @@ vi.mock('../../lang', async () => {
     return { language: new Proxy(base, { get: (target, key) => typeof key === 'string' && key in own ? own[key] : Reflect.get(target, key) }) }
 })
 
+// The session adapter table loads the preset adapter, which reads the page database; the real store module loads the
+// whole app, so a bare database stands in.
+vi.mock('../../ts/stores.svelte', () => ({ DBState: { db: {} } }))
+
 // Only the layout is read (for the default height cap); the real screen state drags the whole app in.
 vi.mock('../../ts/studio/studioScreen.svelte', () => ({ studioScreen: { layout: 'wide' } }))
 

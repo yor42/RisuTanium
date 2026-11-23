@@ -4,6 +4,7 @@
 
 import type { LiveReader, WriteOp } from '../history/historyModel'
 import type { SessionOwnerKind } from '../history/sessionKinds'
+import { presetAdapter } from './presetTarget'
 import type { SaveAck } from './saveAck.svelte'
 import type { SetterRefusal } from './studioSetters'
 
@@ -24,7 +25,9 @@ export interface SessionOwnerAdapter {
     beginVisit?(id: string): SaveAck | null
 }
 
-export const SESSION_OWNER_ADAPTERS: { readonly [K in SessionOwnerKind]: SessionOwnerAdapter } = {}
+export const SESSION_OWNER_ADAPTERS: { readonly [K in SessionOwnerKind]: SessionOwnerAdapter } = {
+    preset: presetAdapter,
+}
 
 // Read at call time, so a registration made after import is seen.
 export function sessionAdapterOf(kind: string): SessionOwnerAdapter | null {

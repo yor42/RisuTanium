@@ -3,15 +3,15 @@ import {
     CHARACTER_SET_PATHS,
     CHAT_SET_PATHS,
     parseOwnerRecord,
+    type OwnerRecord,
     RESTORE_PATH_ORDER,
     TEXT_FIELD_PATHS,
-    type OwnerRecord,
     type RestorePoint,
     type Step,
     type TextFieldPath,
 } from '../historyModel'
-import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type OwnerKey } from '../ownerPhase'
-import { HISTORY_FORMAT_VERSION, asideMarkKey, entryKey, headerKey, stepPart } from '../studioHistoryStore'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
+import { HISTORY_FORMAT_VERSION, asideMarkKey, entryKey, headerKey, stepPart, type StoredOwnerRecord } from '../studioHistoryStore'
 import { createMemoryStudioStore, seedOwner, storedRecord } from './studioStoreDoubles'
 
 // ---------------------------------------------------------------- fixtures (built by the real writers)
@@ -27,7 +27,7 @@ function setStep(id: string, path: TextFieldPath, before: string, after: string)
     }
 }
 
-function recordOf(ownerKey: OwnerKey, done: Step[], restore: RestorePoint | null = null): OwnerRecord {
+function recordOf(ownerKey: StoredOwnerKey, done: Step[], restore: RestorePoint | null = null): StoredOwnerRecord {
     return { ownerKey, touchedAt: 4, done, undone: [], deleted: [], restore }
 }
 
@@ -40,7 +40,7 @@ function restoreOf(...paths: TextFieldPath[]): RestorePoint {
 }
 
 // The strict reader's view of a record written by the real serializer.
-function readBack(record: OwnerRecord): OwnerRecord | null {
+function readBack(record: StoredOwnerRecord): StoredOwnerRecord | null {
     const shared = new Map<string, string>()
     seedOwner(shared, record, 'w:1')
     return storedRecord(shared, record.ownerKey)?.record ?? null

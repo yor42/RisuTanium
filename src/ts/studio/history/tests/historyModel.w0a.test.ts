@@ -9,15 +9,19 @@ import {
     RESTORE_PATHS_BY_KIND,
     SET_PATHS_BY_KIND,
     textPathsFor,
-    type OwnerKind,
+    type OwnerKind as AnyOwnerKind,
     type OwnerRecord,
     type Op,
     type RestorePath,
     type SetPath,
 } from '../historyModel'
-import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type OwnerKey } from '../ownerPhase'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
+import type { SessionOwnerKind } from '../sessionKinds'
 
-const KEYS: Record<OwnerKind, OwnerKey> = {
+// The stored kinds: a session kind has no stored key, record or restore row.
+type OwnerKind = Exclude<AnyOwnerKind, SessionOwnerKind>
+
+const KEYS: Record<OwnerKind, StoredOwnerKey> = {
     character: characterOwnerKey('c1'),
     chat: chatOwnerKey('c1', 'chat1'),
     module: moduleOwnerKey('m1'),

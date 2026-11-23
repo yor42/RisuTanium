@@ -55,6 +55,7 @@ function isModuleOwner(owner: OwnerKey): boolean {
             return true
         case 'character':
         case 'chat':
+        case 'preset':
             return false
         default: {
             // Adding an owner kind must decide its wording here; the fallback is the generic wording.

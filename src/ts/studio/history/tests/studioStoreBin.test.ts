@@ -136,7 +136,7 @@ const CHA_ID = 'alpha'
 interface Session {
     exportBytes(): Promise<Uint8Array>
     service: import('../ownerHistory.svelte').OwnerHistoryService
-    owner: import('../ownerPhase').OwnerKey
+    owner: import('../ownerPhase').StoredOwnerKey
     clock: ReturnType<typeof createFakeClock>
     factory: IDBFactory
     adapter: import('../studioHistoryStore').StudioHistoryStore

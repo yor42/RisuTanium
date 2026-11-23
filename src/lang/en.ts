@@ -2750,6 +2750,7 @@ export const languageEnglish = {
     studioBannerKeptUnreadable: "Saved history for this character can't be read, so it is left untouched. New history stays in memory only.",
     studioBannerUnreadable: "Saved history for this character couldn't be read. A copy was set aside and new history was started.",
     studioBannerTrimmed: "The oldest history was trimmed to fit the limit on this device.",
+    studioBannerPresetSession: "Preset edit history lasts until this page closes.",
     studioChipSaved: "Saved",
     studioChipSaving: "Saving…",
     studioChipFailed: "Not saved",

@@ -13,9 +13,10 @@ import { applyCharacterWrites, applyChatWrites, buildWrittenModule, createLiveRe
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { fieldLabelKey, propertyOf } from '../fieldAccess'
 import type { SetPath } from '../fieldRegistry'
-import { RESTORE_PATH_ORDER, type FieldValue, type OwnerRecord, type RestorePoint, type Step, type WriteOp } from '../historyModel'
+import { RESTORE_PATH_ORDER, type FieldValue, type RestorePoint, type Step, type WriteOp } from '../historyModel'
+import type { StoredOwnerRecord } from '../studioHistoryStore'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
-import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type OwnerKey } from '../ownerPhase'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import { createFakeClock, type FakeClock } from './historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, seedOwner, storedRecord } from './studioStoreDoubles'
 
@@ -105,11 +106,11 @@ function nicknameRestore(): RestorePoint {
     return { visitId: 'v1', at: 2, fields: { [NICKNAME]: { before: { had: false }, last: { had: true, value: 'x' } } } }
 }
 
-function recordOf(ownerKey: OwnerKey, done: Step[], restore: RestorePoint | null = null): OwnerRecord {
+function recordOf(ownerKey: StoredOwnerKey, done: Step[], restore: RestorePoint | null = null): StoredOwnerRecord {
     return { ownerKey, touchedAt: 4, done, undone: [], deleted: [], restore }
 }
 
-function readBack(record: OwnerRecord): OwnerRecord | null {
+function readBack(record: StoredOwnerRecord): StoredOwnerRecord | null {
     const shared = new Map<string, string>()
     seedOwner(shared, record, 'w:1')
     return storedRecord(shared, record.ownerKey)?.record ?? null

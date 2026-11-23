@@ -378,8 +378,8 @@ export function historyBannerText(banner: MemoryOnlyReason | ReadyReason | null)
         case 'keptUnreadable': return language.studioBannerKeptUnreadable
         case 'unreadable': return language.studioBannerUnreadable
         case 'trimmed': return language.studioBannerTrimmed
-        // A session owner shows no history note in S0b; the first session kind supplies its own.
-        case 'session': return null
+        // The preset is the only session kind; a new session kind must give its own banner here.
+        case 'session': return language.studioBannerPresetSession
     }
 }
 

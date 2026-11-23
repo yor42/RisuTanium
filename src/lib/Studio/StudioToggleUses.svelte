@@ -3,6 +3,7 @@
     import { language } from '../../lang'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { jumpTargetOf, placeLabelOf } from '../../ts/studio/assets/mergeCommit'
+    import { presetNameOf } from '../../ts/studio/edit/presetTarget'
     import { refusalTextOf, type StudioToasts } from '../../ts/studio/edit/studioToasts'
     import { parseOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
@@ -96,6 +97,8 @@
                 return DBState.db.characters?.find((character) => character?.chaId === parsed.chaId)?.name ?? parsed.chaId
             case 'chat':
                 return key
+            case 'preset':
+                return presetNameOf(parsed.id)
             default: {
                 // Adding an owner kind must decide its name here; the fallback is the raw key.
                 const unhandled: never = parsed
@@ -122,6 +125,7 @@
             case 'module':
                 return jumpTargetOf('module', parsed.moduleId, usePlaceOf(use.path))
             case 'chat':
+            case 'preset':
                 return null
             default: {
                 const unhandled: never = parsed
@@ -142,6 +146,7 @@
                 return placeLabelOf('module', path)
             case 'character':
             case 'chat':
+            case 'preset':
                 return placeLabelOf('character', path)
             default: {
                 const unhandled: never = parsed
