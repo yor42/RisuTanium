@@ -6,7 +6,7 @@
 /** Critical by name: the dialog frame and the toast live regions hold or announce critical content but carry no marker themselves. */
 export const POPUPS_NAMED_CRITICAL: string[] = ['pattern-layer', 'pattern-scrim', 'pattern-dialog', 'pattern-dialog-announce', 'toast-live-polite', 'toast-live-assertive']
 // The files: every component under src/lib/Nexus/pattern except the two test harnesses, and the alert prompt components of src/lib/Others.
-export const POPUPS_FILES: string[] = ['src/lib/Nexus/pattern/PatternDialog.svelte', 'src/lib/Nexus/pattern/PatternPrompt.svelte', 'src/lib/Nexus/pattern/PatternPromptHost.svelte',
+export const POPUPS_FILES: string[] = ['src/lib/Nexus/pattern/PatternDialog.svelte', 'src/lib/Nexus/pattern/PatternPrompt.svelte',
     'src/lib/Nexus/pattern/PatternTask.svelte', 'src/lib/Nexus/pattern/PatternWarnMark.svelte', 'src/lib/Nexus/pattern/PatternWarning.svelte',
     'src/lib/Nexus/pattern/QuitPill.svelte', 'src/lib/Nexus/pattern/TaskHost.svelte', 'src/lib/Nexus/pattern/ToastHost.svelte',
     'src/lib/Others/AlertComp.svelte', 'src/lib/Others/ParkedReplyPrompt.svelte', 'src/lib/Others/PasswordPrompt.svelte',

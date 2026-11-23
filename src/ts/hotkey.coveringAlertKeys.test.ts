@@ -495,14 +495,13 @@ describe('Enter on a notice', () => {
 
 describe('keys that must keep working over an alert that covers the page', () => {
     const COVERING_TYPES: Array<alertData['type']> = [
-        'ask', 'pluginconfirm', 'select', 'input', 'selectChar', 'addchar', 'chatOptions', 'cardexport',
+        'ask', 'select', 'input', 'selectChar', 'addchar', 'chatOptions', 'cardexport',
         'selectModule', 'tos', 'staleAccountNotice', 'progress', 'normal', 'error', 'markdown',
-        'requestdata', 'hypaV2', 'branches', 'requestlogs', 'pukmakkurit', 'wait2', 'wait',
-        'patternSelect', 'patternInput',
+        'requestdata', 'hypaV2', 'branches', 'requestlogs', 'wait2', 'wait',
     ]
     /** The types Escape closes; every other covering type keeps what is on screen. */
     const ESCAPE_CLOSES: Array<alertData['type']> = [
-        'normal', 'error', 'markdown', 'requestdata', 'hypaV2', 'branches', 'requestlogs', 'pukmakkurit', 'wait2',
+        'normal', 'error', 'markdown', 'requestdata', 'hypaV2', 'branches', 'requestlogs', 'wait2',
     ]
 
     test.each(COVERING_TYPES)('guard: Escape over a %s alert closes it only if it is an information alert, and is consumed', (type) => {

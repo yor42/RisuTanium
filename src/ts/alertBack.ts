@@ -3,7 +3,6 @@ import type { alertData } from './alert'
 import { answerShownPrompt, promptWaiting } from './alertPrompts'
 import { coversPage } from './alertEscape'
 import { taskBackPress } from './alertTask.svelte'
-import { PATTERN_PROMPT_CANCEL } from './patternPromptAnswer'
 import { alertStore } from './stores.svelte'
 
 /**
@@ -34,7 +33,6 @@ const CANCEL_IF_OFFERED: BackAction = { kind: 'cancelIfOffered' }
  */
 export const ALERT_BACK_ACTIONS: Record<alertData['type'], BackAction> = {
     ask: { kind: 'answer', message: 'no' },
-    pluginconfirm: { kind: 'answer', message: 'no' },
     selectChar: { kind: 'answer', message: '' },
     selectModule: { kind: 'answer', message: '' },
     cardexport: { kind: 'answer', message: JSON.stringify({ type: 'cancel', type2: '' }) },
@@ -42,8 +40,6 @@ export const ALERT_BACK_ACTIONS: Record<alertData['type'], BackAction> = {
     chatOptions: { kind: 'answer', message: 'cancel' },
     parkedReply: { kind: 'answer', message: 'later' },
     presetBundle: { kind: 'answer', message: 'cancel' },
-    patternSelect: { kind: 'answer', message: PATTERN_PROMPT_CANCEL },
-    patternInput: { kind: 'answer', message: PATTERN_PROMPT_CANCEL },
     normal: CLOSE,
     error: CLOSE,
     markdown: CLOSE,
@@ -51,7 +47,6 @@ export const ALERT_BACK_ACTIONS: Record<alertData['type'], BackAction> = {
     hypaV2: CLOSE,
     branches: CLOSE,
     requestlogs: CLOSE,
-    pukmakkurit: CLOSE,
     wait2: CLOSE,
     wait: { kind: 'cancelWait' },
     select: CANCEL_IF_OFFERED,

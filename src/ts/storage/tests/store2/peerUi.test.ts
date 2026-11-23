@@ -469,7 +469,7 @@ describe('parkedClean: a clean page whose descent is unproven is offered the exp
 
 describe('both prompts wait for an alert that needs its OK', () => {
     // Every type whose Escape action closes it: an alert that waits for an OK, or a viewer the prompt would replace.
-    const holding = ['error', 'normal', 'markdown', 'wait2', 'requestdata', 'hypaV2', 'branches', 'requestlogs', 'pukmakkurit'] as const
+    const holding = ['error', 'normal', 'markdown', 'wait2', 'requestdata', 'hypaV2', 'branches', 'requestlogs'] as const
     const passing = ['wait', 'progress', 'toast'] as const
 
     test.each(holding)('decide leaves a %s alert up until it is acknowledged, then asks', async (type) => {

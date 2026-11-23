@@ -1163,15 +1163,15 @@ const KIND_OF = {
     error: 'message', normal: 'message', none: 'excluded', ask: 'message', wait: 'message', selectChar: 'tool',
     input: 'message', toast: 'excluded', wait2: 'message', markdown: 'message', select: 'message',
     tos: 'message', cardexport: 'tool', requestdata: 'tool', addchar: 'tool', hypaV2: 'tool', selectModule: 'excluded',
-    chatOptions: 'tool', pukmakkurit: 'excluded', branches: 'tool', progress: 'message', pluginconfirm: 'message', requestlogs: 'tool',
-    staleAccountNotice: 'message', patternSelect: 'message', patternInput: 'message', peerConflicts: 'message', parkedReply: 'message',
+    chatOptions: 'tool', branches: 'tool', progress: 'message', requestlogs: 'tool',
+    staleAccountNotice: 'message', peerConflicts: 'message', parkedReply: 'message',
     updateOffer: 'tool', presetBundle: 'message', toolApproval: 'message',
 } satisfies Record<alertData['type'], 'message' | 'tool' | 'excluded'>
 
 const openStored = (data: Record<string, unknown>): Promise<HTMLElement> => openViewer(() => alertStore.set(data as never))
 
 /** Opens one alert of the type, through the producer or the store the way the app does. */
-const OPEN: Record<Exclude<alertData['type'], 'none' | 'toast' | 'selectModule' | 'pukmakkurit'>, () => Promise<HTMLElement>> = {
+const OPEN: Record<Exclude<alertData['type'], 'none' | 'toast' | 'selectModule'>, () => Promise<HTMLElement>> = {
     error: () => openStored({ type: 'error', msg: 'Broke', submsg: 'detail' }),
     normal: () => openStored({ type: 'normal', msg: 'Hello' }),
     ask: () => openStored({ type: 'ask', msg: 'Sure?' }),
@@ -1182,10 +1182,7 @@ const OPEN: Record<Exclude<alertData['type'], 'none' | 'toast' | 'selectModule' 
     select: () => openStored({ type: 'select', msg: 'one||two' }),
     tos: () => openStored({ type: 'tos', msg: '' }),
     progress: () => openStored({ type: 'progress', msg: 'Copying', submsg: '40' }),
-    pluginconfirm: () => openStored({ type: 'pluginconfirm', msg: 'Plugin\nwarning\n\nInstall?' }),
     staleAccountNotice: () => openStored({ type: 'staleAccountNotice', msg: 'Notice' }),
-    patternSelect: () => openStored({ type: 'patternSelect', msg: 'Pick', choices: ['a', 'b'] }),
-    patternInput: () => openStored({ type: 'patternInput', msg: 'Type' }),
     peerConflicts: () => openPeerConflicts(),
     parkedReply: () => openParkedReply(),
     presetBundle: () => openStored({ type: 'presetBundle', msg: '', presetBundle: { rows: [{ name: 'A', folder: null, aiModel: 'm' }], existingNames: [] } }),
