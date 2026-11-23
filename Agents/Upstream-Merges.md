@@ -516,3 +516,26 @@ No persisted shape, `.bin`, save or plugin data changes (`MC-175`). Lua written 
 
 - #455: streamed chunk coalescing (from upstream #1643).
 - **Next merge:** `git log --no-merges 6db4b681f..upstream/main`; move the suffix in `appSubVer` and `version.json` only when upstream bumps.
+
+## 2026-11-23 — merge of upstream/main `996a5535f`
+
+Merge commit: the commit that adds this entry. Parents: `177dfc9cf` (fork `main` after PR #695) and `996a5535f`. Like the 2026-11-21 merge this is `git merge -s ours`. The tree is the fork's: `git diff --cached HEAD` was empty before this entry was added. The merge only records upstream as merged. The adopted change was ported by hand first in PR #695. After this merge, `git rev-list --count HEAD..upstream/main` is 0.
+
+**Upstream range:** `6db4b681f..996a5535f`, 2 commits: 1 non-merge and 1 merge. `996a5535f` (#1752) is upstream's PR merge, and its first-parent diff equals `1d5231b4b`. Upstream did not bump its version, so the suffix stays `up2026.10.295` (`MC-440`). **Last upstream commit merged: `996a5535f`.**
+
+**Why.** On 2026-11-23 the maintainer chose to port the commit through a ticket (#694) and then record it with this merge commit. This is the same port-then-`-s ours` flow as before (`MC-2976`, precedent `MC-2341`). A content merge would have conflicted in `v3.svelte.ts`, `plugins.md` and `inlays.test.ts`, and would have brought in upstream's `'periodically'` permission re-ask, which the fork does not have.
+
+### Disposition
+
+| Upstream commit | Disposition | Reason / where |
+|---|---|---|
+| `1d5231b4b` feat: createInlay for V3 plugins, behind the inlay permission | TAKEN | #694, PR #695, merged as `177dfc9cf`. It adds `createInlayFromData` and `writeInlayImageFromSrc` in `inlays.ts`, and `risuai.createInlay` in `v3.svelte.ts` with its type in `risuai.d.ts` and docs in `plugins.md`. Maintainer ruling 2026-11-23: the call uses the fork's grant-once `getPermission('inlay')`, like `readInlay`, not upstream's `'periodically'` re-ask. The five tests are rewritten for the fork's memory byte store. |
+
+### Persistence
+
+No persisted shape, `.bin`, save or plugin data changes (`MC-175`). Inlays created this way use the existing inlay store. A V3 plugin written for upstream that calls `createInlay` works in the fork, though the fork asks for the inlay permission only once.
+
+### Follow-ups
+
+- None.
+- **Next merge:** `git log --no-merges 996a5535f..upstream/main`. Move the suffix in `appSubVer` and `version.json` only when upstream bumps.
