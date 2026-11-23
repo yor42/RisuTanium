@@ -51,7 +51,7 @@ import localforage from "localforage";
 import { LLMFlags, LLMFormat, LLMProvider, LLMTokenizer, type LLMModel } from "src/ts/model/types";
 import { sendChat as processSendChat } from "src/ts/process/index.svelte";
 import { chatKeyOf, starterRefusalIn } from "src/ts/process/sendAdmission";
-import { beginWork, resolveOriginWithHint, type OriginHint } from "src/ts/process/chatOrigin";
+import { beginWork } from "src/ts/process/chatOrigin";
 import { processScriptFull } from "src/ts/process/scripts";
 import { getModelInfo } from "src/ts/model/modellist";
 import type { ModelModeExtended } from "src/ts/process/request/shared";
