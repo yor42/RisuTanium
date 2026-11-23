@@ -79,3 +79,40 @@ describe('T4: the session banner', () => {
         expect(historyBannerText('session')).toBe(languageEnglish.studioBannerPresetSession)
     })
 })
+
+describe('S4a-T6: the form paths mark through the same hook (compatibility guard: the hook exists before)', () => {
+    const formSet = (path: 'presetJsonSchema' | 'presetSendName' | 'presetName', value: string | boolean): WriteOp => ({ op: 'set', path, value: { had: true, value } })
+
+    test('a working-setting write of the active preset counts a mark with no preset flag', () => {
+        expect(presetAdapter.write(ids[0], [formSet('presetJsonSchema', 'schema')])).toBe(true)
+        expect(DBState.db.jsonSchema).toBe('schema')
+        expect(scheduled).toBeGreaterThan(0)
+        expect(tracker.botPreset).toBe(false)
+    })
+
+    test('a slot write of an inactive preset sets the preset flag', () => {
+        expect(presetAdapter.write(ids[1], [formSet('presetJsonSchema', 'schema')])).toBe(true)
+        expect(DBState.db.botPresets[1].jsonSchema).toBe('schema')
+        expect(scheduled).toBeGreaterThan(0)
+        expect(tracker.botPreset).toBe(true)
+    })
+
+    test('the name of the active preset is a slot write and sets the preset flag', () => {
+        expect(presetAdapter.write(ids[0], [formSet('presetName', 'Renamed')])).toBe(true)
+        expect(DBState.db.botPresets[0].name).toBe('Renamed')
+        expect(tracker.botPreset).toBe(true)
+    })
+
+    test('a container created on the working copy counts a mark (a new top-level key)', () => {
+        delete (DBState.db as unknown as Record<string, unknown>).promptSettings
+        expect(presetAdapter.write(ids[0], [formSet('presetSendName', true)])).toBe(true)
+        expect(DBState.db.promptSettings.sendName).toBe(true)
+        expect(scheduled).toBeGreaterThan(0)
+    })
+
+    test('a container key written into an inactive slot sets the preset flag', () => {
+        expect(presetAdapter.write(ids[1], [formSet('presetSendName', true)])).toBe(true)
+        expect(DBState.db.botPresets[1].promptSettings?.sendName).toBe(true)
+        expect(tracker.botPreset).toBe(true)
+    })
+})

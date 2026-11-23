@@ -88,6 +88,21 @@ export function registerGreetingReveal(reveal: (index: number) => Promise<void>)
     }
 }
 
+// A form with collapsible sections registers how to reveal the one holding a path whose element is not mounted; the
+// returned function unregisters it. The reveal is transient, as the greeting list's: it only makes the element
+// reachable for this focus placement, and the collapse state the user left stays as it was.
+let fieldReveal: ((path: SetPath) => Promise<void>) | null = null
+export function registerFieldReveal(reveal: (path: SetPath) => Promise<void>): () => void {
+    fieldReveal = reveal
+    return () => {
+        if (fieldReveal === reveal) fieldReveal = null
+    }
+}
+
+function isElementTarget(target: FocusTarget): target is { kind: ElementFocusPath } {
+    return target.kind !== 'greeting' && target.kind !== 'greetingAdd' && target.kind !== 'firstMessage' && target.kind !== 'example' && target.kind !== 'exampleAdd'
+}
+
 function elementFor(scope: ParentNode, target: FocusTarget): HTMLElement | null {
     switch (target.kind) {
         case 'greeting':
@@ -129,6 +144,11 @@ export async function placeFocusAfterHistory(before: OwnerFields | null, after: 
     // A greeting card outside the list's window is not mounted: have the list mount it, then look again.
     if (!element && target?.kind === 'greeting' && greetingReveal) {
         await greetingReveal(target.index)
+        element = elementFor(scope() ?? document, target)
+    }
+    // A field inside a collapsed section is not mounted: have the form reveal its section, then look again.
+    if (!element && target && isElementTarget(target) && fieldReveal) {
+        await fieldReveal(target.kind)
         element = elementFor(scope() ?? document, target)
     }
     if (element && element.isConnected) {
