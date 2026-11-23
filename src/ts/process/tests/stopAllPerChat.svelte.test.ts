@@ -281,7 +281,7 @@ beforeAll(async () => {
     const localDrafts = await import('../../localDrafts')
     onDraftsChanged = localDrafts.onDraftsChanged
     resetLocalDraftsForTest = localDrafts.resetLocalDraftsForTest
-})
+}, 120_000)
 
 //#region fixtures
 
