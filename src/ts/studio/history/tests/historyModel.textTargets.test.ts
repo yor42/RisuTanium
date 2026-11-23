@@ -308,6 +308,7 @@ describe('the write kind follows the target', () => {
             alternateGreetings: ['g0 {{image::smile2}}', 'g1'],
             globalLore: [{ key: 'k0', content: 'lore0' }, { key: 'k1', content: '{{image::lore1}} smile2' }],
             systemPrompt: '{{image::system}} smile2',
+            backgroundHTML: '{{image::html}} smile2',
         })
         const reader = charReader(c)
         const writes = assetStepWrites(
@@ -317,6 +318,7 @@ describe('the write kind follows the target', () => {
                 edit('alternateGreetings/0', 12, 'smile2', ''),
                 edit('lore/1/content', 9, 'lore1', 'l'),
                 edit('systemPrompt', 9, 'system', 'sys'),
+                edit('backgroundHTML', 9, 'html', 'h'),
             ],
             reader,
         )
@@ -325,7 +327,8 @@ describe('the write kind follows the target', () => {
             { op: 'set', path: 'desc', value: { had: true, value: '{{image::a much longer description}} smile2' } },
             { op: 'listSet', index: 0, value: 'g0 {{image::}}' },
             { op: 'textSet', target: 'lore/1/content', value: '{{image::l}} smile2' },
-            { op: 'textSet', target: 'systemPrompt', value: '{{image::sys}} smile2' },
+            { op: 'set', path: 'systemPrompt', value: { had: true, value: '{{image::sys}} smile2' } },
+            { op: 'textSet', target: 'backgroundHTML', value: '{{image::h}} smile2' },
         ])
 
         const module = makeModule({ lorebook: [{ key: 'k0', content: '{{image::lore0}} smile2' }, { key: 'k1', content: 'lore1 smile2' }] })
@@ -343,8 +346,8 @@ describe('the write kind follows the target', () => {
         const ops = [edit('systemPrompt', 24, 'def', 'DEFGH'), edit('systemPrompt', 9, 'abc', 'Z')]
         const landed = landCharacter(freshState(A), c, ops)
         expect(landed.writes).toEqual([
-            { op: 'textSet', target: 'systemPrompt', value: '{{image::abc}} {{image::DEFGH}}' },
-            { op: 'textSet', target: 'systemPrompt', value: '{{image::Z}} {{image::DEFGH}}' },
+            { op: 'set', path: 'systemPrompt', value: { had: true, value: '{{image::abc}} {{image::DEFGH}}' } },
+            { op: 'set', path: 'systemPrompt', value: { had: true, value: '{{image::Z}} {{image::DEFGH}}' } },
         ])
         expect(c.systemPrompt).toBe('{{image::Z}} {{image::DEFGH}}')
         const undone = replayCharacter(landed.state, c, 'undo')
@@ -380,7 +383,7 @@ describe('a replay emits the write kind of its target', () => {
         const state = stepOf(A, edit('systemPrompt', 9, 'abcdef', 'X'))
         state.record = { ...state.record, undone: state.record.done, done: [] }
         const plan = planReplay(state.record, 'redo', charReader(c))
-        expect(plan.ok && plan.writes).toEqual([{ op: 'textSet', target: 'systemPrompt', value: '{{image::X}}' }])
+        expect(plan.ok && plan.writes).toEqual([{ op: 'set', path: 'systemPrompt', value: { had: true, value: '{{image::X}}' } }])
     })
 })
 
@@ -494,21 +497,24 @@ describe('a revert and a restore point carry the first message and the example m
         expect(c.desc).toBe('desc two')
     })
 
-    test('a restore point learns both messages from a merge and restores them; a text with no restore key contributes nothing', () => {
+    test('a restore point learns both messages and the system prompt from a merge and restores them; a registry text that is no set path contributes nothing', () => {
         const c = makeCharacter({
             firstMessage: 'first {{image::smile2}} message',
             exampleMessage: 'example {{image::smile2}}',
             systemPrompt: 'system {{image::smile2}}',
+            backgroundHTML: 'html {{image::smile2}}',
         })
         let state = typeDesc(freshState(A), c, 'desc one')
         state = landCharacter(state, c, [
             edit('firstMessage', 15, 'smile2', 'smile'),
             edit('exampleMessage', 17, 'smile2', 'smile'),
             edit('systemPrompt', 16, 'smile2', 'smile'),
+            edit('backgroundHTML', 14, 'smile2', 'smile'),
         ]).state
         const restore = state.record.restore
-        expect(Object.keys(restore?.fields ?? {})).toEqual(expect.arrayContaining(['desc', 'firstMessage', 'exampleMessage']))
-        expect(Object.keys(restore?.fields ?? {})).not.toContain('systemPrompt')
+        expect(Object.keys(restore?.fields ?? {})).toEqual(expect.arrayContaining(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt']))
+        expect(Object.keys(restore?.fields ?? {})).not.toContain('backgroundHTML')
+        expect(restore?.fields.systemPrompt?.before).toEqual({ had: true, value: 'system {{image::smile2}}' })
         const plan = planRestorePoint(restore, charReader(c), new Set())
         if (plan.ok === false) {
             throw new Error(`restore refused: ${plan.reason}`)
@@ -518,6 +524,7 @@ describe('a revert and a restore point carry the first message and the example m
             expect.arrayContaining([
                 { op: 'set', path: 'firstMessage', value: { had: true, value: 'first {{image::smile2}} message' } },
                 { op: 'set', path: 'exampleMessage', value: { had: true, value: 'example {{image::smile2}}' } },
+                { op: 'set', path: 'systemPrompt', value: { had: true, value: 'system {{image::smile2}}' } },
             ]),
         )
     })
@@ -613,7 +620,8 @@ function holderOf(kind: 'character' | 'module', owner: object, path: string): { 
 }
 
 function expectedKind(path: string): 'set' | 'listSet' | 'textSet' {
-    if (path === 'desc' || path === 'firstMessage' || path === 'exampleMessage') {
+    const SET_TARGETS = ['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt/prompt', 'defaultVariables', 'translatorNote']
+    if (SET_TARGETS.includes(path)) {
         return 'set'
     }
     return path.startsWith('alternateGreetings/') ? 'listSet' : 'textSet'

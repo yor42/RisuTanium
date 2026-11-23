@@ -33,6 +33,17 @@ const VALUE_OF: Record<SetPath, string | boolean> = {
     hideChatIcon: true,
     risutanium_render_when_complete: true,
     note: 'new note',
+    systemPrompt: 'new system',
+    replaceGlobalNote: 'new global note',
+    additionalText: 'new additional',
+    personality: 'new personality',
+    scenario: 'new scenario',
+    'depth_prompt.prompt': 'new depth prompt',
+    'additionalData.creator': 'new creator',
+    'additionalData.character_version': 'new version',
+    nickname: 'new nickname',
+    defaultVariables: 'new variables',
+    translatorNote: 'new translator note',
 }
 
 describe('T-W1: the writers of the builtin holders', () => {

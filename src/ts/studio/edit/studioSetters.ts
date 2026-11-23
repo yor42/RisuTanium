@@ -12,8 +12,8 @@ import type { Chat, character, groupChat } from '../../storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
 import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
-import { factsOf, isHeldBy, propertyOf } from '../history/fieldAccess'
-import { TEXT_FIELD_PATHS, fmAfterRemove, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
+import { factsOf, freshSeed, isHeldBy, isUsableContainer, propertyOf, slotOf } from '../history/fieldAccess'
+import { fmAfterRemove, textFieldOf, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
 import { parseStoredOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './assetSetters'
 
@@ -139,12 +139,26 @@ export function fmValueOf(chat: Chat): FmValue {
 }
 
 // The value a holder carries under the path's property, as a `FieldValue`: absent when the holder is missing, the key
-// is missing or the value is not of the path's registered type.
+// is missing or the value is not of the path's registered type. A nested path reads its container: an absent or null
+// container reads as its seed, a usable one by key, and anything else (a string, an array) as absent.
 function readHeld(holder: object | null | undefined, path: SetPath): FieldValue {
     if (!holder) {
         return { had: false }
     }
-    const value = fieldsView(holder)[propertyOf(path)]
+    const { container, key } = slotOf(path)
+    let value: unknown
+    if (container === null) {
+        value = fieldsView(holder)[key]
+    } else {
+        const box = fieldsView(holder)[container]
+        if (box === undefined || box === null) {
+            value = freshSeed(container)[key]
+        } else if (isUsableContainer(box)) {
+            value = box[key]
+        } else {
+            return { had: false }
+        }
+    }
     if (factsOf(path).value === 'bool') {
         return typeof value === 'boolean' ? { had: true, value } : { had: false }
     }
@@ -364,15 +378,29 @@ export function buildGreetingDelete(index: number, deletedId: string, target: Li
 
 // The one builtin-holder write of a set path: a value of the path's type is assigned under its property; an absent
 // value deletes the key when the path's `absent` says so and leaves it otherwise. A value of the wrong type writes
-// nothing, and the key is never written as `undefined`.
+// nothing, and the key is never written as `undefined`. A nested path writes inside its container: an absent value
+// never creates or deletes the container, and a value of the right type creates a missing or unusable container from a
+// fresh copy of its seed before assigning the key, leaving every other key of an existing container as it is.
 function writeHeld(holder: object, path: SetPath, value: FieldValue): void {
     const fields = fieldsView(holder)
+    const { container, key } = slotOf(path)
     if (!value.had) {
         if (factsOf(path).absent === 'delete') {
-            delete fields[propertyOf(path)]
+            if (container === null) {
+                delete fields[key]
+            } else if (isUsableContainer(fields[container])) {
+                delete (fields[container] as Record<string, unknown>)[key]
+            }
         }
     } else if (typeof value.value === (factsOf(path).value === 'bool' ? 'boolean' : 'string')) {
-        fields[propertyOf(path)] = value.value
+        if (container === null) {
+            fields[key] = value.value
+            return
+        }
+        if (!isUsableContainer(fields[container])) {
+            fields[container] = freshSeed(container)
+        }
+        ;(fields[container] as Record<string, unknown>)[key] = value.value
     }
 }
 
@@ -414,11 +442,14 @@ function assignIfString(holder: object | null | undefined, field: string, value:
 }
 
 // A `textSet` on a registry text of the live character: the whole value the plan computed, assigned in place where
-// the slot holds a string. It creates no container. The text fields (a `set`) and the first message entries (a `listSet`)
-// are never written here.
+// the slot holds a string. It creates no container. A target the history router sends to a `set` (the text fields) or
+// a `listSet` (the first message entries) is never written here.
 function writeCharacterText(live: character, target: string, value: string): void {
     const parsed = parseTargetPath('character', target)
     if (parsed === null || 'greeting' in parsed) {
+        return
+    }
+    if (textFieldOf(target) !== null) {
         return
     }
     if ('trigger' in parsed) {
@@ -427,7 +458,7 @@ function writeCharacterText(live: character, target: string, value: string): voi
         assignIfString((parsed.entry === 'lore' ? live.globalLore : live.customscript)?.[parsed.index], parsed.field, value)
     } else if ('nested' in parsed) {
         assignIfString(live[parsed.nested], parsed.field, value)
-    } else if (!(TEXT_FIELD_PATHS as readonly string[]).includes(parsed.field)) {
+    } else {
         assignIfString(live, parsed.field, value)
     }
 }

@@ -10,7 +10,7 @@ import { detectEol } from './exampleBlocks'
  * the held text started, so text typed against one value is never written over another.
  */
 
-export type LongTextKind = 'desc' | 'greeting' | 'note' | 'firstMessage' | 'example' | 'exampleText'
+export type LongTextKind = 'desc' | 'greeting' | 'note' | 'firstMessage' | 'example' | 'exampleText' | 'advanced'
 export type LongTextMode = 'cbs' | 'html+cbs' | 'plain'
 
 export interface LongTextWritePort {

@@ -526,7 +526,8 @@ describe('the live forms and the save chip in the detail', () => {
         expect(part('studio-chip-text')?.textContent).toBe('studioChipSaved')
         expect(part('studio-detail-readonly')).toBeNull()
         expect(part('studio-detail-classic')).not.toBeNull()
-        expect(history.useOwner).toEqual(['character:cha-1'])
+        // The example form and the two advanced sections each begin the visit; beginning it is idempotent in the service.
+        expect(history.useOwner).toEqual(['character:cha-1', 'character:cha-1', 'character:cha-1'])
     })
 
     test('X-14 a private character gets no example form', () => {
@@ -715,5 +716,33 @@ describe('CU-4 the combined branch of the detail by kind', () => {
         showCombined('regex')
         expect(part('studio-detail-readonly')?.textContent).toBe('studioReadOnlyNote')
         expect(document.body.textContent).not.toContain('studioTgCombinedHint')
+    })
+})
+
+describe('T1-DT the advanced kind mounts the prompt, example and detail sections in that order', () => {
+    const advancedTarget = ownerItem('character', 'cha-1', 'advanced', 'cha-1/advanced:0')
+
+    test('the prompts section, the example form and the details section appear in that DOM order', () => {
+        setFull(makeInput({ character: makeTextCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })], exampleMessage: '<START>\nA' }) }))
+        openStudio(advancedTarget, null)
+        show()
+        flushSync()
+        const order = Array.from(document.querySelectorAll('[data-part="studio-advanced-form"], [data-part="studio-example-form"]')).map((element) => element.getAttribute('data-part') === 'studio-advanced-form' ? element.getAttribute('data-section') : 'example')
+        expect(order).toEqual(['prompts', 'example', 'details'])
+        expect(document.querySelectorAll('[data-part="studio-advanced-form"] [data-part="studio-form-banner"]')).toHaveLength(0)
+    })
+
+    test('the basic, display and chat kinds show no advanced form', () => {
+        setFull(makeInput({ character: makeTextCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }) }))
+        for (const kind of ['basic', 'display']) {
+            openStudio(ownerItem('character', 'cha-1', kind, `cha-1/${kind}:0`), null)
+            show()
+            flushSync()
+            expect(part('studio-advanced-form'), kind).toBeNull()
+        }
+        openStudio({ owner: { type: 'chat', id: 'chat-1' }, from: 'chat' }, null)
+        show()
+        flushSync()
+        expect(part('studio-advanced-form')).toBeNull()
     })
 })
