@@ -630,24 +630,28 @@ describe('a second composer action while a send is still taking its input', () =
         expect(passedArg.signal!.aborted).toBe(true)
     })
 
-    test('stop-all runs the stop of every reply and preview registration and leaves work registrations alone', async () => {
+    test('stop-all runs the stop of every reply and preview registration, and of work beside one, and leaves work alone in a chat that shows no Stop', async () => {
         const { registerWork } = await import('../chatOrigin')
         const stopA = vi.fn()
         const stopP = vi.fn()
         const stopW = vi.fn()
+        const stopLone = vi.fn()
         const reply = registerWork({ chaId: 'stop-all-a', chatId: 'chat-a' }, stopA, 'reply')
         const preview = registerWork({ chaId: 'stop-all-b', chatId: 'chat-b' }, stopP, 'preview')
         const work = registerWork({ chaId: 'stop-all-a', chatId: 'chat-a' }, stopW)
+        const lone = registerWork({ chaId: 'stop-all-c', chatId: 'chat-c' }, stopLone)
         try {
             abortChat()
 
             expect(stopA).toHaveBeenCalledTimes(1)
             expect(stopP).toHaveBeenCalledTimes(1)
-            expect(stopW).not.toHaveBeenCalled()
+            expect(stopW).toHaveBeenCalledTimes(1)
+            expect(stopLone).not.toHaveBeenCalled()
         } finally {
             reply.end()
             preview.end()
             work.end()
+            lone.end()
         }
     })
 

@@ -598,6 +598,41 @@ describe('T3-T8 the reply cue of sendChatMain', () => {
         expect(plays.count).toBe(0)
     })
 
+    test('guard (MC-3790): a reply stopped by the notification Stop is silenced and plays no chime and no receive cue', async () => {
+        const { registerWork } = await import('../chatOrigin')
+        const { abortChat } = await import('../composerActions.svelte')
+        const { hasSilencedFor, replySoundFor } = await import('../replyNotice')
+        const char = makeCharacter('c-reply-stop-all')
+        installDb([char], { playMessage: true })
+        const origin = { chaId: char.chaId, chatId: char.chats[0].id! }
+        let seenSignal: AbortSignal | undefined
+        let markStarted: () => void = () => {}
+        const started = new Promise<void>((res) => { markStarted = res })
+        sendChatMock.mockImplementationOnce(async (_index: number, arg: SendChatArg) => {
+            seenSignal = arg.signal
+            let markStopped: () => void = () => {}
+            const stopped = new Promise<void>((res) => { markStopped = res })
+            const handle = registerWork(origin, () => { markStopped() }, 'reply')
+            markStarted()
+            await stopped
+            handle.end()
+            announceReply({ origin, outcome: 'stopped' }, arg.signal)
+            return false
+        })
+
+        const running = sendChatMain(targetOf(char))
+        await started
+        abortChat()
+        await running
+
+        expect(hasSilencedFor(seenSignal)).toBe(true)
+        expect(replySoundFor({
+            completed: true, threw: false, aborted: false, failed: false, silenced: hasSilencedFor(seenSignal), chimed: false, playMessage: true,
+        })).toBeNull()
+        expect(audio.started).toEqual([])
+        expect(plays.count).toBe(0)
+    })
+
     test('a refused or unfinished send that is not a failure plays no receive cue', async () => {
         const char = makeCharacter('c-reply-none')
         installDb([char], { playMessage: false })
