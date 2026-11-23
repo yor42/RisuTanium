@@ -842,7 +842,7 @@ describe('the origin registered as being written to', () => {
     test('guard: a send refused because a generation is already running registers nothing and fills no ids', async () => {
         installDb([makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')])])])
         selectedCharID.set(0)
-        simulateRunningSend()
+        simulateRunningSend({ chaId: 'char-0', chatId: 'chat-origin' })
 
         const result = await settled(() => sendChat())
 

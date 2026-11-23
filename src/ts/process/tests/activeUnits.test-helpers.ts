@@ -1,8 +1,8 @@
 import { activeUnits, type ActiveUnitKey } from '../activeUnits'
 
 /**
- * A chat no test world uses, so a unit held under it makes the send gate busy for every chat. A test that needs the
- * unit to belong to its own chat passes that chat's key instead.
+ * A chat no test world uses, so a unit held under it refuses no send in any chat a test uses. A test that needs the
+ * unit to refuse a send into its own chat passes that chat's key instead.
  */
 const elsewhere: ActiveUnitKey = { chaId: 'test-running-send-elsewhere', chatId: 'test-running-send-elsewhere-chat' }
 

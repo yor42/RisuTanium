@@ -2216,6 +2216,11 @@ export const languageVietnamese = {
     "homePersonaChipUnnamed": "Thiết lập nhân cách của bạn",
     "homePersonaChipHint": "Dùng cho các cuộc trò chuyện chưa chọn nhân cách",
     "homePersonaChipGo": "Quản lý tại Cài đặt › Nhân cách",
+    "homeTasks": "Tác vụ",
+    "homeTasksName": (count: number) => `Tác vụ, ${count} đang chạy`,
+    "homeTasksTitle": "Phản hồi đang xử lý",
+    "homeTasksEmpty": "Không có phản hồi nào đang xử lý",
+    "homeTasksCount": (count: number) => `${count} phản hồi đang xử lý`,
     "homeEmptyHeading": "Câu chuyện đầu tiên của bạn bắt đầu từ đây.",
     "homeEmptyBody": "Hãy tạo một nhân vật hoặc nhập nhân vật bạn đã có.",
     "homeEmptyCreate": "Tạo nhân vật",
@@ -4504,6 +4509,11 @@ export const languageVietnamese = {
         promptText: "Nội dung lời nhắc",
         summarized: "Đã tóm tắt",
         inactive: "Không hoạt động",
+        chunks: "Đoạn",
+        requestBody: "Nội dung yêu cầu",
+        requestHeader: "Tiêu đề yêu cầu",
+        response: "Phản hồi",
+        bytes: "Byte",
         realmShareNotice: "Hãy dùng RisuRealm để chia sẻ cài đặt trước. Hiện chưa thể xuất cài đặt trước có chứa hình ảnh hoặc regex."
     },
     loadoutModal: {

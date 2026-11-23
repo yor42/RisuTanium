@@ -1100,12 +1100,55 @@ export function generatingChatIdsIn(chaId: string): string[] {
     return [...ids]
 }
 
+/** One chat that has a `reply` send registered, named by the owner the registration carries. */
+export interface ReplyTarget { chaId: string, chatId: string }
+
+/**
+ * The distinct (chaId, chatId) pairs of every registered `reply` send, in first-registration order.
+ * A pair is the owner `stopWorkIn` matches on, so a group's turn is one entry under the group and
+ * never an entry for the member it speaks as. A stopped reply stays listed until it has ended.
+ * Read-only: it returns fresh objects and never bumps the version. Reactive.
+ */
+export function replyTargets(): ReplyTarget[] {
+    readReplyVersion()
+    const seen = new Set<string>()
+    const targets: ReplyTarget[] = []
+    for (const registration of registrations) {
+        if (registration.kind !== 'reply') continue
+        const key = `${registration.chaId}\u0000${registration.chatId}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        targets.push({ chaId: registration.chaId, chatId: registration.chatId })
+    }
+    return targets
+}
+
 /**
  * True while a `reply` or a `preview` send is registered as owned by `target`.
  * Reactive; same owner-level match as `isGeneratingIn`.
  */
 export function isBusyIn(target: { chaId: string, chatId?: string }): boolean {
     return hasKindIn(target, ['reply', 'preview'])
+}
+
+/**
+ * The distinct owner chats that `isBusyIn` answers true for through a reply or
+ * preview registration, as a copy: the chats that show Stop for registered
+ * work. Same match as `isBusyIn`, so the notification Stop reaches exactly the
+ * chats whose own Stop would show.
+ */
+export function busyTargets(): { chaId: string, chatId: string }[] {
+    const targets: { chaId: string, chatId: string }[] = []
+    for(const registration of registrations){
+        if(registration.kind !== 'reply' && registration.kind !== 'preview'){
+            continue
+        }
+        if(targets.some((target) => target.chaId === registration.chaId && target.chatId === registration.chatId)){
+            continue
+        }
+        targets.push({ chaId: registration.chaId, chatId: registration.chatId })
+    }
+    return targets
 }
 
 /** True while the chat on screen is the one `origin` names. */
@@ -1132,7 +1175,8 @@ export function stopWorkIn(target: { chaId: string, chatId?: string }): void {
  * recovered apply. `work` registrations (takes, tree edits, commands, trigger
  * runs, auto runs) are left alone. Same once-only mark as `stopWorkIn`, so a
  * later per-chat stop or delete skips what this stopped, and the other way
- * round.
+ * round. This is the sweep part of stop-all; `abortChat` first stops the work
+ * beside a reply per chat (MC-3790).
  */
 export function stopAllReplyWork(): void {
     stopRegistrations((registration) => registration.kind === 'reply' || registration.kind === 'preview')

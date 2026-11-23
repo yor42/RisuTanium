@@ -1,6 +1,5 @@
-import { get } from 'svelte/store';
-import { doingChat, sendChat } from '../index.svelte';
-import { isComposerWindowOpen } from '../generationOwnership.svelte';
+import { sendChat } from '../index.svelte';
+import { starterRefusalIn } from '../sendAdmission';
 import { createSendSubject, registerWork, type OriginHint, type RunSubject } from '../chatOrigin';
 import type { ComposerDraftKey } from '../composerDrafts.svelte';
 import { downloadFile } from 'src/ts/globalApi.svelte';
@@ -65,10 +64,11 @@ async function sendPofileEntries(arg:sendFileArg, subject:RunSubject, hint:Origi
                 result += '\n'
                 continue
             }
-            if(signal.aborted || get(doingChat) || isComposerWindowOpen()){
-                // The job was stopped, or another send is in flight: post
-                // nothing more. A job that has already sent an entry still
-                // ends by handing over what it has built.
+            if(signal.aborted || starterRefusalIn({ chaId: subject.origin.chaId, chatId: subject.origin.chatId }) !== null){
+                // The job was stopped, or its own chat now has other work, a
+                // native reply or a window: post nothing more. A job that has
+                // already sent an entry still ends by handing over what it
+                // has built.
                 if(sentEntries === 0){
                     return
                 }

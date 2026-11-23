@@ -655,9 +655,9 @@ describe('the chat in-flight token', () => {
         expect(inFlightKinds()).toEqual([])
     })
 
-    test('a send refused because another holds the flag creates no token', async () => {
+    test('a send refused because another holds its chat creates no token', async () => {
         installSingleChat()
-        simulateRunningSend()
+        simulateRunningSend({ chaId: 'char-0', chatId: 'chat-0' })
 
         const { begins, result } = await countChatBegins(() => sendChat())
 

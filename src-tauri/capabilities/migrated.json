@@ -7,35 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    "fs:allow-read-file",
-    "fs:allow-open",
-    "fs:allow-read",
-    "fs:allow-seek",
-    "fs:allow-fstat",
-    "fs:allow-write-file",
-    "fs:allow-read-dir",
-    "fs:allow-mkdir",
-    "fs:allow-remove",
-    "fs:allow-rename",
-    "fs:allow-exists",
-    {
-      "identifier": "fs:scope",
-      "allow": [
-        "$APPDATA",
-        "$APPDATA/*",
-        "$APPDATA/**/*",
-        "$DOWNLOAD/*",
-        "/data/**/*"
-      ],
-      "deny": [
-        "/data/user/*/io.github.yor42.risutanium/cache",
-        "/data/user/*/io.github.yor42.risutanium/cache/app-update",
-        "/data/user/*/io.github.yor42.risutanium/cache/app-update/**",
-        "/data/data/io.github.yor42.risutanium/cache",
-        "/data/data/io.github.yor42.risutanium/cache/app-update",
-        "/data/data/io.github.yor42.risutanium/cache/app-update/**"
-      ]
-    },
     "core:window:allow-maximize",
     "core:window:allow-set-fullscreen",
     {
@@ -55,7 +26,6 @@
         }
       ]
     },
-    "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",
     "dialog:allow-confirm",
@@ -90,7 +60,6 @@
     "os:allow-exe-extension",
     "os:allow-locale",
     "process:allow-restart",
-    "fs:default",
     "os:default"
   ]
 }

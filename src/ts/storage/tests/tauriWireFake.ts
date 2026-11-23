@@ -24,6 +24,26 @@
  */
 import { createDesktopInvoke } from './tauriDesktopFake'
 import { createFakeTauriFs, type FakeFsOptions } from './tauriFsFake'
+import androidBoundary from '../../../../src-tauri/tests/fixtures/android-boundary.json'
+
+const STORE_DIRECTORIES: readonly string[] = androidBoundary.directories
+const STORE_ROOT_FILES: readonly string[] = androidBoundary.rootFiles
+const ANDROID_FS_COMMANDS: readonly string[] = Object.keys(androidBoundary.androidFsCommands)
+const TEMP_NAME = /^risu-write-[0-9a-f]{16}\.tmp$/
+
+/**
+ * Whether a store key lies inside the set the native side serves on Android: a key under one of the store
+ * directories (the bare directory included), one of the root files, or a whole write-temp name. The empty key
+ * is the base itself and is judged by the caller.
+ */
+export function keyInsideAndroidStore(key: string): boolean {
+    return STORE_DIRECTORIES.includes(key.split('/')[0])
+        || STORE_ROOT_FILES.includes(key)
+        || TEMP_NAME.test(key)
+}
+
+/** The refusal the native key rule answers with. */
+export const OUTSIDE_STORE_MESSAGE = 'refused key: outside the app\'s store'
 
 /** `BaseDirectory.AppData` in `@tauri-apps/api/path`. */
 const APP_DATA_DIRECTORY_ID = 14
@@ -126,8 +146,54 @@ export function installTauriWire(options: WireOptions) {
         throw new Error(`the wire fake does not model plugin:path|${command}`)
     }
 
+    /** Every store key an app command names: arguments, the key list and the key headers. */
+    function namedKeys(args: unknown, headers: Record<string, string> | undefined): string[] {
+        const named: string[] = []
+        const record = typeof args === 'object' && args !== null && !(args instanceof Uint8Array) ? args as Record<string, unknown> : {}
+        for (const field of ['key', 'finalKey']) {
+            if (typeof record[field] === 'string') {
+                named.push(record[field])
+            }
+        }
+        if (Array.isArray(record.keys)) {
+            named.push(...record.keys.filter((key): key is string => typeof key === 'string'))
+        }
+        if (Array.isArray(record.directories)) {
+            named.push(...record.directories.filter((key): key is string => typeof key === 'string'))
+        }
+        for (const header of ['x-risu-key', 'x-risu-final-key']) {
+            if (typeof headers?.[header] === 'string') {
+                named.push(decodeURIComponent(headers[header]))
+            }
+        }
+        return named
+    }
+
+    /** What the native side refuses on Android before any I/O; the call is recorded first. */
+    function refuseOnAndroid(cmd: string, args: unknown, headers: Record<string, string> | undefined): void {
+        if (options.os !== 'android') {
+            return
+        }
+        if (cmd.startsWith('plugin:fs|')) {
+            if (!ANDROID_FS_COMMANDS.includes(cmd.slice('plugin:fs|'.length))) {
+                throw `refused-fs: ${cmd.slice('plugin:fs|'.length)}`
+            }
+            return
+        }
+        if (cmd.startsWith('plugin:')) {
+            return
+        }
+        const emptyIsTheBase = cmd === 'app_fs_exists' || cmd === 'app_fs_mkdir_all'
+        for (const key of namedKeys(args, headers)) {
+            if (!(emptyIsTheBase && key === '') && !keyInsideAndroidStore(key)) {
+                throw OUTSIDE_STORE_MESSAGE
+            }
+        }
+    }
+
     async function invoke(cmd: string, args?: unknown, invokeOptions?: InvokeOptions): Promise<unknown> {
         calls.push({ cmd, args, headers: invokeOptions?.headers })
+        refuseOnAndroid(cmd, args, invokeOptions?.headers)
         if (cmd.startsWith('plugin:fs|')) {
             return await pluginFs(cmd.slice('plugin:fs|'.length), args, invokeOptions)
         }

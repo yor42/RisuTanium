@@ -1314,10 +1314,12 @@ describe('a trigger button\'s /multisend and the composer\'s window', () => {
         expect(contents()).toEqual(['Hi', 'a', 'reply a', 'b', 'reply b'])
     })
 
-    test('a button\'s /multisend in another chat does not stop the busy button putting the take\'s text back', async () => {
+    test('a button\'s /multisend in another chat generates there and does not stop the busy button putting the take\'s text back', async () => {
         installWorld()
         addSecondChat()
         setTriggers(0, trigger('btn', 'manual', [commandEffect('command', '/multisend p|||q')]))
+        mockReply('reply p')
+        mockReply('reply q')
         const speak = holdNextSpeak()
         seedDraft('/speak x|/pass y')
         const sending = send(makeSource())
@@ -1329,7 +1331,7 @@ describe('a trigger button\'s /multisend and the composer\'s window', () => {
         await sending
 
         expect.soft(draftText()).toBe('/speak x|/pass y')
-        expect.soft(texts(1)).toEqual(['B last', 'p', 'q'])
+        expect.soft(texts(1)).toEqual(['B last', 'p', 'reply p', 'q', 'reply q'])
     })
 
     test('guard: a button\'s /multisend answers both segments when no send holds the flag and no send is starting', async () => {

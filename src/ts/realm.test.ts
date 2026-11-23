@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
     png: new Uint8Array() as Uint8Array,
     failWrite: false,
     failImage: false,
+    failImageWith: null as string | null,
     refuse: false,
     refusals: [] as string[],
     refusalCards: [] as unknown[],
@@ -129,6 +130,9 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         loadAsset: vi.fn(async () => new Uint8Array()),
         openURL: vi.fn(),
         readImage: vi.fn(async () => {
+            if (h.failImageWith !== null) {
+                throw h.failImageWith
+            }
             if (h.failImage) {
                 throw new Error('synthetic image failure')
             }
@@ -196,6 +200,7 @@ beforeEach(() => {
     h.cards.length = 0
     h.failWrite = false
     h.failImage = false
+    h.failImageWith = null
     h.refuse = false
     h.png = syntheticPng()
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -237,6 +242,18 @@ describe('shareRealmCardData', () => {
         expect(outcome).toBe('resolved')
         expect(taskHostView()?.state).toBe('failed')
         expect(taskHostView()?.failure?.detail).toBe('synthetic image failure')
+        expect(h.errors).toEqual([])
+    })
+
+    test.each([
+        ['release', 'Command plugin:fs|read_file not allowed by ACL'],
+        ['debug', 'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file'],
+    ])('RL3a guard (%s access control list wording): a refused portrait read gives null, a fail card with that exact string and no shared data', async (_wording, refusal) => {
+        h.failImageWith = refusal
+        const outcome = await shareRealmCardData().then((shared) => shared, () => 'rejected' as const)
+        expect(outcome).toBeNull()
+        expect(taskHostView()?.state).toBe('failed')
+        expect(taskHostView()?.failure?.detail).toBe(refusal)
         expect(h.errors).toEqual([])
     })
 

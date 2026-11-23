@@ -73,6 +73,7 @@ import { flushPageReplyEndWhenHidden } from "./saveOnHide";
 import { MEASURE } from "./memory/measureFlag";
 import { noteReplyArrived } from "../storage/saveRequestProbe";
 import { activeUnits, type ActiveUnitKey } from "./activeUnits";
+import { selectedChatKey, sendRefusalIn } from "./sendAdmission";
 import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkKind, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit, setProcessStage } from "./generationOwnership.svelte";
 import { addActiveStream, addReplySpeaker, noteStreamReceived, noteStreamText } from "./activeStreams";
@@ -341,22 +342,16 @@ export function sendTargetOf(arg: Pick<SendChatArg, 'origin'>): ActiveUnitKey | 
     if(arg.origin){
         return { chaId: arg.origin.chaId, chatId: arg.origin.chatId }
     }
-    const selected = DBState.db?.characters?.[get(selectedCharID)]
-    const selectedChat = selected?.chats?.[selected.chatPage]
-    if(!selected?.chaId || !selectedChat?.id){
-        return null
-    }
-    return { chaId: selected.chaId, chatId: selectedChat.id }
+    return selectedChatKey()
 }
 
 /**
- * The one admission gate for an outermost send. Today any held unit refuses,
- * whichever chat it writes to. The check and the take stay one synchronous
- * stretch, so no other gate may shadow this one.
+ * The admission gate for an outermost send, per chat: refused while a unit holds the chat it will write to or a native
+ * reply targets it; a unit or a reply elsewhere does not refuse. The reads are untracked. The take that follows
+ * `enterSendChat` decides again, so nothing between the two may await.
  */
 function sendAdmissible(arg: SendChatArg): boolean {
-    void arg
-    return !activeUnits.any()
+    return sendRefusalIn(sendTargetOf(arg)) === null
 }
 
 /**
@@ -364,14 +359,17 @@ function sendAdmissible(arg: SendChatArg): boolean {
  * `activeUnits` (which `doingChat` reports) and its abort controller's signal
  * published as a tag for the native chat Stop, from the moment it is accepted
  * until it settles. The unit's stop is its work registration's. It
- * is refused while another unit is held, when its caller's signal is already
- * aborted, and by the refusals that depend on the chat it writes to (a cold
- * chat still loading, nothing selected, an origin that is gone). A refused call
- * changes neither the registry nor the published tags and registers
- * nothing.
+ * is refused while a unit holds the chat it writes to or a native reply
+ * targets that chat (a unit in another chat does not refuse it), when its
+ * caller's signal is already aborted, and by the refusals that depend on the
+ * chat it writes to (a cold chat still loading, nothing selected, an origin
+ * that is gone). A call refused before it enters changes neither the registry
+ * nor the published tags and registers nothing.
  *
- * The admission check and the take happen in one synchronous stretch: nothing
- * between them may await, or two units could be accepted together.
+ * The admission check, the registration and the take happen in one synchronous
+ * stretch: nothing between them may await, or two units could be accepted into
+ * one chat. The take decides, so a call that a synchronous callback of its own
+ * entry raced to the chat ends its registration and speaker and is refused.
  *
  * The call writes into a chat fixed at entry and is registered as writing to
  * it until it settles. The recursion inside `sendChatBody` (group turns,
@@ -392,11 +390,24 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     if(!entry){
         return false
     }
-    // Reset after admission and every refusal, for the chat this unit writes
-    // to, so a refused call never clears the running send's progress.
-    setProcessStage(entry.context.origin, 0)
     // Inert until taken; the release below affects this handle only.
     const active = activeUnits.unit(entry.context.origin)
+    // The take is the exclusion: a synchronous callback of the entry can have started another send into this chat, and
+    // the gate before the entry could not see it. A take that threw after adding is still released.
+    let admitted = false
+    try {
+        admitted = active.take()
+    } finally {
+        if(!admitted){
+            active.release()
+            entry.releaseSpeaker()
+            entry.handle.end()
+        }
+    }
+    if(!admitted){
+        console.error(`A send into chat ${entry.context.origin.chatId} was refused: another send holds it`)
+        return false
+    }
     const callerSignal = arg.signal
     const relayAbort = () => unit.abort()
     // Held from the moment the unit takes its place until it releases it, so the
@@ -413,11 +424,13 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     // The same classification, for the keep-alive notification's Stopped and Failed lingers. A preview send has none.
     let replyOutcome: ReplyOutcome | undefined
     try {
+        // Reset after admission, for the chat this unit writes to, so a refused call never clears the running send's
+        // progress.
+        setProcessStage(entry.context.origin, 0)
         callerSignal?.addEventListener('abort', relayAbort)
         publishUnit(unit, entry.context.origin)
         // The target is the owner's chat (a group's own id for a group chat), so a notification can open it.
         endInFlight = beginInFlight('chat', { target: entry.context.origin })
-        active.take()
         // Awaited only after the unit is taken, so the check and the take stay one synchronous stretch. The busy
         // button aborts the wait through the unit's signal; a failure alerts once and the finally releases the unit.
         if(hasModuleStubs() && !(await ensureModulesOrAlert(entry.context.origin, unit.signal, entry.context.hint))){
@@ -431,33 +444,41 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
         throw error
     } finally {
         try {
-            // First, before the hidden-page flush and while the registration is live: the mark it writes is then saved by
-            // that flush, and a put-back that waits on the registration cannot race it. Never throws.
-            if(!(arg.preview || arg.previewPrompt)){
-                const facts = { completed, signal: unit.signal, threw, modulesFailed }
-                announcement = recordReplyOutcome(entry.context, facts, isChatOnScreen)
-                // On screen or off: a failed or stopped reply plays no sound, so the composer's chime must know. Never throws.
+            try {
+                // First, before the hidden-page flush and while the registration is live: the mark it writes is then saved by
+                // that flush, and a put-back that waits on the registration cannot race it. Never throws.
+                if(!(arg.preview || arg.previewPrompt)){
+                    const facts = { completed, signal: unit.signal, threw, modulesFailed }
+                    announcement = recordReplyOutcome(entry.context, facts, isChatOnScreen)
+                    // On screen or off: a failed or stopped reply plays no sound, so the composer's chime must know. Never throws.
+                    try {
+                        replyOutcome = classifyReplyOutcome(entry.context.subject.resolve() !== null, facts)
+                        noteReplySound(callerSignal, replyOutcome)
+                    } catch (error) {
+                        console.error('The reply sound could not be recorded', error)
+                    }
+                }
+                flushPageReplyEndWhenHidden(entry.context.origin)
+                // Read before the keys are settled and from outside `held`, so a save that consumed the reply cannot lose it.
                 try {
-                    replyOutcome = classifyReplyOutcome(entry.context.subject.resolve() !== null, facts)
-                    noteReplySound(callerSignal, replyOutcome)
+                    nativeAnnounced = takeAnnounced(replyKeysOfUnit.get(unit.signal) ?? [])
                 } catch (error) {
-                    console.error('The reply sound could not be recorded', error)
+                    console.error('The native notice fact could not be read', error)
+                }
+                // Never throws: a key the send never pushed is consumed, dropped or left to the reconcile.
+                settleReplyKeys(unit.signal)
+                endInFlight(replyOutcome)
+                callerSignal?.removeEventListener('abort', relayAbort)
+                releaseUnit(unit)
+            } finally {
+                // The innermost step: nothing above can skip the release, and the wake-up follows it. Unit first,
+                // registration second.
+                try {
+                    active.release()
+                } finally {
+                    rerunDeferredApply(entry.context.origin)
                 }
             }
-            flushPageReplyEndWhenHidden(entry.context.origin)
-            // Read before the keys are settled and from outside `held`, so a save that consumed the reply cannot lose it.
-            try {
-                nativeAnnounced = takeAnnounced(replyKeysOfUnit.get(unit.signal) ?? [])
-            } catch (error) {
-                console.error('The native notice fact could not be read', error)
-            }
-            // Never throws: a key the send never pushed is consumed, dropped or left to the reconcile.
-            settleReplyKeys(unit.signal)
-            endInFlight(replyOutcome)
-            callerSignal?.removeEventListener('abort', relayAbort)
-            releaseUnit(unit)
-            active.release()
-            rerunDeferredApply()
         } finally {
             try {
                 settleSendChatCall(entry)
@@ -511,8 +532,11 @@ function expandChatVariables(ctx: OriginContext, subject: SendSubject, currentCh
 /** The keys of the replies each running unit was granted, by the unit's signal; the outermost call settles them. */
 const replyKeysOfUnit = new WeakMap<AbortSignal, string[]>()
 
-/** A recovered reply was deferred because a send was running: the send's end asks the reconcile to run again. */
-let recoveredApplyDeferred = false
+/**
+ * The chats (`chaId` and `chatId` joined) a recovered reply was deferred for because a unit held them: the release of that
+ * chat asks the reconcile to run again, and the release of another chat does not.
+ */
+const deferredApplyChats = new Set<string>()
 
 /** Settles the grants of a finished unit: a key that was never pushed is consumed or left to the reconcile. */
 function settleReplyKeys(signal: AbortSignal): void {
@@ -527,26 +551,23 @@ function settleReplyKeys(signal: AbortSignal): void {
     }
 }
 
-/**
- * Whether a held unit blocks placing a recovered reply now. Today any held unit blocks it, whichever chat it owns.
- */
-function recoveredApplyBlocked(origin: Origin): boolean {
-    void origin
-    return activeUnits.any()
+function deferredApplyKeyOf(origin: Origin): string {
+    return JSON.stringify([origin.chaId, origin.chatId])
 }
 
-/** Records that a recovered reply waited for a unit: the send's end asks the reconcile to run again. */
+/** Records that a recovered reply waited for the unit that holds its chat: that chat's release asks the reconcile to run again. */
 function deferRecoveredApply(origin: Origin, key: string): 'deferred' {
-    void origin
-    recoveredApplyDeferred = true
+    deferredApplyChats.add(deferredApplyKeyOf(origin))
     noteWaitingForUnit(key)
     return 'deferred'
 }
 
-/** After the unit is released: a recovered reply that waited for it is placed by a new reconcile pass. */
-function rerunDeferredApply(): void {
-    if(recoveredApplyDeferred){
-        recoveredApplyDeferred = false
+/**
+ * After a unit of this chat is released: a recovered reply that waited for the chat is placed by a new reconcile pass. The
+ * release of a chat nothing waited for requests nothing.
+ */
+function rerunDeferredApply(origin: Origin): void {
+    if(deferredApplyChats.delete(deferredApplyKeyOf(origin))){
         requestReconcile()
     }
 }
@@ -558,37 +579,41 @@ function rerunDeferredApply(): void {
  * a `sendAIprompt` of the output trigger is ignored. An imggen tag is stored as it came (MC-2359). A reply for a chat
  * that is not on screen sets the unseen mark (MC-2358).
  *
- * It runs only while no unit is held (`doingChat`): the apply takes a unit, so a send is refused meanwhile, and a
- * stop-all, a delete or a trashed chat stops it through its work registration, which defers it before its write.
+ * It runs only while no unit holds its chat: the take is its first act and its only exclusion check, so a send into the
+ * chat is refused meanwhile, a unit in another chat does not defer it, and a stop-all, a delete or a trashed chat stops it
+ * through its work registration, which defers it before its write. A throw before the write fails it (the record is kept
+ * and a later pass places it).
  */
 export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<ApplyOutcome> {
     const { key, blob, text } = input
     const origin: Origin = { chaId: blob.target.chaId, chatId: blob.target.chatId }
-    if(recoveredApplyBlocked(origin)){
-        return deferRecoveredApply(origin, key)
-    }
-    const subject = createSendSubject(origin)
-    const entryCtx = subject.resolve()
-    if(!entryCtx || entryCtx.owner.type !== 'character'){
-        return 'failed'
-    }
-    if(entryCtx.chat.message.some((message) => message.chatId === key)){
-        // Another write placed it first: it is awaited like one this page pushed.
-        markCharacterForSave(origin.chaId)
-        holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
-        return 'applied'
-    }
-    const currentChar = entryCtx.owner
-    const unit = new AbortController()
-    let stopped = false
     const active = activeUnits.unit(origin)
-    active.take()
-    const handle = registerWork(origin, () => {
-        stopped = true
-        unit.abort()
-    }, 'reply')
+    // The wake-up runs only for a take that succeeded: a refused apply must not clear its own new deferral.
+    let held = false
+    let handle: WorkHandle | null = null
     let pushed = false
     try {
+        held = active.take()
+        if(!held){
+            return deferRecoveredApply(origin, key)
+        }
+        const subject = createSendSubject(origin)
+        const entryCtx = subject.resolve()
+        if(!entryCtx || entryCtx.owner.type !== 'character'){
+            return 'failed'
+        }
+        if(entryCtx.chat.message.some((message) => message.chatId === key)){
+            // Another write placed it first: it is awaited like one this page pushed.
+            pushed = true
+            return 'applied'
+        }
+        const currentChar = entryCtx.owner
+        const unit = new AbortController()
+        let stopped = false
+        handle = registerWork(origin, () => {
+            stopped = true
+            unit.abort()
+        }, 'reply')
         let result = (await processScriptFull(currentChar, text.trim(), 'editoutput', entryCtx.chat.message.length, {}, undefined, subject, null)).data
         if(DBState.db.removeIncompleteResponse){
             result = trimUntilPunctuation(result)
@@ -639,13 +664,26 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
         console.error(error)
         return pushed ? 'applied' : 'failed'
     } finally {
-        // After the push the reply is saved like any other: its mark and the waiter come first, whatever failed above.
-        if(pushed){
-            markCharacterForSave(origin.chaId)
-            holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
+        try {
+            // After the push the reply is saved like any other: its mark and the waiter come first, whatever failed above.
+            try {
+                if(pushed){
+                    markCharacterForSave(origin.chaId)
+                    holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
+                }
+            } finally {
+                handle?.end()
+            }
+        } finally {
+            // The innermost step: nothing above can skip the release, and the wake-up follows it.
+            try {
+                active.release()
+            } finally {
+                if(held){
+                    rerunDeferredApply(origin)
+                }
+            }
         }
-        handle.end()
-        active.release()
     }
 }
 
@@ -656,7 +694,8 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
  * follows. A prefix of a body (a partial) gets the output scripts and the unseen mark only, and its message keeps
  * `interrupted`.
  *
- * Three cases, decided inside the unit exclusion (a running send or Continue is never written into):
+ * Three cases, decided inside the unit exclusion (a running send or Continue in this chat is never written into; one in
+ * another chat does not defer it):
  * - the message is absent: it is appended once, with the key as its id;
  * - it is present and still `interrupted` (the page's own partial): the text and the flag are upgraded in place, after the
  *   flag is checked again in the stretch that writes, so an edit made during the awaits is never overwritten;
@@ -667,38 +706,41 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
 export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Promise<ApplyOutcome> {
     const { key, blob, modelText, complete, meter, how, signatures } = input
     const origin: Origin = { chaId: blob.target.chaId, chatId: blob.target.chatId }
-    if(recoveredApplyBlocked(origin)){
-        return deferRecoveredApply(origin, key)
-    }
-    const subject = createSendSubject(origin)
-    const entryCtx = subject.resolve()
-    if(!entryCtx || entryCtx.owner.type !== 'character'){
-        return 'failed'
-    }
-    // The message exists: it is awaited for its save like one this page pushed, and consumed only after that commit.
-    const holdPresent = (): ApplyOutcome => {
-        markCharacterForSave(origin.chaId)
-        holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
-        return 'present'
-    }
-    const entryIndex = entryCtx.chat.message.findIndex((message) => message.chatId === key)
-    if(entryIndex !== -1 && entryCtx.chat.message[entryIndex].interrupted !== true){
-        return holdPresent()
-    }
-    const upgrade = entryIndex !== -1
-    const currentChar = entryCtx.owner
-    const unit = new AbortController()
-    let stopped = false
     const active = activeUnits.unit(origin)
-    active.take()
-    const handle = registerWork(origin, () => {
-        stopped = true
-        unit.abort()
-    }, 'reply')
+    // The wake-up runs only for a take that succeeded: a refused apply must not clear its own new deferral.
+    let held = false
+    let handle: WorkHandle | null = null
     let written = false
     // The signature inlays the written text references; the record is held for the save only after they settle.
     const signatureWrites: Promise<unknown>[] = []
     try {
+        held = active.take()
+        if(!held){
+            return deferRecoveredApply(origin, key)
+        }
+        const subject = createSendSubject(origin)
+        const entryCtx = subject.resolve()
+        if(!entryCtx || entryCtx.owner.type !== 'character'){
+            return 'failed'
+        }
+        // The message exists: it is awaited for its save like one this page pushed, and consumed only after that commit.
+        const holdPresent = (): ApplyOutcome => {
+            markCharacterForSave(origin.chaId)
+            holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
+            return 'present'
+        }
+        const entryIndex = entryCtx.chat.message.findIndex((message) => message.chatId === key)
+        if(entryIndex !== -1 && entryCtx.chat.message[entryIndex].interrupted !== true){
+            return holdPresent()
+        }
+        const upgrade = entryIndex !== -1
+        const currentChar = entryCtx.owner
+        const unit = new AbortController()
+        let stopped = false
+        handle = registerWork(origin, () => {
+            stopped = true
+            unit.abort()
+        }, 'reply')
         let head = modelText
         if(DBState.db.removeIncompleteResponse){
             head = trimUntilPunctuation(head)
@@ -783,15 +825,28 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
         console.error(error)
         return written ? 'applied' : 'failed'
     } finally {
-        // After the write the reply is saved like any other: its mark and the waiter come first, whatever failed above. The
-        // target is read after the mark.
-        if(written){
-            await Promise.allSettled(signatureWrites)
-            markCharacterForSave(origin.chaId)
-            holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
+        try {
+            // After the write the reply is saved like any other: its mark and the waiter come first, whatever failed above.
+            // The target is read after the mark.
+            try {
+                if(written){
+                    await Promise.allSettled(signatureWrites)
+                    markCharacterForSave(origin.chaId)
+                    holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
+                }
+            } finally {
+                handle?.end()
+            }
+        } finally {
+            // The innermost step: nothing above can skip the release, and the wake-up follows it.
+            try {
+                active.release()
+            } finally {
+                if(held){
+                    rerunDeferredApply(origin)
+                }
+            }
         }
-        handle.end()
-        active.release()
     }
 }
 

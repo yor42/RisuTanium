@@ -12,7 +12,8 @@ vi.mock(import('../../index.svelte'), async () => {
     const { writable: makeWritable } = await import('svelte/store')
     return { doingChat: makeWritable(false), sendChat: vi.fn() } as unknown as typeof import('../../index.svelte')
 })
-vi.mock(import('../../generationOwnership.svelte'), () => ({ isComposerWindowOpen: vi.fn() }) as unknown as typeof import('../../generationOwnership.svelte'))
+vi.mock(import('../../generationOwnership.svelte'), () => ({ isComposerWindowOpen: vi.fn(), composerWindowFor: vi.fn(() => false) }) as unknown as typeof import('../../generationOwnership.svelte'))
+vi.mock(import('../../../stores.svelte'), () => ({ DBState: { db: {} }, selectedCharID: { subscribe: (run: (value: number) => void) => { run(-1); return () => {} } } }) as unknown as typeof import('../../../stores.svelte'))
 vi.mock(import('../../chatOrigin'), () => ({ createSendSubject: vi.fn(), registerWork: vi.fn() }) as unknown as typeof import('../../chatOrigin'))
 vi.mock(import('src/ts/globalApi.svelte'), () => ({ downloadFile: vi.fn() }) as unknown as typeof import('src/ts/globalApi.svelte'))
 vi.mock(import('src/ts/platform'), () => ({

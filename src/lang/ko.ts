@@ -2216,6 +2216,11 @@ export const languageKorean = {
     "homePersonaChipUnnamed": "페르소나 설정하기",
     "homePersonaChipHint": "지정 없는 채팅에 써요",
     "homePersonaChipGo": "설정 › 페르소나에서 관리",
+    "homeTasks": "작업",
+    "homeTasksName": (count: number) => `작업, ${count}개 실행 중`,
+    "homeTasksTitle": "진행 중인 답변",
+    "homeTasksEmpty": "진행 중인 답변 없음",
+    "homeTasksCount": (count: number) => `진행 중인 답변 ${count}개`,
     "homeEmptyHeading": "첫 이야기를 시작해 봐요.",
     "homeEmptyBody": "캐릭터를 만들거나, 갖고 있는 캐릭터를 가져오세요.",
     "homeEmptyCreate": "캐릭터 만들기",
@@ -4505,6 +4510,11 @@ export const languageKorean = {
         promptText: "프롬프트 텍스트",
         summarized: "요약됨",
         inactive: "비활성",
+        chunks: "청크",
+        requestBody: "요청 본문",
+        requestHeader: "요청 헤더",
+        response: "응답",
+        bytes: "바이트",
         realmShareNotice: "프리셋을 공유하려면 RisuRealm을 사용하세요. 이미지나 정규식이 포함된 프리셋은 현재 내보낼 수 없습니다."
     },
     loadoutModal: {

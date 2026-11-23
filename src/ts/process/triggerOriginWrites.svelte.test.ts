@@ -1722,3 +1722,44 @@ describe('Lua setChatVar/getChatVar resolve through the run\'s origin, not the s
         expect(decodedA?.chats[0].scriptstate?.['$k']).toBe('v')
     })
 })
+
+describe('An image generation effect whose read the access control list refuses (guard)', () => {
+    const refusals = [
+        ['release', 'Command plugin:fs|read_file not allowed by ACL'],
+        ['debug', 'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file'],
+    ] as const
+
+    const effects = [
+        ['runImgGen', () => ({ type: 'runImgGen', value: 'prompt', negValue: '', inputVar: 'imgresult' })],
+        ['v2ImgGen', () => v2('v2ImgGen', { value: 'prompt', valueType: 'value', negValue: '', negValueType: 'value', outputVar: 'imgresult' })],
+    ] as const
+
+    for (const [effectType, makeEffect] of effects) {
+        for (const [wording, refusal] of refusals) {
+            test(`${effectType} rejects the run with the exact string (${wording} wording), sets no output variable and writes no inlay`, async () => {
+                const { writeInlayImage } = await import('./files/inlays')
+                const char = makeCharacter(`char-acl-${effectType}-${wording}`, { lowLevelAccess: true })
+                installDb([char])
+                const chat = char.chats[0]
+                char.triggerscript.push(trig('t', 'manual', [makeEffect() as triggerEffect]))
+                vi.mocked(generateAIImage).mockReset()
+                vi.mocked(generateAIImage).mockRejectedValueOnce(refusal)
+                vi.mocked(writeInlayImage).mockClear()
+
+                const handle = beginWork(char, chat)
+                let outcome: unknown = 'resolved'
+                try {
+                    await runTrigger(char, 'manual', { chat, manualName: 't', origin: handle!.origin } as never)
+                } catch (error) {
+                    outcome = error
+                } finally { handle!.end() }
+                vi.mocked(generateAIImage).mockReset()
+                vi.mocked(generateAIImage).mockResolvedValue(null as never)
+
+                expect(outcome).toBe(refusal)
+                expect(DBState.db.characters[0].chats[0].scriptstate['$imgresult']).toBeUndefined()
+                expect(writeInlayImage).not.toHaveBeenCalled()
+            })
+        }
+    }
+})

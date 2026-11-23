@@ -3,12 +3,12 @@ import { language } from "src/lang"
 import { fillLang } from "src/lang/fill"
 import { DBState, selectedCharID } from "../stores.svelte"
 import { applyChatTemplate } from "./templates/chatTemplate"
-import { doingChat, sendChat, type OpenAIChat, type PreviewResult } from "./index.svelte"
+import { sendChat, type OpenAIChat, type PreviewResult } from "./index.svelte"
 import { memberLabel, previewMayStart, renderPromptResult, runPreview } from "./previewRunner"
-import { isComposerWindowOpen } from "./generationOwnership.svelte"
+import { selectedChatKey, starterRefusalIn } from "./sendAdmission"
 
 function isBusy(): boolean {
-    return get(doingChat) || isComposerWindowOpen()
+    return starterRefusalIn(selectedChatKey()) !== null
 }
 
 /** The markdown for a formatted preview (the messages, joined as asked, or their chat template), or undefined when the call wrote none. */

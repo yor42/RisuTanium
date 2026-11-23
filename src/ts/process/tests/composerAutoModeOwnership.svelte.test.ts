@@ -87,26 +87,31 @@ vi.mock(import('src/ts/process/command'), () => ({
 
 const sendChatMock = vi.hoisted(() => vi.fn())
 
-vi.mock(import('src/ts/process/index.svelte'), () => ({
-    doingChat: writable(false),
-    sendChat: sendChatMock,
-}) as unknown as typeof import('src/ts/process/index.svelte'))
+// `doingChat` is the registry's own "any unit" flag, as in production: a unit held in one chat turns it true, which is
+// what auto mode must no longer read.
+vi.mock(import('src/ts/process/index.svelte'), async () => {
+    const { activeUnits } = await import('src/ts/process/activeUnits')
+    return {
+        doingChat: activeUnits.active,
+        sendChat: sendChatMock,
+    } as unknown as typeof import('src/ts/process/index.svelte')
+})
 
-// Every other export stays the real module's. `isComposerWindowOpen` is a delegating spy so one call can answer
-// false: a second auto run can then start while an earlier toggled-off run still holds its window.
+// Every other export stays the real module's. `composerWindowFor` and `isComposerWindowOpen` are delegating spies:
+// a row overrides `composerWindowFor` to answer for one chat, so a second auto run can start while an earlier
+// toggled-off run still holds its window.
 vi.mock(import('src/ts/process/generationOwnership.svelte'), async (importOriginal) => {
     const actual = await importOriginal()
-    return { ...actual, isComposerWindowOpen: vi.fn(actual.isComposerWindowOpen) }
+    return { ...actual, isComposerWindowOpen: vi.fn(actual.isComposerWindowOpen), composerWindowFor: vi.fn(actual.composerWindowFor) }
 })
 
 //#endregion
 
 import { runAutoMode, abortChat, isAutoModeActive, isComposerBusy, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
 import { noteTurnReached, composerWindowFor, isComposerWindowOpen } from 'src/ts/process/generationOwnership.svelte'
-import type { Writable } from 'svelte/store'
-const doingChat = doingChatStore as Writable<boolean>
+import { stopComposerWorkIn } from 'src/ts/process/composerActions.svelte'
+import { simulateRunningSend, clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -154,17 +159,21 @@ function scriptTicks(source: ComposerActionsSource, outcome: (call: number, arg:
     return { calls: () => calls }
 }
 
-const actualIsComposerWindowOpen = (await vi.importActual<typeof import('src/ts/process/generationOwnership.svelte')>('src/ts/process/generationOwnership.svelte')).isComposerWindowOpen
+const actualOwnership = await vi.importActual<typeof import('src/ts/process/generationOwnership.svelte')>('src/ts/process/generationOwnership.svelte')
+const actualIsComposerWindowOpen = actualOwnership.isComposerWindowOpen
 
 beforeEach(() => {
     sendChatMock.mockReset()
     // A one-shot answer a failed test left unused must not reach the next test.
     vi.mocked(isComposerWindowOpen).mockReset()
     vi.mocked(isComposerWindowOpen).mockImplementation(actualIsComposerWindowOpen)
+    vi.mocked(composerWindowFor).mockReset()
+    vi.mocked(composerWindowFor).mockImplementation(actualOwnership.composerWindowFor)
     installGroupChat()
 })
 
 afterEach(() => {
+    clearRunningSends()
     resetComposerActionsForTests()
     selectedCharID.set(-1)
 })
@@ -221,18 +230,30 @@ describe('auto mode between two ticks', () => {
         expect.soft(ticks.calls()).toBe(callsAtSwitch)
     })
 
-    test('a send that takes the flag while the loop has handed control back stops it before another tick is handed over', async () => {
+    // A22 (compatibility guard): the driver is a unit held in the run's own chat.
+    test('a unit taken in the run\'s chat while the loop has handed control back stops it before another tick is handed over', async () => {
         const source = makeSource()
         const ticks = scriptTicks(source, () => {
             noteTurnReached(RUN_CHAT)
             return true
         })
-        postProbe(() => { doingChat.set(true) })
+        postProbe(() => { simulateRunningSend(RUN_CHAT) })
 
         await runAutoMode(source)
-        doingChat.set(false)
+        clearRunningSends()
 
         expect(ticks.calls()).toBe(1)
+    })
+
+    // A21 (regression reproducer): a unit in another chat neither refuses the start nor breaks the loop.
+    test('auto mode in the run\'s chat keeps ticking while a unit is held in another chat', async () => {
+        const source = makeSource()
+        simulateRunningSend({ chaId: 'group-1', chatId: 'chat-1' })
+        const ticks = scriptTicks(source, () => true)
+
+        await runAutoMode(source)
+
+        expect(ticks.calls()).toBe(50)
     })
 
     test('the loop hands control back between every two ticks', async () => {
@@ -375,7 +396,7 @@ describe('auto mode toggled off while a tick is in flight', () => {
         expect(isAutoModeActive()).toBe(false)
 
         selectedCharID.set(1)
-        vi.mocked(isComposerWindowOpen).mockReturnValueOnce(false)
+        vi.mocked(composerWindowFor).mockReturnValueOnce(false)
         const runB = runAutoMode(source)
         await ticks.gate(2).reached
 
@@ -391,6 +412,34 @@ describe('auto mode toggled off while a tick is in flight', () => {
         }
     })
 
+    // A20 (regression reproducer, F2 killer): a new run in another chat starts beside the toggled-off run, and the
+    // toggled-off run's chat stop does not end it.
+    test('a run in another chat starts beside a toggled-off run, and stopping the first chat leaves it active', async () => {
+        const source = makeSource()
+        addOtherChat()
+        const ticks = gatedTicks(source, [1, 2])
+        const runA = runAutoMode(source)
+        await ticks.gate(1).reached
+        await runAutoMode(source)
+        expect(isAutoModeActive()).toBe(false)
+
+        selectedCharID.set(1)
+        const runB = runAutoMode(source)
+        await ticks.gate(2).reached
+
+        stopComposerWorkIn(RUN_CHAT)
+        try {
+            expect(isAutoModeActive()).toBe(true)
+            expect(composerWindowFor(OTHER_CHAT)).toBe(true)
+        } finally {
+            ticks.gate(1).release()
+            await runA
+            await runAutoMode(source)
+            ticks.gate(2).release()
+            await runB
+        }
+    })
+
     // R12b (regression reproducer): the toggled-off run read the newer run's flag and went on ticking.
     test('a toggled-off run does not tick again once a newer run in the same chat is active', async () => {
         const source = makeSource()
@@ -400,7 +449,7 @@ describe('auto mode toggled off while a tick is in flight', () => {
         await runAutoMode(source)
         expect(isAutoModeActive()).toBe(false)
 
-        vi.mocked(isComposerWindowOpen).mockReturnValueOnce(false)
+        vi.mocked(composerWindowFor).mockReturnValueOnce(false)
         const runB = runAutoMode(source)
         await ticks.gate(2).reached
 

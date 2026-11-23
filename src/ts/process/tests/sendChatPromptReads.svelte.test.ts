@@ -2775,3 +2775,46 @@ describe('a regex script whose out is missing or not a string does not stop a se
 })
 
 //#endregion
+
+describe('a {{asset_prompt}} image the access control list refuses (G)', () => {
+    const refusals = [
+        'Command plugin:fs|read_file not allowed by ACL',
+        'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file',
+    ]
+
+    afterEach(async () => {
+        const { readImage } = await import('../../globalApi.svelte')
+        vi.mocked(readImage).mockImplementation(async () => new Uint8Array([1, 2, 3]))
+    })
+
+    test.each(refusals)('the send ends before the provider call and no substitute image is sent: %s', async (refusal) => {
+        const { readImage } = await import('../../globalApi.svelte')
+        vi.mocked(readImage).mockImplementation(async () => { throw refusal })
+        const { A } = world({ messagesA: [msg('user', 'see {{asset_prompt::pic}} now')] })
+        const r = await sendWith(A, A.chats[0], 0)
+        expect(r.models).toEqual([])
+        expect(r.outcome === true).toBe(false)
+        expect(String(r.outcome instanceof Error ? r.outcome.message : r.outcome)).toContain(refusal)
+    })
+})
+
+describe('the after-send image step whose read the access control list refuses (G, propagation only)', () => {
+    test.each([
+        'Command plugin:fs|read_file not allowed by ACL',
+        'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file',
+    ])('the send rejects with the exact string: %s', async (refusal) => {
+        const { stableDiff } = await import('../stableDiff')
+        vi.mocked(stableDiff).mockClear()
+        vi.mocked(stableDiff).mockRejectedValueOnce(refusal)
+        const { A } = world({ charA: { viewScreen: 'imggen' } })
+        selectedCharID.set(0)
+        installRequestMock('reply')
+        const send = startSend(A, A.chats[0])
+        const outcome = await send.outcome
+        send.handle.end()
+
+        expect(vi.mocked(stableDiff)).toHaveBeenCalledTimes(1)
+        expect(outcome).toBeInstanceOf(Error)
+        expect(send.failure?.message).toBe(refusal)
+    })
+})

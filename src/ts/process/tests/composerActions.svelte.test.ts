@@ -29,6 +29,9 @@ import type { character, groupChat, Chat, Database, Message } from '../../storag
 import type { triggerscript, triggerEffect } from '../triggers'
 import type { SendChatArg } from '../index.svelte'
 import { alertError } from '../../alert'
+import { simulateRunningSend, clearRunningSends } from './activeUnits.test-helpers'
+import { addRunningReplies, resetRunningRepliesForTests } from '../../nativeReply/runningReplies.svelte'
+import { detachTail } from '../chatTree'
 
 //#region module mocks
 
@@ -260,9 +263,7 @@ vi.mock(import('../index.svelte'), () => ({
     sendChat: sendChatMock,
 }) as unknown as typeof import('../index.svelte'))
 
-// Every other export stays the real module's. `isComposerWindowOpen` is a delegating spy so one call can answer
-// false: the window is the only gate against a second take in this suite (`doingChat` is mocked), and several takes
-// in flight are what the keyed state is for.
+// Every other export stays the real module's. `isComposerWindowOpen` is a delegating spy so a test can override one answer.
 vi.mock(import('../generationOwnership.svelte'), async (importOriginal) => {
     const actual = await importOriginal()
     return { ...actual, isComposerWindowOpen: vi.fn(actual.isComposerWindowOpen) }
@@ -518,6 +519,7 @@ beforeEach(() => {
     processMultiCommandMock.mockImplementation(async () => false)
     sendChatMock.mockClear()
     doingChatMock.set(false)
+    clearRunningSends()
     generationGateBox.current = Promise.resolve()
     isExpTranslatorMock.mockReset()
     isExpTranslatorMock.mockReturnValue(false)
@@ -628,24 +630,28 @@ describe('a second composer action while a send is still taking its input', () =
         expect(passedArg.signal!.aborted).toBe(true)
     })
 
-    test('stop-all runs the stop of every reply and preview registration and leaves work registrations alone', async () => {
+    test('stop-all runs the stop of every reply and preview registration, and of work beside one, and leaves work alone in a chat that shows no Stop', async () => {
         const { registerWork } = await import('../chatOrigin')
         const stopA = vi.fn()
         const stopP = vi.fn()
         const stopW = vi.fn()
+        const stopLone = vi.fn()
         const reply = registerWork({ chaId: 'stop-all-a', chatId: 'chat-a' }, stopA, 'reply')
         const preview = registerWork({ chaId: 'stop-all-b', chatId: 'chat-b' }, stopP, 'preview')
         const work = registerWork({ chaId: 'stop-all-a', chatId: 'chat-a' }, stopW)
+        const lone = registerWork({ chaId: 'stop-all-c', chatId: 'chat-c' }, stopLone)
         try {
             abortChat()
 
             expect(stopA).toHaveBeenCalledTimes(1)
             expect(stopP).toHaveBeenCalledTimes(1)
-            expect(stopW).not.toHaveBeenCalled()
+            expect(stopW).toHaveBeenCalledTimes(1)
+            expect(stopLone).not.toHaveBeenCalled()
         } finally {
             reply.end()
             preview.end()
             work.end()
+            lone.end()
         }
     })
 
@@ -1128,8 +1134,8 @@ describe('composerActions: cancelling before generation', () => {
 
 describe('composerActions: two takes in flight in two chats (stop-all and per-chat stop)', () => {
     /**
-     * Two sends, one per character, both stalled at their editinput gate. The window is the only gate against the
-     * second take here, so the second send's check answers false once. Every immediate assertion of a case runs
+     * Two sends, one per character, both stalled at their editinput gate. The windows are per chat, so the second
+     * send is admitted beside the first with no override. Every immediate assertion of a case runs
      * before any gate is released: a released gate lets the send unwind on its own and put its draft back, which
      * would hide a stop that cancelled nothing.
      */
@@ -1147,7 +1153,6 @@ describe('composerActions: two takes in flight in two chats (stop-all and per-ch
         const pA = send(source)
         await gateA.reached
         selectedCharID.set(1)
-        vi.mocked(isComposerWindowOpen).mockReturnValueOnce(false)
         const pB = send(source)
         await gateB.reached
         expect(draftFor(b, b.chats[0]).messageInput).toBe('')
@@ -1776,11 +1781,11 @@ describe('composerActions: refused actions change nothing', () => {
         expect(sendChatMock).not.toHaveBeenCalled()
     })
 
-    test('guard: doingChat already set refuses the send and keeps the typed text', async () => {
+    test('guard: a unit held in the chat refuses the send and keeps the typed text', async () => {
         const char = makeCharacter('c-doingchat-set')
         installDb([char])
         seedDraft(char, char.chats[0], { messageInput: 'hello' })
-        doingChatMock.set(true)
+        simulateRunningSend(keyFor(char, char.chats[0]))
 
         const { source } = makeSource()
         await send(source)
@@ -2721,4 +2726,149 @@ describe('CHORE-685 S1b: the playMessage chime after an off-screen notice (T18)'
         logged.mockRestore()
         expect(plays.count).toBe(0)
     })
+
+    test.each([
+        ['release', 'Command plugin:fs|read_file not allowed by ACL'],
+        ['debug', 'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file'],
+    ])('G: a send that rejects with the access control list string (%s wording) alerts with that exact string and returns false', async (_wording, refusal) => {
+        const char = makeCharacter('c-acl-refusal')
+        installDb([char])
+        const { sendChatMain } = await import('../composerActions.svelte')
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        vi.mocked(alertError).mockClear()
+        sendChatMock.mockImplementationOnce(async () => { throw refusal })
+
+        const completed = await sendChatMain(targetOf(char))
+
+        logged.mockRestore()
+        expect(completed).toBe(false)
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith(refusal)
+    })
 })
+//#region 5a seam 2: starters refuse per chat
+
+describe('starters refuse only the chat that writes or has a native reply', () => {
+    const nativeEntry = (char: character) => ({ key: 'native-1', target: { chaId: char.chaId, chatId: char.chats[0].id!, name: 'running' } })
+
+    function twoChars(prefix: string): { a: character, b: character } {
+        const a = makeCharacter(`${prefix}-a`)
+        const b = makeCharacter(`${prefix}-b`)
+        installDb([a, b])
+        return { a, b }
+    }
+
+    beforeEach(() => {
+        clearRunningSends()
+        resetRunningRepliesForTests()
+    })
+
+    afterEach(() => {
+        clearRunningSends()
+        resetRunningRepliesForTests()
+    })
+
+    // A15 (regression reproducer): a send in chat B runs while chat A writes.
+    test('A15: composer Send in chat B takes the draft and reaches sendChat while chat A writes', async () => {
+        const { a, b } = twoChars('c-a15')
+        simulateRunningSend(keyFor(a, a.chats[0]))
+        selectedCharID.set(1)
+        seedDraft(b, b.chats[0], { messageInput: 'hello b' })
+
+        await send(makeSource().source)
+
+        expect(sendChatMock).toHaveBeenCalledTimes(1)
+        expect(handOffOf().origin).toMatchObject({ chaId: b.chaId, chatId: b.chats[0].id })
+        expect(b.chats[0].message.map((m) => m.data)).toEqual(['hello b'])
+    })
+
+    // A16 (compatibility guard): the chat that writes still refuses before anything is taken.
+    test('A16: guard: composer Send in chat A refuses while chat A writes, with the draft kept and no window or lock', async () => {
+        const { a } = twoChars('c-a16')
+        simulateRunningSend(keyFor(a, a.chats[0]))
+        selectedCharID.set(0)
+        seedDraft(a, a.chats[0], { messageInput: 'keep' })
+
+        await send(makeSource().source)
+
+        expect(sendChatMock).not.toHaveBeenCalled()
+        expect(a.chats[0].message).toHaveLength(0)
+        expect(draftFor(a, a.chats[0]).messageInput).toBe('keep')
+        expect(composerWindowFor(keyFor(a, a.chats[0]))).toBe(false)
+        expect(isComposerLocked()).toBe(false)
+    })
+
+    // A17 (regression reproducer): a native reply the page no longer holds refuses Send in its chat.
+    test('A17: a native entry for chat A refuses composer Send in A before the take', async () => {
+        const { a } = twoChars('c-a17')
+        addRunningReplies([nativeEntry(a)])
+        selectedCharID.set(0)
+        seedDraft(a, a.chats[0], { messageInput: 'keep' })
+
+        await send(makeSource().source)
+
+        expect(sendChatMock).not.toHaveBeenCalled()
+        expect(a.chats[0].message).toHaveLength(0)
+        expect(draftFor(a, a.chats[0]).messageInput).toBe('keep')
+    })
+
+    function repliedChat(prefix: string): character {
+        const char = makeCharacter(prefix)
+        char.chats[0].message = [
+            { role: 'user', data: 'u0', chatId: `${prefix}-u0`, time: 1 } as unknown as Message,
+            { role: 'char', data: 'c0', chatId: `${prefix}-c0`, time: 2 } as unknown as Message,
+        ]
+        return char
+    }
+
+    // A18 (reproducer for the B row, guard for the A row).
+    test('A18: a tree step in chat B runs while chat A writes; in chat A it is refused', async () => {
+        const a = repliedChat('c-a18-a')
+        const b = repliedChat('c-a18-b')
+        installDb([a, b])
+        simulateRunningSend(keyFor(a, a.chats[0]))
+        const { source } = makeSource()
+
+        selectedCharID.set(0)
+        await reroll(source)
+        expect(sendChatMock).not.toHaveBeenCalled()
+        expect(a.chats[0].message.map((m) => m.data)).toEqual(['u0', 'c0'])
+
+        selectedCharID.set(1)
+        await reroll(source)
+        expect(sendChatMock).toHaveBeenCalledTimes(1)
+    })
+
+    // A18b (MC-3794): a step that generates nothing is refused too.
+    test('A18b: a non-generating tree step in a chat with a native entry is refused and the tree is unchanged', async () => {
+        const a = repliedChat('c-a18b')
+        installDb([a])
+        selectedCharID.set(0)
+        const { stepSibling } = await import('../composerActions.svelte')
+        const chat = a.chats[0]
+        detachTail(chat, 1)
+        chat.message.push({ role: 'char', data: 'x1', chatId: 'c-a18b-x1', time: 0.5 } as unknown as Message)
+        const before = JSON.stringify(chat)
+        addRunningReplies([nativeEntry(a)])
+
+        await stepSibling(makeSource().source, 1, 'c-a18b-x1', 'back', { generate: false })
+
+        expect(JSON.stringify(chat)).toBe(before)
+        expect(sendChatMock).not.toHaveBeenCalled()
+    })
+
+    // A19 (regression reproducer): regenerate in a chat with a native entry cuts nothing.
+    test('A19: regenerate in a chat with a native entry is refused and the tail stays', async () => {
+        const a = repliedChat('c-a19')
+        installDb([a])
+        selectedCharID.set(0)
+        addRunningReplies([nativeEntry(a)])
+
+        await reroll(makeSource().source)
+
+        expect(sendChatMock).not.toHaveBeenCalled()
+        expect(a.chats[0].message.map((m) => m.data)).toEqual(['u0', 'c0'])
+    })
+})
+
+//#endregion
