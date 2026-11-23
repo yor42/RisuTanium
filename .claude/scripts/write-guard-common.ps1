@@ -3,7 +3,7 @@
 $GuardRepositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $GuardRegistryRoot = Join-Path $GuardRepositoryRoot '.claude/scratch/write-scopes'
 $GuardWriterRoles = @('sonnet-coder', 'haiku-editor', 'test-warrior', 'translator', 'doc-writer', 'record-clerk')
-$GuardScratchRoles = @('investigator', 'deep-investigator', 'designer', 'perf-analyzer', 'adversarial-reviewer', 'opus-reviewer', 'code-searcher', 'haiku-triager', 'doc-verifier', 'senior-advisor')
+$GuardScratchRoles = @('investigator', 'deep-investigator', 'designer', 'perf-analyzer', 'adversarial-reviewer', 'opus-reviewer', 'code-searcher', 'haiku-triager', 'doc-verifier', 'senior-advisor', 'device-runner')
 $GuardKnownRoles = @('code-reader', 'haiku-reviewer') + $GuardWriterRoles + $GuardScratchRoles
 
 function Read-GuardObject([string]$Text) {
