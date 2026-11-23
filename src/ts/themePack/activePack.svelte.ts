@@ -1,14 +1,14 @@
 // The driver of the active theme pack: one effect observes the active id and Safe Mode, derives the key of what should be
 // applied, and starts the apply core only when that key differs from the applied one. An unchanged pack is never re-applied,
 // whatever the surface gate, the database object or any other setting does; a superseded run is cancelled and can never commit.
-// The driver writes the database only through `enterPackScheme` and `leavePackScheme`, and only for a pending request that
-// a user turn-on, turn-off, removal or install made in this page session, or for a tile click. Boot, the live lookup and every
-// repaint write nothing. The status below is its own state, read by the settings row.
+// The driver writes the database only through `dropPackSchemeCopy`, `enterPackScheme` and `leavePackScheme`: when the
+// user's turn-on, install or update is requested, for that request's outcome, or for a tile click. Boot, the live lookup and
+// every repaint write nothing. The status below is its own state, read by the settings row.
 import { untrack } from 'svelte'
 import { isLite } from '../lite'
 import { DBState, SafeModeStore } from '../stores.svelte'
 import {
-    enterPackScheme, leavePackScheme, PACK_SCHEME_NAME, setPackSchemeProvider, updateColorScheme, updateTextThemeAndCSS,
+    dropPackSchemeCopy, enterPackScheme, leavePackScheme, PACK_SCHEME_NAME, setPackSchemeProvider, updateColorScheme, updateTextThemeAndCSS,
     type ColorScheme,
 } from '../gui/colorscheme'
 import { commitPackSheet, preparePackSheet, resetPackSheetForTests, setPackSheetColours, type ApplySource, type BrokenReason } from './apply'
@@ -45,8 +45,8 @@ let lite = $state(false)
 let appliedDefault = $state.raw<ColorScheme | null>(null)
 let applied: { key: ApplyKey; skippedAreas: readonly string[]; empty: boolean; defaultScheme: ColorScheme | null } | null = null
 // A user turn-on or update waiting for the apply outcome. `name` and `scheme` are what the scheme was when it was made, so
-// a pick or edit in between wins. In memory only.
-let schemeRequest: { id: string; kind: 'turnOn' | 'update'; name: unknown; scheme: ColorScheme | null } | null = null
+// a pick or edit in between wins. `displaced` is the stored copy the request dropped (null in pack safe mode). In memory only.
+let schemeRequest: { id: string; kind: 'turnOn' | 'update'; name: unknown; scheme: ColorScheme | null; displaced: ColorScheme | null } | null = null
 let unsubscribeLite: (() => void) | null = null
 let inflight: { key: ApplyKey; generation: number; session: JudgeSession } | null = null
 let generation = 0
@@ -106,14 +106,20 @@ function revoke(urls: readonly string[]): void {
     }
 }
 
-/** Records that the user turned the pack `id` on (`turnOn`) or replaced it by an update (`update`); a later call replaces it. */
+/**
+ * Records that the user turned the pack `id` on (`turnOn`) or replaced it by an update (`update`); a later call replaces it.
+ * The stored copy is dropped before the capture. Outside pack safe mode the request keeps the dropped colours in memory: they
+ * paint only while it waits and no pack is live, and return to storage only when an update fails.
+ */
 export function requestPackScheme(id: string, kind: 'turnOn' | 'update'): void {
+    const dropped = dropPackSchemeCopy()
     const stored = DBState.db?.colorScheme
     schemeRequest = {
         id,
         kind,
         name: DBState.db?.colorSchemeName,
         scheme: stored ? safeStructuredClone(stored) : null,
+        displaced: packSafe.on ? null : dropped,
     }
 }
 
@@ -162,6 +168,8 @@ function consumeSchemeRequest(activeId: string | undefined, outcome: ColorScheme
         if (outcome === 'broken') {
             if (pending.kind === 'turnOn') {
                 leavePackScheme()
+            } else if (pending.displaced !== null) {
+                enterPackScheme(pending.displaced)
             }
             return false
         }
@@ -182,11 +190,17 @@ export function activePackDefaultScheme(): ColorScheme | null {
     return appliedDefault
 }
 
-/** The tile click: enters the applied pack's scheme. Nothing happens when no pack with a default is applied. */
+/**
+ * The tile click: enters the applied pack's scheme. Nothing happens when no pack with a default is applied. While a switch is
+ * pending the applied pack is the one being left, so its colours are painted but not stored.
+ */
 export function adoptActivePackScheme(): void {
     const scheme = appliedDefault
     if (scheme !== null) {
         enterPackScheme(scheme)
+        if (status.phase === 'pending') {
+            dropPackSchemeCopy()
+        }
     }
 }
 
@@ -310,7 +324,7 @@ export function startThemePackApply(): void {
     unsubscribeLite = isLite.subscribe((value) => {
         lite = value
     })
-    setPackSchemeProvider(() => appliedDefault)
+    setPackSchemeProvider(() => appliedDefault ?? schemeRequest?.displaced ?? null)
     registerPackRequestCanceller(cancelPackSchemeRequest)
     disposeRoot = $effect.root(() => {
         $effect(() => {

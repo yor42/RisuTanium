@@ -4,6 +4,7 @@ import { language } from 'src/lang'
 import { markAppInitiatedReload } from '../reloadGuard'
 import { changeToPreset, saveCurrentPreset, type Database } from '../storage/database.svelte'
 import { DBState } from '../stores.svelte'
+import { defaultColorScheme, PACK_SCHEME_NAME } from '../gui/colorschemeCore'
 import { isSaveClean } from '../globalApi.svelte'
 import { SETTINGS_FIELDS } from './rtb/settingsFields'
 import { DEVICE_LIST_KEYS, planSettingsMerge, readSettingsPayload, type DeviceLists, type SettingsPayloadInput, type SettingsRead } from './rtb/settingsPayload'
@@ -79,12 +80,20 @@ function realDeps(): SettingsRestoreDeps {
 
 const CARRIED_FIELDS: ReadonlySet<string> = new Set(SETTINGS_FIELDS)
 
+/** The scheme fields a file made under the pack scheme must not write: a settings file never brings pack colours onto a device. */
+const PACK_COLOUR_FIELDS: ReadonlySet<string> = new Set(['colorSchemeName', 'colorScheme'])
+
 /** Writes the merged values onto the live database: the non-list fields, then the lists and indices, then the selection. */
 function writeMerged(db: Database, read: SettingsRead, plan: ReturnType<typeof planSettingsMerge>, deps: SettingsRestoreDeps): void {
+    const packScheme = read.fields.colorSchemeName === PACK_SCHEME_NAME
     for (const [key, value] of Object.entries(read.fields)) {
-        if (CARRIED_FIELDS.has(key)) {
+        if (CARRIED_FIELDS.has(key) && !(packScheme && PACK_COLOUR_FIELDS.has(key))) {
             Reflect.set(db, key, value)
         }
+    }
+    if (packScheme && db.colorSchemeName === 'custom') {
+        // The painted colours follow the restored Custom slot, as picking Custom does.
+        db.colorScheme = safeStructuredClone(db.customColorScheme ?? defaultColorScheme)
     }
     if (plan.botPresets !== undefined) {
         db.botPresets = plan.botPresets

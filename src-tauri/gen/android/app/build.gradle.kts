@@ -14,8 +14,7 @@ val tauriProperties = Properties().apply {
 }
 
 // Release signing sources, in precedence order: the four RISU_ANDROID_* environment variables (set by
-// Agents/Tools/device/sign-release.ps1 for one build), then gen/android/keystore.properties (gitignored), which CI
-// writes from secrets. With neither, nothing below applies and the release build stays unsigned.
+// Agents/Tools/device/sign-release.ps1 for one build), then gen/android/keystore.properties (gitignored) as a local fallback. With neither, nothing below applies and the release build stays unsigned.
 // A partial environment fails the build and names the missing variables, so a half-set key never falls back silently.
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties().apply {

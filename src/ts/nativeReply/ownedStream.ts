@@ -1,4 +1,6 @@
-import { createPumpProbe, knowledgeOfStamp, type PumpProbe } from './ownedBody'
+import type { StreamParseContext } from './blob'
+import { bindStreamGrant, type NativeReplyOwner } from './grant'
+import { createPumpProbe, isAnnouncedFailure, knowledgeOfStamp, type PumpProbe } from './ownedBody'
 import { consumeReply, heldReply, noteAnnounced, notePageEnded, noteReplyPushed, noteTerminal, ownsPushedReply, type ConsumeResult } from './pageState'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
 
@@ -76,6 +78,45 @@ export function forgetOwnedStream(key: string): void {
 /** Removes the record of a stream attempt the page read to its end and will not use (a non-200 or non-SSE head). */
 export function retireOwnedStream(key: string): Promise<ConsumeResult> {
     return consumeReply(key)
+}
+
+/** What a stream request needs to bind the send's grant: the same fields on every provider's request argument. */
+export interface OwnedStreamRequest {
+    nativeReplyGrant?: unknown
+    chatId?: string
+    abortSignal?: AbortSignal | null
+    replyUsageModelKey?: string
+    usageInputEstimate?: number
+}
+
+/**
+ * Binds the send's grant to this stream request, reading the reply with parse, and registers the probe of its event
+ * pump. Null when the request owns nothing (no grant, a lookalike, a second bind, another reply's request, or no input
+ * estimate), which leaves the request unowned. Stop and a chat delete reach the request through the abort signal, also
+ * before the consumer pushes.
+ */
+export function bindOwnedStream(req: OwnedStreamRequest, parse: StreamParseContext): { owner: NativeReplyOwner, probe: PumpProbe } | null {
+    const owner = bindStreamGrant(req.nativeReplyGrant, req.chatId, parse, {
+        modelKey: req.replyUsageModelKey ?? '',
+        inputEstimate: req.usageInputEstimate,
+    })
+    if (owner === null) {
+        return null
+    }
+    const probe = createStreamProbe(owner.key)
+    req.abortSignal?.addEventListener('abort', () => endOwnedRead(owner.key), { once: true })
+    return { owner, probe }
+}
+
+/**
+ * Retires an owned attempt the page read to its end and will not use, before any retry pushes. True when the pump's stamp
+ * announced a failure, which ends the turn (an announced failure is final); the stamp is read after the record is
+ * removed, so an end the pump learned meanwhile counts.
+ */
+export async function retireFailedHead(key: string, probe: PumpProbe, status: number | undefined): Promise<boolean> {
+    await retireOwnedStream(key)
+    const stamp = probe.stamp ?? null
+    return stamp !== null && isAnnouncedFailure(stamp, knowledgeOfStamp(stamp, status))
 }
 
 export function resetOwnedStreamsForTests(): void {

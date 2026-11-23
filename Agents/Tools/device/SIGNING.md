@@ -87,8 +87,8 @@ All commands below are typed by you in a normal PowerShell 7 terminal.
    `Set-Content "$env:USERPROFILE\.risu-signing\expected-cert-sha256.txt" '<the 64 hex digits>'`), so every later run is
    checked.
 
-6. If `src-tauri/gen/android/keystore.properties` exists from an earlier manual setup: it still works as the fallback (CI
-   writes it), but the environment values take precedence over it. Once step 7 passes, delete the file so a plaintext copy
+6. If `src-tauri/gen/android/keystore.properties` exists from an earlier manual setup: it still works as a local fallback,
+   but the environment values take precedence over it. Once step 7 passes, delete the file so a plaintext copy
    of the passwords does not stay on disk.
 
 ## Each release
@@ -131,3 +131,25 @@ All commands below are typed by you in a normal PowerShell 7 terminal.
    switch to override either; as stated at the top, this is a speed bump and the SecretStore password is the real boundary.
    The script also refuses a vault that is not a password-protected SecretStore. Agents may run the test suite, which uses
    fake secrets and never opens a vault, and may read the printed certificate fingerprint you paste to them.
+
+## CI release builds (GitHub Actions)
+
+Release mode of `android-build.yml` signs in the environment `android-release`: branch rule `main` only, administrator bypass off, the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, and the variable `ANDROID_RELEASE_CERT_SHA256` (64 lower-case hex digits, no colons; public, shown in logs; never a secret). Keep no repository-level copy of any of them. Agents run no `gh secret` command.
+After changing a variable or secret, confirm that no repository-level copy exists before "Re-run failed jobs", or use "Re-run all jobs", because a partial re-run does not repeat guard.
+The environment rule checks the ref a run starts from, not code that the run checks out later.
+
+Before the first dispatch:
+
+1. The environment setup is complete and the backup of step 8 exists off this PC.
+2. `tauri.conf.json` on main has the intended version, higher than the installed one (minor and patch at most 999). A version typed too high is permanent once installed.
+3. Dispatch the cheapest first: build type release, aarch64, from main.
+
+Before installing the artifact on a phone with real data:
+
+4. The whole run is green, `inspect-signed` included. Take `risutanium-android-release-<abi>-<attempt>` from the sign job's upload step. Never install or share an APK from a red run, although its artifact exists for 14 days.
+5. The signer line in the sign job's log equals the value from step 5 above or from the setup guide. Do not compare it with GitHub's variable page.
+6. With synthetic data, install that APK on **both**:
+   - a spare Note 9 (API 29), over a release-signed MVP. Its data is intact afterwards;
+   - the local API 35 emulator (it runs an aarch64 APK under translation).
+
+   On both, run `adb -s <serial> shell dumpsys package io.github.yor42.risutanium`: the line that begins `versionCode=` after leading spaces shows the expected number, the line that begins `flags=[` after leading spaces exists, and `DEBUGGABLE` appears nowhere in the output. For version X.Y.Z the expected number is X*1000000 + Y*1000 + Z. A missing line fails the check. Only when both pass, install it on a phone with real data. A manifest trick honoured only by another Android version can pass both checks.
