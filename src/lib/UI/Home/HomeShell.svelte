@@ -23,6 +23,7 @@
     import { engageHomeLibrary, homeView, openHomeLibrary, startHomeView, takeHomeReturnFocus } from './homeView.svelte'
     import { reducedMotionActive } from 'src/ts/chatShell/motionPrefs.svelte'
     import { ColorSchemeTypeStore } from 'src/ts/gui/surfaceTone'
+    import { modalLayerOpen } from 'src/lib/Nexus/pattern/modalLayers.svelte'
 
     // Every creation starts at the top of the landing: a selection change, the language remount and a return
     // to Home all create a fresh shell. Covers (Settings, Studio) keep it mounted. The one exception is the
@@ -141,9 +142,10 @@
     })
 
     // Only the wide band animates; the phone and mid bands show one coarse still frame. A covered page (a
-    // hidden chat surface, a page-covering alert) runs no field. A user background image replaces the lattice.
+    // hidden chat surface, a page-covering alert, any open modal layer) runs no field. A user background image
+    // replaces the lattice.
     const latticeStill = $derived(band !== 'wide')
-    const latticePaused = $derived(chatSurface.hidden || coversPage($alertStore.type))
+    const latticePaused = $derived(chatSurface.hidden || coversPage($alertStore.type) || modalLayerOpen())
     const latticeShown = $derived(latticeArmed && !DBState.db.customBackground)
     // A light scheme and the Lite preset draw the lattice fainter: a light page has less headroom before the
     // links compete with text.
