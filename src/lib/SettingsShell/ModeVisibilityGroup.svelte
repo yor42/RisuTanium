@@ -60,7 +60,6 @@
 <section class="flex flex-col gap-3 mb-6" aria-labelledby="{uid}-title" data-part="settings-mode-visibility">
     <h3 id="{uid}-title" class="text-lg font-semibold" data-part="settings-mode-visibility-title">{language.settingsShellModesTitle}</h3>
     <p class="text-textcolor2" data-part="settings-mode-visibility-note">{language.settingsShellModesNote}</p>
-    <p class="text-textcolor2" data-part="settings-mode-visibility-home-note">{language.settingsShellModesHomeNote}</p>
 
     <button
         type="button"

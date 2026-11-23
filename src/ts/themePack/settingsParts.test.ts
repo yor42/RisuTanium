@@ -298,7 +298,7 @@ const RENAMES: Readonly<Record<string, string>> = {
     'mode-fieldset': 'settings-mode-fieldset', 'mode-hide-switch': 'settings-mode-hide-switch', 'mode-lock-reason': 'settings-mode-lock-reason',
     'mode-repair-banner': 'settings-mode-repair-banner', 'mode-row': 'settings-mode-row', 'mode-show-all': 'settings-mode-show-all',
     'mode-show-all-reason': 'settings-mode-show-all-reason', 'mode-status': 'settings-mode-status', 'mode-visibility': 'settings-mode-visibility',
-    'mode-visibility-home-note': 'settings-mode-visibility-home-note', 'mode-visibility-note': 'settings-mode-visibility-note', 'mode-visibility-title': 'settings-mode-visibility-title',
+    'mode-visibility-note': 'settings-mode-visibility-note', 'mode-visibility-title': 'settings-mode-visibility-title',
     'new-message-button-outline': 'settings-new-message-button-outline', 'new-message-button-row': 'settings-new-message-button-row', 'notification-status': 'settings-notification-status',
     'notifications-off-line': 'settings-notifications-off-line', 'plugin-access': 'settings-plugin-access-level', 'plugin-arg-invalid': 'settings-plugin-arg-invalid',
     'plugin-args': 'settings-plugin-args', 'plugin-export': 'settings-plugin-export', 'plugin-ipc': 'settings-plugin-ipc',
