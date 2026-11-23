@@ -166,8 +166,9 @@ export async function handleButtonTriggerWithin(event: UIEvent, getIdx: () => nu
     const btnEvent = origin.getAttribute('risu-btn')
 
     const currentChat = getCurrentChat()
-    // Aborted only by a delete of the chat this run writes to: the registration's
-    // stop is the run's one cancel path, and the busy button does not reach it.
+    // The registration's stop is the run's one cancel path: a delete of the chat
+    // this run writes to, that chat's Stop, and the notification Stop while that
+    // chat shows Stop all reach it. Lua button and form runs take no signal.
     const runController = new AbortController()
     const workHandle = beginWork(currentChar, currentChat, undefined, () => runController.abort())
     if (!workHandle) {

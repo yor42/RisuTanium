@@ -54,6 +54,11 @@ export function composerWindowFor(target: { chaId: string, chatId: string }): bo
     return false
 }
 
+/** A copy of the chat target of every open window, so a caller may stop work while windows close. */
+export function composerWindowTargets(): { chaId: string, chatId: string }[] {
+    return [...composerWindows].map((entry) => ({ chaId: entry.target.chaId, chatId: entry.target.chatId }))
+}
+
 /** Test-only: drops every open window. Never called from production code. */
 export function resetComposerWindowsForTests(): void {
     composerWindows.clear()
