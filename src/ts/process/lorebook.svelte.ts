@@ -24,6 +24,8 @@ import { NoLorebookInPng, readLorebookFileJson } from "./lorebookFile";
 import { firstMessageIndexOf } from "./firstMessage";
 import { ASCII_WORD, createWordStartIncludes, defaultWordBoundaries, fullWordIncludes, UNICODE_WORD } from "./lorebookWordMatch";
 import { loreEntryName, type LoreUsedEntry } from "./loreUse";
+import type { LoreScanDecoratorName } from "./loreScanDecorators";
+import type { LoreRecallTap, LoreRecallView, LoreRender } from "./memory/chroMemory/loreRecall";
 
 /**
  * A fixed stand-in for `RunSubject` that always resolves to `ctx`, captured
@@ -175,7 +177,7 @@ export function addLorebookFolder(type:number) {
  * measured on its text parsed as part of the prompt. The decorators that count
  * turns keep counting the whole chat.
  */
-export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: PromptView, probe?: LoreScanProbe){
+export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: PromptView, probe?: LoreScanProbe, recallTap?: LoreRecallTap){
     if(probe && !subject){
         throw new Error('A lorebook scan probe needs a subject: the scan would otherwise run against the live selection.')
     }
@@ -446,6 +448,10 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             lore:boolean
         }|null
     }[] = []
+    // Only a tap on a real send records anything; a probe run is a dry run and never reaches the step.
+    const tap = probe ? undefined : recallTap
+    // Final-pass keyword misses by `fullLore` index: the entry's key was evaluated and returned false.
+    const missed = tap ? new Map<number, { body: string, decorators: string[] }>() : null
     let activatedIndexes:number[] = []
     let disabledUIPrompts:string[] = []
     let matchTimes = 0
@@ -531,8 +537,11 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                 record.alwaysActive = fullLore[i].alwaysActive === true
             }
             let itemRecursive:'global'|true|false = 'global'
+            const seenDecorators: string[] | null = missed ? [] : null
+            let keyMissed = false
             const content = CCardLib.decorator.parse(fullLore[i].content, (name, arg) => {
-                switch(name){
+                seenDecorators?.push(name)
+                switch(name as LoreScanDecoratorName){
                     case 'end':{
                         pos = 'depth'
                         depth = 0
@@ -809,6 +818,9 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         }
                         record.queries.push(queryRecord)
                     }
+                    if(missed && query.kind === 'key' && !result){
+                        keyMissed = true
+                    }
                     if(query.negative){
                         if(result){
                             activated = false
@@ -829,6 +841,16 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             }
             else if(forceState === 'deactivate'){
                 activated = false
+            }
+
+            if(missed){
+                // Every non-activated keyed entry is evaluated again on each pass, so the last write is its final-pass fact.
+                if(!activated && keyMissed){
+                    missed.set(i, { body: content, decorators: seenDecorators })
+                }
+                else{
+                    missed.delete(i)
+                }
             }
 
             if(activated){
@@ -927,6 +949,14 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         }
     }
 
+    // An entry the budget removed: neither a survivor nor an injector dropped for lack of a target.
+    const cutActives = () => {
+        const survivors = new Set<typeof actives[number]>(activesFiltered)
+        return activesSorted.filter((act) => !survivors.has(act) && !deadInjectors.has(act))
+    }
+    const cutForBudget = tap ? cutActives().length > 0 : false
+    const unusedTokens = tap ? loreToken - activesFiltered.reduce((sum, act) => sum + act.tokens, 0) : 0
+
     let activesResorted = activesFiltered.sort((a,b) => {
         return b.order - a.order
     })
@@ -973,25 +1003,119 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         }
     }
 
+    // Recalled entries, in the step's rank order. The scan alone decides what is placed: the step may return anything.
+    const recalled: { active: typeof actives[number], index: number, used?: LoreUsedEntry }[] = []
+    if(tap && missed){
+        try {
+            const renders = new Map<number, Promise<LoreRender>>()
+            // Parsed with the scan's own options and without runVar, so a recalled body writes no chat variable.
+            const render = (index: number): Promise<LoreRender> => {
+                let cached = renders.get(index)
+                if(!cached){
+                    const record = missed.get(index)
+                    if(!record){
+                        return Promise.reject(new Error('Lore entry ' + index + ' is not a keyword miss.'))
+                    }
+                    cached = (async () => {
+                        const text = risuChatParser(record.body, promptView ? {chara: char, subject: flagSubject, promptView} : {chara: char, subject: flagSubject})
+                        return { text, tokens: await tokenize(text) }
+                    })()
+                    renders.set(index, cached)
+                }
+                return cached
+            }
+            const linkedIds = new Set<string>()
+            for(const lore of fullLore){
+                if(lore.mode === 'child' && lore.id != null){
+                    linkedIds.add(lore.id)
+                }
+            }
+            const limit = Math.min(unusedTokens, tap.cap)
+            const view: LoreRecallView = {
+                entries: fullLore,
+                characterCount: characterLore.length,
+                chatCount: chatLore.length,
+                moduleOwners,
+                missed,
+                cutForBudget,
+                loreToken,
+                unusedTokens,
+                limit,
+                linkedIds,
+                render,
+            }
+            const returned = await tap.run(view)
+            const kept: typeof recalled = []
+            if(!cutForBudget){
+                const keptIndexes = new Set<number>()
+                let acc = 0
+                for(const i of returned){
+                    if(!missed.has(i) || keptIndexes.has(i)){
+                        continue
+                    }
+                    const t = (await render(i)).tokens
+                    if(acc + t <= limit){
+                        acc += t
+                        keptIndexes.add(i)
+                        const active: typeof actives[number] = {
+                            depth: 0,
+                            pos: '',
+                            prompt: missed.get(i).body,
+                            role: 'system',
+                            order: fullLore[i].insertorder,
+                            tokens: t,
+                            priority: fullLore[i].insertorder,
+                            source: fullLore[i].comment || `lorebook ${i}`,
+                            inject: null
+                        }
+                        kept.push({ active, index: i })
+                    }
+                }
+            }
+            if(kept.length > 0){
+                for(const { active, index } of kept){
+                    activeIndexOf.set(active, index)
+                    activesResorted.push(active)
+                }
+                activesResorted.sort((a,b) => b.order - a.order)
+                recalled.push(...kept)
+            }
+        } catch (error) {
+            // A failing step places nothing and never fails the scan.
+        }
+    }
+
     const sentActives = activesResorted.reverse()
     const used: LoreUsedEntry[] = []
     for(const act of sentActives.concat(mergedInjectors)){
         const index = activeIndexOf.get(act)
         if(index !== undefined){
-            used.push(usedEntryOf(index))
+            const usedEntry = usedEntryOf(index)
+            used.push(usedEntry)
+            const placed = recalled.find((r) => r.active === act)
+            if(placed){
+                placed.used = usedEntry
+            }
         }
     }
-    const result = {
+    const result: {
+        actives: typeof sentActives,
+        matchLog: typeof matchLog,
+        used: LoreUsedEntry[],
+        recalled?: typeof recalled,
+    } = {
         actives: sentActives,
         matchLog: matchLog,
         /** Every entry whose text reached the prompt: the sent entries in `actives` order, then merged injectors. */
         used,
     }
+    if(tap){
+        result.recalled = recalled
+    }
     if(probe && probeIndexOf){
-        const survivors = new Set<typeof actives[number]>(activesFiltered)
         probe.final({
             kept: result.actives.map((act) => probeIndexOf.get(act)),
-            cut: activesSorted.filter((act) => !survivors.has(act) && !deadInjectors.has(act)).map((act) => probeIndexOf.get(act)),
+            cut: cutActives().map((act) => probeIndexOf.get(act)),
             deadInjectors: [...deadInjectors].map((act) => probeIndexOf.get(act)),
             merged: probeMerged,
         })
