@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
-    carryUnknownFields, KNOWN_FIELDS, keyOfTail, parseStore2Key, randomId26, UNIT_TYPE,
+    carryUnknownFields, encodeCanonicalJson, KNOWN_FIELDS, keyOfTail, parseStore2Key, randomId26, UNIT_TYPE,
     type ChatEntry, type ContentBody, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType, type WorkspaceRecord,
 } from '../format'
 import {
@@ -17,6 +17,7 @@ import { buildManifest, carryManifest } from './manifest'
 import { carryModuleIndex, hasCurrentEntryFields, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef, uniqueIdHandles } from './modules'
 import { MODULE_INDEX_PARAMS } from './moduleIndexParams'
 import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, sameJsonValue, toPlainJson } from './normalize'
+import { payloadPrint, type StoredPayloadPrint } from './payloadPrint'
 import { bucketOfKey, groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
 import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, noteShardDigest, refTuple, shardCountFor, shardDigestOf } from './shard'
@@ -894,10 +895,24 @@ function previousUnitOf(previous: PreviousEncoding, identity: string, type: Unit
 function carriedModuleLists(
     encoder: Encoder, previousEntries: ReadonlyMap<string, ModuleEntry> | null, handle: string,
 ): { al: ListRef, il: ListRef, units: [string, ReusableUnit][] } | null {
-    const versions = encoder.options.lists.moduleListVersions
     const previous = encoder.previous
     const entry = previousEntries?.get(handle)
-    if (versions === undefined || previous === null || entry === undefined || entry.il === null) {
+    if (previous === null || entry === undefined) {
+        return null
+    }
+    return moduleListsCarriable(previous, entry, handle, encoder.options.lists.moduleListVersions)
+}
+
+/**
+ * The previous list units that the module entry `entry` names under `handle`, when a save may carry them; null means
+ * derive. It is the rule `carriedModuleLists` applies to a reused module unit, shared so that a check made before a
+ * save and the save itself agree: the module unit at the entry's head, the opted-in list versions and both list units
+ * at the entry's heads.
+ */
+export function moduleListsCarriable(
+    previous: PreviousEncoding, entry: ModuleEntry, handle: string, versions: ListDerivation['moduleListVersions'],
+): { al: ListRef, il: ListRef, units: [string, ReusableUnit][] } | null {
+    if (versions === undefined || entry.il === null) {
         return null
     }
     if (previousUnitOf(previous, `${IDENTITY.module}${handle}`, UNIT_TYPE.module, entry.unit) === undefined) {
@@ -915,6 +930,55 @@ function carriedModuleLists(
     }
     // Copies, not the previous arrays; `listRefTuple` also drops an unknown trailing element exactly as a fresh list ref does.
     return { al: listRefTuple(entry.al, entry.al[3]), il: listRefTuple(entry.il, entry.il[3]), units: [[alId, alUnit], [ilId, ilUnit]] }
+}
+
+/**
+ * Whether a save of `module` would reuse the module unit that `entry` names under `handle` and carry its lists. False
+ * whenever that cannot be proved, and it never throws: a module this cannot read as plain JSON, or one whose payload is
+ * not the stored unit's, is not the stored module.
+ *
+ * The save frames the canonical payload of the module body, so a module whose payload equals the stored unit's payload
+ * is the stored unit. `stored` is the length and print of that stored payload, taken when the unit was read; it counts
+ * only for the very unit the previous encoding holds now (same key, same digest). The payload is built by the save's own
+ * normalisation, with no frame, checksum or digest.
+ */
+export function moduleIsStoredUnit(
+    module: unknown, entry: ModuleEntry, handle: string, previous: PreviousEncoding, versions: ListDerivation['moduleListVersions'],
+    stored: StoredPayloadPrint | undefined,
+): boolean {
+    return stored !== undefined && storedPrintHolds(entry, handle, previous, versions, stored) && payloadIsStored(module, stored)
+}
+
+/**
+ * Whether `stored` still describes the very unit the previous encoding holds for `entry` under `handle` (same key, same
+ * digest) and a save would carry that module's lists. It reads no module and never throws.
+ */
+export function storedPrintHolds(
+    entry: ModuleEntry, handle: string, previous: PreviousEncoding, versions: ListDerivation['moduleListVersions'],
+    stored: StoredPayloadPrint,
+): boolean {
+    try {
+        if (moduleListsCarriable(previous, entry, handle, versions) === null) {
+            return false
+        }
+        const unit = previous.units.get(`${IDENTITY.module}${handle}`)
+        return unit !== undefined && unit.digest !== undefined && unit.key === stored.unitKey && unit.digest === stored.digest
+    } catch {
+        return false
+    }
+}
+
+/**
+ * Whether the canonical payload of `module` has the length and print of `stored`. It never throws: a module this cannot
+ * read as plain JSON is not the stored payload.
+ */
+export function payloadIsStored(module: unknown, stored: StoredPayloadPrint): boolean {
+    try {
+        const payload = encodeCanonicalJson(moduleBodyOf(plainObject(module, 'module')))
+        return payload.length === stored.length && payloadPrint(payload) === stored.print
+    } catch {
+        return false
+    }
 }
 
 /**

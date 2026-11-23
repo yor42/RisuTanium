@@ -155,3 +155,49 @@ describe('withLiveRetained (modules, copies only the modules that change)', () =
         expect(out[1][ASSET_RETAINED_KEY]).toBe(LIVE)
     })
 })
+
+describe('withLiveRetained with a stub source', () => {
+    const stubOf = (id: string): Owner => ({ id, name: id, [MODULE_STUB_KEY]: MODULE_STUB_VALUE })
+
+    test('a matched live stub takes the value the source answers, on a copy', () => {
+        const asked: object[] = []
+        const stub = stubOf('m')
+        const own = mod('m')
+        const out = withLiveRetained([stub], [own], 'id', (given) => { asked.push(given); return { [ASSET_RETAINED_KEY]: LIVE } })
+        expect(asked).toEqual([stub])
+        expect(out[0]).not.toBe(own)
+        expect(out[0][ASSET_RETAINED_KEY]).toBe(LIVE)
+        expect(Object.hasOwn(own, ASSET_RETAINED_KEY)).toBe(false)
+    })
+
+    test('a source answering an object without the key removes the incoming key; a null answer keeps the incoming value', () => {
+        const own = mod('m', FOREIGN)
+        expect(Object.hasOwn(withLiveRetained([stubOf('m')], [own], 'id', () => ({}))[0], ASSET_RETAINED_KEY)).toBe(false)
+        const incoming = [own]
+        expect(withLiveRetained([stubOf('m')], incoming, 'id', () => null)).toBe(incoming)
+    })
+
+    test('an incoming stub is never a carry target and the source is not asked for it', () => {
+        let asked = 0
+        const incoming = [stubOf('m')]
+        const out = withLiveRetained([mod('m', LIVE)], incoming, 'id', () => { asked++; return { [ASSET_RETAINED_KEY]: LIVE } })
+        expect(out).toBe(incoming)
+        expect(Object.hasOwn(out[0], ASSET_RETAINED_KEY)).toBe(false)
+        expect(asked).toBe(0)
+    })
+
+    test('the live stub itself written back is not asked about', () => {
+        let asked = 0
+        const stub = stubOf('m')
+        const incoming = [stub]
+        expect(withLiveRetained([stub], incoming, 'id', () => { asked++; return {} })).toBe(incoming)
+        expect(asked).toBe(0)
+    })
+
+    test('a live resident module is never answered by the source', () => {
+        let asked = 0
+        const out = withLiveRetained([mod('m', LIVE)], [mod('m')], 'id', () => { asked++; return {} })
+        expect(out[0][ASSET_RETAINED_KEY]).toBe(LIVE)
+        expect(asked).toBe(0)
+    })
+})

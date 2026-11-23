@@ -107,9 +107,13 @@ vi.mock(import('../plugins.svelte'), () => ({
 
 const hostTerminateMock = vi.hoisted(() => vi.fn())
 const hostedApis = vi.hoisted(() => [] as unknown[])
+const hostedGates = vi.hoisted(() => [] as unknown[])
 vi.mock(import('./factory'), () => ({
     SandboxHost: class {
-        constructor(api: unknown) { hostedApis.push(api) }
+        constructor(api: unknown, callGate?: unknown) {
+            hostedApis.push(api)
+            hostedGates.push(callGate)
+        }
         run() {}
         terminate() {
             hostTerminateMock()
@@ -243,6 +247,7 @@ import type { ScriptMode } from '../../process/scripts'
 import type { LLMModel } from '../../model/types'
 import { customV3ProviderMetaStore, executePluginV3, getV3PluginInstance, loadV3Plugins, makeRisuaiAPIV3 } from './v3.svelte'
 import { get } from 'svelte/store'
+import { resetPluginWriteTurnsForTest, setPluginWriteYieldForTest, withWriteTurn, type CallGate } from '../pluginWriteTurns'
 
 //#region fixtures
 
@@ -293,6 +298,8 @@ beforeEach(() => {
 afterEach(async () => {
     replacers.throwOnRemove = false
     await loadV3Plugins([])
+    resetPluginWriteTurnsForTest()
+    setPluginWriteYieldForTest(null)
     document.body.innerHTML = ''
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -986,6 +993,29 @@ describe('mutation observer records', () => {
             if (observerId) await rig.request({ type: 'CALL_INSTANCE', id: observerId, method: 'disconnect', args: [] })
             rig.host.terminate()
         }
+    })
+})
+
+describe('same-plugin call gate wiring', () => {
+    test('G2: the host is built with the plugin call gate, which waits for the plugin write and never gates the write methods', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const gate = hostedGates[hostedGates.length - 1] as CallGate
+        expect(typeof gate).toBe('function')
+        expect(gate('CALL_ROOT', 'getDatabase')).toBeNull()
+
+        let release: () => void = () => {}
+        const held = new Promise<void>((resolve) => { release = resolve })
+        const write = withWriteTurn(plugin.name, () => held)
+
+        expect(gate('CALL_ROOT', 'getDatabase')).toBeInstanceOf(Promise)
+        expect(gate('CALL_INSTANCE', 'getItem')).toBeInstanceOf(Promise)
+        expect(gate('CALL_ROOT', 'setDatabase')).toBeNull()
+        expect(gate('CALL_ROOT', 'setDatabaseLite')).toBeNull()
+
+        release()
+        await write
+        expect(gate('CALL_ROOT', 'getDatabase')).toBeNull()
     })
 })
 

@@ -320,7 +320,7 @@ afterEach(() => {
 //#endregion
 
 describe('getDatabase hands plugins full modules', () => {
-    test('getdatabase-materialises-stub: a stub slot is a full module in the copy, the live slot is not written by the call', async () => {
+    test('getdatabase-materialises-stub: through the loader (no residency) a stub slot is a full module in the copy, the live slot is not written by the call', async () => {
         installDb([fullModule('A'), stubModule('B')])
         installLoader()
 
