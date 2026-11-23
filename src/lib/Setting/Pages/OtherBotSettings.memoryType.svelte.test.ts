@@ -72,7 +72,7 @@ import { DBState } from 'src/ts/stores.svelte'
 import OtherBotSettings from './OtherBotSettings.svelte'
 import { language } from 'src/lang'
 import { fillLang } from 'src/lang/fill'
-import { defaultBudgetTokens } from 'src/ts/process/memory/chroMemory/settings'
+import { defaultBudgetTokens, LORE_RECALL_CAP_DEFAULT } from 'src/ts/process/memory/chroMemory/settings'
 
 //#region helpers
 
@@ -313,4 +313,64 @@ describe('choosing an option in the memory Type dropdown writes all five engine 
             expect(memoryFields()).toEqual(expected)
         })
     }
+})
+
+describe('the lore recall cap input (S18)', () => {
+    const bodyText = () => document.body.textContent ?? ''
+
+    async function capInput(settings?: unknown, chroOn = true): Promise<HTMLInputElement | undefined> {
+        installDb({ ltmEngine: chroOn })
+        Object.assign(DBState.db, { maxContext: 8000 })
+        if (settings !== undefined) (DBState.db as unknown as Record<string, unknown>).ltmSettings = settings
+        const select = await typeSelect()
+        const root = select.closest('div')!.parentElement!
+        return Array.from(root.querySelectorAll<HTMLInputElement>('input[type="number"]')).find((el) =>
+            (el.getAttribute('aria-labelledby') ?? '').endsWith('-chro-lore-cap'))
+    }
+    const stored = () => (DBState.db as unknown as { ltmSettings?: unknown }).ltmSettings
+
+    async function type(input: HTMLInputElement, text: string): Promise<void> {
+        input.value = text
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+        flushSync()
+        await sleep(5)
+    }
+
+    test('S18 (R): the input shows beside the budget with the default in its description, and only while ChroMemory is on', async () => {
+        const input = await capInput()
+        expect(input).toBeDefined()
+        expect(bodyText()).toContain(fillLang(language.chroMemoryLoreRecallCapDesc, { tokens: LORE_RECALL_CAP_DEFAULT }))
+        document.body.innerHTML = ''
+        expect(await capInput(undefined, false)).toBeUndefined()
+    })
+
+    test('S18 (R): mounting over a stored cap shows it and writes nothing; a bad shape shows blank', async () => {
+        const settings = { loreRecallCap: 1234, future: { x: 1 } }
+        const input = await capInput(settings)
+        expect(input!.value).toBe('1234')
+        expect(stored()).toEqual({ loreRecallCap: 1234, future: { x: 1 } })
+        document.body.innerHTML = ''
+        const blank = await capInput('garbage')
+        expect(blank!.value).toBe('')
+        expect(stored()).toBe('garbage')
+    })
+
+    test('S18 (R): change writes the integer and keeps unknown keys and the budget', async () => {
+        const input = await capInput({ budgetTokens: 900, future: { x: 1 } })
+        await type(input!, '1500')
+        expect(stored()).toEqual({ budgetTokens: 900, loreRecallCap: 1500, future: { x: 1 } })
+        expect(input!.value).toBe('1500')
+    })
+
+    test('S18 (R): a blank, zero or decimal value removes the key, so the default applies, and the field shows blank', async () => {
+        for (const text of ['', '0', '1500.5']) {
+            document.body.innerHTML = ''
+            const input = await capInput({ budgetTokens: 900, loreRecallCap: 1234, future: { x: 1 } })
+            await type(input!, text)
+            expect(stored()).toEqual({ budgetTokens: 900, future: { x: 1 } })
+            expect(input!.value).toBe('')
+        }
+    })
 })
