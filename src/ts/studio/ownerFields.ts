@@ -7,7 +7,7 @@ import { liveReaderOf, resolveOwnerTarget } from './edit/ownerTargets'
 import { registryPaths } from './history/fieldAccess'
 import { FIELD_PRESENTATION, type SetPath } from './history/fieldRegistry'
 import type { LiveReader } from './history/historyModel'
-import { parseStoredOwnerKey, type OwnerKey } from './history/ownerPhase'
+import { parseSessionOwnerKey, parseStoredOwnerKey, type OwnerKey } from './history/ownerPhase'
 
 // A foreign reading (a stored value of another type than the field's), tagged so it never equals a typed value: a bare
 // value or its JSON text could equal one (`5` and `'5'`, `true` and `'true'`).
@@ -16,9 +16,13 @@ export type ForeignFieldRead = { readonly foreign: JsonValue }
 // The greetings and the live value of every registered path that has a focus target, keyed by the path.
 export type OwnerFields = { readonly greetings: readonly string[] } & { readonly [P in SetPath]?: unknown }
 
-// A module owner resolves through the published open-module id (it has no character target); the other kinds keep the
-// stored-target resolution.
+// A session owner (a preset) is resolved by its adapter, which answers by id. A module owner resolves through the
+// published open-module id (it has no character target); the other kinds keep the stored-target resolution.
 function readerOf(owner: OwnerKey): LiveReader | null {
+    if (parseSessionOwnerKey(owner)) {
+        const session = resolveOwnerTarget(owner, () => null)
+        return session.ok ? liveReaderOf(session.target) : null
+    }
     if (parseStoredOwnerKey(owner)?.kind === 'module') {
         const resolved = resolveOwnerTarget(owner, openStudioModuleId)
         return resolved.ok ? liveReaderOf(resolved.target) : null

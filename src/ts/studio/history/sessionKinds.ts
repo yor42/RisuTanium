@@ -12,8 +12,47 @@ export interface SessionOwnerKindSpec {
 }
 
 export const SESSION_OWNER_KINDS = {
-    // A bot preset's toggle text, by the preset's stable id (see presetTarget.ts).
-    preset: { setPaths: ['customModuleToggle'] },
+    // A bot preset's toggle text and the fields of its advanced form, by the preset's stable id (see presetTarget.ts
+    // and presetFields.ts). The row derives the kind's set row and restore row; the adapter table holds exactly these.
+    preset: {
+        setPaths: [
+            'customModuleToggle',
+            'presetName',
+            'presetMainPrompt',
+            'presetJailbreak',
+            'presetGlobalNote',
+            'presetPromptPreprocess',
+            'presetPostEndInnerFormat',
+            'presetSendChatAsSystem',
+            'presetSendName',
+            'presetTrimStartNewChat',
+            'presetUtilOverride',
+            'presetCustomChainOfThought',
+            'presetJsonSchemaEnabled',
+            'presetOutputImageModal',
+            'presetStrictJsonSchema',
+            'presetJsonSchema',
+            'presetExtractJson',
+            'presetGroupOtherBotRole',
+            'presetTemplateDefaultVariables',
+            'presetAutoSuggestPrompt',
+            'presetGroupTemplate',
+            'presetSystemContentReplacement',
+            'presetSystemRoleReplacement',
+            'presetFallbackWhenBlank',
+            'presetModuleIntegration',
+            'presetUseInstructPrompt',
+            'presetAutoSuggestPrefix',
+            'presetAutoSuggestClean',
+            'presetDynamicAutoAdjustSchema',
+            'presetDynamicMessages',
+            'presetDynamicMemory',
+            'presetDynamicResponseTiming',
+            'presetDynamicOutputPrompt',
+            'presetDynamicShowTypingEffect',
+            'presetDynamicRequest',
+        ],
+    },
 } as const satisfies Record<string, SessionOwnerKindSpec>
 
 export type SessionOwnerKind = keyof typeof SESSION_OWNER_KINDS

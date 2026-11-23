@@ -19,6 +19,7 @@
     import StudioCharacterForm from './StudioCharacterForm.svelte'
     import StudioAdvancedForm from './StudioAdvancedForm.svelte'
     import StudioExampleForm from './StudioExampleForm.svelte'
+    import StudioPresetAdvancedForm from './StudioPresetAdvancedForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
     import StudioToggleBuilder from './StudioToggleBuilder.svelte'
@@ -116,6 +117,8 @@
     const moduleToggleBuilderLive = $derived(openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'toggles')
     const presetToggleBuilderLive = $derived(owner?.type === 'preset' && studioScreen.selectedPresetId !== null && kindNode?.kind === 'toggles')
     const toggleBuilderLive = $derived(characterToggleBuilderLive || moduleToggleBuilderLive || presetToggleBuilderLive)
+    // The advanced form of the preset the selection pinned by id. It is no part of `formLive`: a preset has no save chip.
+    const presetAdvancedFormLive = $derived(owner?.type === 'preset' && studioScreen.selectedPresetId !== null && kindNode?.kind === 'advanced')
     // A module whose id several rows share: its toggles stay read-only text, as its assets do.
     const moduleToggleShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'toggles')
     // A loaded module's asset list. It is no part of `formLive`: that carries the character's save chip.
@@ -222,7 +225,7 @@
             {#if item}
                 <p data-part="studio-detail-item" class="break-words font-bold">{itemLabelOf(item)}</p>
             {/if}
-            {#if itemText && !toggleBuilderLive}
+            {#if itemText && !toggleBuilderLive && !presetAdvancedFormLive}
                 <pre data-part="studio-detail-text" class="whitespace-pre-wrap break-words rounded-md border border-darkborderc bg-darkbg p-3 font-sans">{itemText.shown}</pre>
                 {#if itemText.cut}
                     <p data-part="studio-detail-truncated" class="text-sm text-textcolor2">{language.studioTruncated(DETAIL_TEXT_LIMIT)}</p>
@@ -270,6 +273,11 @@
                 <!-- Keyed by the owner, as the character's list is; the module's id and slot are primitives, never the owner node. -->
                 {#key ownerKey}
                     <StudioModuleAssetForm moduleId={moduleRawId} slotIndex={moduleSlotIndex} enabledModules={enabledModuleAssets} />
+                {/key}
+            {:else if presetAdvancedFormLive && studioScreen.selectedPresetId !== null}
+                <!-- Keyed by the pinned id, not the row: a reorder keeps this form, another preset builds a new one. -->
+                {#key studioScreen.selectedPresetId}
+                    <StudioPresetAdvancedForm presetId={studioScreen.selectedPresetId} />
                 {/key}
             {:else if !toggleBuilderLive}
                 <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>

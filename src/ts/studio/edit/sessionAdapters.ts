@@ -17,6 +17,10 @@ export interface SessionTarget {
 
 export interface SessionOwnerAdapter {
     resolve(id: string): { ok: true; target: SessionTarget } | { ok: false; reason: SetterRefusal }
+    // Asked after the service planned a write (an edit, an undo, a redo, a revert or a restore point: the whole batch)
+    // and before `write`. `precondition` refuses the whole write with nothing written, recorded or marked; an owner
+    // that never refuses leaves it out.
+    check?(id: string, writes: readonly WriteOp[]): 'ok' | 'precondition'
     // Re-resolves by id at write time. False means the owner is gone and nothing was written.
     write(id: string, writes: readonly WriteOp[]): boolean
     // Called after an edit landed and the step was recorded.

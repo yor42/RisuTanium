@@ -25,7 +25,8 @@ const ABSENT: FieldValue = { had: false }
 
 const KEEP_ON_CHARACTER = ['desc', 'firstMessage', 'exampleMessage'] as const
 const DELETE_ON_CHARACTER = ['customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'] as const
-const VALUE_OF: Record<SetPath, string | boolean> = {
+// The stored paths: the preset form's session-only paths have no builtin holder to write.
+const VALUE_OF: Record<Exclude<SetPath, `preset${string}`>, string | boolean> = {
     desc: 'new desc',
     firstMessage: 'new first',
     exampleMessage: 'new example',
