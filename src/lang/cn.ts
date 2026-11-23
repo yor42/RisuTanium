@@ -4505,6 +4505,11 @@ export const languageChinese = {
         "promptText": "提示词文本",
         "summarized": "已总结",
         "inactive": "未启用",
+        "chunks": "分块",
+        "requestBody": "请求正文",
+        "requestHeader": "请求头",
+        "response": "响应",
+        "bytes": "字节",
         "realmShareNotice": "请使用 RisuRealm 分享预设。目前无法导出包含图片或正则表达式的预设。"
     },
     "loadoutModal": {

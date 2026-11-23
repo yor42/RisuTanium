@@ -4524,6 +4524,11 @@ export const languageGerman = {
         "promptText": "Anweisungstext",
         "summarized": "Zusammengefasst",
         "inactive": "Inaktiv",
+        "chunks": "Textblöcke",
+        "requestBody": "Anfragetext",
+        "requestHeader": "Anfrage-Header",
+        "response": "Antwort",
+        "bytes": "Bytes",
         "realmShareNotice": "Verwenden Sie RisuRealm, um die Voreinstellung zu teilen. Voreinstellungen mit Bild oder Regex können derzeit nicht exportiert werden."
     },
     "loadoutModal": {

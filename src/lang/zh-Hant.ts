@@ -4549,6 +4549,11 @@ export const languageChineseTraditional = {
         "promptText": "提示詞文字",
         "summarized": "已摘要",
         "inactive": "未啟用",
+        "chunks": "區塊",
+        "requestBody": "請求內容",
+        "requestHeader": "請求標頭",
+        "response": "回應",
+        "bytes": "位元組",
         "realmShareNotice": "請使用 RisuRealm 分享預設集。目前無法匯出含有圖片或 Regex 的預設集。"
     },
     "loadoutModal": {
