@@ -108,6 +108,7 @@ Run it at every grant start (before any row) and at the end. The end census's re
 2. Classify each `package:<name>` line against the grant's lists:
    - in `standingPackages`: keep;
    - in `strandedPackages`: keep and report;
+   - in `keepHelpers`: keep and report, even though it matches `helperPattern` (a test app another run still needs; never uninstall it and never mark it stranded), and the end census counts as clean with it present;
    - matches `helperPattern`: remove with `uninstall <name>`, one call each;
    - anything else: STOP.
 3. On STOP: no row counts. Release WITHOUT `--clean` and hand back with the package names in the result file. The PR session asks the maintainer whether a later holder marks the package with `lease-reset-done ... --stranded <name>` (a package matching the helper pattern or listed in `standingPackages` cannot be marked stranded).
