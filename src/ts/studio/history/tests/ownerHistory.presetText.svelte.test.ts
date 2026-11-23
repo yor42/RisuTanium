@@ -159,6 +159,16 @@ describe('T2: edits land in the live copy', () => {
         expect(slotText(1)).toBe('b=12')
     })
 
+    test('T5-PLAN-S (a): a field edit of the toggle lands like a typing text edit on the preset owner', () => {
+        expect(service.editField(keys[1], PATH, 'b=edited')).toEqual({ ok: true })
+        expect(slotText(1)).toBe('b=edited')
+        expect(working()).toBe('a=A')
+        expect(service.view(keys[1]).done).toHaveLength(1)
+        expect(service.editField(keys[1], PATH, 'b=edited2')).toEqual({ ok: true })
+        expect(service.view(keys[1]).done).toHaveLength(1)
+        expect(service.undo(keys[1])).toEqual({ ok: true })
+        expect(slotText(1)).toBe('b=B')
+    })
     test('every other intent is refused and changes nothing', () => {
         const before = JSON.stringify(DBState.db)
         expect(service.editText(keys[1], 'desc', 'x')).toMatchObject({ ok: false })
