@@ -6,7 +6,7 @@
 // not on screen, focus is left where it is unless it was lost (removed, disabled or on the body); then it goes to
 // the fallback the caller names.
 import { afterFlush } from '../afterFlush'
-import { registryPaths } from './history/fieldAccess'
+import { registryPaths, valuesEqual } from './history/fieldAccess'
 import { FIELD_PRESENTATION, type SetPath } from './history/fieldRegistry'
 import { cardSpans, cardText } from './longText/exampleCards'
 import type { OwnerFields } from './ownerFields'
@@ -62,7 +62,7 @@ export function changedFieldTarget(before: OwnerFields, after: OwnerFields): Foc
     if (before.firstMessage !== after.firstMessage) return { kind: 'firstMessage' }
     if (before.exampleMessage !== after.exampleMessage) return exampleTarget(before.exampleMessage, after.exampleMessage)
     for (const path of registryPaths()) {
-        if (hasElementFocus(path) && before[path] !== after[path]) return { kind: path }
+        if (hasElementFocus(path) && !valuesEqual(before[path], after[path])) return { kind: path }
     }
     return null
 }

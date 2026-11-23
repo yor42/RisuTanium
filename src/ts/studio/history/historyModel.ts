@@ -7,8 +7,8 @@ import { applyFolderOps, folderOpAtTarget, invertFolderOp, type FolderFieldValue
 import type { AssetArrayName } from '../assets/mergePreview'
 import { scanReferences } from '../assets/referenceScan'
 import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
-import { factsOf, isHeldBy, registryPaths } from './fieldAccess'
-import { FIELD_SPECS, type SetPath } from './fieldRegistry'
+import { cloneValue, factsOf, isBiasList, isHeldBy, registryPaths, valuesEqual } from './fieldAccess'
+import { FIELD_SPECS, type BiasRow, type SetPath } from './fieldRegistry'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
 import { parseStoredOwnerKey, type OwnerKey, type ParsedOwnerKey, type StoredOwnerKey } from './ownerPhase'
 import { SESSION_OWNER_KINDS, type SessionOwnerKind, type SessionOwnerKindSpec } from './sessionKinds'
@@ -111,14 +111,14 @@ export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
 ]
 
 // `had: false` is an absent optional key. Writing it deletes the key; it never assigns false or undefined.
-export type FieldValue = { had: false } | { had: true; value: string | boolean }
+export type FieldValue = { had: false } | { had: true; value: string | boolean | BiasRow[] }
 export type FmValue = { had: false } | { had: true; value: number }
 
 export function fieldValueEquals(a: FieldValue, b: FieldValue): boolean {
     if (!a.had || !b.had) {
         return a.had === b.had
     }
-    return a.value === b.value
+    return valuesEqual(a.value, b.value)
 }
 
 function fmValueEquals(a: FmValue, b: FmValue): boolean {
@@ -276,8 +276,12 @@ function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
     if (value.had !== true) {
         return null
     }
-    if (factsOf(path).value === 'bool') {
+    const kind = factsOf(path).value
+    if (kind === 'bool') {
         return typeof value.value === 'boolean' ? { had: true, value: value.value } : null
+    }
+    if (kind === 'biasList') {
+        return isBiasList(value.value) ? { had: true, value: cloneValue(value.value) } : null
     }
     return typeof value.value === 'string' ? { had: true, value: value.value } : null
 }
@@ -372,9 +376,9 @@ export function isOpAllowedFor(kind: OwnerKind, op: Op): boolean {
     }
 }
 
-// The set paths of an owner kind that carry text: its row of the table minus the boolean paths.
+// The set paths of an owner kind that carry text: its row of the table minus the boolean and bias-list paths.
 export function textPathsFor(kind: OwnerKind): readonly SetPath[] {
-    return SET_PATHS_BY_KIND[kind].filter((path) => !isBooleanSetPath(path))
+    return SET_PATHS_BY_KIND[kind].filter((path) => factsOf(path).value === 'text')
 }
 
 const ASSET_ARRAYS: readonly string[] = ['additionalAssets', 'emotionImages', 'assets']

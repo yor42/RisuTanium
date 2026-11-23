@@ -104,6 +104,7 @@ import {
     type ReadyReason,
     type StoredOwnerKey,
 } from './ownerPhase'
+import type { BiasRow } from './fieldRegistry'
 import { nameOfPathIn, stepNamesAssetPath, stepsOf } from './retainedPaths'
 import type {
     ClaimResult,
@@ -188,6 +189,8 @@ export interface EditFieldOptions {
     confirmed?: readonly SetPath[]
     // `undefined` joins by the path (typing), `null` makes a step of its own, a string is the open-step key.
     coalesceKey?: string | null
+    // Adds the id of the step the edit landed as to the result (`stepId`), for a caller that posts an Undo for it.
+    reportStep?: boolean
 }
 
 // Wraps the replay's synchronous apply. It must call `apply` exactly once, synchronously, and return its result.
@@ -254,7 +257,7 @@ export interface OwnerHistoryService {
     setAck(chaId: string, ack: OwnerAck | null): void
     // The ack told of a landed write to module `moduleId`, kept apart from the character acks (which are keyed by chaId).
     setModuleAck(moduleId: string, ack: OwnerAck | null): void
-    editField(owner: OwnerKey, path: SetPath, value: string | boolean, options?: EditFieldOptions): StudioResult
+    editField(owner: OwnerKey, path: SetPath, value: string | boolean | BiasRow[], options?: EditFieldOptions): StudioResult
     // A whole-value text edit. `typing` coalesces with the previous typing step of the same path; `single` is always its own step.
     editText(owner: OwnerKey, path: SetPath, value: string, mode?: 'typing' | 'single'): StudioResult
     greetingAdd(owner: OwnerKey): StudioResult
@@ -395,7 +398,7 @@ function saveEvent(result: SaveResult): OwnerEvent {
 }
 
 type Intent =
-    | { kind: 'edit'; build: (id: string, live: LiveReader, target: LiveTarget) => EditBuildResult; confirmed?: readonly SetPath[] }
+    | { kind: 'edit'; build: (id: string, live: LiveReader, target: LiveTarget) => EditBuildResult; confirmed?: readonly SetPath[]; reportStep?: boolean }
     // `coalesce: false` is the `single` mode: the step never merges with a neighbouring typing step.
     | { kind: 'text'; path: SetPath; value: string; coalesce: boolean }
     | { kind: 'replay'; direction: 'undo' | 'redo'; confirmed?: readonly SetPath[] }
@@ -1236,7 +1239,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             moduleAcks.get(moduleIdOf(slot))?.noteEdit(moduleIdOf(slot), before)
         }
         landedNotice(owner, slot)
-        return { ok: true, ...planned.notes, ...(intent.kind === 'asset' ? { stepId: slot.record.done.at(-1)?.id } : {}) }
+        return { ok: true, ...planned.notes, ...(intent.kind === 'asset' || (intent.kind === 'edit' && intent.reportStep === true) ? { stepId: slot.record.done.at(-1)?.id } : {}) }
     }
 
     // The flags this one call confirmed: only the intent's own list, never state kept from an earlier call.
@@ -1490,6 +1493,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 kind: 'edit',
                 build: (_id, live) => buildFieldEdit(path, value, live, options?.coalesceKey === undefined ? true : options.coalesceKey === null ? false : options.coalesceKey),
                 confirmed: options?.confirmed,
+                reportStep: options?.reportStep,
             }),
         editText: (owner, path, value, mode = 'typing') =>
             applyStudioWrite(owner, { kind: 'text', path, value, coalesce: mode === 'typing' }),

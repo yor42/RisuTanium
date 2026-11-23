@@ -51,10 +51,11 @@ describe('the character set paths', () => {
         const s1 = ['systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'additionalData.creator', 'additionalData.character_version', 'nickname', 'defaultVariables', 'translatorNote']
         const s2a = ['creatorNotes', 'removedQuotes']
         const s2b = ['lowLevelAccess', 'utilityBot', 'escapeOutput']
-        expect(CHARACTER_SET_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...s1, ...s2a, ...s2b])
+        const s2c = ['bias']
+        expect(CHARACTER_SET_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...s1, ...s2a, ...s2b, ...s2c])
         expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'creatorNotes'])
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...s1, ...s2a, ...s2b, 'alternateGreetings'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...s1, ...s2a, ...s2b, ...s2c, 'alternateGreetings'])
     })
 
     test('a character record keeps a first message set op, an example message set op, their labels and their restore keys', () => {

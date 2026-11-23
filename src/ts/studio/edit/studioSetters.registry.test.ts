@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from 'vitest'
 import type { Chat, character } from 'src/ts/storage/database.svelte'
 import type { RisuModule } from 'src/ts/process/modules'
 import { applyCharacterDefaults } from 'src/ts/storage/characterDefaults'
+import type { BiasRow } from '../history/fieldRegistry'
 import type { FieldValue, LiveReader, SetPath, WriteOp } from '../history/historyModel'
 import { applyCharacterWrites, applyChatWrites, buildFieldEdit, buildWrittenModule, createLiveReader, createModuleLiveReader } from './studioSetters'
 
@@ -20,12 +21,12 @@ function makeCharacter(over: Record<string, unknown> = {}): character {
 }
 
 const set = (path: SetPath, value: FieldValue): WriteOp => ({ op: 'set', path, value })
-const had = (value: string | boolean): FieldValue => ({ had: true, value })
+const had = (value: string | boolean | BiasRow[]): FieldValue => ({ had: true, value })
 const ABSENT: FieldValue = { had: false }
 
 const KEEP_ON_CHARACTER = ['desc', 'firstMessage', 'exampleMessage'] as const
 const DELETE_ON_CHARACTER = ['customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'] as const
-const VALUE_OF: Record<SetPath, string | boolean> = {
+const VALUE_OF: Record<SetPath, string | boolean | BiasRow[]> = {
     desc: 'new desc',
     firstMessage: 'new first',
     exampleMessage: 'new example',
@@ -49,6 +50,7 @@ const VALUE_OF: Record<SetPath, string | boolean> = {
     lowLevelAccess: true,
     utilityBot: true,
     escapeOutput: true,
+    bias: [['tok', 5]],
 }
 
 describe('T-W1: the writers of the builtin holders', () => {

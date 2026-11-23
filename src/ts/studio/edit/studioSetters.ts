@@ -12,7 +12,8 @@ import type { Chat, character, groupChat } from '../../storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
 import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
-import { factsOf, freshSeed, isHeldBy, isUsableContainer, propertyOf, slotOf } from '../history/fieldAccess'
+import { cloneValue, factsOf, freshSeed, isBiasList, isHeldBy, isUsableContainer, isValueOf, propertyOf, slotOf, valuesEqual } from '../history/fieldAccess'
+import type { BiasRow } from '../history/fieldRegistry'
 import { fmAfterRemove, textFieldOf, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
 import { parseStoredOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './assetSetters'
@@ -159,6 +160,11 @@ function readHeld(holder: object | null | undefined, path: SetPath): FieldValue 
             return { had: false }
         }
     }
+    // The reader copies a bias list and never normalizes it: a list that is not strictly readable (a `null` cell, a
+    // non-finite number, a 3-tuple, a non-array) reads as absent, so no edit of it is ever built.
+    if (factsOf(path).value === 'biasList') {
+        return isBiasList(value) ? { had: true, value: cloneValue(value) } : { had: false }
+    }
     if (factsOf(path).value === 'bool') {
         return typeof value === 'boolean' ? { had: true, value } : { had: false }
     }
@@ -239,17 +245,20 @@ export type EditBuildResult = EditBuild | { ok: false; reason: 'precondition' | 
 
 // `coalesce: false` gives a step that never joins, and is never joined by, a neighbouring typing step. `true` joins
 // by the path, and a string is the open-step key itself.
-export function buildFieldEdit(path: SetPath, value: string | boolean, live: LiveReader, coalesce: boolean | string = true): EditBuildResult {
-    if (typeof value !== (factsOf(path).value === 'bool' ? 'boolean' : 'string')) {
+export function buildFieldEdit(path: SetPath, input: string | boolean | BiasRow[], live: LiveReader, coalesce: boolean | string = true): EditBuildResult {
+    if (!isValueOf(path, input)) {
         return { ok: false, reason: 'precondition' }
     }
+    // A bias list is copied here, so no op, write or record holds the caller's array (a reactive proxy, or one the
+    // classic editor mutates in place).
+    const value = cloneValue(input)
     const before = live.field(path)
     // An absent required key cannot be put back by an undo (the builtin writers never delete it), so the edit is
     // refused before anything is written, marked or recorded.
     if (!before.had && !factsOf(path).editWhenAbsent) {
         return { ok: false, reason: 'precondition' }
     }
-    if (before.had && before.value === value) {
+    if (before.had && valuesEqual(before.value, value)) {
         return { ok: false, reason: 'unchanged' }
     }
     const after: FieldValue = { had: true, value }
@@ -405,15 +414,18 @@ function writeHeld(holder: object, path: SetPath, value: FieldValue): void {
                 delete (fields[container] as Record<string, unknown>)[key]
             }
         }
-    } else if (typeof value.value === (factsOf(path).value === 'bool' ? 'boolean' : 'string')) {
+    } else if (isValueOf(path, value.value)) {
+        // A bias list is assigned as a plain array copy: the classic editor binds its rows in place, so the stored step
+        // must never share them.
+        const written = cloneValue(value.value)
         if (container === null) {
-            fields[key] = value.value
+            fields[key] = written
             return
         }
         if (!isUsableContainer(fields[container])) {
             fields[container] = freshSeed(container)
         }
-        ;(fields[container] as Record<string, unknown>)[key] = value.value
+        ;(fields[container] as Record<string, unknown>)[key] = written
     }
 }
 
@@ -608,8 +620,8 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
             // Anything but a value of the path's type deletes an optional key on the copy (when the path's `absent`
             // says delete); the live module is never written.
             const fields = fieldsView(next)
-            if (write.value.had && typeof write.value.value === (factsOf(write.path).value === 'bool' ? 'boolean' : 'string')) {
-                fields[propertyOf(write.path)] = write.value.value
+            if (write.value.had && isValueOf(write.path, write.value.value)) {
+                fields[propertyOf(write.path)] = cloneValue(write.value.value)
             } else if (factsOf(write.path).absent === 'delete') {
                 delete fields[propertyOf(write.path)]
             }
