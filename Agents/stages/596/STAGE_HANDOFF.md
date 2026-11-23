@@ -1,4 +1,4 @@
-# Stage handoff: #596 parallel replies, after stage 7e
+# Stage handoff: #596 parallel replies, after stage 7c
 
 Read this, the issue, `s5-plan-r2.md` beside this file (the accepted stage 5 plan) and the repository at origin/main. Source statements below were read at d70df2cb3 or 105915cbe and not executed, unless a test is named. Re-pin them before use.
 
@@ -14,8 +14,9 @@ Read this, the issue, `s5-plan-r2.md` beside this file (the accepted stage 5 pla
 - Stage 7a (abort leaf, script access revocation, script pass stop, MC-3958): PR https://github.com/yor42/RisuTanium/pull/705, merged as 1fe41cb28.
 - Stage 7b (send-path hooks, request path, body interceptors, MCP and Gemini races, inlay and imggen, stableDiff signal): PR https://github.com/yor42/RisuTanium/pull/717, merged as 5c24228a5.
 - Stage 7d (edit passes outside the live output, TTS, composer input race MC-3957): PR https://github.com/yor42/RisuTanium/pull/726, merged as bdda8894a.
-- Stage 7e (live output passes under the 10 s stop deadline, non-stream raw store, 20 s watchdog; MC-3950, MC-3955): branch `claude/596-parallel-replies-s7e`; Gate 2 Opus r1 reject (three surviving mutants), Sonnet r2 PASS on the test-only fix.
-- Refs #596. Remaining before the MVP update, in this order (MC-3736, orchestrator's order): 7c (s7-plan.md stage order), then 5d. The final stage closes the ticket.
+- Stage 7e (live output passes under the 10 s stop deadline, non-stream raw store, 20 s watchdog; MC-3950, MC-3955): PR https://github.com/yor42/RisuTanium/pull/731, merged as c736d40a7.
+- Stage 7c (60 s bounded wait per replacerafterRequest on a recovered reply, MC-3798): branch `claude/596-parallel-replies-s7c`; Gate 2 Opus r1 APPROVE.
+- Refs #596. Remaining before the MVP update, in this order (MC-3736, orchestrator's order): 5d. The final stage closes the ticket.
 
 ## 2. Decisions
 
@@ -119,7 +120,9 @@ After 5c merges: device row DV-596-S5-1 (this ticket's own session asks for it, 
 - 7b done: every send-path hook, request-path hook, body interceptor, MCP tool call and inlay/imggen wait races on the unit signal. New `src/ts/process/request/bodyInterceptors.ts`. Known limitations for 5d and later: K1..K12 in s7-plan.md, plus an abandoned emotion or additional-information search still starts its query embedding after Stop (Gate 2 r1 E1).
 - 7d done: the editprocess and editRequest passes, the recovered applies' output pass, sayTTS (linked signal, raced pre/postprocessors), /speak and the composer's 'input' trigger and editinput race their Stop. Known limitations: Gate 2 r1 E1 (abandoned threading not pinned by a test at the composer and first-message sites), E4 (EP-1 has no mark assertion), E5 (sayTTS stop.dispose untested).
 - 7e done: one stop deadline and one watchdog per unit, owned by the sendChat wrapper (WeakMap keyed by the unit signal, disposed in its finally). Stream-end passes stop writing when abandoned; non-stream passes store the pass input raw (no inlay), and a stopped non-stream body returns before runCurrentChatFunction. Plan correction (Gate 2 r1 E3): D-11 is unreachable, because the existing early return after requestChatData ends the body before any pass when Stop lands during the request; D-11 is a guard and M63 is equivalent. Known limitation E1: the non-stream inlay comment covers only the abandoned case.
-- Next: 7c (its own PR with Opus Gate 2), then 5d.
+- 7c done: `boundedRecoveredReplacers` in `nativeReply/reconcile.ts`, wired in `bootstrap.ts` recoverText. Known limitation: the bootstrap wiring has no test (plan E5/P14).
+- 5d: the maintainer answered FQ-1..3 on 2026-11-23 (all as boot notices: a reply error waits behind a closable alert, returns after a cover, only the person's close dismisses it); record as MC-3959 in the 5d PR. Plan by the designer in `s5d-plan.md` (scratch), then Gate 1.
+- Next: 5d, the final stage, closes #596.
 - Carry to 5d (from DV-596-S5-1): the reply notification names one chat while two run (MC-3791's count card fixes it); a stopped reply in a hidden chat raised both a "was stopped" and a "replied" toast.
 
 ### 5d: queued alerts and the card (after stage 7)

@@ -8,6 +8,7 @@ import { consumeReply, heldReply } from './pageState'
 import { addRunningReplies, setRunningReplies, takeWaitingForUnit, type RunningReplyEntry, type RunningReplyTarget } from './runningReplies.svelte'
 import type { NativeReplyStore, ReplyListing, ReplyListingState, ReplyOutcome } from './store'
 import type { UsageMeterState } from '../usage/usageTypes'
+import { raceAbort } from '../process/abortRace'
 
 /**
  * Places the replies that were recorded while this page could not see them (the page was frozen, killed or reloaded):
@@ -142,6 +143,33 @@ export function targetStateOf(blob: ReplyBlob, key: string): TargetState {
     return { kind: 'ok' }
 }
 
+/** The longest one after-request replacer may take on a recovered reply before it is skipped. */
+export const RECOVERED_REPLACER_WAIT_MS = 60_000
+
+/**
+ * The plugins' after-request replacers as one step for a recovered reply. Each replacer is given the wait; one that
+ * has not settled by then leaves the text unchanged and the next one runs, and a late result is dropped. A replacer
+ * that throws still rejects the step. The list is read when the step runs.
+ */
+export function boundedRecoveredReplacers(
+    list: Iterable<(text: string, type: string) => string | Promise<string>>,
+    waitMs: number = RECOVERED_REPLACER_WAIT_MS,
+): (text: string) => Promise<string> {
+    return async (text) => {
+        let replaced = text
+        for (const replacer of list) {
+            const current = replaced
+            const outcome = await raceAbort(null, () => replacer(current, 'model'), {
+                timeoutMs: waitMs,
+                label: 'A recovered reply replacer',
+            })
+            if (outcome.settled) {
+                replaced = outcome.value
+            }
+        }
+        return replaced
+    }
+}
 export interface RecoverTools {
     escape(text: string): string
     /** The plugins' after-request replacers, in order. */
