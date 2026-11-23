@@ -910,3 +910,66 @@ describe('contract: moduleIsStored proves a module from the payload print record
         expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(true)
     })
 })
+
+describe('contract: storedPrintOf hands out the recorded print only while it still describes the acknowledged unit', () => {
+    async function hydratedModule() {
+        const booted = await bootOf(archiving(2), { lists: createListDerivation() })
+        const index = booted.encoder.acknowledged().objects?.moduleIndex
+        if (index === undefined) {
+            throw new Error('The boot holds no module index.')
+        }
+        const handles = moduleHandles(index.entries)
+        for (const handle of handles) {
+            for (const prefix of [IDENTITY.module, IDENTITY.alModule, IDENTITY.ilModule]) {
+                delete booted.encoder.acknowledged().units.get(`${prefix}${handle}`)?.digest
+            }
+        }
+        const read = await booted.residency.readModule(handles[1])
+        if (read.status !== 'ok') {
+            throw new Error(`The module read ${read.status}.`)
+        }
+        return { booted, handles, read }
+    }
+
+    test('U4 guard, new surface: the identical frozen record comes back across calls and repeat hydration', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        booted.residency.hydrateModule(read)
+        const first = booted.residency.storedPrintOf(handles[1])
+        expect(first).not.toBeNull()
+        expect(Object.isFrozen(first)).toBe(true)
+        expect(booted.residency.storedPrintOf(handles[1])).toBe(first)
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.storedPrintOf(handles[1])).toBe(first)
+    })
+
+    test('U5 guard, new surface: null after a digest or key tamper, a missing list digest, an unknown list version, or no hydration', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        expect(booted.residency.storedPrintOf(handles[1])).toBeNull()
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.storedPrintOf(handles[1])).not.toBeNull()
+        expect(booted.residency.storedPrintOf('no-such-module#0')).toBeNull()
+        const units = booted.encoder.acknowledged().units
+        const moduleUnit = units.get(`${IDENTITY.module}${handles[1]}`)
+        const listUnit = units.get(`${IDENTITY.alModule}${handles[1]}`)
+        if (moduleUnit === undefined || moduleUnit.digest === undefined || listUnit === undefined || listUnit.digest === undefined) {
+            throw new Error('The hydrated module holds no digests.')
+        }
+        const { digest, key } = moduleUnit
+        moduleUnit.digest = 'another-digest'
+        expect(booted.residency.storedPrintOf(handles[1])).toBeNull()
+        moduleUnit.digest = digest
+        moduleUnit.key = 'another-key'
+        expect(booted.residency.storedPrintOf(handles[1])).toBeNull()
+        moduleUnit.key = key
+        expect(booted.residency.storedPrintOf(handles[1])).not.toBeNull()
+        const listDigest = listUnit.digest
+        delete listUnit.digest
+        expect(booted.residency.storedPrintOf(handles[1])).toBeNull()
+        listUnit.digest = listDigest
+        const version = read.entry.al[3]
+        read.entry.al[3] = version + 1000
+        expect(booted.residency.storedPrintOf(handles[1])).toBeNull()
+        read.entry.al[3] = version
+        expect(booted.residency.storedPrintOf(handles[1])).not.toBeNull()
+    })
+})

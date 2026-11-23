@@ -2,6 +2,7 @@ import { beginChokePoint } from "src/ts/process/memory/busyActions";
 import { MEASURE } from "src/ts/process/memory/measureFlag";
 import { startPluginRecord } from "../pluginCostMeter";
 import { isPlainResult } from "./pluginCopy.svelte";
+import type { CallGate } from "../pluginWriteTurns";
 import { v4 } from "uuid";
 
 type MsgType =
@@ -484,8 +485,11 @@ export class SandboxHost {
     // active stream would wait forever once the iframe is gone.
     private activeStreamCleanups = new Set<() => void>();
 
-    constructor(apiFactory: any) {
+    private callGate: CallGate | undefined;
+
+    constructor(apiFactory: any, callGate?: CallGate) {
         this.apiFactory = apiFactory;
+        this.callGate = callGate;
     }
 
     public executeInIframe(code: string): Promise<any> {
@@ -879,6 +883,9 @@ export class SandboxHost {
                 const endInFlight = beginChokePoint('pluginBridge');
                 try {
 
+                    // The gate, the arguments and the target are all resolved in the arrival task; only the wait follows,
+                    // so a RELEASE_INSTANCE or ABORT_SIGNAL that arrives meanwhile cannot overtake this call.
+                    const gate = this.callGate?.(data.type, String(data.method)) ?? null;
                     const args = this.deserializeArgs(data.args || [], usedAbortIds);
                     rec?.lap('deserializeMs');
                     let result: any;
@@ -887,11 +894,13 @@ export class SandboxHost {
                     if (data.type === 'CALL_ROOT') {
                         const fn = this.apiFactory[data.method!];
                         if (typeof fn !== 'function') throw new Error(`API method ${data.method} not found`);
+                        if (gate) await gate;
                         result = await fn(...args);
                     } else {
                         const instance = this.instanceRegistry.get(data.id!);
                         if (!instance) throw new Error("Instance not found or released");
                         if (typeof instance[data.method!] !== 'function') throw new Error(`Method ${data.method} missing on instance`);
+                        if (gate) await gate;
                         result = await instance[data.method!](...args);
                     }
                     rec?.lap('fnMs');

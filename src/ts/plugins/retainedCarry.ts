@@ -28,7 +28,7 @@ import { isLightEntry } from './lightCharacters'
 
 type IdKey = 'chaId' | 'id'
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
         return false
     }
@@ -103,6 +103,26 @@ function carrySource(liveOwner: object | undefined, owner: object, sourceOfStub?
 }
 
 /**
+ * The value rule for one module: a shallow copy of `owner` whose retained field is the one `source` holds (by reference),
+ * or lacks the key when `source` lacks it. Null when `owner` already holds exactly that. `owner` is never mutated.
+ */
+export function withRetainedOf(owner: Record<string, unknown>, source: object): Record<string, unknown> | null {
+    const liveHas = Object.hasOwn(source, ASSET_RETAINED_KEY)
+    const liveValue = liveHas ? Reflect.get(source, ASSET_RETAINED_KEY) : undefined
+    const ownerHas = Object.hasOwn(owner, ASSET_RETAINED_KEY)
+    if (liveHas ? ownerHas && owner[ASSET_RETAINED_KEY] === liveValue : !ownerHas) {
+        return null
+    }
+    const copy = { ...owner }
+    if (liveHas) {
+        copy[ASSET_RETAINED_KEY] = liveValue
+    } else {
+        delete copy[ASSET_RETAINED_KEY]
+    }
+    return copy
+}
+
+/**
  * Sets the retained field of every incoming character that continues a live character to the live value, or removes it
  * when the live character has none. The incoming characters are the plugin's own copies, handed to this write, and are
  * changed in place, as `keepLiveAlt` changes its input.
@@ -150,17 +170,9 @@ export function withLiveRetained<T>(liveModules: readonly unknown[] | undefined,
         if (source === null) {
             continue
         }
-        const liveHas = Object.hasOwn(source, ASSET_RETAINED_KEY)
-        const liveValue = liveHas ? Reflect.get(source, ASSET_RETAINED_KEY) : undefined
-        const ownerHas = Object.hasOwn(owner, ASSET_RETAINED_KEY)
-        if (liveHas ? ownerHas && owner[ASSET_RETAINED_KEY] === liveValue : !ownerHas) {
+        const copy = withRetainedOf(owner, source)
+        if (copy === null) {
             continue
-        }
-        const copy = { ...owner }
-        if (liveHas) {
-            copy[ASSET_RETAINED_KEY] = liveValue
-        } else {
-            delete copy[ASSET_RETAINED_KEY]
         }
         changed ??= list.slice()
         changed[index] = copy

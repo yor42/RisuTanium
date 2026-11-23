@@ -432,14 +432,15 @@ describe('a round trip of stored modules through the plugin setters keeps the st
         expect(moduleUnitsWritten(await planLive())).toEqual([])
     })
 
-    test('W2 reproducer: the same through setDatabaseLite is decided before any await', async () => {
+    test('T5: the same through setDatabaseLite over stubs returns a promise, and the stubs are kept after it settles', async () => {
         await bootWithStubs([1])
         const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
 
         const pending = getV2PluginAPIs().setDatabaseLite({ modules: copies }, PLUGIN_NAME)
 
-        expect(liveShape()).toEqual([false, true, false])
+        expect(pending).toBeInstanceOf(Promise)
         await pending
+        expect(liveShape()).toEqual([false, true, false])
         expect(moduleUnitsWritten(await planLive())).toEqual([])
     })
 
@@ -1639,3 +1640,421 @@ describe('the proof that a written copy is the stored module is made from the re
         expect(liveShape()).toEqual([true, true, true])
     })
 })
+
+describe('the plugin write keeps the page responsive and settles at once where it has nothing to prove', () => {
+    const marker = () => (DBState.db as unknown as { pluginCustomStorage?: Record<string, unknown> }).pluginCustomStorage?.zzMarker
+
+    test('T1 reproducer: no encode runs in the microtask chain of a write over three stored copies, and all stubs are kept after it', async () => {
+        await bootWithStubs([0, 1, 2])
+        const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const p3 = api()
+        // The first write of an instance pays the permission lookups; they are not what is measured.
+        await p3.setDatabase({ zzWarm: 'x' })
+        const encode = vi.spyOn(TextEncoder.prototype, 'encode')
+
+        const pending = p3.setDatabase({ modules: copies })
+        for (let i = 0; i < 100; i++) {
+            await Promise.resolve()
+        }
+
+        expect(encode).not.toHaveBeenCalled()
+        await pending
+        expect(liveShape()).toEqual([true, true, true])
+        expect(moduleUnitsWritten(await planLive())).toEqual([])
+    })
+
+    test('T6 reproducer: an unchanged copy of a module with a recorded retained value is proved without cloning that value', async () => {
+        await bootWithStubs([0, 1, 2])
+        await noteStored('id-b')
+        const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const clone = vi.spyOn(globalThis, 'structuredClone')
+
+        await api().setDatabase({ modules: copies })
+
+        expect(clone.mock.calls.filter(([value]) => JSON.stringify(value) === JSON.stringify(STORED_RETAINED))).toEqual([])
+        expect(liveShape()).toEqual([true, true, true])
+    })
+
+    test('L1 guard: a Lite write with no modules and nothing queued lands before it returns', async () => {
+        await bootWithStubs([0, 1, 2])
+
+        const result = getV2PluginAPIs().setDatabaseLite({ zzMarker: 'x' }, PLUGIN_NAME)
+
+        expect(result).toBeUndefined()
+        expect(marker()).toBe('x')
+    })
+
+    test('L2 guard: a Lite write right after a landed proved write still lands before it returns', async () => {
+        await bootWithStubs([0, 1, 2])
+        const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
+        await api().setDatabase({ modules: copies })
+
+        const result = getV2PluginAPIs().setDatabaseLite({ zzMarker: 'y' }, PLUGIN_NAME)
+
+        expect(result).toBeUndefined()
+        expect(marker()).toBe('y')
+    })
+})
+
+//#region the write turns and the proof slices, through the test seam
+
+type TurnsModule = typeof import('../../pluginWriteTurns')
+type StubWriteModule = typeof import('../../moduleStubWrite')
+
+describe('the proof is cut into slices and lands against the state it was proved against', () => {
+    let turnsModule: TurnsModule
+    let stubWrite: StubWriteModule
+    let heldStep: (() => void) | null = null
+
+    beforeEach(async () => {
+        turnsModule = await import('../../pluginWriteTurns')
+        stubWrite = await import('../../moduleStubWrite')
+    })
+
+    // A held step is released first and the page is let to finish, so the reset never lands under a write in flight.
+    afterEach(async () => {
+        heldStep?.()
+        heldStep = null
+        await turns(10)
+        turnsModule.resetPluginWriteTurnsForTest()
+        turnsModule.setPluginWriteYieldForTest(null)
+    })
+
+    const marker = () => (DBState.db as unknown as { pluginCustomStorage?: Record<string, unknown> }).pluginCustomStorage?.zzMarker
+    const spyEncode = () => vi.spyOn(TextEncoder.prototype, 'encode')
+    type EncodeSpy = ReturnType<typeof spyEncode>
+    const TWENTY = Array.from({ length: 20 }, (_, i) => i)
+    const twentyBodies = () => TWENTY.map((i) => moduleBody(`m${i}`))
+    const twentyIds = TWENTY.map((i) => `id-m${i}`)
+    const bootTwenty = () => bootWithStubs(TWENTY, twentyBodies())
+
+    interface YieldRig {
+        calls: number
+        encodesAt: number[]
+        release: () => void
+    }
+
+    /** Counts the yields of the plugin write with the encodes seen at each, and holds the `holdAt`-th until released. */
+    function installYieldRig(encode: EncodeSpy, options: { holdAt?: number, skip?: () => boolean } = {}): YieldRig {
+        const rig: YieldRig = { calls: 0, encodesAt: [], release: () => {} }
+        turnsModule.setPluginWriteYieldForTest({
+            yieldFn: async () => {
+                rig.calls += 1
+                rig.encodesAt.push(encode.mock.calls.length)
+                if (rig.calls === options.holdAt) {
+                    await new Promise<void>((resolve) => {
+                        heldStep = resolve
+                        rig.release = () => {
+                            heldStep = null
+                            resolve()
+                        }
+                    })
+                    return
+                }
+                await turn()
+            },
+            skip: options.skip ?? (() => false),
+        })
+        return rig
+    }
+
+    const isHeld = () => heldStep !== null
+
+    function moduleUnit(id: string) {
+        const unit = encoderOrThrow().acknowledged().units.get(`${IDENTITY.module}${id}#0`)
+        if (unit === undefined) {
+            throw new Error(`No acknowledged unit for ${id}.`)
+        }
+        return unit
+    }
+
+    /**
+     * Writes the stored copies of 20 stubs with the third yield held, which is after the first slice proved `id-m1`, runs
+     * `change` while it is held, releases it and returns the settled write.
+     */
+    async function writeHeldAfterFirstSlice(change: () => Promise<void> | void, extra: Record<string, unknown> = {}): Promise<void> {
+        await bootTwenty()
+        const copies = await storedCopies(twentyIds)
+        const encode = spyEncode()
+        const rig = installYieldRig(encode, { holdAt: 2 })
+        const pending = api().setDatabase({ modules: copies, ...extra })
+        await until(isHeld, 'the held yield')
+        await change()
+        rig.release()
+        await pending
+    }
+
+    function keptStubs(): number[] {
+        return liveShape().flatMap((stub, index) => stub ? [index] : [])
+    }
+
+    test('T2 guard, new surface: 20 stubs are proved in slices of at most 8 encodes, none before the first yield, and all are kept', async () => {
+        await bootTwenty()
+        const copies = await storedCopies(twentyIds)
+        const writer = api()
+        await writer.setDatabase({ zzWarm: 'x' })
+        const encode = spyEncode()
+        const rig = installYieldRig(encode)
+
+        await writer.setDatabase({ modules: copies })
+
+        expect(rig.encodesAt[0]).toBe(0)
+        const between = rig.encodesAt.map((count, i) => (rig.encodesAt[i + 1] ?? encode.mock.calls.length) - count)
+        expect(Math.max(...between)).toBeLessThanOrEqual(8)
+        expect(encode.mock.calls.length).toBe(20)
+        expect(keptStubs()).toEqual(TWENTY)
+    })
+
+    test('R1a guard, new surface: a unit digest that changes while the write waits makes that module install', async () => {
+        await writeHeldAfterFirstSlice(() => { moduleUnit('id-m1').digest = 'changed-digest' })
+
+        expect(liveShape()[1]).toBe(false)
+        expect(keptStubs()).toEqual(TWENTY.filter((i) => i !== 1))
+        await expect(commitLive()).resolves.toBeUndefined()
+    })
+
+    test('R1b guard, new surface: a unit key that changes while the write waits makes that module install', async () => {
+        await writeHeldAfterFirstSlice(() => { moduleUnit('id-m1').key = 'changed-key' })
+
+        expect(liveShape()[1]).toBe(false)
+        expect(keptStubs()).toEqual(TWENTY.filter((i) => i !== 1))
+    })
+
+    test('R1c guard, new surface: a module loaded, edited, saved and stubbed again while the write waits installs the plugin copy', async () => {
+        await writeHeldAfterFirstSlice(async () => {
+            liveModules()[1] = await storedCopy('id-m1')
+            liveModules()[1].description = 'edited and saved'
+            await commitLive()
+            liveModules()[1] = moduleStubOf(savedEntry('id-m1')) as unknown as RisuModule
+        })
+
+        expect(liveShape()[1]).toBe(false)
+        await commitLive()
+        const read = await residencyOrThrow().readModule('id-m1#0')
+        expect(read.status === 'ok' && (read.value as unknown as RisuModule).description).toBe('about m1')
+    })
+
+    test('R2 guard, new surface: a module that becomes resident while the write waits holds the plugin copy, never a stub', async () => {
+        await writeHeldAfterFirstSlice(async () => { liveModules()[1] = await storedCopy('id-m1') })
+
+        expect(liveShape()[1]).toBe(false)
+        expect(liveModules()[1].name).toBe('m1')
+        expect(keptStubs()).toEqual(TWENTY.filter((i) => i !== 1))
+    })
+
+    test('R3 guard, new surface: a live slot replaced by an equal fresh stub while the write waits makes that module install', async () => {
+        await writeHeldAfterFirstSlice(() => { liveModules()[1] = moduleStubOf(savedEntry('id-m1')) as unknown as RisuModule })
+
+        expect(liveShape()[1]).toBe(false)
+        expect(keptStubs()).toEqual(TWENTY.filter((i) => i !== 1))
+    })
+
+    test('R4 guard, new surface: two proved modules whose live slots swap while the write waits install, and the rest stay stubs', async () => {
+        await writeHeldAfterFirstSlice(() => {
+            const live = liveModules()
+            const first = live[0]
+            live[0] = live[1]
+            live[1] = first
+        })
+
+        expect(liveShape().slice(0, 2)).toEqual([false, false])
+        expect(keptStubs()).toEqual(TWENTY.slice(2))
+        await expect(commitLive()).resolves.toBeUndefined()
+    })
+
+    test('R5 guard, new surface: a different residency registered while the write waits makes every verdict void, so all modules install and the write resolves', async () => {
+        // A copy of the residency answers every question as the first does and is another object, as a re-booted page's is.
+        await writeHeldAfterFirstSlice(() => { registerResidency({ ...residencyOrThrow() }) })
+
+        expect(keptStubs()).toEqual([])
+        expect(liveModules()).toHaveLength(20)
+    })
+
+    test('R6 guard (passes before and after): a copy of the unit a stub had before it moved installs, a copy of the current unit keeps the stub', async () => {
+        await bootWithStubs([0, 2])
+        await noteStored('id-b')
+        const [a, , c] = await storedCopies(['id-a', 'id-b', 'id-c'])
+        liveModules()[1].description = 'edited and saved'
+        await commitLive()
+        liveModules()[1] = moduleStubOf(savedEntry('id-b')) as unknown as RisuModule
+        const current = await storedCopy('id-b')
+
+        await api().setDatabase({ modules: [a, current, c] })
+
+        expect(liveShape()).toEqual([true, true, true])
+    })
+
+    test('R13 guard, new surface: a live list that gains a second holder of the id before its stub while the write waits installs that module', async () => {
+        await writeHeldAfterFirstSlice(async () => { liveModules()[0] = await storedCopy('id-m1') })
+
+        expect(liveShape()[1]).toBe(false)
+        expect(keptStubs()).toEqual(TWENTY.filter((i) => i > 1))
+    })
+
+    test('R7 guard, new surface: a second plugin write that arrives while the first waits lands after it', async () => {
+        await bootWithStubs([0, 1, 2])
+        const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const rig = installYieldRig(spyEncode(), { holdAt: 1 })
+        const settled: string[] = []
+        const first = api().setDatabase({ modules: copies, zzMarker: 'first' }).then(() => { settled.push('first') })
+        await until(isHeld, 'the held yield')
+
+        const second = makeRisuaiAPIV3({} as HTMLIFrameElement, { ...makePlugin(), name: 'other-plugin' }).setDatabase({ zzMarker: 'second' }).then(() => { settled.push('second') })
+        await turns(10)
+        expect(marker()).not.toBe('second')
+        rig.release()
+        await Promise.all([first, second])
+
+        expect(marker()).toBe('second')
+        expect(settled).toEqual(['first', 'second'])
+    })
+
+    test('R7-Lite guard, new surface: a Lite write that arrives while a write waits queues behind it and returns a promise', async () => {
+        await bootWithStubs([0, 1, 2])
+        const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const rig = installYieldRig(spyEncode(), { holdAt: 1 })
+        const first = api().setDatabase({ modules: copies, zzMarker: 'first' })
+        await until(isHeld, 'the held yield')
+
+        const second = getV2PluginAPIs().setDatabaseLite({ zzMarker: 'second' }, 'other-plugin')
+
+        expect(second).toBeInstanceOf(Promise)
+        expect(marker()).not.toBe('second')
+        rig.release()
+        await Promise.all([first, second])
+        expect(marker()).toBe('second')
+    })
+
+    test('R12 guard, new surface: the landing of the plugin is open from the arrival task until the write lands', async () => {
+        await bootWithStubs([0, 1, 2])
+        const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const rig = installYieldRig(spyEncode(), { holdAt: 1 })
+        const pending = api().setDatabase({ modules: copies })
+        await until(isHeld, 'the held yield')
+        for (let i = 0; i < 100; i++) {
+            await Promise.resolve()
+        }
+
+        const landing = turnsModule.pluginWriteLanding(PLUGIN_NAME)
+        expect(landing).not.toBeNull()
+        expect(track(landing).status).toBe('pending')
+        expect(turnsModule.pluginWriteLanding('other')).toBeNull()
+        rig.release()
+        await pending
+        await turns(3)
+        expect(turnsModule.pluginWriteLanding(PLUGIN_NAME)).toBeNull()
+    })
+
+    test('R10 guard, new surface: a write refused after its wait writes nothing and does not stop the next write', async () => {
+        await bootWithStubs([0, 1, 2])
+        const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const rig = installYieldRig(spyEncode(), { holdAt: 1 })
+        const payload: Record<string, unknown> = { modules: copies, zzMarker: 'refused' }
+        const pending = api().setDatabase(payload)
+        const outcome = track(pending)
+        await until(isHeld, 'the held yield')
+        payload.modules = 'broken'
+        rig.release()
+        await turns(5)
+
+        expect(outcome.status).toBe('rejected')
+        expect(marker()).not.toBe('refused')
+        await within(api().setDatabase({ zzMarker: 'next' }), 'the next write', 600)
+        expect(marker()).toBe('next')
+    })
+
+    test('R11 guard, new surface: on a hidden page the write posts no yield and keeps every stub', async () => {
+        await bootWithStubs([0, 1, 2])
+        const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const rig = installYieldRig(spyEncode(), { skip: () => true })
+
+        await api().setDatabase({ modules: copies })
+
+        expect(rig.calls).toBe(0)
+        expect(liveShape()).toEqual([true, true, true])
+    })
+
+    test('R11b guard, new surface: a page that hides during the write posts no further yield and the rest is proved in one run', async () => {
+        await bootTwenty()
+        const copies = await storedCopies(twentyIds)
+        const writer = api()
+        await writer.setDatabase({ zzWarm: 'x' })
+        const encode = spyEncode()
+        let hidden = false
+        let calls = 0
+        turnsModule.setPluginWriteYieldForTest({
+            yieldFn: async () => {
+                calls += 1
+                await turn()
+                hidden = true
+            },
+            skip: () => hidden,
+        })
+
+        await writer.setDatabase({ modules: copies })
+
+        expect(calls).toBe(1)
+        expect(encode.mock.calls.length).toBe(20)
+        expect(keptStubs()).toEqual(TWENTY)
+    })
+
+    test('R9 diagnostic of the stated semantics: a write lands over what the page set while it waited', async () => {
+        await bootWithStubs([0, 1, 2])
+        const copies = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const rig = installYieldRig(spyEncode(), { holdAt: 1 })
+        const pending = api().setDatabase({ modules: copies, zzMarker: 'plugin' })
+        await until(isHeld, 'the held yield')
+        const db = DBState.db as unknown as { pluginCustomStorage?: Record<string, unknown> }
+        db.pluginCustomStorage = { ...(db.pluginCustomStorage ?? {}), zzMarker: 'page' }
+        rig.release()
+        await pending
+
+        expect(marker()).toBe('plugin')
+    })
+
+    test('U1 guard, new surface: the count cap cuts 20 proofs into slices of 8, 8 and 4 with a yield before each', async () => {
+        await bootTwenty()
+        const copies = await storedCopies(twentyIds)
+        const encode = spyEncode()
+        const rig = installYieldRig(encode)
+
+        const verdicts = await stubWrite.proveRecordedStubCopies(liveModules(), copies, { now: () => 0, budgetMs: 12, maxPerSlice: 8 })
+
+        expect(rig.encodesAt).toEqual([0, 8, 16])
+        expect(verdicts.byModule.size).toBe(20)
+    })
+
+    test('U2 guard, new surface: a proof that ends a budget after its slice began ends the slice, so every proof is followed by a yield', async () => {
+        await bootTwenty()
+        const copies = await storedCopies(twentyIds)
+        const encode = spyEncode()
+        const rig = installYieldRig(encode)
+
+        const verdicts = await stubWrite.proveRecordedStubCopies(liveModules(), copies, { now: () => encode.mock.calls.length * 12, budgetMs: 12, maxPerSlice: 8 })
+
+        expect(rig.encodesAt).toEqual(TWENTY)
+        expect(verdicts.byModule.size).toBe(20)
+    })
+
+    test('U3 guard, new surface: an edited copy and a BigInt copy get no verdict and nothing throws; the candidate predicate follows the same cases', async () => {
+        await bootWithStubs([0, 1, 2])
+        const [a, b, c] = await storedCopies(['id-a', 'id-b', 'id-c'])
+        const edited = structuredClone(b)
+        edited.lorebook![0].content = 'text of x'
+        const big = { ...structuredClone(c), big: 10n } as unknown as RisuModule
+        installYieldRig(spyEncode())
+        const live = liveModules()
+
+        const verdicts = await stubWrite.proveRecordedStubCopies(live, [a, edited, big])
+
+        expect([...verdicts.byModule.keys()]).toEqual([a])
+        expect(stubWrite.hasRecordedStubCandidate(live, [a, b, c])).toBe(true)
+        expect(stubWrite.hasRecordedStubCandidate(live, live)).toBe(false)
+        expect(stubWrite.hasRecordedStubCandidate(live, 'not a list')).toBe(false)
+        expect(stubWrite.hasRecordedStubCandidate(live, [b, structuredClone(b)])).toBe(false)
+        expect(stubWrite.hasRecordedStubCandidate([a, b, c], [a, b, c])).toBe(false)
+        expect(stubWrite.hasRecordedStubCandidate([], [a, b, c])).toBe(false)
+    })
+})
+
+//#endregion

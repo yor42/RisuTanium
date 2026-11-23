@@ -2,7 +2,7 @@ import type { JsonObject } from '../blockFrame'
 import type { character, groupChat } from '../database.svelte'
 import type { Store2Backend } from './backend/types'
 import {
-    assembleCharacter, assembleModule, characterMatchesAcknowledged, CodecAssembleError, IDENTITY, moduleHandles, moduleIsStoredUnit, overlayStub, stubFromEntry,
+    assembleCharacter, assembleModule, characterMatchesAcknowledged, CodecAssembleError, IDENTITY, moduleHandles, overlayStub, payloadIsStored, storedPrintHolds, stubFromEntry,
     type AcknowledgedVerdict, type UnitSource,
 } from './codec'
 import { payloadPrint, type StoredPayloadPrint } from './codec/payloadPrint'
@@ -57,6 +57,12 @@ export interface Residency {
      * module unit was withheld or not digested records nothing.
      */
     hydrateModule(read: Extract<ResidencyModuleRead, { status: 'ok' }>): void
+    /**
+     * The payload print recorded by `hydrateModule` for `handle`: the identical frozen record on every call, returned only
+     * while the module entry exists and the record still describes the very unit the acknowledged encoding holds with its
+     * lists carriable. Null otherwise; it never throws.
+     */
+    storedPrintOf(handle: string): StoredPayloadPrint | null
     /**
      * Whether a save of `module` would reuse the stored module unit of `handle` and carry its asset and inlay lists, judged
      * against the acknowledged encoding now. The module counts as the stored unit only when its canonical payload has the
@@ -216,9 +222,22 @@ export function createResidency(options: ResidencyOptions): Residency {
                 return
             }
             const payload = frame.subarray(FRAME_HEADER_BYTES, frame.length - 4)
-            prints.set(read.handle, { unitKey, digest: unit.digest, length: payload.length, print: payloadPrint(payload) })
+            prints.set(read.handle, Object.freeze({ unitKey, digest: unit.digest, length: payload.length, print: payloadPrint(payload) }))
         } catch {
             prints.delete(read.handle)
+        }
+    }
+
+    function storedPrintOf(handle: string): StoredPayloadPrint | null {
+        try {
+            const entry = moduleEntryOf(handle)
+            const held = prints.get(handle)
+            if (entry === null || held === undefined) {
+                return null
+            }
+            return storedPrintHolds(entry, handle, encoder.acknowledged(), lists.moduleListVersions, held) ? held : null
+        } catch {
+            return null
         }
     }
 
@@ -227,9 +246,10 @@ export function createResidency(options: ResidencyOptions): Residency {
         moduleEntryOf,
         readModule,
         hydrateModule,
+        storedPrintOf,
         moduleIsStored(handle, module) {
-            const entry = moduleEntryOf(handle)
-            return entry !== null && moduleIsStoredUnit(module, entry, handle, encoder.acknowledged(), lists.moduleListVersions, prints.get(handle))
+            const print = storedPrintOf(handle)
+            return print !== null && payloadIsStored(module, print)
         },
         readCharacter,
         async load(u) {

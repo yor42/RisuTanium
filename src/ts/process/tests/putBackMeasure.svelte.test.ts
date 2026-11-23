@@ -134,6 +134,7 @@ const residency: Residency = {
     moduleEntryOf: () => null,
     readModule: async () => ({ status: 'error', reason: 'no-entry', error: new Error('unused') }),
     hydrateModule: () => { },
+    storedPrintOf: () => null,
     moduleIsStored: () => false,
     readCharacter: async () => ({ status: 'error', error: new Error('unused') }),
     load: async () => ({ status: 'error', error: new Error('unused') }),

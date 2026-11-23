@@ -35,6 +35,7 @@ import { setColdStorageItem, readColdStorageItem } from "src/ts/process/coldstor
 import { readArchivedCharacter, restoreArchivedForWrite } from "src/ts/process/coldCharacterAccess";
 import { captureChatAlt, keepCapturedChatAlt, keepLiveAlt, overwritesPlaceholder, placeholderAgainMessage, restoreArchivedTargets, withoutAlt, withoutAltChat, withoutAltIn } from "src/ts/plugins/chatAltBridge";
 import { keepLiveRetained } from "src/ts/plugins/retainedCarry";
+import { pluginCallGate } from "src/ts/plugins/pluginWriteTurns";
 import { MEASURE } from "src/ts/process/memory/measureFlag";
 import { startPluginRecord, type PluginRecordBuilder } from "../pluginCostMeter";
 import { incomingCharacterRefusal } from "../stubDowngrade";
@@ -2067,7 +2068,7 @@ export async function executePluginV3(plugin:RisuPlugin){
     const iframe = document.createElement('iframe');
     iframe.style.display = "none";
     document.body.appendChild(iframe);
-    const host = new SandboxHost(makeRisuaiAPIV3(iframe, plugin));
+    const host = new SandboxHost(makeRisuaiAPIV3(iframe, plugin), pluginCallGate(plugin.name));
     v3PluginInstances.push({
         name: plugin.name,
         host

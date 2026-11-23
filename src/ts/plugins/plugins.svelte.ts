@@ -16,7 +16,8 @@ import { pluginCodeTranspiler } from "./apiV3/transpiler";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
 import { withoutModuleStubDowngrades } from "./moduleStubGuard";
-import { retainedSourceOfStub, withRecordedStubs } from "./moduleStubWrite";
+import { hasRecordedStubCandidate, noStubVerdicts, proveRecordedStubCopies, retainedSourceOfStub, withRecordedStubs, type StubVerdicts } from "./moduleStubWrite";
+import { withWriteTurn, writesQueued } from "./pluginWriteTurns";
 import { databaseWriteProblem, selectedCharacterMismatch, singleCharacterProblem } from "./characterWriteCheck";
 import { keepOrderPlaceOnSwap } from "./characterSwapOrder";
 import { hasLightEntry, LIGHT_ENTRY_WRAPPER_MESSAGE, swapLightEntries, type LightWriteCounts } from "./lightCharacters";
@@ -621,7 +622,7 @@ function withHeldAssetLists(db: ReturnType<typeof getDatabase>, incoming: Return
  * its live holder before any key is written, so no light entry reaches the
  * list; `lightCounts`, when given, receives how many were kept and left out.
  */
-function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginName: string | undefined, rec: PluginRecordBuilder | null = null, lightCounts?: LightWriteCounts) {
+function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginName: string | undefined, verdicts: StubVerdicts, rec: PluginRecordBuilder | null = null, lightCounts?: LightWriteCounts) {
     db.pluginCustomStorage ??= {}
     rec?.restart()
     newDb = withoutStubDowngrades(db.characters, newDb, pluginName)
@@ -637,7 +638,7 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
             db.pluginCustomStorage = keepPluginStorageInternals(db.pluginCustomStorage, newDb[key]);
         }
         else if (key === 'modules') {
-            db.modules = withHeldAssetLists(db, withRecordedStubs(db.modules, withLiveRetained(db.modules, newDb[key], 'id', retainedSourceOfStub)));
+            db.modules = withHeldAssetLists(db, withLiveRetained(db.modules, withRecordedStubs(db.modules, newDb[key], verdicts), 'id', retainedSourceOfStub));
         }
         else if (allowedDbKeys.includes(key)) {
             (db as any)[key] = newDb[key];
@@ -1083,12 +1084,12 @@ export const getV2PluginAPIs = () => {
             // A full character written over an archived-character placeholder restores it first, which waits.
             const targets = placeholderTargets(getDatabase().characters, newDb.characters)
             rec?.lap('placeholderTargetsMs')
-            if (plan.kind !== 'changes' && targets.length === 0) {
-                // Nothing to ask: the other keys are written before this returns,
+            if (plan.kind !== 'changes' && targets.length === 0 && !writesQueued() && !hasRecordedStubCandidate(getDatabase().modules, newDb.modules)) {
+                // Nothing to ask, nothing to prove and no write ahead: the other keys are written before this returns,
                 // and a plugin list that cannot be applied is a rejected promise,
                 // never a synchronous throw.
                 const db = getDatabase()
-                const written = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
+                const written = writeSetterKeys(db, newDb, pluginName, noStubVerdicts(), rec, lightCounts)
                 newDb = written.newDb
                 DBState.db = db
                 rec?.lap('assignMs')
@@ -1117,29 +1118,37 @@ export const getV2PluginAPIs = () => {
                         throw new Error(afterRestoreRefusal)
                     }
                 }
-                // From here to the key writes nothing awaits, so the list and the
-                // characters are checked and assigned against the same live state.
-                // A target put back into storage by a later restore refuses the whole write.
-                rec?.restart()
-                const placeholderAgain = placeholderTargets(getDatabase().characters, newDb.characters)[0]
-                rec?.lap('placeholderTargetsMs')
-                if (placeholderAgain !== undefined) {
+                return withWriteTurn(pluginName, async () => {
+                    // The proof runs in slices, so the page may have changed by the time it ends.
+                    const verdicts = await proveRecordedStubCopies(getDatabase().modules, newDb.modules)
+                    const lateRefusal = databaseWriteProblem(getDatabase(), newDb)
+                    if (lateRefusal !== null) {
+                        throw new Error(lateRefusal)
+                    }
+                    // From here to the key writes nothing awaits, so the list and the
+                    // characters are checked and assigned against the same live state.
+                    // A target put back into storage by a later restore refuses the whole write.
+                    rec?.restart()
+                    const placeholderAgain = placeholderTargets(getDatabase().characters, newDb.characters)[0]
+                    rec?.lap('placeholderTargetsMs')
+                    if (placeholderAgain !== undefined) {
+                        rec?.finish()
+                        throw new Error(placeholderAgainMessage(placeholderAgain))
+                    }
+                    if (classified) {
+                        failure ??= commitPluginChanges(classified)
+                    }
+                    const db = getDatabase()
+                    const written = writeSetterKeys(db, newDb, pluginName, verdicts, rec, lightCounts)
+                    newDb = written.newDb
+                    DBState.db = db
+                    rec?.lap('assignMs')
+                    noteMarkLoop(rec, markWrittenCharacters(db, newDb, written.keptSlots))
                     rec?.finish()
-                    throw new Error(placeholderAgainMessage(placeholderAgain))
-                }
-                if (classified) {
-                    failure ??= commitPluginChanges(classified)
-                }
-                const db = getDatabase()
-                const written = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
-                newDb = written.newDb
-                DBState.db = db
-                rec?.lap('assignMs')
-                noteMarkLoop(rec, markWrittenCharacters(db, newDb, written.keptSlots))
-                rec?.finish()
-                if (failure) {
-                    throw failure
-                }
+                    if (failure) {
+                        throw failure
+                    }
+                })
             })()
         },
         setDatabase: async (newDb: any, pluginName?: string, lightCounts?: LightWriteCounts) => {
@@ -1176,32 +1185,40 @@ export const getV2PluginAPIs = () => {
                     throw new Error(afterRestoreRefusal)
                 }
             }
-            // From here to the key writes nothing awaits, so the list and the
-            // characters are checked and assigned against the same live state.
-            // A target put back into storage by a later restore refuses the whole write.
-            rec?.restart()
-            const placeholderAgain = placeholderTargets(getDatabase().characters, newDb.characters)[0]
-            rec?.lap('placeholderTargetsMs')
-            if (placeholderAgain !== undefined) {
+            return withWriteTurn(pluginName, async () => {
+                // The proof runs in slices, so the page may have changed by the time it ends.
+                const verdicts = await proveRecordedStubCopies(getDatabase().modules, newDb.modules)
+                const lateRefusal = databaseWriteProblem(getDatabase(), newDb)
+                if (lateRefusal !== null) {
+                    throw new Error(lateRefusal)
+                }
+                // From here to the key writes nothing awaits, so the list and the
+                // characters are checked and assigned against the same live state.
+                // A target put back into storage by a later restore refuses the whole write.
+                rec?.restart()
+                const placeholderAgain = placeholderTargets(getDatabase().characters, newDb.characters)[0]
+                rec?.lap('placeholderTargetsMs')
+                if (placeholderAgain !== undefined) {
+                    rec?.finish()
+                    throw new Error(placeholderAgainMessage(placeholderAgain))
+                }
+                if (plan.kind === 'changes' && failure === null) {
+                    failure = commitPluginChanges(plan.classified)
+                }
+                const db = getDatabase()
+                const written = writeSetterKeys(db, newDb, pluginName, verdicts, rec, lightCounts)
+                newDb = written.newDb
+                setDatabase(db);
+                rec?.lap('normalizerMs')
+                // The normaliser replaces no character and writes only volatile chat fields into them, so the slot
+                // indices of `keptSlots` still address the written list. The identity tracker and the write hook stay
+                // as a second route for every slot that is not kept (see appendIfAbsent).
+                noteMarkLoop(rec, markWrittenCharacters(db, newDb, written.keptSlots))
                 rec?.finish()
-                throw new Error(placeholderAgainMessage(placeholderAgain))
-            }
-            if (plan.kind === 'changes' && failure === null) {
-                failure = commitPluginChanges(plan.classified)
-            }
-            const db = getDatabase()
-            const written = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
-            newDb = written.newDb
-            setDatabase(db);
-            rec?.lap('normalizerMs')
-            // The normaliser replaces no character and writes only volatile chat fields into them, so the slot
-            // indices of `keptSlots` still address the written list. The identity tracker and the write hook stay
-            // as a second route for every slot that is not kept (see appendIfAbsent).
-            noteMarkLoop(rec, markWrittenCharacters(db, newDb, written.keptSlots))
-            rec?.finish()
-            if (failure) {
-                throw failure
-            }
+                if (failure) {
+                    throw failure
+                }
+            })
         },
         loadPlugins: loadPlugins,
         readImage: (path:string) => {

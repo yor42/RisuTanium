@@ -946,14 +946,34 @@ export function moduleIsStoredUnit(
     module: unknown, entry: ModuleEntry, handle: string, previous: PreviousEncoding, versions: ListDerivation['moduleListVersions'],
     stored: StoredPayloadPrint | undefined,
 ): boolean {
+    return stored !== undefined && storedPrintHolds(entry, handle, previous, versions, stored) && payloadIsStored(module, stored)
+}
+
+/**
+ * Whether `stored` still describes the very unit the previous encoding holds for `entry` under `handle` (same key, same
+ * digest) and a save would carry that module's lists. It reads no module and never throws.
+ */
+export function storedPrintHolds(
+    entry: ModuleEntry, handle: string, previous: PreviousEncoding, versions: ListDerivation['moduleListVersions'],
+    stored: StoredPayloadPrint,
+): boolean {
     try {
-        if (stored === undefined || moduleListsCarriable(previous, entry, handle, versions) === null) {
+        if (moduleListsCarriable(previous, entry, handle, versions) === null) {
             return false
         }
         const unit = previous.units.get(`${IDENTITY.module}${handle}`)
-        if (unit === undefined || unit.digest === undefined || unit.key !== stored.unitKey || unit.digest !== stored.digest) {
-            return false
-        }
+        return unit !== undefined && unit.digest !== undefined && unit.key === stored.unitKey && unit.digest === stored.digest
+    } catch {
+        return false
+    }
+}
+
+/**
+ * Whether the canonical payload of `module` has the length and print of `stored`. It never throws: a module this cannot
+ * read as plain JSON is not the stored payload.
+ */
+export function payloadIsStored(module: unknown, stored: StoredPayloadPrint): boolean {
+    try {
         const payload = encodeCanonicalJson(moduleBodyOf(plainObject(module, 'module')))
         return payload.length === stored.length && payloadPrint(payload) === stored.print
     } catch {
