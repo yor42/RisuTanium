@@ -49,6 +49,7 @@ import { setMacroIndexForTests } from 'src/ts/studio/longText/macroIndexService'
 import { installStudioBack } from 'src/ts/studio/studioBack.svelte'
 import { studioOpen } from 'src/ts/studio/studioOpen'
 import { closeStudio, resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { DEFAULT_TOAST_CONFIG, createToastHost, type ToastClock, type ToastHost } from 'src/ts/toast/toastHost.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey, chatOwnerKey, SAVE_DEBOUNCE_MS, READY_DEADLINE_MS } from '../../ts/studio/history/ownerPhase'
@@ -263,11 +264,13 @@ beforeEach(() => {
     studioScreen.chaId = 'A'
     studioScreen.visitId = 'v1'
     studioScreen.open = true
+    setWindowGeometryForTests(allRowsGeometry())
     // The checker needs no registry here: `char` is the one macro it knows, so a role tag's fix is not itself a problem.
     setMacroIndexForTests(createMacroIndex([{ name: 'char', aliases: [], summary: 'char', usage: null, docOnly: false, internalOnly: false, blockSyntax: false, deprecated: null }]))
 })
 
 afterEach(async () => {
+    setWindowGeometryForTests(undefined)
     setMacroIndexForTests(null)
     await unmountAll()
     resetStudioHistoryAccessorForTests()

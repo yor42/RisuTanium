@@ -206,6 +206,7 @@ describe('placeFocusAfterHistory', () => {
         const form = document.createElement('div')
         form.dataset.part = 'studio-character-form'
         row.dataset.part = 'studio-greeting-input'
+        row.dataset.index = '0'
         form.appendChild(row)
         const fallback = document.createElement('button')
         document.body.append(form, fallback)

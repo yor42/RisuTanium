@@ -76,6 +76,7 @@ import LongTextField from './LongTextField.svelte'
 import LongTextFocus from './LongTextFocus.svelte'
 import type { PreviewSourceInput } from './LongTextPreview.svelte'
 import type { character } from '../../ts/storage/database.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import StudioScreen from './StudioScreen.svelte'
 
 function fixtureDb() {
@@ -147,6 +148,7 @@ class ResizeObserverStub {
     observe(): void {
         this.callback([{ contentRect: { width: 1200 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
     }
+    unobserve(): void {}
     disconnect(): void {}
 }
 
@@ -161,6 +163,7 @@ beforeEach(() => {
     selection.selId = 0
     setStudioEnabled(true)
     vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    setWindowGeometryForTests(allRowsGeometry())
     setMacroIndexForTests(createMacroIndex([]))
     setTokenCounterForTests({ request: async (_key, text) => ({ kind: 'app-count', count: text.length, tokenizer: 'o200k_base', model: 'M' }) })
 })
@@ -176,6 +179,7 @@ afterEach(async () => {
     resetBackHandlersForTests()
     resetToastHostForTests()
     setStudioEnabled(false)
+    setWindowGeometryForTests(undefined)
     vi.unstubAllGlobals()
 })
 

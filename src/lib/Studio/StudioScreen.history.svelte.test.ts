@@ -111,6 +111,7 @@ import { characterOwnerKey, SAVE_DEBOUNCE_MS } from '../../ts/studio/history/own
 import { loadStudioHistoryService, resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, seedOwner, storedRecord } from '../../ts/studio/history/tests/studioStoreDoubles'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import StudioScreen from './StudioScreen.svelte'
 
 interface LiveChat extends ChatSource {
@@ -220,6 +221,7 @@ class ResizeObserverStub {
     observe(): void {
         this.callback([{ contentRect: { width: 1200 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
     }
+    unobserve(): void {}
     disconnect(): void {}
 }
 
@@ -288,6 +290,7 @@ beforeEach(() => {
     files.opened = 0
     setStudioEnabled(true)
     vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    setWindowGeometryForTests(allRowsGeometry())
 })
 
 afterEach(async () => {
@@ -298,6 +301,7 @@ afterEach(async () => {
     resetBackHandlersForTests()
     resetToastHostForTests()
     setStudioEnabled(false)
+    setWindowGeometryForTests(undefined)
     vi.unstubAllGlobals()
 })
 

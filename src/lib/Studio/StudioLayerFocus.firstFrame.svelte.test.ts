@@ -63,6 +63,7 @@ import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import StudioScreen from './StudioScreen.svelte'
 
 interface LiveChat extends ChatSource {
@@ -147,6 +148,7 @@ class ResizeObserverStub {
     observe(): void {
         this.callback([{ contentRect: { width: 1200 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
     }
+    unobserve(): void {}
     disconnect(): void {}
 }
 
@@ -189,6 +191,7 @@ beforeEach(() => {
     selection.selId = 0
     setStudioEnabled(true)
     vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    setWindowGeometryForTests(allRowsGeometry())
 })
 
 afterEach(async () => {
@@ -201,6 +204,7 @@ afterEach(async () => {
     resetBackHandlersForTests()
     resetToastHostForTests()
     setStudioEnabled(false)
+    setWindowGeometryForTests(undefined)
     vi.unstubAllGlobals()
 })
 

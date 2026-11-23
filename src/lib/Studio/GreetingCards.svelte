@@ -5,6 +5,7 @@
     import { language } from '../../lang'
     import type { StudioToasts } from '../../ts/studio/edit/studioToasts'
     import { createGreetingRowKeys } from '../../ts/studio/greetingRowKeys'
+    import { registerGreetingReveal } from '../../ts/studio/historyFocus'
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import type { OwnerKey } from '../../ts/studio/history/ownerPhase'
     import type { LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
@@ -42,6 +43,11 @@
     // index: the helpers below find a card by `data-row-index`, and reveal it before focusing one outside the window.
     const windowHost = createWindowHost({ root: () => root ?? null })
     onDestroy(() => windowHost.dispose())
+    // History focus reaches a card outside the window through this hook.
+    $effect(() => registerGreetingReveal(async (index) => {
+        const row = rows[index]
+        if (row) await windowHost.reveal(String(row.id))
+    }))
     const CARD_FALLBACK_PX = 120
     let menuId = $state<number | null>(null)
     let announcement = $state('')
@@ -330,13 +336,15 @@
         <p class="text-sm text-textcolor2">{language.studioGreetingsEmpty}</p>
     {/if}
     <WindowedSegment host={windowHost} keys={rowKeyList} height={{ fallback: CARD_FALLBACK_PX }} pinned={pinnedRows} class="flex flex-col gap-2">
-    {#snippet item(key, index)}
-        {@const row = rows[index]}
+    {#snippet item(key)}
+        {@const id = Number(key)}
+        {@const index = indexOf(id)}
+        {@const text = rows[index]?.text ?? ''}
         <div class="flex flex-col gap-2">
         {#if drag && drag.to < drag.from && drag.to === index}
             <div data-part="studio-card-drop-line" class="h-0.5 rounded-full bg-selected"></div>
         {/if}
-        <div class="group flex flex-col gap-1 rounded-md border border-darkborderc p-2" data-part="studio-greeting-row" data-row-index={index} data-dragging={drag?.id === row.id ? 'true' : undefined}>
+        <div class="group flex flex-col gap-1 rounded-md border border-darkborderc p-2" data-part="studio-greeting-row" data-row-index={index} data-dragging={drag?.id === id ? 'true' : undefined}>
             <div class="flex items-center gap-2">
                 <button
                     type="button"
@@ -345,45 +353,45 @@
                     class="{iconButtonClass} touch-none select-none"
                     aria-label={language.ltCardHandle(index + 1)}
                     disabled={!editable}
-                    onpointerdown={(event) => onHandleDown(event, row.id)}
-                    onkeydown={(event) => onCardKey(event, row.id)}
+                    onpointerdown={(event) => onHandleDown(event, id)}
+                    onkeydown={(event) => onCardKey(event, id)}
                 ><GripVerticalIcon size={18} aria-hidden="true" /></button>
                 <span class="shrink-0 text-sm text-textcolor2">{index + 1}</span>
-                <span data-part="studio-card-summary" class="min-w-0 flex-1 truncate text-sm">{summaryOf(row.text)}</span>
+                <span data-part="studio-card-summary" class="min-w-0 flex-1 truncate text-sm">{summaryOf(text)}</span>
                 <div class="relative">
                     <button
                         type="button"
                         data-part="studio-card-menu"
-                        data-row={row.id}
+                        data-row={id}
                         class={iconButtonClass}
                         aria-label={language.ltCardMenu(index + 1)}
                         aria-haspopup="menu"
-                        aria-expanded={menuId === row.id}
+                        aria-expanded={menuId === id}
                         disabled={!editable}
-                        onclick={() => toggleMenu(row.id)}
-                        onkeydown={(event) => onMenuButtonKey(event, row.id)}
+                        onclick={() => toggleMenu(id)}
+                        onkeydown={(event) => onMenuButtonKey(event, id)}
                     ><EllipsisIcon size={18} aria-hidden="true" /></button>
-                    {#if menuId === row.id}
+                    {#if menuId === id}
                         <div
                             role="menu"
                             tabindex="-1"
                             data-part="studio-card-menu-list"
-                            data-menu-of={row.id}
+                            data-menu-of={id}
                             class="absolute right-0 z-10 mt-1 flex min-w-48 flex-col overflow-hidden rounded-md border border-darkborderc bg-darkbg text-textcolor"
-                            onkeydown={(event) => onMenuKey(event, row.id)}
+                            onkeydown={(event) => onMenuKey(event, id)}
                             onfocusout={onMenuFocusOut}
                         >
-                            <button type="button" role="menuitem" data-part="studio-card-duplicate" class={itemClass} disabled={!editable} onclick={() => duplicate(row.id)}>{language.ltCardDuplicate}</button>
-                            <button type="button" role="menuitem" data-part="studio-card-move-up" class={itemClass} disabled={!editable || index === 0} onclick={() => step(row.id, -1)}>{language.ltCardMoveUp}</button>
-                            <button type="button" role="menuitem" data-part="studio-card-move-down" class={itemClass} disabled={!editable || index === rows.length - 1} onclick={() => step(row.id, 1)}>{language.ltCardMoveDown}</button>
-                            <button type="button" role="menuitem" data-part="studio-card-swap" class={itemClass} disabled={!editable} onclick={() => swap(row.id)}>{language.ltMakeMain}</button>
-                            <button type="button" role="menuitem" data-part="studio-greeting-delete" class="{itemClass} text-draculared" disabled={!editable} onclick={() => remove(row.id)}>{language.studioGreetingDelete}</button>
+                            <button type="button" role="menuitem" data-part="studio-card-duplicate" class={itemClass} disabled={!editable} onclick={() => duplicate(id)}>{language.ltCardDuplicate}</button>
+                            <button type="button" role="menuitem" data-part="studio-card-move-up" class={itemClass} disabled={!editable || index === 0} onclick={() => step(id, -1)}>{language.ltCardMoveUp}</button>
+                            <button type="button" role="menuitem" data-part="studio-card-move-down" class={itemClass} disabled={!editable || index === rows.length - 1} onclick={() => step(id, 1)}>{language.ltCardMoveDown}</button>
+                            <button type="button" role="menuitem" data-part="studio-card-swap" class={itemClass} disabled={!editable} onclick={() => swap(id)}>{language.ltMakeMain}</button>
+                            <button type="button" role="menuitem" data-part="studio-greeting-delete" class="{itemClass} text-draculared" disabled={!editable} onclick={() => remove(id)}>{language.studioGreetingDelete}</button>
                         </div>
                     {/if}
                 </div>
             </div>
             <LongTextField
-                port={greetingPort(row.id)}
+                port={greetingPort(id)}
                 part="studio-greeting-input"
                 {index}
                 ariaLabel={`${language.altGreet} ${index + 1}`}

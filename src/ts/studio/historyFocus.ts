@@ -60,10 +60,19 @@ export function changedFieldTarget(before: OwnerFields, after: OwnerFields): Foc
     return null
 }
 
+// The greeting list registers how to mount a card by data index; the returned function unregisters it.
+let greetingReveal: ((index: number) => Promise<void>) | null = null
+export function registerGreetingReveal(reveal: (index: number) => Promise<void>): () => void {
+    greetingReveal = reveal
+    return () => {
+        if (greetingReveal === reveal) greetingReveal = null
+    }
+}
+
 function elementFor(scope: ParentNode, target: FocusTarget): HTMLElement | null {
     switch (target.kind) {
         case 'greeting':
-            return scope.querySelectorAll<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-greeting-input"]')[target.index] ?? null
+            return scope.querySelector<HTMLElement>(`[data-part="studio-character-form"] [data-part="studio-greeting-input"][data-index="${target.index}"]`)
         case 'greetingAdd':
             return scope.querySelector<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-greeting-add"]')
         case 'firstMessage':
@@ -101,7 +110,12 @@ export function focusLost(): boolean {
 export async function placeFocusAfterHistory(before: OwnerFields | null, after: OwnerFields | null, scope: () => ParentNode | null, fallback: () => HTMLElement | null | undefined): Promise<void> {
     const target = before && after ? changedFieldTarget(before, after) : null
     await afterFlush()
-    const element = target ? elementFor(scope() ?? document, target) : null
+    let element = target ? elementFor(scope() ?? document, target) : null
+    // A greeting card outside the list's window is not mounted: have the list mount it, then look again.
+    if (!element && target?.kind === 'greeting' && greetingReveal) {
+        await greetingReveal(target.index)
+        element = elementFor(scope() ?? document, target)
+    }
     if (element && element.isConnected) {
         element.focus()
         if (document.activeElement === element) return
