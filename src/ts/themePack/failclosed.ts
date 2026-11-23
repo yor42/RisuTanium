@@ -8,6 +8,8 @@
 //   3. OPAQUE SURFACES.    registry.opaque (shared: the sheet and the toast) must resolve to alpha 1.
 //   4. CONTRAST.           registry.pairs ([foreground token, background token, ratio, label]) and registry.surfaces are judged over the WORST CASE of every alternative the pack can produce.
 //
+// A fully transparent colour, a protected surface that is not opaque and every contrast finding (2 to 4) are notes, not refusals: a LintError with a `rule` (see NoteKind). The rest (1, and a colour that does not resolve) refuses.
+//
 // "Alternatives": every declaration of a token anywhere in the pack counts as a possible value; the app's own default counts only while no unconditional :root declaration replaces it.
 // A var() chain is expanded through every alternative of every token on the way (as the minimums pass does).
 import { decls } from './csslit'
@@ -23,12 +25,31 @@ export type NameMatch = string | RegExp
 /** Token name to its default value (the app's token stylesheets). */
 export type TokenMap = Map<string, string>
 
-/** One rejection: the selector of the offending declaration, the property and the reason. `rule` tags the category of a warning. */
+/** The category of a note: a finding that is reported but does not refuse the pack. */
+export type NoteKind = 'contrast' | 'readability' | 'layout'
+
+/** One finding: the selector of the offending declaration, the property and the reason. `rule` is set on notes only; a refusal never carries it. */
 export interface LintError {
     selector: string
     prop: string
     why: string
-    rule?: 'contrast' | 'readability' | 'layout'
+    rule?: NoteKind
+}
+
+/** Sorts findings by tag: a tagged one is a note and an untagged one a refusal. A refusal never carries `rule`. */
+export function splitFindings(found: readonly LintError[], errors: LintError[], notes: LintError[]): void {
+    for (const f of found) (f.rule ? notes : errors).push(f)
+}
+
+/** Appends findings to a list, skipping one whose selector, property, reason and tag the list already holds. */
+export function pushUnique(into: LintError[], seen: Set<string>, found: readonly LintError[]): void {
+    for (const f of found) {
+        const key = `${f.selector}|${f.prop}|${f.why}|${f.rule ?? ''}`
+        if (!seen.has(key)) {
+            seen.add(key)
+            into.push(f)
+        }
+    }
 }
 
 /** Token-on-token contrast: [foreground token, background token or surface key, ratio, label]. */
@@ -206,8 +227,8 @@ interface ColourAlternatives {
 
 export function failClosedPass(text: string, reg: FailClosedRegistry): LintError[] {
     const errs: LintError[] = []
-    const fail = (selector: string, prop: string, why: string): void => {
-        errs.push({ selector, prop, why })
+    const fail = (selector: string, prop: string, why: string, rule?: NoteKind): void => {
+        errs.push(rule ? { selector, prop, why, rule } : { selector, prop, why })
     }
     const ds = decls(text).filter((d) => d.prop.startsWith('--') && !d.ctx.keyframes)
     const app: TokenMap = reg.app || new Map()
@@ -315,10 +336,9 @@ export function failClosedPass(text: string, reg: FailClosedRegistry): LintError
             continue
         }
         if (!channel && cols.some((c) => c[3] === 0) && !defaultTransparent(n) && !transparentOk(n)) {
-            fail(selOf(n), n, `${n}: a fully transparent colour (the token would draw nothing)`)
-            continue
+            fail(selOf(n), n, `${n}: a fully transparent colour (the token would draw nothing)`, 'readability')
         }
-        if (opaque.has(n) && cols.some((c) => c[3] < 1 - 1e-9)) fail(selOf(n), n, `${n}: a protected surface must resolve to an opaque colour (alpha 1), not ${cols.find((c) => c[3] < 1)!.map((x, i) => (i < 3 ? Math.round(x) : +x.toFixed(2))).join(' ')}`)
+        if (opaque.has(n) && cols.some((c) => c[3] < 1 - 1e-9)) fail(selOf(n), n, `${n}: a protected surface must resolve to an opaque colour (alpha 1), not ${cols.find((c) => c[3] < 1)!.map((x, i) => (i < 3 ? Math.round(x) : +x.toFixed(2))).join(' ')}`, 'readability')
     }
     if (byName.has('--color-scheme')) for (const x of byName.get('--color-scheme')!) if (!/^(light|dark)$/.test(x.v)) fail(x.sel, '--color-scheme', '--color-scheme must be light or dark')
 
@@ -350,14 +370,14 @@ export function failClosedPass(text: string, reg: FailClosedRegistry): LintError
             const r = ratio(fg[3] < 1 ? flat(fg, bg) : fg, bg)
             if (r < worst) worst = r
         }
-        if (worst < need - 1e-9) fail(selOf(fgTok), fgTok, `${fgTok.replace('--', '')} would be ${worst.toFixed(2)}:1 on ${label} (needs ${need}:1), judged over the worst case of everything the pack sets`)
+        if (worst < need - 1e-9) fail(selOf(fgTok), fgTok, `${fgTok.replace('--', '')} would be ${worst.toFixed(2)}:1 on ${label} (needs ${need}:1), judged over the worst case of everything the pack sets`, 'contrast')
     }
     // registry.same: [[channel token, colour token, label]]: a channel that stands for a colour (--studio-canvas-rgb for --nexus-canvas) must be that colour in every case (within 8 per channel), so a tint drawn from it cannot disagree with the surface
     for (const [chanTok, colTok, label] of reg.same || []) {
         const a = colAlts(chanTok).cols, b = colAlts(colTok).cols
         let bad: [Rgba, Rgba] | null = null
         for (const x of a) for (const y of b) if ([0, 1, 2].some((i) => Math.abs(x[i] - y[i]) > 8)) bad = [x, y]
-        if (bad) fail(selOf(chanTok), chanTok, `${chanTok} (${bad[0].slice(0, 3).map(Math.round).join(' ')}) is not the colour of ${colTok} (${bad[1].slice(0, 3).map(Math.round).join(' ')}): ${label || 'the channel must stand for the same colour'}`)
+        if (bad) fail(selOf(chanTok), chanTok, `${chanTok} (${bad[0].slice(0, 3).map(Math.round).join(' ')}) is not the colour of ${colTok} (${bad[1].slice(0, 3).map(Math.round).join(' ')}): ${label || 'the channel must stand for the same colour'}`, 'contrast')
     }
     for (const [fg, bg, need, label] of reg.pairs || []) {
         const bgCols = bg.startsWith('--') ? colAlts(bg).cols.map((x) => (x[3] < 1 ? flat(x, canvasCols()[0]) : x)) : surfAlts(bg)

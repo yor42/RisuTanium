@@ -15,13 +15,19 @@ const refLib = await import(/* @vite-ignore */ pathToFileURL(path.join(DESIGN, '
 
 const AREAS: ThemeArea[] = ['chat', 'settings', 'studio', 'home']
 const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const whys = (area: ThemeArea, css: string): string[] => lintAreaPack(area, css, 'probe').errors.map((e) => `${e.prop} | ${e.why}`)
+// Since #560 PR2 a numeric violation of a limit is a note (its `rule` is layout, readability for a focus-ring width floor); a limit that cannot be ruled out stays a refusal.
+type Kind = 'layout' | 'readability' | 'refusal'
+const found = (area: ThemeArea, css: string): { prop: string, why: string, kind: Kind }[] => {
+    const result = lintAreaPack(area, css, 'probe')
+    return [...result.errors.map((e) => ({ prop: e.prop, why: e.why, kind: 'refusal' as Kind })), ...(result.notes ?? []).map((n) => ({ prop: n.prop, why: n.why, kind: (n.rule ?? 'refusal') as Kind }))]
+}
+const whys = (area: ThemeArea, css: string): string[] => found(area, css).map((e) => `${e.prop} | ${e.why}`)
 const ok = (area: ThemeArea, css: string): boolean => lintAreaPack(area, css, 'probe').ok
 const maxWhy = (token: string, worst: string, cap: string): RegExp => new RegExp(`^${esc(token)} \\| above the critical maximum: ${esc(token)} can be ${esc(worst)} .*the ceiling is ${esc(cap)}$`)
 const minWhy = (token: string, worst: string, floor: string): RegExp => new RegExp(`^${esc(token)} \\| below the critical minimum: ${esc(token)} can be ${esc(worst)} .*the floor is ${esc(floor)}$`)
-const has = (area: ThemeArea, css: string, re: RegExp): void => {
-    const found = whys(area, css)
-    expect(found.some((why) => re.test(why)), `${area} ${css}: ${re} against ${JSON.stringify(found)}`).toBe(true)
+const has = (area: ThemeArea, css: string, re: RegExp, kind?: Kind): void => {
+    const all = found(area, css)
+    expect(all.some((e) => re.test(`${e.prop} | ${e.why}`) && (kind === undefined || e.kind === kind)), `${area} ${css}: ${re} (${kind ?? 'any kind'}) against ${JSON.stringify(all)}`).toBe(true)
 }
 const accepted = (area: ThemeArea, css: string): void => {
     expect(ok(area, css), `${area} ${css}: ${JSON.stringify(whys(area, css))}`).toBe(true)
@@ -32,7 +38,7 @@ const OFFSETS = ['--focus-ring-offset-inset', '--focus-ring-offset-wide']
 
 describe('R1 a ring width over 4 px is refused in every area (REPRO)', () => {
     const rows = AREAS.flatMap((area) => WIDTHS.flatMap((token) => ['4.01', '5', '60'].map((px) => [area, token, px] as const)))
-    it.each(rows)('%s %s:%spx', (area, token, px) => has(area, `:root{${token}:${px}px}`, maxWhy(token, px, '4px')))
+    it.each(rows)('%s %s:%spx', (area, token, px) => has(area, `:root{${token}:${px}px}`, maxWhy(token, px, '4px'), 'layout'))
 })
 
 describe('R2 a ring width at or under 4 px stays accepted (GUARD)', () => {
@@ -42,7 +48,7 @@ describe('R2 a ring width at or under 4 px stays accepted (GUARD)', () => {
 
 describe('R3 a ring offset outside -6 to 6 px is refused in every area (REPRO)', () => {
     const rows = AREAS.flatMap((area) => OFFSETS.flatMap((token) => ['7', '6.5', '60', '-7', '-6.5', '-60'].map((px) => [area, token, px] as const)))
-    it.each(rows)('%s %s:%spx', (area, token, px) => has(area, `:root{${token}:${px}px}`, Number(px) > 0 ? maxWhy(token, px, '6px') : minWhy(token, px, '-6px')))
+    it.each(rows)('%s %s:%spx', (area, token, px) => has(area, `:root{${token}:${px}px}`, Number(px) > 0 ? maxWhy(token, px, '6px') : minWhy(token, px, '-6px'), 'layout'))
 })
 
 describe('R4 a ring offset from -6 to 6 px stays accepted (GUARD)', () => {
@@ -52,17 +58,17 @@ describe('R4 a ring offset from -6 to 6 px stays accepted (GUARD)', () => {
 
 describe('R5 the worst case over a private helper override counts (REPRO)', () => {
     it.each(AREAS)('%s width through --pack-r under data-input', (area) => {
-        has(area, ':root{--pack-r:2px;--focus-ring-w:var(--pack-r)}html[data-input="touch"]{--pack-r:5px}', maxWhy('--focus-ring-w', '5', '4px'))
+        has(area, ':root{--pack-r:2px;--focus-ring-w:var(--pack-r)}html[data-input="touch"]{--pack-r:5px}', maxWhy('--focus-ring-w', '5', '4px'), 'layout')
     })
     it.each(AREAS)('%s inset offset through --pack-o under data-input', (area) => {
-        has(area, ':root{--pack-o:-2px;--focus-ring-offset-inset:var(--pack-o)}html[data-input="touch"]{--pack-o:-7px}', minWhy('--focus-ring-offset-inset', '-7', '-6px'))
+        has(area, ':root{--pack-o:-2px;--focus-ring-offset-inset:var(--pack-o)}html[data-input="touch"]{--pack-o:-7px}', minWhy('--focus-ring-offset-inset', '-7', '-6px'), 'layout')
     })
 })
 
 describe('R6 the Settings pattern ring over its limits is refused (REPRO)', () => {
-    it.each(['4.01', '5', '60'])('--pattern-focus-width:%spx', (px) => has('settings', `:root{--pattern-focus-width:${px}px}`, maxWhy('--pattern-focus-width', px, '4px')))
+    it.each(['4.01', '5', '60'])('--pattern-focus-width:%spx', (px) => has('settings', `:root{--pattern-focus-width:${px}px}`, maxWhy('--pattern-focus-width', px, '4px'), 'layout'))
     it.each(['7', '6.5', '-7', '-6.5'])('--pattern-focus-offset:%spx', (px) => {
-        has('settings', `:root{--pattern-focus-offset:${px}px}`, Number(px) > 0 ? maxWhy('--pattern-focus-offset', px, '6px') : minWhy('--pattern-focus-offset', px, '-6px'))
+        has('settings', `:root{--pattern-focus-offset:${px}px}`, Number(px) > 0 ? maxWhy('--pattern-focus-offset', px, '6px') : minWhy('--pattern-focus-offset', px, '-6px'), 'layout')
     })
 })
 
@@ -78,7 +84,7 @@ describe('R7 the Settings pattern ring inside its limits stays accepted (GUARD)'
 
 describe('R8 the pattern pair stays unsettable in chat, Studio and Home (GUARD)', () => {
     const rows = (['chat', 'studio', 'home'] as const).flatMap((area) => ['--pattern-focus-width', '--pattern-focus-offset'].map((token) => [area, token] as const))
-    it.each(rows)('%s %s:2px', (area, token) => has(area, `:root{${token}:2px}`, new RegExp(`^${esc(token)} \\| ${esc(token)} is not a pack-settable token`)))
+    it.each(rows)('%s %s:2px', (area, token) => has(area, `:root{${token}:2px}`, new RegExp(`^${esc(token)} \\| ${esc(token)} is not a pack-settable token`), 'refusal'))
 })
 
 describe('R9 the app defaults restated stay accepted (GUARD)', () => {
@@ -97,32 +103,32 @@ describe('R10 Settings agrees with the reference on the limited names (GUARD, pa
 })
 
 describe('R11 Settings reads --focus-ring-w through --nexus-focus-ring-width (MC-2338)', () => {
-    it('settings refuses a nexus width of 5px through the alias (REPRO)', () => has('settings', ':root{--nexus-focus-ring-width:5px}', maxWhy('--focus-ring-w', '5', '4px')))
+    it('settings refuses a nexus width of 5px through the alias (REPRO)', () => has('settings', ':root{--nexus-focus-ring-width:5px}', maxWhy('--focus-ring-w', '5', '4px'), 'layout'))
     it('settings accepts a nexus width of 4px (GUARD)', () => accepted('settings', ':root{--nexus-focus-ring-width:4px}'))
 })
 
 describe('R12 the nexus ring pair is capped at 4 px wide and 6 px out in every area (MC-2489)', () => {
     const others = ['chat', 'studio', 'home'] as const
     it.each(others.flatMap((area) => ['4.01', '5', '8'].map((px) => [area, px] as const)))('%s refuses a nexus width of %spx (REPRO)', (area, px) => {
-        has(area, `:root{--nexus-focus-ring-width:${px}px}`, maxWhy('--nexus-focus-ring-width', px, '4px'))
+        has(area, `:root{--nexus-focus-ring-width:${px}px}`, maxWhy('--nexus-focus-ring-width', px, '4px'), 'layout')
     })
     it.each(others)('%s accepts a nexus width of 4px (GUARD)', (area) => accepted(area, ':root{--nexus-focus-ring-width:4px}'))
     it.each(AREAS.flatMap((area) => ['6.01', '7', '8'].map((px) => [area, px] as const)))('%s refuses a nexus offset of %spx (REPRO)', (area, px) => {
-        has(area, `:root{--nexus-focus-ring-offset:${px}px}`, maxWhy('--nexus-focus-ring-offset', px, '6px'))
+        has(area, `:root{--nexus-focus-ring-offset:${px}px}`, maxWhy('--nexus-focus-ring-offset', px, '6px'), 'layout')
     })
     it.each(AREAS.flatMap((area) => ['6px', '-4px'].map((value) => [area, value] as const)))('%s accepts a nexus offset of %s (GUARD)', (area, value) => {
         accepted(area, `:root{--nexus-focus-ring-offset:${value}}`)
     })
-    it.each(AREAS)('%s refuses a nexus offset of -5px (GUARD, floor unchanged)', (area) => has(area, ':root{--nexus-focus-ring-offset:-5px}', minWhy('--nexus-focus-ring-offset', '-5', '-4px')))
+    it.each(AREAS)('%s refuses a nexus offset of -5px (GUARD, floor unchanged)', (area) => has(area, ':root{--nexus-focus-ring-offset:-5px}', minWhy('--nexus-focus-ring-offset', '-5', '-4px'), 'layout'))
 })
 
 describe('R14 the Settings pattern ring width has a 1 px floor (MC-2490)', () => {
-    it.each(['0', '0.5'])('--pattern-focus-width:%spx is refused (REPRO)', (px) => has('settings', `:root{--pattern-focus-width:${px}px}`, minWhy('--pattern-focus-width', px, '1px')))
+    it.each(['0', '0.5'])('--pattern-focus-width:%spx is refused (REPRO)', (px) => has('settings', `:root{--pattern-focus-width:${px}px}`, minWhy('--pattern-focus-width', px, '1px'), 'readability'))
     it('--pattern-focus-width:1px stays accepted (GUARD)', () => accepted('settings', ':root{--pattern-focus-width:1px}'))
 })
 
 describe('R13 an offset that cannot be measured is refused (REPRO)', () => {
     const rows = (['chat', 'studio'] as const).flatMap((area) => OFFSETS.map((token) => [area, token] as const))
-    it.each(rows)('%s %s:auto', (area, token) => has(area, `:root{${token}:auto}`, new RegExp(`^${esc(token)} \\| .*cannot be ruled out`)))
-    it.each(rows)('%s %s:2px 2px (a pair of lengths)', (area, token) => has(area, `:root{${token}:2px 2px}`, new RegExp(`^${esc(token)} \\| .*cannot be ruled out`)))
+    it.each(rows)('%s %s:auto', (area, token) => has(area, `:root{${token}:auto}`, new RegExp(`^${esc(token)} \\| .*cannot be ruled out`), 'refusal'))
+    it.each(rows)('%s %s:2px 2px (a pair of lengths)', (area, token) => has(area, `:root{${token}:2px 2px}`, new RegExp(`^${esc(token)} \\| .*cannot be ruled out`), 'refusal'))
 })

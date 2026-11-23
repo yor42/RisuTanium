@@ -1,5 +1,6 @@
 // Pack-install validator (DD-149, DD-155, DD-159; THEMING.md "Protected surfaces are enforced at install") and chat's registry.
-//   lintPack(css, name?, registry?) -> { ok, errors: [{ selector, prop, why }], name }
+//   lintPack(css, name?, registry?) -> { ok, errors: [{ selector, prop, why }], notes?: [{ selector, prop, why, rule }], name }
+//   A finding about contrast, readability or layout (a floor or a ceiling) is a note: it carries a `rule` and never changes `ok`. Every other finding refuses.
 //
 // The rule is by REACH (DD-155), not by lists of dangerous properties:
 //  0. The text is normalised first: comments removed, CSS escapes decoded (\64isplay is display), upper case folded. Nothing is judged before that.
@@ -17,14 +18,14 @@
 //     and oversized shadows, outlines and borders (more than 64 px) are rejected, because they can cover or disable a protected surface from anywhere.
 import { cr, lum, over } from './colour'
 import { decls } from './csslit'
-import { failClosedPass, settableTest, parseConcrete, inlinePrivate } from './failclosed'
-import type { ContrastPair, LintError, NameMatch, Rgba, SameChannel, SurfaceCheck, TokenMap } from './failclosed'
+import { failClosedPass, settableTest, parseConcrete, inlinePrivate, pushUnique, splitFindings } from './failclosed'
+import type { ContrastPair, LintError, NameMatch, NoteKind, Rgba, SameChannel, SurfaceCheck, TokenMap } from './failclosed'
 import { geometryPass, sheetHeights } from './geometry'
 import type { GeometryChain, GeometrySheet, SheetHeightRow, SheetTerm } from './geometry'
 import { tokenFile } from './tokens'
 
 export { sheetHeights, COMPOUND, effective, resolve, cr }
-export type { ContrastPair, LintError, NameMatch, Rgba, SameChannel, SurfaceCheck, TokenMap }
+export type { ContrastPair, LintError, NameMatch, NoteKind, Rgba, SameChannel, SurfaceCheck, TokenMap }
 
 /** A registry as an area passes it to lintPack: every field optional; effective() adds chat's names and the shared defaults. */
 export interface RegistryInput {
@@ -82,10 +83,11 @@ export interface Registry {
     privatePrefix: string
 }
 
-/** The verdict on one stylesheet. */
+/** The verdict on one stylesheet. `notes` holds the findings that do not refuse (each carries its `rule`); it is absent when there are none. A refused sheet may carry notes too: only the install UI filters them. */
 export interface LintResult {
     ok: boolean
     errors: LintError[]
+    notes?: LintError[]
     name: string
 }
 
@@ -253,20 +255,20 @@ export function tokenCheck(css: string, T0: TokenMap = APP): LintError[] {
         const pairs: [string, Rgba, string][] = [['--nexus-text', sheet, 'the sheet'], ['--nexus-text-secondary', sheet, 'the sheet'], ['--nexus-accent', sheet, 'the sheet'], ['--nexus-text', bubble, 'the message bubble'], ['--nexus-text-secondary', bubble, 'the message bubble'], ['--danger', bubble, 'the message bubble'], ['--nexus-accent', bubble, 'the message bubble']]
         for (const [n, bg, on] of pairs) {
             const c = col(T, n, bg)
-            if (c && cr(c, bg) < 4.5) errs.push({ selector: label, prop: n, why: `critical text would be ${cr(c, bg).toFixed(2)}:1 on ${on} (needs 4.5:1)` })
+            if (c && cr(c, bg) < 4.5) errs.push({ selector: label, prop: n, why: `critical text would be ${cr(c, bg).toFixed(2)}:1 on ${on} (needs 4.5:1)`, rule: 'contrast' })
         }
         const num = (n: string): number => maxLen(T.get(n) || '0', T)
-        const min = (n: string, v: number, why: string): void => { if (T.has(n) && num(n) < v) errs.push({ selector: label, prop: n, why }) }
-        const max = (n: string, v: number, why: string): void => { if (T.has(n) && num(n) > v) errs.push({ selector: label, prop: n, why }) }
-        min('--size-touch-lg', 32, 'critical choices would be shorter than 32 px')
-        min('--size-touch', 24, 'controls would be smaller than 24 px')
-        for (const f of ['--font-size-sm', '--font-size-md', '--font-size-base']) min(f, 11, 'critical text would be smaller than 11 px')
+        const min = (n: string, v: number, why: string, rule: NoteKind): void => { if (T.has(n) && num(n) < v) errs.push({ selector: label, prop: n, why, rule }) }
+        const max = (n: string, v: number, why: string): void => { if (T.has(n) && num(n) > v) errs.push({ selector: label, prop: n, why, rule: 'layout' }) }
+        min('--size-touch-lg', 32, 'critical choices would be shorter than 32 px', 'layout')
+        min('--size-touch', 24, 'controls would be smaller than 24 px', 'layout')
+        for (const f of ['--font-size-sm', '--font-size-md', '--font-size-base']) min(f, 11, 'critical text would be smaller than 11 px', 'layout')
         max('--sheet-padding-x', 48, 'sheet padding beyond 48 px pushes the choices off a narrow sheet')
         max('--sheet-padding-bottom', 48, 'sheet padding beyond 48 px')
         max('--control-padding-x', 48, 'button padding beyond 48 px')
         max('--item-padding-x', 48, 'item padding beyond 48 px')
         max('--item-gap', 48, 'item gap beyond 48 px')
-        min('--focus-ring-w', 1, 'no focus ring')
+        min('--focus-ring-w', 1, 'no focus ring', 'readability')
     }
     return errs
 }
@@ -389,18 +391,25 @@ export function lintSelector(sel: string, reg?: RegistryInput): string[] {
 
 // ---- declarations
 const GLOBAL_PROPS = /^(z-index|animation(-[\w-]+)?|transition(-[\w-]+)?|will-change|filter|backdrop-filter|mix-blend-mode|transform(-[\w-]+)?|translate|scale|rotate|perspective|zoom|content|contain(-[\w-]+)?|container(-[\w-]+)?|direction|unicode-bidi|writing-mode|isolation|all|offset(-[\w-]+)?|clip-path|mask(-[\w-]+)?|-webkit-mask(-[\w-]+)?)$/
-function colourUnsafe(value: string, T: TokenMap): string {
+/** The reason one declaration is flagged. A reason with a `rule` is a note and does not refuse; one without refuses. No reason is null. */
+interface Why {
+    why: string
+    rule?: NoteKind
+}
+const refuseWhy = (why: string): Why => ({ why })
+const noteWhy = (why: string, rule: NoteKind): Why => ({ why, rule })
+function colourUnsafe(value: string, T: TokenMap): Why | null {
     const v = value.replace(/\s*!important\s*$/, '').trim()
-    if (/^(inherit|initial|unset|currentcolor)$/.test(v)) return ''
+    if (/^(inherit|initial|unset|currentcolor)$/.test(v)) return null
     const r = resolve(v, T)
     const c = parseConcrete(r)
-    if (!c) return /^[a-z]+$/.test(r) && r !== 'transparent' ? '' : `a colour that cannot be checked (${r.slice(0, 30)})`
-    if (c[3] < 0.9) return 'a transparent or translucent text colour'
+    if (!c) return /^[a-z]+$/.test(r) && r !== 'transparent' ? null : refuseWhy(`a colour that cannot be checked (${r.slice(0, 30)})`)
+    if (c[3] < 0.9) return noteWhy('a transparent or translucent text colour', 'readability')
     const sheet = col(T, '--color-surface-sheet'), canvas = col(T, '--nexus-canvas'), bubble = col(T, '--color-bubble-char', canvas || [0, 0, 0, 1]) || canvas
-    for (const [bg, n] of [[sheet, 'the sheet'], [bubble, 'the bubble']] as [Rgba | null, string][]) if (bg && cr(c, bg) < 3) return `a text colour that is ${cr(c, bg).toFixed(2)}:1 on ${n}`
-    return ''
+    for (const [bg, n] of [[sheet, 'the sheet'], [bubble, 'the bubble']] as [Rgba | null, string][]) if (bg && cr(c, bg) < 3) return noteWhy(`a text colour that is ${cr(c, bg).toFixed(2)}:1 on ${n}`, 'contrast')
+    return null
 }
-function reachAllowed(prop: string, value: string, T: TokenMap, ctl: boolean | undefined, block: Map<string, string> | undefined): string {
+function reachAllowed(prop: string, value: string, T: TokenMap, ctl: boolean | undefined, block: Map<string, string> | undefined): Why | null {
     const v = value.replace(/\s*!important\s*$/, '').trim()
     if (prop === 'color') {
         // a control that paints its own fill (a yellow Send with dark text) is judged as that pair: opaque fill, 4.5:1
@@ -408,39 +417,39 @@ function reachAllowed(prop: string, value: string, T: TokenMap, ctl: boolean | u
             const bgv = block.get('background-color') || block.get('background')
             const f = bgv ? parseConcrete(resolve(bgv.replace(/\s*!important\s*$/, '').trim(), T)) : null
             const c = parseConcrete(resolve(v, T))
-            if (f && c && f[3] >= 0.9 && c[3] >= 0.9 && cr(c, f) >= 4.5) return ''
+            if (f && c && f[3] >= 0.9 && c[3] >= 0.9 && cr(c, f) >= 4.5) return null
         }
         return colourUnsafe(v, T)
     }
-    if (/^(background|background-color|border(-(top|right|bottom|left))?(-color|-style)?|border-image|outline|outline-color|outline-style|box-shadow|text-shadow)$/.test(prop)) return /url\(/.test(v) ? 'an image' : ''
-    if (/^border(-(top|right|bottom|left))?(-width)?$/.test(prop)) return maxLen(v, T) > 16 ? 'a border wider than 16 px' : ''
-    if (/^border-(top|bottom)-(left|right)-radius$|^border-radius$/.test(prop)) return ''
-    if (/^(background-image)$/.test(prop)) return /url\(/.test(v) ? 'an image' : ''
-    if (prop === 'cursor') return /(^|[\s,])none(\s|,|$)/.test(resolve(v, T)) ? 'cursor: none hides the pointer over a control' : ''
-    if (/^(font-family|font-style|font-weight|text-align|text-decoration(-[\w-]+)?|text-transform|caret-color|accent-color|scrollbar-color|color-scheme)$/.test(prop)) return ''
+    if (/^(background|background-color|border(-(top|right|bottom|left))?(-color|-style)?|border-image|outline|outline-color|outline-style|box-shadow|text-shadow)$/.test(prop)) return /url\(/.test(v) ? refuseWhy('an image') : null
+    if (/^border(-(top|right|bottom|left))?(-width)?$/.test(prop)) return maxLen(v, T) > 16 ? noteWhy('a border wider than 16 px', 'layout') : null
+    if (/^border-(top|bottom)-(left|right)-radius$|^border-radius$/.test(prop)) return null
+    if (/^(background-image)$/.test(prop)) return /url\(/.test(v) ? refuseWhy('an image') : null
+    if (prop === 'cursor') return /(^|[\s,])none(\s|,|$)/.test(resolve(v, T)) ? noteWhy('cursor: none hides the pointer over a control', 'layout') : null
+    if (/^(font-family|font-style|font-weight|text-align|text-decoration(-[\w-]+)?|text-transform|caret-color|accent-color|scrollbar-color|color-scheme)$/.test(prop)) return null
     if (prop === 'font-size') {
         const r = resolve(v, T).trim()
-        if (/^0(px|rem|em|%)?$/.test(r) || /xx-small|x-small/.test(r)) return 'a font size that hides the text'
+        if (/^0(px|rem|em|%)?$/.test(r) || /xx-small|x-small/.test(r)) return noteWhy('a font size that hides the text', 'layout')
         const m = maxLen(v, T)
-        return m && (m < 11 || m > 40) ? `a font size of ${m}px (11 to 40 px)` : ''
+        return m && (m < 11 || m > 40) ? noteWhy(`a font size of ${m}px (11 to 40 px)`, 'layout') : null
     }
     if (prop === 'line-height') {
         const r = resolve(v, T)
         const n = parseFloat(r)
-        return /^[\d.]+$/.test(r.trim()) && (n < 1 || n > 3) ? 'a line height outside 1 to 3' : /px|rem|em/.test(r) && maxLen(v, T) < 11 ? 'a line height under 11 px' : ''
+        return /^[\d.]+$/.test(r.trim()) && (n < 1 || n > 3) ? noteWhy('a line height outside 1 to 3', 'layout') : /px|rem|em/.test(r) && maxLen(v, T) < 11 ? noteWhy('a line height under 11 px', 'layout') : null
     }
-    if (prop === 'letter-spacing') return maxLen(v, T) > 2 ? 'letter spacing beyond 2 px' : ''
+    if (prop === 'letter-spacing') return maxLen(v, T) > 2 ? noteWhy('letter spacing beyond 2 px', 'layout') : null
     // a max-width of 320 px or more (#316) is never narrower than the 50% already accepted on the 360 px phone the checks model
-    if (/^(width|max-width)$/.test(prop)) return /^(auto|none|fit-content|max-content|min-content|inherit|initial|unset|100%)$/.test(v) || (/^\d+(\.\d+)?%$/.test(v) && parseFloat(v) >= 50) || (prop === 'max-width' && /^\d+(\.\d+)?(px|rem)$/.test(v) && parseFloat(v) * (v.endsWith('rem') ? 16 : 1) >= 320) ? '' : `a ${prop} that can collapse the surface`
+    if (/^(width|max-width)$/.test(prop)) return /^(auto|none|fit-content|max-content|min-content|inherit|initial|unset|100%)$/.test(v) || (/^\d+(\.\d+)?%$/.test(v) && parseFloat(v) >= 50) || (prop === 'max-width' && /^\d+(\.\d+)?(px|rem)$/.test(v) && parseFloat(v) * (v.endsWith('rem') ? 16 : 1) >= 320) ? null : noteWhy(`a ${prop} that can collapse the surface`, 'layout')
     // these only size, place or tile the background inside the element's own box; every colour of the background is judged on its own (#315)
-    if (/^background-(size|position(-x|-y)?|repeat)$/.test(prop)) return ''
+    if (/^background-(size|position(-x|-y)?|repeat)$/.test(prop)) return null
     if (/^(padding|margin)(-(top|right|bottom|left|inline|block)(-(start|end))?)?$|^(gap|row-gap|column-gap)$/.test(prop)) {
         const r = resolve(v, T)
-        if (/(^|[\s(*\/])-\s*[\d.]|\*\s*-\s*[\d.]/.test(r)) return `negative ${prop} on a surface that can hold a protected element`
-        if (maxLen(v, T) > 64 || maxPct(v, T) > 20) return `${prop} larger than 64 px (or 20%): the token range for spacing`
-        return ''
+        if (/(^|[\s(*\/])-\s*[\d.]|\*\s*-\s*[\d.]/.test(r)) return refuseWhy(`negative ${prop} on a surface that can hold a protected element`)
+        if (maxLen(v, T) > 64 || maxPct(v, T) > 20) return noteWhy(`${prop} larger than 64 px (or 20%): the token range for spacing`, 'layout')
+        return null
     }
-    return 'is not on the declaration allowlist for a surface that can contain or be a protected element'
+    return refuseWhy('is not on the declaration allowlist for a surface that can contain or be a protected element')
 }
 function globalBan(prop: string, value: string, T: TokenMap): string {
     if (GLOBAL_PROPS.test(prop)) return `${prop} can cover, fade or disable a protected surface from anywhere`
@@ -456,8 +465,11 @@ interface ValueSpace {
     extraPass: (css: string, reg: Registry) => LintError[]
     isBounded: (n: string) => boolean
 }
-type Bound = [RegExp, number, number, string]
+/** [token pattern, minimum, maximum, reason, kind of the note a violation raises (layout when absent)] */
+type Bound = [RegExp, number, number, string, NoteKind?]
 type Limit = [string, string | number, 'min' | 'max']
+// The kind of the note a numeric violation of a registry limit raises: an opacity or alpha token and a minimum on a focus-ring width are readability; every other token is layout.
+const limitKind = (name: string, kind: 'min' | 'max'): NoteKind => (/opacity|alpha/.test(name) || (kind === 'min' && /focus-ring-w|focus-ring-width|focus-width|size-ring/.test(name)) ? 'readability' : 'layout')
 const VALUES: ValueSpace = (() => {
     function resolve(v: string, T: TokenMap, depth = 0): string {
         if (depth > 14) return v
@@ -553,19 +565,19 @@ const VALUES: ValueSpace = (() => {
         [/^--icon-scale$/, 0.75, 1.5, 'an icon scale outside 0.75 to 1.5'],
         [/^--icon-stroke$/, 1, 3, 'an icon stroke outside 1 to 3 px'],
         [/^--focus-ring-offset$/, -6, 6, 'a focus-ring offset outside -6 to 6 px'],
-        [/^--alpha-text-dim(-strong)?$/, 0.6, 1, 'dim text weaker than 0.6'],
-        [/^--alpha-switch-off$/, 0.1, 1, 'a switch off track weaker than 0.1'],
-        [/^--alpha-accent-tint$/, 0.02, 0.3, 'a selection tint outside 0.02 to 0.3'],
-        [/^--alpha-mark(-soft)?$/, 0, 0.4, 'a search highlight stronger than 0.4 (the text on it keeps 4.5:1)'],
+        [/^--alpha-text-dim(-strong)?$/, 0.6, 1, 'dim text weaker than 0.6', 'readability'],
+        [/^--alpha-switch-off$/, 0.1, 1, 'a switch off track weaker than 0.1', 'readability'],
+        [/^--alpha-accent-tint$/, 0.02, 0.3, 'a selection tint outside 0.02 to 0.3', 'readability'],
+        [/^--alpha-mark(-soft)?$/, 0, 0.4, 'a search highlight stronger than 0.4 (the text on it keeps 4.5:1)', 'readability'],
         [/^--chip-(cap|name)-ratio$/, 0.1, 0.6, 'a chip share outside 0.1 to 0.6 of the header'],
         [/^--popup-(edge|gap)$/, 0, 48, 'a popup margin beyond 48 px'],
     ]
     function tokenBounds(T: TokenMap, label: string, reg: Registry): LintError[] {
         const errs: LintError[] = []
-        const bad = (prop: string, why: string): void => { errs.push({ selector: label, prop, why }) }
+        const bad = (prop: string, why: string, rule?: NoteKind): void => { errs.push(rule ? { selector: label, prop, why, rule } : { selector: label, prop, why }) }
         for (const [k, v] of T) {
             if (!k.startsWith('--')) continue
-            for (const [re, lo, hi, why] of BOUNDS) {
+            for (const [re, lo, hi, why, kind] of BOUNDS) {
                 if (!re.test(k)) continue
                 if (T.get(k) === reg.app.get(k)) break   // an unchanged default is the app's business
                 const ns = nums(v, T)
@@ -573,7 +585,7 @@ const VALUES: ValueSpace = (() => {
                     bad(k, `a value that cannot be bounded (${v.slice(0, 40)}): use plain lengths`)
                     break
                 }
-                if ((ns as number[]).some((n) => n < lo - 1e-9 || n > hi + 1e-9)) bad(k, `${why}: ${v.slice(0, 40)}`)
+                if ((ns as number[]).some((n) => n < lo - 1e-9 || n > hi + 1e-9)) bad(k, `${why}: ${v.slice(0, 40)}`, kind ?? 'layout')
                 break
             }
         }
@@ -583,13 +595,13 @@ const VALUES: ValueSpace = (() => {
                 if (/^minmax\(/.test(tr)) {
                     const hi = tr.slice(7, -1).split(',')[1]
                     const x = hi ? num1(hi.trim()) : null
-                    if (x !== null && (x < 120 || x > 560)) bad(n, `a column outside 120 to 560 px (${tr})`)
+                    if (x !== null && (x < 120 || x > 560)) bad(n, `a column outside 120 to 560 px (${tr})`, 'layout')
                 }
                 else if (/fr$/.test(tr)) continue
                 else {
                     const x = num1(tr)
                     if (x === null) bad(n, `a column that cannot be bounded (${tr})`)
-                    else if (x < 120 || x > 560) bad(n, `a column outside 120 to 560 px (${tr})`)
+                    else if (x < 120 || x > 560) bad(n, `a column outside 120 to 560 px (${tr})`, 'layout')
                 }
             }
         }
@@ -601,7 +613,7 @@ const VALUES: ValueSpace = (() => {
             if (!([1, 2].includes(a) && [1, 2].includes(b) && a !== b)) bad('--index-column', 'the index and the page must take columns 1 and 2, one each')
         }
         const tw = T.get('--settings-section-title-width')
-        if (tw !== undefined && tw !== reg.app.get('--settings-section-title-width') && !/^(auto|fit-content|max-content|100%)$/.test(resolve(tw, T).trim()) && !((num1(resolve(tw, T)) ?? 0) >= 120)) bad('--settings-section-title-width', 'a section title narrower than 120 px')
+        if (tw !== undefined && tw !== reg.app.get('--settings-section-title-width') && !/^(auto|fit-content|max-content|100%)$/.test(resolve(tw, T).trim()) && !((num1(resolve(tw, T)) ?? 0) >= 120)) bad('--settings-section-title-width', 'a section title narrower than 120 px', 'layout')
         // contrast on the surfaces the area's text sits on (chat checks the sheet and the bubble)
         const canvas = colOf(T, '--nexus-canvas'), sheet = colOf(T, '--color-surface-sheet', canvas)
         if (!canvas) return errs
@@ -619,10 +631,10 @@ const VALUES: ValueSpace = (() => {
                 if (T.has(n) && /^(--nexus-ring)$/.test(n)) bad(n, 'a focus ring colour that cannot be checked')
                 continue
             }
-            if (cr(c, bg) < need) bad(n, `${n.replace('--nexus-', '')} would be ${cr(c, bg).toFixed(2)}:1 on ${on} (needs ${need}:1)`)
+            if (cr(c, bg) < need) bad(n, `${n.replace('--nexus-', '')} would be ${cr(c, bg).toFixed(2)}:1 on ${on} (needs ${need}:1)`, 'contrast')
         }
         const st = parseConcrete(resolve(T.get('--selection-text') || 'currentcolor', T))
-        if (st && st[3] < 0.9) bad('--selection-text', 'selected text would be transparent')
+        if (st && st[3] < 0.9) bad('--selection-text', 'selected text would be transparent', 'readability')
         return errs
     }
 
@@ -646,41 +658,43 @@ const VALUES: ValueSpace = (() => {
         if (parts.length === 1 && /^(:root|html)/.test(last) && !sp.length) return 'root'
         return sp.length > 0 && sp.every((p) => reg.safe.has(p)) ? 'safe' : 'reach'
     }
-    function safeDecl(prop: string, value: string, T: TokenMap, reg: Registry, sp: string[] = []): string {
+    function safeDecl(prop: string, value: string, T: TokenMap, reg: Registry, sp: string[] = []): Why | null {
         const canPos = !reg.strictSafe && sp.length > 0 && sp.every((p) => reg.positionable.has(p))
         const v = value.replace(/\s*!important\s*$/, '').trim()
         // chat's own safe leaves (the avatar and the actions of Banana Cocoa's side layout) may be positioned, with offsets bounded to 64 px; a screen that passes strictSafe (Settings) gets no position at all
-        if (canPos && (prop === 'position' ? /^(absolute|relative|static)$/.test(v) : /^(top|right|bottom|left|inset(-[\w]+)*)$/.test(prop) && (v === 'auto' || nums(v, T).every((n) => n !== null && Math.abs(n) <= 64)))) return ''
-        if (!reg.strictSafe && /^(width|max-width)$/.test(prop) && /^\d+(\.\d+)?%$/.test(v) && parseFloat(v) <= 100) return ''   // a bubble's max-width: a share of its row, never more than the row
-        if (SAFE_DECL_BAN.test(prop) && !(prop === 'position' && /^(static|relative)$/.test(v))) return `${prop}: ${v.slice(0, 24)} can place a safe part over a protected one (the safe tier has no position, no inset, no float)`
+        if (canPos && (prop === 'position' ? /^(absolute|relative|static)$/.test(v) : /^(top|right|bottom|left|inset(-[\w]+)*)$/.test(prop) && (v === 'auto' || nums(v, T).every((n) => n !== null && Math.abs(n) <= 64)))) return null
+        if (!reg.strictSafe && /^(width|max-width)$/.test(prop) && /^\d+(\.\d+)?%$/.test(v) && parseFloat(v) <= 100) return null   // a bubble's max-width: a share of its row, never more than the row
+        if (SAFE_DECL_BAN.test(prop) && !(prop === 'position' && /^(static|relative)$/.test(v))) return refuseWhy(`${prop}: ${v.slice(0, 24)} can place a safe part over a protected one (the safe tier has no position, no inset, no float)`)
         if (/^(width|min-width|max-width|height|min-height|max-height|flex-basis|block-size|inline-size)$/.test(prop)) {
-            if (/^(auto|none|fit-content|max-content|min-content|inherit|initial|unset|100%|100vw|0)$/.test(v)) return /^(height|min-height|max-height|block-size)$/.test(prop) && /^(100%|100vw)$/.test(v) && prop !== 'max-height' ? `${prop}: ${v} is a large size` : ''
+            if (/^(auto|none|fit-content|max-content|min-content|inherit|initial|unset|100%|100vw|0)$/.test(v)) return /^(height|min-height|max-height|block-size)$/.test(prop) && /^(100%|100vw)$/.test(v) && prop !== 'max-height' ? noteWhy(`${prop}: ${v} is a large size`, 'layout') : null
             const ns = nums(v, T)
-            if (ns.some((n) => n === null) || ns.some((n) => n !== null && (n > 480 || n < 0))) return `${prop}: ${v.slice(0, 30)} is a size beyond 480 px (or one that cannot be bounded) on a safe part`
-            if (/%/.test(v)) return `${prop}: ${v.slice(0, 30)} is a relative size on a safe part`
-            return ''
+            // a value that cannot be bounded stays a refusal; only a number over 480 px or below 0 is a note
+            if (ns.some((n) => n === null)) return refuseWhy(`${prop}: ${v.slice(0, 30)} is a size beyond 480 px (or one that cannot be bounded) on a safe part`)
+            if (ns.some((n) => n !== null && (n > 480 || n < 0))) return noteWhy(`${prop}: ${v.slice(0, 30)} is a size beyond 480 px (or one that cannot be bounded) on a safe part`, 'layout')
+            if (/%/.test(v)) return refuseWhy(`${prop}: ${v.slice(0, 30)} is a relative size on a safe part`)
+            return null
         }
         // DD-260: padding on a safe part is bounded like the reach tier (64 px or 20%): 4000 px of padding turns an ordinary toast into a wall
         if (/^padding(-(top|right|bottom|left|inline|block)(-(start|end))?)?$/.test(prop)) {
-            if (maxLen(v, T) > 64 || maxPct(v, T) > 20) return `${prop} larger than 64 px (or 20%) on a safe part`
-            return ''
+            if (maxLen(v, T) > 64 || maxPct(v, T) > 20) return noteWhy(`${prop} larger than 64 px (or 20%) on a safe part`, 'layout')
+            return null
         }
         if (/^margin(-|$)/.test(prop) || /^(translate|scale|rotate)$/.test(prop)) {
             const r = resolve(v, T)
-            if (/(^|[\s(*\/])-\s*[\d.]|\*\s*-\s*[\d.]/.test(r) && (!canPos || nums(v, T).some((n) => n === null || n < -64))) return `negative ${prop} can pull a safe part over a protected one`
+            if (/(^|[\s(*\/])-\s*[\d.]|\*\s*-\s*[\d.]/.test(r) && (!canPos || nums(v, T).some((n) => n === null || n < -64))) return refuseWhy(`negative ${prop} can pull a safe part over a protected one`)
             const ns = nums(v, T).filter((n): n is number => n !== null)
-            if (ns.some((n) => n > 48)) return `${prop} beyond 48 px`
+            if (ns.some((n) => n > 48)) return noteWhy(`${prop} beyond 48 px`, 'layout')
         }
-        return ''
+        return null
     }
-    function reachExtra(prop: string, value: string, T: TokenMap, block: Map<string, string>, ctl: boolean | undefined): string {
+    function reachExtra(prop: string, value: string, T: TokenMap, block: Map<string, string>, ctl: boolean | undefined): Why | null {
         const v = value.replace(/\s*!important\s*$/, '').trim()
         const cs = prop === 'color' ? coloursIn(v, T) : /^(background|background-color|background-image)$/.test(prop) ? coloursIn(v, T) : null
-        if (!cs) return ''
-        if (cs.some((c) => c === undefined)) return `a colour word that is not a colour (${v.slice(0, 24)}) cannot be checked`
+        if (!cs) return null
+        if (cs.some((c) => c === undefined)) return refuseWhy(`a colour word that is not a colour (${v.slice(0, 24)}) cannot be checked`)
         const own = block.get(prop === 'color' ? 'background' : 'color') || (prop === 'color' ? block.get('background-color') : undefined)
         const canvas = colOf(T, '--nexus-canvas')
-        if (!canvas) return ''
+        if (!canvas) return null
         const sheet = colOf(T, '--color-surface-sheet', canvas)
         const g = (): Rgba => {
             const c = parseConcrete(resolve(T.get('--nexus-surface') || '', T))
@@ -690,33 +704,33 @@ const VALUES: ValueSpace = (() => {
         const text = colOf(T, '--nexus-text', canvas)
         for (let c of cs as Rgba[]) {
             if (prop === 'color') {
-                if (c[3] < 0.9) return 'a transparent or translucent text colour'
+                if (c[3] < 0.9) return noteWhy('a transparent or translucent text colour', 'readability')
                 if (own) {
                     // the rule sets its own readable pair
                     const o = coloursIn(own, T).filter(Boolean)[0]
                     if (o && o[3] >= 0.9 && cr(c, o) >= 4.5) continue
                 }
                 const worst = Math.min(...surfaces.map((s) => cr(c, s)))
-                if (worst < 3) return `a text colour that is ${worst.toFixed(2)}:1 on a Settings surface (the dialog, the canvas or a row)`
+                if (worst < 3) return noteWhy(`a text colour that is ${worst.toFixed(2)}:1 on a Settings surface (the dialog, the canvas or a row)`, 'contrast')
             }
             else {
                 if (!text) continue
                 c = c[3] < 0.9 ? flat(c, canvas) : c
                 const dg = ctl ? null : colOf(T, '--nexus-danger', c)
-                if (dg && cr(dg, c) < 3) return `a background that makes the danger text ${cr(dg, c).toFixed(2)}:1 (needs 3:1)`
+                if (dg && cr(dg, c) < 3) return noteWhy(`a background that makes the danger text ${cr(dg, c).toFixed(2)}:1 (needs 3:1)`, 'contrast')
                 if (own) {
                     const o = coloursIn(own, T).filter(Boolean)[0]
                     if (o && o[3] >= 0.9 && cr(o, c) >= 4.5) continue
                 }
-                if (cr(text, c) < 3) return `a background that makes the critical text ${cr(text, c).toFixed(2)}:1 (needs 3:1; or set a readable colour in the same rule)`
+                if (cr(text, c) < 3) return noteWhy(`a background that makes the critical text ${cr(text, c).toFixed(2)}:1 (needs 3:1; or set a readable colour in the same rule)`, 'contrast')
             }
         }
-        return ''
+        return null
     }
     const partsOf = (sel: string): string[] => [...(sel.trim().split(/[\s>+~]+/).pop() || '').matchAll(/\[data-part="([^"\]]*)"\]/g)].map((m) => m[1])
     function extraPass(css: string, reg: Registry): LintError[] {
         const errs: LintError[] = []
-        const fail = (selector: string, prop: string, why: string): void => { errs.push({ selector, prop, why }) }
+        const fail = (selector: string, prop: string, why: string, rule?: NoteKind): void => { errs.push(rule ? { selector, prop, why, rule } : { selector, prop, why }) }
         const text = normalise(css)
         const ds = decls(text)
         const blocks: Block[] = []
@@ -730,11 +744,11 @@ const VALUES: ValueSpace = (() => {
         const root = (blocks.find((b) => b[0] === ':root') || [':root', new Map<string, string>()])[1]
         const base = new Map(reg.app)
         for (const [k, v] of root) base.set(k, v)
-        for (const e of tokenBounds(base, 'base', reg)) fail(e.selector, e.prop, e.why)
+        for (const e of tokenBounds(base, 'base', reg)) fail(e.selector, e.prop, e.why, e.rule)
         for (const [label, m] of blocks.filter((b) => b[0] !== ':root')) {
             const T = new Map(base)
             for (const [k, v] of m) T.set(k, v)
-            for (const e of tokenBounds(T, label, reg)) if (!errs.some((x) => x.prop === e.prop && x.why === e.why)) fail(e.selector, e.prop, e.why)
+            for (const e of tokenBounds(T, label, reg)) if (!errs.some((x) => x.prop === e.prop && x.why === e.why)) fail(e.selector, e.prop, e.why, e.rule)
         }
         const props = new Map<string, Map<string, string>>()
         for (const d of ds) {
@@ -750,7 +764,7 @@ const VALUES: ValueSpace = (() => {
                 const tier = an.tier || tierOf(sel, reg)
                 if (tier === 'root') continue   // chat's own tier (a user or system message is a safe context too)
                 const w = tier === 'safe' ? safeDecl(d.prop, d.value, base, reg, partsOf(sel)) : reachExtra(d.prop, d.value, base, props.get(d.ctx.selector.trim()) || new Map(), an.control)
-                if (w) fail(sel, d.prop, w)
+                if (w) fail(sel, d.prop, w.why, w.rule)
             }
         }
         // registry.minimums / registry.maximums (DD-182, DD-195): a token that carries a critical cue keeps its floor / ceiling in the WORST CASE over everything the pack can do. Every declaration of the token
@@ -820,7 +834,7 @@ const VALUES: ValueSpace = (() => {
                 // an unparseable bound compares as 0, as null does in arithmetic
                 const b = bound ?? 0
                 if (why) fail(sel, n, `${word} cannot be ruled out: ${n} ${why}; the ${kind === 'min' ? 'floor' : 'ceiling'} is ${limit}`)
-                else if (worst !== null && (kind === 'min' ? worst < b - 1e-9 : worst > b + 1e-9)) fail(sel, n, `${word}: ${n} can be ${worst} (in px, ms or plain units) under some selector, @media block or variable override; the ${kind === 'min' ? 'floor' : 'ceiling'} is ${limit}`)
+                else if (worst !== null && (kind === 'min' ? worst < b - 1e-9 : worst > b + 1e-9)) fail(sel, n, `${word}: ${n} can be ${worst} (in px, ms or plain units) under some selector, @media block or variable override; the ${kind === 'min' ? 'floor' : 'ceiling'} is ${limit}`, limitKind(n, kind))
             }
         }
         return errs
@@ -893,28 +907,25 @@ export function lintPack(css: string, name = '', registry?: RegistryInput): Lint
     const pre = inlinePrivate(normalise(css), reg.privatePrefix)
     if (pre.variants.length === 1 && pre.variants[0] === normalise(css) && !pre.error) return lintOnce(css, name, reg, false)
     const errors: LintError[] = []
+    const notes: LintError[] = []
     const seen = new Set<string>()
-    const add = (e: LintError): void => {
-        const k = e.selector + '|' + e.prop + '|' + e.why
-        if (!seen.has(k)) {
-            seen.add(k)
-            errors.push(e)
-        }
-    }
+    const seenNotes = new Set<string>()
+    const add = (e: LintError): void => pushUnique(errors, seen, [e])
     for (const w of structureErrors(css)) add({ selector: '(stylesheet)', prop: '', why: `unbalanced or unterminated: ${w}` })
     if (pre.error) add({ selector: ':root', prop: reg.privatePrefix, why: `private variables cannot be judged: ${pre.error}` })
-    for (const v of pre.variants) for (const e of lintOnce(v, name, reg, true).errors) add(e)
-    return { ok: errors.length === 0, errors, name }
+    for (const v of pre.variants) {
+        const once = lintOnce(v, name, reg, true)
+        pushUnique(errors, seen, once.errors)
+        pushUnique(notes, seenNotes, once.notes ?? [])
+    }
+    return notes.length ? { ok: errors.length === 0, errors, notes, name } : { ok: errors.length === 0, errors, name }
 }
-// The live-shell geometry of chat: CHAT_LIVE_CHAINS judged over the same text preparation as lintPack (normalise, then every private-variable variant) with the app's token map, errors de-duplicated. The caller runs it only on a sheet every other pass accepted, so it adds refusals for the live shell and cannot change another pass's output.
+// The live-shell geometry of chat: CHAT_LIVE_CHAINS judged over the same text preparation as lintPack (normalise, then every private-variable variant) with the app's token map, errors de-duplicated. The caller runs it only on a sheet every other pass accepted, so it adds findings for the live shell and cannot change another pass's output; a finding with a `rule` is a note and the caller routes it.
 export function chatLiveChainErrors(css: string): LintError[] {
     const pre = inlinePrivate(normalise(css), PRIVATE_PREFIX)
     const errors: LintError[] = []
     const seen = new Set<string>()
-    for (const variant of pre.variants) for (const e of geometryPass(variant, { app: APP, chains: CHAT_LIVE_CHAINS })) {
-        const key = e.selector + '|' + e.prop + '|' + e.why
-        if (!seen.has(key)) { seen.add(key); errors.push({ selector: e.selector, prop: e.prop, why: e.why }) }
-    }
+    for (const variant of pre.variants) pushUnique(errors, seen, geometryPass(variant, { app: APP, chains: CHAT_LIVE_CHAINS }).map((e): LintError => (e.rule ? { selector: e.selector, prop: e.prop, why: e.why, rule: e.rule } : { selector: e.selector, prop: e.prop, why: e.why })))
     return errors
 }
 // The two size messages below begin with a space and the fixed-width one with ":  " (no property name): the wording is part of the verdict and matches the reference byte for byte.
@@ -922,7 +933,9 @@ const NO_PART_SIZE_WHY = ' on a selector that names no part can resize a protect
 const FIXED_WIDTH_WHY = ':  on the root of a protected sheet (DD-265): its width is the page\'s; leave it auto or 100%'
 function lintOnce(css: string, name: string, reg: Registry, skipStructure: boolean): LintResult {
     const errors: LintError[] = []
+    const notes: LintError[] = []
     const fail = (selector: string, prop: string, why: string): void => { errors.push({ selector, prop, why }) }
+    const note = (selector: string, prop: string, why: string, rule: NoteKind): void => { notes.push({ selector, prop, why, rule }) }
     if (!skipStructure) for (const w of structureErrors(css)) fail('(stylesheet)', '', `unbalanced or unterminated: ${w}`)
     const text = normalise(css)
     for (const m of text.matchAll(/@([a-z-]+)/g)) if (m[1] !== 'media') fail('@' + m[1], '', `@${m[1]} is not allowed in a pack stylesheet (only @media; a pack cannot define keyframes or import anything)`)
@@ -965,10 +978,8 @@ function lintOnce(css: string, name: string, reg: Registry, skipStructure: boole
             }
             if (/focus/.test(a.pseudo || '')) {
                 const f = focusLoss(d.prop, d.value, T)
-                if (f) {
-                    fail(sel, d.prop, f + ' (DD-243)')
-                    continue
-                }
+                // a note, not a refusal: the declaration still goes through the bans and the reach allowlist below
+                if (f) note(sel, d.prop, f + ' (DD-243)', 'readability')
             }
             // DD-242: a selector that names no part (a data-kind, data-state or data-fail attribute) can match a protected surface itself, so it may not paint a background or size, place or tile the one the app gives it
             if (a.tier === 'reach' && !(a.sp || []).length && /^(background|background-color|background-image|background-(size|position(-x|-y)?|repeat))$/.test(d.prop)) {
@@ -982,8 +993,8 @@ function lintOnce(css: string, name: string, reg: Registry, skipStructure: boole
             }
             // DD-265: the width of a protected sheet's root is the page's (360 px phone); a pack may only leave it auto, none or 100%
             if ((a.sp || []).some((p) => reg.fixedWidth.has(p)) && /^(width|min-width|max-width|inline-size|min-inline-size|max-inline-size)$/.test(d.prop) && !/^(auto|none|100%|initial|unset|inherit)(\s*!important)?$/.test(d.value.trim())) {
-                fail(sel, d.prop, FIXED_WIDTH_WHY)
-                continue
+                // a note, not a refusal: the reach allowlist below still judges min-width and inline-size
+                note(sel, d.prop, FIXED_WIDTH_WHY, 'layout')
             }
             const g = globalBan(d.prop, d.value, T)
             if (g) {
@@ -992,13 +1003,17 @@ function lintOnce(css: string, name: string, reg: Registry, skipStructure: boole
             }
             if (a.tier === 'reach') {
                 const w = reachAllowed(d.prop, d.value, T, a.control, blockOf.get(d.ctx.selector.trim()))
-                if (w) fail(sel, d.prop, `${d.prop}: ${w} (this subject can contain, be or sit inside a protected element)`)
+                if (w) {
+                    const why = `${d.prop}: ${w.why} (this subject can contain, be or sit inside a protected element)`
+                    if (w.rule) note(sel, d.prop, why, w.rule)
+                    else fail(sel, d.prop, why)
+                }
             }
         }
     }
-    for (const e of tokenCheck(text, reg.app)) fail(e.selector, e.prop, e.why)
-    for (const e of VALUES.extraPass(css, reg)) errors.push(e)
-    for (const e of geometryPass(text, reg)) errors.push(e)   // DD-256, DD-260: ancestor padding summed along a chain, the worst-case height of each protected sheet
-    for (const e of failClosedPass(text, { ...reg, isBounded: VALUES.isBounded })) errors.push(e)   // DD-242: role tokens only, colours that resolve, opaque protected surfaces, worst-case contrast
-    return { ok: errors.length === 0, errors, name }
+    splitFindings(tokenCheck(text, reg.app), errors, notes)
+    splitFindings(VALUES.extraPass(css, reg), errors, notes)
+    splitFindings(geometryPass(text, reg), errors, notes)   // DD-256, DD-260: ancestor padding summed along a chain, the worst-case height of each protected sheet
+    splitFindings(failClosedPass(text, { ...reg, isBounded: VALUES.isBounded }), errors, notes)   // DD-242: role tokens only, colours that resolve, opaque protected surfaces, worst-case contrast
+    return notes.length ? { ok: errors.length === 0, errors, notes, name } : { ok: errors.length === 0, errors, name }
 }

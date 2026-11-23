@@ -3800,6 +3800,7 @@ export const languageKorean = {
     "themePackSkippedAreas": (files: string) => `이 팩에는 ${files}도 들어 있어요. 이 버전은 새 채팅 화면, Studio, 새 설정 화면만 꾸밀 수 있어서, 해당 부분은 팩과 함께 보관만 해요.`,
     "themePackColoursHeld": (files: string) => `이 버전은 ${files}의 모양만 사용해요. 색상은 이후 버전을 위해 팩과 함께 보관돼요.`,
     "themePackInstalledWithWarnings": (sheet: string) => `경고와 함께 설치했어요 (${sheet}):`,
+    "themePackInstalledWithNotes": (sheet: string) => `참고 사항 (${sheet}):`,
     "themePackRefusedHeader": "이 파일은 설치되지 않았어요:",
     "themePackBusy": "다른 작업이 진행 중이에요 (저장, 복원 또는 다른 테마 팩 설치). 끝난 뒤에 다시 시도해 주세요.",
     "themePackInstallFailedFiles": "저장한 뒤 테마 팩을 다시 읽었을 때 내용이 맞지 않아 설치하지 않았어요. 다시 시도해 주세요.",

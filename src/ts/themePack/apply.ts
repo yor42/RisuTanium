@@ -186,11 +186,12 @@ async function judgeVariants(modes: readonly string[], chat: AreaSheetJudgement 
 /**
  * The base the pack sits on. A light-only pack gets the light base only when the light base placed before the pack's
  * canonical sheet passes the same judgement: the tokens the judge never reads then take light values only for a pack whose
- * judged colours are compatible with them. Any other label, a refusal or an unanswered judgement keeps the dark base. The
- * prefix goes first so the pack's own values are the later ones, as in the applied cascade.
+ * judged colours are compatible with them. Any other label, a refusal, a contrast note or an unanswered judgement keeps the
+ * dark base: contrast findings are notes, so the proof reads them besides `ok`. The prefix goes first so the pack's own values
+ * are the later ones, as in the applied cascade.
  */
 function baseOf(light: AreaSheetJudgement | null): SchemeTone {
-    return light?.result?.ok === true ? 'light' : 'dark'
+    return light?.result?.ok === true && !(light.result.notes ?? []).some((note) => note.rule === 'contrast') ? 'light' : 'dark'
 }
 
 /** True when the judgement that will be painted carries a warning that triggers the own colours. */
