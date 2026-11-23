@@ -5252,6 +5252,21 @@ export const languageJapanese = {
     connectionsRenameNoticeBody: "キーをここに移したとき、サービス名またはアドレスで名前を付けました。タップすると名前を変更できます。",
     connectionsRenameNoticeDismiss: "了解",
     connectionsUseForCurrent: "現在の設定で使う",
+    connectionsTest: "テスト",
+    connectionsTesting: "テスト中…",
+    connectionsTestNone: "未テスト",
+    connectionsTestOk: "正常 · モデル {n} 件を検出 · {ms} ms",
+    connectionsTestOkPlain: "正常 · {ms} ms",
+    connectionsTestBadKey: "キーが拒否されました",
+    connectionsTestRate: "レート制限に達しました",
+    connectionsTestUnreachable: "接続できません",
+    connectionsTestUnsupported: "このサービスはここではテストできません",
+    connectionsModels: "カスタムモデル",
+    connectionsModelsNone: "カスタムモデルはまだありません",
+    connectionsModelAdd: "モデルを追加",
+    connectionsModelName: "モデル名",
+    connectionsModelId: "モデル ID",
+    connectionsModelRemove: "{name} を削除",
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;
