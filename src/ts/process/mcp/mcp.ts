@@ -19,6 +19,7 @@ import { registeredCustomPluginMCPs } from "./pluginmcp";
 import type { RunSubject } from "../chatOrigin";
 import { reportToolStep, type ToolLoopState, type ToolStepOutcome } from "../request/toolLoop";
 import { authorizeToolCall } from "./toolAuthorize";
+import { raceAbort } from "../abortRace";
 
 export type MCPToolWithURL = MCPTool & {
     mcpURL: string;
@@ -417,19 +418,25 @@ type SubjectAwareClient = {
 
 async function callOnClient(url:string, client:MCPClientInstance, methodName:string, args:any, callCtx:{ subject?: RunSubject, toolLoop?: ToolLoopState }) {
     const entry = registry.get(url);
-    if(entry) {
-        entry.inFlight++;
-        entry.lastUsed = Date.now();
-    }
-    try {
-        const target:SubjectAwareClient = client;
-        return await target.callTool(methodName, args, callCtx);
-    } finally {
+    // The count is taken inside the race's work and released by the very promise the race handles: a call that is
+    // never started takes no count, a rejecting call leaves no unhandled rejection, and an abandoned call keeps
+    // its count until the real call settles, so a sweep never closes a client it still uses.
+    const release = () => {
         if(entry) {
             entry.inFlight--;
             entry.lastUsed = Date.now();
         }
-    }
+    };
+    const raced = await raceAbort(callCtx.toolLoop?.signal, () => {
+        if(entry) {
+            entry.inFlight++;
+            entry.lastUsed = Date.now();
+        }
+        const target:SubjectAwareClient = client;
+        return (async () => target.callTool(methodName, args, callCtx))().finally(release);
+    }, { label: 'An MCP tool call' });
+    // A stopped call returns nothing; the caller reports it as stopped.
+    return raced.settled ? raced.value : [];
 }
 
 /**
