@@ -50,13 +50,15 @@ import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/t
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { createSaveAck, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import type { ChatSource } from 'src/ts/studio/ownerModel'
-import { makeCharacter, makeChat, makeInput, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
+import { openStudioModuleId, resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
+import { makeCharacter, makeChat, makeInput, residentModule, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
 import { openStudio, resetStudioScreenForTests, setStudioHistoryOpen, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
+import { ReloadGUIPointer } from 'src/ts/stores.svelte'
 import { resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
 import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
-import { characterOwnerKey, chatOwnerKey } from '../../ts/studio/history/ownerPhase'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey } from '../../ts/studio/history/ownerPhase'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
@@ -199,6 +201,7 @@ beforeEach(() => {
 afterEach(async () => {
     await unmountAll()
     resetStudioHistoryAccessorForTests()
+    resetOpenModuleIdForTests()
     resetCharacterSaveMarksForTest()
     resetStudioScreenForTests()
     resetBackHandlersForTests()
@@ -731,5 +734,72 @@ describe('focus when the History panel closes', () => {
         await press('studio-history-close')
         expect(document.activeElement).toBe(toggle())
         expect(document.activeElement).not.toBe(first)
+    })
+})
+
+describe('T5-FOCUS: an Undo of a module field focuses its control', () => {
+    const M1 = moduleOwnerKey('M1')
+    type Obj = Record<string, unknown>
+
+    function moduleRig(): Rig {
+        const clock = createFakeClock()
+        const service = createOwnerHistoryService({
+            store: createMemoryStudioStore({}),
+            claim: createClaimDouble(),
+            clock,
+            pageSession: `p${++rigCount}`,
+            registerLeaveFlush: () => () => {},
+            openModuleId: openStudioModuleId,
+            onModuleSlotReplaced: () => ReloadGUIPointer.update((value) => value + 1),
+        })
+        setStudioHistoryServiceForTests(service)
+        setStudioVisitAckForTests(makeAck(clock))
+        return { service }
+    }
+
+    // The module is put in the database before the screen opens on its `kind`, with the History panel open.
+    async function moduleScreen(module: Obj, kind: 'advanced' | 'html'): Promise<Rig> {
+        db.db = { ...fixtureDb(), modules: [module] } as unknown as ReturnType<typeof fixtureDb>
+        const rig = moduleRig()
+        openStudio({ owner: { type: 'module', id: 'M1' }, kind, from: 'chat' }, null)
+        mountInto(StudioScreen)
+        await settle()
+        await rig.service.whenReady(M1)
+        click('studio-history-toggle')
+        await settle()
+        return rig
+    }
+
+    const control = (form: string, name: string) => document.querySelector<HTMLElement>(`[data-part="${form}"] [data-part="${name}"]`)
+    const base = (): Obj => residentModule('M1', { name: 'Mod One', description: 'd' }) as unknown as Obj
+
+    test.each([
+        ['moduleName', 'studio-module-name', () => ({ ...base() }), (rig: Rig) => rig.service.editText(M1, 'moduleName', 'Renamed', 'single')],
+        ['moduleDescription', 'studio-module-description', () => ({ ...base() }), (rig: Rig) => rig.service.editText(M1, 'moduleDescription', 'd2', 'single')],
+        ['moduleNamespace', 'studio-module-namespace', () => ({ ...base() }), (rig: Rig) => rig.service.editText(M1, 'moduleNamespace', 'ns', 'single')],
+        ['moduleHideIcon', 'studio-module-hide-icon', () => ({ ...base(), hideIcon: false }), (rig: Rig) => rig.service.editField(M1, 'moduleHideIcon', true)],
+        ['moduleLowLevelAccess', 'studio-module-low-level', () => ({ ...base(), lowLevelAccess: false }), (rig: Rig) => rig.service.editField(M1, 'moduleLowLevelAccess', true, 'lowLevelOn')],
+        // An undo that writes a foreign object back.
+        ['moduleHideIcon (foreign object)', 'studio-module-hide-icon', () => ({ ...base(), hideIcon: { x: 1 } }), (rig: Rig) => rig.service.editField(M1, 'moduleHideIcon', false)],
+    ])('%s', async (_path, partName, build, edit) => {
+        const rig = await moduleScreen(build(), 'advanced')
+        expect(edit(rig).ok).toBe(true)
+        rig.service.closeOpenStep(M1)
+        flushSync()
+        await press('studio-history-undo')
+        const element = control('studio-module-advanced-form', partName)
+        expect(element).not.toBeNull()
+        expect(document.activeElement).toBe(element)
+    })
+
+    test('backgroundEmbedding focuses the field of the 배경 HTML form', async () => {
+        const rig = await moduleScreen({ ...base(), backgroundEmbedding: '<p>a</p>' }, 'html')
+        expect(rig.service.editText(M1, 'backgroundEmbedding', '<p>b</p>', 'single').ok).toBe(true)
+        rig.service.closeOpenStep(M1)
+        flushSync()
+        await press('studio-history-undo')
+        const element = control('studio-module-html-form', 'studio-module-background')
+        expect(element).not.toBeNull()
+        expect(document.activeElement).toBe(element)
     })
 })

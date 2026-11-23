@@ -48,11 +48,12 @@ import { resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { languageEnglish } from 'src/lang/en'
-import { makeCharacter, makeInput, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
+import { makeCharacter, makeInput, residentModule, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
+import { publishOpenModuleId, resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
 import { resetStudioScreenForTests, setStudioHistoryOpen, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { createOwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
-import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
+import { characterOwnerKey, moduleOwnerKey } from '../../ts/studio/history/ownerPhase'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, seedOwner } from '../../ts/studio/history/tests/studioStoreDoubles'
@@ -88,6 +89,7 @@ afterEach(async () => {
         entry.host.remove()
     }
     resetStudioHistoryAccessorForTests()
+    resetOpenModuleIdForTests()
     resetCharacterSaveMarksForTest()
     resetStudioScreenForTests()
     vi.unstubAllGlobals()
@@ -132,5 +134,39 @@ describe('step labels of the greeting list steps', () => {
         const texts =Array.from(document.querySelectorAll<HTMLElement>('[data-part="studio-history-step"]')).map((row) => row.querySelector('span')?.textContent?.trim())
         expect(texts).toEqual([languageEnglish.studioStepGreetingAddMany(3), languageEnglish.studioStepGreetingSwap, languageEnglish.studioStepGreetingMove])
         expect(texts).toEqual(['3 first messages added', 'Alternative first message swapped with the default first message', 'First message moved'])
+    })
+})
+
+describe('T5-LABEL: step labels of the module fields', () => {
+    test('each module path names its step with its own field label', async () => {
+        db.db = { ...fixtureDb(), modules: [residentModule('M1', { name: 'Mod One' })] } as unknown as ReturnType<typeof fixtureDb>
+        const M1 = moduleOwnerKey('M1')
+        const fields = ['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding'] as const
+        const shared = new Map<string, string>()
+        seedOwner(shared, { ...emptyRecord(M1, 1), done: fields.map((field, index) => stepOf(`m${index}`, { kind: 'field', field })) }, 'w:module-labels')
+        const service = createOwnerHistoryService({
+            store: createMemoryStudioStore({ shared }),
+            claim: createClaimDouble(),
+            clock: createFakeClock(),
+            pageSession: 'p1',
+            registerLeaveFlush: () => () => {},
+            openModuleId: () => 'M1',
+        })
+        setStudioHistoryServiceForTests(service)
+        publishOpenModuleId('M1')
+        studioScreen.chaId = 'A'
+        studioScreen.visitId = 'v1'
+        studioScreen.open = true
+        setStudioSelection(M1, null, null)
+        setStudioHistoryOpen(true)
+        const host = document.createElement('div')
+        document.body.appendChild(host)
+        mounted.push({ app: mount(StudioHistoryPanel, { target: host, props: {} }), host })
+        flushSync()
+        await service.whenReady(M1)
+        await drainMicrotasks()
+        flushSync()
+        const texts = Array.from(document.querySelectorAll<HTMLElement>('[data-part="studio-history-step"]')).map((row) => row.querySelector('span')?.textContent?.trim())
+        expect(texts).toEqual([languageEnglish.backgroundHTML, languageEnglish.lowLevelAccess, languageEnglish.hideChatIcon, languageEnglish.namespace, languageEnglish.description, languageEnglish.name])
     })
 })
