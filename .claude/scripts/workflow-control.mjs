@@ -264,6 +264,9 @@ function validateDevicePool(dp) {
   if (![dp.leaseTtlSeconds, dp.heartbeatSeconds, dp.queueTtlSeconds, dp.pollSeconds, dp.retainEndedHours].every(num) || dp.heartbeatSeconds >= dp.leaseTtlSeconds || dp.pollSeconds >= dp.queueTtlSeconds || !Number.isInteger(dp.maxWaiting) || dp.maxWaiting < 1) bad();
   const standing = dp.standingPackages;
   if (!Array.isArray(standing) || new Set(standing).size !== standing.length || standing.some(x => typeof x !== 'string' || !PACKAGE_RE.test(x) || HELPER_RE.test(x))) bad();
+  // keepHelpers: helper-pattern packages a holder must neither remove nor mark stranded (each carries a note saying when to drop it).
+  const keep = dp.keepHelpers ?? [];
+  if (!Array.isArray(keep) || new Set(keep.map(k => k?.package)).size !== keep.length || keep.some(k => !k || typeof k.package !== 'string' || !HELPER_RE.test(k.package) || typeof k.note !== 'string' || !k.note.trim())) bad();
 }
 function devicePool(p) { if (!p.devicePool) throw Error('No device pool in policy'); return p.devicePool; }
 // The pool member a normalized resource belongs to: the member itself, a port inside a device member's
@@ -325,7 +328,7 @@ function grantView(s, p, id, now) {
   const req = leaseRequests(s)[id]; const dp = p.devicePool;
   const out ={ request: id, pool: req.pool, status: 'granted', member: req.member };
   if (isDeviceMember(req.member)) { out.serial = req.member.slice('device:'.length); out.ports = { min: req.ports[0], max: req.ports[1] }; }
-  Object.assign(out, { expiresAt: new Date(Date.parse(req.heartbeatAt) + dp.leaseTtlSeconds * 1000).toISOString(), ttlSeconds: dp.leaseTtlSeconds, heartbeatSeconds: dp.heartbeatSeconds, resetRequired: req.resetRequired === true, strandedPackages: [...(s.deviceLeases.members[req.member]?.stranded ?? [])], standingPackages: [...dp.standingPackages], helperPattern: HELPER_RE.source });
+  Object.assign(out, { expiresAt: new Date(Date.parse(req.heartbeatAt) + dp.leaseTtlSeconds * 1000).toISOString(), ttlSeconds: dp.leaseTtlSeconds, heartbeatSeconds: dp.heartbeatSeconds, resetRequired: req.resetRequired === true, strandedPackages: [...(s.deviceLeases.members[req.member]?.stranded ?? [])], standingPackages: [...dp.standingPackages], keepHelpers: (dp.keepHelpers ?? []).map(k => k.package), helperPattern: HELPER_RE.source });
   return out;
 }
 const tokenMatches = (req, token) => typeof token === 'string' && req.tokenHash === digest(token);

@@ -64,7 +64,34 @@
     "pollSeconds": 60,
     "maxWaiting": 16,
     "retainEndedHours": 72,
-    "standingPackages": ["io.github.yor42.risutanium", "io.github.yor42.tbdriver"]
+    "keepHelpers": [
+      { "package": "dev.risu.dv603", "note": "Test app the #603 rerun still needs; keep it installed and unmarked, and drop this entry once #603 is accepted." }
+    ],
+    "standingPackages": [
+      "io.github.yor42.risutanium",
+      "io.github.yor42.tbdriver",
+      "com.sec.android.app.voicenote",
+      "com.google.android.verifier",
+      "com.samsung.accessory.zenithmgr",
+      "com.microsoft.skydrive",
+      "com.samsung.android.app.watchmanager",
+      "com.google.android.apps.docs",
+      "com.microsoft.office.word",
+      "com.microsoft.office.powerpoint",
+      "com.google.android.contactkeys",
+      "com.google.android.videos",
+      "com.google.android.apps.photos",
+      "com.sec.android.app.sbrowser",
+      "com.samsung.android.oneconnect",
+      "com.sec.android.app.popupcalculator",
+      "com.samsung.android.voc",
+      "com.sec.android.app.shealth",
+      "com.sec.penup",
+      "com.samsung.android.spay",
+      "com.google.android.safetycore",
+      "com.samsung.android.waterplugin",
+      "com.google.android.inputmethod.latin"
+    ]
   },
   "openrouter": { "enabled": false, "model": "deepseek/deepseek-v4.1-flash", "perJobUSD": 0.5, "perDayUSD": 5, "perMonthUSD": 30, "timezone": "Asia/Seoul", "activationFile": ".claude/scratch/openrouter-activation.json", "ledgerFile": ".claude/scratch/budget/openrouter.json" },
   "cheapAgentEnabled": false
