@@ -71,7 +71,7 @@ import { fillLang } from "./../lang/fill";
 import { isAndroidTransport } from "./storage/tauriByteTransport";
 import { markCharacterForSave } from "./storage/characterSaveMarks";
 import { configurePageState, requestReconcile, setReconcileTrigger } from "./nativeReply/pageState";
-import { createReconciler, recoveredText, type ReconcileNotes } from "./nativeReply/reconcile";
+import { boundedRecoveredReplacers, createReconciler, recoveredText, type ReconcileNotes } from "./nativeReply/reconcile";
 import { reconcileGateOpen } from "./nativeReply/gate";
 import { setParkedReplyAsker, showParkedReplies } from "./nativeReply/parkedDialog";
 import { createReplyStore } from "./nativeReply/store";
@@ -885,13 +885,7 @@ function startNativeReply(): void {
             ])
             return await recoveredText(listing.status, bodyText, blob, {
                 escape: risuEscape,
-                replacers: async (text) => {
-                    let replaced = text
-                    for (const replacer of pluginV2.replacerafterRequest) {
-                        replaced = await replacer(replaced, 'model')
-                    }
-                    return replaced
-                },
+                replacers: boundedRecoveredReplacers(pluginV2.replacerafterRequest),
                 subject: createRunSubject({ chaId: blob.target.chaId, chatId: blob.target.chatId }),
             })
         },
