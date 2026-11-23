@@ -2800,6 +2800,7 @@ export const languageEnglish = {
     studioPresetNotInChat: "This preset isn't the active one, so chats don't use these settings until you switch to it.",
     studioPresetNotSet: "Not set in this preset. Switching to it keeps the current value.",
     studioPresetSectionNameIcon: "Name and icon",
+    studioPresetIconRemove: "Remove icon",
     studioPresetSectionPromptOptions: "Prompt options",
     studioPresetSectionOther: "Other",
     studioPresetUsesTemplate: "This preset uses a prompt template, so the main prompt, jailbreak, global note and formatting order aren't used.",

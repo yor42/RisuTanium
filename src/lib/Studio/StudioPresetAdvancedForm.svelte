@@ -11,6 +11,7 @@
     import { presetParamContext, presetResolvedThinkingType, presetSegments, visiblePresetParams } from '../../ts/studio/edit/presetParams'
     import { presetEffectiveModel, presetHasTemplate, presetNameOf, presetOwnerKey, presetStateOf, readPresetField } from '../../ts/studio/edit/presetTarget'
     import { exceedsActualMax, formatTokenCount } from '../../ts/model/modelData/openrouterData'
+    import { pickPresetIcon } from '../../ts/presetIcon'
     import { refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { FIELD_PRESENTATION, type SetPath } from '../../ts/studio/history/fieldRegistry'
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
@@ -49,7 +50,7 @@
     const SECTION_ORDER: readonly SectionId[] = ['nameIcon', 'model', 'parameters', 'prompt', 'promptOptions', 'fallback', 'other']
     const AUX_PATHS = ['presetAuxMemory', 'presetAuxTranslate', 'presetAuxEmotion', 'presetAuxOtherAx'] as const satisfies readonly PresetPath[]
     const SECTION_PATHS: Readonly<Record<SectionId, readonly PresetPath[]>> = {
-        nameIcon: ['presetName'],
+        nameIcon: ['presetName', 'presetImage'],
         model: ['presetAiModel', 'presetSubModel', ...AUX_PATHS, 'presetModelTools'],
         parameters: [
             'presetMaxContext',
@@ -342,6 +343,19 @@
         if (noted(result)) service.closeOpenStep(owner)
     }
 
+    // The icon: one picked image is one step; a cancelled pick writes nothing and records no step. Removing it writes
+    // "not set" as one step of its own.
+    async function onIconPick(): Promise<void> {
+        if (!service || !editable) return
+        const data = await pickPresetIcon()
+        if (data === null || !service || !editable || !presetValueAllowed('presetImage', data)) return
+        if (noted(service.editText(owner, 'presetImage', data, 'single'))) service.closeOpenStep(owner)
+    }
+    function onIconRemove(): void {
+        if (!service || !editable) return
+        if (noted(service.clearField(owner, 'presetImage'))) service.closeOpenStep(owner)
+    }
+
     // The single-line fields write through a composition gate: nothing is written while an IME composes, the composed
     // value is written once, and a refused write puts the live value back into the input.
     const inputs: Partial<Record<PresetPath, HTMLInputElement>> = {}
@@ -465,6 +479,26 @@
             onblur={() => onLineBlur(path)}
         />
         {@render notSet(path)}
+    </div>
+{/snippet}
+
+{#snippet iconField(path: PresetPath)}
+    {@const icon = textOf(path)}
+    <div data-path={path} class="flex flex-col gap-1">
+        <span class="font-bold">{labelOf(path)}</span>
+        <div data-part={partOf(path)} tabindex="-1" class="flex items-center gap-2 outline-none">
+            <div data-part="studio-preset-icon-tile" class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md border border-darkborderc text-xs text-textcolor2">
+                {#if icon !== ''}
+                    <img src={icon} alt={language.settingsPage.iconAlt} class="h-8 w-8 object-cover" decoding="async" />
+                {:else}
+                    <span class="sr-only">{language.noImages}</span>
+                {/if}
+            </div>
+            <button type="button" data-part="studio-preset-icon-choose" class={BUTTON_CLASS} disabled={!editable} onclick={onIconPick}>{language.chooseIconImage}</button>
+        </div>
+        {#if icon !== ''}
+            <button type="button" data-part="studio-preset-icon-remove" class={BUTTON_CLASS} disabled={!editable} onclick={onIconRemove}>{language.studioPresetIconRemove}</button>
+        {/if}
     </div>
 {/snippet}
 
@@ -677,6 +711,7 @@
                     <div id="{idBase}-section-{section}" class="flex flex-col gap-3">
                         {#if section === 'nameIcon'}
                             {@render lineField('presetName')}
+                            {@render iconField('presetImage')}
                         {:else if section === 'model'}
                             {@render modelField('presetAiModel', false)}
                             {@render modelField('presetSubModel', false)}

@@ -80,6 +80,10 @@ export const PRESET_S4C_PATHS = [
     'presetFallbackOtherAx',
 ] as const
 
+// The icon path (stage S4d), appended after the S4c paths: the last literal the restore-order pins end with (before the
+// greeting list).
+export const PRESET_S4D_PATHS = ['presetImage'] as const
+
 // The number ones of the S4b paths; every other S4b path carries text.
 export const PRESET_S4B_NUMBER_PATHS = [
     'presetMaxContext',

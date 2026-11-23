@@ -2664,6 +2664,7 @@ export const languageKorean = {
     "studioPresetNotInChat": "이 프리셋은 현재 사용 중이 아니므로, 이 프리셋으로 전환하기 전까지 채팅에는 이 설정이 적용되지 않아요.",
     "studioPresetNotSet": "이 프리셋에는 설정되어 있지 않아요. 이 프리셋으로 전환해도 현재 값이 유지돼요.",
     "studioPresetSectionNameIcon": "이름과 아이콘",
+    "studioPresetIconRemove": "아이콘 제거",
     "studioPresetSectionPromptOptions": "프롬프트 옵션",
     "studioPresetSectionOther": "기타",
     "studioPresetUsesTemplate": "이 프리셋은 프롬프트 템플릿을 사용하므로 메인 프롬프트, 탈옥, 글로벌 노트, 포맷 순서는 사용되지 않아요.",

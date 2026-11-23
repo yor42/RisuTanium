@@ -53,7 +53,7 @@ describe('S4a-T1: the table, the registry and the kind rows', () => {
     test('the table holds exactly the preset kind row, and the model row is that list', () => {
         expect(Object.keys(PRESET_FIELDS)).toEqual([...SESSION_OWNER_KINDS.preset.setPaths])
         expect(SET_PATHS_BY_KIND.preset).toEqual([...SESSION_OWNER_KINDS.preset.setPaths])
-        expect(presetPaths).toHaveLength(67)
+        expect(presetPaths).toHaveLength(68)
     })
 
     test('each new path is in the preset row and in no builtin kind row, with no holder and no property', () => {

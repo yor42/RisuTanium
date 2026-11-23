@@ -2666,6 +2666,7 @@ export const languageSpanish = {
     "studioPresetNotInChat": "Este preset no es el activo, así que los chats no usan estos ajustes hasta que cambies a él.",
     "studioPresetNotSet": "No está definido en este preset. Al cambiar a él se conserva el valor actual.",
     "studioPresetSectionNameIcon": "Nombre e icono",
+    "studioPresetIconRemove": "Quitar icono",
     "studioPresetSectionPromptOptions": "Opciones de prompt",
     "studioPresetSectionOther": "Otros",
     "studioPresetUsesTemplate": "Este preset usa una plantilla de prompt, así que el prompt principal, el jailbreak, la nota global y el orden de formato no se usan.",

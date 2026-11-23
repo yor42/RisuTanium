@@ -171,6 +171,8 @@ export const FIELD_SPECS = {
     presetFallbackTranslate: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
     presetFallbackEmotion: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
     presetFallbackOtherAx: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    // The preset icon (S4d): a data URL text on the slot only, session-only like the rows above.
+    presetImage: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -281,6 +283,7 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     presetFallbackTranslate: { labelKey: 'studioPresetFallbackListTranslate', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackTranslate' } },
     presetFallbackEmotion: { labelKey: 'studioPresetFallbackListEmotion', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackEmotion' } },
     presetFallbackOtherAx: { labelKey: 'studioPresetFallbackListOtherAx', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackOtherAx' } },
+    presetImage: { labelKey: 'icon', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetImage' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed
