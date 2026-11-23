@@ -5,8 +5,8 @@ import { alertClear, alertMd, alertWait, type alertData } from "../alert"
 import { alertStore } from "../stores.svelte"
 import { alertIdle, promptWaiting } from "../alertPrompts"
 import { taskShown } from "../alertTask.svelte"
-import { doingChat, sendChat, type PreviewResult, type SendChatArg } from "./index.svelte"
-import { isComposerWindowOpen } from "./generationOwnership.svelte"
+import { sendChat, type PreviewResult, type SendChatArg } from "./index.svelte"
+import { selectedChatKey, starterRefusalIn } from "./sendAdmission"
 import { watchSelectedChat } from "./previewSelectionWatch.svelte"
 
 /**
@@ -22,8 +22,10 @@ function dropPendingResult(): void {
 }
 
 /**
- * Whether a prompt preview may start. It may not while a generation or the
- * composer's Send holds the chat, nor while a prompt is waiting for its answer
+
+ * Whether a prompt preview may start. It may not while a generation, a native
+ * reply or the composer's Send holds the selected chat (another chat's work does
+ * not matter), nor while a prompt is waiting for its answer
  * (shown, or covered by a toast or notice), nor while an alert is up: the
  * preview's wait notice would replace that alert, and the waiter of a notice
  * would then read the `none` that ends the preview as its own close. A toast
@@ -32,7 +34,7 @@ function dropPendingResult(): void {
  * would generate beside the task.
  */
 export function previewMayStart(): boolean {
-    if (get(doingChat) || isComposerWindowOpen() || promptWaiting() || taskShown()) {
+    if (starterRefusalIn(selectedChatKey()) !== null || promptWaiting() || taskShown()) {
         return false
     }
     const type = get(alertStore).type

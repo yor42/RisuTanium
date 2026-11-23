@@ -12,7 +12,7 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { get, writable } from 'svelte/store'
 import type { Database, Chat, Message } from '../storage/database.svelte'
 import '../polyfill'
-import { heldReply, resetPageStateForTests, configurePageState } from '../nativeReply/pageState'
+import { heldReply, resetPageStateForTests, configurePageState, setReconcileTrigger } from '../nativeReply/pageState'
 import type { ReplyBlob } from '../nativeReply/blob'
 
 const requestChatDataMock = vi.hoisted(() => vi.fn())
@@ -24,6 +24,7 @@ const requestSaveNowMock = vi.hoisted(() => vi.fn())
 const saveMarkCount = vi.hoisted(() => ({ value: 7 }))
 const onScreen = vi.hoisted(() => ({ value: true }))
 const chatOutputListeners = vi.hoisted(() => new Set<(arg: { messageIndex: number }) => unknown>())
+const registerWorkFault = vi.hoisted(() => ({ armed: false }))
 
 vi.mock('localforage', () => ({ default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}), removeItem: vi.fn(async () => {}) }) } }))
 vi.mock('@tauri-apps/plugin-fs', () => ({ writeFile: vi.fn(), exists: vi.fn(async () => false), mkdir: vi.fn(), readFile: vi.fn(), BaseDirectory: { AppData: 0 } }))
@@ -104,16 +105,32 @@ vi.mock(import('./coldstorage.svelte'), () => ({ setColdStorageItem: vi.fn(), re
 vi.mock('./coldMemberRestore', () => ({ restoreColdCharacterByChaId: vi.fn(async () => false) }))
 vi.mock(import('./chatOnScreen.svelte'), () => ({ isChatOnScreen: vi.fn(() => onScreen.value) }) as unknown as typeof import('./chatOnScreen.svelte'))
 vi.mock(import('../storage/characterSaveMarks'), () => ({ markCharacterForSave: vi.fn() }) as unknown as typeof import('../storage/characterSaveMarks'))
+// The real registry, except that an armed fault makes the next registration throw once.
+vi.mock('./chatOrigin', async (importOriginal) => {
+    const original = await importOriginal<typeof import('./chatOrigin')>()
+    return {
+        ...original,
+        registerWork: (...args: Parameters<typeof original.registerWork>) => {
+            if(registerWorkFault.armed){
+                registerWorkFault.armed = false
+                throw new Error('register')
+            }
+            return original.registerWork(...args)
+        },
+    }
+})
 
 import { applyRecoveredReply, doingChat, sendChat } from './index.svelte'
 import { activeUnits } from './activeUnits'
-import { isWriting } from './chatOrigin'
+import { hasAnyWork, isWriting } from './chatOrigin'
 import { abortChat } from './composerActions.svelte'
 import { DBState } from '../stores.svelte'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
 import { simulateRunningSend, clearRunningSends } from './tests/activeUnits.test-helpers'
 
 const KEY = '0b9c1a7e-0000-4000-8000-000000000001'
+const TARGET = { chaId: 'cha', chatId: 'chat' }
+const ELSEWHERE = { chaId: 'other-cha', chatId: 'other-chat' }
 const blob: ReplyBlob = {
     target: { chaId: 'cha', chatId: 'chat' }, targetName: 'Alice', saying: 'cha',
     generationInfo: { generationId: KEY, model: 'm' }, promptInfo: { promptName: 'Main' }, escape: false, requestedMs: 1,
@@ -152,6 +169,7 @@ beforeEach(() => {
     onScreen.value = true
     saveMarkCount.value = 7
     clearRunningSends()
+    registerWorkFault.armed = false
     processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text, emoChanged: false }))
     runTriggerMock.mockResolvedValue(null)
     runInlayScreenMock.mockImplementation((_char: unknown, text: string) => ({ text: `[emotion]${text}` }))
@@ -219,9 +237,9 @@ describe('applyRecoveredReply', () => {
         expect(requestSaveNowMock).not.toHaveBeenCalled()
     })
 
-    test('defers while a send runs, writes nothing, and gives the flag back after a run', async () => {
+    test('defers while a send runs in its chat, writes nothing, and gives the flag back after a run', async () => {
         installDb()
-        simulateRunningSend()
+        simulateRunningSend(TARGET)
         expect(await applyRecoveredReply(input())).toBe('deferred')
         expect(liveChat().message).toHaveLength(2)
         clearRunningSends()
@@ -255,9 +273,6 @@ describe('applyRecoveredReply', () => {
 })
 
 describe('the unit an apply holds', () => {
-    const TARGET = { chaId: 'cha', chatId: 'chat' }
-    const ELSEWHERE = { chaId: 'other-cha', chatId: 'other-chat' }
-
     interface ScriptGate {
         entered: Promise<void>
         open(): void
@@ -281,17 +296,92 @@ describe('the unit an apply holds', () => {
         return { entered, open: () => open(), fail: (error) => fail(error) }
     }
 
-    test('G2: today\'s global rule: a unit held in another chat defers an apply into this chat, and nothing is written', async () => {
+    test('A9: a unit held in another chat does not defer an apply into this chat: it writes, holds its own chat and releases it, and leaves the other unit held', async () => {
         installDb()
         simulateRunningSend(ELSEWHERE)
+
+        expect(await applyRecoveredReply(input())).toBe('applied')
+
+        expect(liveChat().message.map((m) => m.data)).toEqual(['Hello!', 'hi', 'the recovered reply'])
+        expect(heldReply(KEY)).toBeDefined()
+        expect(activeUnits.has(TARGET)).toBe(false)
+        expect(activeUnits.has(ELSEWHERE)).toBe(true)
+    })
+
+    test('A10 and A10b: a unit held in the target chat defers the apply: nothing is written, the holder keeps its chat, and no reconcile pass is asked for', async () => {
+        installDb()
+        const reconcile = vi.fn()
+        setReconcileTrigger(reconcile)
+        simulateRunningSend(TARGET)
 
         expect(await applyRecoveredReply(input())).toBe('deferred')
 
         expect(liveChat().message).toHaveLength(2)
         expect(heldReply(KEY)).toBeUndefined()
         expect(processScriptFullMock).not.toHaveBeenCalled()
+        // The refused apply never took the chat, so it releases nothing and wakes nothing.
+        expect(activeUnits.has(TARGET)).toBe(true)
+        expect(reconcile).not.toHaveBeenCalled()
+    })
+
+    test('A8c: the unit that ends a send it deferred wakes the reconcile once, and an apply that never took the chat does not', async () => {
+        installDb()
+        const reconcile = vi.fn()
+        setReconcileTrigger(reconcile)
+        const gate = holdOutputScript()
+        const run = applyRecoveredReply(input())
+        try {
+            await gate.entered
+            expect(await applyRecoveredReply(input())).toBe('deferred')
+            expect(reconcile).not.toHaveBeenCalled()
+        } finally {
+            gate.open()
+        }
+
+        expect(await run).toBe('applied')
+        expect(reconcile).toHaveBeenCalledTimes(1)
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    test('A8: a registration that throws releases the unit, writes nothing and fails the apply', async () => {
+        installDb()
+        registerWorkFault.armed = true
+
+        expect(await applyRecoveredReply(input())).toBe('failed')
+
+        expect(liveChat().message).toHaveLength(2)
         expect(activeUnits.has(TARGET)).toBe(false)
-        expect(activeUnits.has(ELSEWHERE)).toBe(true)
+        expect(activeUnits.any()).toBe(false)
+        expect(hasAnyWork()).toBe(false)
+        // A later apply into the chat is admitted.
+        expect(await applyRecoveredReply(input())).toBe('applied')
+    })
+
+    test('A8b: a throw in the finally after the write still ends the registration, releases the unit and wakes the deferred apply once', async () => {
+        installDb()
+        const reconcile = vi.fn()
+        setReconcileTrigger(reconcile)
+        const gate = holdOutputScript()
+        // Armed after the push, so the finally's mark is what throws.
+        runTriggerMock.mockImplementationOnce(async () => {
+            vi.mocked(markCharacterForSave).mockImplementationOnce(() => { throw new Error('mark') })
+            return null
+        })
+        const run = applyRecoveredReply(input())
+        const settled = run.then(() => 'resolved', (error: Error) => error.message)
+        try {
+            await gate.entered
+            expect(await applyRecoveredReply(input())).toBe('deferred')
+        } finally {
+            gate.open()
+        }
+
+        expect(await settled).toBe('mark')
+        expect(liveChat().message).toHaveLength(3)
+        expect(activeUnits.has(TARGET)).toBe(false)
+        expect(hasAnyWork()).toBe(false)
+        expect(isWriting(TARGET)).toBe(false)
+        expect(reconcile).toHaveBeenCalledTimes(1)
     })
 
     const finishes: Array<[string, (gate: ScriptGate) => void, string]> = [
@@ -301,10 +391,8 @@ describe('the unit an apply holds', () => {
         ['a message another write placed first', (gate) => { liveChat().message.push(msg('char', 'placed elsewhere', { chatId: KEY })); gate.open() }, 'applied'],
     ]
 
-    test.each(finishes)('G3: %s: the apply holds its own chat while it runs, refuses a send (today\'s global rule: into any chat), and releases once it returns', async (_name, finish, expected) => {
+    test.each(finishes)('G3: %s: the apply holds its own chat while it runs, refuses a send into that chat, and releases once it returns', async (_name, finish, expected) => {
         installDb()
-        // A live other chat, so a refusal is the gate's and not an unresolvable origin.
-        DBState.db.characters.push({ ...DBState.db.characters[0], chaId: 'other-cha', chats: [{ id: 'other-chat', note: '', name: '', localLore: [], fmIndex: -1, message: [], scriptstate: {} } as unknown as Chat] })
         const gate = holdOutputScript()
         const run = applyRecoveredReply(input())
         try {
@@ -312,8 +400,8 @@ describe('the unit an apply holds', () => {
             expect(get(doingChat)).toBe(true)
             expect(activeUnits.has(TARGET)).toBe(true)
             expect(await applyRecoveredReply(input())).toBe('deferred')
-            const sent = sendChat(-1, { origin: ELSEWHERE }).catch(() => 'threw')
-            expect(isWriting(ELSEWHERE)).toBe(false)
+            const sent = sendChat(-1, { origin: TARGET }).catch(() => 'threw')
+            expect(requestChatDataMock).not.toHaveBeenCalled()
             let timer: ReturnType<typeof setTimeout> | undefined
             const hung = new Promise<string>((resolve) => { timer = setTimeout(() => resolve('hung'), 2000) })
             expect(await Promise.race([sent, hung])).toBe(false)

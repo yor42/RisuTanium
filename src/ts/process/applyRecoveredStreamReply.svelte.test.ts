@@ -15,7 +15,7 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { get, writable } from 'svelte/store'
 import type { Database, Chat, Message } from '../storage/database.svelte'
 import '../polyfill'
-import { heldReply, resetPageStateForTests, configurePageState } from '../nativeReply/pageState'
+import { heldReply, resetPageStateForTests, configurePageState, setReconcileTrigger } from '../nativeReply/pageState'
 
 const requestChatDataMock = vi.hoisted(() => vi.fn())
 const runTriggerMock = vi.hoisted(() => vi.fn())
@@ -28,6 +28,7 @@ const onScreen = vi.hoisted(() => ({ value: true }))
 const replacerMock = vi.hoisted(() => vi.fn())
 const chatOutputListeners = vi.hoisted(() => new Set<(arg: { messageIndex: number }) => unknown>())
 const saveInlayedSignatureMock = vi.hoisted(() => vi.fn())
+const registerWorkFault = vi.hoisted(() => ({ armed: false }))
 
 vi.mock('localforage', () => ({ default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}), removeItem: vi.fn(async () => {}) }) } }))
 vi.mock('@tauri-apps/plugin-fs', () => ({ writeFile: vi.fn(), exists: vi.fn(async () => false), mkdir: vi.fn(), readFile: vi.fn(), BaseDirectory: { AppData: 0 } }))
@@ -108,11 +109,25 @@ vi.mock(import('./coldstorage.svelte'), () => ({ setColdStorageItem: vi.fn(), re
 vi.mock('./coldMemberRestore', () => ({ restoreColdCharacterByChaId: vi.fn(async () => false) }))
 vi.mock(import('./chatOnScreen.svelte'), () => ({ isChatOnScreen: vi.fn(() => onScreen.value) }) as unknown as typeof import('./chatOnScreen.svelte'))
 vi.mock(import('../storage/characterSaveMarks'), () => ({ markCharacterForSave: vi.fn() }) as unknown as typeof import('../storage/characterSaveMarks'))
+// The real registry, except that an armed fault makes the next registration throw once.
+vi.mock('./chatOrigin', async (importOriginal) => {
+    const original = await importOriginal<typeof import('./chatOrigin')>()
+    return {
+        ...original,
+        registerWork: (...args: Parameters<typeof original.registerWork>) => {
+            if(registerWorkFault.armed){
+                registerWorkFault.armed = false
+                throw new Error('register')
+            }
+            return original.registerWork(...args)
+        },
+    }
+})
 
 
 import { applyRecoveredStreamReply, doingChat, sendChat } from './index.svelte'
 import { activeUnits } from './activeUnits'
-import { isWriting } from './chatOrigin'
+import { hasAnyWork, isWriting } from './chatOrigin'
 import { abortChat } from './composerActions.svelte'
 import { DBState } from '../stores.svelte'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
@@ -126,6 +141,8 @@ import { LLMFormat } from '../model/types'
 import { simulateRunningSend, clearRunningSends } from './tests/activeUnits.test-helpers'
 
 const KEY = '0b9c1a7e-0000-4000-8000-000000000001'
+const TARGET = { chaId: 'cha', chatId: 'chat' }
+const ELSEWHERE = { chaId: 'other-cha', chatId: 'other-chat' }
 const base: ReplyBlobBase = {
     target: { chaId: 'cha', chatId: 'chat' }, targetName: 'Alice', saying: 'cha',
     generationInfo: { generationId: KEY, model: 'm' }, promptInfo: { promptName: 'Main' }, escape: false, requestedMs: 1,
@@ -213,6 +230,7 @@ beforeEach(() => {
     onScreen.value = true
     saveMarkCount.value = 7
     clearRunningSends()
+    registerWorkFault.armed = false
     vi.mocked(markCharacterForSave).mockImplementation(() => { saveMarkCount.value += 1 })
     processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text, emoChanged: false }))
     runTriggerMock.mockResolvedValue(null)
@@ -434,9 +452,9 @@ describe('a partial (a prefix of a body)', () => {
 })
 
 describe('the exclusion', () => {
-    test('a running send defers: nothing is written, held or counted, and the flag stays the sender\'s', async () => {
+    test('a running send in its chat defers: nothing is written, held or counted, and the flag stays the sender\'s', async () => {
         installDb()
-        simulateRunningSend()
+        simulateRunningSend(TARGET)
         expect(await applyRecoveredStreamReply(input({ complete: false, outcome: 'dead' }))).toBe('deferred')
         expect(liveChat().message[1]).toMatchObject({ data: 'Hel', interrupted: true })
         expect(heldReply(KEY)).toBeUndefined()
@@ -535,7 +553,7 @@ describe('the usage of an applied record', () => {
 
     test('a deferred or failed apply counts nothing', async () => {
         installDb()
-        simulateRunningSend()
+        simulateRunningSend(TARGET)
         await applyRecoveredStreamReply(input())
         clearRunningSends()
         DBState.db.characters[0].chats = []
@@ -602,7 +620,7 @@ describe('Gemini signature inlays', () => {
         expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A] }))).toBe('present')
 
         installDb()
-        simulateRunningSend()
+        simulateRunningSend(TARGET)
         expect(await applyRecoveredStreamReply(input({ modelText: `Hi${token('sig-a')}`, signatures: [A] }))).toBe('deferred')
         clearRunningSends()
 
@@ -629,9 +647,6 @@ describe('Gemini signature inlays', () => {
 })
 
 describe('the unit an apply holds', () => {
-    const TARGET = { chaId: 'cha', chatId: 'chat' }
-    const ELSEWHERE = { chaId: 'other-cha', chatId: 'other-chat' }
-
     interface ScriptGate {
         entered: Promise<void>
         open(): void
@@ -655,9 +670,23 @@ describe('the unit an apply holds', () => {
         return { entered, open: () => open(), fail: (error) => fail(error) }
     }
 
-    test('G2: today\'s global rule: a unit held in another chat defers an apply into this chat, and nothing is written', async () => {
+    test('A9: a unit held in another chat does not defer an apply into this chat: it writes, holds its own chat and releases it, and leaves the other unit held', async () => {
         installDb()
         simulateRunningSend(ELSEWHERE)
+
+        expect(await applyRecoveredStreamReply(input({ complete: false, outcome: 'dead' }))).toBe('applied')
+
+        expect(liveChat().message[1]).toMatchObject({ data: 'Hello, world.', interrupted: true })
+        expect(heldReply(KEY)).toBeDefined()
+        expect(activeUnits.has(TARGET)).toBe(false)
+        expect(activeUnits.has(ELSEWHERE)).toBe(true)
+    })
+
+    test('A10 and A10b: a unit held in the target chat defers the apply: nothing is written, the holder keeps its chat, and no reconcile pass is asked for', async () => {
+        installDb()
+        const reconcile = vi.fn()
+        setReconcileTrigger(reconcile)
+        simulateRunningSend(TARGET)
 
         expect(await applyRecoveredStreamReply(input({ complete: false, outcome: 'dead' }))).toBe('deferred')
 
@@ -665,8 +694,69 @@ describe('the unit an apply holds', () => {
         expect(heldReply(KEY)).toBeUndefined()
         expect(usageKeys()).toEqual([])
         expect(processScriptFullMock).not.toHaveBeenCalled()
+        // The refused apply never took the chat, so it releases nothing and wakes nothing.
+        expect(activeUnits.has(TARGET)).toBe(true)
+        expect(reconcile).not.toHaveBeenCalled()
+    })
+
+    test('A8c: the unit that ends a stream apply it deferred wakes the reconcile once, and an apply that never took the chat does not', async () => {
+        installDb()
+        const reconcile = vi.fn()
+        setReconcileTrigger(reconcile)
+        const gate = holdOutputScript()
+        const run = applyRecoveredStreamReply(input())
+        try {
+            await gate.entered
+            expect(await applyRecoveredStreamReply(input())).toBe('deferred')
+            expect(reconcile).not.toHaveBeenCalled()
+        } finally {
+            gate.open()
+        }
+
+        expect(await run).toBe('applied')
+        expect(reconcile).toHaveBeenCalledTimes(1)
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    test('A8: a registration that throws releases the unit, writes nothing and fails the apply', async () => {
+        installDb()
+        registerWorkFault.armed = true
+
+        expect(await applyRecoveredStreamReply(input())).toBe('failed')
+
+        expect(liveChat().message[1]).toMatchObject({ data: 'Hel', interrupted: true })
         expect(activeUnits.has(TARGET)).toBe(false)
-        expect(activeUnits.has(ELSEWHERE)).toBe(true)
+        expect(activeUnits.any()).toBe(false)
+        expect(hasAnyWork()).toBe(false)
+        // A later apply into the chat is admitted.
+        expect(await applyRecoveredStreamReply(input())).toBe('applied')
+    })
+
+    test('A8b: a throw in the finally after the write still ends the registration, releases the unit and wakes the deferred apply once', async () => {
+        installDb()
+        const reconcile = vi.fn()
+        setReconcileTrigger(reconcile)
+        const gate = holdOutputScript()
+        // Armed after the write, so the finally's mark is what throws.
+        runTriggerMock.mockImplementationOnce(async () => {
+            vi.mocked(markCharacterForSave).mockImplementationOnce(() => { throw new Error('mark') })
+            return null
+        })
+        const run = applyRecoveredStreamReply(input())
+        const settled = run.then(() => 'resolved', (error: Error) => error.message)
+        try {
+            await gate.entered
+            expect(await applyRecoveredStreamReply(input())).toBe('deferred')
+        } finally {
+            gate.open()
+        }
+
+        expect(await settled).toBe('mark')
+        expect(liveChat().message[1]).toMatchObject({ data: 'Hello, world.' })
+        expect(activeUnits.has(TARGET)).toBe(false)
+        expect(hasAnyWork()).toBe(false)
+        expect(isWriting(TARGET)).toBe(false)
+        expect(reconcile).toHaveBeenCalledTimes(1)
     })
 
     const finishes: Array<[string, (gate: ScriptGate) => void, string]> = [
@@ -676,10 +766,8 @@ describe('the unit an apply holds', () => {
         ['a message the page upgraded first', (gate) => { delete liveChat().message[1].interrupted; gate.open() }, 'present'],
     ]
 
-    test.each(finishes)('G3: %s: the apply holds its own chat while it runs, refuses a send (today\'s global rule: into any chat), and releases once it returns', async (_name, finish, expected) => {
+    test.each(finishes)('G3: %s: the apply holds its own chat while it runs, refuses a send into that chat, and releases once it returns', async (_name, finish, expected) => {
         installDb()
-        // A live other chat, so a refusal is the gate's and not an unresolvable origin.
-        DBState.db.characters.push({ ...DBState.db.characters[0], chaId: 'other-cha', chats: [{ id: 'other-chat', note: '', name: '', localLore: [], fmIndex: -1, message: [], scriptstate: {} } as unknown as Chat] })
         const gate = holdOutputScript()
         const run = applyRecoveredStreamReply(input())
         try {
@@ -687,8 +775,8 @@ describe('the unit an apply holds', () => {
             expect(get(doingChat)).toBe(true)
             expect(activeUnits.has(TARGET)).toBe(true)
             expect(await applyRecoveredStreamReply(input())).toBe('deferred')
-            const sent = sendChat(-1, { origin: ELSEWHERE }).catch(() => 'threw')
-            expect(isWriting(ELSEWHERE)).toBe(false)
+            const sent = sendChat(-1, { origin: TARGET }).catch(() => 'threw')
+            expect(requestChatDataMock).not.toHaveBeenCalled()
             let timer: ReturnType<typeof setTimeout> | undefined
             const hung = new Promise<string>((resolve) => { timer = setTimeout(() => resolve('hung'), 2000) })
             expect(await Promise.race([sent, hung])).toBe(false)

@@ -2,7 +2,8 @@
  * The registry of taken units (`../activeUnits`): a set of handles keyed by the owner's chat, and the read-only store
  * that mirrors "at least one handle is taken".
  *
- * Every test here is a guard on a new API: it has no pre-fix base. The registry is built fresh per test, so nothing
+ * Every test here is a guard on a new API: it has no pre-fix base. U2 and U7 pin the check-and-take rule: `take` returns
+ * whether the handle holds its key and refuses a key another handle holds. The registry is built fresh per test, so nothing
  * leaks between them; `U6` also reads the page's own instance without changing it.
  */
 import { describe, test, expect } from 'vitest'
@@ -33,19 +34,16 @@ describe('has', () => {
 })
 
 describe('the arithmetic of taken handles', () => {
-    test('U2: today\'s registry arithmetic: handles are counted one by one, a release affects only its own handle, and the store reports exactly the transitions', () => {
+    test('U2: the registry arithmetic: a key is held by one handle, a release affects only its own handle, and the store reports exactly the transitions', () => {
         const registry = createActiveUnits()
         const values = emissionsOf(registry)
 
-        // Two handles of one key.
+        // Two handles of one key: the second take is refused, so the first release frees the chat.
         const first = registry.unit(A)
         const second = registry.unit(A)
-        first.take()
-        second.take()
+        expect(first.take()).toBe(true)
+        expect(second.take()).toBe(false)
         first.release()
-        expect(registry.any()).toBe(true)
-        expect(registry.has(A)).toBe(true)
-        second.release()
         expect(registry.any()).toBe(false)
         expect(registry.has(A)).toBe(false)
 
@@ -86,9 +84,39 @@ describe('the arithmetic of taken handles', () => {
         successor.release()
         expect(registry.any()).toBe(false)
 
-        // The store emitted only the changes: one true-false pair each for the two same-key handles, the two keys, the
-        // double take, the handle released before its successor and the successor, and nothing for the no-ops.
+        // The store emitted only the changes: one true-false pair each for the held key of the two same-key handles, the
+        // two keys, the double take, the handle released before its successor and the successor, and nothing for the
+        // refused take or the no-ops.
         expect(values).toEqual([false, true, false, true, false, true, false, true, false, true, false])
+    })
+
+    test('U7: a take of a key another handle holds is refused and changes nothing; the refused handle holds nothing and can take once the key is free', () => {
+        const registry = createActiveUnits()
+        const values = emissionsOf(registry)
+        const first = registry.unit(A)
+        const second = registry.unit(A)
+
+        expect(first.take()).toBe(true)
+        expect(second.take()).toBe(false)
+        expect(registry.any()).toBe(true)
+        expect(registry.has(A)).toBe(true)
+        expect(values).toEqual([false, true])
+
+        // The refused handle's release is a no-op: it never held the key.
+        second.release()
+        expect(registry.has(A)).toBe(true)
+        expect(values).toEqual([false, true])
+
+        // The holder's own repeated take stays true and adds nothing.
+        expect(first.take()).toBe(true)
+        first.release()
+        expect(registry.any()).toBe(false)
+        expect(values).toEqual([false, true, false])
+
+        expect(second.take()).toBe(true)
+        expect(registry.has(A)).toBe(true)
+        second.release()
+        expect(registry.any()).toBe(false)
     })
 
     test('U2: the store reports false only after the last of two handles is released', () => {

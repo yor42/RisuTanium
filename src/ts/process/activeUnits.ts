@@ -25,7 +25,8 @@ export interface ActiveUnitKey {
 }
 
 export interface ActiveUnit {
-    take(): void
+    /** True when this handle holds its key after the call; false when another handle holds an equal key. */
+    take(): boolean
     release(): void
 }
 
@@ -48,12 +49,18 @@ export function createActiveUnits(): ActiveUnits {
     const unit = (key: ActiveUnitKey): ActiveUnit => {
         const held: ActiveUnitKey = { chaId: key.chaId, chatId: key.chatId }
         return {
-            take(): void {
+            take(): boolean {
                 if(units.has(held)){
-                    return
+                    return true
+                }
+                for(const other of units){
+                    if(other.chaId === held.chaId && other.chatId === held.chatId){
+                        return false
+                    }
                 }
                 units.add(held)
                 busy.set(true)
+                return true
             },
             release(): void {
                 if(!units.delete(held)){
