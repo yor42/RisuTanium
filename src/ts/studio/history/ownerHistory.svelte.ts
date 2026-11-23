@@ -106,7 +106,7 @@ import {
     type ReadyReason,
     type StoredOwnerKey,
 } from './ownerPhase'
-import type { BiasRow } from './fieldRegistry'
+import type { SetValue } from './fieldAccess'
 import { nameOfPathIn, stepNamesAssetPath, stepsOf } from './retainedPaths'
 import type {
     ClaimResult,
@@ -259,14 +259,15 @@ export interface OwnerHistoryService {
     setAck(chaId: string, ack: OwnerAck | null): void
     // The ack told of a landed write to module `moduleId`, kept apart from the character acks (which are keyed by chaId).
     setModuleAck(moduleId: string, ack: OwnerAck | null): void
-    editField(owner: OwnerKey, path: SetPath, value: string | boolean | BiasRow[], options?: EditFieldOptions): StudioResult
+    editField(owner: OwnerKey, path: SetPath, value: SetValue, options?: EditFieldOptions): StudioResult
     // A whole-value text edit. `typing` coalesces with the previous typing step of the same path; `single` is always its own step.
     editText(owner: OwnerKey, path: SetPath, value: string, mode?: 'typing' | 'single'): StudioResult
-    // A whole-value edit of a path whose value is not text (a boolean today), as its own step. It reads only the live reader, so
-    // it reaches any owner kind that carries the path, session kinds included; a value of the wrong kind or a path the owner
-    // kind does not carry is refused precondition. Turning a risky flag on needs `confirmed` to name it, as for
-    // `editField`; otherwise it is refused riskyConfirm.
-    editValue(owner: OwnerKey, path: SetPath, value: boolean, options?: { confirmed?: readonly SetPath[] }): StudioResult
+    // A whole-value edit of a path whose value is a boolean or a number, as its own step unless `coalesce` joins it to the
+    // previous step of the same path (a slider drag or number typing). It reads only the live reader, so it reaches any
+    // owner kind that carries the path, session kinds included; a value of the wrong kind or a path the owner kind does
+    // not carry is refused precondition. Turning a risky flag on needs `confirmed` to name it, as for `editField`;
+    // otherwise it is refused riskyConfirm.
+    editValue(owner: OwnerKey, path: SetPath, value: boolean | number, options?: { confirmed?: readonly SetPath[]; coalesce?: boolean }): StudioResult
     greetingAdd(owner: OwnerKey): StudioResult
     greetingEdit(owner: OwnerKey, index: number, value: string): StudioResult
     greetingDelete(owner: OwnerKey, index: number): StudioResult
@@ -410,9 +411,9 @@ type Intent =
     | { kind: 'text'; path: SetPath; value: string; coalesce: boolean }
     // A set path of any value type, planned from the live reader alone: it needs no character target. `coalesce` is
     // `true` (join by the path), `false` (a step of its own) or the open-step key.
-    | { kind: 'field'; path: SetPath; value: string | boolean | BiasRow[]; confirmed?: readonly SetPath[]; coalesce: boolean | string; reportStep?: boolean }
-    // A whole-value edit of a path that carries a boolean; like `text`, it reads only the live reader and needs no character target.
-    | { kind: 'value'; path: SetPath; value: boolean; confirmed?: readonly SetPath[] }
+    | { kind: 'field'; path: SetPath; value: SetValue; confirmed?: readonly SetPath[]; coalesce: boolean | string; reportStep?: boolean }
+    // A whole-value edit of a path that carries a boolean or a number; like `text`, it reads only the live reader and needs no character target.
+    | { kind: 'value'; path: SetPath; value: boolean | number; confirmed?: readonly SetPath[]; coalesce: boolean }
     | { kind: 'replay'; direction: 'undo' | 'redo'; confirmed?: readonly SetPath[] }
     | { kind: 'revert'; stepId: string; confirmed?: readonly SetPath[] }
     | { kind: 'restore'; keep: ReadonlySet<RestorePath>; confirmed?: readonly SetPath[] }
@@ -960,7 +961,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             if (intent.kind === 'text') {
                 built = buildFieldEdit(intent.path, intent.value, live, intent.coalesce)
             } else if (intent.kind === 'value') {
-                built = buildFieldEdit(intent.path, intent.value, live, false)
+                built = buildFieldEdit(intent.path, intent.value, live, intent.coalesce)
             } else if (intent.kind === 'field') {
                 built = buildFieldEdit(intent.path, intent.value, live, intent.coalesce)
             } else if (target === null) {
@@ -1526,7 +1527,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 confirmed: options?.confirmed,
                 reportStep: options?.reportStep,
             }),
-        editValue: (owner, path, value, options) => applyStudioWrite(owner, { kind: 'value', path, value, confirmed: options?.confirmed }),
+        editValue: (owner, path, value, options) => applyStudioWrite(owner, { kind: 'value', path, value, confirmed: options?.confirmed, coalesce: options?.coalesce === true }),
         editText: (owner, path, value, mode = 'typing') =>
             applyStudioWrite(owner, { kind: 'text', path, value, coalesce: mode === 'typing' }),
         greetingAdd: (owner) => applyStudioWrite(owner, { kind: 'edit', build: (_id, live, target) => buildGreetingAdd(live, target) }),

@@ -19,7 +19,7 @@ import {
 } from '../historyModel'
 import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import type { SessionOwnerKind } from '../sessionKinds'
-import { PRESET_FORM_BOOLEAN_PATHS, PRESET_FORM_PATHS } from './presetPaths.test-helpers'
+import { PRESET_FORM_BOOLEAN_PATHS, PRESET_FORM_PATHS, PRESET_S4B_PATHS } from './presetPaths.test-helpers'
 import { createMemoryStudioStore, seedOwner, storedRecord } from './studioStoreDoubles'
 
 // The stored kinds: a session kind has no stored key, record or restore row.
@@ -68,7 +68,7 @@ describe('T-P1: the derived tables equal the literal lists (compatibility guard)
         expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'alternateGreetings'])
         expect(RESTORE_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(RESTORE_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, ...S2A, ...S2B, ...S2C, 'alternateGreetings'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, ...S2A, ...S2B, ...S2C, ...PRESET_S4B_PATHS, 'alternateGreetings'])
         expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess', ...PRESET_FORM_BOOLEAN_PATHS, 'removedQuotes', ...S2B])
         expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1, 'creatorNotes'])
         expect(textPathsFor('chat')).toEqual(['note'])
@@ -196,6 +196,30 @@ describe('T-L1: the label key of every registered path (diagnostic)', () => {
         utilityBot: 'utilityBot',
         escapeOutput: 'escapeOutput',
         bias: 'studioFieldBias',
+        presetAiModel: 'model',
+        presetSubModel: 'submodel',
+        presetAuxMemory: 'studioPresetAuxMemory',
+        presetAuxTranslate: 'studioPresetAuxTranslate',
+        presetAuxEmotion: 'studioPresetAuxEmotion',
+        presetAuxOtherAx: 'studioPresetAuxOtherAx',
+        presetMaxContext: 'maxContextSize',
+        presetMaxResponse: 'maxResponseSize',
+        presetThinkingType: 'thinkingType',
+        presetDeepseekThinkingType: 'studioPresetDeepseekThinking',
+        presetThinkingTokens: 'thinkingTokens',
+        presetAdaptiveThinkingEffort: 'adaptiveThinkingEffort',
+        presetDeepseekReasoningEffort: 'studioPresetDeepseekEffort',
+        presetTemperature: 'temperature',
+        presetTopK: 'studioPresetTopK',
+        presetMinP: 'studioPresetMinP',
+        presetTopA: 'studioPresetTopA',
+        presetRepetitionPenalty: 'studioPresetRepetitionPenalty',
+        presetReasonEffort: 'studioPresetReasoningEffort',
+        presetVerbosity: 'studioPresetVerbosity',
+        presetTopP: 'studioPresetTopP',
+        presetFrequencyPenalty: 'frequencyPenalty',
+        presetPresencePenalty: 'presensePenalty',
+        presetMaxThoughtTagDepth: 'maxThoughtTagDepth',
     }
 
     test.each(Object.entries(EXPECTED))('%s', (path, key) => {

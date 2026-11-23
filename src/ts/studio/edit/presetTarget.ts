@@ -11,7 +11,8 @@ import { DBState } from '../../stores.svelte'
 import type { botPreset } from '../../storage/database.svelte'
 import type { FieldValue, LiveReader, WriteOp } from '../history/historyModel'
 import { sessionOwnerKey } from '../history/ownerPhase'
-import { freshPresetContainerSeed, isPresetContainerName, isPresetPath, PRESET_FIELDS, presetValueHasKind, type PresetFieldSpec, type PresetPath } from './presetFields'
+import { valueMatchesKind } from '../history/fieldAccess'
+import { freshPresetContainerSeed, isPresetContainerName, isPresetPath, PRESET_FIELDS, type PresetFieldSpec, type PresetPath } from './presetFields'
 import type { SessionOwnerAdapter } from './sessionAdapters'
 
 export function presetOwnerKey(id: string) {
@@ -80,7 +81,7 @@ function readPath(resolved: { slot: botPreset; active: boolean }, path: PresetPa
         }
         raw = raw[spec.key]
     }
-    if (presetValueHasKind(path, raw)) {
+    if (valueMatchesKind(path, raw)) {
         return { had: true, value: raw }
     }
     return typeof spec.absent === 'object' ? { had: true, value: spec.absent.default } : { had: false }
@@ -161,7 +162,7 @@ function opAssignable(op: PresetSet, resolved: { slot: botPreset; active: boolea
         return false
     }
     if (op.value.had) {
-        return presetValueHasKind(op.path, op.value.value)
+        return valueMatchesKind(op.path, op.value.value)
     }
     return typeof spec.absent !== 'object'
 }
@@ -172,6 +173,8 @@ function assignOp(op: PresetSet, resolved: { slot: botPreset; active: boolean })
     if (spec.key === undefined) {
         if (op.value.had) {
             holder[property] = op.value.value
+        } else if (spec.unset === 'null') {
+            holder[property] = null
         } else {
             delete holder[property]
         }
