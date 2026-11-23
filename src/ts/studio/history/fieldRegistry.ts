@@ -17,7 +17,8 @@
 //   deleted. A restore onto an existing container writes into it, and a restore whose live reading already equals
 //   `before` writes nothing, so it creates no container. A session owner kind that lists a dotted path owns the seed
 //   and container rule in its own adapter. The generic reader and writer support text, boolean
-//   and bias-list values; a number path (session-only today) reads and records a finite number, nothing else.
+//   and bias-list values; a number path (session-only today) reads and records a finite number, nothing else, and a
+//   `textList` path (session-only) reads and records an array of strings, nothing else.
 // - Never rename or remove a path, and never change an existing path's `value`, `absent`, `editWhenAbsent`,
 //   `holders` or `property`: older builds refuse a record whole on a path they do not know, and the frozen-facts test
 //   (append-only) pins every existing row. A path new to older builds is a widening they refuse whole.
@@ -42,7 +43,7 @@ export type BiasRow = [string, number]
 
 // The persisted facts of a path: frozen by the append-only guard.
 export interface FieldFacts {
-    value: 'text' | 'bool' | 'number' | 'biasList'
+    value: 'text' | 'bool' | 'number' | 'textList' | 'biasList'
     // The builtin owner kinds whose set row and restore row hold the path, and whose writers write it.
     holders: readonly Holder[]
     // What a builtin-holder writer does with `{ had: false }`: leave the key or delete it.
@@ -159,6 +160,17 @@ export const FIELD_SPECS = {
     presetFrequencyPenalty: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
     presetPresencePenalty: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
     presetMaxThoughtTagDepth: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    // The preset advanced form's list paths (S4c): session-only like the rows above. A list is one whole value; the two
+    // list kinds are carried by session-only paths (and the character bias list) alone.
+    presetModelTools: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetLocalStopStrings: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetBias: { value: 'biasList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFormatingOrder: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackModel: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackMemory: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackTranslate: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackEmotion: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackOtherAx: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -260,6 +272,15 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     presetFrequencyPenalty: { labelKey: 'frequencyPenalty', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFrequencyPenalty' } },
     presetPresencePenalty: { labelKey: 'presensePenalty', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetPresencePenalty' } },
     presetMaxThoughtTagDepth: { labelKey: 'maxThoughtTagDepth', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMaxThoughtTagDepth' } },
+    presetModelTools: { labelKey: 'studioPresetModelTools', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetModelTools' } },
+    presetLocalStopStrings: { labelKey: 'customStopWords', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetLocalStopStrings' } },
+    presetBias: { labelKey: 'studioPresetBias', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetBias' } },
+    presetFormatingOrder: { labelKey: 'formatingOrder', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFormatingOrder' } },
+    presetFallbackModel: { labelKey: 'studioPresetFallbackListMain', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackModel' } },
+    presetFallbackMemory: { labelKey: 'studioPresetFallbackListMemory', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackMemory' } },
+    presetFallbackTranslate: { labelKey: 'studioPresetFallbackListTranslate', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackTranslate' } },
+    presetFallbackEmotion: { labelKey: 'studioPresetFallbackListEmotion', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackEmotion' } },
+    presetFallbackOtherAx: { labelKey: 'studioPresetFallbackListOtherAx', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackOtherAx' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed
