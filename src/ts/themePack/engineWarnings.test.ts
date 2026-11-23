@@ -17,7 +17,7 @@ describe('W309: a --pack-* helper declared on bare html', () => {
     const A3 = `:root{--pack-gap:4px}html[data-layout="phone"]{--pack-gap:8px}${AV}{margin:var(--pack-gap)}`
     const A5 = `@media (min-width:600px){html{--pack-gap:8px}}:root{--pack-gap:4px}${AV}{margin:var(--pack-gap)}`
     const A6 = 'html{--pack-gap:8px}'
-    const A7 = `:root{--pack-gap:4px}html{--pack-gap:8px}${AV}{margin:var(--pack-gap);font-family:wingdings}`
+    const A7 = `:root{--pack-gap:4px}html{--pack-gap:8px}${AV}{margin:var(--pack-gap);font-family:"나눔"}`
     const A8 = 'html{--nexus-text:#ffffff}'
     const A9 = ':root{--pack-gap:4px}html{--pack-gap:8px}[data-part="studio-main"]{padding:var(--pack-gap)}'
     const D1 = `:root{--pack-gap:4px}:root, html{--pack-gap:6px}${AV}{margin:var(--pack-gap)}`
@@ -76,7 +76,7 @@ describe('W322: percentage widths that multiply along a chat chain', () => {
     const B7 = `${MSG}[data-role="user"]{max-width:60%}${MSG}{max-width:90%}`
     const B8 = `@media (min-width:1px){${TEXT}{width:50%}}`
     const B9 = `:root{--pack-w:100%}html[data-layout="phone"]{--pack-w:50%}${TRANSCRIPT}{max-width:var(--pack-w)}`
-    const B10 = `${BODY}{max-width:50%;font-family:wingdings}`
+    const B10 = `${BODY}{max-width:50%;font-family:"나눔"}`
     const B11 = `${MSG}{max-width:90%}${BODY}{max-width:90%}`
     const B13 = `[data-role="user"] ${BODY}{max-inline-size:40%}`
     const B14 = `${TRANSCRIPT}{width:150%}${BODY}{max-width:60%}`
@@ -173,7 +173,7 @@ describe('W319: a rule whose text colour passes only against a gradient that can
     const C12 = `${GL}[data-part="chat-composer"]{color:#ffffff !important;background:${G} 0 0 / 24px 24px no-repeat !important}`
     const C13 = `${GL}${TX}{color:#ffffff;background:${G}}@media (min-width:1px){${TX}{background-size:24px 24px;background-repeat:no-repeat}}`
     const C14 = `${GL}${AV}, ${TX}{color:#ffffff;background:${G} 0 0 / 24px 24px no-repeat}`
-    const C15 = `${GL}${TX}{color:#ffffff;background:${G} 0 0 / 24px 24px no-repeat;font-family:wingdings}`
+    const C15 = `${GL}${TX}{color:#ffffff;background:${G} 0 0 / 24px 24px no-repeat;font-family:"나눔"}`
     const C16 = `${GL}[data-part="studio-main"]{color:#ffffff;background:${G} 0 0 / 24px 24px no-repeat}`
     const C17 = `${GL}${TX}{color:#ffffff;background:${G} !important;background-size:24px 24px;background-repeat:no-repeat}`
     const C18 = `${GL}${TX}{color:#ffffff;background-size:24px 24px;background-repeat:no-repeat;background:${G}}`
@@ -195,8 +195,9 @@ describe('W319: a rule whose text colour passes only against a gradient that can
         expect(j.warnings).toEqual(one(TX))
         expect(j.result).toEqual(lintAreaPack('chat', C1))
         const bare = judgeAreaSheet('chat', C8)
-        expect(bare.result.ok).toBe(false)
-        expect(bare.result.errors.map((e) => e.why).join('\n')).toMatch(/1\.00:1 on a Settings surface/)
+        // the poor contrast of the bare text is a note since #560 PR2: the verdict stays accepted and the finding is reported
+        expect(bare.result.ok).toBe(true)
+        expect((bare.result.notes ?? []).map((n) => n.why).join('\n')).toMatch(/1\.00:1 on a Settings surface/)
     })
 
     test('T319-2: size, repeat, position, a transparent colour layer, @media and a helper variable each leave the element bare', () => {

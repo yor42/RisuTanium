@@ -36,6 +36,30 @@ export function isNativeReplyRunning(key: string | undefined): boolean {
     return key !== undefined && running.has(key)
 }
 
+function targetsChat(target: RunningReplyTarget | null, key: { chaId: string, chatId: string }): boolean {
+    return target !== null && target.chaId === key.chaId && target.chatId === key.chatId
+}
+
+/**
+ * Whether any running reply targets this chat (both ids equal). Reactive: it reads `version` first. A null target matches
+ * nothing, message presence is ignored, and a key waiting for a unit counts because it stays in the map until the pass that
+ * places it.
+ */
+export function nativeReplyRunsIn(key: { chaId: string, chatId: string }): boolean {
+    void version
+    return nativeReplyRunsInNow(key)
+}
+
+/** The same answer as `nativeReplyRunsIn` without reading `version`: for a gate that must not become a dependency. */
+export function nativeReplyRunsInNow(key: { chaId: string, chatId: string }): boolean {
+    for (const target of running.values()) {
+        if (targetsChat(target, key)) {
+            return true
+        }
+    }
+    return false
+}
+
 /**
  * The first running reply targeting this chat that has no message in it yet; null when there is none. A key whose message
  * exists is shown on that message instead, never here.

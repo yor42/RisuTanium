@@ -70,6 +70,28 @@ export function enterPackSafeMode(source: PackSafeSource): void {
     }
 }
 
+/**
+ * Holds the page until the host has decided: the flag is on with the source `undecided`, so no pack paints. It repaints,
+ * announces and writes nothing, since nothing was painted yet. Only a page with safe mode off is held, and the answer says
+ * whether it was.
+ */
+export function holdPackUntilDecided(): boolean {
+    if (packSafe.on) {
+        return false
+    }
+    packSafe.on = true
+    packSafe.source = 'undecided'
+    return true
+}
+
+/** Ends a hold the page took itself, silently. Any other source of safe mode stays. */
+export function releasePackHold(): void {
+    if (packSafe.on && packSafe.source === 'undecided') {
+        packSafe.on = false
+        packSafe.source = null
+    }
+}
+
 /** The host's touch-exploration state; only a boolean counts. */
 export function setBannerTouchExploration(enabled: unknown): void {
     if (typeof enabled === 'boolean') {
@@ -77,7 +99,7 @@ export function setBannerTouchExploration(enabled: unknown): void {
     }
 }
 
-/** Turns pack safe mode off: the driver applies the active pack again and the pack scheme paints. */
+/** Turns pack safe mode off and repaints. The driver then applies the active pack again. */
 export function leavePackSafeMode(): void {
     packSafe.on = false
     packSafe.source = null

@@ -20,7 +20,7 @@ const { hubTargetURL, hubRedirectTarget, hubRequestHeaders, hubResponseHeaders, 
 const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
 const { store2KeyFromHex } = require('./store2Keys.cjs');
 const { createExportJobs } = require('./exportJob.cjs');
-const { isKindAllowed, literalHostKind, createCheckedLookup, blockedError, ProxyPolicyError, InvalidHeaderError, sanitizeOutboundHeaders } = require('./proxyPolicy.cjs');
+const { classifyAddress, isKindAllowed, redirectPolicy, literalHostKind, createCheckedLookup, blockedError, ProxyPolicyError, InvalidHeaderError, sanitizeOutboundHeaders } = require('./proxyPolicy.cjs');
 
 // A positive integer from the environment, else `fallback`. The environment
 // overrides exist so tests can use small limits and short timers.
@@ -708,7 +708,7 @@ const cryptoRouteLimiter = rateLimit({
     message: { error: 'Too many attempts. Please wait and try again later.' }
 });
 function isHex(str) {
-    return hexRegex.test(str.toUpperCase().trim());
+    return typeof str === 'string' && hexRegex.test(str);
 }
 
 async function hashJSON(json){
@@ -878,10 +878,11 @@ function normalizeHeartbeatSec(heartbeatSec) {
     return Math.min(PROXY_STREAM_HEARTBEAT_MAX_SEC, Math.max(PROXY_STREAM_HEARTBEAT_MIN_SEC, parsed));
 }
 
-// The destination rule of the proxy (see proxyPolicy.cjs): loopback is always
-// allowed, a private-network address only when the operator sets
+// The destination rule of the proxy (see proxyPolicy.cjs): loopback is allowed,
+// a private-network address only when the operator sets
 // RISU_PROXY_ALLOW_PRIVATE=1, a public address on /proxy and /proxy2 but never
-// for a stream job (jobs exist for local model servers).
+// for a stream job (jobs exist for local model servers). A followed redirect
+// never moves to a more inward kind than a hop before it (`redirectPolicy`).
 const PROXY_ALLOW_PRIVATE = process.env.RISU_PROXY_ALLOW_PRIVATE === '1';
 const PROXY_ROUTE_POLICY = { allowPrivate: PROXY_ALLOW_PRIVATE, allowPublic: true };
 const PROXY_JOB_POLICY = { allowPrivate: PROXY_ALLOW_PRIVATE, allowPublic: false };
@@ -917,6 +918,10 @@ const MAX_PROXY_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 // Headers that describe the body of a request; a redirect that drops the body drops them.
 const REDIRECT_BODY_HEADERS = ['content-encoding', 'content-language', 'content-location', 'content-type', 'content-length'];
+// Headers that carry a credential for one origin; a hop to another origin drops them.
+const CROSS_ORIGIN_CREDENTIAL_HEADERS = ['authorization', 'proxy-authorization', 'cookie', 'x-api-key', 'api-key', 'x-goog-api-key'];
+// How far out a destination kind sits; a redirect never moves to a lower rank.
+const KIND_RANK = { loopback: 0, private: 1, public: 2 };
 // Headers of an upstream response that belong to its own connection.
 const HOP_BY_HOP_RESPONSE_HEADERS = new Set(['connection', 'keep-alive', 'transfer-encoding', 'proxy-connection', 'trailer', 'upgrade', 'te']);
 
@@ -983,7 +988,10 @@ function requestOnce(url, arg) {
             resolve({
                 status: res.statusCode || 502,
                 headers: res.headers,
-                body: res
+                body: res,
+                // An unknown address counts as public, the most restrictive kind
+                // for the redirect rule (a redirect never moves inward from it).
+                remoteKind: typeof res.socket?.remoteAddress === 'string' ? classifyAddress(res.socket.remoteAddress) : 'public'
             });
         });
         req.on('error', (error) => {
@@ -1015,15 +1023,24 @@ async function requestChecked(startUrl, arg) {
     let method = arg.method;
     let body = arg.body;
     const headers = { ...arg.headers };
+    // The most outward kind of every hop answered so far. The first hop uses the
+    // caller's policy; a redirect target and its connection use the policy derived
+    // from this kind, so a redirect never moves to a more inward destination.
+    let visited = 'loopback';
+    let policy = arg.policy;
     for (let redirects = 0; ; ) {
         const response = await requestOnce(url, {
             method,
             headers,
             body,
             signal: arg.signal,
-            policy: arg.policy,
+            policy,
             idleTimeoutMs: arg.idleTimeoutMs
         });
+        if (KIND_RANK[response.remoteKind] > KIND_RANK[visited]) {
+            visited = response.remoteKind;
+            policy = redirectPolicy(arg.policy, visited);
+        }
         const location = response.headers.location;
         if (arg.maxRedirects === 0 || !REDIRECT_STATUSES.has(response.status) || typeof location !== 'string') {
             return response;
@@ -1034,7 +1051,7 @@ async function requestChecked(startUrl, arg) {
         }
         let next;
         try {
-            next = gateProxyUrl(new URL(location, url).toString(), arg.policy, true);
+            next = gateProxyUrl(new URL(location, url).toString(), policy, true);
         } catch (error) {
             response.body.destroy();
             throw error instanceof ProxyPolicyError ? error : new ProxyPolicyError('PROXY_REDIRECT_INVALID', 502, 'Redirect target is not a valid http(s) URL');
@@ -1051,9 +1068,9 @@ async function requestChecked(startUrl, arg) {
             }
         }
         if (next.origin !== url.origin) {
-            delete headers['authorization'];
-            delete headers['proxy-authorization'];
-            delete headers['cookie'];
+            for (const name of CROSS_ORIGIN_CREDENTIAL_HEADERS) {
+                delete headers[name];
+            }
         }
         url = next;
     }

@@ -3,15 +3,15 @@ import {
     CHARACTER_SET_PATHS,
     CHAT_SET_PATHS,
     parseOwnerRecord,
+    type OwnerRecord,
     RESTORE_PATH_ORDER,
     TEXT_FIELD_PATHS,
-    type OwnerRecord,
     type RestorePoint,
     type Step,
     type TextFieldPath,
 } from '../historyModel'
-import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type OwnerKey } from '../ownerPhase'
-import { HISTORY_FORMAT_VERSION, asideMarkKey, entryKey, headerKey, stepPart } from '../studioHistoryStore'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
+import { HISTORY_FORMAT_VERSION, asideMarkKey, entryKey, headerKey, stepPart, type StoredOwnerRecord } from '../studioHistoryStore'
 import { createMemoryStudioStore, seedOwner, storedRecord } from './studioStoreDoubles'
 
 // ---------------------------------------------------------------- fixtures (built by the real writers)
@@ -27,7 +27,7 @@ function setStep(id: string, path: TextFieldPath, before: string, after: string)
     }
 }
 
-function recordOf(ownerKey: OwnerKey, done: Step[], restore: RestorePoint | null = null): OwnerRecord {
+function recordOf(ownerKey: StoredOwnerKey, done: Step[], restore: RestorePoint | null = null): StoredOwnerRecord {
     return { ownerKey, touchedAt: 4, done, undone: [], deleted: [], restore }
 }
 
@@ -40,7 +40,7 @@ function restoreOf(...paths: TextFieldPath[]): RestorePoint {
 }
 
 // The strict reader's view of a record written by the real serializer.
-function readBack(record: OwnerRecord): OwnerRecord | null {
+function readBack(record: StoredOwnerRecord): StoredOwnerRecord | null {
     const shared = new Map<string, string>()
     seedOwner(shared, record, 'w:1')
     return storedRecord(shared, record.ownerKey)?.record ?? null
@@ -48,10 +48,11 @@ function readBack(record: OwnerRecord): OwnerRecord | null {
 
 describe('the character set paths', () => {
     test('the set paths, the text paths and the restore order are the closed lists', () => {
-        expect(CHARACTER_SET_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'])
-        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage'])
+        const s1 = ['systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'additionalData.creator', 'additionalData.character_version', 'nickname', 'defaultVariables', 'translatorNote']
+        expect(CHARACTER_SET_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...s1])
+        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote'])
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', 'alternateGreetings'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...s1, 'alternateGreetings'])
     })
 
     test('a character record keeps a first message set op, an example message set op, their labels and their restore keys', () => {
@@ -137,8 +138,10 @@ describe('a record outside the closed union', () => {
     }
 
     const edits = {
-        'a set path outside the union in the third of five steps': () => seededWithEditedEntry(stepPart('p:3'), '"path":"desc"', '"path":"systemPrompt"'),
-        'an unknown restore key': () => seededWithEditedEntry('r', '"desc":{', '"systemPrompt":{'),
+        'a set path outside the union in the third of five steps': () => seededWithEditedEntry(stepPart('p:3'), '"path":"desc"', '"path":"zzNeverRegistered"'),
+        'a dotted set path outside the union in the third of five steps': () => seededWithEditedEntry(stepPart('p:3'), '"path":"desc"', '"path":"depth_prompt.zzNeverRegistered"'),
+        'an unknown restore key': () => seededWithEditedEntry('r', '"desc":{', '"zzNeverRegistered":{'),
+        'an unknown dotted restore key': () => seededWithEditedEntry('r', '"desc":{', '"depth_prompt.zzNeverRegistered":{'),
     }
 
     test.each(Object.keys(edits))('%s is refused whole: the owner reads unreadable, never with fewer steps', async (name) => {

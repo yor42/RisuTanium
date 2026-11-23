@@ -7,8 +7,9 @@
  * the split and pin behaviour that must be preserved.
  */
 import { describe, test, expect } from 'vitest'
+import androidBoundary from '../../src-tauri/tests/fixtures/android-boundary.json'
 
-type Permission = string | { identifier: string, allow?: unknown[] }
+type Permission = string | { identifier: string, allow?: unknown[], deny?: unknown[] }
 type Capability = {
     identifier: string
     description?: string
@@ -30,6 +31,51 @@ const SPAWN_NAMES = ['node', 'npm', 'npx', 'docker', 'uvx']
 
 const idOf = (permission: Permission) => typeof permission === 'string' ? permission : permission.identifier
 const appliesToAndroid = (capability: Capability) => !capability.platforms || capability.platforms.includes('android')
+const appliesTo = (platform: string) => (capability: Capability) => !capability.platforms || capability.platforms.includes(platform)
+
+const PLATFORMS = ['android', 'windows', 'linux', 'macOS']
+
+const ANDROID_PERMISSIONS = {
+    fs: ['fs:allow-fstat', 'fs:allow-open', 'fs:allow-read', 'fs:allow-read-dir', 'fs:allow-seek'],
+    dialog: ['dialog:allow-confirm', 'dialog:allow-message', 'dialog:allow-save'],
+}
+const DESKTOP_PERMISSIONS = {
+    fs: [
+        'fs:allow-exists', 'fs:allow-fstat', 'fs:allow-mkdir', 'fs:allow-open', 'fs:allow-read', 'fs:allow-read-dir',
+        'fs:allow-read-file', 'fs:allow-remove', 'fs:allow-rename', 'fs:allow-seek', 'fs:allow-write-file', 'fs:deny-default',
+    ],
+    dialog: ['dialog:allow-confirm', 'dialog:allow-message', 'dialog:allow-open', 'dialog:allow-save'],
+}
+const ANDROID_DENIES = [
+    '/data/user/*/io.github.yor42.risutanium/cache',
+    '/data/user/*/io.github.yor42.risutanium/cache/app-update',
+    '/data/user/*/io.github.yor42.risutanium/cache/app-update/**',
+    '/data/data/io.github.yor42.risutanium/cache',
+    '/data/data/io.github.yor42.risutanium/cache/app-update',
+    '/data/data/io.github.yor42.risutanium/cache/app-update/**',
+]
+
+/** Permission identifiers with the prefix that apply to the platform, from every capability file, sorted and without scope entries. */
+function effectivePermissions(platform: string, prefix: string): string[] {
+    return capabilities.filter(appliesTo(platform))
+        .flatMap((capability) => capability.permissions.map(idOf))
+        .filter((id) => id.startsWith(prefix) && id !== 'fs:scope')
+        .sort()
+}
+
+function effectiveScopeEntries(platform: string): { identifier: string, allow?: unknown[], deny?: unknown[] }[] {
+    return capabilities.filter(appliesTo(platform))
+        .flatMap((capability) => capability.permissions)
+        .filter((permission): permission is Exclude<Permission, string> => typeof permission !== 'string' && permission.identifier === 'fs:scope')
+}
+
+function effectiveFsScope(platform: string): { allow: string[], deny: string[] } {
+    const entries = effectiveScopeEntries(platform) as { allow?: string[], deny?: string[] }[]
+    return {
+        allow: entries.flatMap((entry) => entry.allow ?? []),
+        deny: entries.flatMap((entry) => entry.deny ?? []),
+    }
+}
 
 describe('capability files', () => {
     test('guard: the files are found and the schema is found', () => {
@@ -103,12 +149,46 @@ describe('capability files', () => {
         }
     })
 
-    test('guard: what applies to Android keeps the data folder scope', () => {
-        const android = capabilities.filter(appliesToAndroid)
-        const scopes = android.flatMap((capability) => capability.permissions)
-            .filter((permission): permission is Exclude<Permission, string> => typeof permission !== 'string' && permission.identifier === 'fs:scope')
-        const allowed = scopes.flatMap((scope) => (scope.allow ?? []).filter((entry): entry is string => typeof entry === 'string'))
-        expect(allowed).toContain('/data/**/*')
+    test('what applies to Android allows no wide data tree and no bare AppData', () => {
+        const allowed = effectiveFsScope('android').allow
+        expect(allowed.length).toBeGreaterThan(0)
+        for (const entry of allowed) {
+            expect(entry, entry).not.toMatch(/^\/data/)
+            expect(['$APPDATA', '$APPDATA/*', '$APPDATA/**/*'], entry).not.toContain(entry)
+        }
+    })
+
+    test.each(PLATFORMS)('the exact fs and dialog permission lists applying to %s', (platform) => {
+        const expected = platform === 'android' ? ANDROID_PERMISSIONS : DESKTOP_PERMISSIONS
+        expect(effectivePermissions(platform, 'fs:')).toEqual(expected.fs)
+        expect(effectivePermissions(platform, 'dialog:')).toEqual(expected.dialog)
+    })
+
+    test('the Android fs scope is the store directories and the six update-folder denies, derived from the boundary fixture', () => {
+        const scope = effectiveFsScope('android')
+        expect([...scope.allow].sort()).toEqual(
+            androidBoundary.directories.flatMap((directory) => [`$APPDATA/${directory}`, `$APPDATA/${directory}/**/*`]).sort(),
+        )
+        expect([...scope.deny].sort()).toEqual([...ANDROID_DENIES].sort())
+        expect(effectiveScopeEntries('android')).toHaveLength(1)
+    })
+
+    test.each(['windows', 'linux', 'macOS'])('the %s fs scope is AppData and Downloads only', (platform) => {
+        const scope = effectiveFsScope(platform)
+        expect([...scope.allow].sort()).toEqual(['$APPDATA', '$APPDATA/*', '$APPDATA/**/*', '$DOWNLOAD/*'].sort())
+        expect(effectiveScopeEntries(platform)).toHaveLength(1)
+    })
+
+    test('the Android capability is its own file for the android platform only, local to the main window', () => {
+        const android = capabilities.find((capability) => capability.identifier === 'android-capability')
+        expect(android).toBeDefined()
+        expect(android!.platforms).toEqual(['android'])
+        expect(android!.windows).toEqual(['main'])
+        expect(android!.local).toBe(true)
+    })
+
+    test('the tracked schema carries the Android capability as its source reads', () => {
+        expect(schema['android-capability']).toEqual({ description: '', local: true, ...capabilities.find((capability) => capability.identifier === 'android-capability') })
     })
 
     test('the http scope allows http and https on any port and no other scheme', () => {

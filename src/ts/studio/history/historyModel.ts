@@ -1,4 +1,4 @@
-// Pure model of one Studio owner's history: the closed field union, the stored record shape with
+// Pure model of one Studio owner's history: the field registry's tables, the stored record shape with
 // its strict guards, and every state transition (edit, undo, redo, revert, restore point, deleted
 // items). It never reads a clock, a global or the live character: the live values reach it
 // through a `LiveReader` snapshot, and the writes it decides on leave it as `WriteOp`s.
@@ -7,8 +7,11 @@ import { applyFolderOps, folderOpAtTarget, invertFolderOp, type FolderFieldValue
 import type { AssetArrayName } from '../assets/mergePreview'
 import { scanReferences } from '../assets/referenceScan'
 import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
+import { factsOf, isHeldBy, registryPaths } from './fieldAccess'
+import { FIELD_SPECS, type SetPath } from './fieldRegistry'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
-import { parseOwnerKey, type OwnerKey, type ParsedOwnerKey } from './ownerPhase'
+import { parseStoredOwnerKey, type OwnerKey, type ParsedOwnerKey, type StoredOwnerKey } from './ownerPhase'
+import { SESSION_OWNER_KINDS, type SessionOwnerKind, type SessionOwnerKindSpec } from './sessionKinds'
 
 // Typing in one field extends the open step while each write follows the previous one by less
 // than this. The model never reads Date.now: callers pass `now`.
@@ -26,40 +29,84 @@ export interface HistoryClock {
 
 // ---------------------------------------------------------------- field paths and values
 
-export type CharacterField = 'desc' | 'firstMessage' | 'exampleMessage' | 'customModuleToggle' | 'hideChatIcon' | 'risutanium_render_when_complete'
-export type ChatField = 'note'
-export type SetPath = CharacterField | ChatField
+export type { SetPath }
 export type ListPath = 'alternateGreetings'
 export type RestorePath = SetPath | ListPath
 export type OwnerKind = ParsedOwnerKey['kind']
 
-// The one table of the set paths each owner kind accepts. `isSetPath`, the `set` acceptance of `parseOp`,
-// `isOpAllowedFor` and the restore table all derive from it; nothing else decides which set paths an owner kind
-// accepts. The module row holds `customModuleToggle` only: a module record holding a `set` op on any other path is
-// refused whole.
+const REGISTRY_PATHS: readonly SetPath[] = registryPaths()
+
+// The one table of the set paths each owner kind accepts, derived from the field registry: a kind's row is the
+// registered paths whose holders include it, in registry order. The `set` acceptance of `parseOp`, `isOpAllowedFor`
+// and the restore table all derive from it; nothing else decides which set paths an owner kind accepts. A record
+// holding a `set` op on a path outside its kind's row is refused whole. A session kind's row is the set paths its
+// table entry names.
+type SessionRows = { readonly [K in SessionOwnerKind]: readonly SetPath[] }
+function isSessionRows(rows: Readonly<Record<string, readonly SetPath[]>>): rows is SessionRows {
+    return Object.keys(SESSION_OWNER_KINDS).every((kind) => Object.hasOwn(rows, kind))
+}
+function sessionSetRows(): SessionRows {
+    const rows: Record<string, readonly SetPath[]> = {}
+    for (const [kind, spec] of Object.entries<SessionOwnerKindSpec>(SESSION_OWNER_KINDS)) {
+        rows[kind] = [...spec.setPaths]
+    }
+    // Built from the same table the type derives from, so every kind has its row.
+    if (!isSessionRows(rows)) {
+        throw new Error('A session kind has no set row.')
+    }
+    return rows
+}
+const SESSION_SET_ROWS: SessionRows = sessionSetRows()
 export const SET_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly SetPath[] } = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'],
-    chat: ['note'],
-    module: ['customModuleToggle'],
+    ...SESSION_SET_ROWS,
+    character: REGISTRY_PATHS.filter((path) => isHeldBy(path, 'character')),
+    chat: REGISTRY_PATHS.filter((path) => isHeldBy(path, 'chat')),
+    module: REGISTRY_PATHS.filter((path) => isHeldBy(path, 'module')),
 }
 export const LIST_PATH: ListPath = 'alternateGreetings'
-// The paths a restore point may hold per owner kind: every set path, plus the greeting list for a character.
+// The paths a restore point may hold per owner kind: every set path, plus the greeting list for a character. A
+// session kind's restore row equals its set row.
 export const RESTORE_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly RestorePath[] } = {
+    ...SESSION_SET_ROWS,
     character: [...SET_PATHS_BY_KIND.character, LIST_PATH],
     chat: SET_PATHS_BY_KIND.chat,
     module: SET_PATHS_BY_KIND.module,
 }
 export const CHARACTER_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.character
 export const CHAT_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.chat
-export const RESTORE_PATH_ORDER: readonly RestorePath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', 'alternateGreetings']
+export const RESTORE_PATH_ORDER: readonly RestorePath[] = [...REGISTRY_PATHS, LIST_PATH]
 // The set paths whose value is a boolean; every other set path carries text.
-export const BOOLEAN_SET_PATHS: readonly SetPath[] = ['hideChatIcon', 'risutanium_render_when_complete']
+export const BOOLEAN_SET_PATHS: readonly SetPath[] = REGISTRY_PATHS.filter((path) => factsOf(path).value === 'bool')
 export function isBooleanSetPath(path: SetPath): boolean {
-    return BOOLEAN_SET_PATHS.includes(path)
+    return factsOf(path).value === 'bool'
 }
-// The character text fields whose whole value a set op carries.
-export type TextFieldPath = 'desc' | 'firstMessage' | 'exampleMessage'
-export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = ['desc', 'firstMessage', 'exampleMessage']
+// The character text fields whose whole value a set op carries: the merge-recording rule (an explicit list, not
+// derived from the registry). A target addresses a nested field with `/` where its path has a `.`.
+export type TextFieldPath =
+    | 'desc'
+    | 'firstMessage'
+    | 'exampleMessage'
+    | 'systemPrompt'
+    | 'replaceGlobalNote'
+    | 'additionalText'
+    | 'personality'
+    | 'scenario'
+    | 'depth_prompt.prompt'
+    | 'defaultVariables'
+    | 'translatorNote'
+export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
+    'desc',
+    'firstMessage',
+    'exampleMessage',
+    'systemPrompt',
+    'replaceGlobalNote',
+    'additionalText',
+    'personality',
+    'scenario',
+    'depth_prompt.prompt',
+    'defaultVariables',
+    'translatorNote',
+]
 
 // `had: false` is an absent optional key. Writing it deletes the key; it never assigns false or undefined.
 export type FieldValue = { had: false } | { had: true; value: string | boolean }
@@ -214,12 +261,7 @@ function nullableString(value: unknown): string | null | undefined {
 }
 
 function isSetPath(value: unknown): value is SetPath {
-    return (
-        typeof value === 'string' &&
-        (SET_PATHS_BY_KIND.character.includes(value as SetPath) ||
-            SET_PATHS_BY_KIND.chat.includes(value as SetPath) ||
-            SET_PATHS_BY_KIND.module.includes(value as SetPath))
-    )
+    return typeof value === 'string' && Object.hasOwn(FIELD_SPECS, value)
 }
 
 function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
@@ -232,7 +274,7 @@ function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
     if (value.had !== true) {
         return null
     }
-    if (isBooleanSetPath(path)) {
+    if (factsOf(path).value === 'bool') {
         return typeof value.value === 'boolean' ? { had: true, value: value.value } : null
     }
     return typeof value.value === 'string' ? { had: true, value: value.value } : null
@@ -324,7 +366,7 @@ export function isOpAllowedFor(kind: OwnerKind, op: Op): boolean {
         case 'assetFolderSet':
         case 'assetFolderOrder':
         case 'textEdit':
-            return kind !== 'chat'
+            return kind === 'character' || kind === 'module'
     }
 }
 
@@ -568,8 +610,8 @@ function parseRestore(value: unknown, kind: OwnerKind): RestorePoint | null {
 
 // Strict reader of the record fields. Anything outside the closed union (an unknown op or path,
 // a wrong type, an owner key that differs from the expected one) makes the whole record unreadable.
-export function parseOwnerRecord(value: unknown, ownerKey: OwnerKey): OwnerRecord | null {
-    const parsedKey = parseOwnerKey(ownerKey)
+export function parseOwnerRecord(value: unknown, ownerKey: StoredOwnerKey): OwnerRecord | null {
+    const parsedKey = parseStoredOwnerKey(ownerKey)
     if (!parsedKey || !isObject(value) || value.ownerKey !== ownerKey || !isFiniteNumber(value.touchedAt)) {
         return null
     }
@@ -844,7 +886,9 @@ function fromFolderOp(op: FolderOp): Extract<Op, { op: 'assetFolderSet' | 'asset
 
 // How a `textEdit` target is read and written: one of the owner's text fields, an entry of the first message list, or
 // any other registry text (served by the live reader). Null when the path is no registry address at all. Every
-// classification of a target goes through `parseTargetPath`, so a path is one kind everywhere.
+// classification of a target goes through `parseTargetPath`, so a path is one kind everywhere. `routeOf` is the one
+// router: the history replay (`textWriteFor`), Update-All (`writeOpFor`) and the character text writer's skip
+// (`textFieldOf`) all ask it, so no target is both written as a `set` and skipped as a `textSet`.
 type TextRoute = { kind: 'field'; path: TextFieldPath } | { kind: 'greeting'; index: number } | { kind: 'text' }
 
 function routeOf(target: string): TextRoute | null {
@@ -857,8 +901,9 @@ function routeOf(target: string): TextRoute | null {
     if ('greeting' in parsed) {
         return { kind: 'greeting', index: parsed.greeting }
     }
-    if (!('trigger' in parsed) && !('entry' in parsed) && !('nested' in parsed)) {
-        const path = TEXT_FIELD_PATHS.find((candidate) => candidate === parsed.field)
+    if (!('trigger' in parsed) && !('entry' in parsed)) {
+        const candidate = 'nested' in parsed ? `${parsed.nested}.${parsed.field}` : parsed.field
+        const path = TEXT_FIELD_PATHS.find((entry) => entry === candidate)
         if (path !== undefined) {
             return { kind: 'field', path }
         }
@@ -866,7 +911,8 @@ function routeOf(target: string): TextRoute | null {
     return { kind: 'text' }
 }
 
-function textFieldOf(target: string): TextFieldPath | null {
+// The text field a registry target is, null for every other target (including a field path written with a dot).
+export function textFieldOf(target: string): TextFieldPath | null {
     const route = routeOf(target)
     return route !== null && route.kind === 'field' ? route.path : null
 }
@@ -890,6 +936,11 @@ function countOf(rows: readonly (readonly string[])[], tuple: readonly string[])
     return count
 }
 
+// The registry target that addresses a text field path: the dotted path with its one dot as a slash.
+function textTargetOfField(path: TextFieldPath): string {
+    return path.replace('.', '/')
+}
+
 // The registry target of a value op that changes a text: a `textEdit`'s target, a text field's `set`, an alternate
 // first message's `listSet`. Null for every op that is not a text change (rows, folders, other fields, chat indexes).
 function textTargetOfOp(op: Op): string | null {
@@ -897,7 +948,8 @@ function textTargetOfOp(op: Op): string | null {
         return op.target
     }
     if (op.op === 'set') {
-        return TEXT_FIELD_PATHS.find((path) => path === op.path) ?? null
+        const path = TEXT_FIELD_PATHS.find((entry) => entry === op.path)
+        return path === undefined ? null : textTargetOfField(path)
     }
     return op.op === 'listSet' ? `alternateGreetings/${op.index}` : null
 }
@@ -961,8 +1013,8 @@ function spliceText(text: string, edit: { offset: number; from: string; to: stri
     return text.slice(0, edit.offset) + edit.to + text.slice(edit.offset + edit.from.length)
 }
 
-// The write that lands a text target's whole new value.
-function textWriteFor(target: string, next: string): WriteOp {
+// The write that lands a text target's whole new value: the one target-to-write decision.
+export function textWriteFor(target: string, next: string): WriteOp {
     const route = routeOf(target)
     if (route !== null && route.kind === 'field') {
         return { op: 'set', path: route.path, value: { had: true, value: next } }

@@ -71,6 +71,7 @@ vi.mock('src/lib/UI/GUI/TextAreaInput.svelte', () => ({
 //#endregion
 
 import { DBState } from 'src/ts/stores.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import RegexList from './RegexList.svelte'
 import TriggerV1List from './TriggerV1List.svelte'
 
@@ -126,7 +127,7 @@ const names = (kind: Kind, c = 0) => (DBState.db.characters[c] as unknown as Rec
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
 
-function mountList(kind: Kind): HTMLElement {
+async function mountList(kind: Kind): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const props = {
@@ -141,6 +142,8 @@ function mountList(kind: Kind): HTMLElement {
     const app = mount(kind.component, { target, props }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
     flushSync()
+    // The windowed rows mount once the host has read the band.
+    await settle()
     return target
 }
 
@@ -165,6 +168,8 @@ async function answer(value: boolean): Promise<void> {
 
 beforeEach(() => {
     confirms.pending.length = 0
+    // Every row falls in the window: these tests are about which script a delete aims at, not about which rows are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
 })
 
 afterEach(async () => {
@@ -173,6 +178,7 @@ afterEach(async () => {
         m.target.remove()
     }
     mounted = []
+    setWindowGeometryForTests(undefined)
 })
 
 //#endregion
@@ -182,7 +188,7 @@ describe.each(kinds.map((k) => [k.name, k] as const))('a %s delete', (_name, kin
 
     test('guard: with nothing else changing, the confirmed script is removed and no other', async () => {
         installDb(kind, four())
-        const target = mountList(kind)
+        const target = await mountList(kind)
         await clickDelete(target, 's1')
         await answer(true)
         expect(names(kind)).toEqual(['s0', 's2', 's3'])
@@ -190,7 +196,7 @@ describe.each(kinds.map((k) => [k.name, k] as const))('a %s delete', (_name, kin
 
     test('guard: refusing the confirmation removes nothing', async () => {
         installDb(kind, four())
-        const target = mountList(kind)
+        const target = await mountList(kind)
         await clickDelete(target, 's1')
         await answer(false)
         expect(names(kind)).toEqual(['s0', 's1', 's2', 's3'])
@@ -198,7 +204,7 @@ describe.each(kinds.map((k) => [k.name, k] as const))('a %s delete', (_name, kin
 
     test('a script inserted above it while the confirmation is open does not change which script is removed', async () => {
         installDb(kind, four())
-        const target = mountList(kind)
+        const target = await mountList(kind)
         await clickDelete(target, 's2')
         DBState.db.characters[0][kind.key]!.unshift(kind.make('new') as never)
         flushSync()
@@ -208,7 +214,7 @@ describe.each(kinds.map((k) => [k.name, k] as const))('a %s delete', (_name, kin
 
     test('a script removed above it while the confirmation is open does not change which script is removed', async () => {
         installDb(kind, four())
-        const target = mountList(kind)
+        const target = await mountList(kind)
         await clickDelete(target, 's2')
         DBState.db.characters[0][kind.key]!.splice(0, 1)
         flushSync()
@@ -218,7 +224,7 @@ describe.each(kinds.map((k) => [k.name, k] as const))('a %s delete', (_name, kin
 
     test('two pending deletes of the same script remove it once', async () => {
         installDb(kind, four())
-        const target = mountList(kind)
+        const target = await mountList(kind)
         await clickDelete(target, 's1')
         await clickDelete(target, 's1')
         expect(confirms.pending.length).toBe(2)
@@ -229,7 +235,7 @@ describe.each(kinds.map((k) => [k.name, k] as const))('a %s delete', (_name, kin
 
     test('a script removed by something else while its confirmation is open leaves every other script in place', async () => {
         installDb(kind, four())
-        const target = mountList(kind)
+        const target = await mountList(kind)
         await clickDelete(target, 's1')
         DBState.db.characters[0][kind.key]!.splice(1, 1)
         flushSync()
@@ -239,7 +245,7 @@ describe.each(kinds.map((k) => [k.name, k] as const))('a %s delete', (_name, kin
 
     test('a selection that moves to another character during the confirmation leaves that character\'s list untouched', async () => {
         installDb(kind, [['s0', 's1', 's2'], ['t0', 't1', 't2']])
-        const target = mountList(kind)
+        const target = await mountList(kind)
         await clickDelete(target, 's1')
         selection.index = 1
         flushSync()

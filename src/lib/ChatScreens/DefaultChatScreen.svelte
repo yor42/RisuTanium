@@ -12,7 +12,9 @@
     import Chat from "./Chat.svelte";
     import { DBState } from 'src/ts/stores.svelte';
     import { useCharImageLookups } from "../../ts/media/charImageLookups";
-    import { chatProcessStage, doingChat } from "../../ts/process/index.svelte";
+    import { nativeReplyRunsIn } from "../../ts/nativeReply/runningReplies.svelte";
+    import { relistWhileNativeBlocked } from "../../ts/nativeReply/runningRelist.svelte";
+    import { processStageIn } from "../../ts/process/generationOwnership.svelte";
     import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from "../../ts/process/firstMessage";
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
@@ -51,10 +53,9 @@
         runAutoMode as composerRunAutoMode,
         abortChat as composerAbortChat,
         updateInputTransateMessage as composerUpdateInputTransateMessage,
-        isComposerBusy,
         isComposerBusyIn,
         stopComposerWorkIn,
-        isComposerLocked,
+        isComposerLockedIn,
         isAutoModeActive,
         type ComposerActionsSource
     } from 'src/ts/process/composerActions.svelte';
@@ -340,13 +341,17 @@
     async function branchRow(index: number, expectedId: string | undefined) {
         return composerBranchAt(composerSource, index, expectedId)
     }
-    // Rendered state of the tree controls; the composer's own gate still decides each press.
-    const treeControlsBusy = () => $doingChat || isComposerBusy()
     // The shown chat's own work decides Stop and Stop reaches that work only; work in another chat
-    // disables Send and leaves typing alone.
+    // leaves Send, typing and the tree controls alone.
     const shownOrigin = $derived(currentCharacter?.chaId && currentChatObj?.id ? { chaId: currentCharacter.chaId, chatId: currentChatObj.id } : null)
     const shownBusy = $derived(shownOrigin ? isComposerBusyIn(shownOrigin) : false)
-    const writingElsewhere = $derived(!shownBusy && ($doingChat || isComposerBusy()))
+    // A native reply the page no longer holds targets this chat: no unit holds it, but a send into it is refused.
+    const shownNativeReply = $derived(shownOrigin ? nativeReplyRunsIn(shownOrigin) : false)
+    const shownLocked = $derived(shownOrigin ? isComposerLockedIn(shownOrigin) : false)
+    // Only the refusal for a native reply re-lists; a unit that writes in the shown chat shows Stop and wins.
+    relistWhileNativeBlocked(() => shownNativeReply && !shownBusy ? shownOrigin : null)
+    // Rendered state of the tree controls; the composer's own gate still decides each press.
+    const treeControlsBusy = () => shownOrigin ? isComposerBusyIn(shownOrigin) || nativeReplyRunsIn(shownOrigin) : false
     function abortChat(){
         if(shownOrigin){
             stopComposerWorkIn(shownOrigin)
@@ -635,7 +640,7 @@
                 <textarea aria-label={language.chatShellMessage} aria-labelledby="{composerUid}-msg" aria-describedby="{composerUid}-msg" class="peer text-input-area focus:border-textcolor transition-colors outline-hidden text-textcolor p-2 min-w-0 border border-r-0 bg-transparent rounded-md rounded-r-none input-text text-xl grow ml-4 border-darkborderc resize-none overflow-y-hidden overflow-x-hidden max-w-full placeholder:text-sm"
                           bind:value={() => shownDraft.messageInput, (value) => writeDraft((record) => { record.messageInput = value })}
                           bind:this={inputEle}
-                          readonly={isComposerLocked()}
+                          readonly={shownLocked}
                           onkeydown={(e) => {
                         if(e.key.toLocaleLowerCase() === "enter" && !isImeComposing(e)){
                             if(DBState.db.sendWithEnter && (!e.shiftKey)){
@@ -656,7 +661,7 @@
                         // checked here, when the paste starts, so a paste
                         // that started before the lock still lands its
                         // result once it resolves.
-                        if(isComposerLocked()){
+                        if(shownLocked){
                             return
                         }
                         const items = e.clipboardData?.items
@@ -730,21 +735,21 @@
                             class="peer-focus:border-textcolor  flex justify-center border-y border-darkborderc items-center text-textcolor p-3 hover:bg-borderc transition-colors" onclick={abortChat}
                             style:height={inputHeight}
                     >
-                        <div class="loadmove chat-process-stage-{$chatProcessStage}" class:autoload={isAutoModeActive()} use:streamTextHold={{ origin: shownOrigin }}></div>
+                        <div class="loadmove chat-process-stage-{processStageIn(shownOrigin)}" class:autoload={isAutoModeActive()} use:streamTextHold={{ origin: shownOrigin }}></div>
                     </button>
                 {:else}
                     <button
                             onclick={send}
-                            disabled={writingElsewhere}
+                            disabled={shownNativeReply}
                             aria-label={language.chatShellSend}
-                            title={writingElsewhere ? language.chatShellSendBlockedWriting : undefined}
-                            aria-describedby={writingElsewhere ? 'chat-send-blocked-reason' : undefined}
+                            title={shownNativeReply ? language.chatShellSendWaitsForNativeReply : undefined}
+                            aria-describedby={shownNativeReply ? 'chat-send-blocked-reason' : undefined}
                             class="flex justify-center border-y border-darkborderc items-center text-textcolor p-3 peer-focus:border-textcolor hover:bg-borderc transition-colors button-icon-send disabled:opacity-50"
                             style:height={inputHeight}
                     >
                         <Send aria-hidden="true" />
                     </button>
-                    {#if writingElsewhere}<span id="chat-send-blocked-reason" hidden>{language.chatShellSendBlockedWriting}</span>{/if}
+                    {#if shownNativeReply}<span id="chat-send-blocked-reason" hidden>{language.chatShellSendWaitsForNativeReply}</span>{/if}
                 {/if}
                 {#if DBState.db.characters[$selectedCharID]?.chaId !== '§playground'}
                     <button
@@ -787,7 +792,7 @@
                     <textarea id = 'messageInputTranslate' aria-labelledby="{composerUid}-tr" aria-describedby="{composerUid}-tr" class="text-textcolor rounded-md p-2 min-w-0 bg-transparent input-text text-xl grow ml-4 mr-2 border-darkbutton resize-none focus:bg-selected overflow-y-hidden overflow-x-hidden max-w-full"
                               bind:value={() => shownDraft.messageInputTranslate, (value) => writeDraft((record) => { record.messageInputTranslate = value })}
                               bind:this={inputTranslateEle}
-                              readonly={isComposerLocked()}
+                              readonly={shownLocked}
                               onkeydown={(e) => {
                             if(e.key.toLocaleLowerCase() === "enter" && (!e.shiftKey) && !isImeComposing(e)){
                                 if(DBState.db.sendWithEnter){
@@ -872,7 +877,7 @@
             {#if toggleStickers}
                 <div class="ml-4 flex flex-wrap">
                     <AssetInput currentCharacter={currentCharacter} onSelect={(additionalAsset)=>{
-                        if(isComposerLocked()){
+                        if(shownLocked){
                             return
                         }
                         let fileType = 'img'
@@ -1151,7 +1156,7 @@
                     </div>
 
                     <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={async () => {
-                        if(isComposerLocked()){
+                        if(shownLocked){
                             return
                         }
                         // The key is captured here, at the start, so the

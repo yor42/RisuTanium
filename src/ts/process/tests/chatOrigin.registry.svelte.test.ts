@@ -17,7 +17,7 @@ vi.mock(import('../../stores.svelte'), () => {
 })
 
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, hasAnyWork, isWorkInProgress, isGeneratingIn, generatingChatIdsIn, stopRepliesOf, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
+import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, stopAllReplyWork, hasAnyWork, isWorkInProgress, isGeneratingIn, generatingChatIdsIn, replyTargets, stopRepliesOf, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
 
 type CharacterFixture = Database['characters'][number]
 
@@ -230,6 +230,61 @@ describe('stopWorkIn calls each matching registration\'s stop once', () => {
 
         try {
             expect(() => stopWorkIn({ chaId: 'char-a' })).not.toThrow()
+            expect(stopAfter).toHaveBeenCalledTimes(1)
+            expect(logged).toHaveBeenCalledTimes(1)
+        } finally {
+            logged.mockRestore()
+        }
+    })
+})
+
+// Specification tests: they pin the contract of stopAllReplyWork (stop-all, MC-3309, MC-3743).
+describe('stopAllReplyWork stops every reply and preview registration', () => {
+    test('R3: reply and preview stops run once whatever the chat, work and ended registrations are left alone, and a repeat or a later stopWorkIn does nothing', () => {
+        const stopA = vi.fn()
+        const stopP = vi.fn()
+        const stopW = vi.fn()
+        const stopEnded = vi.fn()
+        const stopS2 = vi.fn()
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, stopA, 'reply'))
+        open(registerWork({ chaId: 'char-b', chatId: 'chat-b' }, stopP, 'preview'))
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, stopW))
+        // A registration that ended before the stop is no longer registered, so its stop is never called.
+        registerWork({ chaId: 'char-c', chatId: 'chat-c' }, stopEnded, 'reply').end()
+        // S1 ends its own registration from inside its stop, and S2 is the very next registration after it: a loop
+        // over the live registry instead of a snapshot would skip S2.
+        let s1Handle: WorkHandle | undefined
+        const stopS1 = vi.fn(() => { s1Handle?.end() })
+        s1Handle = open(registerWork({ chaId: 'char-d', chatId: 'chat-d' }, stopS1, 'reply'))
+        open(registerWork({ chaId: 'char-e', chatId: 'chat-e' }, stopS2, 'reply'))
+
+        stopAllReplyWork()
+
+        expect(stopA).toHaveBeenCalledTimes(1)
+        expect(stopP).toHaveBeenCalledTimes(1)
+        expect(stopS1).toHaveBeenCalledTimes(1)
+        expect(stopS2).toHaveBeenCalledTimes(1)
+        expect(stopW).not.toHaveBeenCalled()
+        expect(stopEnded).not.toHaveBeenCalled()
+
+        stopAllReplyWork()
+        stopWorkIn({ chaId: 'char-a', chatId: 'chat-a' })
+
+        expect(stopA).toHaveBeenCalledTimes(1)
+        expect(stopP).toHaveBeenCalledTimes(1)
+        expect(stopS1).toHaveBeenCalledTimes(1)
+        expect(stopS2).toHaveBeenCalledTimes(1)
+        expect(stopW).toHaveBeenCalledTimes(1)
+    })
+
+    test('R13: a stop that throws is logged and does not keep the next from running', () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const stopAfter = vi.fn()
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, () => { throw new Error('stop failed') }, 'reply'))
+        open(registerWork({ chaId: 'char-b', chatId: 'chat-b' }, stopAfter, 'reply'))
+
+        try {
+            expect(() => stopAllReplyWork()).not.toThrow()
             expect(stopAfter).toHaveBeenCalledTimes(1)
             expect(logged).toHaveBeenCalledTimes(1)
         } finally {
@@ -482,5 +537,77 @@ describe('hasAnyWork and isWorkInProgress follow the registry', () => {
         second.end()
         expect(hasAnyWork()).toBe(false)
         expect(isWorkInProgress()).toBe(false)
+    })
+})
+
+// Specification: `replyTargets` is a new read-only export, so these tests pin its contract.
+describe('replyTargets lists the chats with a reply registered', () => {
+    const X_A = { chaId: 'cha-x', chatId: 'chat-a' }
+    const X_B = { chaId: 'cha-x', chatId: 'chat-b' }
+    const Y_C = { chaId: 'cha-y', chatId: 'chat-c' }
+
+    test('T-S6-25: lists each (chaId, chatId) pair once, in first-registration order', () => {
+        open(registerWork(X_A, undefined, 'reply'))
+        open(registerWork(Y_C, undefined, 'reply'))
+        open(registerWork(X_A, undefined, 'reply'))
+        open(registerWork(X_B, undefined, 'reply'))
+
+        expect(replyTargets()).toEqual([X_A, Y_C, X_B])
+    })
+
+    test('T-S6-26: leaves out preview and plain work, and keeps a stopped reply that has not ended', () => {
+        open(registerWork({ chaId: 'cha-x', chatId: 'chat-d' }, undefined, 'preview'))
+        open(registerWork({ chaId: 'cha-y', chatId: 'chat-e' }))
+        const stop = vi.fn()
+        open(registerWork(X_A, stop, 'reply'))
+
+        stopWorkIn(X_A)
+
+        expect(stop).toHaveBeenCalledTimes(1)
+        expect(replyTargets()).toEqual([X_A])
+    })
+
+    test('T-S6-27: a group turn, outer and recursion, is one entry under the group and none for the member', () => {
+        const turn = { chaId: 'grp-g', chatId: 'chat-g', memberChaId: 'cha-x' }
+        open(registerWork(turn, vi.fn(), 'reply'))
+        open(registerWork({ ...turn }, undefined, 'reply'))
+
+        expect(replyTargets()).toEqual([{ chaId: 'grp-g', chatId: 'chat-g' }])
+    })
+
+    test('T-S6-28: returns copies, so a caller cannot reach a registration', () => {
+        open(registerWork(X_A, undefined, 'reply'))
+
+        const first = replyTargets()
+        first[0].chatId = 'tampered'
+        first.push(Y_C)
+
+        expect(replyTargets()).toEqual([X_A])
+    })
+
+    test('T-S6-29: a derived over it re-runs when a reply starts or ends, not when plain work starts', () => {
+        const seen: number[] = []
+        const stopEffect = $effect.root(() => {
+            const targets = $derived(replyTargets())
+            $effect(() => {
+                seen.push(targets.length)
+            })
+        })
+        flushSync()
+        expect(seen).toEqual([0])
+
+        const work = open(registerWork(X_B))
+        flushSync()
+        expect(seen).toEqual([0])
+        work.end()
+
+        const reply = open(registerWork(X_A, undefined, 'reply'))
+        flushSync()
+        expect(seen.at(-1)).toBe(1)
+
+        reply.end()
+        flushSync()
+        expect(seen.at(-1)).toBe(0)
+        stopEffect()
     })
 })

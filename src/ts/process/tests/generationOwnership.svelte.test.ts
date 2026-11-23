@@ -385,7 +385,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 
 import { sendChat, doingChat } from 'src/ts/process/index.svelte'
 import { isBusyIn, isGeneratingIn, stopWorkIn } from 'src/ts/process/chatOrigin'
-import { send, reroll, unReroll, runAutoMode, abortChat, isAutoModeActive, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
+import { send, reroll, regenerateNewest, unReroll, runAutoMode, abortChat, isAutoModeActive, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { processMultiCommand } from 'src/ts/process/command'
 import { postChatFile } from 'src/ts/process/files/multisend'
@@ -1417,3 +1417,77 @@ describe('a loop whose entry\'s send throws', () => {
         expect(contents().includes('three')).toBe(false)
     })
 })
+
+//#region B6 compatibility guards: the sound after a stop, through the real sendChat
+
+// These pass before and after the per-chat stop-all change; they pin that a
+// stopped reply stays silent when the caller's own controller is never aborted.
+const uiSoundBox = vi.hoisted(() => ({ calls: [] as string[] }))
+vi.mock(import('src/ts/uiSound/uiSound'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return { ...actual, playUiSound: vi.fn((kind: string) => { uiSoundBox.calls.push(kind) }) } as typeof actual
+})
+
+const originalAudio = globalThis.Audio
+const audioBox = { plays: 0 }
+class FakeAudio {
+    constructor(_src?: string) {}
+    play() { audioBox.plays++; return Promise.resolve() }
+}
+
+describe('guard (B6): a reply stopped by stop-all stays silent through the real sendChat', () => {
+    beforeEach(() => {
+        audioBox.plays = 0
+        uiSoundBox.calls.length = 0
+        vi.stubGlobal('Audio', FakeAudio)
+    })
+
+    afterEach(() => {
+        vi.stubGlobal('Audio', originalAudio)
+    })
+
+    test('control: an unstopped regenerate with playMessage chimes once', async () => {
+        installWorld({ playMessage: true })
+        theChat().message.push(msg('char', 'old reply', { chatId: 'm-old' }))
+        theChat().message[0].chatId = 'm-user'
+        mockReply('new reply')
+        await regenerateNewest(makeSource())
+        expect(audioBox.plays, 'chime').toBe(1)
+    })
+
+    test('a regenerate stopped by abortChat mid-stream plays no chime, no ui sound, no alert', async () => {
+        installWorld({ playMessage: true })
+        theChat().message.push(msg('char', 'old reply', { chatId: 'm-old' }))
+        theChat().message[0].chatId = 'm-user'
+        holdEveryRequest()
+        const running = regenerateNewest(makeSource())
+        const request = await requestHeld(1)
+        abortChat()
+        const aborted = request.signal?.aborted
+        await drain(running)
+        expect(aborted, 'request signal aborted').toBe(true)
+        expect(audioBox.plays, 'chime').toBe(0)
+        expect(uiSoundBox.calls.filter((k) => k !== 'send'), 'ui sounds').toEqual([])
+        expect(alertErrorMock, 'alert').not.toHaveBeenCalled()
+        expect(get(doingChat)).toBe(false)
+    })
+
+    test('an auto tick stopped by abortChat mid-stream plays no chime, no ui sound, no alert', async () => {
+        installWorld({ playMessage: true })
+        holdEveryRequest()
+        const source = makeSource()
+        const auto = runAutoMode(source)
+        const request = await requestHeld(1)
+        abortChat()
+        const aborted = request.signal?.aborted
+        expect(isAutoModeActive(), 'auto off at once').toBe(false)
+        await drain(auto, stopAutoMode(source))
+        expect(aborted, 'request signal aborted').toBe(true)
+        expect(held.length, 'no second tick').toBe(1)
+        expect(audioBox.plays, 'chime').toBe(0)
+        expect(uiSoundBox.calls.filter((k) => k !== 'send'), 'ui sounds').toEqual([])
+        expect(alertErrorMock, 'alert').not.toHaveBeenCalled()
+    })
+})
+
+//#endregion

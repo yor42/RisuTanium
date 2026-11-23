@@ -9,7 +9,7 @@
 // transactions. Nothing here throws or rejects into the edit path.
 
 import { createPageSession } from './historyModel'
-import type { Expectation, OwnerKey } from './ownerPhase'
+import { isStoredOwnerKey, type Expectation, type StoredOwnerKey } from './ownerPhase'
 import {
     CAP_BYTES,
     HEADER_BOUNDS,
@@ -18,6 +18,7 @@ import {
     classifyLoad,
     genBounds,
     headerKey,
+    isStoredRecord,
     prepareSave,
     readHeaders,
     readOwnHeader,
@@ -82,10 +83,10 @@ export function createStudioStoreIdb(options: StudioStoreIdbOptions = {}): Studi
     if (pageSession.includes('|')) {
         throw new Error('A page session must not contain "|".')
     }
-    const expectations = new Map<OwnerKey, Expectation>()
+    const expectations = new Map<StoredOwnerKey, Expectation>()
     // What this instance last loaded or wrote, per owner. Every load outcome replaces it; a failed
     // save leaves it unchanged.
-    const baselines = new Map<OwnerKey, Baseline>()
+    const baselines = new Map<StoredOwnerKey, Baseline>()
     // Lengths of entries that were measured but not stored, so a repeated save does not measure them again.
     const memo = new WeakMap<object, number>()
     const closedCallbacks: (() => void)[] = []
@@ -216,6 +217,11 @@ export function createStudioStoreIdb(options: StudioStoreIdbOptions = {}): Studi
 
         async save(owner, record, protect): Promise<SaveResult> {
             let tx: IDBTransaction | null = null
+            // A session-kind key, or a record naming one, never reaches the database: no connection, no
+            // expectation lookup and no transaction.
+            if (!isStoredOwnerKey(owner) || !isStoredRecord(record)) {
+                return { kind: 'unwritable' }
+            }
             try {
                 const db = await usableDatabase()
                 if (!db) {

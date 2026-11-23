@@ -1722,3 +1722,153 @@ describe('Lua setChatVar/getChatVar resolve through the run\'s origin, not the s
         expect(decodedA?.chats[0].scriptstate?.['$k']).toBe('v')
     })
 })
+
+describe('An image generation effect whose read the access control list refuses (guard)', () => {
+    const refusals = [
+        ['release', 'Command plugin:fs|read_file not allowed by ACL'],
+        ['debug', 'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file'],
+    ] as const
+
+    const effects = [
+        ['runImgGen', () => ({ type: 'runImgGen', value: 'prompt', negValue: '', inputVar: 'imgresult' })],
+        ['v2ImgGen', () => v2('v2ImgGen', { value: 'prompt', valueType: 'value', negValue: '', negValueType: 'value', outputVar: 'imgresult' })],
+    ] as const
+
+    for (const [effectType, makeEffect] of effects) {
+        for (const [wording, refusal] of refusals) {
+            test(`${effectType} rejects the run with the exact string (${wording} wording), sets no output variable and writes no inlay`, async () => {
+                const { writeInlayImage } = await import('./files/inlays')
+                const char = makeCharacter(`char-acl-${effectType}-${wording}`, { lowLevelAccess: true })
+                installDb([char])
+                const chat = char.chats[0]
+                char.triggerscript.push(trig('t', 'manual', [makeEffect() as triggerEffect]))
+                vi.mocked(generateAIImage).mockReset()
+                vi.mocked(generateAIImage).mockRejectedValueOnce(refusal)
+                vi.mocked(writeInlayImage).mockClear()
+
+                const handle = beginWork(char, chat)
+                let outcome: unknown = 'resolved'
+                try {
+                    await runTrigger(char, 'manual', { chat, manualName: 't', origin: handle!.origin } as never)
+                } catch (error) {
+                    outcome = error
+                } finally { handle!.end() }
+                vi.mocked(generateAIImage).mockReset()
+                vi.mocked(generateAIImage).mockResolvedValue(null as never)
+
+                expect(outcome).toBe(refusal)
+                expect(DBState.db.characters[0].chats[0].scriptstate['$imgresult']).toBeUndefined()
+                expect(writeInlayImage).not.toHaveBeenCalled()
+            })
+        }
+    }
+})
+
+describe('An abandoned live run changes no chat data (signal)', () => {
+    async function deferredRequest() {
+        const { requestChatData } = await import('./request/request')
+        let resolveRequest: (value: { type: 'success', result: string }) => void = () => {}
+        const reached = new Promise<void>((res) => {
+            vi.mocked(requestChatData).mockImplementationOnce(() => {
+                res()
+                return new Promise((resolveIt) => { resolveRequest = resolveIt as never }) as never
+            })
+        })
+        return { reached, resolveRequest: (value: string) => resolveRequest({ type: 'success', result: value }) }
+    }
+
+    test('TG-1: a triggerlua effect that awaits and then addChat writes nothing after the abort', async () => {
+        const char = makeCharacter('char-abandon-tg1')
+        installDb([char])
+        const chat = char.chats[0]
+        char.triggerscript.push(trig('t', 'manual', [{
+            type: 'triggerlua',
+            code: [
+                't = async(function(id)',
+                '  alertInput(id, "wait"):await()',
+                '  addChat(id, "user", "late-msg")',
+                'end)',
+            ].join('\n'),
+        }]))
+        const { reached, releaseGate } = makeAlertGate()
+        const controller = new AbortController()
+        const handle = beginWork(char, chat)
+        const run = runTrigger(char, 'manual', { chat, manualName: 't', origin: handle!.origin, signal: controller.signal } as never)
+        await reached
+        controller.abort()
+        releaseGate()
+        await run
+        handle!.end()
+        expect(chat.message.length).toBe(0)
+    })
+
+    test('TG-2: a v2RunLLM output variable is not written after the abort', async () => {
+        const char = makeCharacter('char-abandon-tg2', { lowLevelAccess: true })
+        installDb([char])
+        const chat = char.chats[0]
+        char.triggerscript.push(trig('t', 'manual', [v2('v2RunLLM', { value: 'hi', valueType: 'value', model: 'model', outputVar: 'out' })]))
+        const request = await deferredRequest()
+        const controller = new AbortController()
+        const handle = beginWork(char, chat)
+        const run = runTrigger(char, 'manual', { chat, manualName: 't', origin: handle!.origin, signal: controller.signal } as never)
+        await request.reached
+        controller.abort()
+        request.resolveRequest('late result')
+        await run
+        handle!.end()
+        expect(chat.scriptstate['$out']).toBeUndefined()
+    })
+
+    test('TG-3: a v1 runLLM input variable is not written after the abort', async () => {
+        const char = makeCharacter('char-abandon-tg3', { lowLevelAccess: true })
+        installDb([char])
+        const chat = char.chats[0]
+        char.triggerscript.push(trig('t', 'manual', [{ type: 'runLLM', value: 'hi', inputVar: 'out' } as unknown as triggerEffect]))
+        const request = await deferredRequest()
+        const controller = new AbortController()
+        const handle = beginWork(char, chat)
+        const run = runTrigger(char, 'manual', { chat, manualName: 't', origin: handle!.origin, signal: controller.signal } as never)
+        await request.reached
+        controller.abort()
+        request.resolveRequest('late result')
+        await run
+        handle!.end()
+        expect(chat.scriptstate['$out']).toBeUndefined()
+    })
+
+    test('TG-4: guard: a display run with an aborted signal still returns its temporary variables', async () => {
+        const char = makeCharacter('char-abandon-tg4')
+        installDb([char])
+        const chat = char.chats[0]
+        char.triggerscript.push(trig('t', 'display', [
+            v2('v2SetVar', { operator: '=', var: 'shown', valueType: 'value', value: '7' }),
+        ]))
+        const controller = new AbortController()
+        const result = await runTrigger(char, 'display', { chat, displayMode: true, displayData: 'x', signal: controller.signal } as never)
+        expect(result).toBeTruthy()
+        controller.abort()
+        const after = await runTrigger(char, 'display', { chat, displayMode: true, displayData: 'x', signal: controller.signal } as never)
+        expect(after).toBeTruthy()
+        expect(chat.scriptstate['$shown']).toBeUndefined()
+    })
+
+    test('TG-5: guard: an unaborted signal lets triggerlua and v2RunLLM write as before', async () => {
+        const char = makeCharacter('char-abandon-tg5', { lowLevelAccess: true })
+        installDb([char])
+        const chat = char.chats[0]
+        char.triggerscript.push(trig('t', 'manual', [
+            v2('v2RunLLM', { value: 'hi', valueType: 'value', model: 'model', outputVar: 'out' }),
+            { type: 'triggerlua', code: 't = async(function(id)\n  addChat(id, "user", "kept")\nend)' } as unknown as triggerEffect,
+        ]))
+        const request = await deferredRequest()
+        const controller = new AbortController()
+        const handle = beginWork(char, chat)
+        const run = runTrigger(char, 'manual', { chat, manualName: 't', origin: handle!.origin, signal: controller.signal } as never)
+        await request.reached
+        request.resolveRequest('fine')
+        await run
+        handle!.end()
+        expect(chat.scriptstate['$out']).toBe('fine')
+        expect(chat.message.map((m: { data: string }) => m.data)).toEqual(['kept'])
+    })
+})

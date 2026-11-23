@@ -5,6 +5,9 @@
     import Sortable from "sortablejs";
     import { sleep, sortableOptions } from "src/ts/util";
     import { onDestroy, onMount } from "svelte";
+    import WindowedSegment from "src/lib/UI/Windowed/WindowedSegment.svelte";
+    import { createWindowHost } from "src/ts/windowing/windowHost.svelte";
+    import { orderAfterSortableDrop } from "src/ts/windowing/rowReorder";
   import { DownloadIcon, HardDriveUploadIcon, PlusIcon } from "@lucide/svelte";
   import { exportRegex, importRegex } from "src/ts/process/scripts";
     interface Props {
@@ -17,18 +20,22 @@
     let ele: HTMLDivElement = $state()
     let sorted = $state(0)
     let opened = 0
+    // Only the rows near the view are mounted; the row keys are positions, so a drop is read as a data order by orderAfterSortableDrop.
+    const windowHost = createWindowHost({ root: () => ele ?? null })
+    onDestroy(() => windowHost.dispose())
+    const REGEX_ROW_FALLBACK_PX = 48
+    const rowKeys = $derived(value.map((_, i) => String(i)))
     const createStb = () => {
-        stb = Sortable.create(ele, {
-            onEnd: async () => {
-                let idx:number[] = []
-                ele.querySelectorAll('[data-risu-idx]').forEach((e, i) => {
-                    idx.push(parseInt(e.getAttribute('data-risu-idx')))
-                })
-                let newValue:customscript[] = []
-                idx.forEach((i) => {
-                    newValue.push(value[i])
-                })
-                value = newValue
+        const list = ele?.querySelector('[data-window-list]')
+        if(!list){
+            return
+        }
+        stb = Sortable.create(list as HTMLElement, {
+            onEnd: async (evt) => {
+                const order = orderAfterSortableDrop(list, evt.item, 'data-risu-idx', value.length)
+                if(order){
+                    value = order.map((i) => value[i])
+                }
                 try {
                     stb.destroy()
                 } catch (error) {}
@@ -36,11 +43,15 @@
                 await sleep(1)
                 createStb()
             },
-            ...sortableOptions
+            ...sortableOptions,
+            draggable: '[data-window-key]',
         })
     }
 
-    const onOpen = () => {
+    // An open row stays mounted, so its open state and its count in `opened` survive scrolling.
+    let openRows = $state<string[]>([])
+    const onOpen = (idx: number) => {
+        openRows = [...openRows, String(idx)]
         opened += 1
         if(stb){
             try {
@@ -48,7 +59,11 @@
             } catch (error) {}
         }
     }
-    const onClose = () => {
+    const onClose = (idx: number) => {
+        const at = openRows.indexOf(String(idx))
+        if(at !== -1){
+            openRows = openRows.filter((_, i) => i !== at)
+        }
         opened -= 1
         if(opened === 0){
             createStb()
@@ -70,15 +85,17 @@
         {#if value.length === 0}
                 <div class="text-textcolor2">{language.sidebarUi.noScripts}</div>
         {/if}
-        {#each value as customscript, i}
-            <RegexData idx={i} bind:value={value[i]} onOpen={onOpen} onClose={onClose} onRemove={(target) => {
-                let customscript = value
-                const at = customscript ? customscript.indexOf(target) : -1
-                if(at === -1) return
-                customscript.splice(at, 1)
-                value = customscript
-            }}/>
-        {/each}
+        <WindowedSegment host={windowHost} keys={rowKeys} height={{ fallback: REGEX_ROW_FALLBACK_PX }} pinned={openRows} class="flex flex-col" data-window-list>
+            {#snippet item(key, i)}
+                <RegexData idx={i} bind:value={value[i]} onOpen={onOpen} onClose={onClose} onRemove={(target) => {
+                    let customscript = value
+                    const at = customscript ? customscript.indexOf(target) : -1
+                    if(at === -1) return
+                    customscript.splice(at, 1)
+                    value = customscript
+                }}/>
+            {/snippet}
+        </WindowedSegment>
     </div>
 {/key}
 {#if buttons}

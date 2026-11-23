@@ -142,6 +142,35 @@ describe('the Tauri byte store on Android sends no waiting plugin command', () =
     })
 })
 
+describe('the Android wire fake refuses what the native side refuses', () => {
+    async function invoke(cmd: string, args?: unknown, headers?: Record<string, string>): Promise<unknown> {
+        const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke(cmd: string, args?: unknown, options?: unknown): Promise<unknown> } }).__TAURI_INTERNALS__
+        return await internals.invoke(cmd, args, headers === undefined ? undefined : { headers })
+    }
+
+    test.each(['write_file', 'mkdir', 'remove', 'rename', 'exists', 'read_file', 'stat', 'create', 'copy_file'])('the plugin fs command %s is refused', async (command) => {
+        await expect(invoke(`plugin:fs|${command}`, { path: '/appdata/assets/a.png', options: {} })).rejects.toMatch(/^refused-fs:/)
+    })
+
+    test.each(['shared_prefs/x', 'cache/app-update/x', 'databases/x', 'files/x', 'app_webview/x', 'Assets/x', 'native-reply/x', 'risu-bench-scratch', '../assets/x'])('the key %s is refused', async (key) => {
+        await expect(invoke('app_fs_exists', { key })).rejects.toBe('refused key: outside the app\'s store')
+        await expect(invoke('write_durable', new Uint8Array(1), { 'x-risu-key': encodeURIComponent(key) })).rejects.toBe('refused key: outside the app\'s store')
+        await expect(invoke('write_chunk_raw', new Uint8Array(1), { 'x-risu-key': encodeURIComponent('assets/ok'), 'x-risu-final-key': encodeURIComponent(key) })).rejects.toBe('refused key: outside the app\'s store')
+    })
+
+    test('the empty key names the base for exists and mkdir_all only', async () => {
+        await expect(invoke('app_fs_exists', { key: '' })).resolves.toBe(true)
+        await expect(invoke('app_fs_mkdir_all', { key: '' })).resolves.toBeUndefined()
+        await expect(invoke('app_fs_remove', { key: '' })).rejects.toBe('refused key: outside the app\'s store')
+    })
+
+    test('keys inside the set pass the fake', async () => {
+        await expect(invoke('app_fs_exists', { key: 'assets/none' })).resolves.toBe(false)
+        await expect(invoke('app_fs_exists', { key: 'store2-commit' })).resolves.toBe(false)
+        await expect(invoke('app_fs_exists', { key: 'risu-write-0123456789abcdef.tmp' })).resolves.toBe(false)
+    })
+})
+
 describe('the write sweep and the atomic write on Android', () => {
     test('sweeping with and without a leftover temp removes only the temp', async () => {
         const { sweepAllWriteTemps } = await import('src/ts/storage/tauriAtomicWrite')

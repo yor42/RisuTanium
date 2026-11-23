@@ -5,11 +5,12 @@
     import { buildMergedView } from '../../ts/studio/mergedView'
     import type { OwnerModel, OwnerNode } from '../../ts/studio/ownerModel'
     import { readTextSources } from '../../ts/studio/ownerSource.svelte'
-    import { TREE_PAGE_SIZE, closeStudioTogglePreview, selectStudioNode, showMoreStudioRows, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { TREE_PAGE_SIZE, closeStudioTogglePreview, openStudioListRow, showMoreStudioRows, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { DBState } from '../../ts/stores.svelte'
     import { appToggleOwners } from '../../ts/studio/toggleAppOwners'
     import { buildToggleCombined, type CombinedEntry, type CombinedSource, type CombinedSourceInput } from '../../ts/studio/toggleCombined'
     import { tagLabelOf } from './TreeRow.svelte'
+    import { combinedKeyOf } from './StudioCombined.svelte'
 
     // The toggles of every source of the chat, one list per source, with the keys that more than one source defines
     // marked. Each source is read on its own. Reads only: opening a source changes the selection and nothing else.
@@ -61,8 +62,8 @@
     const activeShown = $derived(visibleOf(combined.active, 0))
     const offShown = $derived(visibleOf(combined.off, combined.active.reduce((sum, source) => sum + source.entries.length, 0)))
 
-    function open(ownerKey: string): void {
-        selectStudioNode(ownerKey, 'toggles', itemIds.get(ownerKey) ?? null)
+    function open(ownerKey: string, revealId: string): void {
+        openStudioListRow({ ownerKey: combinedKeyOf('toggles'), kind: 'toggles' }, ownerKey, itemIds.get(ownerKey) ?? null, revealId)
     }
 
     // The sheet reads the chat panel's sources, a heavy module this view does not otherwise need: it is loaded with the
@@ -93,7 +94,7 @@
 {#snippet listing(parts: { source: CombinedSource, entries: readonly CombinedEntry[] }[], dimmed: boolean)}
     {#each parts as part (part.source.ownerKey)}
         <section data-part="studio-tg-combined-source" data-owner-key={part.source.ownerKey} data-off={dimmed ? '' : undefined} class={`flex flex-col gap-1 ${dimmed ? 'opacity-60' : ''}`}>
-            <button type="button" data-part="studio-tg-combined-header" class="flex min-h-11 w-full cursor-pointer flex-wrap items-center gap-2 rounded px-2 text-start hover:bg-selected" onclick={() => open(part.source.ownerKey)}>
+            <button type="button" data-part="studio-tg-combined-header" data-reveal-id={`tg:${part.source.ownerKey}`} class="flex min-h-11 w-full cursor-pointer flex-wrap items-center gap-2 rounded px-2 text-start hover:bg-selected" onclick={() => open(part.source.ownerKey, `tg:${part.source.ownerKey}`)}>
                 <span class="min-w-0 break-words font-bold">{part.source.name}</span>
                 {#each part.source.tags as tag}
                     <span class="rounded border border-darkborderc px-1 text-xs text-textcolor2">{tagLabelOf(tag)}</span>
@@ -112,7 +113,7 @@
                         <li data-part="studio-tg-combined-group" class="px-2 pt-1 text-xs font-bold text-textcolor2">{entry.group}</li>
                     {/if}
                     <li>
-                        <button type="button" data-part="studio-tg-combined-entry" data-key={entry.key} class="flex min-h-11 w-full cursor-pointer flex-wrap items-center gap-2 rounded px-2 text-start hover:bg-selected" onclick={() => open(part.source.ownerKey)}>
+                        <button type="button" data-part="studio-tg-combined-entry" data-key={entry.key} data-reveal-id={`tg:${part.source.ownerKey}#${entry.key}`} class="flex min-h-11 w-full cursor-pointer flex-wrap items-center gap-2 rounded px-2 text-start hover:bg-selected" onclick={() => open(part.source.ownerKey, `tg:${part.source.ownerKey}#${entry.key}`)}>
                             <span class="min-w-0 break-words">{entry.label !== '' ? entry.label : language.studioTgUnnamed}</span>
                             <span class="font-mono text-xs text-textcolor2">{entry.key}</span>
                             {#if entry.shared.length > 0}

@@ -12,7 +12,7 @@
 // edits from that base instead of in full.
 
 import type { OwnerRecord } from './historyModel'
-import type { OwnerKey } from './ownerPhase'
+import { isStoredOwnerKey, type StoredOwnerKey } from './ownerPhase'
 import type { LoadResult, OpenResult, SaveResult, StudioHistoryStore } from './studioHistoryStore'
 import {
     diffEntry,
@@ -51,8 +51,8 @@ interface BaseIndex {
 
 type Pending =
     | { op: 'open'; resolve: (result: OpenResult) => void }
-    | { op: 'load'; owner: OwnerKey; resolve: (result: LoadResult) => void }
-    | { op: 'save'; owner: OwnerKey; resolve: (result: SaveResult) => void }
+    | { op: 'load'; owner: StoredOwnerKey; resolve: (result: LoadResult) => void }
+    | { op: 'save'; owner: StoredOwnerKey; resolve: (result: SaveResult) => void }
 
 // `fresh`: no worker started yet. `live`: the worker runs. `unavailable`: it never ran (the page cannot
 // start it, or it failed before it said anything); the store answers like one without a database and
@@ -73,7 +73,7 @@ export function createStudioStoreProxy(options: StudioStoreProxyOptions = {}): S
     // only when a post went out, a load answered, the worker said it lost the mirror or an ack could not be
     // read (which deletes the owner's entry); a post that threw
     // leaves it as it was, so the next delta is made against what the worker last received.
-    const posted = new Map<OwnerKey, Map<Tok, PutEntry>>()
+    const posted = new Map<StoredOwnerKey, Map<Tok, PutEntry>>()
     const closedCallbacks: (() => void)[] = []
     let closedFired = false
 
@@ -156,7 +156,7 @@ export function createStudioStoreProxy(options: StudioStoreProxyOptions = {}): S
         }
     }
 
-    function adopt(owner: OwnerKey, record: OwnerRecord, tokens: LoadTokens): boolean {
+    function adopt(owner: StoredOwnerKey, record: OwnerRecord, tokens: LoadTokens): boolean {
         if (
             record.done.length !== tokens.done.length ||
             record.undone.length !== tokens.undone.length ||
@@ -337,7 +337,9 @@ export function createStudioStoreProxy(options: StudioStoreProxyOptions = {}): S
         save(owner, record, protect) {
             return new Promise<SaveResult>((resolve) => {
                 const target = liveWorker()
-                if (!target) {
+                // A record naming a non-stored key is never sent: the store would refuse it as unwritable.
+                const recordKey = record.ownerKey
+                if (!target || !isStoredOwnerKey(recordKey)) {
                     resolve({ kind: 'unwritable' })
                     return
                 }
@@ -413,7 +415,7 @@ export function createStudioStoreProxy(options: StudioStoreProxyOptions = {}): S
                     t: 'save',
                     seq: sequence,
                     owner,
-                    ownerKey: record.ownerKey,
+                    ownerKey: recordKey,
                     touchedAt: record.touchedAt,
                     protect: [...protect],
                     done,

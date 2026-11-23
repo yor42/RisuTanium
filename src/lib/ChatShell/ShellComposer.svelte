@@ -6,8 +6,10 @@
     import SendHorizontalIcon from '@lucide/svelte/icons/send-horizontal'
     import SquareIcon from '@lucide/svelte/icons/square'
     import { DBState, popUpEditorStore, selIdState } from '../../ts/stores.svelte'
-    import { doingChat, chatProcessStage } from '../../ts/process/index.svelte'
-    import { sendMain, stopComposerWorkIn, isComposerBusy, isComposerBusyIn, isComposerLocked, reroll, updateInputTransateMessage, type ComposerActionsSource } from '../../ts/process/composerActions.svelte'
+    import { nativeReplyRunsIn } from '../../ts/nativeReply/runningReplies.svelte'
+    import { relistWhileNativeBlocked } from '../../ts/nativeReply/runningRelist.svelte'
+    import { processStageIn } from '../../ts/process/generationOwnership.svelte'
+    import { sendMain, stopComposerWorkIn, isComposerBusyIn, isComposerLockedIn, reroll, updateInputTransateMessage, type ComposerActionsSource } from '../../ts/process/composerActions.svelte'
     import { createComposerSurface, beginChatFileUpload, trackChatFileUpload, trackChatFileAttachment, attachmentsForDraft } from '../../ts/process/composerSurface.svelte'
     import * as composerDrafts from '../../ts/process/composerDrafts.svelte'
     import { COMPOSER_DRAFT_KIND, registerDraft, unregisterDraft } from '../../ts/localDrafts'
@@ -43,8 +45,12 @@
     // The shown chat's own work decides Stop; work in another chat only disables Send, and typing stays allowed.
     let shownOrigin = $derived(character?.chaId && chat?.id ? originOf(character, chat) : null)
     let shownBusy = $derived(shownOrigin ? isComposerBusyIn(shownOrigin) : false)
-    let writingElsewhere = $derived(!shownBusy && ($doingChat || isComposerBusy()))
-    let sendBlocked = $derived(sendWaitsForDelete || writingElsewhere)
+    // A native reply the page no longer holds targets this chat: no unit holds it, but a send into it is refused.
+    let shownNativeReply = $derived(shownOrigin ? nativeReplyRunsIn(shownOrigin) : false)
+    let shownLocked = $derived(shownOrigin ? isComposerLockedIn(shownOrigin) : false)
+    let sendBlocked = $derived(sendWaitsForDelete || shownNativeReply)
+    // Only the refusal for a native reply re-lists; a unit that writes in the shown chat shows Stop and wins.
+    relistWhileNativeBlocked(() => shownNativeReply && !shownBusy ? shownOrigin : null)
     const surface = createComposerSurface({ character: () => character, chat: () => chat })
     let shownDraft = $derived(surface.shownDraft)
     let shownAttachments = $derived(attachmentsForDraft(surface.currentDraftKey))
@@ -63,7 +69,7 @@
     let popupTimer: ReturnType<typeof setInterval> | null = null
 
     function selectSticker(asset: [string, string, string]): void {
-        if (isComposerLocked()) return
+        if (shownLocked) return
         let fileType = 'img'
         if (asset[2] === 'mp4' || asset[2] === 'webm') fileType = 'video'
         else if (asset[2] === 'mp3' || asset[2] === 'wav') fileType = 'audio'
@@ -129,7 +135,7 @@
     }
 
     function paste(event: ClipboardEvent): void {
-        if (isComposerLocked()) return
+        if (shownLocked) return
         const items = event.clipboardData?.items
         if (!items) return
         for (const item of items) {
@@ -159,7 +165,7 @@
     }
 
     async function postFile(): Promise<void> {
-        if (isComposerLocked()) return
+        if (shownLocked) return
         const key = surface.resolveDraftKeyForWrite()
         const hint = originHint()
         appendResults(await trackChatFileUpload(() => trackChatFileAttachment(key, (report) => postChatFile(composerDrafts.peek(key).messageInput, key, hint, report))), key)
@@ -184,7 +190,7 @@
     }
 
     function openPopup(event: MouseEvent): void {
-        if (!DBState.db.longPressToPopupEditor || isComposerLocked()) return
+        if (!DBState.db.longPressToPopupEditor || shownLocked) return
         event.preventDefault()
         popUpEditorStore.value = shownDraft.messageInput
         popUpEditorStore.mode = 'default'
@@ -226,16 +232,16 @@
         </div>
     {/if}
     {#if DBState.db.useAutoTranslateInput && DBState.db.translator}
-        <textarea bind:this={translateInput} data-part="chat-composer-translate" data-kind="field" aria-label={language.enterMessageForTranslateToEnglish} placeholder={language.enterMessageForTranslateToEnglish} value={shownDraft.messageInputTranslate} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInputTranslate = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, true) }} onkeydown={keydown}></textarea>
+        <textarea bind:this={translateInput} data-part="chat-composer-translate" data-kind="field" aria-label={language.enterMessageForTranslateToEnglish} placeholder={language.enterMessageForTranslateToEnglish} value={shownDraft.messageInputTranslate} readonly={shownLocked} oninput={(event) => { surface.writeDraft((record) => { record.messageInputTranslate = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, true) }} onkeydown={keydown}></textarea>
     {/if}
     <div data-part="chat-composer-row">
         <button data-part="chat-composer-plus" data-kind="icon-button" aria-label={language.tools} onclick={(event) => onplus(event.currentTarget)}><PlusIcon aria-hidden="true" /></button>
-        <textarea bind:this={input} data-part="chat-composer-input" data-kind="field" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncontextmenu={openPopup}></textarea>
+        <textarea bind:this={input} data-part="chat-composer-input" data-kind="field" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={shownLocked} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncontextmenu={openPopup}></textarea>
         {#if shownBusy && shownOrigin}
-            <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={() => stopComposerWorkIn(shownOrigin)}><span data-part="chat-composer-progress" data-stage={$chatProcessStage} use:streamTextHold={{ origin: shownOrigin }}></span><SquareIcon aria-hidden="true" fill="currentColor" /></button>
+            <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={() => stopComposerWorkIn(shownOrigin)}><span data-part="chat-composer-progress" data-stage={processStageIn(shownOrigin)} use:streamTextHold={{ origin: shownOrigin }}></span><SquareIcon aria-hidden="true" fill="currentColor" /></button>
         {:else}
-            <button data-part="chat-send" data-kind="icon-button" aria-label={language.chatShellSend} disabled={sendBlocked} title={sendWaitsForDelete ? language.chatShellSendWaitsForDelete : (writingElsewhere ? language.chatShellSendBlockedWriting : undefined)} aria-describedby={writingElsewhere ? blockedReasonId : undefined} onclick={() => { if (!sendBlocked) void sendMain(source, false) }}><SendHorizontalIcon aria-hidden="true" /></button>
-            {#if writingElsewhere}<span id={blockedReasonId} hidden>{language.chatShellSendBlockedWriting}</span>{/if}
+            <button data-part="chat-send" data-kind="icon-button" aria-label={language.chatShellSend} disabled={sendBlocked} title={sendWaitsForDelete ? language.chatShellSendWaitsForDelete : (shownNativeReply ? language.chatShellSendWaitsForNativeReply : undefined)} aria-describedby={shownNativeReply ? blockedReasonId : undefined} onclick={() => { if (!sendBlocked) void sendMain(source, false) }}><SendHorizontalIcon aria-hidden="true" /></button>
+            {#if shownNativeReply}<span id={blockedReasonId} hidden>{language.chatShellSendWaitsForNativeReply}</span>{/if}
         {/if}
     </div>
     <div data-part="chat-composer-tools">

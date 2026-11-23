@@ -1,46 +1,68 @@
+import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+
 /**
  * State shared by the modules that start, hold and cancel a generation: the
- * composer's action window, the abort controller of the one send in progress,
- * and the count of turns that auto mode reads. It imports
- * nothing, so `index.svelte.ts` and every module that imports it can depend on
- * it without a cycle.
+ * composer's action window, the tags that mark a send's requests for the
+ * native chat Stop (no abort role), the per-chat count of turns that auto mode
+ * reads and the per-chat progress stage. It imports no repository module, so
+ * `index.svelte.ts` and every module that imports it can depend on it without
+ * a cycle.
  *
- * `doingChat` stays in `index.svelte.ts`. A starter is busy while that flag is
- * set or while `isComposerWindowOpen()` is true.
+ * `doingChat` stays in `index.svelte.ts`. Starters refuse per chat through
+ * `sendAdmission.starterRefusalIn`; `doingChat` and `isComposerWindowOpen()`
+ * remain the "any" readers.
  */
 
-let windowOpen = $state(false)
+/** One open composer window: the chat it is held for, never an active unit. */
+interface WindowEntry {
+    readonly target: { chaId: string, chatId: string }
+}
 
-/** The chat the open window belongs to; null while it is closed or was opened without one. */
-let windowOrigin = $state<{ chaId: string, chatId: string } | null>(null)
+/** The handle `openComposerWindow` returns; closing is idempotent and removes this window only. */
+export interface ComposerWindow {
+    close(): void
+}
+
+const composerWindows = new SvelteSet<WindowEntry>()
 
 /**
- * True from the composer Send's take until its hand-off returns, for the whole
- * of a reroll or unreroll, and for a whole auto-mode run. Reactive: the Send
- * button's template reads it.
+ * True while any composer window is open: from a composer Send's take until
+ * its hand-off returns, for the whole of a reroll or unreroll, and for a whole
+ * auto-mode run. Reactive: the Send button's template reads it.
  */
 export function isComposerWindowOpen(): boolean {
-    return windowOpen
+    return composerWindows.size > 0
 }
 
 /**
- * Opens or closes the window. `origin` names the chat the window is held for;
- * closing always clears it.
+ * Opens a window held for `origin`'s chat. Several windows may be open at once;
+ * each handle closes its own and nothing else, however often it is closed.
  */
-export function setComposerWindow(open: boolean, origin?: { chaId: string, chatId: string }): void {
-    windowOpen = open
-    windowOrigin = open && origin ? { chaId: origin.chaId, chatId: origin.chatId } : null
+export function openComposerWindow(origin: { chaId: string, chatId: string }): ComposerWindow {
+    const entry: WindowEntry = { target: { chaId: origin.chaId, chatId: origin.chatId } }
+    composerWindows.add(entry)
+    return { close: () => { composerWindows.delete(entry) } }
 }
 
-/**
- * True while the window is open for this chat. A window opened without an
- * origin belongs to no chat. Reactive, like `isComposerWindowOpen`.
- */
+/** True while at least one window is open for this chat. Reactive, like `isComposerWindowOpen`. */
 export function composerWindowFor(target: { chaId: string, chatId: string }): boolean {
-    return windowOpen && windowOrigin !== null
-        && windowOrigin.chaId === target.chaId && windowOrigin.chatId === target.chatId
+    for(const entry of composerWindows){
+        if(entry.target.chaId === target.chaId && entry.target.chatId === target.chatId){
+            return true
+        }
+    }
+    return false
 }
 
+/** A copy of the chat target of every open window, so a caller may stop work while windows close. */
+export function composerWindowTargets(): { chaId: string, chatId: string }[] {
+    return [...composerWindows].map((entry) => ({ chaId: entry.target.chaId, chatId: entry.target.chatId }))
+}
+
+/** Test-only: drops every open window. Never called from production code. */
+export function resetComposerWindowsForTests(): void {
+    composerWindows.clear()
+}
 let replyVersion = $state(0)
 let replyVersionCount = 0
 
@@ -59,64 +81,79 @@ export function readReplyVersion(): number {
     return replyVersion
 }
 
-let unitController: AbortController | null = null
-let unitTarget: { chaId: string, chatId: string } | null = null
+/**
+ * Tags of the published sends, by the send's own signal. The store only marks
+ * requests for the native chat Stop; it never aborts anything. It is weak and
+ * cannot be enumerated, so no reader can count it as "busy", and an entry
+ * left behind by a send that threw before its release dies with its signal.
+ */
+const unitTargets = new WeakMap<AbortSignal, { chaId: string, chatId: string } | null>()
 
 /**
- * Publishes the abort controller of the send that has just taken the flag,
- * with the chat it belongs to (the owner's id and the chat's id, the
- * keep-alive notice target). Only those two fields are kept, never a
- * group member's id.
+ * Publishes the send that has just taken the flag, with the chat it belongs
+ * to (the owner's id and the chat's id, the keep-alive notice target). Only
+ * those two fields are kept, never a group member's id.
  */
 export function publishUnit(controller: AbortController, origin?: { chaId: string, chatId: string }): void {
-    unitController = controller
-    unitTarget = origin ? { chaId: origin.chaId, chatId: origin.chatId } : null
+    unitTargets.set(controller.signal, origin ? { chaId: origin.chaId, chatId: origin.chatId } : null)
 }
 
-/** Withdraws `controller` and its target if it is still the published one. */
+/** Withdraws `controller`'s own entry; every other published unit stays. */
 export function releaseUnit(controller: AbortController): void {
-    if(unitController === controller){
-        unitController = null
-        unitTarget = null
-    }
+    unitTargets.delete(controller.signal)
 }
 
 /**
- * Whether `signal` is the published send unit's own signal. The native
- * request layer marks a request exactly then, so the chat's Stop (a
- * notification tap while the page is frozen) may cancel it natively. A signal
- * derived from the unit's is not the unit's, so a derived signal is never
- * marked (MC-1435).
+ * Whether `signal` is a published send unit's own signal. The native request
+ * layer marks a request exactly then, so the chat's Stop (a notification tap
+ * while the page is frozen) may cancel it natively. A signal derived from the
+ * unit's is not the unit's, so a derived signal is never marked (MC-1435).
  */
 export function isUnitInProgressSignal(signal?: AbortSignal | null): boolean {
-    return signal != null && unitController !== null && unitController.signal === signal
+    return signal != null && unitTargets.has(signal)
 }
 
-/** A copy of the published unit's chat target when `signal` is the unit's own, else null. */
+/** A copy of the chat target of the published unit `signal` belongs to, else null. */
 export function unitTargetOfSignal(signal?: AbortSignal | null): { chaId: string, chatId: string } | null {
-    if(!isUnitInProgressSignal(signal) || unitTarget === null){
+    if(signal == null){
         return null
     }
-    return { ...unitTarget }
+    const target = unitTargets.get(signal)
+    return target ? { ...target } : null
 }
 
-/** Aborts the send in progress, if any. */
-export function abortUnitInProgress(): void {
-    unitController?.abort()
-}
+const turnsReached = new Map<string, number>()
 
-let turnsReached = 0
+function chatKey(target: { chaId: string, chatId: string }): string {
+    return JSON.stringify([target.chaId, target.chatId])
+}
 
 /**
  * Called by a send at the point where it has settled on the character it
- * speaks as, past a group's own dispatch and the member checks. Auto mode
- * compares the count before and after a tick to tell a tick that reached a
- * turn from one that did not.
+ * speaks as, past a group's own dispatch and the member checks, keyed by the
+ * chat the send belongs to. Auto mode compares its own chat's count before
+ * and after a tick to tell a tick that reached a turn from one that did not.
  */
-export function noteTurnReached(): void {
-    turnsReached++
+export function noteTurnReached(target: { chaId: string, chatId: string }): void {
+    const key = chatKey(target)
+    turnsReached.set(key, (turnsReached.get(key) ?? 0) + 1)
 }
 
-export function turnsReachedCount(): number {
-    return turnsReached
+export function turnsReachedCount(target: { chaId: string, chatId: string }): number {
+    return turnsReached.get(chatKey(target)) ?? 0
+}
+
+const processStages = new SvelteMap<string, number>()
+
+/** Sets the progress stage of the send that belongs to `target`; other chats keep theirs. */
+export function setProcessStage(target: { chaId: string, chatId: string }, stage: number): void {
+    processStages.set(chatKey(target), stage)
+}
+
+/**
+ * The progress stage of `target`'s send, 0 for no chat or a chat that has
+ * none. Reactive, like the store it replaces.
+ */
+export function processStageIn(target: { chaId: string, chatId: string } | null): number {
+    return target ? processStages.get(chatKey(target)) ?? 0 : 0
 }

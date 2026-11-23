@@ -65,6 +65,12 @@ export const utilityConversation: UtilityConversationState = $state({
     instructions: null,
 })
 
+/**
+ * The task preset the Utility screen has chosen. It lives here, not in the screen, so leaving and reopening the screen
+ * keeps Send enabled. It is session-only (never saved) and survives New conversation.
+ */
+export const utilitySelection: { presetId: string } = $state({ presetId: '' })
+
 /** The tool steps of the current (or last) turn's run; a reader outside this module goes through this accessor. */
 export function getUtilitySteps(): readonly ToolStep[] {
     return utilityConversation.steps

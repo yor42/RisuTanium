@@ -137,45 +137,92 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
         ranOnce = true
     })
     let modulesRanOnce = false
-    // Partitioned, not narrowed: an outer effect over array shape plus one child
-    // effect per element, together registering the exact same dependency closure as
-    // a single `$state.snapshot(DBState.db.modules)` (container, length, and every
-    // index -- $state.snapshot's array branch never touches the array `version`
-    // source). Reading less than this loses writes -- see the preset effect's
-    // comment above for a real data-loss bug caused by exactly that. The point of splitting
-    // it is that a leaf edit to module k now only re-reads module k's child effect,
-    // not every other module's.
+    // Partitioned, not narrowed: the slot effect reads the container, its length
+    // and every index; one holder per index reads its own slot; and one deep
+    // reader per truthy slot deep-reads that slot's body. Together they register
+    // the exact same dependency closure as a single
+    // `$state.snapshot(DBState.db.modules)` (container, length, and every index
+    // -- $state.snapshot's array branch never touches the array `version`
+    // source). The readers alone do not: reading less than this loses writes --
+    // see the preset effect's comment above for a real data-loss bug caused by
+    // exactly that. The point of splitting it is that a slot write only
+    // deep-reads the written slot, and a leaf edit to module k only re-reads
+    // module k's reader, not every other module's.
+    //
+    // Rules, each of which a test breaks:
+    //   1. The slot subscriptions are held by effects that never deep-read: the
+    //      slot effect and the holders. A deep read that overflows the stack
+    //      while a child proxy is created leaves the reading effect with no
+    //      dependency at all, so a reader must never be what recreates itself.
+    //   2. The holder is `$effect.pre`: it runs when the creator creates it, so
+    //      a boot or shape flush adds no batch before the deep reads, and a
+    //      throw one batch later cannot leave a slot without its reader.
+    //   3. No effect that creates children reads an element, except a holder
+    //      its own slot. An element read in the creator would make every slot
+    //      write deep-read every module.
+    //   4. The reader marks in `finally`, so a write it cannot read is still
+    //      marked.
+    //   5. A failed read is rethrown from a microtask and never thrown in a
+    //      flush: a throw there abandons the effects queued behind it, in other
+    //      roots too. A failed module is read again only when its slot is
+    //      written, the list's shape changes, or the effects are registered
+    //      again; another module's install does not read it. When the failed
+    //      read overflowed the stack while a child proxy was created, its edits
+    //      are not tracked until then; when the overflow landed elsewhere, or
+    //      for an ordinary throw, the reader re-runs on the keys it read.
     //
     // Two independent guards, neither redundant:
-    //   1. `opts.tracker.modules = true` is set unconditionally by the outer AND by
-    //      every child, regardless of any `ranOnce` flag -- `risuSave.ts`'s `set()`,
-    //      the `if (toSave.modules)` gate, keys off `tracker.modules`, not off
-    //      `dirtySinceLastSave`. Do not delete the child's assignment as "redundant"
-    //      with the outer's.
+    //   1. `opts.tracker.modules = true` is set unconditionally by the slot
+    //      effect AND by every reader, regardless of any `ranOnce` flag --
+    //      `opts.tracker.modules` is the save contract: `takeStore2Snapshot` in
+    //      `saveLoop.ts` copies it into the pass's `toSave.modules`, which
+    //      decides whether that pass writes modules; `dirtySinceLastSave` does
+    //      not. A truncation to zero has no reader, so the slot effect must set
+    //      it. Do not delete
+    //      either assignment as "redundant" with the other.
     //   2. `markChanged(false)` never marks clean: `saveTimeoutExecute` in
     //      `globalApi.svelte.ts` only ever sets `dirtySinceLastSave = true`
     //      and re-arms the debounce timer.
-    // Shape changes (push/splice/whole-array replacement) tear down and recreate
-    // every child, so a recreated child's first run always passes `false` -- shape
-    // changes are covered only by the outer's own `markChanged(modulesRanOnce)`,
+    // Count: a slot-write flush gives one `true` (the slot effect), as the
+    // whole-array effect did; recreated readers pass `false`. A flush that
+    // combines slot writes or in-place reorders with K leaf edits of other
+    // modules gives 1 + K trues where the whole-array effect gave 1: an extra
+    // mark, never a narrowing. Shape changes (push, length-changing splice,
+    // whole-array replacement) tear down and recreate every holder and reader,
+    // so a recreated reader's first run always passes `false` -- shape changes are
+    // covered only by the slot effect's own `markChanged(modulesRanOnce)`,
     // which passes `true` on every run after its first.
     $effect(() => {
         const mods = DBState.db.modules
         const len = mods?.length ?? 0          // shape: push/splice/whole-array replacement
         for (let i = 0; i < len; i++) {
-            const m = mods[i]                  // element identity: modules[i] = {...}
-            if (!m) continue
-            let childRanOnce = false
-            $effect(() => {
-                $state.snapshot(m)             // deep-read THIS element only
-                opts.tracker.modules = true
-                markModulesChanged(childRanOnce)
-                childRanOnce = true
-            })
+            void mods[i]                       // element identity: modules[i] = {...}
         }
         opts.tracker.modules = true
         markModulesChanged(modulesRanOnce)
         modulesRanOnce = true
+    })
+    $effect(() => {
+        const mods = DBState.db.modules
+        const len = mods?.length ?? 0
+        for (let i = 0; i < len; i++) {
+            $effect.pre(() => {
+                const m = mods[i]              // this slot's identity, and nothing else
+                if (!m) return
+                let childRanOnce = false
+                $effect(() => {
+                    try {
+                        $state.snapshot(m)     // deep-read THIS element only
+                    } catch (error) {
+                        queueMicrotask(() => { throw error })
+                    } finally {
+                        opts.tracker.modules = true
+                        markModulesChanged(childRanOnce)
+                        childRanOnce = true
+                    }
+                })
+            })
+        }
     })
     let ranOnce3 = false
     $effect(() => {

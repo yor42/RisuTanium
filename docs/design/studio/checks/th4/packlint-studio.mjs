@@ -107,7 +107,7 @@ const over = (f, b) => [0, 1, 2].map((i) => f[i] * f[3] + b[i] * (1 - f[3])).con
 const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 export function riskyColourPass(css) {
   const text = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\\([0-9a-fA-F]{1,6})[ \t\n]?/g, (m, h) => { try { return String.fromCodePoint(parseInt(h, 16)); } catch { return ''; } }).toLowerCase();
-  const errs = []; const fail = (prop, why) => errs.push({ selector: ':root', prop, why });
+  const errs = []; const fail = (prop, why, rule) => errs.push(rule ? { selector: ':root', prop, why, rule } : { selector: ':root', prop, why });
   const cand = (n) => { const out = []; for (const m of text.matchAll(new RegExp('(?<![\\w-])' + n + '\\s*:\\s*([^;}]+)', 'g'))) out.push(m[1].replace(/!important/g, '').trim()); return out; };
   const resolveVar = (v, depth = 0) => (depth > 6 ? v : v.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*([^)]*))?\)/g, (m, n, fb) => { const c = cand(n); return resolveVar(c.length ? c[c.length - 1] : APP_T.has(n) ? APP_T.get(n) : fb || m, depth + 1); }));
   const colours = (n, ctxAlpha) => { const raw = cand(n).length ? cand(n) : [APP_T.get(n) || '']; const out = []; for (const r of raw) { const v = resolveVar(r); let c = /^rgb\(\s*var\(/.test(v) ? null : parseCol(v); if (!c) { const mm = /^rgb\(\s*([^)]+)\)$/.exec(v); if (mm) c = parseCol(mm[1]); } if (!c) { fail(n, `a colour that cannot be checked against the risky section (${r.slice(0, 30)})`); return null; } out.push(c); } return out; };
@@ -116,14 +116,14 @@ export function riskyColourPass(css) {
   // --nexus-danger: derived from the channel unless the pack states it; when it does, the two must be one colour
   const dangerRaw = cand('--nexus-danger'); let dangers = rgbs;
   if (dangerRaw.length) { dangers = []; for (const r of dangerRaw) { const v = resolveVar(r); let c = parseCol(v); if (!c) { const mm = /^rgb\(\s*([^)]+)\)$/.exec(v); if (mm) c = parseCol(mm[1]); } if (!c) { fail('--nexus-danger', `a colour that cannot be checked (${r.slice(0, 30)})`); return errs; } dangers.push(c); } }
-  for (const d of dangers) for (const r of rgbs) if ([0, 1, 2].some((i) => Math.abs(d[i] - r[i]) > 8)) { fail('--nexus-danger-rgb', `--nexus-danger-rgb (${r.slice(0, 3).map(Math.round).join(' ')}) is not the colour of --nexus-danger (${d.slice(0, 3).map(Math.round).join(' ')}): the tint of the risky section must be the danger colour`); return errs; }
-  for (const d of dangers) for (const x of txt) if ([0, 1, 2].every((i) => Math.abs(d[i] - x[i]) <= 24)) { fail('--nexus-danger-rgb', 'the danger colour is the text colour: the risky section would lose its colour cue (the heading and edge must stay distinguishable from body text)'); return errs; }
+  for (const d of dangers) for (const r of rgbs) if ([0, 1, 2].some((i) => Math.abs(d[i] - r[i]) > 8)) { fail('--nexus-danger-rgb', `--nexus-danger-rgb (${r.slice(0, 3).map(Math.round).join(' ')}) is not the colour of --nexus-danger (${d.slice(0, 3).map(Math.round).join(' ')}): the tint of the risky section must be the danger colour`, 'contrast'); return errs; }
+  for (const d of dangers) for (const x of txt) if ([0, 1, 2].every((i) => Math.abs(d[i] - x[i]) <= 24)) { fail('--nexus-danger-rgb', 'the danger colour is the text colour: the risky section would lose its colour cue (the heading and edge must stay distinguishable from body text)', 'contrast'); return errs; }
   const alphas = cand('--studio-form-risky-tint-alpha').map((v) => parseFloat(resolveVar(v))).filter((x) => !Number.isNaN(x)); if (!alphas.length) alphas.push(0.1);
   const a = Math.max(...alphas);
   for (const cv of canvas) for (const rg of rgbs) {
     const surf = over([rg[0], rg[1], rg[2], a], over(cv, [0, 0, 0, 1]));
     for (const [n, list, need] of [['--nexus-danger', dangers, 4.5], ['--nexus-text', txt, 4.5], ['--nexus-text-secondary', sec, 4.5]]) for (const c of list) {
-      const flat = over(c, surf); const k = cr(flat, surf); if (k < need) { fail(n, `${n.replace('--nexus-', '')} would be ${k.toFixed(2)}:1 on the risky section's tint (alpha ${a} of the danger colour over the canvas; needs ${need}:1)`); return errs; }
+      const flat = over(c, surf); const k = cr(flat, surf); if (k < need) { fail(n, `${n.replace('--nexus-', '')} would be ${k.toFixed(2)}:1 on the risky section's tint (alpha ${a} of the danger colour over the canvas; needs ${need}:1)`, 'contrast'); return errs; }
     }
   }
   return errs;
@@ -131,7 +131,7 @@ export function riskyColourPass(css) {
 
 export function lintPack(css, name = '', reg = STUDIO_REGISTRY) {
   const r = chat.lintPack(css, name, reg);
-  if (reg === STUDIO_REGISTRY) { const extra = riskyColourPass(css); if (extra.length) { r.errors.push(...extra); r.ok = false; } }
+  if (reg === STUDIO_REGISTRY) { const extra = riskyColourPass(css); const refusals = extra.filter((e) => !e.rule), tagged = extra.filter((e) => e.rule); if (refusals.length) { r.errors.push(...refusals); r.ok = false; } if (tagged.length) r.notes = [...(r.notes ?? []), ...tagged]; }
   return r;
 }
 export function lintSelector(sel, reg = STUDIO_REGISTRY) { return chat.lintSelector(sel, reg); }

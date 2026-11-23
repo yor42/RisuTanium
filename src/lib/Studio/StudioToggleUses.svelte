@@ -3,6 +3,7 @@
     import { language } from '../../lang'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { jumpTargetOf, placeLabelOf } from '../../ts/studio/assets/mergeCommit'
+    import { presetNameOf } from '../../ts/studio/edit/presetTarget'
     import { refusalTextOf, type StudioToasts } from '../../ts/studio/edit/studioToasts'
     import { parseOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
@@ -84,14 +85,27 @@
         }
         // After an update the list holds no scan, but the result line still names owners.
         const parsed = parseOwnerKey(key)
-        if (parsed?.kind === 'module') {
-            const name = (moduleSlotsWithId(DBState.db.modules, parsed.moduleId)[0]?.module as { name?: unknown } | undefined)?.name
-            return typeof name === 'string' && name !== '' ? name : parsed.moduleId
+        if (parsed === null) {
+            return key
         }
-        if (parsed?.kind === 'character') {
-            return DBState.db.characters?.find((character) => character?.chaId === parsed.chaId)?.name ?? parsed.chaId
+        switch (parsed.kind) {
+            case 'module': {
+                const name = (moduleSlotsWithId(DBState.db.modules, parsed.moduleId)[0]?.module as { name?: unknown } | undefined)?.name
+                return typeof name === 'string' && name !== '' ? name : parsed.moduleId
+            }
+            case 'character':
+                return DBState.db.characters?.find((character) => character?.chaId === parsed.chaId)?.name ?? parsed.chaId
+            case 'chat':
+                return key
+            case 'preset':
+                return presetNameOf(parsed.id)
+            default: {
+                // Adding an owner kind must decide its name here; the fallback is the raw key.
+                const unhandled: never = parsed
+                void unhandled
+                return key
+            }
         }
-        return key
     }
 
     // A regex pattern is listed under its replacement field, the place the registry labels and opens.
@@ -102,15 +116,44 @@
 
     function jumpOf(use: ListedUse) {
         const parsed = parseOwnerKey(use.owner)
-        if (parsed === null || (parsed.kind !== 'character' && parsed.kind !== 'module')) {
+        if (parsed === null) {
             return null
         }
-        return jumpTargetOf(parsed.kind, parsed.kind === 'module' ? parsed.moduleId : parsed.chaId, usePlaceOf(use.path))
+        switch (parsed.kind) {
+            case 'character':
+                return jumpTargetOf('character', parsed.chaId, usePlaceOf(use.path))
+            case 'module':
+                return jumpTargetOf('module', parsed.moduleId, usePlaceOf(use.path))
+            case 'chat':
+            case 'preset':
+                return null
+            default: {
+                const unhandled: never = parsed
+                void unhandled
+                return null
+            }
+        }
     }
 
     function placeOf(use: ListedUse): string {
         const parsed = parseOwnerKey(use.owner)
-        return placeLabelOf(parsed?.kind === 'module' ? 'module' : 'character', usePlaceOf(use.path))
+        const path = usePlaceOf(use.path)
+        if (parsed === null) {
+            return placeLabelOf('character', path)
+        }
+        switch (parsed.kind) {
+            case 'module':
+                return placeLabelOf('module', path)
+            case 'character':
+            case 'chat':
+            case 'preset':
+                return placeLabelOf('character', path)
+            default: {
+                const unhandled: never = parsed
+                void unhandled
+                return placeLabelOf('character', path)
+            }
+        }
     }
 
     function reasonText(reason: ListedReason): string {
@@ -229,6 +272,9 @@
 {#if plan !== null && scanned !== null}
     <section data-part="studio-toggle-uses" aria-label={language.studioTgUsesTitle} class="flex flex-col gap-2 rounded-md border border-borderc bg-darkbg p-3">
         <h3 class="font-bold">{language.studioTgUsesTitle}</h3>
+        {#if target.kind === 'preset'}
+            <p data-part="studio-toggle-uses-preset-note" class="text-sm text-textcolor2">{language.studioTgUpdateAllPresetNote}</p>
+        {/if}
         {#each renames as rename (rename.from + '\u0000' + rename.to)}
             <p data-part="studio-toggle-uses-rename" class="text-sm text-textcolor">{language.studioTgUsesRename(rename.from, rename.to)}</p>
         {/each}

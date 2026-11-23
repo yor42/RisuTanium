@@ -142,9 +142,8 @@ describe('Escape on an alert that waits for an answer', () => {
     })
 
     test.each([
-        'pluginconfirm', 'input', 'select', 'selectChar', 'addchar', 'chatOptions',
+        'input', 'select', 'selectChar', 'addchar', 'chatOptions',
         'selectModule', 'cardexport', 'tos', 'staleAccountNotice', 'progress',
-        'patternSelect', 'patternInput',
     ] as Array<alertData['type']>)('a %s alert stays in the store as the same object and an open settings panel stays open', (type) => {
         const alert = alertOf(type)
         alertStore.set(alert)
@@ -184,7 +183,7 @@ describe('Escape on an alert that waits for an answer', () => {
 describe('Escape on an information alert', () => {
     test.each([
         'normal', 'error', 'markdown', 'requestdata', 'hypaV2', 'branches',
-        'requestlogs', 'pukmakkurit', 'wait2',
+        'requestlogs', 'wait2',
     ] as Array<alertData['type']>)('a %s alert is closed at once with no toast, and an open settings panel is closed', (type) => {
         const written: alertData[] = []
         alertStore.set(alertOf(type))

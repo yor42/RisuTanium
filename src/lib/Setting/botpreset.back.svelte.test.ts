@@ -13,6 +13,7 @@
  * a spy.
  */
 import { flushSync, mount, unmount } from 'svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import 'src/ts/polyfill'
@@ -65,11 +66,17 @@ function plain(name: string, text: string) {
     return { type: 'plain', type2: 'normal', role: 'system', text, name }
 }
 
-function mountList(): { target: HTMLElement; destroy: () => void } {
+async function mountList(): Promise<{ target: HTMLElement; destroy: () => void }> {
     const target = document.createElement('div')
     document.body.appendChild(target)
+    // The windowed rows mount once the host has read the band: every row falls in it, as these tests are not about which rows are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     const component = mount(BotPreset, { target, props: { close: () => openPresetList.set(false) } })
     mounted.push(component)
+    flushSync()
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
     flushSync()
     return {
         target,
@@ -146,8 +153,8 @@ afterEach(() => {
 })
 
 describe('preset list Back', () => {
-    test('(R) Back closes the list, then the root warns', () => {
-        mountList()
+    test('(R) Back closes the list, then the root warns', async () => {
+        await mountList()
         expect(pressBack()).toBe(true)
         expect(get(openPresetList)).toBe(false)
         expect(showToast).not.toHaveBeenCalled()
@@ -155,20 +162,20 @@ describe('preset list Back', () => {
         expect(showToast).toHaveBeenCalledTimes(1)
     })
 
-    test('(G) Back leaves the store as the header X does', () => {
-        const first = mountList()
+    test('(G) Back leaves the store as the header X does', async () => {
+        const first = await mountList()
         headerClose(first.target).click()
         flushSync()
         expect(get(openPresetList)).toBe(false)
         first.destroy()
         openPresetList.set(true)
-        mountList()
+        await mountList()
         pressBack()
         expect(get(openPresetList)).toBe(false)
     })
 
-    test('(G) an unmounted list stops answering Back', () => {
-        const { destroy } = mountList()
+    test('(G) an unmounted list stops answering Back', async () => {
+        const { destroy } = await mountList()
         destroy()
         expect(pressBack()).toBe(true)
         expect(get(openPresetList)).toBe(true)
@@ -176,7 +183,7 @@ describe('preset list Back', () => {
     })
 
     test('(R) with the diff modal open Back closes only the diff and saves its preferences, then the list', async () => {
-        const { target } = mountList()
+        const { target } = await mountList()
         openDiff(target)
         await settle()
         expect(diffRoot(target)).not.toBeNull()
@@ -193,7 +200,7 @@ describe('preset list Back', () => {
     })
 
     test('(G) Back from the diff modal leaves the same state as the diff modal X', async () => {
-        const first = mountList()
+        const first = await mountList()
         openDiff(first.target)
         await settle()
         diffClose(first.target).click()
@@ -202,7 +209,7 @@ describe('preset list Back', () => {
         expect(diffRoot(first.target)).toBeNull()
         first.destroy()
         DBState.db.promptDiffPrefs = undefined as never
-        const second = mountList()
+        const second = await mountList()
         openDiff(second.target)
         await settle()
         pressBack()
@@ -211,7 +218,7 @@ describe('preset list Back', () => {
     })
 
     test('(G) after the diff modal closes only the list answers Back', async () => {
-        const { target } = mountList()
+        const { target } = await mountList()
         openDiff(target)
         await settle()
         pressBack()

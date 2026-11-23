@@ -1,0 +1,48 @@
+{
+  "identifier": "android-capability",
+  "local": true,
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "android"
+  ],
+  "permissions": [
+    "fs:allow-open",
+    "fs:allow-read",
+    "fs:allow-seek",
+    "fs:allow-fstat",
+    "fs:allow-read-dir",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        "$APPDATA/assets",
+        "$APPDATA/assets/**/*",
+        "$APPDATA/inlays",
+        "$APPDATA/inlays/**/*",
+        "$APPDATA/store2",
+        "$APPDATA/store2/**/*",
+        "$APPDATA/consent",
+        "$APPDATA/consent/**/*",
+        "$APPDATA/modeldata",
+        "$APPDATA/modeldata/**/*",
+        "$APPDATA/database",
+        "$APPDATA/database/**/*",
+        "$APPDATA/blocks",
+        "$APPDATA/blocks/**/*",
+        "$APPDATA/coldstorage",
+        "$APPDATA/coldstorage/**/*",
+        "$APPDATA/remotes",
+        "$APPDATA/remotes/**/*"
+      ],
+      "deny": [
+        "/data/user/*/io.github.yor42.risutanium/cache",
+        "/data/user/*/io.github.yor42.risutanium/cache/app-update",
+        "/data/user/*/io.github.yor42.risutanium/cache/app-update/**",
+        "/data/data/io.github.yor42.risutanium/cache",
+        "/data/data/io.github.yor42.risutanium/cache/app-update",
+        "/data/data/io.github.yor42.risutanium/cache/app-update/**"
+      ]
+    }
+  ]
+}

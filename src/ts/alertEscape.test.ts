@@ -16,7 +16,6 @@ import { ALERT_ESCAPE_ACTIONS, escapeActionFor, type AlertEscapeAction } from '.
 
 const SPECIFIED: Record<alertData['type'], AlertEscapeAction> = {
     ask: 'ignore',
-    pluginconfirm: 'ignore',
     select: 'ignore',
     input: 'ignore',
     selectChar: 'ignore',
@@ -26,8 +25,6 @@ const SPECIFIED: Record<alertData['type'], AlertEscapeAction> = {
     selectModule: 'ignore',
     tos: 'ignore',
     staleAccountNotice: 'ignore',
-    patternSelect: 'ignore',
-    patternInput: 'ignore',
     peerConflicts: 'ignore',
     parkedReply: 'ignore',
     updateOffer: 'ignore',
@@ -41,7 +38,6 @@ const SPECIFIED: Record<alertData['type'], AlertEscapeAction> = {
     hypaV2: 'close',
     branches: 'close',
     requestlogs: 'close',
-    pukmakkurit: 'close',
     wait2: 'close',
     none: 'idle',
     toast: 'idle',

@@ -59,6 +59,7 @@
     import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { hostIme } from '../../ts/android/hostBridge'
     import { treeView } from '../../ts/process/chatTreeView'
+    import { nativeReplyRunsIn } from '../../ts/nativeReply/runningReplies.svelte'
     import { inputOf, layoutOf } from '../../ts/gui/rootAttributes'
     import { declareSurface } from '../../ts/themePack/surfaceGate.svelte'
 
@@ -100,6 +101,8 @@
     let ActionSheet: typeof ActionSheetComponent | null = $state(null)
     let CustomizeButtonsSheet: typeof CustomizeButtonsSheetComponent | null = $state(null)
     let composerActions: typeof import('../../ts/process/composerActions.svelte') | null = null
+    // Set once the module above is in place, so the header rule reads the shown chat's busy from then on.
+    let composerActionsLoaded = $state(false)
     // The failed-send card and its records load after the shell is up and never hold the composer back: the gate itself lives in the composer's source.
     let SendFailureCard: typeof SendFailureCardComponent | null = $state(null)
     let sendFailures: typeof import('../../ts/chatShell/sendFailure.svelte') | null = $state.raw(null)
@@ -119,7 +122,6 @@
     let farFromLatest = $state(false)
     let surface = $state<{ hidden: boolean; closeEpoch: number } | null>(null)
     let surfaceHidden = $state(false)
-    let busy = $state(false)
 
     let character = $derived(DBState.db.characters[selIdState.selId])
     // While a switch is pending or failed the header names the character being switched to; the chat shown stays unchanged underneath.
@@ -137,6 +139,20 @@
     let streamedFrom: { chat: Chat | undefined, streaming: boolean } | null = null
     let fadeFlip = false
     let headerHidden = $state(false)
+    let shownOrigin = $derived(character?.chaId && shownChat?.id ? { chaId: character.chaId, chatId: shownChat.id } : null)
+    let shownKey = $derived(shownOrigin ? `${shownOrigin.chaId}\u0000${shownOrigin.chatId}` : null)
+    let shownReplyBusy = $derived(composerActionsLoaded && composerActions && shownOrigin ? composerActions.isComposerBusyIn(shownOrigin) : false)
+    // Plain variables on purpose: the header rule below depends on the shown chat and its busy only.
+    let headerRuleKey: string | null = null
+    let headerRuleBusy = false
+    // The header comes back when the shown chat's own reply ends. A reply in another chat never shows it, and a switch of chat neither shows nor hides it.
+    $effect(() => {
+        const key = shownKey
+        const busyNow = shownReplyBusy
+        if (key === headerRuleKey && headerRuleBusy && !busyNow) headerHidden = false
+        headerRuleKey = key
+        headerRuleBusy = busyNow
+    })
     let hardwareKeyboardSeen = $state(false)
     // The header hides while the soft keyboard is open; the scroll rule (headerHidden) keeps its own state underneath, so
     // closing the keyboard returns to what the scroll rule wants.
@@ -170,7 +186,6 @@
     // The one source of reader intent for the transcript: the header rule and the follower both read it, never scrollTop.
     const readerIntent = createReaderIntent({ canMove: (direction) => !!list && canHostMove(list, direction) })
     let olderDistance = 0
-    let previousBusy = false
     let seenCloseEpoch = 0
     let layout = $state<'phone' | 'mid' | 'wide'>('phone')
     let inputMode = $state<'touch' | 'hover'>('touch')
@@ -270,7 +285,6 @@
         viewport?.addEventListener('resize', anchor)
         if (character?.type !== 'character') return () => { window.removeEventListener('resize', updateRootState); viewport?.removeEventListener('resize', anchor) }
         let live = true
-        let unsubscribe = () => {}
         void Promise.all([import('./SendFailureCard.svelte'), import('../../ts/chatShell/sendFailure.svelte'), import('../Setting/settingsRoute')]).then(([cardModule, failureModule, routeModule]) => {
             if (!live) return
             settingsRoute = routeModule
@@ -309,16 +323,16 @@
             import('./ShellNotices.svelte'),
             import('./ShellFloatingButtons.svelte'),
             import('../ChatScreens/chatSurface.svelte'),
-            import('../../ts/process/index.svelte'),
             import('./ShellMessageList.svelte'),
             import('./ActionSheet.svelte'),
             import('./CustomizeButtonsSheet.svelte'),
             import('../../ts/process/composerActions.svelte'),
-        ]).then(([headerModule, composerModule, personaModule, plusModule, noticesModule, floatingModule, surfaceModule, processModule, listModule, actionModule, customizeModule, actionsModule]) => {
+        ]).then(([headerModule, composerModule, personaModule, plusModule, noticesModule, floatingModule, surfaceModule, listModule, actionModule, customizeModule, actionsModule]) => {
             if (!live) return
             ActionSheet = actionModule.default
             CustomizeButtonsSheet = customizeModule.default
             composerActions = actionsModule
+            composerActionsLoaded = true
             ShellHeader = headerModule.default
             ShellComposer = composerModule.default
             PersonaSheet = personaModule.default
@@ -327,13 +341,8 @@
             ShellFloatingButtons = floatingModule.default
             ShellMessageList = listModule.default
             surface = surfaceModule.chatSurface
-            unsubscribe = processModule.doingChat.subscribe((value) => {
-                busy = value
-                if (previousBusy && !value) headerHidden = false
-                previousBusy = value
-            })
         })
-        return () => { live = false; unsubscribe(); window.removeEventListener('resize', updateRootState); viewport?.removeEventListener('resize', anchor) }
+        return () => { live = false; window.removeEventListener('resize', updateRootState); viewport?.removeEventListener('resize', anchor) }
     })
 
     function scroll(): void {
@@ -1103,7 +1112,8 @@
         cardWasShown = shown
         if (untrack(() => atBottom)) requestAnimationFrame(() => messageList?.anchorNewestBottom?.())
     })
-    const getBusy = () => busy || (composerActions?.isComposerBusy() ?? false)
+    // Busy is the shown chat's own: a reply written in another chat does not turn these controls busy, and a native reply the page no longer holds does.
+    const getBusy = () => shownOrigin ? (composerActions?.isComposerBusyIn(shownOrigin) ?? false) || nativeReplyRunsIn(shownOrigin) : false
     const composerSource = { closeMenu: () => {} }
     function branchRow(index: number, expectedId: string | undefined): void {
         void composerActions?.branchAt(composerSource, index, expectedId)

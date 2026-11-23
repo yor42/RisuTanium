@@ -6,8 +6,10 @@
     import { language } from '../../lang'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
     import { createStudioToasts, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
+    import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import type { StepLabel } from '../../ts/studio/history/historyModel'
     import type { OwnerHistoryService, ReplayDesc, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
+    import { boundCharacterHides } from '../../ts/studio/history/ownerKindRules'
     import { parseOwnerKey, type OwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import { closeStudioHistory } from '../../ts/studio/studioBack.svelte'
@@ -39,16 +41,24 @@
     const owner = $derived(selectedHistoryOwner())
     const bound = $derived(DBState.db.characters?.find((candidate) => candidate?.chaId === studioScreen.chaId))
     const parsedOwner = $derived(owner === null ? null : parseOwnerKey(owner))
-    // A module's history is the module's own: the bound character being private or a group does not hide it, as it
-    // does not stop Ctrl+Z from replaying it.
-    const moduleOwner = $derived(parsedOwner?.kind === 'module')
-    const hiddenCharacter = $derived(!moduleOwner && (bound === undefined || bound.type === 'group' || bound.license === 'private'))
+    const hiddenCharacter = $derived(boundCharacterHides(parsedOwner) && (bound === undefined || bound.type === 'group' || bound.license === 'private'))
     // A chat without a unique id has no history.
     const historyOwner = $derived.by((): OwnerKey | null => {
         if (owner === null || parsedOwner === null) return null
-        if (parsedOwner.kind === 'module') return owner
-        if (bound === undefined || bound.type === 'group') return null
-        return parsedOwner.kind === 'chat' && uniqueChatById(bound.chats, parsedOwner.chatId) === null ? null : owner
+        switch (parsedOwner.kind) {
+            case 'module':
+            case 'preset':
+                return owner
+            case 'character':
+            case 'chat':
+                if (bound === undefined || bound.type === 'group') return null
+                return parsedOwner.kind === 'chat' && uniqueChatById(bound.chats, parsedOwner.chatId) === null ? null : owner
+            default: {
+                const unhandled: never = parsedOwner
+                void unhandled
+                return owner
+            }
+        }
     })
     const view = $derived(service && historyOwner !== null && !hiddenCharacter ? service.view(historyOwner) : null)
     const hidden = $derived(hiddenCharacter || view?.restricted === true)
@@ -168,16 +178,7 @@
 
     function stepText(label: StepLabel): string {
         switch (label.kind) {
-            case 'field':
-                switch (label.field) {
-                    case 'desc': return language.description
-                    case 'firstMessage': return language.firstMessage
-                    case 'exampleMessage': return language.exampleMessage
-                    case 'customModuleToggle': return language.customPromptTemplateToggle
-                    case 'hideChatIcon': return language.hideChatIcon
-                    case 'risutanium_render_when_complete': return language.studioFormRenderWhenComplete
-                    case 'note': return language.note
-                }
+            case 'field': return language[fieldLabelKey(label.field)]
             case 'greetingAdd': return language.studioStepGreetingAdd
             case 'greetingRemove': return language.studioStepGreetingRemove
             case 'greetingEdit': return language.studioStepGreetingEdit

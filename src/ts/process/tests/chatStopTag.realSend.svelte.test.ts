@@ -311,7 +311,8 @@ import { DBState, selectedCharID } from '../../stores.svelte'
 import { sendChatMain, resetComposerActionsForTests } from '../composerActions.svelte'
 import * as composerDrafts from '../composerDrafts.svelte'
 import { originOf } from '../chatOrigin'
-import { abortUnitInProgress, isUnitInProgressSignal, unitTargetOfSignal } from '../generationOwnership.svelte'
+import { isUnitInProgressSignal, unitTargetOfSignal } from '../generationOwnership.svelte'
+import { stopAllReplyWork } from '../chatOrigin'
 import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
@@ -395,11 +396,11 @@ afterEach(() => {
 
 describe('the signal a real send hands the provider layer', () => {
     // V-5 (compatibility guard, base API only): the provider call receives the published unit's own signal, so the
-    // page Stop (`abortUnitInProgress`) aborts exactly the signal the provider layer holds.
+    // page Stop (`stopAllReplyWork`) aborts exactly the signal the provider layer holds.
     test('guard: the main request receives the published unit signal and the page Stop aborts it', async () => {
         let abortedByStop = false
         requestChatDataMock.mockImplementationOnce(async (_arg: unknown, _model: string, signal: AbortSignal) => {
-            abortUnitInProgress()
+            stopAllReplyWork()
             abortedByStop = signal.aborted
             return { type: 'fail', result: 'stop here' }
         })

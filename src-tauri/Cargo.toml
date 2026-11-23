@@ -71,6 +71,7 @@ tauri-plugin-updater = "~2.13.1"
 # Test-only fixture producers and a one-thread pool for the peak measurement rows.
 jpeg-encoder = "=0.7.1"
 rayon = "=1.12.0"
+tauri = { version = "~2.12.1", features = ["test"] }
 
 # Test speed only: the decode rows run in the unoptimised test profile. The
 # avatar preview relies on panic = "unwind" (catch_unwind around the decode body),

@@ -104,17 +104,24 @@ const STUDIO_RULE = 'repeating-linear-gradient(to bottom, rgb(0 0 0 / 0) 0px, rg
 const LINE = 'linear-gradient(to bottom, rgb(0 0 0 / 0) 23px, #b9cfe9 23px, #b9cfe9 24px)'
 
 const sheetOf = (area: ThemeArea, css: string): string => (area === 'chat' ? ROOT + css : css)
-function verdict(area: ThemeArea, css: string): { ok: boolean, whys: string[] } {
+function verdict(area: ThemeArea, css: string): { ok: boolean, whys: string[], noted: { text: string, rule: string | undefined }[] } {
     const sheet = sheetOf(area, css)
     const j = judgeAreaSheet(area, sheet)
     // the reference reads the same sheet the same way (parity.test.ts holds this for the corpus; these sheets are new)
     expect(AREA_LINT[area](sheet, 'loosen'), `parity: ${css}`).toEqual(lib.LINT[area](sheet, 'loosen'))
-    return { ok: j.result.ok, whys: j.result.ok ? [] : j.result.errors.map((e) => `${e.prop}: ${e.why}`) }
+    return { ok: j.result.ok, whys: j.result.errors.map((e) => `${e.prop}: ${e.why}`), noted: (j.result.notes ?? []).map((n) => ({ text: `${n.prop}: ${n.why}`, rule: n.rule })) }
 }
 const accepts = (area: ThemeArea, css: string): void => {
     const v = verdict(area, css)
     expect(v.whys, css).toEqual([])
+    expect(v.noted, css).toEqual([])
     expect(v.ok, css).toBe(true)
+}
+// Since #560 PR2 a contrast or layout finding is a note: the sheet is accepted and the reason is reported under its kind.
+const notes = (area: ThemeArea, css: string, why: RegExp, rule: 'contrast' | 'readability' | 'layout'): void => {
+    const v = verdict(area, css)
+    expect(v.ok, css).toBe(true)
+    expect(v.noted.some((n) => why.test(n.text) && n.rule === rule), `${css}\n${JSON.stringify(v.noted)}`).toBe(true)
 }
 const refuses = (area: ThemeArea, css: string, why: RegExp): void => {
     const v = verdict(area, css)
@@ -130,7 +137,7 @@ describe('#315 V1: a repeating gradient is read as a gradient, every stop still 
         accepts('studio', P('studio-main', `background-image: ${STUDIO_RULE};`))
     })
     it('still judges the stops of a repeating gradient against the critical text', () => {
-        refuses('chat', P('chat-transcript', 'background-image: repeating-linear-gradient(#000000 0px, #000000 4px);'), /critical text/)
+        notes('chat', P('chat-transcript', 'background-image: repeating-linear-gradient(#000000 0px, #000000 4px);'), /critical text/, 'contrast')
     })
     it('still refuses the bare word repeating and a repeating name that is not a gradient', () => {
         refuses('chat', P('chat-transcript', 'background: repeating #ffffff;'), /colour word that is not a colour/)
@@ -173,13 +180,14 @@ describe('#316 V6: a px or rem max-width of at least 320 px on a reach part', ()
         accepts('studio', P('studio-main', 'max-width: 720px;'))
     })
     it('still refuses a narrower or unreadable max-width, and any px width', () => {
-        for (const v of ['319px', '19.9rem', '0px']) refuses('chat', P('chat-message-list', `max-width: ${v};`), /can collapse the surface/)
+        for (const v of ['319px', '19.9rem', '0px']) notes('chat', P('chat-message-list', `max-width: ${v};`), /can collapse the surface/, 'layout')
         refuses('chat', P('chat-message-list', 'max-width: calc(400px);'), /calc\(\)/)
-        refuses('chat', P('chat-message-list', 'max-width: var(--x);'), /can collapse the surface/)
-        refuses('chat', P('chat-message-list', 'width: 720px;'), /a width that can collapse the surface/)
+        refuses('chat', P('chat-message-list', 'max-width: var(--x);'), /MC-1549/)
+        expect(verdict('chat', P('chat-message-list', 'max-width: var(--x);')).noted.some((n) => /can collapse the surface/.test(n.text) && n.rule === 'layout')).toBe(true)
+        notes('chat', P('chat-message-list', 'width: 720px;'), /a width that can collapse the surface/, 'layout')
     })
     it('keeps the DD-265 width of a protected sheet and of a selector that names no part', () => {
-        refuses('chat', P('chat-sheet', 'max-width: 720px;'), /DD-265/)
+        notes('chat', P('chat-sheet', 'max-width: 720px;'), /DD-265/, 'layout')
         refuses('chat', '[data-layout="x"] { max-width: 720px; }', /DD-265/)
     })
 })

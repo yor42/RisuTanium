@@ -14,6 +14,7 @@ import type { StudioFrom, StudioTarget } from './studioTarget'
 import { createPageSession } from './history/historyModel'
 import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, parseOwnerKey, type OwnerKey } from './history/ownerPhase'
 import { openStudioModuleId } from './assets/openModuleForm.svelte'
+import { presetOwnerKey } from './edit/presetTarget'
 
 /**
  * Where a visit started. Back returns focus to `element` while it is still in the page, else to the first
@@ -89,6 +90,9 @@ export const studioScreen = $state({
     listReturn: null as StudioListReturn | null,
     revealListRow: null as string | null,
     selectedOwnerKey: null as string | null,
+    // The id of the preset the selection pinned when a `preset:<index>` row was chosen, or null. The index key follows a
+    // reorder; the id decides which preset the builder and the history belong to.
+    selectedPresetId: null as string | null,
     selectedKind: null as StudioKind | null,
     selectedItemId: null as string | null,
     expanded: {} as Record<string, boolean>,
@@ -127,6 +131,7 @@ function resetVisitState(): void {
     studioScreen.listReturn = null
     studioScreen.revealListRow = null
     studioScreen.selectedOwnerKey = null
+    studioScreen.selectedPresetId = null
     studioScreen.selectedKind = null
     studioScreen.selectedItemId = null
     studioScreen.expanded = {}
@@ -283,13 +288,34 @@ export function setStudioNotice(message: string | null): void {
     studioScreen.noticePlaces = null
 }
 
+function noticeOwnerKindOf(owner: OwnerKey): 'module' | 'character' {
+    const parsed = parseOwnerKey(owner)
+    if (parsed === null) {
+        return 'character'
+    }
+    switch (parsed.kind) {
+        case 'module':
+            return 'module'
+        case 'character':
+        case 'chat':
+        case 'preset':
+            return 'character'
+        default: {
+            // Adding an owner kind must decide its place kind here; the fallback is the character wording.
+            const unhandled: never = parsed
+            void unhandled
+            return 'character'
+        }
+    }
+}
+
 /**
  * The notice of a merge undo that left places as they were: `message` ("{j} places not restored") with the list behind
  * Show. Ctrl+Z and the History panel call it from their own replay, which has already checked its visit and owner.
  */
 export function setStudioNotRestoredNotice(owner: OwnerKey, message: string, places: readonly string[]): void {
     studioScreen.notice = message
-    studioScreen.noticePlaces = { ownerKind: parseOwnerKey(owner)?.kind === 'module' ? 'module' : 'character', places: [...places] }
+    studioScreen.noticePlaces = { ownerKind: noticeOwnerKindOf(owner), places: [...places] }
 }
 
 /**
@@ -322,6 +348,7 @@ export function selectedHistoryOwner(): OwnerKey | null {
     const openModule = openStudioModuleId()
     if (key !== null && openModule !== null && key === ownerKeyOf('module', openModule)) return moduleOwnerKey(openModule)
     if (key === null || chaId === '') return null
+    if (key.startsWith(PRESET_KEY_PREFIX)) return studioScreen.selectedPresetId === null ? null : presetOwnerKey(studioScreen.selectedPresetId)
     if (key === ownerKeyOf('character', chaId)) return characterOwnerKey(chaId)
     const chatPrefix = ownerKeyOf('chat', '')
     if (key.startsWith(chatPrefix) && key.length > chatPrefix.length) return chatOwnerKey(chaId, key.slice(chatPrefix.length))
@@ -354,8 +381,29 @@ export function setStudioSelection(ownerKey: string, kind: StudioKind | null, it
     studioScreen.listReturn = null
     studioScreen.revealListRow = null
     studioScreen.selectedOwnerKey = ownerKey
+    studioScreen.selectedPresetId = presetIdOfKey(ownerKey)
     studioScreen.selectedKind = kind
     studioScreen.selectedItemId = itemId
+}
+
+const PRESET_KEY_PREFIX = ownerKeyOf('preset', '')
+
+/** The id of the preset a `preset:<index>` key names right now; null for any other key, a non-integer index or an index out of range. */
+function presetIdOfKey(ownerKey: string): string | null {
+    if (!ownerKey.startsWith(PRESET_KEY_PREFIX)) return null
+    const text = ownerKey.slice(PRESET_KEY_PREFIX.length)
+    const index = Number(text)
+    if (!/^\d+$/.test(text) || !Number.isInteger(index)) return null
+    const id = DBState.db.botPresets?.[index]?.id
+    return typeof id === 'string' && id !== '' ? id : null
+}
+
+/**
+ * The pinned preset moved to another row: only the index key follows. The selection, the kind, the item and every open
+ * sheet stay as they were, so the builder that is mounted for the pin is not rebuilt.
+ */
+export function followStudioPreset(index: number): void {
+    studioScreen.selectedOwnerKey = ownerKeyOf('preset', String(index))
 }
 
 /** Drops the selection, for an owner that no longer exists in the model; `notice` says why the detail emptied. */
@@ -363,6 +411,7 @@ export function clearStudioSelection(notice: string): void {
     studioScreen.restoreSheetOpen = false
     studioScreen.togglePreviewOpen = false
     studioScreen.selectedOwnerKey = null
+    studioScreen.selectedPresetId = null
     studioScreen.selectedKind = null
     studioScreen.selectedItemId = null
     studioScreen.notice = notice
@@ -377,11 +426,12 @@ export function selectStudioNode(ownerKey: string, kind: StudioKind | null, item
 
 /**
  * A row chosen in a merged list: opens the entry in its owner, and Back on a phone returns to `list` at that row.
- * `list` is the merged list's own selection (its key and kind), which the entry's selection replaces.
+ * `list` is the merged list's own selection (its key and kind), which the entry's selection replaces. `revealId` names
+ * what the list shows again when it is not the entry's own row (a source of the merged toggles view, a lore test result).
  */
-export function openStudioListRow(list: { ownerKey: string, kind: StudioKind }, ownerKey: string, itemId: string): void {
+export function openStudioListRow(list: { ownerKey: string, kind: StudioKind }, ownerKey: string, itemId: string | null, revealId: string | null = itemId): void {
     selectStudioNode(ownerKey, list.kind, itemId)
-    studioScreen.listReturn = { ownerKey: list.ownerKey, kind: list.kind, rowId: itemId }
+    studioScreen.listReturn = revealId === null ? null : { ownerKey: list.ownerKey, kind: list.kind, rowId: revealId }
 }
 
 export function setStudioExpanded(rowId: string, expanded: boolean): void {

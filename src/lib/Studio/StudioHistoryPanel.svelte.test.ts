@@ -69,6 +69,7 @@ import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studi
 import { createClaimDouble, createMemoryStudioStore, seedOwner, storedRecord, type ClaimDouble, type MemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
 import { emptyRecord, type Step } from '../../ts/studio/history/historyModel'
 import StudioHistoryPanel from './StudioHistoryPanel.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import StudioScreen from './StudioScreen.svelte'
 
 interface LiveChat extends ChatSource {
@@ -214,6 +215,7 @@ class ResizeObserverStub {
     observe(): void {
         this.callback([{ contentRect: { width: 1200 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
     }
+    unobserve(): void {}
     disconnect(): void {}
 }
 
@@ -267,6 +269,7 @@ beforeEach(() => {
     selection.selId = 0
     setStudioEnabled(true)
     vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    setWindowGeometryForTests(allRowsGeometry())
 })
 
 afterEach(async () => {
@@ -277,6 +280,7 @@ afterEach(async () => {
     resetBackHandlersForTests()
     resetToastHostForTests()
     setStudioEnabled(false)
+    setWindowGeometryForTests(undefined)
     vi.unstubAllGlobals()
 })
 

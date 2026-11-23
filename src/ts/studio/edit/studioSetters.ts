@@ -12,8 +12,9 @@ import type { Chat, character, groupChat } from '../../storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
 import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
-import { TEXT_FIELD_PATHS, fmAfterRemove, isBooleanSetPath, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
-import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
+import { factsOf, freshSeed, isHeldBy, isUsableContainer, propertyOf, slotOf } from '../history/fieldAccess'
+import { fmAfterRemove, textFieldOf, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
+import { parseStoredOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './assetSetters'
 
 export type SetterRefusal =
@@ -95,7 +96,9 @@ function resolveModuleTarget(moduleId: string, openModuleId: () => string | null
 export function resolveLiveTarget(owner: OwnerKey): { ok: true; target: LiveTarget } | { ok: false; reason: SetterRefusal }
 export function resolveLiveTarget(owner: OwnerKey, openModuleId: () => string | null): { ok: true; target: OwnerTarget } | { ok: false; reason: SetterRefusal }
 export function resolveLiveTarget(owner: OwnerKey, openModuleId?: () => string | null): { ok: true; target: OwnerTarget } | { ok: false; reason: SetterRefusal } {
-    const parsed = parseOwnerKey(owner)
+    // A session key is not a live character or module: it answers `gone` here and is resolved only through
+    // ownerTargets.ts, so no adapter is reached from this file.
+    const parsed = parseStoredOwnerKey(owner)
     if (!parsed) {
         return { ok: false, reason: 'gone' }
     }
@@ -135,29 +138,42 @@ export function fmValueOf(chat: Chat): FmValue {
     return typeof chat.fmIndex === 'number' ? { had: true, value: chat.fmIndex } : { had: false }
 }
 
+// The value a holder carries under the path's property, as a `FieldValue`: absent when the holder is missing, the key
+// is missing or the value is not of the path's registered type. A nested path reads its container: an absent or null
+// container reads as its seed, a usable one by key, and anything else (a string, an array) as absent.
+function readHeld(holder: object | null | undefined, path: SetPath): FieldValue {
+    if (!holder) {
+        return { had: false }
+    }
+    const { container, key } = slotOf(path)
+    let value: unknown
+    if (container === null) {
+        value = fieldsView(holder)[key]
+    } else {
+        const box = fieldsView(holder)[container]
+        if (box === undefined || box === null) {
+            value = freshSeed(container)[key]
+        } else if (isUsableContainer(box)) {
+            value = box[key]
+        } else {
+            return { had: false }
+        }
+    }
+    if (factsOf(path).value === 'bool') {
+        return typeof value === 'boolean' ? { had: true, value } : { had: false }
+    }
+    return typeof value === 'string' ? { had: true, value } : { had: false }
+}
+
 export function createLiveReader(target: LiveTarget): LiveReader {
     const { character: live, chat } = target
     return {
+        // A path no holder of this reader holds reads as absent; a value of the wrong type reads as absent too.
         field(path): FieldValue {
-            if (path === 'note') {
-                return chat && typeof chat.note === 'string' ? { had: true, value: chat.note } : { had: false }
+            if (isHeldBy(path, 'character')) {
+                return readHeld(live, path)
             }
-            if (path === 'desc') {
-                return typeof live.desc === 'string' ? { had: true, value: live.desc } : { had: false }
-            }
-            if (path === 'firstMessage') {
-                return typeof live.firstMessage === 'string' ? { had: true, value: live.firstMessage } : { had: false }
-            }
-            if (path === 'exampleMessage') {
-                return typeof live.exampleMessage === 'string' ? { had: true, value: live.exampleMessage } : { had: false }
-            }
-            if (path === 'customModuleToggle') {
-                return typeof live.customModuleToggle === 'string' ? { had: true, value: live.customModuleToggle } : { had: false }
-            }
-            if (path === 'risutanium_render_when_complete') {
-                return typeof live.risutanium_render_when_complete === 'boolean' ? { had: true, value: live.risutanium_render_when_complete } : { had: false }
-            }
-            return typeof live.hideChatIcon === 'boolean' ? { had: true, value: live.hideChatIcon } : { had: false }
+            return isHeldBy(path, 'chat') ? readHeld(chat, path) : { had: false }
         },
         greetings() {
             return Array.isArray(live.alternateGreetings) ? live.alternateGreetings : null
@@ -190,7 +206,7 @@ function rowsOfList(value: unknown): readonly (readonly string[])[] | null {
 // own registry texts. A module has no first messages or chats, and its only field is the toggle definition.
 export function createModuleLiveReader(module: RisuModule): LiveReader {
     return {
-        field: (path) => (path === 'customModuleToggle' && typeof module.customModuleToggle === 'string' ? { had: true, value: module.customModuleToggle } : { had: false }),
+        field: (path) => (isHeldBy(path, 'module') ? readHeld(module, path) : { had: false }),
         greetings: () => null,
         fmIndex: () => null,
         text(target) {
@@ -223,13 +239,13 @@ export type EditBuildResult = EditBuild | { ok: false; reason: 'precondition' | 
 
 // `coalesce: false` gives a step that never joins, and is never joined by, a neighbouring typing step.
 export function buildFieldEdit(path: SetPath, value: string | boolean, live: LiveReader, coalesce = true): EditBuildResult {
-    if (typeof value !== (isBooleanSetPath(path) ? 'boolean' : 'string')) {
+    if (typeof value !== (factsOf(path).value === 'bool' ? 'boolean' : 'string')) {
         return { ok: false, reason: 'precondition' }
     }
     const before = live.field(path)
-    // An absent required key cannot be put back by an undo (setCharacterField never deletes it), so the edit is refused
-    // before anything is written, marked or recorded.
-    if (!before.had && (path === 'firstMessage' || path === 'exampleMessage')) {
+    // An absent required key cannot be put back by an undo (the builtin writers never delete it), so the edit is
+    // refused before anything is written, marked or recorded.
+    if (!before.had && !factsOf(path).editWhenAbsent) {
         return { ok: false, reason: 'precondition' }
     }
     if (before.had && before.value === value) {
@@ -360,37 +376,37 @@ export function buildGreetingDelete(index: number, deletedId: string, target: Li
 
 // ---------------------------------------------------------------- write functions for writeLive*
 
+// The one builtin-holder write of a set path: a value of the path's type is assigned under its property; an absent
+// value deletes the key when the path's `absent` says so and leaves it otherwise. A value of the wrong type writes
+// nothing, and the key is never written as `undefined`. A nested path writes inside its container: an absent value
+// never creates or deletes the container, and a value of the right type creates a missing or unusable container from a
+// fresh copy of its seed before assigning the key, leaving every other key of an existing container as it is.
+function writeHeld(holder: object, path: SetPath, value: FieldValue): void {
+    const fields = fieldsView(holder)
+    const { container, key } = slotOf(path)
+    if (!value.had) {
+        if (factsOf(path).absent === 'delete') {
+            if (container === null) {
+                delete fields[key]
+            } else if (isUsableContainer(fields[container])) {
+                delete (fields[container] as Record<string, unknown>)[key]
+            }
+        }
+    } else if (typeof value.value === (factsOf(path).value === 'bool' ? 'boolean' : 'string')) {
+        if (container === null) {
+            fields[key] = value.value
+            return
+        }
+        if (!isUsableContainer(fields[container])) {
+            fields[container] = freshSeed(container)
+        }
+        ;(fields[container] as Record<string, unknown>)[key] = value.value
+    }
+}
+
 function setCharacterField(live: character, path: SetPath, value: FieldValue): void {
-    if (path === 'desc') {
-        if (value.had && typeof value.value === 'string') {
-            live.desc = value.value
-        }
-    } else if (path === 'firstMessage') {
-        if (value.had && typeof value.value === 'string') {
-            live.firstMessage = value.value
-        }
-    } else if (path === 'exampleMessage') {
-        if (value.had && typeof value.value === 'string') {
-            live.exampleMessage = value.value
-        }
-    } else if (path === 'customModuleToggle') {
-        if (!value.had) {
-            delete live.customModuleToggle
-        } else if (typeof value.value === 'string') {
-            live.customModuleToggle = value.value
-        }
-    } else if (path === 'hideChatIcon') {
-        if (!value.had) {
-            delete live.hideChatIcon
-        } else if (typeof value.value === 'boolean') {
-            live.hideChatIcon = value.value
-        }
-    } else if (path === 'risutanium_render_when_complete') {
-        if (!value.had) {
-            delete live.risutanium_render_when_complete
-        } else if (typeof value.value === 'boolean') {
-            live.risutanium_render_when_complete = value.value
-        }
+    if (isHeldBy(path, 'character')) {
+        writeHeld(live, path, value)
     }
 }
 
@@ -410,8 +426,8 @@ export interface AssetWriteExtras {
     retained: ((existing: unknown) => RetainedResult) | null
 }
 
-// A string-keyed view of a holder, for assigning a registry text by its parsed field name. The holder is a character,
-// a module or one of their entries; a write goes through it only where the slot holds a string now.
+// An identity cast giving a holder string-keyed access, used by the registry text writes and by the set-path reader and
+// writers. The holder is a character, a module or one of their entries; each caller checks the slot type it needs.
 function fieldsView(holder: object): Record<string, unknown> {
     return holder as Record<string, unknown>
 }
@@ -426,11 +442,14 @@ function assignIfString(holder: object | null | undefined, field: string, value:
 }
 
 // A `textSet` on a registry text of the live character: the whole value the plan computed, assigned in place where
-// the slot holds a string. It creates no container. The text fields (a `set`) and the first message entries (a `listSet`)
-// are never written here.
+// the slot holds a string. It creates no container. A target the history router sends to a `set` (the text fields) or
+// a `listSet` (the first message entries) is never written here.
 function writeCharacterText(live: character, target: string, value: string): void {
     const parsed = parseTargetPath('character', target)
     if (parsed === null || 'greeting' in parsed) {
+        return
+    }
+    if (textFieldOf(target) !== null) {
         return
     }
     if ('trigger' in parsed) {
@@ -439,7 +458,7 @@ function writeCharacterText(live: character, target: string, value: string): voi
         assignIfString((parsed.entry === 'lore' ? live.globalLore : live.customscript)?.[parsed.index], parsed.field, value)
     } else if ('nested' in parsed) {
         assignIfString(live[parsed.nested], parsed.field, value)
-    } else if (!(TEXT_FIELD_PATHS as readonly string[]).includes(parsed.field)) {
+    } else {
         assignIfString(live, parsed.field, value)
     }
 }
@@ -572,12 +591,14 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
             }
         } else if (write.op === 'textSet') {
             writeModuleText(next, write.target, write.value)
-        } else if (write.op === 'set' && write.path === 'customModuleToggle') {
-            // An absent value deletes the optional key on the copy; the live module is never written.
-            if (write.value.had && typeof write.value.value === 'string') {
-                next.customModuleToggle = write.value.value
-            } else {
-                delete next.customModuleToggle
+        } else if (write.op === 'set' && isHeldBy(write.path, 'module')) {
+            // Anything but a value of the path's type deletes an optional key on the copy (when the path's `absent`
+            // says delete); the live module is never written.
+            const fields = fieldsView(next)
+            if (write.value.had && typeof write.value.value === (factsOf(write.path).value === 'bool' ? 'boolean' : 'string')) {
+                fields[propertyOf(write.path)] = write.value.value
+            } else if (factsOf(write.path).absent === 'delete') {
+                delete fields[propertyOf(write.path)]
             }
         }
     }
@@ -670,11 +691,11 @@ export function writeLiveModule(moduleId: string, build: (live: RisuModule) => R
     return true
 }
 
-// The body of the one `writeLiveChat` call of a chat owner's action; a chat owner has only `note`.
+// The body of the one `writeLiveChat` call of a chat owner's action: the set paths the chat holds.
 export function applyChatWrites(live: Chat, writes: readonly WriteOp[]): void {
     for (const write of writes) {
-        if (write.op === 'set' && write.path === 'note' && write.value.had && typeof write.value.value === 'string') {
-            live.note = write.value.value
+        if (write.op === 'set' && isHeldBy(write.path, 'chat')) {
+            writeHeld(live, write.path, write.value)
         }
     }
 }

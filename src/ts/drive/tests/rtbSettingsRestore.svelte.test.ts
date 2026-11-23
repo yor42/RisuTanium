@@ -27,7 +27,8 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import { language } from 'src/lang'
 import { applySettingsRestore, type SettingsRestoreDeps } from 'src/ts/drive/rtbSettingsRestore'
 import { UI_PREFS_KEYS } from 'src/ts/drive/rtb/sideStoreConfig'
-import { DEVICE_LIST_KEYS, type SettingsPayloadInput } from 'src/ts/drive/rtb/settingsPayload'
+import { buildSettingsRecords, DEVICE_LIST_KEYS, type SettingsPayloadInput } from 'src/ts/drive/rtb/settingsPayload'
+import { PRESET_SOURCE_FIELDS, SETTINGS_FIELDS } from 'src/ts/drive/rtb/settingsFields'
 import { createHypaV3Preset } from 'src/ts/process/memory/hypaV3Presets'
 import { settingsSource } from 'src/ts/drive/rtbSettingsSource.svelte'
 import { inputOf, realisticDb } from './rtb/settingsTestKit'
@@ -410,5 +411,67 @@ describe('applySettingsRestore: the writes are marked for the save (T12)', () =>
         flushSync()
         expect(tracker.botPreset).toBe(false)
         expect(markChanged).toHaveBeenCalledWith(true)
+    })
+})
+
+describe('a settings file never brings pack colours onto a device (MC-3760)', () => {
+    const FILE_PACK: Fields = {
+        bgcolor: '#101820', darkbg: '#182430', borderc: '#303030', selected: '#404040', draculared: '#505050',
+        textcolor: '#f0f0f0', textcolor2: '#c0c0c0', darkBorderc: '#707070', darkbutton: '#808080', type: 'dark',
+    }
+    const FILE_CUSTOM: Fields = { ...FILE_PACK, bgcolor: '#0a0b0c', darkbg: '#1a1b1c', type: 'light' }
+    const DEVICE_OWN: Fields = { ...FILE_PACK, bgcolor: '#fafafa', darkbg: '#eeeeee', type: 'light' }
+    const DEVICE_PACK: Fields = { ...FILE_PACK, bgcolor: '#203040' }
+
+    /** A settings-only file made by the real payload builder from a database holding `fields`. */
+    function fileMadeWith(fields: Fields): SettingsPayloadInput {
+        DBState.db = realisticDb()
+        Object.assign(asRecord(DBState.db), fields)
+        const keys = [...new Set([...SETTINGS_FIELDS, ...PRESET_SOURCE_FIELDS])] as (keyof Database)[]
+        return inputOf(buildSettingsRecords(settingsSource(keys)).records)
+    }
+
+    function deviceWith(fields: Fields): void {
+        install((db) => { Object.assign(asRecord(db), fields) })
+    }
+
+    const plainOf = (value: unknown): unknown => JSON.parse(JSON.stringify(value))
+
+    test('MC-3760 reproducer: a file made under a pack scheme leaves a pack-free device on its own scheme and restores the rest', async () => {
+        const file = fileMadeWith({ colorSchemeName: 'theme-pack', colorScheme: FILE_PACK, theme: 'waifu' })
+        deviceWith({ colorSchemeName: 'light', colorScheme: DEVICE_OWN })
+        const end = await applySettingsRestore(file, {}, harness().deps)
+        expect(end.outcome).toBe('committed')
+        expect(DBState.db.colorSchemeName, 'the device keeps its scheme name').toBe('light')
+        expect(plainOf(DBState.db.colorScheme), 'the pack colours never arrive').toEqual(DEVICE_OWN)
+        expect(DBState.db.theme).toBe('waifu')
+        expect('activeThemePack' in DBState.db).toBe(false)
+    })
+
+    test('MC-3760 reproducer: a device on Custom paints the Custom colours the file carries', async () => {
+        const file = fileMadeWith({ colorSchemeName: 'theme-pack', colorScheme: FILE_PACK, customColorScheme: FILE_CUSTOM })
+        deviceWith({ colorSchemeName: 'custom', colorScheme: DEVICE_OWN, customColorScheme: DEVICE_OWN })
+        await applySettingsRestore(file, {}, harness().deps)
+        expect(DBState.db.colorSchemeName).toBe('custom')
+        expect(plainOf(DBState.db.customColorScheme), 'the Custom slot is written as every other field').toEqual(FILE_CUSTOM)
+        expect(plainOf(DBState.db.colorScheme), 'the painted colours follow the restored slot').toEqual(FILE_CUSTOM)
+    })
+
+    test('MC-3760 reproducer: a device with another pack active keeps its name and its stored copy', async () => {
+        const file = fileMadeWith({ colorSchemeName: 'theme-pack', colorScheme: FILE_PACK })
+        deviceWith({ colorSchemeName: 'theme-pack', colorScheme: DEVICE_PACK, activeThemePack: 'builtin:origin-navy' })
+        await applySettingsRestore(file, {}, harness().deps)
+        expect(DBState.db.colorSchemeName).toBe('theme-pack')
+        expect(plainOf(DBState.db.colorScheme)).toEqual(DEVICE_PACK)
+        expect(DBState.db.activeThemePack).toBe('builtin:origin-navy')
+    })
+
+    test('MC-3760 guard: a file with its own scheme name restores that name and those colours as before', async () => {
+        const file = fileMadeWith({ colorSchemeName: 'dark', colorScheme: FILE_PACK, customColorScheme: FILE_CUSTOM })
+        deviceWith({ colorSchemeName: 'custom', colorScheme: DEVICE_OWN, customColorScheme: DEVICE_OWN })
+        await applySettingsRestore(file, {}, harness().deps)
+        expect(DBState.db.colorSchemeName).toBe('dark')
+        expect(plainOf(DBState.db.colorScheme)).toEqual(FILE_PACK)
+        expect(plainOf(DBState.db.customColorScheme)).toEqual(FILE_CUSTOM)
     })
 })

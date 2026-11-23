@@ -1,6 +1,8 @@
 // Pure lifecycle of one Studio history owner: the phase table, owner keys and the store
 // expectation type. Nothing here reads a clock, a port or the database.
 
+import { SESSION_OWNER_KINDS, type SessionOwnerKind } from './sessionKinds'
+
 // One deadline per owner, armed at first use and never restarted. It covers claim, open and load
 // together, so a hung or rejecting port can keep a form read-only for at most this long.
 export const READY_DEADLINE_MS = 5000
@@ -9,27 +11,58 @@ export const READY_DEADLINE_MS = 5000
 export const SAVE_DEBOUNCE_MS = 1000
 export const SAVE_MAX_WAIT_MS = 5000
 
-export type OwnerKey = `character:${string}` | `chat:${string}/${string}` | `module:${string}`
+// A stored key names an owner whose history the store keeps. Only these reach the store, the claim port
+// and the protocol; the store reads, counts and evicts only headers under such a key.
+export type StoredOwnerKey = `character:${string}` | `chat:${string}/${string}` | `module:${string}`
 
-export type ParsedOwnerKey =
+export type ParsedStoredOwnerKey =
     | { kind: 'character'; chaId: string }
     | { kind: 'chat'; chaId: string; chatId: string }
     | { kind: 'module'; moduleId: string }
 
+// A session key names an owner kept in memory only (sessionKinds.ts). While no session kind is registered
+// these types are `never`.
+export type SessionOwnerKey = `${SessionOwnerKind}:${string}`
+export type ParsedSessionOwnerKey = { [K in SessionOwnerKind]: { kind: K; id: string } }[SessionOwnerKind]
+
+export type OwnerKey = StoredOwnerKey | SessionOwnerKey
+export type ParsedOwnerKey = ParsedStoredOwnerKey | ParsedSessionOwnerKey
+
 // Owner keys are built from ids only. A chat without an id has no owner key (it never uses chatPage).
-export function characterOwnerKey(chaId: string): OwnerKey {
+export function characterOwnerKey(chaId: string): StoredOwnerKey {
     return `character:${chaId}`
 }
 
-export function chatOwnerKey(chaId: string, chatId: string): OwnerKey {
+export function chatOwnerKey(chaId: string, chatId: string): StoredOwnerKey {
     return `chat:${chaId}/${chatId}`
 }
 
-export function moduleOwnerKey(moduleId: string): OwnerKey {
+export function moduleOwnerKey(moduleId: string): StoredOwnerKey {
     return `module:${moduleId}`
 }
 
+export function sessionOwnerKey(kind: SessionOwnerKind, id: string): SessionOwnerKey {
+    return `${kind}:${id}` as SessionOwnerKey
+}
+
+export function parseSessionOwnerKey(key: string): ParsedSessionOwnerKey | null {
+    const colon = key.indexOf(':')
+    if (colon <= 0 || colon === key.length - 1) {
+        return null
+    }
+    const kind = key.slice(0, colon)
+    if (!Object.hasOwn(SESSION_OWNER_KINDS, kind)) {
+        return null
+    }
+    const parsed: { kind: string; id: string } = { kind, id: key.slice(colon + 1) }
+    return parsed as ParsedSessionOwnerKey
+}
+
 export function parseOwnerKey(key: string): ParsedOwnerKey | null {
+    return parseStoredOwnerKey(key) ?? parseSessionOwnerKey(key)
+}
+
+export function parseStoredOwnerKey(key: string): ParsedStoredOwnerKey | null {
     if (key.startsWith('module:')) {
         const moduleId = key.slice('module:'.length)
         return moduleId === '' ? null : { kind: 'module', moduleId }
@@ -49,8 +82,8 @@ export function parseOwnerKey(key: string): ParsedOwnerKey | null {
     return null
 }
 
-export function isOwnerKey(key: string): key is OwnerKey {
-    return parseOwnerKey(key) !== null
+export function isStoredOwnerKey(key: string): key is StoredOwnerKey {
+    return parseStoredOwnerKey(key) !== null
 }
 
 // What the store adapter believes it last saw for an owner: nothing stored, an intact pair with
@@ -60,7 +93,7 @@ export type Expectation =
     | { kind: 'wid'; wid: string }
     | { kind: 'foreign' }
 
-export type MemoryOnlyReason = 'otherTab' | 'noLocks' | 'failed' | 'unavailable' | 'keptUnreadable'
+export type MemoryOnlyReason = 'otherTab' | 'noLocks' | 'failed' | 'unavailable' | 'keptUnreadable' | 'session'
 
 // Notes carried by `ready`: a failed write that the next save retries, the one-time notice that
 // unreadable bytes were copied aside, and the note that the stored copy was trimmed.
@@ -76,6 +109,7 @@ export type OwnerPhase =
 
 export type OwnerEvent =
     | { type: 'firstUse'; restricted: boolean }
+    | { type: 'firstUseSession' }
     | { type: 'claim:granted' }
     | { type: 'claim:held' }
     | { type: 'claim:unsupported'; tauri: boolean }
@@ -98,11 +132,14 @@ function memoryOnly(reason: MemoryOnlyReason): OwnerPhase {
     return { kind: 'memoryOnly', reason }
 }
 
-// `null` stands for "not used yet": only `firstUse` leaves it. An event without a row for the
+// `null` stands for "not used yet": only `firstUse` and `firstUseSession` leave it. An event without a row for the
 // current phase returns the phase it was given, unchanged and by reference, so a caller can
 // tell an ignored event from a transition. `memoryOnly` and `excluded` accept nothing.
 export function nextPhase(phase: OwnerPhase | null, event: OwnerEvent): OwnerPhase | null {
     if (phase === null) {
+        if (event.type === 'firstUseSession') {
+            return memoryOnly('session')
+        }
         if (event.type !== 'firstUse') {
             return phase
         }

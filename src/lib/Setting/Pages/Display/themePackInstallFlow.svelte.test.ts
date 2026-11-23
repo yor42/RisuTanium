@@ -1,6 +1,6 @@
 /**
  * The flow behind the Theme pack row: the in-flight latch, the order of the questions (size check before any read, the
- * 20 MiB confirm and Replace? before the first write), the outcome text of every result, the outcome lifetime, and Remove
+ * 20 MiB confirm, the risk warning and Replace? before the first write, in that order), the outcome text of every result, the outcome lifetime, and Remove
  * and select. All are guards for new behaviour: the flow does not exist on the base, so each fails only when a scratch
  * mutant breaks the rule it names.
  *
@@ -58,13 +58,13 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     }),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 // The pack safe-mode module reads the light colour module directly, so it is stubbed like the colour module.
-vi.mock(import('src/ts/gui/colorschemeCore'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorschemeCore'))
+vi.mock(import('src/ts/gui/colorschemeCore'), () => ({ leavePackScheme: vi.fn(), dropPackSchemeCopy: vi.fn(() => null) }) as unknown as typeof import('src/ts/gui/colorschemeCore'))
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
     return { DBState: state } as unknown as typeof import('src/ts/stores.svelte')
 })
 
-vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorscheme'))
+vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn(), dropPackSchemeCopy: vi.fn(() => null) }) as unknown as typeof import('src/ts/gui/colorscheme'))
 
 //#endregion
 
@@ -201,16 +201,19 @@ describe('T4-2a the 20 MiB question comes before any write', () => {
         expect(storedPacks()).toEqual([])
 
         await runThemePackInstall(deps)
-        expect(confirm).toHaveBeenCalledTimes(2)
+        expect(confirm).toHaveBeenCalledTimes(3)
+        expect(confirm.mock.calls[1][0]).toBe(language.themePackLargeConfirm('21.0 MiB'))
+        expect(confirm.mock.calls[2][0]).toBe(language.themePackRiskConfirm(false))
         expect(world.log).toHaveLength(1)
         expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
     })
 
-    test('a pack under the warning size asks nothing', async () => {
+    test('a pack under the warning size asks only the risk question', async () => {
         attach()
         const { deps, confirm } = runOf(validPack())
         await runThemePackInstall(deps)
-        expect(confirm).not.toHaveBeenCalled()
+        expect(confirm).toHaveBeenCalledTimes(1)
+        expect(confirm.mock.calls[0][0]).toBe(language.themePackRiskConfirm(false))
         expect(world.log).toHaveLength(1)
     })
 })
@@ -590,15 +593,100 @@ describe('W1 warnings of an accepted sheet show under the installed line', () =>
         expect(storedPacks()).toHaveLength(1)
     })
 
-    test('V-T11: a real symbol font is refused with its reason and nothing is written', async () => {
+    test('V-T11: a real symbol font installs with a readability note under the notes header', async () => {
         attach()
-        const bytes = zipPack(validPackFiles({ 'chat.css': '[data-part="chat-message-text"]{font-family:wingdings, serif}' }))
+        const sheet = '[data-part="chat-message-text"]{font-family:wingdings, serif}'
+        const bytes = zipPack(validPackFiles({ 'chat.css': sheet }))
+        await runThemePackInstall(runOf(bytes).deps)
+        const lines = outcomeLines() ?? []
+        expect(installFlowState.outcome?.tone).toBe('info')
+        expect(lines[0]).toBe(language.themePackInstalled('Test Pack'))
+        expect(lines[1]).toBe(language.themePackInstalledWithNotes('chat.css'))
+        expect(lines[2]).toContain('it is a symbol font')
+        expect(lines.some((line) => line === language.themePackRefusedHeader)).toBe(false)
+        expect(storedPacks()).toHaveLength(1)
+    })
+
+    test('V-T11b: a kept refusal beside a symbol font still refuses, and shows no note header', async () => {
+        attach()
+        const bytes = zipPack(validPackFiles({ 'chat.css': '[data-part="chat-message-text"]{font-family:wingdings, serif;z-index:5}' }))
         await runThemePackInstall(runOf(bytes).deps)
         const lines = outcomeLines() ?? []
         expect(installFlowState.outcome?.tone).toBe('error')
         expect(lines[0]).toBe(language.themePackRefusedHeader)
-        expect(lines[1]).toContain('it is a symbol font')
+        expect(lines.some((line) => line === language.themePackInstalledWithNotes('chat.css'))).toBe(false)
         expect(world.log).toEqual([])
+    })
+
+    // The real producer (MC-329): a plain dark header colour, judged by the real validator, installs with contrast notes.
+    const NOTED_SHEET = '[data-part="chat-header"]{color:#111111}'
+    const notedLines = (sheet: string): string[] => (judgePackSheets({ chat: sheet }).areas.chat?.result.notes ?? []).map((n) => language.themePackLintLine(n.selector, n.prop, n.why))
+
+    test('T-IF1: a pack whose sheet only carries notes installs and lists them after the notes header', async () => {
+        attach()
+        const expected = notedLines(NOTED_SHEET)
+        expect(expected.length).toBeGreaterThan(0)
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': NOTED_SHEET }))).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackInstalledWithNotes('chat.css'), ...expected])
+        expect(installFlowState.outcome?.tone).toBe('info')
+        expect(storedPacks()).toHaveLength(1)
+    })
+
+    test('T-IF1: the notes come after the warning groups', async () => {
+        attach()
+        const judge: PackJudge = async (sheets) => {
+            const judged = judgePackSheets(sheets)
+            const chat = judged.areas.chat
+            if (chat === undefined) throw new Error('the fixture pack has no chat sheet')
+            return { ...judged, areas: { ...judged.areas, chat: { ...chat, warnings: WARNINGS } } }
+        }
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': NOTED_SHEET })), [], { intake: (verified) => intakePackBytes(verified, judge) }).deps)
+        expect(outcomeLines()).toEqual([
+            language.themePackInstalled('Test Pack'),
+            language.themePackInstalledWithWarnings('chat.css'),
+            ...warningLines,
+            language.themePackInstalledWithNotes('chat.css'),
+            ...notedLines(NOTED_SHEET),
+        ])
+    })
+
+    test('T-IF1: a stored record carries no notes', async () => {
+        attach()
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': NOTED_SHEET }))).deps)
+        const record = storedPacks()[0]
+        expect(record).toBeDefined()
+        expect(Object.keys(record as object)).not.toContain('notes')
+        expect(JSON.stringify(record)).not.toContain('contrast')
+    })
+
+    test('T-IF2: a refused sheet that also carries notes shows only the refusal, and nothing is stored', async () => {
+        attach()
+        const sheet = '[data-part="chat-header"]{z-index:5;color:#111111}'
+        const judged = judgePackSheets({ chat: sheet })
+        expect(judged.areas.chat?.result.notes?.length).toBeGreaterThan(0)
+        expect(judged.areas.chat?.result.ok).toBe(false)
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': sheet }))).deps)
+        const lines = outcomeLines() ?? []
+        expect(installFlowState.outcome?.tone).toBe('error')
+        expect(lines[0]).toBe(language.themePackRefusedHeader)
+        expect(lines).toHaveLength(2)
+        expect(lines.some((line) => line === language.themePackInstalledWithNotes('chat.css') || notedLines(sheet).includes(line))).toBe(false)
+        expect(world.log).toEqual([])
+        expect(storedPacks()).toEqual([])
+    })
+
+    test.each([
+        ['the write fails', { ok: false, kind: 'writeFailed', error: new Error('write') } as const, language.themePackWriteFailed],
+        ['the stored files are found damaged', { ok: false, kind: 'filesDamaged' } as const, language.themePackInstallFailedFiles],
+    ])('verify accepts a noted pack, then %s: only the failure line shows', async (_name, failure, text) => {
+        attach()
+        const install = async <R>(request: InstallRequest<R>): Promise<InstallOutcome<R>> => {
+            const verdict = await request.verify(request.bytes)
+            if (verdict.ok === false) return { ok: false, kind: 'refused', refusal: verdict.refusal }
+            return failure
+        }
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': NOTED_SHEET })), [], { install }).deps)
+        expect(outcomeLines()).toEqual([text])
     })
 
     test('the installed line is followed by the header and one line per warning, in the info tone', async () => {
@@ -660,11 +748,11 @@ describe('W1 warnings of an accepted sheet show under the installed line', () =>
         await runThemePackInstall(runOf(bytes, [], { intake: warnIntake }).deps)
         const writes = world.log.length
 
-        await runThemePackInstall(runOf(bytes, [false], { intake: warnIntake }).deps)
+        await runThemePackInstall(runOf(bytes, [true, false], { intake: warnIntake }).deps)
         expect(installFlowState.outcome).toBeNull()
         expect(world.log).toHaveLength(writes)
 
-        await runThemePackInstall(runOf(bytes, [true], { intake: warnIntake }).deps)
+        await runThemePackInstall(runOf(bytes, [true, true], { intake: warnIntake }).deps)
         expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackInstalledWithWarnings('chat.css'), ...warningLines])
     })
 
@@ -708,14 +796,15 @@ describe('T4-5 Replace? names the pack it replaces', () => {
         expect(storedPacks()).toHaveLength(1)
         const writes = world.log.length
 
-        const declined = runOf(bytes, [false])
+        const declined = runOf(bytes, [true, false])
         await runThemePackInstall(declined.deps)
-        expect(declined.confirm).toHaveBeenCalledTimes(1)
-        expect(declined.confirm.mock.calls[0][0]).toBe(language.themePackReplaceConfirm('Test Pack'))
+        expect(declined.confirm).toHaveBeenCalledTimes(2)
+        expect(declined.confirm.mock.calls[0][0]).toBe(language.themePackRiskConfirm(false))
+        expect(declined.confirm.mock.calls[1][0]).toBe(language.themePackReplaceConfirm('Test Pack'))
         expect(world.log).toHaveLength(writes)
         expect(installFlowState.outcome).toBeNull()
 
-        await runThemePackInstall(runOf(bytes, [true]).deps)
+        await runThemePackInstall(runOf(bytes, [true, true]).deps)
         expect(world.log).toHaveLength(writes + 1)
         expect(storedPacks()).toHaveLength(1)
     })

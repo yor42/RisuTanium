@@ -10,6 +10,7 @@
  * "string".
  */
 import { flushSync, mount, unmount } from 'svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { writable } from 'svelte/store'
 import { describe, test, expect, vi, afterEach } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -109,7 +110,7 @@ interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
 
 /** Mounts the preset list, switches it to edit mode and returns the placeholders of its text inputs. */
-function editModePlaceholders(): Array<string | null> {
+async function editModePlaceholders(): Promise<Array<string | null>> {
     DBState.db = {
         formatversion: 5,
         botPresets: [{ name: 'Alpha', aiModel: 'm' }],
@@ -120,8 +121,14 @@ function editModePlaceholders(): Array<string | null> {
     } as unknown as Database
     const target = document.createElement('div')
     document.body.appendChild(target)
+    // The windowed rows mount once the host has read the band: every row falls in it, as these tests are not about which rows are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     const app = mount(BotPreset, { target, props: { close: vi.fn() } }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
+    flushSync()
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
     flushSync()
     const toolbar = Array.from(target.querySelectorAll<HTMLButtonElement>('div.flex.mt-2.items-center > button'))
     // The last toolbar button toggles the edit mode.
@@ -140,14 +147,14 @@ afterEach(async () => {
 })
 
 describe('the preset-name input in the edit mode of the preset list', () => {
-    test('regression reproducer: English shows "Name" as the placeholder', () => {
-        expect(editModePlaceholders()).toEqual(['Name'])
+    test('regression reproducer: English shows "Name" as the placeholder', async () => {
+        expect(await editModePlaceholders()).toEqual(['Name'])
         expect(languageEnglish.name).toBe('Name')
     })
 
-    test('regression reproducer: Korean shows the Korean "name" locale value as the placeholder', () => {
+    test('regression reproducer: Korean shows the Korean "name" locale value as the placeholder', async () => {
         changeLanguage('ko')
         expect(languageKorean.name).not.toBe(languageEnglish.name)
-        expect(editModePlaceholders()).toEqual([languageKorean.name])
+        expect(await editModePlaceholders()).toEqual([languageKorean.name])
     })
 })

@@ -275,7 +275,8 @@ import { resetRunningRepliesForTests } from 'src/ts/nativeReply/runningReplies.s
 import type { ReplyBlob } from 'src/ts/nativeReply/blob'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { isWriting } from 'src/ts/process/chatOrigin'
-import { abortUnitInProgress, isUnitInProgressSignal } from 'src/ts/process/generationOwnership.svelte'
+import { isUnitInProgressSignal, processStageIn, setProcessStage } from 'src/ts/process/generationOwnership.svelte'
+import { stopAllReplyWork } from 'src/ts/process/chatOrigin'
 import { simulateRunningSend, clearRunningSends } from './activeUnits.test-helpers'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
@@ -621,7 +622,7 @@ describe('the flag stays true from the take until the unit settles', () => {
 describe('a call refused because a unit holds the flag', () => {
     test('guard: a refused outermost call leaves the flag set and registers nothing', async () => {
         installSingleChat()
-        simulateRunningSend()
+        simulateRunningSend(CHAT_A)
 
         const result = await settled(() => sendChat())
 
@@ -712,11 +713,13 @@ describe('the outcome of an aborted unit', () => {
     })
 })
 
-describe('the published unit controller', () => {
+describe('stop-all reaching the running unit', () => {
     /**
      * The signal the n-th provider request was made with: the running unit's
-     * own. `abortUnitInProgress` reaches it only while that unit's controller
-     * is the one published.
+     * own. `stopAllReplyWork` reaches it through the unit's work registration,
+     * for as long as that registration lives. What the published tag store holds
+     * is pinned separately (the publish counts below, and the release order
+     * test).
      */
     function requestSignal(n = 0): AbortSignal {
         return requestChatDataMock.mock.calls[n][2] as AbortSignal
@@ -727,7 +730,7 @@ describe('the published unit controller', () => {
         const { source, outcome } = await startHeldSend(() => sendChat())
         const flagDuring = get(doingChat)
 
-        abortUnitInProgress()
+        stopAllReplyWork()
         const abortedDuring = requestSignal().aborted
         source.close()
         const result = await outcome
@@ -743,7 +746,7 @@ describe('the published unit controller', () => {
         mockReply('Hello there.')
 
         const result = await settled(() => sendChat())
-        abortUnitInProgress()
+        stopAllReplyWork()
 
         expect.soft(result).toBe(true)
         expect.soft(get(doingChat)).toBe(false)
@@ -759,30 +762,33 @@ describe('the published unit controller', () => {
         })
 
         const result = await settled(() => sendChat())
-        abortUnitInProgress()
+        stopAllReplyWork()
 
         expect.soft(result).toBeInstanceOf(Error)
         expect.soft(get(doingChat)).toBe(false)
         expect.soft(signalSeen?.aborted).toBe(false)
     })
 
-    test('a call refused while a unit runs publishes nothing: aborting the unit in progress still reaches the running unit', async () => {
+    test('a call refused while a unit runs publishes nothing, and stop-all still reaches the running unit', async () => {
         installSingleChat()
         const { source, outcome } = await startHeldSend(() => sendChat())
+        const publishedBefore = publishedUnits.controllers.length
 
         const refused = await settled(() => sendChat())
         const refusedAtAnIndex = await settled(() => sendChat(0))
-        abortUnitInProgress()
+        const publishedAfter = publishedUnits.controllers.length
+        stopAllReplyWork()
         const abortedDuring = requestSignal().aborted
         source.close()
         await outcome
 
         expect.soft(refused).toBe(false)
         expect.soft(refusedAtAnIndex).toBe(false)
+        expect.soft(publishedAfter).toBe(publishedBefore)
         expect.soft(abortedDuring).toBe(true)
     })
 
-    test("an auto-continue keeps the unit's controller published: aborting during the continuation reaches it", async () => {
+    test("an auto-continue keeps the unit's registration alive: stop-all during the continuation reaches it", async () => {
         installSingleChat({ autoContinueChat: true })
         isLastCharPunctuationMock.mockReturnValueOnce(false)
         mockReply('Hello')
@@ -794,7 +800,7 @@ describe('the published unit controller', () => {
         await settle()
         const flagDuring = get(doingChat)
 
-        abortUnitInProgress()
+        stopAllReplyWork()
         const abortedDuring = requestSignal(1).aborted
         continuation.close()
         const result = await outcome
@@ -899,16 +905,14 @@ describe('a second send started while a unit is being taken', () => {
         expect(get(doingChat)).toBe(false)
     })
 
-    test.each([
-        ['another chat', CHAT_B],
-        ['the same chat', CHAT_A],
-    ] as const)('R2: a send that never takes its unit does not clear the unit of a send its caller\'s signal started (second send into %s)', async (_name, secondChat) => {
+    test('R2: a send whose own unit was released by a failure does not clear the unit of a send its caller\'s signal started (second send into another chat)', async () => {
+        const secondChat = CHAT_B
         installTwoChats()
         const second: Array<Promise<boolean | Error>> = []
         const source = controlledStream()
         requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: source.stream })
         const callerSignal = new AbortController().signal
-        // The first send reaches its signal before it takes its unit; the second is started from there and the first fails.
+        // The first send reaches its signal after it took its unit; the second is started from there and the first fails.
         vi.spyOn(callerSignal, 'addEventListener').mockImplementation(() => {
             second.push(settled(() => sendChat(-1, { origin: secondChat })))
             throw new Error('the signal listener failed')
@@ -935,10 +939,38 @@ describe('a second send started while a unit is being taken', () => {
         }
         expect(get(doingChat)).toBe(false)
     })
+
+    test('A5: a send its caller\'s signal started into the first send\'s own chat is refused, and after the first fails nothing holds the chat', async () => {
+        installTwoChats()
+        const second: Array<Promise<boolean | Error>> = []
+        const callerSignal = new AbortController().signal
+        // The first send has taken its chat before it reaches its signal; the second is started from there and the first fails.
+        vi.spyOn(callerSignal, 'addEventListener').mockImplementation(() => {
+            second.push(settled(() => sendChat(-1, { origin: CHAT_A })))
+            throw new Error('the signal listener failed')
+        })
+        try {
+            const first = await settled(() => sendChat(-1, { signal: callerSignal }))
+            expect(first).toBeInstanceOf(Error)
+            expect(second).toHaveLength(1)
+            expect(await second[0]).toBe(false)
+            expect(requestChatDataMock).not.toHaveBeenCalled()
+            expect(activeUnits.has(CHAT_A)).toBe(false)
+            expect(get(doingChat)).toBe(false)
+
+            // A later send into the chat is admitted.
+            mockReply('Later.')
+            expect(await settled(() => sendChat(-1, { origin: CHAT_A }))).toBe(true)
+            expect(requestChatDataMock).toHaveBeenCalledTimes(1)
+        } finally {
+            await finishAll([], second)
+        }
+        expect(get(doingChat)).toBe(false)
+    })
 })
 
 describe('a send called from a store subscriber', () => {
-    test('Q1: today: two sends started inside another store\'s subscriber, the second is refused and makes no request', async () => {
+    test('Q1: two sends into one chat started inside another store\'s subscriber: the second is refused and makes no request', async () => {
         installSingleChat()
         const source = controlledStream()
         requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: source.stream })
@@ -1013,7 +1045,7 @@ describe('a send called from a store subscriber', () => {
             expect(successors).toHaveLength(1)
             expect(get(doingChat)).toBe(true)
             expect(activeUnits.has(CHAT_A)).toBe(true)
-            abortUnitInProgress()
+            stopAllReplyWork()
             expect((requestChatDataMock.mock.calls[1][2] as AbortSignal).aborted).toBe(true)
         } finally {
             stop()
@@ -1027,20 +1059,47 @@ describe('a unit held in one chat and a send into another', () => {
     test.each([
         ['send', { previewResult: {} }],
         ['prompt preview', { previewPrompt: true, previewResult: {} }],
-    ] as const)('G1: today: a %s in chat A refuses a send into chat B, with no registration, id fill or request', async (_name, arg) => {
+    ] as const)('A1: a %s in chat A does not refuse a send into chat B: it is admitted, requests, and holds chat B while it runs', async (_name, arg) => {
+        installTwoChats()
+        const held = await holdUnit({ ...arg })
+        const sourceB = controlledStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: sourceB.stream })
+        const requests = requestChatDataMock.mock.calls.length
+        const sendB = settled(() => sendChat(-1, { origin: CHAT_B }))
+        try {
+            await until(() => requestChatDataMock.mock.calls.length === requests + 1, 'the request into chat B')
+            sourceB.push('B')
+            await settle()
+
+            expect(activeUnits.has(CHAT_A)).toBe(true)
+            expect(activeUnits.has(CHAT_B)).toBe(true)
+            expect(isWriting({ chaId: 'char-1' })).toBe(true)
+        } finally {
+            await finishAll([sourceB], [sendB])
+            await held.finish()
+        }
+        expect(await sendB).toBe(true)
+        expect(datas(chatById('char-1', 'chat-1'))).toEqual(['Hey', 'B'])
+        expect(get(doingChat)).toBe(false)
+    })
+
+    test.each([
+        ['send', { previewResult: {} }],
+        ['prompt preview', { previewPrompt: true, previewResult: {} }],
+    ] as const)('A2: a %s in chat A refuses a send into chat A, with no registration, published unit or request', async (_name, arg) => {
         installTwoChats()
         const held = await holdUnit({ ...arg })
         try {
             const registered = workSpies.beginWork.mock.calls.length + workSpies.registerWork.mock.calls.length
             const requests = requestChatDataMock.mock.calls.length
+            const publishedBefore = publishedUnits.controllers.length
 
-            const refused = await settled(() => sendChat(-1, { origin: CHAT_B }))
+            const refused = await settled(() => sendChat(-1, { origin: CHAT_A }))
 
             expect(refused).toBe(false)
             expect(workSpies.beginWork.mock.calls.length + workSpies.registerWork.mock.calls.length).toBe(registered)
             expect(requestChatDataMock.mock.calls.length).toBe(requests)
-            expect(chatById('char-1', 'chat-1').message[0].chatId).toBeUndefined()
-            expect(isWriting({ chaId: 'char-1' })).toBe(false)
+            expect(publishedUnits.controllers.length).toBe(publishedBefore)
             expect(activeUnits.has(CHAT_A)).toBe(true)
             expect(activeUnits.has(CHAT_B)).toBe(false)
         } finally {
@@ -1196,7 +1255,7 @@ describe('the order in which a unit is taken and released', () => {
         parse: { kind: 'openai-chat', deepSeekThinkingOutput: false, extractJson: null, jsonSchema: false, multiGen: false },
     }
 
-    test('O1: at the take the work, the in-flight notice and the published unit are live; at the release only the work is, and the reconcile asked for after it sees the flag false', async () => {
+    test('O1: at the take only the work is live, the notice and the published unit follow it; at the release only the work is, and the reconcile asked for after it sees the flag false', async () => {
         installSingleChat()
         publishedUnits.controllers.length = 0
         const seen: Array<{ busy: boolean, work: boolean, inFlight: boolean, published: boolean }> = []
@@ -1226,10 +1285,85 @@ describe('the order in which a unit is taken and released', () => {
 
         expect(seen).toEqual([
             { busy: false, work: false, inFlight: false, published: false },
-            { busy: true, work: true, inFlight: true, published: true },
+            { busy: true, work: true, inFlight: false, published: false },
             { busy: false, work: true, inFlight: false, published: false },
         ])
         expect(reconcileSaw).toEqual([false])
+    })
+})
+
+//#endregion
+
+//#region the progress stage is kept per chat
+
+describe('a refused send leaves every chat\'s progress stage alone', () => {
+    // R6a-R6d (regression reproducers): a send reset the stage before it was admitted, so a refused call cleared the
+    // running send's progress.
+    test('R6a: a send admitted into another chat clears no stage of the held chat', async () => {
+        installTwoChats()
+        setProcessStage(CHAT_A, 3)
+        setProcessStage(CHAT_B, 0)
+        simulateRunningSend(CHAT_A)
+        mockReply('Elsewhere.')
+        try {
+            expect(await settled(() => sendChat(-1, { origin: CHAT_B }))).toBe(true)
+            expect(processStageIn(CHAT_A)).toBe(3)
+        } finally {
+            clearRunningSends()
+        }
+    })
+
+    test('R6b: a send refused into the running chat, with an explicit origin, clears no stage', async () => {
+        installTwoChats()
+        setProcessStage(CHAT_A, 3)
+        simulateRunningSend(CHAT_A)
+        try {
+            expect(await settled(() => sendChat(-1, { origin: CHAT_A }))).toBe(false)
+            expect(processStageIn(CHAT_A)).toBe(3)
+        } finally {
+            clearRunningSends()
+        }
+    })
+
+    test('R6c: a send refused into the selected chat clears no stage', async () => {
+        installTwoChats()
+        setProcessStage(CHAT_A, 3)
+        simulateRunningSend(CHAT_A)
+        try {
+            expect(await settled(() => sendChat())).toBe(false)
+            expect(processStageIn(CHAT_A)).toBe(3)
+        } finally {
+            clearRunningSends()
+        }
+    })
+
+    test('R6d: a send whose caller signal is already aborted clears no stage and registers nothing', async () => {
+        installTwoChats()
+        setProcessStage(CHAT_A, 3)
+        const caller = new AbortController()
+        caller.abort()
+        workSpies.beginWork.mockClear()
+        workSpies.registerWork.mockClear()
+
+        expect(await settled(() => sendChat(-1, { origin: CHAT_A, signal: caller.signal }))).toBe(false)
+
+        expect(processStageIn(CHAT_A)).toBe(3)
+        expect(workSpies.beginWork).not.toHaveBeenCalled()
+        expect(workSpies.registerWork).not.toHaveBeenCalled()
+    })
+
+    // G13 (post-fix guard): the stage-4 write lands after the stream, when the selection has moved on, so it must use
+    // the body's own chat.
+    test('G13: the body writes its own chat\'s stage even after the selection moved', async () => {
+        installTwoChats()
+        setProcessStage(CHAT_A, 0)
+        setProcessStage(CHAT_B, 0)
+        const held = await startHeldSend(() => sendChat())
+        selectedCharID.set(1)
+        await finishAll([held.source], [held.outcome])
+
+        expect(processStageIn(CHAT_A)).toBeGreaterThan(0)
+        expect(processStageIn(CHAT_B)).toBe(0)
     })
 })
 

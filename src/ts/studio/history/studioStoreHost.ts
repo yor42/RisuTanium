@@ -8,7 +8,7 @@
 // its seq, and a message that carries no usable seq gets `fatal`.
 
 import type { DeletedItem, OwnerRecord, RestorePoint, Step } from './historyModel'
-import type { OwnerKey } from './ownerPhase'
+import type { StoredOwnerKey } from './ownerPhase'
 import type { LoadResult, SaveResult, StudioHistoryStore } from './studioHistoryStore'
 import {
     applyEdits,
@@ -34,7 +34,7 @@ function isKind<K extends Kind>(entry: PutEntry | undefined, kind: K): entry is 
 
 export function createStudioStoreHost(adapter: StudioHistoryStore, send: (message: FromWorker) => void): StudioStoreHost {
     // Per owner, the entries of the last record posted or loaded, by token.
-    const mirror = new Map<OwnerKey, Map<Tok, PutEntry>>()
+    const mirror = new Map<StoredOwnerKey, Map<Tok, PutEntry>>()
     let tokenCounter = 0
 
     // A reply that cannot be posted (it cannot be cloned) is replaced by the failure answer for its request.
@@ -65,7 +65,7 @@ export function createStudioStoreHost(adapter: StudioHistoryStore, send: (messag
         emit({ t: 'ack', seq, op: 'save', reply }, { t: 'ack', seq, op: 'save', reply: { kind: 'unwritable' } })
     }
 
-    function lose(owner: OwnerKey, seq: number): void {
+    function lose(owner: StoredOwnerKey, seq: number): void {
         mirror.delete(owner)
         ackSave(seq, { kind: 'unwritable', mirrorLost: true })
     }
@@ -77,7 +77,7 @@ export function createStudioStoreHost(adapter: StudioHistoryStore, send: (messag
         )
     }
 
-    function adopt(owner: OwnerKey, record: OwnerRecord): LoadTokens {
+    function adopt(owner: StoredOwnerKey, record: OwnerRecord): LoadTokens {
         const held = new Map<Tok, PutEntry>()
         const fresh = (): Tok => {
             tokenCounter += 1
@@ -97,7 +97,7 @@ export function createStudioStoreHost(adapter: StudioHistoryStore, send: (messag
         return tokens
     }
 
-    function load(seq: number, owner: OwnerKey): void {
+    function load(seq: number, owner: StoredOwnerKey): void {
         adapter.load(owner).then(
             (reply) => {
                 let tokens: LoadTokens | null = null

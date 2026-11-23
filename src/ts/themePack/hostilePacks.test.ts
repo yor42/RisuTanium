@@ -34,6 +34,16 @@ const detail = (r: LintResult): string => (r.ok ? 'ACCEPTED' : why(r).slice(0, 3
 const lint = (area: ThemeArea, css: string, name: string): LintResult => lintAreaPack(area, css, name)
 const expectRejected = (r: LintResult, re: RegExp): void => { expect(rejectedFor(r, re), `${re} against ${detail(r)}`).toBe(true) }
 const expectAccepted = (r: LintResult): void => { expect(r.ok, why(r)).toBe(true) }
+// Since #560 PR2 a contrast, readability or layout finding (a floor or a ceiling) is a note, not a refusal: the sheet is accepted and the reason is reported in `notes`. A row whose reason is such a finding is
+// flagged either way; the census at the end of the file pins how many rows are notes only, and notesChannel.test.ts pins which reasons are notes and which stay refusals.
+const notedFor = (r: LintResult, re: RegExp): boolean => (r.notes ?? []).some((n) => re.test(n.why))
+let notedOnly = 0
+const flaggedAny = (r: LintResult): boolean => !r.ok || (r.notes ?? []).length > 0
+const expectFlagged = (r: LintResult, re: RegExp): void => {
+    if (rejectedFor(r, re)) return
+    expect(notedFor(r, re), `${re} against ${detail(r)} and notes ${JSON.stringify((r.notes ?? []).map((n) => n.why.slice(0, 80)))}`).toBe(true)
+    notedOnly++
+}
 const areasOf = (area: ThemeArea | 'all'): readonly ThemeArea[] => (area === 'all' ? THEME_AREAS : [area])
 // Rule SCOPE (MC-1586, MC-1608): a chat or Studio stylesheet may name only its own screen's parts, so a fixture written for chat's
 // parts is refused as a Studio sheet, and a selector that names no part is refused in both.
@@ -195,7 +205,7 @@ describe('2 studio review packs', () => {
                 continue
             }
             const re = STUDIO_EXPECT[f.id] || /./
-            it(`${f.id} ${label} is rejected for the right reason ${re} (${f.name.slice(4)})`, () => { expectRejected(lint('studio', css, f.id), re) })
+            it(`${f.id} ${label} is flagged for the right reason ${re} (${f.name.slice(4)})`, () => { expectFlagged(lint('studio', css, f.id), re) })
         }
     }
     it('every decided-accept id and every expected id is a pack of the studio review list', () => {
@@ -207,7 +217,7 @@ describe('2 studio review packs', () => {
             it(`${n}: a tree width inside its limits is accepted`, () => { expectAccepted(lint('studio', ':root{--studio-tree-width:400px}', n)) })
             continue
         }
-        it(`${n} is rejected (${re})`, () => { expectRejected(lint('studio', css, n), re) })
+        it(`${n} is flagged (${re})`, () => { expectFlagged(lint('studio', css, n), re) })
     }
 })
 
@@ -216,7 +226,7 @@ describe('3 home review packs', () => {
     for (const f of readReviewPacks('home-hostile.json')) {
         const key = f.id
         if (HOME_FONT_REFUSED.has(key)) {
-            it(`${key} is refused by decision (a symbol font, MC-1550, MC-2542): ${f.name}`, () => { expectRejected(lint('home', f.css, key), /MC-1550/) })
+            it(`${key} is flagged by decision (a symbol font is a readability note, MC-1550, MC-2542): ${f.name}`, () => { expectFlagged(lint('home', f.css, key), /MC-1550/) })
             continue
         }
         if (HOME_DECIDED_ACCEPT.has(key)) {
@@ -226,14 +236,15 @@ describe('3 home review packs', () => {
         const re = HOME_RIGHT(key)
         it(`${key} is rejected for the right reason: ${f.name.slice(0, 60)}`, () => {
             const r = lint('home', f.css, key)
-            let ok = rejectedFor(r, re)
-            // Rejected only because it chains through a helper variable: with the helpers listed, the original mechanism still rejects it.
-            if (!r.ok && !ok && r.errors.some((e) => /not a pack-settable/.test(e.why))) ok = rejectedFor(lintOpenHome(f.css, key), re)
+            let ok = rejectedFor(r, re) || notedFor(r, re)
+            // Refused only because it chains through a helper variable: with the helpers listed, the original mechanism still flags it.
+            if (!r.ok && !ok && r.errors.some((e) => /not a pack-settable/.test(e.why))) { const open = lintOpenHome(f.css, key); ok = rejectedFor(open, re) || notedFor(open, re) }
+            if (ok && !rejectedFor(r, re)) notedOnly++
             expect(ok, `${re} against ${detail(r)}`).toBe(true)
         })
         if (/^F(1|5|6|7|8|17|18|20)$/.test(key) || key === 'F19' || key === 'F2') {
             // The floor and ceiling cases: with their helper variables listed, the worst-case floors still reject them.
-            it(`${key} with its helper variables listed is still rejected by the floor and ceiling logic`, () => { expectRejected(lintOpenHome(f.css, key), /critical m|cannot be/) })
+            it(`${key} with its helper variables listed is still flagged by the floor and ceiling logic`, () => { expectFlagged(lintOpenHome(f.css, key), /critical m|cannot be/) })
         }
     }
     it('every font-refused id is a pack of the home review list', () => {
@@ -245,14 +256,14 @@ describe('3 home review packs', () => {
 // ---- 4. new DD-242 / DD-243 packs
 describe('4 new rules', () => {
     for (const [area, name, css, re] of benign.NEW_HOSTILE) {
-        for (const a of areasOf(area)) it(`${a}: ${name} is rejected for the right reason (${re})`, () => { expectRejected(lint(a, css, name), re) })
+        for (const a of areasOf(area)) it(`${a}: ${name} is flagged for the right reason (${re})`, () => { expectFlagged(lint(a, css, name), re) })
     }
     // The default Deep Nexus pack (no rules) is accepted everywhere: no default fails its own rules.
     it.each(THEME_AREAS)('%s: an empty pack is accepted', (a) => { expectAccepted(lint(a, '', 'empty')) })
     it('registry.same rejects a channel that is not its colour and accepts one that is', () => {
         const bad = lintEngine(':root{--nexus-accent-rgb:255 0 0}', 'same', { same: [['--nexus-accent-rgb', '--nexus-canvas', 'test']] })
         const good = lintEngine('', 'same', { same: [['--nexus-canvas', '--nexus-canvas', 't']] })
-        expectRejected(bad, /is not the colour of/)
+        expectFlagged(bad, /is not the colour of/)
         expectAccepted(good)
     })
     it('--pack-* is the one private prefix in every area (a registry may turn it off with an empty prefix)', () => {
@@ -272,14 +283,14 @@ describe('4b private variables, studio fix round, reach packs, ceilings and chai
                 const r = lint(a, css, n)
                 if (want && namesChatPartInStudio(a, css)) expectRejected(r, SCOPE_STUDIO_PART)
                 else if (want) expectAccepted(r)
-                else expectRejected(r, re as RegExp)
+                else expectFlagged(r, re as RegExp)
             })
         }
     }
     for (const [n, css, re] of FIX_ROUND) {
-        it(`studio: ${n} is rejected (${re}), bare and on Origin Navy`, () => {
-            expectRejected(lint('studio', css, n), re)
-            expect(lint('studio', NAVY_STUDIO + '\n' + css, n).ok).toBe(false)
+        it(`studio: ${n} is flagged (${re}), bare and on Origin Navy`, () => {
+            expectFlagged(lint('studio', css, n), re)
+            expectFlagged(lint('studio', NAVY_STUDIO + '\n' + css, n), re)
         })
     }
     for (const [n, css] of FIX_ROUND_ACCEPTED) it(`studio: ${n} is accepted`, () => { expectAccepted(lint('studio', css, n)) })
@@ -290,11 +301,11 @@ describe('4b private variables, studio fix round, reach packs, ceilings and chai
         it('all 16 reach packs were read (R1..R16)', () => { expect(R.length).toBe(16) })
         for (const [id, name, css] of R) {
             const re = MUST[id]
-            if (re) it(`studio reach ${id}: ${name} is rejected (${re})`, () => { expectRejected(lint('studio', css, id), re) })
+            if (re) it(`studio reach ${id}: ${name} is flagged (${re})`, () => { expectFlagged(lint('studio', css, id), re) })
         }
     }
     for (const [ar, n, css, re] of DD265) {
-        for (const a of areasOf(ar)) it(`${a}: ${n} is rejected (${re})`, () => { expectRejected(lint(a, css, n), re) })
+        for (const a of areasOf(ar)) it(`${a}: ${n} is flagged (${re})`, () => { expectFlagged(lint(a, css, n), re) })
     }
     for (const a of THEME_AREAS) {
         for (const [n, css] of [['colour and radius on a kind selector', '[data-kind="peer"]{border-color:#f8f8f2;border-radius:12px;color:#fff}'], ['a width of auto or 100% on a sheet root', '[data-part="studio-sheet-root"]{width:100%;max-width:none}']] as Named[]) {
@@ -304,7 +315,7 @@ describe('4b private variables, studio fix round, reach packs, ceilings and chai
             else it(`${a}: ${n} is accepted`, () => { expectAccepted(lint(a, css, n)) })
         }
     }
-    for (const [a, n, css, re] of CEIL_PACKS) it(`${a}: ${n} is rejected (${re})`, () => { expectRejected(lint(a, css, n), re) })
+    for (const [a, n, css, re] of CEIL_PACKS) it(`${a}: ${n} is flagged (${re})`, () => { expectFlagged(lint(a, css, n), re) })
     for (const [a, n, css] of CEIL_ACCEPTED) it(`${a}: ${n} is accepted`, () => { expectAccepted(lint(a, css, n)) })
 })
 
@@ -353,11 +364,16 @@ describe('5 benign fixtures', () => {
 // ---- 6. legacy suites of the areas
 describe('6 legacy hostile lists are still rejected', () => {
     const legacy: Named[] = [...hostile.HOSTILE, ...hostile.HOSTILE_3, ...hostile.HOSTILE_2.filter(([n]) => !hostile.BORDERLINE_OK.includes(n))]
-    for (const [n, css] of legacy) it(`chat: ${n} is rejected`, () => { expect(lint('chat', css, '').ok, 'ACCEPTED').toBe(false) })
+    for (const [n, css] of legacy) it(`chat: ${n} is flagged`, () => { expect(flaggedAny(lint('chat', css, '')), 'ACCEPTED WITHOUT A NOTE').toBe(true) })
     for (const [k, [css]] of Object.entries(values.REJECT)) {
-        it(`settings value fixture ${k} is rejected under its registry`, () => { expect(lintEngine(css, k, values.SETTINGS_REGISTRY).ok, 'ACCEPTED').toBe(false) })
+        it(`settings value fixture ${k} is flagged under its registry`, () => { expect(flaggedAny(lintEngine(css, k, values.SETTINGS_REGISTRY)), 'ACCEPTED WITHOUT A NOTE').toBe(true) })
     }
-    it.each(['backdrop-hidden', 'backdrop-top', 'cancel-hidden', 'footer-row-reverse', 'retry-hidden', 'row-hidden', 'toast-faded'])('settings fixture file %s is rejected', (f) => {
-        expect(lint('settings', read(`settings/checks/th/fixtures/${f}.css`), f).ok, 'ACCEPTED').toBe(false)
+    it.each(['backdrop-hidden', 'backdrop-top', 'cancel-hidden', 'footer-row-reverse', 'retry-hidden', 'row-hidden', 'toast-faded'])('settings fixture file %s is flagged', (f) => {
+        expect(flaggedAny(lint('settings', read(`settings/checks/th/fixtures/${f}.css`), f)), 'ACCEPTED WITHOUT A NOTE').toBe(true)
     })
+})
+
+// Every row above that is flagged through a note only (its reason is a contrast, readability or layout finding), measured on this change. A refusal turned into a note or a note turned back into a refusal moves it.
+describe('7 census of the rows flagged by a note only', () => {
+    it('counts the rows whose reason is a note and no refusal', () => { expect(notedOnly).toBe(272) })
 })

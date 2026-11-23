@@ -75,10 +75,14 @@ vi.mock(import('src/ts/characters'), () => ({
     changeChar: vi.fn(),
 }) as unknown as typeof import('src/ts/characters'))
 
-vi.mock(import('src/ts/process/index.svelte'), () => ({
-    doingChat: writable(false),
-    sendChat: vi.fn(),
-}) as unknown as typeof import('src/ts/process/index.svelte'))
+// `doingChat` is the registry's own "any unit" flag, as in production; a test holds a unit with `simulateRunningSend`.
+vi.mock(import('src/ts/process/index.svelte'), async () => {
+    const { activeUnits } = await import('src/ts/process/activeUnits')
+    return {
+        doingChat: activeUnits.active,
+        sendChat: vi.fn(),
+    } as unknown as typeof import('src/ts/process/index.svelte')
+})
 
 //#endregion
 
@@ -86,12 +90,11 @@ import { initHotkey } from 'src/ts/hotkey'
 import { runPreviewPrompt } from 'src/ts/process/devToolActions'
 import { previewMayStart, renderPromptPreview, renderPromptResult, runPreview } from 'src/ts/process/previewRunner'
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
-import { setComposerWindow } from 'src/ts/process/generationOwnership.svelte'
+import { openComposerWindow, resetComposerWindowsForTests } from 'src/ts/process/generationOwnership.svelte'
 import { alertStore, DBState, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
-import { doingChat as doingChatStore, sendChat } from 'src/ts/process/index.svelte'
+import { sendChat } from 'src/ts/process/index.svelte'
 import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertWait } from 'src/ts/alert'
-import type { Writable } from 'svelte/store'
-const doingChat = doingChatStore as Writable<boolean>
+import { clearRunningSends, simulateRunningSend } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -102,6 +105,16 @@ function putToast(msg: string): void {
     alertStore.set({ type: 'toast', msg })
 }
 const SELECTED = 0
+
+/** The selected chat of the world `selectHeldChat` installs: the chat a refusal row holds. */
+const HELD_CHAT = { chaId: 'char-held', chatId: 'chat-held' }
+
+/** Installs one character with one chat under the selection, so a unit or window held under `HELD_CHAT` refuses a preview. */
+function selectHeldChat(): void {
+    DBState.db = {
+        characters: [{ chaId: HELD_CHAT.chaId, chatPage: 0, chats: [{ id: HELD_CHAT.chatId, message: [] }] }],
+    } as unknown as Database
+}
 
 /** A request-shaped body: JSON, no key in it, nothing a mask would touch. */
 const REQUEST_BODY = JSON.stringify({
@@ -122,8 +135,8 @@ const stopRecording: Array<() => void> = []
 beforeEach(() => {
     DBState.db = {} as unknown as Database
     selectedCharID.set(SELECTED)
-    doingChat.set(false)
-    setComposerWindow(false)
+    clearRunningSends()
+    resetComposerWindowsForTests()
     settingsOpen.set(false)
     alertStore.set(NONE)
     vi.mocked(sendChat).mockReset()
@@ -140,7 +153,7 @@ afterEach(() => {
     }
     document.body.replaceChildren()
     settingsOpen.set(false)
-    setComposerWindow(false)
+    resetComposerWindowsForTests()
     resetAlertPromptsForTests()
     alertStore.set(NONE)
     vi.restoreAllMocks()
@@ -421,9 +434,9 @@ describe('the preview hotkey while another alert is up', () => {
 
 describe('the preview hotkey, when it refuses', () => {
     test.each([
-        ['a generation is running', () => { doingChat.set(true) }],
+        ['a generation is running in the selected chat', () => { selectHeldChat(); simulateRunningSend(HELD_CHAT) }],
         ['no character is selected', () => { selectedCharID.set(-1) }],
-        ['the composer\'s window is open', () => { setComposerWindow(true) }],
+        ['the composer\'s window is open in the selected chat', () => { selectHeldChat(); openComposerWindow(HELD_CHAT) }],
     ])('it consumes Ctrl+U when %s', async (_label, arrange) => {
         arrange()
         const key = ctrlU()
@@ -850,8 +863,8 @@ describe('a newer preview run, and a refused attempt, while a result is pending'
     })
 
     describe.each([
-        ['a generation is running', () => { doingChat.set(true) }],
-        ['the composer\'s window is open', () => { setComposerWindow(true) }],
+        ['a generation is running in the selected chat', () => { selectHeldChat(); simulateRunningSend(HELD_CHAT) }],
+        ['the composer\'s window is open in the selected chat', () => { selectHeldChat(); openComposerWindow(HELD_CHAT) }],
     ])('an attempt refused because %s', (_label, arrangeRefusal) => {
         test.each(previewEntries)('by $name leaves the pending result to show when the toast ends', async (entry) => {
             await pendingBehindToast()
@@ -861,8 +874,8 @@ describe('a newer preview run, and a refused attempt, while a result is pending'
             await entry.run()
 
             expect.soft(vi.mocked(sendChat), 'sends started').not.toHaveBeenCalled()
-            doingChat.set(false)
-            setComposerWindow(false)
+            clearRunningSends()
+            resetComposerWindowsForTests()
             alertClear()
             expect.soft(shown().type, 'the alert showing').toBe('markdown')
             expect.soft(shown().msg).toContain('EARLIER-PREVIEW-BODY')

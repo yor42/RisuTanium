@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { changedFieldTarget, focusLost, placeFocusAfterHistory } from './historyFocus'
 import type { OwnerFields } from './ownerFields'
 
-const fields = (greetings: string[], rest: Partial<OwnerFields> = {}): OwnerFields => ({ greetings, firstMessage: 'f', exampleMessage: '<START>\nx', desc: 'd', hideChatIcon: false, renderWhenComplete: false, note: undefined, ...rest })
+const fields = (greetings: string[], rest: Partial<OwnerFields> = {}): OwnerFields => ({ greetings, firstMessage: 'f', exampleMessage: '<START>\nx', desc: 'd', hideChatIcon: false, risutanium_render_when_complete: false, note: undefined, ...rest })
 
 describe('changedFieldTarget', () => {
     test('U1 an insert in the middle is the inserted row', () => {
@@ -34,10 +34,10 @@ describe('changedFieldTarget', () => {
         expect(changedFieldTarget(fields(['a'], { hideChatIcon: false }), fields(['a'], { hideChatIcon: true }))).toEqual({ kind: 'hideChatIcon' })
     })
     test('U9b only the render-when-complete box, after the hide-icon box in the field order', () => {
-        expect(changedFieldTarget(fields(['a'], { renderWhenComplete: false }), fields(['a'], { renderWhenComplete: true }))).toEqual({ kind: 'risutanium_render_when_complete' })
+        expect(changedFieldTarget(fields(['a'], { risutanium_render_when_complete: false }), fields(['a'], { risutanium_render_when_complete: true }))).toEqual({ kind: 'risutanium_render_when_complete' })
         expect(changedFieldTarget(
-            fields(['a'], { hideChatIcon: false, renderWhenComplete: false }),
-            fields(['a'], { hideChatIcon: true, renderWhenComplete: true }),
+            fields(['a'], { hideChatIcon: false, risutanium_render_when_complete: false }),
+            fields(['a'], { hideChatIcon: true, risutanium_render_when_complete: true }),
         )).toEqual({ kind: 'hideChatIcon' })
     })
     test('U19 among the non-row fields the order is description, then hide-icon, then note', () => {
@@ -78,14 +78,14 @@ describe('R-HF1 the first message in the focus order', () => {
     })
     test('(d) the first message and the render-when-complete box changed: the first message', () => {
         expect(changedFieldTarget(
-            fields(['a'], { firstMessage: 'f1', renderWhenComplete: false }),
-            fields(['a'], { firstMessage: 'f2', renderWhenComplete: true }),
+            fields(['a'], { firstMessage: 'f1', risutanium_render_when_complete: false }),
+            fields(['a'], { firstMessage: 'f2', risutanium_render_when_complete: true }),
         )).toEqual({ kind: 'firstMessage' })
     })
     test('(e) only the render-when-complete box changed while the first message is present and unchanged', () => {
         expect(changedFieldTarget(
-            fields(['a'], { firstMessage: 'f1', renderWhenComplete: false }),
-            fields(['a'], { firstMessage: 'f1', renderWhenComplete: true }),
+            fields(['a'], { firstMessage: 'f1', risutanium_render_when_complete: false }),
+            fields(['a'], { firstMessage: 'f1', risutanium_render_when_complete: true }),
         )).toEqual({ kind: 'risutanium_render_when_complete' })
     })
 })
@@ -106,8 +106,8 @@ describe('R-HF3 the example text in the focus order', () => {
     })
     test('(d) the example text and the render-when-complete box changed: the example card', () => {
         expect(changedFieldTarget(
-            exampleOf('<START>\nA', { renderWhenComplete: false }),
-            exampleOf('<START>\nB', { renderWhenComplete: true }),
+            exampleOf('<START>\nA', { risutanium_render_when_complete: false }),
+            exampleOf('<START>\nB', { risutanium_render_when_complete: true }),
         )).toEqual({ kind: 'example', card: 0 })
     })
     test('(e) the alternates and the example text changed: the alternate (compatibility leg)', () => {
@@ -206,6 +206,7 @@ describe('placeFocusAfterHistory', () => {
         const form = document.createElement('div')
         form.dataset.part = 'studio-character-form'
         row.dataset.part = 'studio-greeting-input'
+        row.dataset.index = '0'
         form.appendChild(row)
         const fallback = document.createElement('button')
         document.body.append(form, fallback)

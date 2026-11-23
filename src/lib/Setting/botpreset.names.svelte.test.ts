@@ -9,6 +9,7 @@
  * `botpreset.deleteTarget.svelte.test.ts`.
  */
 import { flushSync, mount, unmount } from 'svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { writable } from 'svelte/store'
 import { describe, test, expect, vi, afterEach } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -107,7 +108,7 @@ import BotPreset from './botpreset.svelte'
 
 let mounted: Array<{ target: HTMLElement, app: Record<string, unknown> }> = []
 
-function mountPresets(): HTMLElement {
+async function mountPresets(): Promise<HTMLElement> {
     DBState.db = {
         formatversion: 5,
         botPresets: [{ name: 'P1', aiModel: 'm1' }, { name: 'P2', aiModel: 'm2' }],
@@ -118,8 +119,14 @@ function mountPresets(): HTMLElement {
     } as unknown as Database
     const target = document.createElement('div')
     document.body.appendChild(target)
+    // The windowed rows mount once the host has read the band: every row falls in it, as these tests are not about which rows are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     const app = mount(BotPreset, { target, props: { close: vi.fn() } }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
+    flushSync()
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
     flushSync()
     return target
 }
@@ -148,8 +155,8 @@ afterEach(async () => {
 })
 
 describe('botpreset accessible names', () => {
-    test('regression reproducer: the X, the row controls and the toolbar are named and every glyph is hidden', () => {
-        const target = mountPresets()
+    test('regression reproducer: the X, the row controls and the toolbar are named and every glyph is hidden', async () => {
+        const target = await mountPresets()
         expect(controlName(target.querySelector('div.grow.flex.justify-end > button')!)).toBe(language.uiCommon.close)
         for (const title of ['P1', 'P2']) {
             expect(rowControls(target, title).map(controlName)).toEqual([
@@ -161,8 +168,8 @@ describe('botpreset accessible names', () => {
         expect(exposedIcons(target)).toEqual([])
     })
 
-    test('regression reproducer: the edit-mode name field is named', () => {
-        const target = mountPresets()
+    test('regression reproducer: the edit-mode name field is named', async () => {
+        const target = await mountPresets()
         toolbar(target)[3].click()
         flushSync()
         expect(unnamedControls(target, { fields: true })).toEqual([])
@@ -172,8 +179,8 @@ describe('botpreset accessible names', () => {
 })
 
 describe('botpreset state and keyboard', () => {
-    test('regression reproducer: the edit and compare toggles expose their state', () => {
-        const target = mountPresets()
+    test('regression reproducer: the edit and compare toggles expose their state', async () => {
+        const target = await mountPresets()
         const diff = rowControls(target, 'P1')[0]
         expect(diff.getAttribute('aria-pressed')).toBe('false')
         diff.click()
@@ -187,8 +194,8 @@ describe('botpreset state and keyboard', () => {
         expect(edit.getAttribute('aria-pressed')).toBe('true')
     })
 
-    test('regression reproducer: Space activates a row control from the control itself, Enter from a nested element does not', () => {
-        const target = mountPresets()
+    test('regression reproducer: Space activates a row control from the control itself, Enter from a nested element does not', async () => {
+        const target = await mountPresets()
         const diff = rowControls(target, 'P1')[0]
         key(diff.querySelector('svg')!, { key: 'Enter' })
         expect(diff.getAttribute('aria-pressed')).toBe('false')
@@ -202,15 +209,15 @@ describe('botpreset state and keyboard', () => {
 })
 
 describe('botpreset colours', () => {
-    test('regression reproducer: no palette class remains at rest except the scrim', () => {
-        const target = mountPresets()
+    test('regression reproducer: no palette class remains at rest except the scrim', async () => {
+        const target = await mountPresets()
         expect(paletteClasses(target, { allow: [/^bg-black\/50$/] })).toEqual([])
         const divider = target.querySelector('div[role="listitem"]') as HTMLElement
         expect(divider.classList.contains('hover:bg-selected')).toBe(true)
     })
 
-    test('regression reproducer: the drag-over drop indicator uses the selected fill with a ring', () => {
-        const target = mountPresets()
+    test('regression reproducer: the drag-over drop indicator uses the selected fill with a ring', async () => {
+        const target = await mountPresets()
         const dragData = { types: [RISU_PRESET_DRAG_TYPE], effectAllowed: '', dropEffect: '', setData: vi.fn(), setDragImage: vi.fn(), getData: vi.fn() }
         const fire = (el: Element, type: string) => {
             const event = new Event(type, { bubbles: true, cancelable: true })

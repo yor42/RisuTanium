@@ -14,6 +14,8 @@ class PackSafeLaunchActivity : Activity() {
     super.onCreate(savedInstanceState)
     try {
       val forward = packSafeForward()
+      // Set before the start, so the decision exists before MainActivity can serve any ask of the page.
+      packSafeSession.request()
       startActivity(
         Intent(forward.action)
           .setComponent(ComponentName(this, MainActivity::class.java))

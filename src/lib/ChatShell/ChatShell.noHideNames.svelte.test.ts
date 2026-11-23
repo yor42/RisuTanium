@@ -37,7 +37,7 @@ vi.mock('../../ts/process/index.svelte', async () => {
 })
 vi.mock('../../ts/process/composerActions.svelte', () => ({
     branchAt: vi.fn(async () => {}), stepSibling: vi.fn(async () => {}), regenerateNewest: vi.fn(async () => {}),
-    isComposerBusy: () => false,
+    isComposerBusy: () => false, isComposerBusyIn: () => false,
 }))
 vi.mock('../../ts/globalApi.svelte', () => {
     const chatFoldedState = $state<{ data: null }>({ data: null })

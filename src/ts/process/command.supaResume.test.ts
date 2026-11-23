@@ -48,6 +48,7 @@ vi.mock(import('./lorebook.svelte'), () => ({ loadLoreBookV3Prompt: vi.fn() }) a
 vi.mock(import('./triggers'), () => ({ runTrigger: vi.fn() }) as unknown as typeof import('./triggers'))
 vi.mock(import('./generationOwnership.svelte'), () => ({
     isComposerWindowOpen: vi.fn(() => false),
+    composerWindowFor: vi.fn(() => false),
 }) as unknown as typeof import('./generationOwnership.svelte'))
 vi.mock(import('../stores.svelte'), () => ({
     get DBState() { return dbBox },

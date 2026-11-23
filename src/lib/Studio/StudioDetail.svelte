@@ -5,7 +5,7 @@
     import { itemSectionsOf, type TextField } from '../../ts/studio/itemText'
     import { currentModuleAck, currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
-    import { applyStudioTarget, clearStudioSelection, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { applyStudioTarget, clearStudioSelection, followStudioPreset, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { moduleListOf, moduleRefIdsOf } from '../../ts/process/moduleRefList'
     import { isModuleStub } from '../../ts/storage/moduleStub'
     import { isStudioModuleLoading, requestStudioModuleLoad } from '../../ts/studio/assets/moduleStubLoad.svelte'
@@ -17,6 +17,7 @@
     import StudioModuleAssetForm from './assets/StudioModuleAssetForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
+    import StudioAdvancedForm from './StudioAdvancedForm.svelte'
     import StudioExampleForm from './StudioExampleForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
@@ -110,10 +111,11 @@
     const exampleFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'advanced')
     const formLive = $derived(characterFormLive || assetFormLive || exampleFormLive || chatFormLive)
     // The toggle list builder of a character, or of a module while its id is published (loaded, private-free and not
-    // shared). A preset's toggles keep the read-only text until their write exists.
+    // shared), or of the preset the selection pinned by id.
     const characterToggleBuilderLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'toggles')
     const moduleToggleBuilderLive = $derived(openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'toggles')
-    const toggleBuilderLive = $derived(characterToggleBuilderLive || moduleToggleBuilderLive)
+    const presetToggleBuilderLive = $derived(owner?.type === 'preset' && studioScreen.selectedPresetId !== null && kindNode?.kind === 'toggles')
+    const toggleBuilderLive = $derived(characterToggleBuilderLive || moduleToggleBuilderLive || presetToggleBuilderLive)
     // A module whose id several rows share: its toggles stay read-only text, as its assets do.
     const moduleToggleShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'toggles')
     // A loaded module's asset list. It is no part of `formLive`: that carries the character's save chip.
@@ -124,6 +126,16 @@
     $effect(() => {
         const current = model
         const key = studioScreen.selectedOwnerKey
+        const pinned = studioScreen.selectedPresetId
+        if (pinned !== null && key !== null && key.startsWith('preset:')) {
+            // A pinned preset is followed by id: one holder at another row moves the key, none or several clear the selection.
+            const holders = (DBState.db.botPresets ?? []).flatMap((preset, index) => preset?.id === pinned ? [index] : [])
+            untrack(() => {
+                if (holders.length !== 1) clearStudioSelection(language.studioRefusalPresetGone)
+                else if (`preset:${holders[0]}` !== key) followStudioPreset(holders[0])
+            })
+            return
+        }
         if (!current || key === null || combinedKindOf(key) !== null) return
         if (current.ownerByKey(key)) return
         untrack(() => clearStudioSelection(language.studioNotFound))
@@ -227,6 +239,11 @@
                 {#key ownerKey}
                     <StudioToggleBuilder target={{ kind: 'module', moduleId: moduleRawId }} />
                 {/key}
+            {:else if presetToggleBuilderLive && studioScreen.selectedPresetId !== null}
+                <!-- Keyed by the pinned id, not the row: a reorder keeps this builder, another preset builds a new one. -->
+                {#key studioScreen.selectedPresetId}
+                    <StudioToggleBuilder target={{ kind: 'preset', presetId: studioScreen.selectedPresetId }} />
+                {/key}
             {/if}
             {#if moduleToggleShared}
                 <p role="status" data-part="studio-toggle-module-shared" class="text-sm text-textcolor2">{language.studioRefusalModuleSharedId}</p>
@@ -243,7 +260,9 @@
                         <StudioEmotionList chaId={characterId} />
                     {/key}
                 {:else if exampleFormLive}
+                    <StudioAdvancedForm chaId={studioScreen.chaId} section="prompts" />
                     <StudioExampleForm chaId={studioScreen.chaId} />
+                    <StudioAdvancedForm chaId={studioScreen.chaId} section="details" />
                 {:else if owner}
                     <StudioChatNoteForm chaId={studioScreen.chaId} chatId={owner.id} />
                 {/if}

@@ -118,6 +118,9 @@
     summaryItemStateMap.set(summary, summaryItemState);
   });
 
+  // A card is mounted and unmounted as the list scrolls, so only a change of its own memo count (not
+  // its mounting) closes the expanded message and the search.
+  let memoCountSeen = false;
   $effect.pre(() => {
     summary?.chatMemos?.length;
 
@@ -126,8 +129,11 @@
         null
       );
 
-      expandedMessageState = null;
-      searchState = null;
+      if (memoCountSeen) {
+        expandedMessageState = null;
+        searchState = null;
+      }
+      memoCountSeen = true;
     });
   });
 

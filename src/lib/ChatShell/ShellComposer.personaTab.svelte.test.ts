@@ -29,7 +29,7 @@ vi.mock('../../ts/process/index.svelte', async () => {
     const { writable } = await import('svelte/store')
     return { doingChat: writable(false), chatProcessStage: writable(0) }
 })
-vi.mock('../../ts/process/composerActions.svelte', () => ({ sendMain: vi.fn(async () => {}), abortChat: vi.fn(), stopComposerWorkIn: vi.fn(), isComposerBusy: () => false, isComposerBusyIn: () => false, isComposerLocked: () => false, reroll: vi.fn(), updateInputTransateMessage: vi.fn() }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ sendMain: vi.fn(async () => {}), abortChat: vi.fn(), stopComposerWorkIn: vi.fn(), isComposerBusy: () => false, isComposerBusyIn: () => false, isComposerLocked: () => false, isComposerLockedIn: () => false, reroll: vi.fn(), updateInputTransateMessage: vi.fn() }))
 vi.mock('../../ts/process/chatOrigin', () => ({ beginWork: vi.fn(), originOf: (owner: { chaId: string }, chat: { id: string }) => ({ chaId: owner.chaId, chatId: chat.id }) }))
 vi.mock('../../ts/chatShell/stopDelete.svelte', () => ({ isStopDeletePending: () => false }))
 vi.mock('../../ts/process/files/multisend', () => ({ postChatFile: vi.fn(async () => []) }))
@@ -40,7 +40,6 @@ vi.mock('../ChatScreens/AssetInput.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../lang', () => ({ language: {
     chatShellMessage: 'Message', chatShellMoreActions: 'More actions', chatShellChoosePersona: 'Choose persona',
     asPersona: (name: string) => `as ${name}`, chatShellStop: 'Stop', chatShellSend: 'Send', chatShellSendWaitsForDelete: 'Waiting for the reply to be deleted…',
-    chatShellSendBlockedWriting: 'Another chat is writing a reply. Send when it finishes.',
     chatShellRemoveAttachment: 'Remove attachment', enterKey: 'Enter key', enterMessageForTranslateToEnglish: 'Enter a message to translate',
     chatShellStickers: 'Stickers', chatShellOnThisDevice: 'On this device',
     chatShellEnterAutomatic: 'Automatic', chatShellEnterSend: 'Send', chatShellEnterNewline: 'New line', postFile: 'Post File',

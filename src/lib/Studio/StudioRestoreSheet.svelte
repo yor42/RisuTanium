@@ -2,10 +2,12 @@
     import { onMount, untrack } from 'svelte'
     import { language } from '../../lang'
     import { openStudioModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
-    import { createLiveReader, createModuleLiveReader, isModuleTarget, resolveLiveTarget } from '../../ts/studio/edit/studioSetters'
+    import { liveReaderOf, resolveOwnerTarget } from '../../ts/studio/edit/ownerTargets'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
+    import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath } from '../../ts/studio/history/historyModel'
     import type { StudioRefusal } from '../../ts/studio/history/ownerHistory.svelte'
+    import { hasChatNote as hasChatNoteOf } from '../../ts/studio/history/ownerKindRules'
     import { parseOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { getStudioHistoryService } from '../../ts/studio/history/studioHistoryService.svelte'
     import { registerStudioSheetBack } from '../../ts/studio/studioBack.svelte'
@@ -30,16 +32,17 @@
     const service = $derived(getStudioHistoryService())
     const owner = $derived(selectedHistoryOwner())
     const restore = $derived(service && owner !== null ? service.view(owner).restore : null)
+    // The note about chats applies to a character's restore point only.
+    const hasChatNote = $derived(hasChatNoteOf(parseOwnerKey(owner ?? '')))
     const paths = $derived(restore ? RESTORE_PATH_ORDER.filter((path) => restore.fields[path] !== undefined) : [])
     // Paths whose live value was changed outside Studio's history since the visit.
     const changed = $derived.by((): RestorePath[] => {
         if (!restore || owner === null) return []
         // A module owner resolves only through the published open-module id, as the service resolves it; the read of that
         // id makes this derivation follow the publish.
-        const resolved = resolveLiveTarget(owner, openStudioModuleId)
+        const resolved = resolveOwnerTarget(owner, openStudioModuleId)
         if (!resolved.ok) return []
-        const { target } = resolved
-        return listChangedElsewhere(restore, isModuleTarget(target) ? createModuleLiveReader(target.module) : createLiveReader(target))
+        return listChangedElsewhere(restore, liveReaderOf(resolved.target))
     })
     // A changed path is kept unless the user chooses to overwrite it.
     let overwritten = $state<RestorePath[]>([])
@@ -52,16 +55,7 @@
     })
 
     function labelOf(path: RestorePath): string {
-        switch (path) {
-            case 'desc': return language.description
-            case 'firstMessage': return language.firstMessage
-            case 'exampleMessage': return language.exampleMessage
-            case 'customModuleToggle': return language.customPromptTemplateToggle
-            case 'hideChatIcon': return language.hideChatIcon
-            case 'risutanium_render_when_complete': return language.studioFormRenderWhenComplete
-            case 'note': return language.note
-            case 'alternateGreetings': return language.altGreet
-        }
+        return path === 'alternateGreetings' ? language.altGreet : language[fieldLabelKey(path)]
     }
 
     function toggle(path: RestorePath, keep: boolean): void {
@@ -91,7 +85,7 @@
     <div role="dialog" aria-labelledby="studio-restore-title" data-part="studio-restore-sheet" class="flex max-h-full w-full max-w-md flex-col gap-3 overflow-y-auto rounded-md border border-darkborderc bg-darkbg p-4 text-textcolor">
         <h2 id="studio-restore-title" class="text-lg font-bold">{language.studioRestoreTitle}</h2>
         <p class="text-sm text-textcolor2">{language.studioRestoreBody}</p>
-        {#if parseOwnerKey(owner ?? '')?.kind === 'character'}
+        {#if hasChatNote}
             <p data-part="studio-restore-chat-note" class="text-sm text-textcolor2">{language.studioRestoreChatNote}</p>
         {/if}
         {#if paths.length > 0}

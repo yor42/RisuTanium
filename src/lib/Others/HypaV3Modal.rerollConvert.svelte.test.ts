@@ -85,6 +85,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import HypaV3Modal from './HypaV3Modal.svelte'
 
 //#region helpers
@@ -99,22 +100,30 @@ async function settle(): Promise<void> {
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
 
-function mountModal(): HTMLElement {
+async function mountModal(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(HypaV3Modal, { target, props: {} }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
     flushSync()
+    // The windowed cards mount once the host has read the band.
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
+    flushSync()
     return target
 }
 
 beforeEach(() => {
+    // Every card falls in the window: these tests are about what a card does, not about which cards are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     noticeMessages.length = 0
     summarizer.pending.length = 0
     summarizer.rejecters.length = 0
 })
 
 afterEach(async () => {
+    setWindowGeometryForTests(undefined)
     for (const m of mounted) {
         await unmount(m.app as never)
         m.target.remove()
@@ -199,7 +208,7 @@ describe('applying a single summary re-roll', () => {
 
     test('regression reproducer: Apply while the re-roll is still running leaves the summary text unchanged', async () => {
         installRerollDb()
-        const target = mountModal()
+        const target = await mountModal()
         await startReroll(target)
         expect(summarizer.pending.length).toBe(1)
         expect(rerolledArea(target).value).toBe(language.loadingEllipsis)
@@ -212,7 +221,7 @@ describe('applying a single summary re-roll', () => {
 
     test('regression reproducer: Apply after a failed re-roll leaves the summary text unchanged', async () => {
         installRerollDb()
-        const target = mountModal()
+        const target = await mountModal()
         await startReroll(target)
         await failReroll()
         expect(rerolledArea(target).value).toBe(language.hypaV3Modal.rerollFailed)
@@ -231,7 +240,7 @@ describe('applying a single summary re-roll', () => {
 
     test('regression reproducer: after a failed re-roll, Apply writes the user\'s edited text', async () => {
         installRerollDb()
-        const target = mountModal()
+        const target = await mountModal()
         await startReroll(target)
         await failReroll()
         expect(applyButton(target).disabled).toBe(true)
@@ -245,7 +254,7 @@ describe('applying a single summary re-roll', () => {
 
     test('guard: typing into the re-roll textarea while the re-roll is running keeps Apply disabled', async () => {
         installRerollDb()
-        const target = mountModal()
+        const target = await mountModal()
         await startReroll(target)
         expect(summarizer.pending.length).toBe(1)
 
@@ -258,7 +267,7 @@ describe('applying a single summary re-roll', () => {
 
     test('guard: emptying the re-roll textarea after a failed re-roll leaves nothing to apply', async () => {
         installRerollDb()
-        const target = mountModal()
+        const target = await mountModal()
         await startReroll(target)
         await failReroll()
 
@@ -270,7 +279,7 @@ describe('applying a single summary re-roll', () => {
 
     test('regression reproducer: a re-roll that fails again after an edit disables Apply until the text is edited again', async () => {
         installRerollDb()
-        const target = mountModal()
+        const target = await mountModal()
         await startReroll(target)
         await failReroll()
         await typeInto(rerolledArea(target), 'first edit')
@@ -292,7 +301,7 @@ describe('applying a single summary re-roll', () => {
 
     test('guard: Apply after a successful re-roll writes the re-roll result to the summary', async () => {
         installRerollDb()
-        const target = mountModal()
+        const target = await mountModal()
         await startReroll(target)
         await finishReroll('rerolled text')
         expect(rerolledArea(target).value).toBe('rerolled text')
@@ -309,7 +318,7 @@ describe('applying a single summary re-roll', () => {
         const clock = vi.spyOn(Date, 'now').mockReturnValue(1_763_424_000_000)
         try {
             installRerollDb(T0)
-            const target = mountModal()
+            const target = await mountModal()
             await startReroll(target)
             await finishReroll('rerolled text')
             await clickApply(target)
@@ -323,7 +332,7 @@ describe('applying a single summary re-roll', () => {
 
     test('guard: a successful re-roll after a failed one can be applied', async () => {
         installRerollDb()
-        const target = mountModal()
+        const target = await mountModal()
         await startReroll(target)
         await failReroll()
         await startReroll(target)
@@ -337,7 +346,7 @@ describe('applying a single summary re-roll', () => {
 
     test('guard: an edit of the re-roll textarea after success is what Apply writes', async () => {
         installRerollDb()
-        const target = mountModal()
+        const target = await mountModal()
         await startReroll(target)
         await finishReroll('rerolled text')
 
@@ -381,7 +390,7 @@ describe('HypaV2 to V3 conversion', () => {
 
     test('guard: a HypaV2 history without main chunks reports the localized no-chunks failure', async () => {
         installConvertDb({ mainChunks: [] })
-        await clickConvert(mountModal())
+        await clickConvert(await mountModal())
         expect(lastNotice()).toBe(
             language.hypaV3Modal.convertErrorMessage.replace('{0}', language.hypaV3Modal.convertErrorNoMainChunks))
         expect(lastNotice()).toBe('Failed to convert HypaV2 data to V3: No main chunks found.')
@@ -390,7 +399,7 @@ describe('HypaV2 to V3 conversion', () => {
 
     test('guard: a chunk whose chatMemos is not an array reports its index', async () => {
         installConvertDb({ mainChunks: [{ text: 'a', chatMemos: ['m'] }, { text: 'b', chatMemos: 'not an array' }] })
-        await clickConvert(mountModal())
+        await clickConvert(await mountModal())
         expect(lastNotice()).toBe(
             language.hypaV3Modal.convertErrorMessage.replace(
                 '{0}', fillLang(language.hypaV3Modal.convertErrorChunkNotArray, { index: 1 })))
@@ -400,7 +409,7 @@ describe('HypaV2 to V3 conversion', () => {
 
     test('guard: a chunk whose chatMemos is empty reports its index', async () => {
         installConvertDb({ mainChunks: [{ text: 'a', chatMemos: [] }] })
-        await clickConvert(mountModal())
+        await clickConvert(await mountModal())
         expect(lastNotice()).toBe(
             language.hypaV3Modal.convertErrorMessage.replace(
                 '{0}', fillLang(language.hypaV3Modal.convertErrorChunkEmpty, { index: 0 })))
@@ -410,7 +419,7 @@ describe('HypaV2 to V3 conversion', () => {
 
     test('guard: a HypaV2 history that cannot be read reports the unexpected-error template', async () => {
         installConvertDb({})
-        await clickConvert(mountModal())
+        await clickConvert(await mountModal())
         const prefix = language.hypaV3Modal.convertErrorMessage.replace(
             '{0}', language.hypaV3Modal.convertErrorUnexpected.split('{message}')[0])
         const shown = String(lastNotice())
@@ -422,7 +431,7 @@ describe('HypaV2 to V3 conversion', () => {
 
     test('guard: a well-formed HypaV2 history converts and reports success', async () => {
         installConvertDb({ mainChunks: [{ text: 'first', chatMemos: ['m1'] }, { text: 'second', chatMemos: ['m2', 'm3'] }] })
-        await clickConvert(mountModal())
+        await clickConvert(await mountModal())
         expect(lastNotice()).toBe('Successfully converted HypaV2 data to V3')
         expect(convertedTexts()).toEqual(['first', 'second'])
     })
@@ -430,7 +439,7 @@ describe('HypaV2 to V3 conversion', () => {
     // compatibility guard: passes before and after (a converted summary has no creation time)
     test('guard: converted summaries carry no creation time', async () => {
         installConvertDb({ mainChunks: [{ text: 'first', chatMemos: ['m1'] }, { text: 'second', chatMemos: ['m2', 'm3'] }] })
-        await clickConvert(mountModal())
+        await clickConvert(await mountModal())
         const converted = DBState.db.characters[0].chats[0].hypaV3Data.summaries
         expect(converted).toHaveLength(2)
         for (const s of converted) expect(s).not.toHaveProperty('createdAt')
@@ -439,7 +448,7 @@ describe('HypaV2 to V3 conversion', () => {
     test('guard: Korean shows the Korean button and the Korean failure message', async () => {
         changeLanguage('ko')
         installConvertDb({ mainChunks: [{ text: 'a', chatMemos: [] }] })
-        const target = mountModal()
+        const target = await mountModal()
         expect(target.textContent).toContain('아직 요약이 없지만, HypaV2 데이터를 V3로 변환할 수 있습니다.')
         await clickConvert(target)
         expect(lastNotice()).toBe('HypaV2 데이터를 V3로 변환하는데 실패했습니다: 청크 0의 chatMemos가 비어 있습니다.')
@@ -448,7 +457,7 @@ describe('HypaV2 to V3 conversion', () => {
     test('guard: Korean shows the Korean success message', async () => {
         changeLanguage('ko')
         installConvertDb({ mainChunks: [{ text: 'a', chatMemos: ['m'] }] })
-        await clickConvert(mountModal())
+        await clickConvert(await mountModal())
         expect(lastNotice()).toBe('HypaV2 데이터를 V3로 성공적으로 변환했습니다')
     })
 })

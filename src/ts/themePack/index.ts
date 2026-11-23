@@ -5,6 +5,7 @@
 // thread or in slices, because a large pack takes a noticeable time to judge.
 import { chatLiveChainErrors, lintPack as lintChat, normalise, type LintError, type LintResult } from './engine'
 import { extractFontFaces, type FontFaceExtraction } from './fontFace'
+import { pushUnique, splitFindings } from './failclosed'
 import { packSizeWarning, type PackSizeVerdict } from './packSize'
 import { lintHome } from './registries/home'
 import { lint5b } from './registries/settings5b'
@@ -60,7 +61,7 @@ function appValues(area: ThemeArea): Map<string, string[]> {
  * families the pack registers (this sheet's, plus `packFamilies` from its other sheets) are the only non-generic ones
  * a font-family may name without a warning: any other name warns, except a symbol font, which is refused (MC-2542). A chat or Studio stylesheet that all of these accept is then judged by Rule S
  * (cascade.ts, the colour pairs the stylesheet's blocks can combine) and Rule SCOPE (scope.ts, what it can reach), and
- * then by Rule E-2 (outerShadow.ts, a flat 2 px limit on outer and inset shadows). Warnings never enter the result returned here.
+ * then by Rule E-2 (outerShadow.ts, a flat 2 px limit on outer and inset shadows). Warnings never enter the result returned here. A contrast, readability or layout finding is a note: it is returned in `result.notes` with its `rule`, never changes `result.ok`, and does not stop the later passes.
  */
 export function lintAreaPack(area: ThemeArea, source: string, name = '', packFamilies?: ReadonlySet<string>): LintResult {
     return judgeSheet(area, source, name, packFamilies).result
@@ -134,12 +135,22 @@ function judgeSheet(area: ThemeArea, source: string, name: string, packFamilies:
         const key = `${e.selector}|${e.prop}|${e.why}`
         if (!seen.has(key)) { seen.add(key); errors.push(e) }
     }
+    // A note (a finding with a `rule`) never refuses a sheet and never counts in the gates below: only a refusal does. A refusal is never tagged.
+    const notes: LintError[] = []
+    const seenNotes = new Set<string>()
+    pushUnique(notes, seenNotes, engine.notes ?? [])
+    pushUnique(notes, seenNotes, values.notes)
+    const route = (found: readonly LintError[]): void => {
+        const tagged: LintError[] = []
+        splitFindings(found, errors, tagged)
+        pushUnique(notes, seenNotes, tagged)
+    }
     // Rule S and Rule SCOPE judge a stylesheet the passes above accept; a stylesheet refused for another reason reports those reasons first.
-    if (!errors.length) errors.push(...cascadePass(area, fonts.remainder), ...scopePass(area, fonts.remainder, fonts.families))
+    if (!errors.length) route([...cascadePass(area, fonts.remainder), ...scopePass(area, fonts.remainder, fonts.families)])
     // The live chat shell is judged only on a sheet every pass above accepted, so a Rule S or SCOPE refusal never gains a geometry error.
-    if (area === 'chat' && !errors.length) errors.push(...chatLiveChainErrors(fonts.remainder))
+    if (area === 'chat' && !errors.length) route(chatLiveChainErrors(fonts.remainder))
     // Rule E-2 (outerShadow.ts) runs last, on a sheet every pass above accepted, so a refused sheet never gains or loses a reason.
-    if ((area === 'chat' || area === 'studio') && !errors.length) errors.push(...outerShadowPass(area, fonts.remainder))
+    if ((area === 'chat' || area === 'studio') && !errors.length) route(outerShadowPass(area, fonts.remainder))
     // Engine-side warnings read only a sheet that every pass above accepted. A throw adds no warning: a warning must never change a verdict or turn lintAreaPack into a refusal.
     const warnings: LintError[] = [...values.warnings]
     if ((area === 'chat' || area === 'studio') && !errors.length) {
@@ -149,7 +160,7 @@ function judgeSheet(area: ThemeArea, source: string, name: string, packFamilies:
             for (const w of found) if (!known.has(`${w.selector}|${w.prop}|${w.why}`)) warnings.push(w)
         } catch { /* no engine-side warning */ }
     }
-    return { result: { ok: errors.length === 0, errors, name }, canonical: canonical.text, resources: canonical.resources, fontFaceBlocks: fonts.blocks, warnings }
+    return { result: notes.length ? { ok: errors.length === 0, errors, notes, name } : { ok: errors.length === 0, errors, name }, canonical: canonical.text, resources: canonical.resources, fontFaceBlocks: fonts.blocks, warnings }
 }
 
 export interface ThemePackInput {

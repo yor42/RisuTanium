@@ -10,8 +10,8 @@ import { readonly, writable, type Readable } from "svelte/store"
  * - `has` and `any` read the set directly and are not reactive. A template or `$derived` reads `isBusyIn` or
  *   `isComposerBusyIn`, never these.
  * - The key is the owner's chat (`chaId`, `chatId`), never the member of a group: a group turn holds the group's key.
- * - A second take of one key is not refused here. The admission gate refuses before a take, and `take` never
- *   refuses, so the gate stays the one place that decides.
+ * - A take of a key another handle holds returns false and adds nothing. Every taker treats false as its refusal;
+ *   the gates before a take only refuse earlier, and with a reason.
  * - `active` is a pure function of the set, written after the set changed and with nothing in between, so
  *   `get(active)` and `any` always agree, including inside a subscriber. A value already queued to a subscriber
  *   callback can be older: when an earlier subscriber starts a successor, a later one can still be handed `false`
@@ -25,7 +25,8 @@ export interface ActiveUnitKey {
 }
 
 export interface ActiveUnit {
-    take(): void
+    /** True when this handle holds its key after the call; false when another handle holds an equal key. */
+    take(): boolean
     release(): void
 }
 
@@ -48,12 +49,18 @@ export function createActiveUnits(): ActiveUnits {
     const unit = (key: ActiveUnitKey): ActiveUnit => {
         const held: ActiveUnitKey = { chaId: key.chaId, chatId: key.chatId }
         return {
-            take(): void {
+            take(): boolean {
                 if(units.has(held)){
-                    return
+                    return true
+                }
+                for(const other of units){
+                    if(other.chaId === held.chaId && other.chatId === held.chatId){
+                        return false
+                    }
                 }
                 units.add(held)
                 busy.set(true)
+                return true
             },
             release(): void {
                 if(!units.delete(held)){

@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onDestroy, untrack } from "svelte";
+  import WindowedSegment from "src/lib/UI/Windowed/WindowedSegment.svelte";
+  import { createWindowHost } from "src/ts/windowing/windowHost.svelte";
+  import { summaryRowKeys } from "./HypaV3Modal/summaryWindow";
   import { ChevronUpIcon, ChevronDownIcon } from "@lucide/svelte";
   import { 
     type SerializableSummary, 
@@ -71,6 +74,21 @@
   })());
 
   let summaryItemStateMap = new WeakMap<SerializableSummary, SummaryItemState>();
+
+  // Only the summary cards near the view are mounted; a card is keyed by its summary object.
+  const SUMMARY_ROW_FALLBACK_PX = 160;
+  let summaryScroller = $state<HTMLElement | null>(null);
+  const windowHost = createWindowHost({ root: () => summaryScroller });
+  onDestroy(() => windowHost.dispose());
+  const summaryKeys = summaryRowKeys();
+  const visibleSummaryKeys = $derived(
+    hypaV3Data.summaries.flatMap((summary, i) =>
+      isSummaryVisible(i) ? [summaryKeys.keyOf(summary)] : []
+    )
+  );
+  const summaryIndexByKey = $derived(
+    new Map(hypaV3Data.summaries.map((summary, i) => [summaryKeys.keyOf(summary), i]))
+  );
   let expandedMessageState = $state<ExpandedMessageState>(null);
   let searchState = $state<SearchState>(null);
   let filterSelected = $state(false);
@@ -578,13 +596,25 @@
     return searchState.results[nextIndex];
   }
 
-  function navigateToSearchResult(result: SearchResult) {
+  async function navigateToSearchResult(result: SearchResult) {
     searchState.isNavigating = true;
+
+    // The card may be outside the mounted window: mount it before reading its refs.
+    await windowHost.reveal(
+      summaryKeys.keyOf(hypaV3Data.summaries[result.summaryIndex]),
+      { scroll: false }
+    );
+    if (!searchState) return;
 
     if (result.type === "summary") {
       const summary = hypaV3Data.summaries[result.summaryIndex];
       const summaryItemState = summaryItemStateMap.get(summary);
-      const textarea = summaryItemState.originalRef;
+      const textarea = summaryItemState?.originalRef;
+      if (!textarea) {
+        // The card was unmounted while it was being revealed.
+        searchState.isNavigating = false;
+        return;
+      }
 
       // Scroll to element
       textarea.scrollIntoView({
@@ -614,7 +644,11 @@
     } else {
       const summary = hypaV3Data.summaries[result.summaryIndex];
       const summaryItemState = summaryItemStateMap.get(summary);
-      const button = summaryItemState.chatMemoRefs[result.memoIndex];
+      const button = summaryItemState?.chatMemoRefs[result.memoIndex];
+      if (!button) {
+        searchState.isNavigating = false;
+        return;
+      }
 
       // Scroll to element
       button.scrollIntoView({
@@ -804,7 +838,7 @@
         />
 
         <!-- Scrollable Container -->
-        <div class="flex flex-col gap-2 overflow-y-auto sm:gap-4" tabindex="-1">
+        <div class="flex flex-col gap-2 overflow-y-auto sm:gap-4" tabindex="-1" bind:this={summaryScroller}>
           {#if hypaV3Data.summaries.length === 0}
             <!-- Conversion Section -->
             {#if isHypaV2ConversionPossible()}
@@ -916,8 +950,14 @@
           {/if}
 
           <!-- Summaries List -->
-          {#each hypaV3Data.summaries as summary, i (summary)}
-            {#if isSummaryVisible(i)}
+          <WindowedSegment
+            host={windowHost}
+            keys={visibleSummaryKeys}
+            height={{ fallback: SUMMARY_ROW_FALLBACK_PX }}
+            class="flex flex-col gap-2 sm:gap-4"
+          >
+            {#snippet item(key)}
+              {@const i = summaryIndexByKey.get(key) ?? 0}
               <!-- Summary Item  -->
               <ModalSummaryItem
                 summaryIndex={i}
@@ -934,8 +974,8 @@
                 onToggleCollapse={handleToggleCollapse}
                 onSummariesRemoved={handleSummariesRemoved}
               />
-            {/if}
-          {/each}
+            {/snippet}
+          </WindowedSegment>
 
           <!-- Footer -->
           <ModalFooter {hypaV3Data} />

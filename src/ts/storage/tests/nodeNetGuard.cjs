@@ -5,7 +5,8 @@
 //    list of addresses. Each lookup of a name takes the next answer (the last one
 //    repeats), so a test can make a name resolve to different addresses over time.
 // 2. net.Socket.prototype.connect refuses, before any socket opens, a connection
-//    to an address other than loopback: a literal address or one a name resolved
+//    to an address other than loopback or one listed in RISU_NET_GUARD_ALLOW (a
+//    JSON array of exact addresses, such as this machine's own LAN address): a literal address or one a name resolved
 //    to (the lookup the connection uses is wrapped, so the resolved address is
 //    seen). Every refused attempt is appended to connect-attempts.jsonl in the
 //    working directory as {host, address}.
@@ -15,12 +16,13 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const names = JSON.parse(process.env.RISU_NET_GUARD_NAMES || '{}')
+const allowed = new Set(JSON.parse(process.env.RISU_NET_GUARD_ALLOW || '[]').map((address) => String(address).toLowerCase()))
 const lookupCounts = new Map()
 const realLookup = dns.lookup
 
 function isLoopback(address) {
     const bare = String(address).split('%')[0].toLowerCase()
-    return bare === '::1' || bare === '::ffff:127.0.0.1' || /^127\./.test(bare)
+    return bare === '::1' || bare === '::ffff:127.0.0.1' || /^127\./.test(bare) || allowed.has(bare)
 }
 
 function record(host, address) {

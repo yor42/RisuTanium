@@ -12,9 +12,11 @@ import android.webkit.WebViewClient
 import androidx.annotation.RequiresApi
 
 // The guard's state lives in its own app-private preferences file, never in the web store: at most
-// RENDERER_LOSS_LIMIT elapsed-realtime values, comma separated.
+// RENDERER_LOSS_LIMIT elapsed-realtime values, comma separated, and the flag that makes the next
+// start pack-free after a crash loop.
 const val RENDERER_LOSS_PREFS = "renderer_loss"
 const val KEY_LOSS_TIMES = "lossTimes"
+const val KEY_PACK_FREE_NEXT_START = "packFreeNextStart"
 const val RENDERER_LOSS_WINDOW_MS = 60_000L
 const val RENDERER_LOSS_LIMIT = 3
 
@@ -51,11 +53,12 @@ class RendererLossClient(
 
 enum class RendererLossAction { RELAUNCH, EXIT }
 
-data class RendererLossDecision(val action: RendererLossAction, val storedAfter: String)
+data class RendererLossDecision(val action: RendererLossAction, val storedAfter: String, val crashLoop: Boolean)
 
 // Decodes the recorded loss times, drops the malformed ones, the ones after `now` (the clock
 // restarts at boot) and the ones older than the window, then counts this loss. Reaching `limit`
-// losses in the window gives up; otherwise a foreground loss relaunches and a background one exits.
+// losses in the window gives up and is a crash loop; otherwise a foreground loss relaunches and a
+// background one exits.
 fun decideRendererLoss(
   stored: String?,
   foreground: Boolean,
@@ -72,13 +75,22 @@ fun decideRendererLoss(
     foreground -> RendererLossAction.RELAUNCH
     else -> RendererLossAction.EXIT
   }
-  return RendererLossDecision(action, history.joinToString(","))
+  return RendererLossDecision(action, history.joinToString(","), history.size >= limit)
 }
 
 // Writes synchronously and returns the platform's own result: the process is killed right after,
-// and an asynchronous write would be lost with it.
-fun persistLossTimes(prefs: SharedPreferences, value: String): Boolean =
-  prefs.edit().putString(KEY_LOSS_TIMES, value).commit()
+// and an asynchronous write would be lost with it. A crash loop writes the next-start flag in the
+// same commit as the times, so the flag is durable exactly when the history is. A loss that is not a
+// crash loop neither writes nor removes the flag.
+fun persistLossTimes(prefs: SharedPreferences, value: String, crashLoop: Boolean): Boolean {
+  val editor = prefs.edit().putString(KEY_LOSS_TIMES, value)
+  if (crashLoop) editor.putBoolean(KEY_PACK_FREE_NEXT_START, true)
+  return editor.commit()
+}
+
+// Removes only the next-start flag, synchronously, and returns the platform's own result.
+fun clearPackFreeNextStart(prefs: SharedPreferences): Boolean =
+  prefs.edit().remove(KEY_PACK_FREE_NEXT_START).commit()
 
 interface RendererLossEffects {
   fun foreground(): Boolean
@@ -87,7 +99,7 @@ interface RendererLossEffects {
   fun log(action: RendererLossAction?, didCrash: Boolean)
   fun logOutcome(durable: Boolean, ok: Boolean, relaunchCalled: Boolean)
   fun warn(step: String, error: Exception)
-  fun persist(value: String): Boolean
+  fun persist(value: String, crashLoop: Boolean): Boolean
   fun stopKeepAlive()
   fun relaunch()
   fun exitProcess()
@@ -119,7 +131,7 @@ fun runRendererLoss(isLiveView: Boolean, didCrash: Boolean, fx: RendererLossEffe
     step("log") { fx.log(chosen?.action, didCrash) }
     var durable = false
     if (chosen != null) {
-      step("persist") { durable = fx.persist(chosen.storedAfter) }
+      step("persist") { durable = fx.persist(chosen.storedAfter, chosen.crashLoop) }
     }
     step("stopKeepAlive") { fx.stopKeepAlive() }
     var relaunchCalled = false

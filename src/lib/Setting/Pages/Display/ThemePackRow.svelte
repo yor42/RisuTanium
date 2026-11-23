@@ -2,8 +2,9 @@
     import { tick } from 'svelte'
     import { CheckIcon } from '@lucide/svelte'
     import { language } from 'src/lang'
-    import { DBState } from 'src/ts/stores.svelte'
+    import { DBState, SafeModeStore } from 'src/ts/stores.svelte'
     import { themePackApplyState } from 'src/ts/themePack/activePack.svelte'
+    import { packSafe } from 'src/ts/themePack/packSafeFlag.svelte'
     import { BUILTIN_PACKS, builtinPackById } from 'src/ts/themePack/builtins'
     import { listThemePacks, type PackMode } from 'src/ts/themePack/packRecord'
     import { tileSpec } from 'src/ts/themePack/tileDesign'
@@ -63,6 +64,19 @@
         }
     })
 
+    // The lines about a pack-free session are decided at render time, never stored with the outcome: they show only while selecting
+    // the pack would turn it on, which Safe Mode (Ctrl+.) prevents. They sit directly after the installed line.
+    const shownLines = $derived.by(() => {
+        const outcome = installFlowState.outcome
+        if (outcome === null) {
+            return []
+        }
+        if (outcome.installed === true && packSafe.on && !$SafeModeStore) {
+            return [outcome.lines[0], language.themePackPacksOffSession, language.themePackSelectToTurnOn, ...outcome.lines.slice(1)]
+        }
+        return outcome.lines
+    })
+
     const help = $derived(language.themePackRowHelp(
         language.chatShellPreviewLabel, language.accessibility, language.settingsShellPageInput, language.settingsShellInputPreview,
     ))
@@ -105,6 +119,15 @@
         }
         // Decided after the render, so a button the changed list removed is seen as gone.
         await refocus(() => result === 'declined' || (result === 'changed' && button.isConnected) ? button : installButton)
+    }
+
+    // A change event never fires on the radio that is already checked, so the checked installed pack is activated again through
+    // the click and the Space key. One guard holds both terms: only in a pack-free session, and only for the active pack, so an
+    // unchecked radio still selects once, through its change event.
+    function reselect(id: string): void {
+        if (packSafe.on && id === activeId) {
+            void select(id)
+        }
     }
 
     // A refused select leaves the stored id unchanged, so the radios are put back to it.
@@ -161,7 +184,7 @@
         {#each readable as item, index (item.record.id)}
             <div class="min-w-0" data-part="theme-pack-entry" data-pack-id={item.record.id}>
                 <label class={CARD_CLASS}>
-                    <input class="sr-only peer" type="radio" name={groupName} value={item.record.id} checked={activeId === item.record.id} aria-label={item.record.name} onchange={() => select(item.record.id)} />
+                    <input class="sr-only peer" type="radio" name={groupName} value={item.record.id} checked={activeId === item.record.id} aria-label={item.record.name} onchange={() => select(item.record.id)} onclick={() => reselect(item.record.id)} onkeydown={(event) => { if (event.key === ' ') reselect(item.record.id) }} />
                     <span class={FRAME_CLASS}><ThemePackTile spec={tileSpec({ seedKey: item.record.packId ?? item.record.name, name: item.record.name, main: item.record.mainColor, secondary: item.record.secondaryColor })} icon={item.record.icon} name={item.record.name} /></span>
                     <span class={BADGE_CLASS}><CheckIcon size={12} /></span>
                     <span id="{groupName}-p{index}" class={NAME_CLASS}>{item.record.name}</span>
@@ -245,7 +268,7 @@
         <div role="status" data-part="theme-pack-outcome">
             {#if installFlowState.outcome !== null}
                 {@const outcome = installFlowState.outcome}
-                {#each outcome.lines as line}
+                {#each shownLines as line}
                     <p class="text-sm whitespace-pre-line {outcome.tone === 'error' ? 'text-draculared' : 'text-textcolor2'}">{line}</p>
                 {/each}
             {/if}

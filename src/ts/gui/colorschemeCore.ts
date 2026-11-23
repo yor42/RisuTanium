@@ -325,7 +325,10 @@ export function schemeWithoutPack(db: SchemeSource): { colorSchemeName: string, 
 
 let packSchemeProvider: (() => ColorScheme | null) | null = null
 
-/** The theme-pack driver registers the applied pack's live default here, so this module imports nothing from the pack code. */
+/**
+ * The theme-pack driver registers the live colours here: the applied pack's default or a waiting request's displaced copy.
+ * This module imports nothing from the pack code.
+ */
 export function setPackSchemeProvider(provider: (() => ColorScheme | null) | null): void{
     packSchemeProvider = provider
 }
@@ -333,7 +336,7 @@ export function setPackSchemeProvider(provider: (() => ColorScheme | null) | nul
 /**
  * The scheme that is painted. A built-in `colorSchemeName` reads the current preset table, so a
  * saved copy made by an older build never pins old colours; the saved copy stays as stored and is
- * never written here. Under `theme-pack` the applied pack's default paints live, and the stored
+ * never written here. Under `theme-pack` the driver's live colours paint (the applied pack's default, or a waiting request's displaced copy), and the stored
  * copy is the fallback before the pack is read, in Safe Mode, with a missing or broken pack, on a
  * downgrade and upstream. Custom, unknown and prototype names fall back to the saved copy, and lite
  * mode always reports the lite scheme. In pack safe mode, and while Settings is open under own colours, the pack scheme name paints the scheme turning the pack off would
@@ -380,6 +383,20 @@ export function enterPackScheme(scheme: ColorScheme): void{
 }
 
 /**
+ * Called before the active pack changes. Under the pack scheme name the stored copy becomes the colours turning the pack off
+ * restores, so a lost request or a restart cannot paint the pack that was left. The name and the snapshot stay. It does not
+ * repaint. It returns the replaced copy, or null (and writes nothing) under any other name.
+ */
+export function dropPackSchemeCopy(): ColorScheme | null{
+    if(DBState.db.colorSchemeName !== PACK_SCHEME_NAME){
+        return null
+    }
+    const displaced = safeStructuredClone(DBState.db.colorScheme ?? defaultColorScheme)
+    DBState.db.colorScheme = schemeWithoutPack(DBState.db).colorScheme
+    return displaced
+}
+
+/**
  * Leaves the theme-pack scheme. While the name is still `theme-pack` the snapshot scheme is restored; if the user picked
  * another scheme meanwhile, no scheme field is written and that pick wins. The snapshot key is always deleted.
  */
@@ -396,7 +413,7 @@ export function leavePackScheme(): void{
     delete DBState.db.themePackSchemeSnapshot
 }
 
-/** The scheme the applied pack paints: its live default, else the stored copy. It never consults safe mode or own colours. */
+/** The scheme the pack scheme paints: the driver's live colours, else the stored copy. It never consults safe mode or own colours. */
 function packPaintedScheme(db: SchemeSource): ColorScheme{
     return packSchemeProvider?.() ?? db.colorScheme ?? defaultColorScheme
 }

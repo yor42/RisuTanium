@@ -49,7 +49,7 @@ import type { RisuModule } from 'src/ts/process/modules'
 import { resetStudioHistoryAccessorForTests, primeStudioModuleSlots } from 'src/ts/studio/history/studioHistoryService.svelte'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
-import { applyUpdate, planFromScan, restoreUpdate, scanReach, type Rename, type UpdatePlan } from 'src/ts/studio/toggleUpdateAll'
+import { applyUpdate, checkUndo, planFromScan, restoreUpdate, scanReach, type Rename, type UpdatePlan } from 'src/ts/studio/toggleUpdateAll'
 import type { ToggleTarget } from 'src/ts/studio/toggleBuilder.svelte'
 import { createUpdateDbPort, readUpdateReach } from '../toggleUpdateAllDb'
 
@@ -166,6 +166,35 @@ describe('the character write (DB1)', () => {
         expect(scheduled).toEqual(['judged'])
     })
 
+    test('every text field target is rewritten, the container keeps its other keys, the character is marked once, and undo puts every text back (DB1b)', () => {
+        seed([], [character('c1', {
+            systemPrompt: BEFORE('sys'),
+            personality: BEFORE('pers'),
+            depth_prompt: { depth: 2, prompt: BEFORE('depth') },
+            defaultVariables: BEFORE('dv'),
+        })])
+        const plan = planOf(CHARACTER)
+        const paths = plan.writes.map((write) => write.path)
+        expect(paths).toEqual(expect.arrayContaining(['systemPrompt', 'personality', 'depth_prompt/prompt', 'defaultVariables']))
+        const applied = applyUpdate(plan, createUpdateDbPort())
+        expect(applied.ok).toBe(true)
+        if (!applied.ok) {
+            return
+        }
+        const written = live() as unknown as Record<string, unknown>
+        expect(written.systemPrompt).toBe(AFTER('sys'))
+        expect(written.personality).toBe(AFTER('pers'))
+        expect(written.defaultVariables).toBe(AFTER('dv'))
+        expect(written.depth_prompt).toEqual({ depth: 2, prompt: AFTER('depth') })
+        expect(tracker.character).toEqual(['c1'])
+        expect(checkUndo(applied.journal, createUpdateDbPort())).toEqual({ ok: true })
+        expect(restoreUpdate(applied.journal, createUpdateDbPort())).toEqual({ ok: true })
+        expect(written.systemPrompt).toBe(BEFORE('sys'))
+        expect(written.personality).toBe(BEFORE('pers'))
+        expect(written.defaultVariables).toBe(BEFORE('dv'))
+        expect(written.depth_prompt).toEqual({ depth: 2, prompt: BEFORE('depth') })
+    })
+
     test('the regex in pattern and the Lua code are listed and untouched', () => {
         const plan = planOf(CHARACTER)
         expect(plan.listed.map((use) => [use.path, use.reason])).toEqual([
@@ -205,6 +234,22 @@ describe('the module write (DB2, DB2b)', () => {
         const port = createUpdateDbPort()
         expect(applyUpdate(plan, port).ok).toBe(true)
         expect(h.refresh).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('the reach of a preset builder (T11)', () => {
+    const PRESET: ToggleTarget = { kind: 'preset', presetId: 'P-1' }
+
+    test('owners are the character and the active modules; no preset is an owner', () => {
+        seed([moduleRow('M1'), moduleRow('M5')], [character('c1')], ['M1'])
+        expect(readUpdateReach(PRESET, 'c1').owners.map((owner) => owner.key)).toEqual(['character:c1', 'module:M1'])
+    })
+
+    test('a private bound character is unreached, restricted, and the modules are still owners', () => {
+        seed([moduleRow('M1')], [character('c1', { license: 'private' })])
+        const reach = readUpdateReach(PRESET, 'c1')
+        expect(reach.owners.map((owner) => owner.key)).toEqual(['module:M1'])
+        expect(reach.unreached.map((entry) => [entry.name, entry.reason])).toEqual([['name-c1', 'restricted']])
     })
 })
 

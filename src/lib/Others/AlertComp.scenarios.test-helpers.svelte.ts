@@ -122,7 +122,6 @@ function arrangeDatabase(): void {
 /** One alert of every type that covers the page, shaped the way its caller posts it. */
 const COVERING_ALERTS: Array<[alertData['type'], alertData]> = [
     ['ask', { type: 'ask', msg: 'Proceed?' }],
-    ['pluginconfirm', { type: 'pluginconfirm', msg: 'A plugin\nIt can read data\n\nImport it?' }],
     ['select', { type: 'select', msg: 'One||Two' }],
     ['input', { type: 'input', msg: 'Name?', datalist: [], defaultValue: '' }],
     ['selectChar', { type: 'selectChar', msg: '' }],
@@ -140,7 +139,6 @@ const COVERING_ALERTS: Array<[alertData['type'], alertData]> = [
     ['hypaV2', { type: 'hypaV2', msg: '' }],
     ['branches', { type: 'branches', msg: '' }],
     ['requestlogs', { type: 'requestlogs', msg: '' }],
-    ['pukmakkurit', { type: 'pukmakkurit', msg: '' }],
     ['wait2', { type: 'wait2', msg: 'Stopped' }],
     ['wait', { type: 'wait', msg: 'Loading...' }],
 ]
@@ -287,7 +285,7 @@ export function registerAlertCompFocusSuite(): void {
     describe('AlertComp.svelte: what is inert inside a covering alert', () => {
         /** The covering alerts whose markup holds at least one button. */
         const WITH_BUTTONS: Array<alertData['type']> = [
-            'ask', 'pluginconfirm', 'select', 'input', 'selectChar', 'addchar', 'chatOptions', 'cardexport',
+            'ask', 'select', 'input', 'selectChar', 'addchar', 'chatOptions', 'cardexport',
             'selectModule', 'staleAccountNotice', 'normal', 'error', 'markdown', 'requestdata', 'hypaV2',
             'branches', 'requestlogs',
         ]

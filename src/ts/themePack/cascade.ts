@@ -5,7 +5,8 @@
 // states the other colour. It covers the reach parts of the area's registry (the controls a person needs to navigate, stop
 // work, send, apply or undo). Colours that reach a control through an ancestor part stay engine-bound (plan residue R1, R5).
 //
-// A plain colour or fill on a reach part is refused (MC-2313, widened to every reach part by MC-2370; value-blind, MC-2349). The app's own styles for these controls can outrank a plain pack rule, so color, background, background-color and background-image on a part of the area registry's reach tier must be written with one trailing !important. The rule reads the written stylesheet, before private variables are inlined, in every at-rule, state, selector-list position and ancestor form. A refused declaration adds no Rule S or Rule P member: on a reach part only an !important colour or fill can paint (MC-2314).
+// A plain colour or fill on a reach part is silent here: the app's own styles for these controls can outrank it, so on a reach part only an !important colour or fill can paint, and a plain one adds no Rule S or Rule P member (MC-2314). The engine's own colour checks still read it.
+// Contrast, currentcolor and the 4096 caps are notes (a finding with a `rule`, which never refuses a sheet); a text colour of initial or revert, a background of inherit, a layer that cannot be read and a thickness that cannot be measured stay refusals, because the colour they resolve to is not known.
 //
 // Rule P (CHORE-738, MC-2072, MC-2090) judges what a control paints over its own text, on the same reach parts, per
 // `--pack-*` variant, in chat and Studio only:
@@ -28,7 +29,7 @@
 // - Translucent pairs are counted from member and fill counts before anything is flattened; over 4096 the part's translucent
 //   pairings are refused and the inset backdrop is never built.
 import { bare, decls } from './csslit'
-import { cr, effective, normalise, resolve, CHAT_REGISTRY, type LintError, type Registry, type Rgba, type TokenMap } from './engine'
+import { cr, effective, normalise, resolve, CHAT_REGISTRY, type LintError, type NoteKind, type Registry, type Rgba, type TokenMap } from './engine'
 import { inlinePrivate, parseConcrete } from './failclosed'
 import { layerStacks, MAX_BLUR_PX, MAX_THICKNESS_EM, MAX_THICKNESS_PX, OPAQUE_FROM, shadowLayers, stackCount, thicknessProblems, type LayerStack, type ShadowLayer } from './paintOver'
 import { parseSelectorEntry } from './scope'
@@ -84,17 +85,11 @@ const registryOf = (area: 'chat' | 'studio'): Registry => (area === 'chat' ? CHA
 type PaintChannel = 'text' | 'fill'
 const paintChannelOf = (prop: string): PaintChannel | null => prop === 'color' ? 'text' : BACKGROUND_PROPS.test(prop) ? 'fill' : null
 const isWrittenImportant = (value: string): boolean => /!important\s*$/.test(value) && value.split('!').length === 2
-const holdsOtherBang = (value: string): boolean => value.includes('!') && !isWrittenImportant(value)
 /** The parts of the registry's reach tier that a selector-list entry has as its subject. */
 const reachedParts = (registry: Registry, entry: string): string[] => {
     const parsed = parseSelectorEntry(entry)
     if (parsed.grammarWhy || !parsed.compounds.length) return []
     return parsed.compounds[parsed.compounds.length - 1].attrs.filter(([name, v]) => name === 'data-part' && v !== undefined && registry.reach.has(v)).map(([, v]) => v as string)
-}
-const plainPaintWhy = (part: string, prop: string, value: string, channel: PaintChannel): string => {
-    const noun = channel === 'text' ? 'text colour' : 'background'
-    if (holdsOtherBang(value)) return `${part}: "${prop}: ${clip(value)}" is not a valid !important declaration, and a ${noun} on this control must be written with !important, because the app's own styles can outrank a plain one; write one !important at the end of the value, or remove it (MC-2313, MC-2370)`
-    return `${part}: a ${noun} on this control must be written with !important, because the app's own styles can outrank a plain one; "${prop}: ${clip(value)}" is plain, so write it with !important, or remove it (MC-2313, MC-2370)`
 }
 const hex = (c: readonly number[]): string => '#' + c.slice(0, 3).map((x) => Math.round(x).toString(16).padStart(2, '0')).join('')
 const flatten = (top: Rgba, base: Rgba): Rgba => [top[0] * top[3] + base[0] * (1 - top[3]), top[1] * top[3] + base[1] * (1 - top[3]), top[2] * top[3] + base[2] * (1 - top[3]), 1]
@@ -162,7 +157,7 @@ const lum = (c: readonly number[]): number => {
 const crOfLum = (x: number, y: number): number => (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
 const rgbaKey = (colour: readonly number[]): string => colour.join(',')
 
-const overError = (part: string, prop: string, why: string): LintError => ({ selector: `[data-part="${part}"]`, prop, why })
+const overError = (part: string, prop: string, why: string, rule?: NoteKind): LintError => (rule ? { selector: `[data-part="${part}"]`, prop, why, rule } : { selector: `[data-part="${part}"]`, prop, why })
 const currentColourWhy = (part: string, halo: boolean): string => halo
     ? `${part}: a text-shadow blurred more than 2 px in the text colour (currentcolor, or no colour written) paints the control's own text colour around its text; write a colour that reads against the text (MC-2072)`
     : `${part}: an inset box-shadow in the text colour (currentcolor, or no colour written) paints the control's own text colour under its text; write a colour that reads against the text (MC-2072)`
@@ -222,7 +217,7 @@ function judgeOver(part: string, members: readonly OverMember[], paint: PartPain
     let bound = insetPairs
     for (const h of halos) if (translucent(h)) bound += backdropsOf(h).length + opaqueInsets + insetPairs
     const capped = bound > MAX_TRANSLUCENT_PAIRS
-    if (capped) errors.push(overError(part, list[0].prop, tooManyWhy(part)))
+    if (capped) errors.push(overError(part, list[0].prop, tooManyWhy(part), 'contrast'))
 
     const texts: { colour: Rgba, fallback: boolean, label: string, lum: number }[] = []
     const seenTexts = new Set<string>()
@@ -256,7 +251,7 @@ function judgeOver(part: string, members: readonly OverMember[], paint: PartPain
             const why = source === 'inset'
                 ? `${part}: an inset box-shadow ${hex(overlay.colour)} can be drawn under text ${hex(t.colour)} at ${ratio.toFixed(2)}:1 when ${textLabel} and ${overlay.label} both apply (needs ${needed}:1); give the inset shadow a colour that reads with every text colour of this control, or make it an outer shadow (${rules('MC-2072')})`
                 : `${part}: a text-shadow ${hex(overlay.colour)} blurred more than 2 px can be drawn around text ${hex(t.colour)} at ${ratio.toFixed(2)}:1 when ${textLabel} and ${overlay.label} both apply (needs ${needed}:1); a halo must read against the text it surrounds (${rules('MC-2072, MC-2090')})`
-            errors.push(overError(part, prop, why))
+            errors.push(overError(part, prop, why, 'contrast'))
         }
     }
     const withAlpha = (m: OverMember): Rgba => [m.colour[0], m.colour[1], m.colour[2], m.alpha]
@@ -335,11 +330,11 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
                     // a declaration's immediate errors are pushed once per part, however many entries of its selector list reach it
                     if (!judgedParts.has(part)) {
                         judgedParts.add(part)
-                        for (const p of problems) overErrors.push(overError(part, prop, thicknessWhy(part, prop, literal, p.token, p.why)))
+                        for (const p of problems) overErrors.push(overError(part, prop, thicknessWhy(part, prop, literal, p.token, p.why), p.why === 'over' ? 'layout' : undefined))
                         let currentSeen = false
                         for (const l of qualifying) {
                             if (l.colour === 'current') {
-                                if (!currentSeen) overErrors.push(overError(part, prop, currentColourWhy(part, !box)))
+                                if (!currentSeen) overErrors.push(overError(part, prop, currentColourWhy(part, !box), 'contrast'))
                                 currentSeen = true
                             } else if (!readable(l.colour)) overErrors.push(overError(part, prop, unreadableLayerWhy(part, prop, l.text)))
                         }
@@ -349,7 +344,7 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
                     if (count > left) {
                         if (!cappedParts.has(part)) {
                             cappedParts.add(part)
-                            overErrors.push(overError(part, prop, tooManyStacksWhy(part)))
+                            overErrors.push(overError(part, prop, tooManyStacksWhy(part), 'contrast'))
                         }
                         continue
                     }
@@ -389,7 +384,7 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
                 } else if (inheritsBackground) {
                     ownColourErrors.push({ selector: `[data-part="${part}"]`, prop: d.prop, why: `${part}: ${INHERITED_BACKGROUND_WHY}; write the background out (MC-1569)` })
                 } else if (paintsOwnColour) {
-                    ownColourErrors.push({ selector: `[data-part="${part}"]`, prop: d.prop, why: `${part}: ${OWN_COLOUR_WHY}; give the control a background that differs from its text (MC-1569)` })
+                    ownColourErrors.push({ selector: `[data-part="${part}"]`, prop: d.prop, why: `${part}: ${OWN_COLOUR_WHY}; give the control a background that differs from its text (MC-1569)`, rule: 'contrast' })
                 } else if (colours.length || d.prop !== 'background-image') {
                     // background-image: none or an image states no fill, so it neither clears a colour another declaration gives nor leaves the app's surface behind the text
                     paint.backgroundBlocks.add(block)
@@ -413,7 +408,7 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
         const key = `${part}|${textLabel}|${backgroundLabel}`
         if (seen.has(key)) return
         seen.add(key)
-        errors.push({ selector: `[data-part="${part}"]`, prop: 'color', why: `${part}: text ${hex(foreground)} can be drawn on ${hex(background)} at ${ratio.toFixed(2)}:1 when ${textLabel} and ${backgroundLabel} both apply (needs ${needed}:1); give every rule that colours this control a text colour and a background that read together (MC-1569)` })
+        errors.push({ selector: `[data-part="${part}"]`, prop: 'color', why: `${part}: text ${hex(foreground)} can be drawn on ${hex(background)} at ${ratio.toFixed(2)}:1 when ${textLabel} and ${backgroundLabel} both apply (needs ${needed}:1); give every rule that colours this control a text colour and a background that read together (MC-1569)`, rule: 'contrast' })
     }
     for (const [part, paint] of paints) {
         for (const t of paint.texts) {
@@ -429,25 +424,6 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
     return errors
 }
 
-/** Every plain colour or fill declaration whose selector-list entry has a reach part as its subject; one error per declaration and part, whatever the value, at-rule or state. */
-function plainPaintErrors(area: 'chat' | 'studio', text: string): LintError[] {
-    const registry = registryOf(area)
-    const errors: LintError[] = []
-    for (const d of decls(text)) {
-        const channel = paintChannelOf(d.prop)
-        if (d.ctx.keyframes || channel === null || isWrittenImportant(d.value)) continue
-        const done = new Set<string>()
-        for (const entry of d.ctx.selector.split(',').map((s) => s.trim()).filter(Boolean)) {
-            for (const part of reachedParts(registry, entry)) {
-                if (done.has(part)) continue
-                done.add(part)
-                errors.push({ selector: `[data-part="${part}"]`, prop: d.prop, why: plainPaintWhy(part, d.prop, d.value, channel) })
-            }
-        }
-    }
-    return errors
-}
-
 /**
  * Judges the reach parts of a chat or Studio stylesheet by superset (Rule S). `css` is the stylesheet with its @font-face
  * blocks taken out. Every value a private `--pack-*` variable can take is judged, as the engine judges them.
@@ -455,8 +431,8 @@ function plainPaintErrors(area: 'chat' | 'studio', text: string): LintError[] {
 export function cascadePass(area: ThemeArea, css: string): LintError[] {
     if (area !== 'chat' && area !== 'studio') return []
     const text = normalise(css)
-    const errors: LintError[] = plainPaintErrors(area, text)
-    const seen = new Set<string>(errors.map((e) => `${e.selector}|${e.prop}|${e.why}`))
+    const errors: LintError[] = []
+    const seen = new Set<string>()
     for (const variant of inlinePrivate(text, '--pack-').variants) {
         for (const e of judgeVariant(area, variant)) {
             const key = `${e.selector}|${e.prop}|${e.why}`

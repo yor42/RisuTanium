@@ -57,7 +57,7 @@ vi.mock('./TogglesPanel.svelte', () => ({ default: () => ({}), toggleSummary: ()
 vi.mock('./SendFailureCard.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../ts/chatShell/sendFailure.svelte', () => ({ failureOf: () => null, retrySendFailure: vi.fn() }))
 vi.mock('../Setting/settingsRoute', () => ({ openSettingsForFix: vi.fn() }))
-vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, branchAt: vi.fn() }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, isComposerBusyIn: () => false, branchAt: vi.fn() }))
 
 const ONE = { id: 'chat-1', name: 'First', message: [] as unknown[] }
 const TWO = { id: 'chat-2', name: 'Second', message: [] as unknown[] }

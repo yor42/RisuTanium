@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 type Kind = 'loopback' | 'private' | 'public'
 interface Policy {
+    allowLoopback?: boolean
     allowPrivate: boolean
     allowPublic: boolean
 }
@@ -20,13 +21,14 @@ interface PolicyModule {
     classifyAddress(text: string): Kind
     literalHostKind(hostname: string): Kind | null
     isKindAllowed(kind: Kind, policy: Policy): boolean
+    redirectPolicy(basePolicy: Policy, visitedKind: Kind): Policy
     createCheckedLookup(policy: Policy): (host: string, options: object | number | ((...args: never[]) => void), callback?: (error: (Error & { code?: string }) | null, first?: unknown, second?: unknown) => void) => void
     sanitizeOutboundHeaders(input: unknown, options?: { fromBrowser?: boolean, fetchDefaults?: boolean, hasBody?: boolean }): Record<string, string>
     InvalidHeaderError: new (message: string) => Error
 }
 
 const policyModule = createRequire(import.meta.url)('../../../../server/node/proxyPolicy.cjs') as PolicyModule
-const { classifyAddress, literalHostKind, isKindAllowed, createCheckedLookup, sanitizeOutboundHeaders, InvalidHeaderError } = policyModule
+const { classifyAddress, literalHostKind, isKindAllowed, redirectPolicy, createCheckedLookup, sanitizeOutboundHeaders, InvalidHeaderError } = policyModule
 
 afterEach(() => {
     vi.restoreAllMocks()
@@ -63,6 +65,9 @@ describe('classifyAddress', () => {
         ['::ffff:a00:1', 'private'],
         ['::ffff:127.0.0.1', 'loopback'],
         ['::ffff:8.8.8.8', 'public'],
+        ['::ffff:0:7f00:1', 'loopback'],
+        ['::ffff:0:a00:5', 'private'],
+        ['::ffff:0:808:808', 'public'],
         ['64:ff9b::a00:1', 'private'],
         ['64:ff9b::808:808', 'public'],
         ['64:ff9b:1::1', 'private'],
@@ -90,6 +95,7 @@ describe('literalHostKind', () => {
         expect(literalHostKind(new URL('http://0x7f000001/').hostname)).toBe('loopback')
         expect(literalHostKind(new URL('http://[::ffff:10.0.0.1]/').hostname)).toBe('private')
         expect(literalHostKind(new URL('http://[fd00::1]/').hostname)).toBe('private')
+        expect(literalHostKind('[::ffff:0:7f00:1]')).toBe('loopback')
     })
 })
 
@@ -101,6 +107,41 @@ describe('isKindAllowed', () => {
         expect(isKindAllowed('public', neither)).toBe(false)
         expect(isKindAllowed('private', { allowPrivate: true, allowPublic: false })).toBe(true)
         expect(isKindAllowed('public', { allowPrivate: false, allowPublic: true })).toBe(true)
+    })
+
+    test('allowLoopback false refuses loopback; an omitted field keeps it allowed', () => {
+        expect(isKindAllowed('loopback', { allowLoopback: false, allowPrivate: true, allowPublic: true })).toBe(false)
+        expect(isKindAllowed('loopback', { allowLoopback: true, allowPrivate: false, allowPublic: false })).toBe(true)
+        expect(isKindAllowed('private', { allowLoopback: false, allowPrivate: true, allowPublic: false })).toBe(true)
+    })
+})
+
+describe('redirectPolicy', () => {
+    const base: Policy = { allowPrivate: true, allowPublic: true }
+
+    test('a loopback hop keeps the base policy itself', () => {
+        expect(redirectPolicy(base, 'loopback')).toBe(base)
+    })
+
+    test('a private hop cannot move to loopback and keeps the rest of the base policy', () => {
+        expect(redirectPolicy(base, 'private')).toEqual({ allowLoopback: false, allowPrivate: true, allowPublic: true })
+        expect(redirectPolicy({ allowPrivate: false, allowPublic: true }, 'private')).toEqual({ allowLoopback: false, allowPrivate: false, allowPublic: true })
+    })
+
+    test('a public hop cannot move to loopback or private', () => {
+        expect(redirectPolicy(base, 'public')).toEqual({ allowLoopback: false, allowPrivate: false, allowPublic: true })
+        const derived = redirectPolicy(base, 'public')
+        expect(isKindAllowed('loopback', derived)).toBe(false)
+        expect(isKindAllowed('private', derived)).toBe(false)
+        expect(isKindAllowed('public', derived)).toBe(true)
+    })
+
+    test('the derived policy is the same object each time and distinct per base and kind', () => {
+        const other: Policy = { allowPrivate: true, allowPublic: true }
+        expect(redirectPolicy(base, 'private')).toBe(redirectPolicy(base, 'private'))
+        expect(redirectPolicy(base, 'public')).toBe(redirectPolicy(base, 'public'))
+        expect(redirectPolicy(base, 'private')).not.toBe(redirectPolicy(base, 'public'))
+        expect(redirectPolicy(base, 'private')).not.toBe(redirectPolicy(other, 'private'))
     })
 })
 

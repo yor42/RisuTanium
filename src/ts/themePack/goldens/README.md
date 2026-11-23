@@ -1,6 +1,6 @@
 # Golden v1 theme packs
 
-`origin-navy.risutheme` and `banana-cocoa.risutheme` are the shipped themes of `docs/design` in the v1 pack layout (a ZIP archive: `manifest.json`, `chat.css`, `studio.css`, `settings.css`, `home.css`). They are frozen bytes: every later build must still read them (`goldenPacks.test.ts`), and they are never regenerated. Since Studio sheets apply, `banana-cocoa.risutheme` is refused by its frozen `studio.css`, whose plain paint on Studio parts the Studio judge refuses (MC-2370, MC-3008); `origin-navy.risutheme` is still accepted whole. `.gitattributes` marks them binary.
+`origin-navy.risutheme` and `banana-cocoa.risutheme` are the shipped themes of `docs/design` in the v1 pack layout (a ZIP archive: `manifest.json`, `chat.css`, `studio.css`, `settings.css`, `home.css`). They are frozen bytes: every later build must still read them (`goldenPacks.test.ts`), and they are never regenerated. Both are accepted whole: the plain paint on Studio parts in the frozen `studio.css` of `banana-cocoa.risutheme`, which the Studio judge once refused (MC-2370, MC-3008), is no longer a rule, and neither pack carries a finding. `.gitattributes` marks them binary.
 
 | file | size | SHA-256 |
 |---|---|---|

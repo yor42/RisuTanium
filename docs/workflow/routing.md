@@ -61,9 +61,12 @@ These are the default native roles (MC-2748).
 | `translator` | Sonnet | Translate English UI strings into all seven non-English locales (ko, cn, zh-Hant, ja, vi, de, es) and pass localeParity; preserve maintainer edits and syntax. |
 | `haiku-editor` | Haiku | Exact, reversible mechanical edit with named files, explicit input/replacement, preservation rules and verification. No ambiguous semantics. |
 | `haiku-triager` | Haiku | Read-only classification, deduplication and summaries of supplied logs/artifacts; no behavior or safety conclusions. |
+| `device-runner` | Haiku low | Run the scripted, guarded device rows of one brief on a leased Note 9 through adbg and the lease verbs and record observations; no repository writes, no acceptance judgement. Built from [BRIEF-TEMPLATE](../../Agents/Tools/device/BRIEF-TEMPLATE.md) (role: MC-3784; scripted rows: MC-3768; MC-3773, #647). |
 | `record-clerk` | Haiku low, primary | Bounded supplied-evidence records/commit drafts and exact-grant ordinary Markdown; authoritative text returns as a parent-applied scratch packet. No decisions, gate acceptance, Maintainer-Context or governance writes. |
 
 Mechanical edits involving ambiguous meaning, configuration semantics, persistence, translations or uncertain safety escalate to the appropriate specialist. A small diff does not make a high-risk change mechanical. Log triage cannot establish a root cause. A record-clerk draft cannot settle a maintainer decision or approve a gate.
+
+**Device-row subagents (MC-3768, MC-3773, MC-3774, MC-3784, #647).** The PR's own session runs its device rows through subagents; no dedicated device session exists. Scripted, guarded rows go to the Haiku `device-runner`; rows that need judgement at each step or UI reading go to a Sonnet role (`sonnet-coder` is the device primary; `scheduling.deviceRoles` in the policy lists the roles a device dispatch may name). One subagent per row group per device, so both Note 9s can run in parallel, each with its own lease. Each subagent writes a result file and hands back three lines (path, status, blockers or incidents); it carries no context from the previous group, and the PR session reads the result file and judges acceptance. The brief is [BRIEF-TEMPLATE.md](../../Agents/Tools/device/BRIEF-TEMPLATE.md) filled in, the dispatch registers with its lease request and token ([ownership](ownership.md)), and the subagent never writes repository files.
 
 ## Brief and context contract
 
