@@ -58,6 +58,17 @@ function readToggleText(id: string): string {
     return typeof value === 'string' ? value : ''
 }
 
+// The text the builder shows: the live copy's, read on every call.
+export function presetToggleText(id: string): string {
+    return readToggleText(id)
+}
+
+// Whether exactly one preset holds the id, and whether that preset is the active one now; null when it is gone.
+export function presetStateOf(id: string): { active: boolean } | null {
+    const resolved = resolvePreset(id)
+    return resolved.ok ? { active: resolved.active } : null
+}
+
 function presetReader(id: string): LiveReader {
     return {
         field: (path): FieldValue => (path === 'customModuleToggle' ? { had: true, value: readToggleText(id) } : { had: false }),
