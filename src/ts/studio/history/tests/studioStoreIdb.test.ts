@@ -7,8 +7,8 @@
 import 'fake-indexeddb/auto'
 import { IDBFactory, IDBObjectStore, forceCloseDatabase, IDBDatabase } from 'fake-indexeddb'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import type { DeletedItem, OwnerRecord, RestorePoint, Step } from '../historyModel'
-import { characterOwnerKey, chatOwnerKey, type OwnerKey } from '../ownerPhase'
+import type { DeletedItem, RestorePoint, Step } from '../historyModel'
+import { characterOwnerKey, chatOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import {
     CAP_BYTES,
     ENTRY_OVERHEAD,
@@ -25,6 +25,7 @@ import {
     serializeHeader,
     storedSizeOf,
     type StudioHistoryStore,
+    type StoredOwnerRecord,
 } from '../studioHistoryStore'
 import { STUDIO_DB_NAME, STUDIO_DB_VERSION, STUDIO_STORE_NAME, createStudioStoreIdb } from '../studioStoreIdb'
 import { expectedOwnerKeys, keysInBounds, seedOwner, storedRecord, walkOracle } from './studioStoreDoubles'
@@ -40,32 +41,32 @@ function descStep(id: string, before: string, after: string): Step {
     }
 }
 
-function recordOf(ownerKey: OwnerKey, touchedAt: number, done: Step[], extra: Partial<OwnerRecord> = {}): OwnerRecord {
+function recordOf(ownerKey: StoredOwnerKey, touchedAt: number, done: Step[], extra: Partial<StoredOwnerRecord> = {}): StoredOwnerRecord {
     return { ownerKey, touchedAt, done, undone: [], deleted: [], restore: null, ...extra }
 }
 
 // The untrimmed stored size of a record, from the store's own sizing.
-function sizeOf(record: OwnerRecord): number {
+function sizeOf(record: StoredOwnerRecord): number {
     return storedSizeOf(record, record.ownerKey, Infinity)
 }
 
-function filled(ownerKey: OwnerKey, touchedAt: number, fill: number, letter = 'a'): OwnerRecord {
+function filled(ownerKey: StoredOwnerKey, touchedAt: number, fill: number, letter = 'a'): StoredOwnerRecord {
     return recordOf(ownerKey, touchedAt, [descStep('p:1', letter.repeat(fill), 'z'.repeat(fill))])
 }
 
 // Solves the filler length from the measured per-owner overhead so the stored size is about `target` bytes.
-function fillFor(ownerKey: OwnerKey, target: number): number {
+function fillFor(ownerKey: StoredOwnerKey, target: number): number {
     const overhead = sizeOf(filled(ownerKey, 0, 0))
     return Math.max(0, Math.round((target - overhead) / 4))
 }
 
-function sized(ownerKey: OwnerKey, touchedAt: number, target: number, letter = 'a'): OwnerRecord {
+function sized(ownerKey: StoredOwnerKey, touchedAt: number, target: number, letter = 'a'): StoredOwnerRecord {
     return filled(ownerKey, touchedAt, fillFor(ownerKey, target), letter)
 }
 
 // `count` steps of `fill` characters each way: an owner whose memory can exceed the owner cap while
 // every step stays small enough to be kept or dropped on its own.
-function stepsRecord(ownerKey: OwnerKey, touchedAt: number, count: number, fill = 100, extra: Partial<OwnerRecord> = {}): OwnerRecord {
+function stepsRecord(ownerKey: StoredOwnerKey, touchedAt: number, count: number, fill = 100, extra: Partial<StoredOwnerRecord> = {}): StoredOwnerRecord {
     const steps = Array.from({ length: count }, (_, i) => descStep(`${ownerKey.slice(10)}:${i}`, `${'a'.repeat(fill)}${i}`, `${'b'.repeat(fill)}${i}`))
     return recordOf(ownerKey, touchedAt, steps, extra)
 }
@@ -146,13 +147,13 @@ function newStore(factory: IDBFactory, options: { capBytes?: number; pageSession
     return createStudioStoreIdb({ factory, ...options })
 }
 
-async function loadThenSave(store: StudioHistoryStore, record: OwnerRecord, protect: ReadonlySet<OwnerKey> = new Set([record.ownerKey])) {
+async function loadThenSave(store: StudioHistoryStore, record: StoredOwnerRecord, protect: ReadonlySet<StoredOwnerKey> = new Set([record.ownerKey])) {
     await store.load(record.ownerKey)
     return store.save(record.ownerKey, record, protect)
 }
 
 // Every key and value that belongs to the owner: its header and its generation.
-function ownerEntries(stored: Map<string, string>, owner: OwnerKey): [string, string][] {
+function ownerEntries(stored: Map<string, string>, owner: StoredOwnerKey): [string, string][] {
     const view = storedRecord(stored, owner)
     if (!view) {
         return []
@@ -160,7 +161,7 @@ function ownerEntries(stored: Map<string, string>, owner: OwnerKey): [string, st
     return [headerKey(owner), ...view.keys].map((key) => [key, stored.get(key) as string])
 }
 
-function entriesUnder(stored: Map<string, string>, owner: OwnerKey): string[] {
+function entriesUnder(stored: Map<string, string>, owner: StoredOwnerKey): string[] {
     return keysInBounds(stored, ownerBounds(owner))
 }
 
@@ -1185,7 +1186,7 @@ describe('each owner keeps at most half the store', () => {
         await store.load(A)
         await store.load(B)
         let time = 10
-        const saved = new Set<OwnerKey>()
+        const saved = new Set<StoredOwnerKey>()
         for (let round = 0; round < 3; round++) {
             for (const owner of [A, B]) {
                 time += 10
@@ -1227,14 +1228,14 @@ describe('each owner keeps at most half the store', () => {
         const factory = new IDBFactory()
         const store = newStore(factory, { capBytes: CAP, pageSession: 'rot' })
         const owners = [A, B, C]
-        const records = new Map<OwnerKey, OwnerRecord>(owners.map((owner, at) => [owner, stepsRecord(owner, at, 8)]))
+        const records = new Map<StoredOwnerKey, StoredOwnerRecord>(owners.map((owner, at) => [owner, stepsRecord(owner, at, 8)]))
         for (const record of records.values()) {
             expect(storedSizeOf(record, record.ownerKey, Infinity)).toBeGreaterThan(ownerCapFor(CAP))
         }
         for (const owner of owners) {
             await store.load(owner)
         }
-        const saved: OwnerKey[] = []
+        const saved: StoredOwnerKey[] = []
         for (let save = 0; save < 8; save++) {
             const owner = owners[save % 3]
             const previous = records.get(owner)!

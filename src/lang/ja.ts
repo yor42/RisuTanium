@@ -2751,6 +2751,7 @@ export const languageJapanese = {
     studioBannerKeptUnreadable: "このキャラクターの保存済み履歴を読み取れないため、そのまま残しています。新しい履歴はメモリ上にのみ保持されます。",
     studioBannerUnreadable: "このキャラクターの保存済み履歴を読み取れませんでした。コピーを別に保管し、新しい履歴を開始しました。",
     studioBannerTrimmed: "このデバイスの上限に収めるため、最も古い履歴を削除しました。",
+    studioBannerPresetSession: "プリセットの編集履歴は、このページを閉じるまで保持されます。",
     studioChipSaved: "保存済み",
     studioChipSaving: "保存中…",
     studioChipFailed: "未保存",

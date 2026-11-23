@@ -17,6 +17,7 @@
     import StudioModuleAssetForm from './assets/StudioModuleAssetForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
+    import StudioAdvancedForm from './StudioAdvancedForm.svelte'
     import StudioExampleForm from './StudioExampleForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
@@ -243,7 +244,9 @@
                         <StudioEmotionList chaId={characterId} />
                     {/key}
                 {:else if exampleFormLive}
+                    <StudioAdvancedForm chaId={studioScreen.chaId} section="prompts" />
                     <StudioExampleForm chaId={studioScreen.chaId} />
+                    <StudioAdvancedForm chaId={studioScreen.chaId} section="details" />
                 {:else if owner}
                     <StudioChatNoteForm chaId={studioScreen.chaId} chatId={owner.id} />
                 {/if}

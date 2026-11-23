@@ -2,9 +2,9 @@
 // by the index check before the parser ran), the toggle path through a real save and load, and the owner cap
 // against the restore entry the new restore paths enlarge.
 import { describe, expect, test } from 'vitest'
-import { OWNER_CAP_BYTES, asideMarkKey, deletedPart, entryKey, headerKey, ownerCapFor, stepPart, storedSizeOf } from '../studioHistoryStore'
-import type { OwnerRecord, RestorePath, RestorePoint, SetPath, Step } from '../historyModel'
-import { characterOwnerKey, type OwnerKey } from '../ownerPhase'
+import { OWNER_CAP_BYTES, asideMarkKey, deletedPart, entryKey, headerKey, ownerCapFor, stepPart, storedSizeOf, type StoredOwnerRecord } from '../studioHistoryStore'
+import type { RestorePath, RestorePoint, SetPath, Step } from '../historyModel'
+import { characterOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import { createMemoryStudioStore, seedOwner, storedRecord, walkOracle } from './studioStoreDoubles'
 
 const CHARACTER = characterOwnerKey('c1')
@@ -18,7 +18,7 @@ function setStep(id: string, path: SetPath, before: string, after: string): Step
     }
 }
 
-function recordOf(done: Step[], restore: RestorePoint | null = null): OwnerRecord {
+function recordOf(done: Step[], restore: RestorePoint | null = null): StoredOwnerRecord {
     return { ownerKey: CHARACTER, touchedAt: 4, done, undone: [], deleted: [], restore }
 }
 
@@ -110,7 +110,7 @@ describe('WR1: a record outside the closed union is refused whole by a same-leng
 describe('WR1: an unreadable undone step or deleted item refuses the whole record', () => {
     // Every list of the record holds an entry, so an edit to an undone or a deleted entry is the only damage.
     function seededLists(part: string, edit: (text: string) => string): Map<string, string> {
-        const record: OwnerRecord = {
+        const record: StoredOwnerRecord = {
             ownerKey: CHARACTER,
             touchedAt: 4,
             done: [setStep('p:1', 'desc', 'a1', 'b1'), setStep('p:2', 'desc', 'a2', 'b2')],
@@ -167,10 +167,10 @@ describe('the owner cap against the restore entry', () => {
         return Array.from({ length: 20 }, (_, at) => setStep(`p:${at + 1}`, 'desc', `a${at}`, `b${at}`))
     }
 
-    async function saveAndReload(record: OwnerRecord, capBytes: number): Promise<{ saved: unknown; loaded: unknown }> {
+    async function saveAndReload(record: StoredOwnerRecord, capBytes: number): Promise<{ saved: unknown; loaded: unknown }> {
         const store = createMemoryStudioStore({ capBytes })
         await store.load(CHARACTER)
-        const saved = await store.save(CHARACTER, record, new Set<OwnerKey>([CHARACTER]))
+        const saved = await store.save(CHARACTER, record, new Set<StoredOwnerKey>([CHARACTER]))
         const loaded = await createMemoryStudioStore({ shared: store.shared, capBytes }).load(CHARACTER)
         return { saved, loaded }
     }
@@ -218,7 +218,7 @@ describe('the owner cap against the restore entry', () => {
         const over = recordOf(steps, restoreHolding(paths, 140000))
         const overStore = createMemoryStudioStore()
         await overStore.load(CHARACTER)
-        expect(await overStore.save(CHARACTER, over, new Set<OwnerKey>([CHARACTER]))).toMatchObject({ kind: 'ok', trimmed: true })
+        expect(await overStore.save(CHARACTER, over, new Set<StoredOwnerKey>([CHARACTER]))).toMatchObject({ kind: 'ok', trimmed: true })
         expect(storedRecord(overStore.shared, CHARACTER)?.record).toEqual(walkOracle(over, OWNER_CAP_BYTES))
         expect(storedRecord(overStore.shared, CHARACTER)?.record.done).toEqual([])
         expect(storedRecord(overStore.shared, CHARACTER)?.record.restore).toBeNull()
@@ -226,7 +226,7 @@ describe('the owner cap against the restore entry', () => {
         const under = recordOf(steps, restoreHolding(paths, 100000))
         const underStore = createMemoryStudioStore()
         await underStore.load(CHARACTER)
-        expect(await underStore.save(CHARACTER, under, new Set<OwnerKey>([CHARACTER]))).toMatchObject({ kind: 'ok', trimmed: false })
+        expect(await underStore.save(CHARACTER, under, new Set<StoredOwnerKey>([CHARACTER]))).toMatchObject({ kind: 'ok', trimmed: false })
         expect(storedRecord(underStore.shared, CHARACTER)?.record).toEqual(under)
     })
 })

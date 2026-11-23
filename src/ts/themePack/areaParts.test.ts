@@ -23,6 +23,11 @@ const FORWARDING_COMPONENTS: Readonly<Record<string, string>> = {
     '/src/lib/Studio/LongTextField.svelte': 'part',
 }
 
+/** A Studio form whose part names come from the history field registry (`FIELD_PRESENTATION`) through one lookup: the expression is the only non-literal form it renders, and the names it yields are Studio parts, so they never reach a chat screen. */
+const REGISTRY_PART_FORMS: Readonly<Record<string, string>> = {
+    '/src/lib/Studio/StudioAdvancedForm.svelte': 'partOf(spec.path)',
+}
+
 interface Rendered {
     byScreen: Record<Screen, Set<string>>
     unreviewed: string[]
@@ -46,12 +51,14 @@ function collectRendered(): Rendered {
                 for (const a of usage[0].matchAll(new RegExp(`\\s${prop}=(?:"([^"]*)"|\\{([^}]*)\\})`, 'g'))) {
                     matched++
                     if (a[1] !== undefined && !/[{}$]/.test(a[1])) byScreen[screen].add(a[1])
+                    else if (a[2] !== undefined && a[2].trim() === REGISTRY_PART_FORMS[file]) continue
                     else unreviewed.push(`${file}: ${tag} ${prop}=${a[1] !== undefined ? `"${a[1]}"` : `{${a[2]}}`}`)
                 }
                 if (matched === 0 || usage[0].includes('{...')) unreviewed.push(`${file}: ${tag} without a plain ${prop}="..." (shorthand, spread or absent)`)
             }
         }
         for (const m of markup.matchAll(/data-part=\{([^\n]*)/g)) {
+            if (REGISTRY_PART_FORMS[file] !== undefined && m[1].trim().replace(/\}.*$/, '').trim() === REGISTRY_PART_FORMS[file]) continue
             const forwarded = FORWARDING_COMPONENTS[file]
             if (forwarded !== undefined && m[1].trim().replace(/\}.*$/, '').trim() === forwarded) continue
             const quoted = new Set([...m[1].matchAll(/'([a-z][a-z0-9-]*)'/g)].map((n) => n[1]))

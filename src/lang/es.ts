@@ -2616,6 +2616,7 @@ export const languageSpanish = {
     "studioBannerKeptUnreadable": "No se puede leer el historial guardado de este personaje, por lo que se deja intacto. El historial nuevo solo se conserva en memoria.",
     "studioBannerUnreadable": "No se pudo leer el historial guardado de este personaje. Se apartó una copia y se inició un historial nuevo.",
     "studioBannerTrimmed": "Se recortó el historial más antiguo para ajustarlo al límite de este dispositivo.",
+    "studioBannerPresetSession": "El historial de edición de presets se conserva hasta que se cierre esta página.",
     "studioChipSaved": "Guardado",
     "studioChipSaving": "Guardando…",
     "studioChipFailed": "No guardado",

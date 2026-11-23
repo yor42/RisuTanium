@@ -7,6 +7,7 @@
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath } from '../../ts/studio/history/historyModel'
     import type { StudioRefusal } from '../../ts/studio/history/ownerHistory.svelte'
+    import { hasChatNote as hasChatNoteOf } from '../../ts/studio/history/ownerKindRules'
     import { parseOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { getStudioHistoryService } from '../../ts/studio/history/studioHistoryService.svelte'
     import { registerStudioSheetBack } from '../../ts/studio/studioBack.svelte'
@@ -32,23 +33,7 @@
     const owner = $derived(selectedHistoryOwner())
     const restore = $derived(service && owner !== null ? service.view(owner).restore : null)
     // The note about chats applies to a character's restore point only.
-    const hasChatNote = $derived.by((): boolean => {
-        const parsed = parseOwnerKey(owner ?? '')
-        if (parsed === null) return false
-        switch (parsed.kind) {
-            case 'character':
-                return true
-            case 'chat':
-            case 'module':
-                return false
-            default: {
-                // Adding an owner kind must decide its note here; the fallback is no note.
-                const unhandled: never = parsed
-                void unhandled
-                return false
-            }
-        }
-    })
+    const hasChatNote = $derived(hasChatNoteOf(parseOwnerKey(owner ?? '')))
     const paths = $derived(restore ? RESTORE_PATH_ORDER.filter((path) => restore.fields[path] !== undefined) : [])
     // Paths whose live value was changed outside Studio's history since the visit.
     const changed = $derived.by((): RestorePath[] => {

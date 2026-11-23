@@ -2614,6 +2614,7 @@ export const languageVietnamese = {
     "studioBannerKeptUnreadable": "Không thể đọc lịch sử đã lưu của nhân vật này nên được để nguyên. Lịch sử mới chỉ được giữ trong bộ nhớ.",
     "studioBannerUnreadable": "Không thể đọc lịch sử đã lưu của nhân vật này. Một bản sao đã được tách riêng và lịch sử mới đã được bắt đầu.",
     "studioBannerTrimmed": "Lịch sử cũ nhất đã bị cắt bớt để phù hợp với giới hạn trên thiết bị này.",
+    "studioBannerPresetSession": "Lịch sử chỉnh sửa preset được giữ cho đến khi trang này đóng lại.",
     "studioChipSaved": "Đã lưu",
     "studioChipSaving": "Đang lưu…",
     "studioChipFailed": "Chưa lưu",

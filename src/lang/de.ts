@@ -2616,6 +2616,7 @@ export const languageGerman = {
     "studioBannerKeptUnreadable": "Der gespeicherte Verlauf dieses Charakters kann nicht gelesen werden und bleibt daher unangetastet. Neuer Verlauf wird nur im Arbeitsspeicher gehalten.",
     "studioBannerUnreadable": "Der gespeicherte Verlauf dieses Charakters konnte nicht gelesen werden. Eine Kopie wurde beiseitegelegt und ein neuer Verlauf wurde begonnen.",
     "studioBannerTrimmed": "Der älteste Verlauf wurde gekürzt, um in das Limit auf diesem Gerät zu passen.",
+    "studioBannerPresetSession": "Der Bearbeitungsverlauf von Presets bleibt erhalten, bis diese Seite geschlossen wird.",
     "studioChipSaved": "Gespeichert",
     "studioChipSaving": "Speichern…",
     "studioChipFailed": "Nicht gespeichert",

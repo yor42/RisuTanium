@@ -15,12 +15,16 @@ import {
     SET_PATHS_BY_KIND,
     TEXT_FIELD_PATHS,
     textPathsFor,
-    type OwnerKind,
+    type OwnerKind as AnyOwnerKind,
 } from '../historyModel'
-import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type OwnerKey } from '../ownerPhase'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
+import type { SessionOwnerKind } from '../sessionKinds'
 import { createMemoryStudioStore, seedOwner, storedRecord } from './studioStoreDoubles'
 
-const KEYS: Record<OwnerKind, OwnerKey> = {
+// The stored kinds: a session kind has no stored key, record or restore row.
+type OwnerKind = Exclude<AnyOwnerKind, SessionOwnerKind>
+
+const KEYS: Record<OwnerKind, StoredOwnerKey> = {
     character: characterOwnerKey('c1'),
     chat: chatOwnerKey('c1', 'chat1'),
     module: moduleOwnerKey('m1'),
@@ -50,20 +54,21 @@ function rawRecord(kind: OwnerKind, over: { label?: unknown; path?: unknown; bef
 
 describe('T-P1: the derived tables equal the literal lists (compatibility guard)', () => {
     test('set rows, restore rows, restore order, boolean paths, text paths per kind and the merge text paths', () => {
-        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'])
+        const S1 = ['systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'additionalData.creator', 'additionalData.character_version', 'nickname', 'defaultVariables', 'translatorNote']
+        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1])
         expect(SET_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(SET_PATHS_BY_KIND.module).toEqual(['customModuleToggle'])
         expect(CHARACTER_SET_PATHS).toEqual(SET_PATHS_BY_KIND.character)
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'alternateGreetings'])
+        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, 'alternateGreetings'])
         expect(RESTORE_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(RESTORE_PATHS_BY_KIND.module).toEqual(['customModuleToggle'])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', 'alternateGreetings'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, 'alternateGreetings'])
         expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete'])
-        expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle'])
+        expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1])
         expect(textPathsFor('chat')).toEqual(['note'])
         expect(textPathsFor('module')).toEqual(['customModuleToggle'])
-        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage'])
+        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote'])
     })
 })
 
@@ -120,6 +125,17 @@ describe('T-L1: the label key of every registered path (diagnostic)', () => {
         hideChatIcon: 'hideChatIcon',
         risutanium_render_when_complete: 'studioFormRenderWhenComplete',
         note: 'note',
+        systemPrompt: 'systemPrompt',
+        replaceGlobalNote: 'replaceGlobalNote',
+        additionalText: 'additionalText',
+        personality: 'personality',
+        scenario: 'scenario',
+        'depth_prompt.prompt': 'depthPrompt',
+        'additionalData.creator': 'creator',
+        'additionalData.character_version': 'CharVersion',
+        nickname: 'nickname',
+        defaultVariables: 'defaultVariables',
+        translatorNote: 'translatorNote',
     }
 
     test.each(Object.entries(EXPECTED))('%s', (path, key) => {

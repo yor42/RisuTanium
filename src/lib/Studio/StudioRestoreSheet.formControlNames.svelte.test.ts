@@ -14,6 +14,9 @@ vi.mock('src/ts/studio/studioScreen.svelte', () => ({
     selectedHistoryOwner: () => 'character:A',
     setStudioRestoreSheetOpen: vi.fn(),
 }))
+// The session adapter table loads the preset adapter, which reads the page database; the real store module loads the
+// whole app, so a bare database stands in.
+vi.mock('src/ts/stores.svelte', () => ({ DBState: { db: {} } }))
 vi.mock('src/ts/studio/studioBack.svelte', () => ({ registerStudioSheetBack: vi.fn() }))
 vi.mock('src/ts/studio/edit/studioToasts', () => ({
     createStudioToasts: () => ({ suspendWhileMounted: vi.fn() }),

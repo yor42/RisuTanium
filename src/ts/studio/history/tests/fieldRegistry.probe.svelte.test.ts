@@ -13,9 +13,10 @@ import { applyCharacterWrites, applyChatWrites, buildWrittenModule, createLiveRe
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { fieldLabelKey, propertyOf } from '../fieldAccess'
 import type { SetPath } from '../fieldRegistry'
-import { RESTORE_PATH_ORDER, type FieldValue, type OwnerRecord, type RestorePoint, type Step, type WriteOp } from '../historyModel'
+import { RESTORE_PATH_ORDER, type FieldValue, type RestorePoint, type Step, type WriteOp } from '../historyModel'
+import type { StoredOwnerRecord } from '../studioHistoryStore'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
-import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type OwnerKey } from '../ownerPhase'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import { createFakeClock, type FakeClock } from './historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, seedOwner, storedRecord } from './studioStoreDoubles'
 
@@ -38,20 +39,20 @@ vi.mock('../fieldRegistry', async (importOriginal) => {
         ...original,
         FIELD_SPECS: {
             ...original.FIELD_SPECS,
-            nickname: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+            probeText: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
             sessionOnly: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
-            aliasProbe: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'nickname' },
+            aliasProbe: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'probeAliasTarget' },
         },
         FIELD_PRESENTATION: {
             ...original.FIELD_PRESENTATION,
-            nickname: { labelKey: 'nickname', focus: null },
+            probeText: { labelKey: 'nickname', focus: null },
             sessionOnly: { labelKey: 'nickname', focus: null },
             aliasProbe: { labelKey: 'nickname', focus: null },
         },
     }
 })
 
-const NICKNAME = 'nickname' as SetPath
+const NICKNAME = 'probeText' as SetPath
 const SESSION_ONLY = 'sessionOnly' as SetPath
 const ALIAS = 'aliasProbe' as SetPath
 
@@ -105,11 +106,11 @@ function nicknameRestore(): RestorePoint {
     return { visitId: 'v1', at: 2, fields: { [NICKNAME]: { before: { had: false }, last: { had: true, value: 'x' } } } }
 }
 
-function recordOf(ownerKey: OwnerKey, done: Step[], restore: RestorePoint | null = null): OwnerRecord {
+function recordOf(ownerKey: StoredOwnerKey, done: Step[], restore: RestorePoint | null = null): StoredOwnerRecord {
     return { ownerKey, touchedAt: 4, done, undone: [], deleted: [], restore }
 }
 
-function readBack(record: OwnerRecord): OwnerRecord | null {
+function readBack(record: StoredOwnerRecord): StoredOwnerRecord | null {
     const shared = new Map<string, string>()
     seedOwner(shared, record, 'w:1')
     return storedRecord(shared, record.ownerKey)?.record ?? null
@@ -141,10 +142,10 @@ describe('T-D1: one registry entry adds a field end to end', () => {
         const { service } = build()
         await service.whenReady(A)
         expect(service.editText(A, NICKNAME, 'x', 'single')).toEqual({ ok: true })
-        expect(live().nickname).toBe('x')
+        expect(live().probeText).toBe('x')
         expect(service.view(A).restore?.fields[NICKNAME]).toEqual({ before: { had: false }, last: { had: true, value: 'x' } })
         expect(service.undo(A).ok).toBe(true)
-        expect('nickname' in live()).toBe(false)
+        expect('probeText' in live()).toBe(false)
         expect(RESTORE_PATH_ORDER.indexOf(NICKNAME)).toBeGreaterThan(RESTORE_PATH_ORDER.indexOf('note'))
         expect(RESTORE_PATH_ORDER.indexOf(NICKNAME)).toBe(RESTORE_PATH_ORDER.indexOf('alternateGreetings') - 3)
     })
@@ -171,8 +172,8 @@ describe('T-D1: one registry entry adds a field end to end', () => {
 
 describe('T-D2: a path reads and writes its holder property, not its own name', () => {
     test('the accessor returns the property', () => {
-        expect(propertyOf(ALIAS)).toBe('nickname')
-        expect(propertyOf(NICKNAME)).toBe('nickname')
+        expect(propertyOf(ALIAS)).toBe('probeAliasTarget')
+        expect(propertyOf(NICKNAME)).toBe('probeText')
         expect(propertyOf('desc')).toBe('desc')
     })
 
@@ -180,11 +181,11 @@ describe('T-D2: a path reads and writes its holder property, not its own name', 
         const { service } = build()
         await service.whenReady(A)
         expect(service.editText(A, ALIAS, 'x', 'single')).toEqual({ ok: true })
-        expect(live().nickname).toBe('x')
+        expect(live().probeAliasTarget).toBe('x')
         expect('aliasProbe' in live()).toBe(false)
         expect(createLiveReader({ character: live() as unknown as character, chat: null }).field(ALIAS)).toEqual({ had: true, value: 'x' })
         expect(service.undo(A).ok).toBe(true)
-        expect('nickname' in live()).toBe(false)
+        expect('probeAliasTarget' in live()).toBe(false)
         expect('aliasProbe' in live()).toBe(false)
     })
 })

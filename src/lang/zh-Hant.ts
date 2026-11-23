@@ -2659,6 +2659,7 @@ export const languageChineseTraditional = {
     "studioBannerKeptUnreadable": "無法讀取此角色已儲存的歷程記錄，因此保持原樣不動。新的歷程記錄僅保留在記憶體中。",
     "studioBannerUnreadable": "無法讀取此角色已儲存的歷程記錄。已另存一份副本，並開始了新的歷程記錄。",
     "studioBannerTrimmed": "最舊的歷程記錄已被裁剪，以符合此裝置的限制。",
+    "studioBannerPresetSession": "預設編輯歷程記錄將保留到關閉此頁面為止。",
     "studioChipSaved": "已儲存",
     "studioChipSaving": "正在儲存…",
     "studioChipFailed": "未儲存",

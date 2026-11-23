@@ -293,6 +293,7 @@ function noticeOwnerKindOf(owner: OwnerKey): 'module' | 'character' {
             return 'module'
         case 'character':
         case 'chat':
+        case 'preset':
             return 'character'
         default: {
             // Adding an owner kind must decide its place kind here; the fallback is the character wording.

@@ -9,6 +9,7 @@
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import type { StepLabel } from '../../ts/studio/history/historyModel'
     import type { OwnerHistoryService, ReplayDesc, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
+    import { boundCharacterHides } from '../../ts/studio/history/ownerKindRules'
     import { parseOwnerKey, type OwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import { closeStudioHistory } from '../../ts/studio/studioBack.svelte'
@@ -40,30 +41,13 @@
     const owner = $derived(selectedHistoryOwner())
     const bound = $derived(DBState.db.characters?.find((candidate) => candidate?.chaId === studioScreen.chaId))
     const parsedOwner = $derived(owner === null ? null : parseOwnerKey(owner))
-    // A module's history is the module's own: the bound character being private or a group does not hide it, as it
-    // does not stop Ctrl+Z from replaying it.
-    const boundCharacterHides = $derived.by((): boolean => {
-        if (parsedOwner === null) return true
-        switch (parsedOwner.kind) {
-            case 'module':
-                return false
-            case 'character':
-            case 'chat':
-                return true
-            default: {
-                // Adding an owner kind must decide here whether a private or group bound character hides it.
-                const unhandled: never = parsedOwner
-                void unhandled
-                return true
-            }
-        }
-    })
-    const hiddenCharacter = $derived(boundCharacterHides && (bound === undefined || bound.type === 'group' || bound.license === 'private'))
+    const hiddenCharacter = $derived(boundCharacterHides(parsedOwner) && (bound === undefined || bound.type === 'group' || bound.license === 'private'))
     // A chat without a unique id has no history.
     const historyOwner = $derived.by((): OwnerKey | null => {
         if (owner === null || parsedOwner === null) return null
         switch (parsedOwner.kind) {
             case 'module':
+            case 'preset':
                 return owner
             case 'character':
             case 'chat':
