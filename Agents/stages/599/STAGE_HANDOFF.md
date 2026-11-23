@@ -1,0 +1,30 @@
+# Stage handoff: #599 plugin getDatabase without installs
+
+- Completed: PR https://github.com/yor42/RisuTanium/pull/640 (Closes #599). Head 8b85ec788 (main merged at 714e06795); CI green on it.
+- Commits:
+  - 6a29f91b7: the read copy and the write-back.
+  - 8f8589e47: read-time payload print, which replaces the SHA proof.
+  - de2304681: the write proves module copies in slices before it lands; FIFO write turns; same-plugin call gate; `setDatabaseLite` follows.
+  - 8b85ec788: duplicate `chatOrigin` import removed after the main merge.
+- Decisions:
+  - MC-3694 to MC-3703 in `Agents/mc/599.md`.
+  - MC-3703's final answer waives MC-3777's 110% limit for library shape two only, with follow-up #721.
+- Gates:
+  - First change: Gate 1 [REJECT] then [EDITORIAL]; Gate 2 [EDITORIAL], with a test-only fix re-checked [APPROVE].
+  - Print fix: Gate 1 [EDITORIAL]; Gate 2 [REJECT] fixed by GX1, then [APPROVE].
+  - Shape-two fix: Gate 1 r1 and r2 [REJECT], r3 [EDITORIAL] (mechanism reconsidered at the second rejection); Gate 2 [EDITORIAL], E1 and E2 re-checked [APPROVE].
+  - The PR body has every finding's disposition.
+- Tests:
+  - Final tree: `src/ts/plugins` and `residency.test.ts` give 61 files, 1281 passed; `pnpm check` 0 errors; CI green.
+  - Mutants: all killed except MU6, which is equivalent.
+- Device (Note 9, synthetic):
+  - DV-599-1, -2, -5 and -6: PASS (lane B).
+  - DV-599-7 and -8: recorded and accepted.
+  - DV-599-3 final, n=5: shape one at 0.59 of main; shape two at 1.34, waived.
+  - DV-599-4: PASS on the final build.
+- Leftovers:
+  - #721: receiving a large plugin write blocks the page in one task.
+  - #641: an existing parseRisuChat inject write can land in another chat.
+  - A stale `moduleLoader.ts` comment, and `withoutModuleUnit` duplicated from the loader. Both wait for `moduleLoader.ts` to be assigned to a ticket.
+  - The worktree's own `node_modules` (MC-3620) goes with worktree cleanup.
+- Next stage: none remains for #599. Lane A merges.

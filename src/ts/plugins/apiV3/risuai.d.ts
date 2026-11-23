@@ -1784,11 +1784,14 @@ interface RisuaiPluginAPI {
      *
      * `setDatabaseLite` saves the call's data only after the
      * `'db'` and `'dbWrite'` permission checks: right after them
-     * when nothing else needs asking, and after the plugin-list prompts
-     * otherwise, in either case before its promise
+     * when nothing else needs asking, no other plugin database write is
+     * pending and no module copy needs checking against its stored module,
+     * and otherwise after the plugin-list prompts, the earlier pending
+     * writes and the module checks, in either case before its promise
      * settles. It never saves before it returns and never throws
      * synchronously; a refusal is a rejected promise. (The V2 plugin API's
-     * `setDatabaseLite` saves before it returns when nothing needs asking;
+     * `setDatabaseLite` saves before it returns when nothing needs asking,
+     * no other plugin database write is pending and no module copy needs checking;
      * that order does not apply here.)
      *
      * **Fork-specific note (not upstream RisuAI):** needs both `'db'`
