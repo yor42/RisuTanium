@@ -16,7 +16,7 @@ import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharac
 import { collectPackAssetRefs } from "./themePack/packRefs";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
-import { botMakerMode, DBState, LoadingStatusState, selIdState, selectedCharID, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, peerWaitingStatus, frozenSaveKeysStore } from "./stores.svelte";
+import { botMakerMode, DBState, LoadingStatusState, selIdState, selectedCharID, ReloadGUIPointer, savingStoppedReason, peerWaitingStatus, frozenSaveKeysStore } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertConfirm, alertError, alertMd, alertStore, alertToast, waitAlert } from "./alert";
 import { ASSET_PIECE_SAVE_MIN_BYTES, Sha256, sha256Hex } from "./assetHash";
@@ -39,6 +39,7 @@ import { createReplyStore } from "./nativeReply/store";
 import type { SkippedItem } from "./storage/store2/codec";
 import { activeStreamOwners } from "./process/activeStreams";
 import { interceptorsSuppressed } from "./process/request/interceptorSuppression";
+import { runBodyInterceptors } from "./process/request/bodyInterceptors";
 import { takeResidentLoaded } from "./storage/store2/residentLoads";
 import { saveFailureStore } from "./storage/store2/saveFailure";
 import { createLiveCheckGate, type LiveCheckSignal } from "./storage/store2/liveCheckGate";
@@ -1720,14 +1721,11 @@ export async function globalFetch(url: string, arg: GlobalFetchArgs = {}, intern
         }
 
         if(arg.interceptor && !interceptorsSuppressed(arg.abortSignal)){
-            for (const interceptor of bodyIntercepterStore) {
-                try {
-                    arg.body = await interceptor.callback(arg.body, arg.interceptor) || arg.body
-                }
-                catch (e) {
-                    console.error(e)
-                }
+            const intercepted = await runBodyInterceptors(arg.body, arg.interceptor, arg.abortSignal)
+            if (!intercepted.settled) {
+                return { ok: false, data: 'aborted', headers: {}, status: 400 };
             }
+            arg.body = intercepted.value
         }
 
         const timeoutSignal = buildTimeoutSignal(arg.abortSignal, arg.requestTimeoutMs)
@@ -2910,14 +2908,11 @@ export async function fetchNative(url: string, arg: {
     else if (typeof arg.body === 'string') {
         let body: string = arg.body
         if(useInterceptor) {
-            for (const interceptor of bodyIntercepterStore) {
-                try {
-                    body = await interceptor.callback(body, arg.interceptor) || body
-                }
-                catch (e) {
-                    console.error(e)
-                }
+            const intercepted = await runBodyInterceptors(body, arg.interceptor, arg.signal)
+            if (!intercepted.settled) {
+                throw new Error('aborted')
             }
+            body = intercepted.value
         }
         realBody = new TextEncoder().encode(body)
     }

@@ -25,6 +25,7 @@ import { createRunSubject, type Origin, type RunSubject } from "./chatOrigin";
 import { clearSupaMemoryIfEmpty, withSupaRepoint } from "./memory/supaResume";
 import { clearAltOnFullClear, reattachOrphans } from "./chatTree";
 import { countLuaScripts } from "./luaScriptCount";
+import { detach } from "./abortRace";
 let luaFactory:LuaFactory
 let ScriptingSafeIds = new Set<string>()
 let ScriptingEditDisplayIds = new Set<string>()
@@ -197,6 +198,9 @@ export async function runScripted(code:string, arg:{
     // Distinct Lua scripts the caller's own trigger list can run in this mode;
     // raises the engine cap above the floor for that list. Never persisted.
     liveScripts?: number,
+    // Aborts when the caller abandons this run. An abandoned run never starts, or loses its
+    // access id at once, so it can no longer change the chat. Never persisted.
+    signal?: AbortSignal,
 }){
     const type: 'lua'|'py' = arg.type ?? 'lua'
     const char = arg.char ?? getCurrentCharacter()
@@ -214,6 +218,10 @@ export async function runScripted(code:string, arg:{
     const modeRecord = getOrCreateModeRecord(mode);
 
     return await modeRecord.mutex.runExclusive(async () => {
+        // A run abandoned while it waited for the mode mutex never builds an engine or runs code.
+        if(arg.signal?.aborted){
+            return { stopSending: false, chat, res: undefined }
+        }
         const ScriptingEngineState = resolveEngineState(modeRecord, type, code, arg.liveScripts)
 
         // A call with an origin and no explicit override resolves `setChatVar`/
@@ -1288,6 +1296,12 @@ export async function runScripted(code:string, arg:{
             }
             ScriptingEngineState.code = code
         }
+        // An abort that landed while the engine was created or the module code loaded stops the run
+        // here. No await may lie between this check and the abort listener below: the id must never
+        // exist without a listener that can revoke it.
+        if(arg.signal?.aborted){
+            return { stopSending: false, chat, res: undefined }
+        }
         let accessKey = v4()
         if(mode === 'editDisplay'){
             ScriptingEditDisplayIds.add(accessKey)
@@ -1298,6 +1312,13 @@ export async function runScripted(code:string, arg:{
                 ScriptingLowLevelIds.add(accessKey)
             }
         }
+        const revokeAccess = () => {
+            ScriptingSafeIds.delete(accessKey)
+            ScriptingLowLevelIds.delete(accessKey)
+            ScriptingEditDisplayIds.delete(accessKey)
+        }
+        const onAbandon = () => detach('A script run revocation', revokeAccess)
+        arg.signal?.addEventListener('abort', onAbandon, { once: true })
         let res:any
         try {
             if(ScriptingEngineState.type === 'lua'){
@@ -1416,9 +1437,8 @@ export async function runScripted(code:string, arg:{
             // rejected Python call, a result that fails to parse) revokes it here,
             // so a script that kept the id cannot use it from a later run. Only
             // this run's id is removed; concurrent runs of other modes keep theirs.
-            ScriptingSafeIds.delete(accessKey)
-            ScriptingLowLevelIds.delete(accessKey)
-            ScriptingEditDisplayIds.delete(accessKey)
+            arg.signal?.removeEventListener('abort', onAbandon)
+            revokeAccess()
         }
         chat = currentChatFor(ScriptingEngineState) ?? ScriptingEngineState.chat
         stopSending = stopSending || !!ScriptingEngineState.stopSending
@@ -1715,7 +1735,7 @@ ${code}
  * group its variable defaults come from the group. The text the triggers
  * return is used either way. `origin` alone is handed to the Lua as it is.
  */
-export async function runLuaEditTrigger<T extends string|OpenAIChat[]>(char:character|groupChat|simpleCharacterArgument, mode:string, content:T, meta?:object, origin?:Origin, sendSubject?:RunSubject):Promise<T>{
+export async function runLuaEditTrigger<T extends string|OpenAIChat[]>(char:character|groupChat|simpleCharacterArgument, mode:string, content:T, meta?:object, origin?:Origin, sendSubject?:RunSubject, signal?:AbortSignal):Promise<T>{
     switch(mode){
         case 'editinput':
             mode = 'editInput'
@@ -1745,6 +1765,10 @@ export async function runLuaEditTrigger<T extends string|OpenAIChat[]>(char:char
         let luaOrigin = origin
         let luaSubject: RunSubject | undefined
         for(let trigger of triggers){
+            // An abandoned edit trigger queues no further Lua run.
+            if(signal?.aborted){
+                break
+            }
             if(trigger?.effect?.[0]?.type === 'triggerlua'){
                 if(sendSubject && !luaSubject){
                     luaOrigin = { chaId: sendSubject.origin.chaId, chatId: sendSubject.origin.chatId }
@@ -1760,6 +1784,7 @@ export async function runLuaEditTrigger<T extends string|OpenAIChat[]>(char:char
                     origin: luaOrigin,
                     liveScripts,
                     getVar: varSubject ? (key: string) => getChatVar(key, varSubject) : undefined,
+                    signal,
                 })
                 data = runResult.res ?? data
             }

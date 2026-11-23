@@ -1,4 +1,4 @@
-# Stage handoff: #596 parallel replies, after stage 5c
+# Stage handoff: #596 parallel replies, after stage 7b
 
 Read this, the issue, `s5-plan-r2.md` beside this file (the accepted stage 5 plan) and the repository at origin/main. Source statements below were read at d70df2cb3 or 105915cbe and not executed, unless a test is named. Re-pin them before use.
 
@@ -8,8 +8,12 @@ Read this, the issue, `s5-plan-r2.md` beside this file (the accepted stage 5 pla
 - Stage 2 (per-unit Stop plumbing): PR https://github.com/yor42/RisuTanium/pull/648, merged as 1b23f5d1f.
 - Stage 5a (the send gate opens per chat; engine and starters): PR https://github.com/yor42/RisuTanium/pull/669, merged as e5d5dc499.
 - Stage 5b (stop-all = per-chat Stop, MC-3790): PR https://github.com/yor42/RisuTanium/pull/675, merged as 8804c641d.
-- Stage 5c (per-chat UI and the O-6 re-list): reviewed code commit ea2d682b0 on `claude/596-parallel-replies-s5c`. PR: see the branch.
-- Refs #596. Remaining before the MVP update, in this order (MC-3736, orchestrator's order): DV-596-S5-1, stage 7, 5d. The final stage closes the ticket.
+- Stage 5c (per-chat UI and the O-6 re-list): PR https://github.com/yor42/RisuTanium/pull/692, merged as c09298670.
+- DV-596-S5-1 (Note 9 phone 1, debug APK of c09298670): PASS on 2026-11-23. Two native replies in two chats; one notification Stop ended both; after a reload Beta's Send was refused with the new reason and came back without reload, Alpha admitted. Result: `%TEMP%\risu-b715\b61\596-s2\dv596-run1\dv596-s5-1-result.md`.
+- Stage 7 plan accepted (Gate 1 r6 after advisor challenge): `s7-plan.md` beside this file. Decisions MC-3796..3799, MC-3950..3957.
+- Stage 7a (abort leaf, script access revocation, script pass stop, MC-3958): PR https://github.com/yor42/RisuTanium/pull/705, merged as 1fe41cb28.
+- Stage 7b (send-path hooks, request path, body interceptors, MCP and Gemini races, inlay and imggen, stableDiff signal): branch `claude/596-parallel-replies-s7b`; Gate 2 Opus r1 reject (two test-fidelity findings), Sonnet r2 PASS on the test-only fix.
+- Refs #596. Remaining before the MVP update, in this order (MC-3736, orchestrator's order): 7d, 7e, 7c (s7-plan.md stage order), then 5d. The final stage closes the ticket.
 
 ## 2. Decisions
 
@@ -106,6 +110,13 @@ After 5c merges: device row DV-596-S5-1 (this ticket's own session asks for it, 
 - Cross-chat couplings that stage 5 leaves (plan R8): C-1 the Lua mode mutex is shared by every chat (a waiting script in A stalls B's next run in that mode; needs abortable waits, advisor N3: does the mutex let a waiter leave on abort?); C-2 the reconcile pass is serial and replaces the running map only at its end, so an apply awaiting a hook keeps every other chat's reload-edge refusal; C-3 `recoverText` replacers run in the pass before any unit or registration exists, so a stall there has no Stop. Replacing stale entries at the start of a pass would admit a Send ahead of a finished recovered reply (reply order trade-off).
 - Open question: may hooks get an additive reply id or origin (plugin contract, MC-175)?
 - After a Stop the plugin's own calls may finish in the background (MC-3735).
+
+### Stage 7 progress
+
+- 7a done (fa150373d): `src/ts/process/abortRace.ts` (race on the unit signal, `detach` with a terminal catch; no stage-7 code detaches a promise any other way), access-id revocation in `scriptings.ts` (also before registration and in the mutex queue), `runScriptPass` returns after an aborted hook. Gate 2: Opus r1 reject on test fidelity only, Sonnet r2 approve. Equivalent mutant: M16 (argued in `s7a-code-1.md`).
+- 7b done: every send-path hook, request-path hook, body interceptor, MCP tool call and inlay/imggen wait races on the unit signal. New `src/ts/process/request/bodyInterceptors.ts`. Known limitations for 5d and later: K1..K12 in s7-plan.md, plus an abandoned emotion or additional-information search still starts its query embedding after Stop (Gate 2 r1 E1).
+- Next: 7d, 7e, 7c, each its own PR with Opus Gate 2, then 5d.
+- Carry to 5d (from DV-596-S5-1): the reply notification names one chat while two run (MC-3791's count card fixes it); a stopped reply in a hidden chat raised both a "was stopped" and a "replied" toast.
 
 ### 5d: queued alerts and the card (after stage 7)
 

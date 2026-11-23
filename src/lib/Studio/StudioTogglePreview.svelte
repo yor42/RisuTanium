@@ -22,9 +22,10 @@
     import { untrack } from 'svelte'
     import { ChevronDownIcon, XIcon } from '@lucide/svelte'
     import { language } from '../../lang'
-    import { toggleVarKey, valueRowsOf, type PanelGroup, type PanelValueRow } from '../../ts/chatShell/togglePanel'
+    import { toggleVarKey, valueRowsOf, type PanelGroup, type PanelSourceKind, type PanelValueRow } from '../../ts/chatShell/togglePanel'
     import { toggleDefaultsOf } from '../../ts/parser/toggleDefaults'
     import { getModules } from '../../ts/process/modules'
+    import { presetStateOf } from '../../ts/studio/edit/presetTarget'
     import { isModuleStub } from '../../ts/storage/moduleStub'
     import { DBState } from '../../ts/stores.svelte'
     import { closeStudioTogglePreview } from '../../ts/studio/studioBack.svelte'
@@ -67,6 +68,7 @@
     // The source of a module in use is part of the chat's panel; one that is not shows only in its own scope.
     const inChat = $derived.by(() => {
         if (current === null || current.target.kind === 'character') return true
+        if (current.target.kind === 'preset') return presetStateOf(current.target.presetId)?.active === true
         const moduleId = current.target.moduleId
         return getModules().some((module) => module && !isModuleStub(module) && module.id === moduleId)
     })
@@ -76,7 +78,8 @@
     // A source with nothing to show is left out of both scopes.
     const previewInputs = $derived.by(() => {
         if (current !== null && !joined) {
-            return [{ id: 'current', kind: current.target.kind, name: current.name, text: snapshot }]
+            const kind: PanelSourceKind = current.target.kind === 'preset' ? 'prompt' : current.target.kind
+            return [{ id: 'current', kind, name: current.name, text: snapshot }]
         }
         const owner = { chaId, name: plain?.name ?? '', customModuleToggle: plain?.customModuleToggle }
         return joinedPreviewInputs(toggleSourcesOf(owner), { chaId, license: plain?.license }, current === null ? null : { panelId: panelIdOf(current.target), text: snapshot })

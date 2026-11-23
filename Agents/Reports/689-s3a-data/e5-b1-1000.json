@@ -1,0 +1,173 @@
+{
+  "tool": "ltm-embed-spike/run-spike.mjs",
+  "startedAt": "2026-11-23T09:45:15.106Z",
+  "config": {
+    "port": "6271",
+    "base": "http://127.0.0.1:6272",
+    "model": "Xenova/multilingual-e5-small",
+    "pooling": "mean",
+    "dtype": "q8",
+    "count": 1000,
+    "batch": 1,
+    "seed": 1,
+    "idleSeconds": 20,
+    "loadTimeoutMs": 300000,
+    "indexTimeoutMs": 2400000
+  },
+  "probeVersion": "s3a-2",
+  "constructError": null,
+  "rendererLost": false,
+  "lostReason": null,
+  "pageSessionIds": [
+    "j2g5n4asbl8mwt2y2t2"
+  ],
+  "pageSessionStable": true,
+  "loadMs": 9812,
+  "dims": [
+    1,
+    384
+  ],
+  "index": {
+    "requested": 1000,
+    "done": 1000,
+    "batchSize": 1,
+    "totalMs": 486710,
+    "msgsPerSec": 2.05,
+    "error": null,
+    "callMs": {
+      "n": 1000,
+      "p50": 466,
+      "p90": 637.5,
+      "p99": 759.8,
+      "max": 847.4
+    }
+  },
+  "phases": {
+    "idle-baseline": {
+      "durationMs": 20260,
+      "longtask": {
+        "count": 1,
+        "totalMs": 273,
+        "maxMs": 273,
+        "over50": 1
+      },
+      "rafMaxGapMs": 42.8,
+      "rafGapsOver100": 0,
+      "intervalMaxLatenessMs": 5.4,
+      "intervalOver50": 0
+    },
+    "load": {
+      "durationMs": 10768,
+      "longtask": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0,
+        "over50": 0
+      },
+      "rafMaxGapMs": 51.1,
+      "rafGapsOver100": 0,
+      "intervalMaxLatenessMs": 6.5,
+      "intervalOver50": 0
+    },
+    "index": {
+      "durationMs": 488752,
+      "longtask": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0,
+        "over50": 0
+      },
+      "rafMaxGapMs": 112.6,
+      "rafGapsOver100": 1,
+      "intervalMaxLatenessMs": 77.8,
+      "intervalOver50": 1
+    }
+  },
+  "snapshot": {
+    "pageSessionId": "j2g5n4asbl8mwt2y2t2",
+    "phase": "index",
+    "phaseStats": {
+      "idle-baseline": {
+        "durationMs": 20260,
+        "longtask": {
+          "count": 1,
+          "totalMs": 273,
+          "maxMs": 273,
+          "over50": 1
+        },
+        "rafMaxGapMs": 42.8,
+        "rafGapsOver100": 0,
+        "intervalMaxLatenessMs": 5.4,
+        "intervalOver50": 0
+      },
+      "load": {
+        "durationMs": 10768,
+        "longtask": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0,
+          "over50": 0
+        },
+        "rafMaxGapMs": 51.1,
+        "rafGapsOver100": 0,
+        "intervalMaxLatenessMs": 6.5,
+        "intervalOver50": 0
+      },
+      "index": {
+        "durationMs": 488752,
+        "longtask": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0,
+          "over50": 0
+        },
+        "rafMaxGapMs": 112.6,
+        "rafGapsOver100": 1,
+        "intervalMaxLatenessMs": 77.8,
+        "intervalOver50": 1
+      }
+    },
+    "longtasks": [
+      {
+        "start": 663.4,
+        "duration": 273
+      }
+    ],
+    "longtaskTotal": 1,
+    "longtaskDropped": 0,
+    "longtaskUnsupported": null,
+    "rafMaxGapMs": 112.6,
+    "intervalMaxLatenessMs": 77.8,
+    "workerAlive": true,
+    "workerErrors": [],
+    "constructError": null,
+    "cspHint": null,
+    "ready": true,
+    "loadMs": 9812,
+    "memory": {
+      "usedJSHeapSize": 16100000,
+      "totalJSHeapSize": 17100000
+    },
+    "deviceMemory": 4,
+    "hardwareConcurrency": 8,
+    "crossOriginIsolated": false,
+    "sharedArrayBuffer": "undefined",
+    "userAgent": "Mozilla/5.0 (Linux; Android 10; SM-N960N Build/QP1A.190711.020; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36",
+    "origin": "http://tauri.localhost",
+    "checksums": [
+      -0.0718,
+      -0.0584,
+      -0.097
+    ]
+  },
+  "errors": [],
+  "bars": {
+    "longtasksOver50DuringLoadAndIndex": 0,
+    "longtasksOver50IdleBaseline": 1,
+    "indexMsgsPerSec": 2.05,
+    "indexAtLeast1PerSec": true,
+    "noRendererLoss": true,
+    "rendererPeakWithin1p5GB": null
+  },
+  "finishedAt": "2026-11-23T09:53:55.211Z"
+}

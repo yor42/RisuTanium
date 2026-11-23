@@ -56,9 +56,11 @@ describe('ownerName', () => {
 })
 
 describe('isModuleOwner wording', () => {
-    test('a preset owner gets the generic refusal text, a module owner its own', () => {
+    test('a preset owner gets its own gone text and the generic text for every other refusal, a module owner its own', () => {
         const generic = refusalTextOf({ reason: 'gone' })
-        expect(refusalTextOf({ reason: 'gone' }, presetOwnerKey(ids[0]))).toBe(generic)
+        expect(refusalTextOf({ reason: 'gone' }, presetOwnerKey(ids[0]))).toBe(language.studioRefusalPresetGone)
+        expect(language.studioRefusalPresetGone).not.toBe(generic)
+        expect(refusalTextOf({ reason: 'not-selected' }, presetOwnerKey(ids[0]))).toBe(refusalTextOf({ reason: 'not-selected' }))
         expect(refusalTextOf({ reason: 'gone' }, moduleOwnerKey('M1'))).toBe(language.studioRefusalModuleGone)
         expect(generic).not.toBe(language.studioRefusalModuleGone)
     })

@@ -205,6 +205,31 @@ afterEach(async () => {
     resetUpdateRunForTests()
 })
 
+describe('T11 Update all from a preset builder', () => {
+    const PRESET: ToggleTarget = { kind: 'preset', presetId: 'P-1' }
+
+    test('reaches the character and the active modules, and says that prompts in presets are not covered', async () => {
+        await service.whenReady(C1)
+        mountList(PRESET)
+        expect(texts('studio-toggle-uses-count')).toEqual(['studioTgUsesWillChange(Alice,1)', 'studioTgUsesWillChange(Module M1,1)'])
+        expect(part('studio-toggle-uses-preset-note')?.textContent).toBe('studioTgUpdateAllPresetNote')
+    })
+
+    test('a private bound character is not reached and the modules are', async () => {
+        seed(`start ${READ}`, [moduleRow('M1', `lore ${READ}`)], { license: 'private' })
+        await service.whenReady(C1)
+        mountList(PRESET)
+        expect(texts('studio-toggle-uses-count')).toEqual(['studioTgUsesWillChange(Module M1,1)'])
+        expect(texts('studio-toggle-uses-unreached')).toEqual(['studioTgUsesRestricted'])
+    })
+
+    test('a character or module builder shows no preset note', async () => {
+        await service.whenReady(C1)
+        mountList(CHARACTER)
+        expect(part('studio-toggle-uses-preset-note')).toBeNull()
+    })
+})
+
 describe('what the list shows (B3)', () => {
     test('the rename, the per-owner counts, the listed rows with their reasons, the not-checked note and no None text', async () => {
         await service.whenReady(C1)

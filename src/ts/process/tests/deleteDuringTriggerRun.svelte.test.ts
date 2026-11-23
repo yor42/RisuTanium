@@ -5,8 +5,8 @@
  * button during a send trigger.
  *
  * A stop (a confirmed delete or the busy button) ends a trigger's remaining
- * effects: the effect already running finishes and no later effect of that run,
- * or of a run nested in it, begins. Work bound to another character is untouched.
+ * effects: the effect already running finishes without saving its result to the
+ * chat (MC-3958), and no later effect of that run, or of a run nested in it, begins. Work bound to another character is untouched.
  * Mounts the real `Chat.svelte` (its trigger button) and `SideChatList.svelte`,
  * and drives the real trigger engine, command line, `sendChat`, auto mode and
  * `removeChar`. A trigger effect's model call is held on a gate the test
@@ -1244,7 +1244,7 @@ describe('the busy button and a send trigger\'s remaining effects', () => {
         const outputVariable = (theChat().scriptstate as Record<string, unknown>)['$r']
         await drain(running)
 
-        expect.soft(outputVariable, 'the model call already running finished and set its output variable').toBe('model says')
+        expect.soft(outputVariable, 'the model call already running finished, but the stopped run may no longer set chat variables (MC-3951)').toBeUndefined()
         expect.soft(posted, 'the start trigger posted its next message').toBe(false)
     })
 
