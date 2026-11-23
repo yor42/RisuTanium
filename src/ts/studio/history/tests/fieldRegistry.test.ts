@@ -54,21 +54,22 @@ function rawRecord(kind: OwnerKind, over: { label?: unknown; path?: unknown; bef
 
 describe('T-P1: the derived tables equal the literal lists (compatibility guard)', () => {
     test('set rows, restore rows, restore order, boolean paths, text paths per kind and the merge text paths', () => {
+        const S5 = ['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding']
         const S1 = ['systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'additionalData.creator', 'additionalData.character_version', 'nickname', 'defaultVariables', 'translatorNote']
         expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1])
         expect(SET_PATHS_BY_KIND.chat).toEqual(['note'])
-        expect(SET_PATHS_BY_KIND.module).toEqual(['customModuleToggle'])
+        expect(SET_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
         expect(CHARACTER_SET_PATHS).toEqual(SET_PATHS_BY_KIND.character)
         expect(CHAT_SET_PATHS).toEqual(['note'])
         expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, 'alternateGreetings'])
         expect(RESTORE_PATHS_BY_KIND.chat).toEqual(['note'])
-        expect(RESTORE_PATHS_BY_KIND.module).toEqual(['customModuleToggle'])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, 'alternateGreetings'])
-        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete'])
+        expect(RESTORE_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, 'alternateGreetings'])
+        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess'])
         expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1])
         expect(textPathsFor('chat')).toEqual(['note'])
-        expect(textPathsFor('module')).toEqual(['customModuleToggle'])
-        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote'])
+        expect(textPathsFor('module')).toEqual(['customModuleToggle', 'moduleName', 'moduleDescription', 'moduleNamespace', 'backgroundEmbedding'])
+        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding'])
     })
 })
 
@@ -136,6 +137,12 @@ describe('T-L1: the label key of every registered path (diagnostic)', () => {
         nickname: 'nickname',
         defaultVariables: 'defaultVariables',
         translatorNote: 'translatorNote',
+        moduleName: 'name',
+        moduleDescription: 'description',
+        moduleNamespace: 'namespace',
+        moduleHideIcon: 'hideChatIcon',
+        moduleLowLevelAccess: 'lowLevelAccess',
+        backgroundEmbedding: 'backgroundHTML',
     }
 
     test.each(Object.entries(EXPECTED))('%s', (path, key) => {

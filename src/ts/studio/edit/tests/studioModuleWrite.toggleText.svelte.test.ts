@@ -205,7 +205,7 @@ describe('C1: the module write sets the modules dirty mark and only that', () =>
     test('an unchanged text and a refused intent set no mark', () => {
         expect(service.editText(M1, 'customModuleToggle', 'a=A', 'single')).toEqual({ ok: true, unchanged: true })
         expect(service.editText(M1, 'desc', 'x', 'single')).toEqual({ ok: false, reason: 'precondition' })
-        expect(service.editField(M1, 'desc', 'x')).toEqual({ ok: false, reason: 'gone' })
+        expect(service.editField(M1, 'desc', 'x')).toEqual({ ok: false, reason: 'precondition' })
         flushSync()
         expect(tracker.modules).toBe(false)
     })

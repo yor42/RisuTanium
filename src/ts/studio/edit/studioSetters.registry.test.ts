@@ -44,6 +44,12 @@ const VALUE_OF: Record<SetPath, string | boolean> = {
     nickname: 'new nickname',
     defaultVariables: 'new variables',
     translatorNote: 'new translator note',
+    moduleName: 'new module name',
+    moduleDescription: 'new module description',
+    moduleNamespace: 'new namespace',
+    moduleHideIcon: true,
+    moduleLowLevelAccess: true,
+    backgroundEmbedding: 'new embedding',
 }
 
 describe('T-W1: the writers of the builtin holders', () => {

@@ -6,7 +6,9 @@
 import { clearCharEmotionCache, DBState } from '../../stores.svelte'
 import type { RisuModule } from '../../process/modules'
 import { toAssetList, type AssetTuple } from '../../storage/assetList'
+import type { JsonValue } from '../../storage/blockFrame'
 import { isModuleStub } from '../../storage/moduleStub'
+import { toPlainJson } from '../../storage/store2/codec/normalize'
 import { firstMessageIndexOf } from '../../process/firstMessage'
 import type { Chat, character, groupChat } from '../../storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
@@ -139,7 +141,8 @@ export function fmValueOf(chat: Chat): FmValue {
 }
 
 // The value a holder carries under the path's property, as a `FieldValue`: absent when the holder is missing, the key
-// is missing or the value is not of the path's registered type. A nested path reads its container: an absent or null
+// is missing or the value is not of the path's registered type (a `keepForeign` path reads such a value as a foreign
+// reading instead, see below). A nested path reads its container: an absent or null
 // container reads as its seed, a usable one by key, and anything else (a string, an array) as absent.
 function readHeld(holder: object | null | undefined, path: SetPath): FieldValue {
     if (!holder) {
@@ -159,7 +162,25 @@ function readHeld(holder: object | null | undefined, path: SetPath): FieldValue 
             return { had: false }
         }
     }
-    if (factsOf(path).value === 'bool') {
+    const facts = factsOf(path)
+    if (facts.keepForeign === true) {
+        // Classified by the stored form (what a save keeps), so every reading is one the history parser accepts. A
+        // value `toPlainJson` refuses (a bigint or a cycle) reads as absent.
+        let plain: JsonValue | undefined
+        try {
+            plain = toPlainJson(value)
+        } catch {
+            plain = undefined
+        }
+        if (plain === undefined) {
+            return { had: false }
+        }
+        if (facts.value === 'bool') {
+            return typeof plain === 'boolean' ? { had: true, value: plain } : { had: 'foreign', value: plain }
+        }
+        return typeof plain === 'string' ? { had: true, value: plain } : { had: 'foreign', value: plain }
+    }
+    if (facts.value === 'bool') {
         return typeof value === 'boolean' ? { had: true, value } : { had: false }
     }
     return typeof value === 'string' ? { had: true, value } : { had: false }
@@ -203,7 +224,7 @@ function rowsOfList(value: unknown): readonly (readonly string[])[] | null {
 }
 
 // The reader of a module owner: asset rows of `assets`, the folder document under its prefixed key, and the module's
-// own registry texts. A module has no first messages or chats, and its only field is the toggle definition.
+// own registry paths (the toggle definition and the S5 paths). A module has no first messages or chats.
 export function createModuleLiveReader(module: RisuModule): LiveReader {
     return {
         field: (path) => (isHeldBy(path, 'module') ? readHeld(module, path) : { had: false }),
@@ -592,10 +613,13 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
         } else if (write.op === 'textSet') {
             writeModuleText(next, write.target, write.value)
         } else if (write.op === 'set' && isHeldBy(write.path, 'module')) {
-            // Anything but a value of the path's type deletes an optional key on the copy (when the path's `absent`
-            // says delete); the live module is never written.
+            // A foreign write puts the stored value back, a value of the path's type is assigned, and anything else deletes
+            // the key on the copy when the path's `absent` says delete; the live module is never written.
             const fields = fieldsView(next)
-            if (write.value.had && typeof write.value.value === (factsOf(write.path).value === 'bool' ? 'boolean' : 'string')) {
+            if (write.value.had === 'foreign') {
+                // A foreign write puts the stored value back as a fresh plain copy, never the record's own object.
+                fields[propertyOf(write.path)] = toPlainJson(write.value.value)
+            } else if (write.value.had && typeof write.value.value === (factsOf(write.path).value === 'bool' ? 'boolean' : 'string')) {
                 fields[propertyOf(write.path)] = write.value.value
             } else if (factsOf(write.path).absent === 'delete') {
                 delete fields[propertyOf(write.path)]

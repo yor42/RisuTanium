@@ -3,18 +3,18 @@
 // positive list:
 //   axis A  statements: style rules, @media blocks of style rules and top-level @font-face blocks (the engine and the canonical
 //           tokenizer already refuse every other statement; scopeRules.test.ts pins each refusal);
-//   axis B  selectors: the engine's compound grammar, and every entry names a part of the screen (areaParts.ts);
+//   axis B  selectors: the engine's compound grammar (a trailing ::before or ::after is judged on the compound it ends), and every entry names a part of the screen (areaParts.ts);
 //   axis C  properties: the list below on a part, custom properties and one colour-scheme declaration on the root;
 //   axis D  names: the area's own tokens, `--pack-*` helpers and `pack-` font families.
 // The passes of the engine still apply to what these rules accept.
 import { bare, decls, type Decl } from './csslit'
-import { COMPOUND, normalise, type LintError } from './engine'
+import { COMPOUND, normalise, pseudoElementOf, type LintError } from './engine'
 import { inlinePrivate } from './failclosed'
 import { isAreaPart, type ScopedArea } from './areaParts'
 import { allowedTokenNames, reservedNameReason, stackingNameReason } from './appThemeNames'
 import type { ThemeArea } from './index'
 
-/** The properties a stylesheet may set on a part: effects that stay inside the matched element's box and its descendants and that define no document-wide name. */
+/** The properties a stylesheet may set on a part: effects on the matched element, its descendants and its own ::before and ::after that define no document-wide name. Some paint outside the box (box-shadow, outline, outline-offset, border-image-outset), each within its own caps. */
 export const PROP_ALLOW: readonly RegExp[] = [
     /^(color|opacity|visibility|cursor|pointer-events|user-select|-webkit-user-select|accent-color|caret-color|scrollbar-color|scrollbar-width|color-scheme|fill|stroke|stroke-width|box-shadow|text-shadow)$/,
     /^background(-color|-image|-position(-x|-y)?|-size|-repeat|-clip|-origin)?$/,
@@ -25,6 +25,8 @@ export const PROP_ALLOW: readonly RegExp[] = [
     /^((min-|max-)?(width|height|block-size|inline-size))$/, /^(margin|padding)(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/,
     /^(gap|row-gap|column-gap|order|flex|flex-[a-z-]+|align-(content|items|self)|justify-(content|items|self)|place-(content|items|self)|grid|grid-[a-z-]+)$/,
     /^(border-collapse|border-spacing|table-layout|caption-side|empty-cells)$/,
+    /^outline(-(color|style|width|offset))?$/,
+    /^(clip-path|content|(-webkit-)?mask(-[a-z-]+)?|border-image(-(source|slice|width|outset|repeat))?)$/,
 ]
 export const isAllowedProperty = (prop: string): boolean => PROP_ALLOW.some((pattern) => pattern.test(prop))
 
@@ -73,6 +75,10 @@ export const SHORTHAND_EFFECTS: Readonly<Record<string, ShorthandEffect>> = {
     'text-wrap': { sets: ['text-wrap-mode', 'text-wrap-style'], resets: [] },
     'white-space': { sets: ['white-space-collapse', 'text-wrap-mode'], resets: [] },
     'list-style': { sets: ['list-style-type', 'list-style-position'], resets: [] },
+    outline: { sets: ['outline-color', 'outline-style', 'outline-width'], resets: [] },
+    mask: { sets: ['mask-image', 'mask-position', 'mask-size', 'mask-repeat', 'mask-origin', 'mask-clip', 'mask-composite', 'mask-mode'], resets: [] },
+    '-webkit-mask': { sets: ['-webkit-mask-image', '-webkit-mask-position', '-webkit-mask-size', '-webkit-mask-repeat', '-webkit-mask-origin', '-webkit-mask-clip'], resets: [] },
+    'border-image': { sets: ['border-image-source', 'border-image-slice', 'border-image-width', 'border-image-outset', 'border-image-repeat'], resets: [] },
     margin: { sets: sideLonghands('margin'), resets: [] },
     padding: { sets: sideLonghands('padding'), resets: [] },
     'margin-block': { sets: ['margin-block-start', 'margin-block-end'], resets: [] },
@@ -122,6 +128,8 @@ interface ParsedEntry {
     grammarWhy: string
     compounds: ParsedCompound[]
     siblings: boolean
+    /** The ::before or ::after the entry ends in; '' when it has none. */
+    element: '' | 'before' | 'after'
 }
 
 /** Splits an entry into compounds at descendant and child combinators outside brackets; a sibling combinator or a stray combinator is reported. */
@@ -155,7 +163,8 @@ function splitEntry(entry: string): { compounds: string[], siblings: boolean, st
 
 /** Parses a selector-list entry with the engine's compound grammar; an entry the grammar does not match is outside the pack selector grammar. */
 export function parseSelectorEntry(entry: string): ParsedEntry {
-    const split = splitEntry(entry)
+    const { base, element } = pseudoElementOf(entry)
+    const split = splitEntry(base)
     const compounds: ParsedCompound[] = []
     let grammarWhy = ''
     if (!split.compounds.length) grammarWhy = 'an empty selector'
@@ -168,10 +177,10 @@ export function parseSelectorEntry(entry: string): ParsedEntry {
         }
         compounds.push({ root: m[1] || '', attrs: [...m[2].matchAll(/\[(data-[\w-]+)(?:="([^"\]]*)")?\]/g)].map((a): [string, string | undefined] => [a[1], a[2]]), pseudo: m[3] })
     }
-    return { grammarWhy, compounds, siblings: split.siblings }
+    return { grammarWhy, compounds, siblings: split.siblings, element }
 }
 
-const isRootEntry = (entry: ParsedEntry): boolean => entry.compounds.length === 1 && !!entry.compounds[0].root && !entry.compounds[0].pseudo && entry.compounds[0].attrs.every(([name]) => ROOT_ATTRIBUTES.has(name))
+const isRootEntry = (entry: ParsedEntry): boolean => !entry.element && entry.compounds.length === 1 &&!!entry.compounds[0].root && !entry.compounds[0].pseudo && entry.compounds[0].attrs.every(([name]) => ROOT_ATTRIBUTES.has(name))
 
 const NO_PART_WHY = 'a selector must end in a [data-part="..."] of this screen; one that names no part reaches elements of every screen (MC-1586)'
 const SIBLING_WHY = 'the sibling combinators + and ~ are not allowed in a pack selector: they reach elements the stylesheet does not name (MC-1586)'

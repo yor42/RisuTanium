@@ -24,6 +24,7 @@ export const NEW_BENIGN = {
     ['a field border at 40%', ':root{--nexus-field-border:rgb(255 255 255 / 0.4)}'],
     ['an opaque sheet and toast', ':root{--color-surface-sheet:#10112e;--color-surface-toast:#1d1f48}'],
     ['a focus colour on a focus rule', '[data-part="chat-send"]:focus-visible{background:#fee500 !important;color:#191919 !important}'],
+    ['outline on any part', '[data-part="chat-message-name"]{outline:none}'],
   ],
   chat: [
     ['recolour and reshape Send (reach)', '[data-part="chat-send"]{background:#fee500 !important;color:#191919 !important;border-radius:999px}'],
@@ -71,8 +72,7 @@ export const NEW_HOSTILE = [
   ['all', 'focus ring offset 99', ':root{--nexus-focus-ring-offset:99px}', /critical maximum/],
   ['all', 'touch size 10', ':root{--nexus-touch:10px}', /critical minimum/],
   ['all', 'duration 60s', ':root{--nexus-duration-exit:60s}', /critical maximum/],
-  ['all', 'outline on any part', '[data-part="chat-message-name"]{outline:none}', /outlines/],
-  ['all', 'outline-color transparent', '[data-part="chat-message-name"]:focus-visible{outline-color:transparent}', /outlines/],
+  ['all', 'outline-color transparent', '[data-part="chat-message-name"]:focus-visible{outline-color:transparent}', /indication of focus/],
   ['all', 'focus shadow none', '[data-part="chat-send"]:focus-visible{box-shadow:none}', /indication of focus/],
   ['all', 'focus border transparent', '[data-part="chat-send"]:focus-within{border-color:transparent}', /indication of focus/],
   ['all', 'background on a kind selector', '[data-kind="restore"]{background:#fff}', /background on a selector that names no part/],

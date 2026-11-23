@@ -11,7 +11,7 @@ Both carry all four area sheets (chat, studio, settings, home) from `docs/design
 
 Scratch White additionally bundles Nanum Pen Script (`fonts/NanumPenScript-Regular.ttf`) and its licence text (`fonts/OFL.txt`). The font block that names it is `scratch-white.chat-font.css`, appended to the chat sheet. The built-in Scratch White names no font, so it keeps the reader's own message font.
 
-The downloadable Scratch White has no paper texture yet: it is the flat off-white paper and the ruled-notebook rules of the built-in, plus the handwriting font. A texture needs a validator change that has not been made.
+The downloadable Scratch White has no paper texture yet: it is the flat off-white paper and the ruled-notebook rules of the built-in, plus the handwriting font. The validator now lets a `::before` or `::after` on a part draw a bundled image, but this pack does not use that yet.
 
 ## Pins
 

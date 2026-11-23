@@ -367,19 +367,22 @@ describe('T-2: the family classes cover every allowed padding, margin and border
         expect(READER_ROWS.map((row) => row.prop)).toEqual(FAMILY_CLASSES.READ)
     })
 
-    it('GUARD: the allow-list has exactly four sources that mention padding, margin or border', () => {
+    it('GUARD: the allow-list has exactly five sources that mention padding, margin or border (the fifth is the mask, clip-path, content and border-image entry, which familyClass leaves outside the family)', () => {
         expect(PROP_ALLOW.filter((pattern) => /padding|margin|border/.test(pattern.source)).map((pattern) => pattern.source)).toEqual([
             '^border(-(top|right|bottom|left|block|inline)(-(start|end))?)?(-(width|style|color))?$',
             '^border(-(top|bottom|start|end)-(left|right|start|end))?-radius$',
             '^(margin|padding)(-(top|right|bottom|left|block|inline)(-(start|end))?)?$',
             '^(border-collapse|border-spacing|table-layout|caption-side|empty-cells)$',
+            '^(clip-path|content|(-webkit-)?mask(-[a-z-]+)?|border-image(-(source|slice|width|outset|repeat))?)$',
         ])
     })
 
     it('familyClass agrees with the lists, refuses an unlisted family name and ignores other properties', () => {
         for (const key of CLASS_KEYS) for (const name of FAMILY_CLASSES[key]) expect(familyClass(name), name).toBe(key)
         for (const alias of generatedNames('-webkit-').slice(0, 40)) expect(familyClass(alias), alias).toBe('REFUSED')
-        expect(familyClass('border-image')).toBe('REFUSED')
+        // border-image paints inside the border box and never changes it: outside the family, so a chain part may carry it
+        for (const name of ['border-image', 'border-image-source', 'border-image-slice', 'border-image-width', 'border-image-outset', 'border-image-repeat']) expect(familyClass(name), name).toBeNull()
+        expect(familyClass('-webkit-border-image')).toBe('REFUSED')
         expect(familyClass('padding-block-width')).toBe('REFUSED')
         for (const other of ['color', 'width', 'gap', 'inset-inline', 'box-shadow', 'outline']) expect(familyClass(other), other).toBeNull()
         // the allow-list admits no vendor alias, so each is refused by the family deny-list or by nothing at all

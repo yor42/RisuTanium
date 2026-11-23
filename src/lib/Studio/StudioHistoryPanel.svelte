@@ -5,6 +5,7 @@
     import { alertError } from '../../ts/alert'
     import { language } from '../../lang'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
+    import { lowLevelAskName, runWithLowLevelConfirm } from '../../ts/studio/edit/lowLevelConfirm.svelte'
     import { createStudioToasts, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import type { StepLabel } from '../../ts/studio/history/historyModel'
@@ -136,10 +137,14 @@
         const read: { before: OwnerFields | null } = { before: null }
         let result: StudioResult
         try {
-            result = await svc.replay(key, desc, (apply) => {
+            const around = (apply: () => StudioResult): StudioResult => {
                 read.before = readOwnerFields(key)
                 return runDismissingConsumed(svc, toasts, key, apply)
-            })
+            }
+            const first = await svc.replay(key, desc, around)
+            result = await runWithLowLevelConfirm(first, lowLevelAskName(key), (confirm, expectTop) =>
+                svc.replay(key, desc.kind === 'revert' ? { ...desc, confirm } : { ...desc, expectTop, confirm }, around),
+            )
         } catch (error) {
             // A rejected replay may already have landed its write; the error is shown, whatever became of the panel.
             alertError(error instanceof Error ? error : String(error))
@@ -148,6 +153,8 @@
         if (destroyed) return
         // The panel may have moved to another owner meanwhile: its message belongs to this one.
         if (historyOwner !== key) return
+        // A declined Low Level Access confirm changed nothing: the message stays as it was.
+        if (result.ok === false && result.cancelled) return
         showOutcome(key, result, read.before, desc.kind === 'undo')
     }
 

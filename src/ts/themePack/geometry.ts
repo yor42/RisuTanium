@@ -174,8 +174,10 @@ const NOT_A_PROPERTY_SET: ReadonlySet<string> = new Set(NOT_A_PROPERTY)
 const NOT_MEASURED_SET: ReadonlySet<string> = new Set(NOT_MEASURED)
 // every padding, margin and border name, vendor aliases included; a name in the family with no class is refused
 const FAMILY = /^(-webkit-)?(padding|margin|border)(-[a-z]+)*$/
+// border-image paints inside the border box and never changes it, so it is outside the family
+const BORDER_IMAGE = /^border-image(-(source|slice|width|outset|repeat))?$/
 /** The class of a family property, or null when the name is not in the family. A family name with no listed class is REFUSED. */
-export const familyClass = (prop: string): FamilyClass | null => FAMILY.test(prop) ? CLASS_BY_PROP.get(prop) ?? 'REFUSED' : null
+export const familyClass = (prop: string): FamilyClass | null => !BORDER_IMAGE.test(prop) && FAMILY.test(prop) ? CLASS_BY_PROP.get(prop) ?? 'REFUSED' : null
 
 /** One side's reading in px, per place. */
 type Reading = Partial<Record<InsetSlot, number>>

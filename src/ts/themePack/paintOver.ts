@@ -185,8 +185,8 @@ export function thicknessProblems(value: string, shorthand: boolean): ThicknessP
     return problems
 }
 
-/** The furthest a box-shadow or text-shadow layer may reach past its element, or an inset box-shadow layer into it, in px (MC-2309, MC-2318). */
-export const MAX_OUTER_REACH_PX = 2
+/** The furthest a box-shadow or text-shadow layer may reach past its element, or an inset box-shadow layer into it, in px (MC-3427, MC-3431). */
+export const MAX_OUTER_REACH_PX = 64
 
 const HEX = /^#[0-9a-f]{3,8}$/
 const IDENT = /^[a-z][a-z-]*$/
