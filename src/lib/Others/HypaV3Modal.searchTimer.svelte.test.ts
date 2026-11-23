@@ -71,6 +71,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
+import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
 import { enterKeydown, imeEventSequence } from 'src/ts/ime/tests/imeEventSequence'
 import HypaV3Modal from './HypaV3Modal.svelte'
 
@@ -93,12 +94,17 @@ function installDb(): void {
 
 let mounted: Array<{ target: HTMLElement, app: Record<string, unknown>, open: boolean }> = []
 
-function mountModal(): { target: HTMLElement, entry: (typeof mounted)[number] } {
+async function mountModal(): Promise<{ target: HTMLElement, entry: (typeof mounted)[number] }> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(HypaV3Modal, { target, props: {} }) as unknown as Record<string, unknown>
     const entry = { target, app, open: true }
     mounted.push(entry)
+    flushSync()
+    // The windowed cards mount once the host has read the band.
+    await Promise.resolve()
+    flushSync()
+    await Promise.resolve()
     flushSync()
     return { target, entry }
 }
@@ -113,11 +119,13 @@ function openSearch(target: HTMLElement): HTMLInputElement {
 }
 
 // Runs a search so the jump lands on the first summary match; the textarea is read-only until the timer fires.
-function jumpToFirstSummaryMatch(target: HTMLElement): { field: HTMLInputElement, textarea: HTMLTextAreaElement } {
+async function jumpToFirstSummaryMatch(target: HTMLElement): Promise<{ field: HTMLInputElement, textarea: HTMLTextAreaElement }> {
     const field = openSearch(target)
     imeEventSequence(field, 'alpha')
     flushSync()
     enterKeydown(field)
+    // The jump first mounts its card, which takes a microtask.
+    await vi.advanceTimersByTimeAsync(0)
     flushSync()
     const textarea = Array.from(target.querySelectorAll('textarea')).find((t) => t.readOnly)
     if (!textarea) throw new Error('search jump did not make a textarea read-only')
@@ -125,6 +133,8 @@ function jumpToFirstSummaryMatch(target: HTMLElement): { field: HTMLInputElement
 }
 
 beforeEach(() => {
+    // Every card falls in the window: these tests are about what a card does, not about which cards are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     installDb()
     Element.prototype.scrollIntoView = vi.fn()
     // The desktop branch runs only where the window has no `ontouchend`; jsdom declares the handler property.
@@ -139,6 +149,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+    setWindowGeometryForTests(undefined)
     vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -150,9 +161,9 @@ afterEach(async () => {
 })
 
 describe('T-R-Hypa search jump focus timer', () => {
-    test('guard: while the modal is open, the timer returns focus to the search field and clears readOnly', () => {
-        const { target } = mountModal()
-        const { field, textarea } = jumpToFirstSummaryMatch(target)
+    test('guard: while the modal is open, the timer returns focus to the search field and clears readOnly', async () => {
+        const { target } = await mountModal()
+        const { field, textarea } = await jumpToFirstSummaryMatch(target)
         expect(document.activeElement).toBe(textarea)
         vi.advanceTimersByTime(300)
         expect(textarea.readOnly).toBe(false)
@@ -160,8 +171,8 @@ describe('T-R-Hypa search jump focus timer', () => {
     })
 
     test('the timer does nothing that throws after the modal unmounted', async () => {
-        const { target, entry } = mountModal()
-        jumpToFirstSummaryMatch(target)
+        const { target, entry } = await mountModal()
+        await jumpToFirstSummaryMatch(target)
         await unmount(entry.app as never)
         entry.open = false
         expect(() => vi.advanceTimersByTime(300)).not.toThrow()

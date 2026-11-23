@@ -48,6 +48,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
 import { exportUserPersona } from './persona'
+import { readImage } from './globalApi.svelte'
 
 beforeEach(() => {
     for (const spy of Object.values(spies)) {
@@ -77,5 +78,19 @@ describe('exportUserPersona save result', () => {
 
         expect(spies.normal).toHaveBeenCalledTimes(1)
         expect(spies.clear).not.toHaveBeenCalled()
+    })
+})
+
+describe('exportUserPersona with an icon the access control list refuses (G)', () => {
+    test.each([
+        'Command plugin:fs|read_file not allowed by ACL',
+        'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file',
+    ])('rejects with the refusal for the caller alert and writes no file: %s', async (refusal) => {
+        vi.mocked(readImage).mockRejectedValue(refusal)
+
+        await expect(exportUserPersona()).rejects.toBe(refusal)
+
+        expect(spies.download).not.toHaveBeenCalled()
+        expect(spies.normal).not.toHaveBeenCalled()
     })
 })

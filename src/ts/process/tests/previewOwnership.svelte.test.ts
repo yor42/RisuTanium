@@ -103,10 +103,14 @@ vi.mock(import('src/ts/gui/colorscheme'), () => ({
     updateTextThemeAndCSS: vi.fn(),
 }) as unknown as typeof import('src/ts/gui/colorscheme'))
 
-vi.mock(import('src/ts/process/index.svelte'), () => ({
-    doingChat: writable(false),
-    sendChat: vi.fn(),
-}) as unknown as typeof import('src/ts/process/index.svelte'))
+// `doingChat` is the registry's own "any unit" flag, as in production; a test holds a unit with `simulateRunningSend`.
+vi.mock(import('src/ts/process/index.svelte'), async () => {
+    const { activeUnits } = await import('src/ts/process/activeUnits')
+    return {
+        doingChat: activeUnits.active,
+        sendChat: vi.fn(),
+    } as unknown as typeof import('src/ts/process/index.svelte')
+})
 
 vi.mock(import('src/ts/util'), () => ({
     checkNullish: vi.fn((v: unknown) => v === null || v === undefined),
@@ -198,8 +202,12 @@ import { doingChat as doingChatStore, sendChat } from 'src/ts/process/index.svel
 import { alertMd, alertWait } from 'src/ts/alert'
 import { changeChar } from 'src/ts/characters'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
-import type { Writable } from 'svelte/store'
-const doingChat = doingChatStore as Writable<boolean>
+import { previewMayStart } from 'src/ts/process/previewRunner'
+import { addRunningReplies, resetRunningRepliesForTests } from 'src/ts/nativeReply/runningReplies.svelte'
+import { simulateRunningSend, clearRunningSends } from './activeUnits.test-helpers'
+const doingChat = doingChatStore
+const BOB_CHAT = { chaId: 'bob-1', chatId: 'bob-1-chat-1' }
+const DANA_CHAT = { chaId: 'dana-1', chatId: 'dana-1-chat-1' }
 
 //#region fixtures
 
@@ -228,7 +236,8 @@ function resetFixture() {
     characters[CHARLIE] = makeCharacter('Charlie', 'charlie-1')
     DBState.db = { characters } as unknown as Database
     selectedCharID.set(-1)
-    doingChat.set(false)
+    clearRunningSends()
+    resetRunningRepliesForTests()
 }
 
 let keydownHandler: (ev: KeyboardEvent) => unknown
@@ -301,7 +310,7 @@ async function openComposerWindow(): Promise<{ close: () => Promise<void> }> {
 describe('the preview hotkey while a generation is running', () => {
     test('at Home, it leaves the flag set and sends nothing', async () => {
         selectedCharID.set(-1)
-        doingChat.set(true)
+        simulateRunningSend(BOB_CHAT)
 
         await pressPreviewHotkey()
 
@@ -312,7 +321,7 @@ describe('the preview hotkey while a generation is running', () => {
 
     test('guard: with a character selected, it leaves the flag set and sends nothing', async () => {
         selectedCharID.set(BOB)
-        doingChat.set(true)
+        simulateRunningSend(BOB_CHAT)
 
         await pressPreviewHotkey()
 
@@ -324,7 +333,7 @@ describe('the preview hotkey while a generation is running', () => {
 describe('DevTool Preview Prompt while a generation is running', () => {
     test('guard: it leaves the flag set and sends nothing', async () => {
         selectedCharID.set(BOB)
-        doingChat.set(true)
+        simulateRunningSend(BOB_CHAT)
 
         await runPreviewPrompt('normal', 'prompt', 'chatml', '')
 
@@ -363,7 +372,7 @@ describe('the previews while the composer\'s Send waits on its input step', () =
 describe('switching characters', () => {
     test('changeChar selects the new character while the flag is set', async () => {
         selectedCharID.set(BOB)
-        doingChat.set(true)
+        simulateRunningSend(BOB_CHAT)
 
         await changeChar(CHARLIE)
 
@@ -381,5 +390,30 @@ describe('switching characters', () => {
         await composerWindow.close()
 
         expect(selected).toBe(CHARLIE)
+    })
+})
+
+describe('previews are refused per chat', () => {
+    // P1 (regression reproducer): a unit in another chat does not refuse a preview.
+    test('P1: previewMayStart is true with the selection on Bob while Dana writes', () => {
+        simulateRunningSend(DANA_CHAT)
+        selectedCharID.set(BOB)
+
+        expect(previewMayStart()).toBe(true)
+    })
+
+    // P2 (guard for the unit row, reproducer for the native row): the shown chat's own work refuses.
+    test('P2: previewMayStart is false while the selected chat holds a unit', () => {
+        selectedCharID.set(BOB)
+        simulateRunningSend(BOB_CHAT)
+
+        expect(previewMayStart()).toBe(false)
+    })
+
+    test('P2: previewMayStart is false while the selected chat has a native entry', () => {
+        selectedCharID.set(BOB)
+        addRunningReplies([{ key: 'native-1', target: { ...BOB_CHAT, name: 'running' } }])
+
+        expect(previewMayStart()).toBe(false)
     })
 })

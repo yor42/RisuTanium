@@ -239,10 +239,11 @@ describe('banner, status and notes', () => {
         expect(status.textContent).toBe(language.settingsShellModesStatusAll)
     })
 
-    test('both note lines are always present, including the Home-arrives note', () => {
+    test('the note line is always present and the stale Home-arrives note is gone', () => {
         const target = show()
         expect(part(target, 'settings-mode-visibility-note')?.textContent).toBe(language.settingsShellModesNote)
-        expect(part(target, 'settings-mode-visibility-home-note')?.textContent).toBe(language.settingsShellModesHomeNote)
+        expect(part(target, 'settings-mode-visibility-home-note')).toBeNull()
+        expect(target.textContent).not.toContain(language.settingsShellModesHomeNote)
         expect(part(target, 'settings-mode-visibility-title')?.textContent).toBe(language.settingsShellModesTitle)
     })
 })

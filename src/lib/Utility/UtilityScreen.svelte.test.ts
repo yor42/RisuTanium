@@ -66,7 +66,7 @@ vi.mock('../UI/ModelList.svelte', () => ({
 
 import { language } from 'src/lang'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
-import { newUtilityConversation, utilityConversation } from 'src/ts/process/utility/utilityConversation.svelte'
+import { newUtilityConversation, utilityConversation, utilitySelection } from 'src/ts/process/utility/utilityConversation.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
 import MainMenu from '../UI/MainMenu.svelte'
@@ -153,6 +153,7 @@ beforeEach(async () => {
     seed([GOOD])
     setPageStorageMode({ kind: 'store2' })
     await newUtilityConversation(async () => true)
+    utilitySelection.presetId = ''
     utilityOpen.set(false)
 })
 
@@ -164,6 +165,27 @@ afterEach(async () => {
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
     resetPageStorageModeForTests()
+})
+
+describe('the chosen preset survives a remount', () => {
+    test('(R) #619: reopening the screen keeps the preset, so Send is enabled once text is typed', async () => {
+        const first = open(UtilityScreen)
+        const select = first.querySelector<HTMLSelectElement>('select')!
+        select.value = 'p1'
+        select.dispatchEvent(new Event('change', { bubbles: true }))
+        flushSync()
+        const { instance, target } = mounted.pop()!
+        await unmount(instance as never)
+        target.remove()
+
+        const second = open(UtilityScreen)
+        expect(second.querySelector<HTMLSelectElement>('select')!.value).toBe('p1')
+        const input = byId<HTMLTextAreaElement>(second, 'utility-input')
+        input.value = 'hello'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        expect(buttonWithText(second, language.utility.send).disabled).toBe(false)
+    })
 })
 
 describe('the Home card follows the desktop transport and the page mode', () => {

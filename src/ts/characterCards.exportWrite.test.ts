@@ -581,3 +581,44 @@ describe('CharX export onto a TauriWriter', () => {
         expect(h.log).not.toContain('normal:' + language.successExport)
     })
 })
+
+describe('a card export whose image read the access control list refuses (G)', () => {
+    const refusals = [
+        'Command plugin:fs|read_file not allowed by ACL',
+        'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file',
+    ]
+    const realFetch = globalThis.fetch
+
+    afterEach(() => {
+        globalThis.fetch = realFetch
+        vi.mocked(readImage).mockImplementation(async () => h.png)
+    })
+
+    test.each(refusals)('the png portrait rejects with the refusal, writes nothing and never falls back to the placeholder: %s', async (refusal) => {
+        const fetchMock = vi.fn(async () => new Response(syntheticPng().buffer as ArrayBuffer, { status: 200 }))
+        globalThis.fetch = fetchMock as unknown as typeof fetch
+        vi.mocked(readImage).mockImplementation(async () => { throw refusal })
+        await expect(exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })).rejects.toBe(refusal)
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(h.recorded).toEqual([])
+        expect(h.download).not.toHaveBeenCalled()
+        expect(h.log).not.toContain('normal:' + language.successExport)
+    })
+
+    test.each(refusals)('a v3 json asset fails the export with the refusal and the incomplete-file sentence on an Android document: %s', async (refusal) => {
+        const char = syntheticCharacter()
+        char.ccAssets = [{ type: 'x-risu-asset', uri: 'synthetic-asset/a0', name: 'a0', ext: 'png' }] as unknown as character['ccAssets']
+        vi.mocked(readImage).mockImplementation(async (key: string) => {
+            if (key === 'synthetic-asset/a0') {
+                throw refusal
+            }
+            return h.png
+        })
+        h.path = 'content://synthetic/document'
+        h.android = true
+        expect(await exportCharacterCard(char, 'json', { spec: 'v3' })).toBe(false)
+        expect(taskHostView()?.failure?.detail).toBe(refusal + '\n' + language.exportFailedFileIncomplete)
+        expect(taskHostView()?.result).toBeUndefined()
+        expect(h.events).not.toContain('close')
+    })
+})

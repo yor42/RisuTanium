@@ -8,8 +8,9 @@ import { SvelteMap, SvelteSet } from 'svelte/reactivity'
  * `index.svelte.ts` and every module that imports it can depend on it without
  * a cycle.
  *
- * `doingChat` stays in `index.svelte.ts`. A starter is busy while that flag is
- * set or while `isComposerWindowOpen()` is true.
+ * `doingChat` stays in `index.svelte.ts`. Starters refuse per chat through
+ * `sendAdmission.starterRefusalIn`; `doingChat` and `isComposerWindowOpen()`
+ * remain the "any" readers.
  */
 
 /** One open composer window: the chat it is held for, never an active unit. */
@@ -51,6 +52,11 @@ export function composerWindowFor(target: { chaId: string, chatId: string }): bo
         }
     }
     return false
+}
+
+/** A copy of the chat target of every open window, so a caller may stop work while windows close. */
+export function composerWindowTargets(): { chaId: string, chatId: string }[] {
+    return [...composerWindows].map((entry) => ({ chaId: entry.target.chaId, chatId: entry.target.chatId }))
 }
 
 /** Test-only: drops every open window. Never called from production code. */

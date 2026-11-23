@@ -2,7 +2,8 @@ import { get } from 'svelte/store'
 import { SvelteSet } from 'svelte/reactivity'
 import { DBState, selectedCharID } from '../stores.svelte'
 import type { Message, character, Chat, groupChat } from '../storage/database.svelte'
-import { doingChat, sendChat } from './index.svelte'
+import { sendChat } from './index.svelte'
+import { chatKeyOf, sendRefusalIn, starterRefusalIn } from './sendAdmission'
 import { hasChimedFor, hasFailedFor, hasSilencedFor, replySoundFor } from './replyNotice'
 import type { SendChatOriginHint } from './index.svelte'
 import { sleep } from '../util'
@@ -16,11 +17,11 @@ import { ensureModulesOrAlert } from './moduleEnsure'
 import { hasModuleStubs } from './moduleRefList'
 import { isColdChat } from './coldstorageData'
 import { isExpTranslator, translate } from '../translator/translator'
-import { beginWork, isBusyIn, isShownChat, originStatus, stopAllReplyWork, stopWorkIn, writeAt, type Origin, type WorkHandle } from './chatOrigin'
+import { beginWork, busyTargets, isBusyIn, isShownChat, originStatus, stopAllReplyWork, stopWorkIn, writeAt, type Origin, type WorkHandle } from './chatOrigin'
 import { rerollBase } from './rerollHistory'
 import { detachTail, endTarget, refuseUnreadableAlt, siblingsAt, stampMissingIds, switchTo } from './chatTree'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
-import { composerWindowFor, isComposerWindowOpen, openComposerWindow, resetComposerWindowsForTests, turnsReachedCount, type ComposerWindow } from './generationOwnership.svelte'
+import { composerWindowFor, composerWindowTargets, isComposerWindowOpen, openComposerWindow, resetComposerWindowsForTests, turnsReachedCount, type ComposerWindow } from './generationOwnership.svelte'
 import { registerDraft, unregisterDraft, COMPOSER_DRAFT_KIND } from '../localDrafts'
 import * as composerDrafts from './composerDrafts.svelte'
 import type { ComposerDraftKey } from './composerDrafts.svelte'
@@ -41,9 +42,9 @@ const MAX_QUIET_TICKS = 50
  * it, open from a Send's take, from the start of a Continue, reroll, unreroll
  * or auto mode, until that action's generation hand-off returns), a lock (a
  * Send's own span, from the take until the moment before generation starts or
- * until the values go back) and a generation controller. A handle is released
- * only by its own holder and releasing it twice changes nothing, so a late
- * finally never clears a newer action's state.
+ * until the values go back). A handle is released only by its own holder and
+ * releasing it twice changes nothing, so a late finally never clears a newer
+ * action's state.
  * `autoRun` is the one running auto-mode loop; a toggle or an abort click in
  * any mounted composer instance -- including one mounted after the loop
  * started -- reaches it. All of this is global and survives a remount.
@@ -73,23 +74,6 @@ interface AutoRun {
 
 let autoRun = $state.raw<AutoRun | null>(null)
 
-/** A generation's abort controller, held so stop-all can reach it. */
-interface GenerationHold {
-    readonly controller: AbortController
-    release(): void
-}
-
-const generations = new Set<GenerationHold>()
-
-function holdGeneration(controller: AbortController): GenerationHold {
-    const hold: GenerationHold = {
-        controller,
-        release: () => { generations.delete(hold) },
-    }
-    generations.add(hold)
-    return hold
-}
-
 /**
  * The chat a generation writes into, and the objects it was read through.
  * `sendChatMain` hands both to `sendChat`, so a switch of chat, character or
@@ -114,8 +98,8 @@ interface GenerationTarget {
  * record before its push; a
  * successful push never sets it, and instead removes the record from `inflights`
  * directly (see the `inflights.delete` call sites in `sendMain`), which is what stops a
- * later `abortChat` call from treating an already-pushed send as still
- * cancelable. `wrote` is true from the moment the take's own `/` pipe starts a
+ * later `stopTake` call (the Send's registration stop) from treating an
+ * already-pushed send as still cancelable. `wrote` is true from the moment the take's own `/` pipe starts a
  * command that can change chat state, whether or not that command then changes
  * anything; nothing else sets it. `sendMain`'s own `finally` always runs
  * `inflights.delete` and ends the work handle -- both are harmless to
@@ -149,17 +133,17 @@ function textToPutBack(record: InflightRecord): string {
 
 /**
  * The Sends currently between their take and their push. A record leaves the
- * set the moment its span ends, whichever way -- so a later `abortChat` call
- * (during generation, or with nothing in flight) falls through to aborting
- * the held generation controllers, instead of re-cancelling a send that has
- * already finished with it.
+ * set the moment its span ends, whichever way -- so a later `stopTake` call
+ * through the Send's registration (during generation, or with nothing in
+ * flight) falls through to aborting the send's own controller, instead of
+ * re-cancelling a send that has already finished with it.
  */
 const inflights = new Set<InflightRecord>()
 
 /**
  * Test-only reset: clears whatever in-flight record a stuck test left
- * behind, closes every window and lock, stops auto mode and drops the held
- * generation controllers, and clears every stored composer draft --
+ * behind, closes every window and lock, stops auto mode, and clears every
+ * stored composer draft --
  * so a timed-out test cannot cascade into every test that runs after it.
  * Never called from production code.
  */
@@ -171,7 +155,6 @@ export function resetComposerActionsForTests(): void {
     locks.clear()
     resetComposerWindowsForTests()
     autoRun = null
-    generations.clear()
     composerDrafts.resetComposerDraftsForTests()
 }
 
@@ -219,8 +202,8 @@ export interface GenerationRequest {
 /**
  * The composer's live state, reached through its hooks. The menu-close hook
  * is required: the three text/file values are reached by key through
- * `composerDrafts.svelte.ts`, and auto mode's running state and the current
- * generation's abort controller are this module's own state, not per instance.
+ * `composerDrafts.svelte.ts`, and auto mode's running state is this module's
+ * own state, not per instance.
  *
  * `refuseGeneration` is optional. It runs synchronously, before a Send or
  * Send takes the draft, and before a Continue or a new reply starts, and returns
@@ -270,13 +253,6 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
         return
     }
 
-    if(get(doingChat)){
-        return
-    }
-    if(isComposerWindowOpen()){
-        return
-    }
-
     const selectedChar = get(selectedCharID)
     const char = DBState.db.characters[selectedChar]
     if(!char){
@@ -284,6 +260,11 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     }
     const startChat = char.chats?.[char.chatPage]
     if(!startChat){
+        return
+    }
+    // Only this chat's own work, a native reply for it, or an open window in it refuses the send: another chat's
+    // reply does not.
+    if(starterRefusalIn(chatKeyOf(char, startChat)) !== null){
         return
     }
 
@@ -329,12 +310,6 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     const takenMessageInput = taken.messageInput
     const takenMessageInputTranslate = taken.messageInputTranslate
     const takenFileInput = taken.fileInput
-
-    // Held here, at the take, not only inside sendChatMain's own later hold:
-    // a busy-button click in the gap between the append and the hand-off to
-    // generation (sendMain's post-append sleep) reaches abortChat's loop over
-    // the held controllers, which aborts the send's own controller.
-    const generation = holdGeneration(controller)
 
     const window = openComposerWindow(workHandle.origin)
     const lock = acquireLock(workHandle.origin)
@@ -486,8 +461,8 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
         }
 
         // Past this point a busy-button click aborts generation (the
-        // fallback path in abortChat below), not this record: nothing is
-        // put back once the message has landed.
+        // fallback in stopTake), not this record: nothing is put back once
+        // the message has landed.
         inflights.delete(record)
         unregisterDraft(record.draftKey)
         await sleep(10)
@@ -499,13 +474,12 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     finally {
         // A finally acts only on its own action: once the busy button has
         // already cancelled this record, its cleanup already ran, and a
-        // second pass here must not put the values back again. Its window,
-        // lock and generation hold are its own handles, released by identity
-        // and harmless to release twice, so a newer send's are never touched.
+        // second pass here must not put the values back again. Its window and
+        // lock are its own handles, released by identity and harmless to
+        // release twice, so a newer send's are never touched.
         const alreadySettled = record.settled
         inflights.delete(record)
         workHandle.end()
-        generation.release()
         if(!alreadySettled){
             unregisterDraft(record.draftKey)
             if(outcome === 'refused'){
@@ -533,8 +507,8 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
  * With no reply to extend (the last message is not a character's) it ends
  * before the source is asked and before the window opens, and the source may
  * drop a refusal it recorded for this action. The busy button reaches the
- * generation through the held generation controllers; nothing here is cancelable
- * before it.
+ * generation through the work registration, which aborts the controller;
+ * nothing here is cancelable before it.
  */
 async function continueLastReply(source: ComposerActionsSource, char: character | groupChat, startChat: Chat): Promise<void> {
     const controller = new AbortController()
@@ -610,15 +584,13 @@ function enterTree(target: TreeTarget): TreeEntry | null {
     if(refuseColdSelectedChat()){
         return null
     }
-    if(get(doingChat)){
-        return null
-    }
-    if(isComposerWindowOpen()){
-        return null
-    }
     const char = DBState.db.characters[get(selectedCharID)]
     const chat = char?.chats?.[char.chatPage]
     if(!char || !chat){
+        return null
+    }
+    // Every step is refused in a chat with work, a window or a native reply, including one that generates nothing.
+    if(starterRefusalIn(chatKeyOf(char, chat)) !== null){
         return null
     }
     // Fills a missing chat id, as a reroll always has: the records that follow
@@ -839,10 +811,6 @@ export async function sendChatMain(target: GenerationTarget, continued: boolean 
     // the time the send is handed over or has finished.
     // Only a take empties a record -- generation itself never writes one.
     const controller = existingController ?? new AbortController()
-    // Module state, not per instance, so the busy button in any composer
-    // instance -- including one mounted after generation started -- aborts
-    // this same generation.
-    const generation = holdGeneration(controller)
     let completed = false
     let threw = false
     try {
@@ -856,9 +824,6 @@ export async function sendChatMain(target: GenerationTarget, continued: boolean 
         threw = true
         console.error(error)
         alertError(error)
-    }
-    finally {
-        generation.release()
     }
     // A reply that finished off screen already sounded once in `announceReply`, whichever channel carried the sound. A stopped
     // reply plays nothing; a failed one plays only the error cue; the chime and the receive cue never both play for one reply.
@@ -918,30 +883,20 @@ function stopTake(controller: AbortController): void {
 }
 
 export function abortChat(): void {
-    // Stop-all: every send, preview and recovered apply, the auto run, every
-    // unsettled take and every held generation controller. Each step works on
-    // a snapshot, and the loops never stop at the first entry. A throw inside
-    // one step is not isolated and still skips the later steps.
+    // Stop-all is each chat's own Stop (MC-3790): every chat that shows Stop,
+    // by a reply or preview registration or an open composer window, gets
+    // exactly what that chat's Stop does, so a take, an auto run, a
+    // regenerate and a trigger run beside a reply stop through their own
+    // registrations. The chats are fixed before the first stop, since each
+    // stop closes windows and ends registrations. A throw in one registration's
+    // stop is isolated by `stopRegistrations`, so it never skips another chat.
+    // The sweep then stops every reply and preview, whatever chat holds it,
+    // including a recovered apply.
+    const targets = [...composerWindowTargets(), ...busyTargets()]
+    for(const target of targets){
+        stopComposerWorkIn(target)
+    }
     stopAllReplyWork()
-    autoRun = null
-    // A Send still between its take and its push is cancelled at once here,
-    // rather than waiting for its stalled step to resolve and unwind on its
-    // own: its window and lock close immediately, and the taken values go
-    // back to the origin's own record by key. The state is global, so any
-    // composer instance's busy button can cancel it, whichever instance (or
-    // none) is showing that record now.
-    for(const record of [...inflights]){
-        if(!record.settled){
-            cancelInflight(record)
-        }
-    }
-    // The module-level controllers, not a per-instance one -- so the busy
-    // button in any composer instance, including one mounted after generation
-    // started, aborts them. Aborting an already finished (or already
-    // aborted) controller is harmless.
-    for(const hold of [...generations]){
-        hold.controller.abort()
-    }
 }
 
 /** True while the chat on screen is the one `origin` names. */
@@ -976,12 +931,12 @@ export async function runAutoMode(source: ComposerActionsSource): Promise<void> 
         autoRun = null
         return
     }
-    if(get(doingChat) || isComposerWindowOpen()){
-        return
-    }
     const char = DBState.db.characters[get(selectedCharID)]
     const chat = char?.chats?.[char.chatPage]
     if(!char || !chat){
+        return
+    }
+    if(starterRefusalIn(chatKeyOf(char, chat)) !== null){
         return
     }
     // Every tick generates into the chat auto mode was started in. A delete of
@@ -1007,10 +962,11 @@ export async function runAutoMode(source: ComposerActionsSource): Promise<void> 
     try {
         let quietTicks = 0
         while(autoRun === run){
-            // The flag and the chat on screen are read in the same synchronous
-            // stretch as the tick's `sendChat`: no await between the reads
-            // and the call.
-            if(get(doingChat) || !isShowingChat(target.origin)){
+            // The run's chat and the chat on screen are read in the same
+            // synchronous stretch as the tick's `sendChat`: no await between
+            // the reads and the call. The run's own window is open, so only
+            // the send rules apply here.
+            if(sendRefusalIn(run.target) !== null || !isShowingChat(target.origin)){
                 break
             }
             const turnsBefore = turnsReachedCount(target.origin)
@@ -1025,7 +981,7 @@ export async function runAutoMode(source: ComposerActionsSource): Promise<void> 
             // A quiet tick (a group with nobody to speak) ends without awaiting
             // anything, and would otherwise let the next one start on resolved
             // promises alone and never hand control back to the page. A stop,
-            // a switch of chat, or another send taking the flag that lands
+            // a switch of chat, or another send taking the chat that lands
             // here is seen at the top of the loop before another tick starts.
             await yieldToEventLoop()
         }

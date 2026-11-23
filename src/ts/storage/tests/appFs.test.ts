@@ -70,11 +70,11 @@ describe.each(['android', 'windows'] as const)('the native arm on %s', (os) => {
         const w = install(os)
         const { appFsMkdirAll } = await import('../appFs')
 
-        await appFsMkdirAll('a/b/c')
-        await appFsMkdirAll('a/b/c')
+        await appFsMkdirAll('assets/b/c')
+        await appFsMkdirAll('assets/b/c')
 
-        expect(w.fs.directories.has('a/b/c')).toBe(true)
-        expect(w.callsOf('app_fs_mkdir_all').map((call) => call.args)).toEqual([{ key: 'a/b/c' }, { key: 'a/b/c' }])
+        expect(w.fs.directories.has('assets/b/c')).toBe(true)
+        expect(w.callsOf('app_fs_mkdir_all').map((call) => call.args)).toEqual([{ key: 'assets/b/c' }, { key: 'assets/b/c' }])
         expect(w.plugin()).toEqual([])
     })
 
