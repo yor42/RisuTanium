@@ -189,7 +189,8 @@ The adapter table (`PRESET_FIELDS`, 6.2) names per path the slot property, the d
 
 ### 4.3 Writing "not set"
 
-- Only undo, redo, revert or a restore point write `{ had: false }`: the key is deleted, except `localStopStrings` and `thinkingTokens`, which get `null` (what save and `setPreset` produce, `:2362, :2395, :2513, :2552`). Read-after-write is `{ had: false }`.
+- **Added in S4c (PR 736):** the service entry `clearField` also writes `{ had: false }`, as one step of its own. It turns a preset's stop strings off, and S4d uses it to remove the icon. It refuses `precondition` for a path a builtin owner kind holds and for a path outside the owner kind's row, so it reaches only session-only paths and cannot turn a risky flag on. A path that is already not set changes nothing.
+- Otherwise only undo, redo, revert or a restore point write `{ had: false }`: the key is deleted, except `localStopStrings` and `thinkingTokens`, which get `null` (what save and `setPreset` produce, `:2362, :2395, :2513, :2552`). Read-after-write is `{ had: false }`.
 - **The working copy never loses a required setting.** A `{ had: false }` write onto the **active** copy of a "keeps" field (main prompt, temperature, model, ...) is refused `precondition` before anything is written. It arises when an edit made while inactive is undone after the preset became active; deleting `db.mainPrompt` would break the request path. The step stays (check hook, 6.3).
 - A `{ had: false }` write of a **not set = off** field onto the active copy is allowed: the key is deleted (or set `null`), which is what a switch to a preset without it leaves.
 - **A restore point is refused whole** when its batch holds a `{ had: false }` write of a keeps field onto the now-active copy (the hook sees the whole batch): a restore point taken while the preset was inactive, before a keeps field was first set, cannot be applied after switching to it, and none of its other paths are restored either. The refusal reads as any precondition refusal ("changed elsewhere").
@@ -267,7 +268,7 @@ Switches (`CheckInput` styling of Studio) and selects/segmented controls offerin
 ### 5.4 Lists
 
 - **Fallback model lists and stop strings:** rows of one control each (`ModelList blankable` or a text input) with a remove button per row (classic removes only the last fallback; Studio removes any row, design default), an add button, and move up/down per row (design default; order is the fallback order, `request/request.ts:264`). Known limitation: loading the profile strips blank entries from the working `fallbackModels` (`database.svelte.ts:688-693`), so a blank row on the active preset disappears at the next reload, as in classic.
-- **Bias:** rows of token text + value (−101..100), remove per row, add. Duplicate tokens get the info note "같은 토큰이 있어요" as SLICE4 §4.2 (design default). **Import and export JSON (MC-4039):** export downloads `bias.json` holding `JSON.stringify(list, null, 2)` (`BotSettings.svelte:685-688`); import picks one `.json` file and replaces the whole list as one step (`:689-698`). Classic stores any parsed array; a file whose entries are not all `[string, finite number]` is refused whole with the note "This file isn't a bias list" and nothing is written (MC-4042).
+- **Bias:** rows of token text + value (−101..100), remove per row, add. Duplicate tokens get the info note "같은 토큰이 있어요" as SLICE4 §4.2 (design default). **Import and export JSON (MC-4039):** export downloads `bias.json` holding `JSON.stringify(list, null, 2)` (`BotSettings.svelte:685-688`); import picks one `.json` file and replaces the whole list as one step (`:689-698`). Classic stores any parsed array; a file whose entries are not all `[string, finite number]` is refused whole with the note "This file isn't a bias list" and nothing is written (MC-4042). A stored bias value that is not a valid bias list shows read-only with the existing note `studioBiasUnreadable` and nothing writes it, as the S2 character bias does (lane A confirmation on PR 736, 2026-11-24).
 - **Format order:** move up/down only; no add or remove (classic `DropList`). Unknown items in a stored list are shown and kept.
 - **Model tools:** one "Search" switch; any other stored entries are kept untouched.
 - Every list operation is one step; an empty list is stored as `[]` (except stop strings' off state).
@@ -478,6 +479,7 @@ New keys (labels are `FIELD_PRESENTATION` targets where marked †, so they must
 | `studioPresetBias` † | Logit bias | c |
 | `studioPresetBiasDuplicate` | 같은 토큰이 있어요 / The same token is listed more than once | c |
 | `studioPresetModelTools` † | Model tools | c |
+| `studioPresetBiasImportInvalid` (added in S4c; the reused bias note is `studioBiasUnreadable`, from S2) | This file isn't a bias list | c |
 | `studioPresetIconRemove` | Remove icon | d |
 
 Korean strings come from the translator (MC-058); the Korean in this table is SLICE4's existing wording.

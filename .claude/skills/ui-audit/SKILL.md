@@ -32,7 +32,7 @@ This is the check half of UI-S7 (MC-1699). It records defects; it changes no cod
   - **Fold 7:** no adb.
 - **Run slots.**
   - A `pnpm dev` server needs no slot.
-  - A production build for captures takes slot B: create the directory `%TEMP%\risu-b715\fullrun-slot-b` plus `owner.txt` naming you and the time. If the directory exists, wait. Remove it when done. Prefer `pnpm dev` unless the brief needs prod.
+  - A production build for captures takes one of the two shared heavy-job slots under the run-slot rules in [gates](../../../docs/workflow/gates.md) (MC-3775): slot A (`%TEMP%\risu-b715\fullrun-slot`) or slot B (`fullrun-slot-b`), only with at least 14 GB free RAM, with `owner.txt` naming you and the time. If both exist, wait. Remove only your own slot when done. Prefer `pnpm dev` unless the brief needs prod.
 - **Protected files.**
   - Never edit `Legal.svelte`, the ToS, the Privacy Policy or `docs/branding/**`.
   - Screens that render them may be captured for accessibility findings only, with no restyle proposals. Mark those rows "protected file: maintainer".
