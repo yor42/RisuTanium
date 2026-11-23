@@ -11,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 const h = vi.hoisted(() => ({ marks: 0 }))
 
 vi.mock('src/ts/globalApi.svelte', () => ({ getSaveMarkCount: () => h.marks }))
+// The add menu loads its language codes from util, whose module graph is the whole app.
+vi.mock('src/ts/util', () => ({ languageCodes: ['af', 'en', 'ja', 'ko'] }))
 
 const db = $state({ db: { characters: [] as LiveCharacter[], showUnrecommended: false } })
 const selection = $state({ selId: 0 })
@@ -45,6 +47,7 @@ import { createMacroIndex } from 'src/ts/studio/longText/macroIndex'
 import { setMacroIndexForTests } from 'src/ts/studio/longText/macroIndexService'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
+import { languageName } from '../../ts/studio/edit/creatorNotesLanguages'
 import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
@@ -64,6 +67,8 @@ interface LiveCharacter {
     nickname?: string
     defaultVariables?: string
     translatorNote?: string
+    creatorNotes?: string
+    removedQuotes?: boolean
     depth_prompt?: { depth: number; prompt?: string }
     additionalData?: { tag: string[]; creator?: string; character_version?: string }
     chats: { id: string; note: string }[]
@@ -82,6 +87,7 @@ function makeCharacter(overrides: Partial<LiveCharacter> = {}): LiveCharacter {
         scenario: '',
         defaultVariables: 'a=1',
         translatorNote: 'tn',
+        creatorNotes: 'my plain upstream note',
         chats: [{ id: 'c1', note: 'n0' }],
         chatPage: 0,
         ...overrides,
@@ -203,7 +209,7 @@ describe('T1-UI the advanced form text fields', () => {
         await mountWith('prompts')
         mountForm('details')
         await settle()
-        for (const name of ['studio-form-system-prompt', 'studio-form-replace-global-note', 'studio-form-additional-text', 'studio-form-depth-prompt', 'studio-form-creator', 'studio-form-character-version', 'studio-form-nickname', 'studio-form-default-variables', 'studio-form-translator-note']) {
+        for (const name of ['studio-form-system-prompt', 'studio-form-replace-global-note', 'studio-form-additional-text', 'studio-form-depth-prompt', 'studio-form-creator', 'studio-form-character-version', 'studio-form-nickname', 'studio-form-default-variables', 'studio-form-translator-note', 'studio-form-creator-notes']) {
             expect(part(name), name).not.toBeNull()
         }
         expect(document.body.textContent).toContain('systemPrompt')
@@ -320,5 +326,126 @@ describe('T1-UI the advanced form text fields', () => {
             expect(live().personality).toBe('')
             expect(part('studio-form-personality')).not.toBeNull()
         })
+    })
+})
+
+describe('T2-CN-UI the creator notes field', () => {
+    const PLAIN = 'my plain upstream note'
+    const DUPLICATE = '\n# `en`\nfirst\n# `en`\nsecond'
+    const tabs = (): HTMLElement[] => Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]'))
+    const tabNamed = (name: string): HTMLElement => tabs().find((tab) => tab.textContent === name) as HTMLElement
+    const plus = (): HTMLElement => document.querySelector<HTMLElement>('[aria-label="studioCreatorNotesAddLang"][aria-expanded]') as HTMLElement
+    const click = (element: HTMLElement): void => {
+        element.click()
+        flushSync()
+    }
+    const KO = languageName('ko')
+    const EN = languageName('en')
+    const addKo = async (): Promise<void> => {
+        click(plus())
+        await settle()
+        click(Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((item) => item.textContent === KO) as HTMLElement)
+    }
+
+    test('a plain upstream note shows as one EN tab, and typing at its end writes the classic string as one step that an undo restores byte for byte', async () => {
+        const rig = await mountWith('details')
+        expect(tabs().map((tab) => tab.textContent)).toEqual([EN])
+        expect(area('studio-form-creator-notes').value).toBe(PLAIN)
+        typeIn(area('studio-form-creator-notes'), `${PLAIN}!`)
+        typeIn(area('studio-form-creator-notes'), `${PLAIN}!!`)
+        expect(live().creatorNotes).toBe('\n# `en`\nmy plain upstream note!!')
+        expect(stepsOf(rig.service)).toHaveLength(1)
+        expect(stepsOf(rig.service)[0].label).toEqual({ kind: 'field', field: 'creatorNotes' })
+        expect(rig.service.undo(A).ok).toBe(true)
+        expect(live().creatorNotes).toBe(PLAIN)
+    })
+
+    test('mounting, a tab switch and the add menu write nothing', async () => {
+        // Untagged text before a section is what classic's own tab click would rewrite; Studio leaves the stored string alone.
+        const rig = await mountWith('details', { creatorNotes: 'intro\n# `ko`\nk' })
+        expect(tabs().map((tab) => tab.textContent)).toEqual([KO, EN])
+        click(tabNamed(KO))
+        expect(area('studio-form-creator-notes').value).toBe('k')
+        click(tabNamed(EN))
+        expect(area('studio-form-creator-notes').value).toBe('intro\n')
+        click(plus())
+        await settle()
+        click(plus())
+        expect(live().creatorNotes).toBe('intro\n# `ko`\nk')
+        expect(h.marks).toBe(0)
+        expect(stepsOf(rig.service)).toHaveLength(0)
+    })
+
+    test('a new language is a draft until it has text; typing writes the classic string, and emptying it removes the section but keeps the tab', async () => {
+        const rig = await mountWith('details')
+        await addKo()
+        expect(tabs().map((tab) => tab.textContent)).toEqual([EN, KO])
+        expect(area('studio-form-creator-notes').value).toBe('')
+        expect(live().creatorNotes).toBe(PLAIN)
+        expect(h.marks).toBe(0)
+        typeIn(area('studio-form-creator-notes'), 'K')
+        expect(live().creatorNotes).toBe('\n# `en`\nmy plain upstream note\n# `ko`\nK')
+        typeIn(area('studio-form-creator-notes'), '')
+        expect(live().creatorNotes).toBe('\n# `en`\nmy plain upstream note')
+        expect(tabs().map((tab) => tab.textContent)).toEqual([EN, KO])
+        expect(stepsOf(rig.service)).toHaveLength(1)
+        expect(rig.service.undo(A).ok).toBe(true)
+        expect(live().creatorNotes).toBe(PLAIN)
+    })
+
+    test('a duplicated header shows its last body; typing writes one section and an undo restores both', async () => {
+        const rig = await mountWith('details', { creatorNotes: DUPLICATE })
+        expect(area('studio-form-creator-notes').value).toBe('second')
+        typeIn(area('studio-form-creator-notes'), 'secondX')
+        expect(live().creatorNotes).toBe('\n# `en`\nsecondX')
+        expect(rig.service.undo(A).ok).toBe(true)
+        expect(live().creatorNotes).toBe(DUPLICATE)
+    })
+
+    test('emptying the EN tab writes one space for it and keeps the other languages', async () => {
+        await mountWith('details', { creatorNotes: '\n# `en`\nhello\n# `ko`\nannyeong' })
+        typeIn(area('studio-form-creator-notes'), '')
+        expect(live().creatorNotes).toBe('\n# `en`\n \n# `ko`\nannyeong')
+    })
+
+    test('a tab switch closes the open step, so typing on after it starts a new step', async () => {
+        const rig = await mountWith('details', { creatorNotes: '\n# `en`\nhello\n# `ko`\nannyeong' })
+        typeIn(area('studio-form-creator-notes'), 'hello1')
+        click(tabNamed(KO))
+        click(tabNamed(EN))
+        typeIn(area('studio-form-creator-notes'), 'hello12')
+        expect(stepsOf(rig.service)).toHaveLength(2)
+        expect(live().creatorNotes).toBe('\n# `en`\nhello12\n# `ko`\nannyeong')
+    })
+
+    test('with the quote dismissed, the first edit clears it in the same step and an undo restores both', async () => {
+        const rig = await mountWith('details', { removedQuotes: true })
+        typeIn(area('studio-form-creator-notes'), 'x')
+        expect(live().removedQuotes).toBe(false)
+        expect(stepsOf(rig.service)).toHaveLength(1)
+        expect(stepsOf(rig.service)[0].ops).toHaveLength(2)
+        expect(rig.service.undo(A).ok).toBe(true)
+        expect(live().removedQuotes).toBe(true)
+        expect(live().creatorNotes).toBe(PLAIN)
+    })
+
+    test('a character without the creator notes key refuses a typed edit with the precondition line and no error', async () => {
+        const rig = await mountWith('details', { creatorNotes: undefined })
+        expect(area('studio-form-creator-notes').value).toBe('')
+        expect(() => typeIn(area('studio-form-creator-notes'), 'x')).not.toThrow()
+        expect(refusalLine()).toBe(refusalText('precondition'))
+        expect('creatorNotes' in live() && live().creatorNotes !== undefined).toBe(false)
+        expect(h.marks).toBe(0)
+        expect(stepsOf(rig.service)).toHaveLength(0)
+    })
+
+    test('the add menu lists KO first and leaves out the tabs already shown', async () => {
+        await mountWith('details', { creatorNotes: '\n# `en`\nhello\n# `ja`\nj' })
+        click(plus())
+        await settle()
+        const names = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).map((item) => item.textContent)
+        expect(names[0]).toBe(KO)
+        expect(names).not.toContain(EN)
+        expect(names).not.toContain(languageName('ja'))
     })
 })

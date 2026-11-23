@@ -94,6 +94,7 @@ export type TextFieldPath =
     | 'depth_prompt.prompt'
     | 'defaultVariables'
     | 'translatorNote'
+    | 'creatorNotes'
 export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
     'desc',
     'firstMessage',
@@ -106,6 +107,7 @@ export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
     'depth_prompt.prompt',
     'defaultVariables',
     'translatorNote',
+    'creatorNotes',
 ]
 
 // `had: false` is an absent optional key. Writing it deletes the key; it never assigns false or undefined.

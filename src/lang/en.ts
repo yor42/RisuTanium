@@ -2744,6 +2744,8 @@ export const languageEnglish = {
     studioGreetingDelete: "Delete first message",
     studioFormRenderWhenComplete: "Show replies only when complete",
     studioFormRenderWhenCompleteHint: "Applies to the new chat screen.",
+    studioCreatorNotesAddLang: "Add a language",
+    studioFieldRemovedQuotes: "Creator notes hidden in chat",
     studioBannerOtherTab: "Another tab is saving this character's history. Changes made here are kept in memory only.",
     studioBannerNoLocks: "History can't be saved on this page (not a secure connection).",
     studioBannerFailed: "History could not be loaded, so it won't be saved on this page. Reload to try again.",

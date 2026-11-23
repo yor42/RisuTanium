@@ -72,6 +72,8 @@ export const FIELD_SPECS = {
     nickname: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     defaultVariables: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     translatorNote: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    creatorNotes: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    removedQuotes: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -103,6 +105,8 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     nickname: { labelKey: 'nickname', focus: { form: 'studio-advanced-form', part: 'studio-form-nickname' } },
     defaultVariables: { labelKey: 'defaultVariables', focus: { form: 'studio-advanced-form', part: 'studio-form-default-variables' } },
     translatorNote: { labelKey: 'translatorNote', focus: { form: 'studio-advanced-form', part: 'studio-form-translator-note' } },
+    creatorNotes: { labelKey: 'creatorNotes', focus: { form: 'studio-advanced-form', part: 'studio-form-creator-notes' } },
+    removedQuotes: { labelKey: 'studioFieldRemovedQuotes', focus: { form: 'studio-advanced-form', part: 'studio-form-creator-notes' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed

@@ -252,11 +252,23 @@ export function buildFieldEdit(path: SetPath, value: string | boolean, live: Liv
         return { ok: false, reason: 'unchanged' }
     }
     const after: FieldValue = { had: true, value }
+    const ops: Op[] = [{ op: 'set', path, before, after }]
+    const writes: WriteOp[] = [{ op: 'set', path, value: after }]
+    // An edit of the creator notes re-shows them in chat: when the quote was dismissed, the same step clears that
+    // flag, so one undo restores both. A merge `textEdit` does not pass through this builder and leaves it alone.
+    if (path === 'creatorNotes') {
+        const dismissed = live.field('removedQuotes')
+        if (dismissed.had && dismissed.value === true) {
+            const cleared: FieldValue = { had: true, value: false }
+            ops.push({ op: 'set', path: 'removedQuotes', before: dismissed, after: cleared })
+            writes.push({ op: 'set', path: 'removedQuotes', value: cleared })
+        }
+    }
     return {
         ok: true,
         label: { kind: 'field', field: path },
-        ops: [{ op: 'set', path, before, after }],
-        writes: [{ op: 'set', path, value: after }],
+        ops,
+        writes,
         coalesceKey: coalesce ? path : null,
         pageFm: null,
     }

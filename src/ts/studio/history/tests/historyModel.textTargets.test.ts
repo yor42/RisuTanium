@@ -620,7 +620,7 @@ function holderOf(kind: 'character' | 'module', owner: object, path: string): { 
 }
 
 function expectedKind(path: string): 'set' | 'listSet' | 'textSet' {
-    const SET_TARGETS = ['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt/prompt', 'defaultVariables', 'translatorNote']
+    const SET_TARGETS = ['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt/prompt', 'defaultVariables', 'translatorNote', 'creatorNotes']
     if (SET_TARGETS.includes(path)) {
         return 'set'
     }
