@@ -35,6 +35,7 @@ vi.mock('src/ts/process/memory/busyActions', () => ({
 
 import { SandboxHost } from './factory'
 import { markPlainResult } from './pluginCopy.svelte'
+import { pluginCallGate, resetPluginWriteTurnsForTest, setPluginWriteYieldForTest, withWriteTurn, type CallGate } from '../pluginWriteTurns'
 
 //#region host driver
 
@@ -55,8 +56,8 @@ type HostRig = {
 let reqCounter = 0
 const rigs: HostRig[] = []
 
-function makeHostRig(api: Record<string, unknown>): HostRig {
-    const host = new SandboxHost(api)
+function makeHostRig(api: Record<string, unknown>, callGate?: CallGate): HostRig {
+    const host = new SandboxHost(api, callGate)
     const container = document.createElement('div')
     document.body.appendChild(container)
     host.run(container, '')
@@ -114,6 +115,8 @@ beforeEach(() => {
 
 afterEach(() => {
     for (const rig of rigs.splice(0)) rig.host.terminate()
+    resetPluginWriteTurnsForTest()
+    setPluginWriteYieldForTest(null)
     document.body.innerHTML = ''
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
@@ -276,6 +279,239 @@ describe('host bridge', () => {
     })
 })
 
+//#region same-plugin call gate
+
+type Held = { promise: Promise<void>, open: () => void }
+
+const held = (): Held => {
+    let open = () => {}
+    const promise = new Promise<void>((resolve) => { open = resolve })
+    return { promise, open }
+}
+
+const settleTimers = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+/** Sends a request with a fixed reqId and returns it; a held request has no RESPONSE yet. */
+async function sendCall(rig: HostRig, data: Msg): Promise<string> {
+    const reqId = `gate_req_${++reqCounter}`
+    await rig.send({ ...data, reqId })
+    return reqId
+}
+
+const responseOf = (rig: HostRig, reqId: string) => rig.posted.find((m) => m.type === 'RESPONSE' && m.reqId === reqId)
+
+type TurnState = { marker: string, char: string }
+
+/** Stand-in plugin API whose database write takes its turn through the production `withWriteTurn`. */
+function turnApi(name: string, state: TurnState, holds: Record<string, Held>) {
+    return {
+        setDatabase: (marker: string, holdKey?: string, char?: string) => withWriteTurn(name, async () => {
+            if (holdKey) await holds[holdKey].promise
+            state.marker = marker
+            if (char !== undefined) state.char = char
+        }),
+        getDatabase: () => state.marker,
+        // Three awaited hops: a lower bound of the permission lookups before the real setChar edits the character.
+        setChar: async (char: string) => {
+            await Promise.resolve()
+            await Promise.resolve()
+            await Promise.resolve()
+            state.char = char
+        },
+    }
+}
+
+describe('same-plugin call gate', () => {
+    beforeEach(() => {
+        setPluginWriteYieldForTest({ yieldFn: () => new Promise<void>((resolve) => setTimeout(resolve, 0)), skip: () => false })
+    })
+
+    test('G1: a gated call is not invoked until its gate resolves; the gate is asked once per call; callbacks, aborts and releases are processed meanwhile', async () => {
+        const wait = held()
+        const seen: string[] = []
+        let n = 0
+        const ping = vi.fn(() => 'pong')
+        const gate = vi.fn<CallGate>((type, method) => (type === 'CALL_ROOT' && method === 'ping' ? wait.promise : null))
+        const rig = makeHostRig({
+            make: () => makeRemote('r' + (++n)),
+            ping,
+            register: async (cb: () => Promise<string>) => { void cb().then((v) => { seen.push(v) }); return 'registered' },
+        }, gate)
+        const id = refIdOf(await rig.request({ type: 'CALL_ROOT', method: 'make', args: [] }))
+        await rig.request({ type: 'CALL_ROOT', method: 'register', args: [{ __type: 'CALLBACK_REF', id: 'cb_g1' }] })
+        const invoke = rig.posted.find((m) => m.type === 'INVOKE_CALLBACK') as { reqId: string }
+        gate.mockClear()
+
+        const pingId = await sendCall(rig, { type: 'CALL_ROOT', method: 'ping', args: [] })
+
+        expect(gate).toHaveBeenCalledTimes(1)
+        expect(gate).toHaveBeenCalledWith('CALL_ROOT', 'ping')
+        expect(ping).not.toHaveBeenCalled()
+        expect(responseOf(rig, pingId)).toBeUndefined()
+
+        await rig.send({ type: 'CALLBACK_RETURN', reqId: invoke.reqId, result: 'cbv' })
+        await rig.send({ type: 'ABORT_SIGNAL', abortId: 'ab_unused' })
+        await rig.send({ type: 'RELEASE_INSTANCE', id })
+        const afterRelease = await rig.request({ type: 'CALL_INSTANCE', id, method: 'ping', args: [] })
+        expect(seen).toEqual(['cbv'])
+        expect(afterRelease.error).toBe('Instance not found or released')
+        expect(ping).not.toHaveBeenCalled()
+
+        wait.open()
+        await settleTimers()
+        expect(ping).toHaveBeenCalledTimes(1)
+        expect(responseOf(rig, pingId)?.result).toBe('pong')
+    })
+
+    test('G3a: a RELEASE_INSTANCE that arrives while a CALL_INSTANCE is gated does not stop that call', async () => {
+        let armed = false
+        const wait = held()
+        const gate: CallGate = () => (armed ? wait.promise : null)
+        const rig = makeHostRig({ make: () => makeRemote('r1') }, gate)
+        const id = refIdOf(await rig.request({ type: 'CALL_ROOT', method: 'make', args: [] }))
+        armed = true
+
+        const callId = await sendCall(rig, { type: 'CALL_INSTANCE', id, method: 'ping', args: [] })
+        await rig.send({ type: 'RELEASE_INSTANCE', id })
+        expect(responseOf(rig, callId)).toBeUndefined()
+        wait.open()
+        await settleTimers()
+        armed = false
+
+        expect(responseOf(rig, callId)?.error).toBeUndefined()
+        expect(responseOf(rig, callId)?.result).toBe('pong-r1')
+        const later = await rig.request({ type: 'CALL_INSTANCE', id, method: 'ping', args: [] })
+        expect(later.error).toBe('Instance not found or released')
+    })
+
+    test('G3b: a REMOTE_REF argument resolved in the arrival task survives a RELEASE_INSTANCE that arrives while the call is gated', async () => {
+        let armed = false
+        const wait = held()
+        const gate: CallGate = () => (armed ? wait.promise : null)
+        const rig = makeHostRig({
+            make: () => makeRemote('r1'),
+            take: (arg: Remote) => arg.tag,
+        }, gate)
+        const id = refIdOf(await rig.request({ type: 'CALL_ROOT', method: 'make', args: [] }))
+        armed = true
+
+        const callId = await sendCall(rig, { type: 'CALL_ROOT', method: 'take', args: [{ __type: 'REMOTE_REF', id }] })
+        await rig.send({ type: 'RELEASE_INSTANCE', id })
+        expect(responseOf(rig, callId)).toBeUndefined()
+        wait.open()
+        await settleTimers()
+
+        expect(responseOf(rig, callId)?.error).toBeUndefined()
+        expect(responseOf(rig, callId)?.result).toBe('r1')
+    })
+
+    test('G3c: an ABORT_SIGNAL that arrives while a call is gated reaches the signal the member receives', async () => {
+        let armed = false
+        const wait = held()
+        const gate: CallGate = () => (armed ? wait.promise : null)
+        const seen: boolean[] = []
+        const rig = makeHostRig({
+            watch: (opts: { signal: AbortSignal }) => { seen.push(opts.signal.aborted); return 'watched' },
+        }, gate)
+        armed = true
+
+        const callId = await sendCall(rig, {
+            type: 'CALL_ROOT',
+            method: 'watch',
+            args: [{ signal: { __type: 'ABORT_SIGNAL_REF', abortId: 'ab1', aborted: false } }],
+        })
+        await rig.send({ type: 'ABORT_SIGNAL', abortId: 'ab1' })
+        expect(seen).toEqual([])
+        wait.open()
+        await settleTimers()
+
+        expect(seen).toEqual([true])
+        expect(responseOf(rig, callId)?.result).toBe('watched')
+    })
+
+    test('R7b: a plugin\'s second write is not gated and keeps its arrival place before another plugin\'s write', async () => {
+        const state: TurnState = { marker: '', char: '' }
+        const holds = { w1: held() }
+        const p = makeHostRig(turnApi('P', state, holds), pluginCallGate('P'))
+        const q = makeHostRig(turnApi('Q', state, holds), pluginCallGate('Q'))
+
+        const w1 = await sendCall(p, { type: 'CALL_ROOT', method: 'setDatabase', args: ['w1', 'w1'] })
+        const w2 = await sendCall(p, { type: 'CALL_ROOT', method: 'setDatabase', args: ['w2'] })
+        const w3 = await sendCall(q, { type: 'CALL_ROOT', method: 'setDatabase', args: ['w3'] })
+        holds.w1.open()
+        await settleTimers()
+        await settleTimers()
+
+        expect(responseOf(p, w1)).toBeDefined()
+        expect(responseOf(p, w2)).toBeDefined()
+        expect(responseOf(q, w3)).toBeDefined()
+        expect(state.marker).toBe('w3')
+    })
+
+    test('R8b: a plugin\'s read and its character edit wait for its latest write, not an earlier one', async () => {
+        const state: TurnState = { marker: '', char: '' }
+        const holds = { w1: held(), w2: held() }
+        const rig = makeHostRig(turnApi('P', state, holds), pluginCallGate('P'))
+
+        await sendCall(rig, { type: 'CALL_ROOT', method: 'setDatabase', args: ['m1', 'w1'] })
+        await sendCall(rig, { type: 'CALL_ROOT', method: 'setDatabase', args: ['m2', 'w2', 'fromW2'] })
+        const read = await sendCall(rig, { type: 'CALL_ROOT', method: 'getDatabase', args: [] })
+        const edit = await sendCall(rig, { type: 'CALL_ROOT', method: 'setChar', args: ['edit'] })
+
+        holds.w1.open()
+        await settleTimers()
+        expect(responseOf(rig, read)).toBeUndefined()
+        expect(responseOf(rig, edit)).toBeUndefined()
+
+        holds.w2.open()
+        await settleTimers()
+        await settleTimers()
+
+        expect(responseOf(rig, read)?.result).toBe('m2')
+        expect(responseOf(rig, edit)).toBeDefined()
+        expect(state.char).toBe('edit')
+    })
+
+    test('R8c: a gated call released by a landing finishes before the write queued behind that landing starts', async () => {
+        const state: TurnState = { marker: '', char: '' }
+        const holds = { w1: held() }
+        const rig = makeHostRig(turnApi('P', state, holds), pluginCallGate('P'))
+
+        await sendCall(rig, { type: 'CALL_ROOT', method: 'setDatabase', args: ['m1', 'w1'] })
+        await sendCall(rig, { type: 'CALL_ROOT', method: 'setChar', args: ['X'] })
+        await sendCall(rig, { type: 'CALL_ROOT', method: 'setDatabase', args: ['m2', undefined, 'Y'] })
+        holds.w1.open()
+        await settleTimers()
+        await settleTimers()
+
+        expect(state.char).toBe('Y')
+    })
+
+    test('R12b: a plugin\'s earlier write landing does not release a call gated on its later write', async () => {
+        const state: TurnState = { marker: '', char: '' }
+        const holds = { w1: held(), w2: held() }
+        const rig = makeHostRig(turnApi('P', state, holds), pluginCallGate('P'))
+
+        const w1 = await sendCall(rig, { type: 'CALL_ROOT', method: 'setDatabase', args: ['m1', 'w1'] })
+        await sendCall(rig, { type: 'CALL_ROOT', method: 'setDatabase', args: ['m2', 'w2'] })
+        holds.w1.open()
+        await settleTimers()
+        expect(responseOf(rig, w1)).toBeDefined()
+
+        const read = await sendCall(rig, { type: 'CALL_ROOT', method: 'getDatabase', args: [] })
+        await settleTimers()
+        expect(responseOf(rig, read)).toBeUndefined()
+
+        holds.w2.open()
+        await settleTimers()
+        await settleTimers()
+        expect(responseOf(rig, read)?.result).toBe('m2')
+    })
+})
+
+//#endregion
 //#region guest driver
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (...args: string[]) => (...a: unknown[]) => Promise<void>

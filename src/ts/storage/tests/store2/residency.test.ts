@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { Sha256 } from 'src/ts/assetHash'
 import { crc32, type JsonObject } from 'src/ts/storage/blockFrame'
 import type { Database, character } from 'src/ts/storage/database.svelte'
 import {
@@ -10,15 +11,17 @@ import {
 } from 'src/ts/storage/store2/codec'
 import { createKeyMint } from 'src/ts/storage/store2/commit'
 import {
-    encodeUnit, FRAME_HEADER_BYTES, keyOfRef, newUnitKey, randomId26, refOfFrame, UNIT_TYPE, type KeyEnv, type ShardEntry,
+    encodeUnit, FRAME_HEADER_BYTES, keyOfRef, newUnitKey, randomId26, refOfFrame, UNIT_TYPE, type KeyEnv, type Ref, type ShardEntry,
 } from 'src/ts/storage/store2/format'
-import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
+import { checkedBytes, previousOfTree } from 'src/ts/storage/store2/previousOfTree'
 import { createResidency, type Residency } from 'src/ts/storage/store2/residency'
 import { getResidency, isEntityUnitKey, registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import { residentSetOf } from 'src/ts/storage/store2/residencyPolicy'
 import { createSaveEncoder, type SaveEncoder } from 'src/ts/storage/store2/saveEncoder'
 import { readTreeBytes, type ResidentPlanInput } from 'src/ts/storage/store2/treeBytes'
 import { createClock, seedTree, testEnv } from '../store2SaveKit'
+import { createListDerivation } from 'src/ts/storage/store2/lists/derive'
+import { moduleStubOf } from 'src/ts/storage/store2/moduleStubMatch'
 import { buildSmall, fakeLists, seededEnv, type Obj } from './codecFixtures'
 
 /**
@@ -696,5 +699,277 @@ describe('contract: the residency reads and hydrates one module', () => {
         if (read.status === 'error') {
             expect(read.error).toBeInstanceOf(Store2BackendFailureError)
         }
+    })
+})
+
+describe('contract: moduleIsStored judges a module against the acknowledged encoding', () => {
+    /** A boot with the real list derivation whose module units carry no digest; one module is then read and hydrated. */
+    async function hydratedModule() {
+        const booted = await bootOf(archiving(2), { lists: createListDerivation() })
+        const index = booted.encoder.acknowledged().objects?.moduleIndex
+        if (index === undefined) {
+            throw new Error('The boot holds no module index.')
+        }
+        const handles = moduleHandles(index.entries)
+        const identitiesOf = (handle: string): string[] => [IDENTITY.module, IDENTITY.alModule, IDENTITY.ilModule].map(prefix => `${prefix}${handle}`)
+        for (const handle of handles) {
+            for (const identity of identitiesOf(handle)) {
+                delete booted.encoder.acknowledged().units.get(identity)?.digest
+            }
+        }
+        const read = await booted.residency.readModule(handles[1])
+        if (read.status !== 'ok') {
+            throw new Error(`The module read ${read.status}.`)
+        }
+        return { booted, handles, read, identitiesOf }
+    }
+
+    const unitOf = (booted: Booted, identity: string) => {
+        const unit = booted.encoder.acknowledged().units.get(identity)
+        if (unit === undefined) {
+            throw new Error(`${identity} is not registered.`)
+        }
+        return unit
+    }
+
+    test('is true for the stored body once hydrated, and false before: no unit has a digest to reuse', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(false)
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(true)
+    })
+
+    test('is false for an edit, a stub, an unknown handle and a body that is not an object', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.moduleIsStored(handles[1], { ...structuredClone(read.value), name: 'edited' })).toBe(false)
+        const entry = booted.residency.moduleEntryOf(handles[1])
+        if (entry === null) {
+            throw new Error('The module has no entry.')
+        }
+        expect(booted.residency.moduleIsStored(handles[1], moduleStubOf(entry))).toBe(false)
+        expect(booted.residency.moduleIsStored('no-such-module#0', structuredClone(read.value))).toBe(false)
+        expect(booted.residency.moduleIsStored(handles[1], 5)).toBe(false)
+    })
+
+    test('is false when the module unit\'s digest is not the stored one, or its key is not the one the entry names', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        booted.residency.hydrateModule(read)
+        const unit = unitOf(booted, `${IDENTITY.module}${handles[1]}`)
+        const digest = unit.digest
+        const key = unit.key
+        unit.digest = `${digest ?? ''}x`
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(false)
+        unit.digest = digest
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(true)
+        unit.key = 'a-key-the-entry-does-not-name'
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(false)
+        unit.key = key
+    })
+
+    test('W11 guard: is false when the module unit\'s ref head is not the one the entry names although its digest, bytes and both list units still match', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        booted.residency.hydrateModule(read)
+        const unit = unitOf(booted, `${IDENTITY.module}${handles[1]}`)
+        const tail = unit.ref[0]
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(true)
+        unit.ref[0] = `${tail}x`
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(false)
+        unit.ref[0] = tail
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(true)
+    })
+
+    test('is false when a list unit has no digest although the module unit has one', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        booted.residency.hydrateModule(read)
+        for (const prefix of [IDENTITY.alModule, IDENTITY.ilModule]) {
+            const unit = unitOf(booted, `${prefix}${handles[1]}`)
+            const digest = unit.digest
+            delete unit.digest
+            expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value)), prefix).toBe(false)
+            unit.digest = digest
+            expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value)), prefix).toBe(true)
+        }
+    })
+
+    test('is false for every module when the list derivation carries no list versions', async () => {
+        const booted = await bootOf(archiving(2))
+        const index = booted.encoder.acknowledged().objects?.moduleIndex
+        const handles = moduleHandles(index?.entries ?? [])
+        const read = await booted.residency.readModule(handles[1])
+        if (read.status !== 'ok') {
+            throw new Error(`The module read ${read.status}.`)
+        }
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(false)
+    })
+})
+
+describe('contract: moduleIsStored proves a module from the payload print recorded when it was read', () => {
+    async function hydratedModule() {
+        const booted = await bootOf(archiving(2), { lists: createListDerivation() })
+        const index = booted.encoder.acknowledged().objects?.moduleIndex
+        if (index === undefined) {
+            throw new Error('The boot holds no module index.')
+        }
+        const handles = moduleHandles(index.entries)
+        for (const handle of handles) {
+            for (const prefix of [IDENTITY.module, IDENTITY.alModule, IDENTITY.ilModule]) {
+                delete booted.encoder.acknowledged().units.get(`${prefix}${handle}`)?.digest
+            }
+        }
+        const read = await booted.residency.readModule(handles[1])
+        if (read.status !== 'ok') {
+            throw new Error(`The module read ${read.status}.`)
+        }
+        return { booted, handles, read }
+    }
+
+    /** The module with one character of `name` replaced by another of the same UTF-8 length. */
+    function sameLengthEdit(value: JsonObject): JsonObject {
+        const name = value.name
+        if (typeof name !== 'string' || !/^[\x20-\x7e]+$/.test(name)) {
+            throw new Error('The fixture module name is not printable ASCII.')
+        }
+        const last = name.slice(-1)
+        return { ...structuredClone(value), name: `${name.slice(0, -1)}${last === 'x' ? 'y' : 'x'}` }
+    }
+
+    test('RS1 reproducer: proving an unedited copy of a hydrated module computes no SHA-256', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        booted.residency.hydrateModule(read)
+        const update = vi.spyOn(Sha256.prototype, 'update')
+        try {
+            expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(true)
+            expect(update).not.toHaveBeenCalled()
+        } finally {
+            update.mockRestore()
+        }
+    })
+
+    test('RS2 guard, new surface: a copy with one character replaced by another of the same length is not the stored module', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(true)
+        expect(booted.residency.moduleIsStored(handles[1], sameLengthEdit(read.value))).toBe(false)
+    })
+
+    test('RS3 guard, new surface: a read whose frames sit at an unaligned offset records a print that still proves the copy', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        const unaligned: UnitSource = {
+            get(key) {
+                const frame = read.source.get(key)
+                if (frame === undefined) {
+                    return undefined
+                }
+                const padded = new Uint8Array(frame.length + 1)
+                padded.set(frame, 1)
+                return padded.subarray(1)
+            },
+        }
+        expect(unaligned.get(keyOfRef(read.entry.unit))?.byteOffset).toBe(1)
+        booted.residency.hydrateModule({ ...read, source: unaligned })
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(true)
+        expect(booted.residency.moduleIsStored(handles[1], sameLengthEdit(read.value))).toBe(false)
+    })
+
+    test('RS5 guard, new surface: digests without a read-time record prove nothing until the module is hydrated', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        const units = booted.encoder.acknowledged().units
+        const named: Array<[string, Ref]> = [
+            [`${IDENTITY.module}${handles[1]}`, read.entry.unit],
+            [`${IDENTITY.alModule}${handles[1]}`, read.entry.al],
+            [`${IDENTITY.ilModule}${handles[1]}`, read.entry.il ?? read.entry.al],
+        ]
+        for (const [identity, ref] of named) {
+            const unit = units.get(identity)
+            const bytes = checkedBytes(read.source, ref)
+            if (unit === undefined || bytes === undefined) {
+                throw new Error(`${identity} cannot be digested by hand.`)
+            }
+            unit.digest = unitDigest(bytes)
+        }
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(false)
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(true)
+    })
+    test('GX1 guard, new surface: a read that went stale during a commit records nothing for the new unit', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        const unit = booted.encoder.acknowledged().units.get(`${IDENTITY.module}${handles[1]}`)
+        if (unit === undefined) {
+            throw new Error('The boot holds no module unit.')
+        }
+        const readKey = unit.key
+        unit.key = 'a-unit-the-read-did-not-read'
+        unit.digest = 'a-digest-of-the-newer-unit'
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(false)
+        unit.key = readKey
+        delete unit.digest
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.moduleIsStored(handles[1], structuredClone(read.value))).toBe(true)
+    })
+})
+
+describe('contract: storedPrintOf hands out the recorded print only while it still describes the acknowledged unit', () => {
+    async function hydratedModule() {
+        const booted = await bootOf(archiving(2), { lists: createListDerivation() })
+        const index = booted.encoder.acknowledged().objects?.moduleIndex
+        if (index === undefined) {
+            throw new Error('The boot holds no module index.')
+        }
+        const handles = moduleHandles(index.entries)
+        for (const handle of handles) {
+            for (const prefix of [IDENTITY.module, IDENTITY.alModule, IDENTITY.ilModule]) {
+                delete booted.encoder.acknowledged().units.get(`${prefix}${handle}`)?.digest
+            }
+        }
+        const read = await booted.residency.readModule(handles[1])
+        if (read.status !== 'ok') {
+            throw new Error(`The module read ${read.status}.`)
+        }
+        return { booted, handles, read }
+    }
+
+    test('U4 guard, new surface: the identical frozen record comes back across calls and repeat hydration', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        booted.residency.hydrateModule(read)
+        const first = booted.residency.storedPrintOf(handles[1])
+        expect(first).not.toBeNull()
+        expect(Object.isFrozen(first)).toBe(true)
+        expect(booted.residency.storedPrintOf(handles[1])).toBe(first)
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.storedPrintOf(handles[1])).toBe(first)
+    })
+
+    test('U5 guard, new surface: null after a digest or key tamper, a missing list digest, an unknown list version, or no hydration', async () => {
+        const { booted, handles, read } = await hydratedModule()
+        expect(booted.residency.storedPrintOf(handles[1])).toBeNull()
+        booted.residency.hydrateModule(read)
+        expect(booted.residency.storedPrintOf(handles[1])).not.toBeNull()
+        expect(booted.residency.storedPrintOf('no-such-module#0')).toBeNull()
+        const units = booted.encoder.acknowledged().units
+        const moduleUnit = units.get(`${IDENTITY.module}${handles[1]}`)
+        const listUnit = units.get(`${IDENTITY.alModule}${handles[1]}`)
+        if (moduleUnit === undefined || moduleUnit.digest === undefined || listUnit === undefined || listUnit.digest === undefined) {
+            throw new Error('The hydrated module holds no digests.')
+        }
+        const { digest, key } = moduleUnit
+        moduleUnit.digest = 'another-digest'
+        expect(booted.residency.storedPrintOf(handles[1])).toBeNull()
+        moduleUnit.digest = digest
+        moduleUnit.key = 'another-key'
+        expect(booted.residency.storedPrintOf(handles[1])).toBeNull()
+        moduleUnit.key = key
+        expect(booted.residency.storedPrintOf(handles[1])).not.toBeNull()
+        const listDigest = listUnit.digest
+        delete listUnit.digest
+        expect(booted.residency.storedPrintOf(handles[1])).toBeNull()
+        listUnit.digest = listDigest
+        const version = read.entry.al[3]
+        read.entry.al[3] = version + 1000
+        expect(booted.residency.storedPrintOf(handles[1])).toBeNull()
+        read.entry.al[3] = version
+        expect(booted.residency.storedPrintOf(handles[1])).not.toBeNull()
     })
 })
