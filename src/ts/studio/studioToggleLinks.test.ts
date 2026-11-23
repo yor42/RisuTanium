@@ -19,7 +19,7 @@ interface TestCharacter {
     chats: { id: string }[]
 }
 
-const db = { db: { theme: '', characters: [] as TestCharacter[], modules: [] as Record<string, unknown>[] | undefined } }
+const db = { db: { theme: '', characters: [] as TestCharacter[], modules: [] as Record<string, unknown>[] | undefined, botPresets: [] as { id: string }[] | undefined, botPresetsId: 0 } }
 const selection = { selId: -1 }
 const MobileGUI = writable(false)
 const settingsOpen = writable(false)
@@ -48,6 +48,8 @@ beforeEach(() => {
     MobileGUI.set(false)
     db.db.characters = [character(), character({ chaId: 'grp', type: 'group' }), character({ chaId: '§playground' })]
     db.db.modules = [{ id: 'm-one', name: 'One' }, { id: 'm-dup', name: 'A' }, { id: 'm-dup', name: 'B' }, { id: 'm-stub', [MODULE_STUB_KEY]: MODULE_STUB_VALUE }]
+    db.db.botPresets = [{ id: 'p-a' }, { id: 'p-b' }]
+    db.db.botPresetsId = 1
     selection.selId = 0
     setStudioEnabled(true)
 })
@@ -151,5 +153,35 @@ describe('GL-4 the Settings leg of openToggleDefinitionInStudio', () => {
         expect(get(SettingsMenuIndex)).toBe(3)
         expect(get(studioOpen)).toBe(false)
         expect(studioScreen.settingsReturn).toBeNull()
+    })
+})
+
+describe('GL-5 the preset link', () => {
+    test('it targets the active preset toggles from Settings', () => {
+        expect(toggleLinkTarget({ type: 'preset' })).toEqual({ owner: { type: 'preset', id: '1' }, kind: 'toggles', from: 'settings' })
+        db.db.botPresetsId = 0
+        expect(toggleLinkTarget({ type: 'preset' })).toEqual({ owner: { type: 'preset', id: '0' }, kind: 'toggles', from: 'settings' })
+    })
+
+    test('no link without an active preset row, a preset list, or an eligible Studio', () => {
+        db.db.botPresetsId = 5
+        expect(toggleLinkTarget({ type: 'preset' })).toBeNull()
+        db.db.botPresetsId = -1
+        expect(toggleLinkTarget({ type: 'preset' })).toBeNull()
+        db.db.botPresets = undefined
+        expect(toggleLinkTarget({ type: 'preset' })).toBeNull()
+        db.db.botPresets = [{ id: 'p-a' }, { id: 'p-b' }]
+        setStudioEnabled(false)
+        expect(toggleLinkTarget({ type: 'preset' })).toBeNull()
+    })
+
+    test('from Settings it closes Settings and records the return page', () => {
+        surfaceResetsIndexOnClose()
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(4)
+        expect(openToggleDefinitionInStudio({ type: 'preset' }, null)).toBe(true)
+        expect(get(settingsOpen)).toBe(false)
+        expect(studioScreen.settingsReturn).toBe(4)
+        expect(studioScreen.target).toEqual({ owner: { type: 'preset', id: '1' }, kind: 'toggles', from: 'settings' })
     })
 })
