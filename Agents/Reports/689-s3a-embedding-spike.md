@@ -4,10 +4,10 @@ Date: 2026-11-23. Verdict: **PASS** for `Xenova/multilingual-e5-small` (q8). Pho
 
 ## What was measured
 
-- Device: Galaxy Note 9 phone 1 (SM-N960N, Android 10), WebView Chrome/156.0.8078.47, the installed debug build of the app (origin `http://tauri.localhost`, APK SHA-256 `beab65e1...6b2b5b`, source revision d2ff459b0). Wi-Fi off, USB power, screen kept on, battery 29 to 36 C.
+- Device: Galaxy Note 9 phone 1 (SM-N960N, Android 10), WebView Chrome/156.0.8078.47, the installed debug build of the app (origin `http://tauri.localhost`, APK `app-debug-d2ff459b0.apk`, SHA-256 `beab65e184dc50d6514238f1702f6ddf107d81faa3efbbca27b1ad246a6b2b5b` and source revision d2ff459b0 as pinned in the dispatch record; signer `0484646b...50a338` as the install step reported it). Wi-Fi off, USB power, screen kept on, battery 31.4 to 35.8 C where read (`run-200-runner-log.md`, `run-1000-runner-log.md`).
 - Method: the harness in `Agents/Tools/ltm-embed-spike/` loads transformers.js 3.8.1 (self-contained dist, q8, mean pooling, normalized) inside a module Worker created from a blob in that page. `crossOriginIsolated` is false, so ONNX runs one wasm thread. Texts are synthetic (40 percent Korean 160 to 200 characters, 60 percent English 50 to 70 words). Main-thread tasks come from a `longtask` PerformanceObserver (entries exist only above 50 ms), cross-checked with rAF and 50 ms timer lateness. Renderer memory is the sandboxed WebView process column of `pss-sampler.ps1` (PSS, 1 s samples) against the median before the driver started.
-- Weights: Hugging Face q8 ONNX files already approved for download in MC-2176 (e5-small 118,308,185 bytes; paraphrase-multilingual-MiniLM-L12-v2 118,308,126; all-MiniLM-L6-v2 22,972,370), served from the PC through `adb reverse`.
-- Raw results and the two runner logs: `Agents/Reports/689-s3a-data/`.
+- Weights: Hugging Face q8 ONNX files already approved for download in MC-2176 (file sizes read from the staged serve folder on the PC: e5-small 118,308,185 bytes; paraphrase-multilingual-MiniLM-L12-v2 118,308,126; all-MiniLM-L6-v2 22,972,370), served from the PC through `adb reverse`.
+- Raw results, sampler logs (`pss-*.log`, the memory source) and runner logs: `Agents/Reports/689-s3a-data/`.
 
 ## Results, 200 messages per run
 
@@ -32,14 +32,14 @@ Date: 2026-11-23. Verdict: **PASS** for `Xenova/multilingual-e5-small` (q8). Pho
 ## Reading
 
 - The peak comes from loading the model (about +870 MiB); once indexing runs the renderer settles near 580 MiB, about +470 MiB over baseline. No growth over 1000 messages.
-- Batch 1 is faster than batch 8 on the phone (2.15 against 1.68 messages per second), so the phone path indexes one message per call. This matches the M1 finding for the main-thread path.
+- Batch 1 is faster than batch 8 on the phone (2.15 against 1.68 messages per second), so the phone path indexes one message per call. M1 (`m1-note9-mainthread-timings.md`) found batch 1 faster than batch 50 on the main-thread path as well.
 - Timer lateness of 77.8 ms and an rAF gap of 112.6 ms appeared once in the 1000-message index phase; the long-task API reported no task over 50 ms. These monitors share the main thread, so a gap can also come from system scheduling or the app's own work; the harness cannot attribute it. One 273 to 291 ms long task appears in the idle baseline of every run, before any embedding starts, so it is app activity.
-- Korean quality is not measured on the phone. It comes from the PC synthetic set (`b61\orphan-ltm\c597-measure\result.md`, CHORE-621 quality check): e5-small Korean MRR 0.83 without prefixes, 0.86 with `query: ` and `passage: ` prefixes (within noise); paraphrase-multilingual-MiniLM 0.26; English-only models near zero.
+- Korean quality is not measured on the phone. It comes from the PC synthetic set (`pc-e5-timing-and-quality-chore621.md` for e5-small, `pc-m2-korean-quality.md` for the others, both copied from scratch into `689-s3a-data/`): e5-small Korean MRR 0.83 without prefixes, 0.86 with `query: ` and `passage: ` prefixes (within noise); paraphrase-multilingual-MiniLM 0.26; English-only models near zero.
 
 ## Limits
 
 - One phone (phone 1), one WebView version, one wasm thread, synthetic text, 1000 messages at most, screen on with USB power. A long chat of many thousand messages, a hot phone or a background-restricted app were not tested.
-- The memory figure is the sandboxed WebView process only, not the whole app or the system. Phone 2 was not used: it refused the pinned debug APK with a signer mismatch, and it may hold another ticket's state.
+- The memory figure is the sandboxed WebView process only, not the whole app or the system. Phone 2 was not used (`phone2-install-refusal-runner-log.md`): it refused the pinned debug APK with a signer mismatch, and it may hold another ticket's state.
 - The harness runs in the app's page but not through the app's own embedding code path (`runEmbedding` in `transformers.ts`). The production wiring (worker, model cache through the app's asset store, wasm paths from the bundle) belongs to S3.
 
 ## Follow-ups for S3
