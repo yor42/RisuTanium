@@ -1,4 +1,4 @@
-import { flushSync } from 'svelte'
+import { flushSync, tick, untrack } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../database.svelte'
@@ -10,6 +10,9 @@ import { coldStorageHeader } from '../../process/coldstorageData'
 import { toAssetList } from '../assetList'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../../studio/assets/assetOwnerKeys'
 import { resetNetSignalsForTest, type NetSignalHandle } from '../netSignalMeter'
+import { moduleStubOf } from '../store2/moduleStubMatch'
+import type { ModuleEntry } from '../store2/format'
+import { topLevelChangeCount } from '../topLevelChanges'
 
 // Guards for registerDbChangeEffects()'s preset effect
 // (src/ts/storage/dbChangeEffects.svelte.ts): it must deep-read via
@@ -270,7 +273,7 @@ describe('registerDbChangeEffects — botPreset deep-read guards', () => {
     // defaults to -1), 8 effects call markChanged on the first flush --
     // confirmed by reading the whole of `registerDbChangeEffects`:
     //   1. the preset effect
-    //   2. modules outer (zero elements here, so no child)
+    //   2. modules slot effect (zero elements here, so no holder and no reader)
     //   3. loadouts
     //   4. plugins
     //   5. pluginCustomStorage
@@ -334,12 +337,15 @@ describe('registerDbChangeEffects — botPreset deep-read guards', () => {
     })
 })
 
-// Equivalence suite for the modules partition (an outer shape-effect plus
-// one child effect per element): pins that it tracks every mutation class a
-// single deep-read effect over the whole `modules` array would, so nothing
-// is under-tracked. The proof test below additionally pins that a leaf
-// write to module k does not deep-read every other module; see its own
-// comment for how that is verified.
+// Equivalence suite for the modules partition (a slot effect that reads the
+// container, its length and every index; a holder per index that creates the
+// deep reader of a truthy slot's body; and that reader): pins that it tracks
+// every mutation class a single deep-read effect over the whole `modules`
+// array would, so nothing is under-tracked. The slot effect owns identity
+// and the marks of slot writes, the holders own each slot's reader, and the
+// readers own depth. The proof tests below additionally pin that a leaf
+// write to module k, or a write of slot k, does not deep-read every other
+// module; see their own comments for how that is verified.
 
 //#region modules fixtures (Stage B)
 
@@ -414,13 +420,15 @@ function freshTrackerAndMarker() {
 describe('registerDbChangeEffects — modules partition equivalence suite', () => {
 
     // CRITICAL CONSTRAINT: none of the tests below assert a markChanged call
-    // COUNT, because with N modules populated, the first flush calls
-    // markChanged 6+N times: the outer modules effect plus its N children
-    // take the place of a single deep-read modules effect, so the 6
-    // top-level effects become (6-1)+1+N = 6+N. (Separately,
-    // a modules *shape-change* flush -- push/splice/whole-array replacement
-    // -- calls markChanged N+1 times just for the modules effects: the outer
-    // plus every recreated child.) Only tracker.modules and, where first-run
+    // COUNT for a first-run or shape flush, because with N modules populated
+    // and no character selected, the first flush calls markChanged 8+N times:
+    // the 7 non-module effects, the slot effect, and one deep reader per
+    // truthy slot take the place of a single deep-read modules effect. The
+    // child creator and the slot holders never mark. (Separately, a modules
+    // *shape-change* flush -- push/splice/whole-array replacement -- calls
+    // markChanged N+1 times just for the modules effects: the slot effect
+    // plus every recreated reader.) The slot-write count is pinned by the
+    // G23 and G7 tests below. Only tracker.modules and, where first-run
     // semantics matter, the markDirty ARGUMENT of every call are asserted.
 
     test('leaf write on modules[k].name marks dirty', () => {
@@ -794,9 +802,9 @@ describe('registerDbChangeEffects — modules partition equivalence suite', () =
     // "Hole/undefined entry": an explicit `undefined` element (a present
     // own property whose value is undefined), not a true sparse-array hole
     // -- but a genuine hole (e.g. `[a, , c]` assigned into a $state array)
-    // behaves identically here: svelte 5.55.1,
-    // node_modules/svelte/src/internal/client/proxy.js:178's `!exists` path
-    // still creates an UNINITIALIZED source that gets subscribed. This
+    // behaves identically here: reading an absent index through the state
+    // proxy still creates an UNINITIALIZED source that gets subscribed, so
+    // the slot effect and that slot's holder both see a later fill. This
     // exercises the same defensive case: registration must not throw, and a
     // leaf write on a REAL neighbouring entry must still mark dirty.
     test('modules array containing an undefined entry does not throw, and a leaf write on a present entry still marks dirty', () => {
@@ -833,8 +841,9 @@ describe('registerDbChangeEffects — modules partition equivalence suite', () =
         expect(tracker.modules).toBe(true)
     })
 
-    // LOAD-BEARING. Under the modules partition, a shape change tears down
-    // and recreates every child effect. A leaf mutation to a PRE-EXISTING
+    // LOAD-BEARING. Under the modules partition, a container or length change
+    // tears down and recreates every holder and reader, while a slot write
+    // recreates only that slot's reader. A leaf mutation to a PRE-EXISTING
     // module (present before the shape change) must still mark dirty
     // afterwards -- this is the exact mechanic the whole design depends on,
     // and no existing test or benchmark in this repo exercises a $effect
@@ -858,7 +867,7 @@ describe('registerDbChangeEffects — modules partition equivalence suite', () =
 
         // Leaf mutation on a PRE-EXISTING module (index 0, present before
         // the push) must still mark dirty after teardown/recreation of the
-        // per-element child effects.
+        // per-slot holders and readers.
         DBState.db.modules[0].name = 'renamed-after-shape-change'
         flushSync()
 
@@ -869,23 +878,21 @@ describe('registerDbChangeEffects — modules partition equivalence suite', () =
 describe('registerDbChangeEffects — modules partition narrow-read proof', () => {
 
     // Proves a leaf write to module k does not deep-read module j: the
-    // modules partition (an outer shape-effect plus one child effect per
-    // element) means a leaf write to module k only re-runs module k's own
-    // child effect.
+    // modules partition (a slot effect, a holder per index and one deep
+    // reader per truthy slot) means a leaf write to module k only re-runs
+    // module k's own reader. A write of slot k re-runs only that slot's
+    // holder and reader, which the slot-write reproducers below pin.
     //
     // Observability: DbChangeEffectOptions exposes only `tracker` and
     // `markChanged` -- counting child-effect runs is not observable through
     // it, and adding a production hook for this would itself be scaffolding.
     // Instead this defines an ACCESSOR property (a getter, not a data
     // property) on a fixture module. Verified against Svelte source:
-    // svelte 5.55.1, node_modules/svelte/src/internal/client/proxy.js:178
-    // skips creating a reactive source for a property when it exists but
-    // its descriptor has no `writable` (true for a getter-only accessor),
-    // so proxy.js:198's `return Reflect.get(target, prop, receiver)` falls
-    // through to invoking the getter directly and untracked, on every
-    // single deep read that reaches it.
-    // node_modules/svelte/src/internal/shared/clone.js:83-105 -- the plain-
-    // object branch of `$state.snapshot()`'s recursive clone -- walks
+    // The state proxy skips creating a reactive source for a property that
+    // exists but whose descriptor has no `writable` (true for a getter-only
+    // accessor), so its `get` falls through to invoking the getter directly
+    // and untracked, on every single deep read that reaches it. The plain-
+    // object branch of `$state.snapshot()`'s recursive clone walks
     // `Object.keys(value)` and reads `value[key]` for each, so it reaches
     // and fires the getter.
     test('a leaf write in module k does not deep-read module j', () => {
@@ -2912,5 +2919,631 @@ describe('registerDbChangeEffects — the module effects report through markCont
         flushSync()
 
         expect(markChanged).toHaveBeenCalledWith(true)
+    })
+})
+
+// A slot write deep-reads only the written slot; a leaf edit deep-reads only its own module. The slot effect reads the
+// container, its length and every index, and a holder per index creates the deep reader of a truthy slot's body, so
+// together they read what a single whole-array snapshot read. Reproducers (R) fail on the whole-array re-read; guards (G)
+// pin what must hold before and after.
+describe('registerDbChangeEffects — modules slot writes and leaf edits', () => {
+    type Slot = RisuModule | undefined
+    type Loadout = { name: string }
+    let content: ReturnType<typeof vi.fn<(markDirty: boolean) => void>>
+    let judged: ReturnType<typeof vi.fn<(markDirty: boolean) => void>>
+    let tracker: toSaveType
+    let reads: string[] = []
+    let extraCleanup: Array<() => void> = []
+    // Failure reports: what a flush throws and what a queued job throws, in one list. No test asserts which path.
+    let reported: string[] = []
+    let realQueueMicrotask: typeof queueMicrotask | undefined
+    afterEach(() => {
+        for (const stop of extraCleanup) stop()
+        extraCleanup = []
+        if (realQueueMicrotask) globalThis.queueMicrotask = realQueueMicrotask
+        realQueueMicrotask = undefined
+    })
+    const note = (error: unknown) => { reported.push((error instanceof Error ? error.message : String(error)).split('\n')[0]) }
+    function captureReports() {
+        reported = []
+        const real = realQueueMicrotask ?? globalThis.queueMicrotask
+        realQueueMicrotask = real
+        globalThis.queueMicrotask = (job) => real(() => { try { job() } catch (error) { note(error) } })
+    }
+    const flushNoting = () => { try { flushSync() } catch (error) { note(error) } }
+    const reportsSettled = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+    /** Flushes, lets queued jobs run, and returns what was reported since the call. */
+    async function flushReports(): Promise<string[]> {
+        const from = reported.length
+        flushNoting()
+        await reportsSettled()
+        return reported.slice(from)
+    }
+    // An enumerable getter records its id on every deep read of the module (accessors fire on each snapshot).
+    const probe = <T extends object>(o: T, id: string): T => Object.defineProperty(o, 'probe', { get() { reads.push(id); return id }, enumerable: true, configurable: true })
+    // An enumerable getter that throws while `armed` says so.
+    const bomb = <T extends object>(o: T, armed: () => boolean): T => Object.defineProperty(o, 'bomb', { get() { if (armed()) throw new Error('deep read'); return 1 }, enumerable: true, configurable: true })
+    const hole = undefined as unknown as RisuModule
+    const stub = (id: string) => moduleStubOf({
+        id, unit: ['mod/h-' + id, 100, 7, 1], al: ['al/a-' + id, 20, 9, 1], il: null, name: id, description: '', hasToggle: false, dsp: false,
+    } satisfies ModuleEntry) as unknown as RisuModule
+    const abc = () => ['a', 'b', 'c'].map(makeModule)
+    const probed = (ids: string[]) => ids.map(id => probe(makeModule(id), id))
+    const mods = () => DBState.db.modules
+    const setModules = (value: RisuModule[] | undefined) => { (DBState.db as unknown as { modules: RisuModule[] | undefined }).modules = value }
+    const loadouts = () => DBState.db.loadouts as unknown as Loadout[]
+    const trues = () => content.mock.calls.filter(call => call[0]).length
+    const readSet = () => [...new Set(reads)].sort()
+    const marked = () => { expect(tracker.modules).toBe(true); expect(trues()).toBeGreaterThanOrEqual(1) }
+    const markedOnce = () => { expect(tracker.modules).toBe(true); expect(trues()).toBe(1) }
+    const loadoutsRecorded = () => { expect(tracker.loadouts).toBe(true); expect(judged).toHaveBeenCalledWith(true) }
+
+    function settle() { tracker.modules = false; tracker.loadouts = false; content.mockClear(); judged.mockClear() }
+    function register(modules: RisuModule[] | undefined, after?: () => void) {
+        installDb(); setModules(modules)
+        tracker = makeTracker(); content = vi.fn(); judged = vi.fn()
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged: judged, markContentChanged: content })
+            after?.()
+        })
+    }
+    function boot(modules: RisuModule[] | undefined) { register(modules); flushSync(); settle() }
+    function armed(modules: RisuModule[]) {
+        reads = []; boot(modules)
+        expect(reads.length).toBeGreaterThan(0)
+        reads = []
+    }
+
+    // Regression reproducer: fails while a slot write re-reads every resident module.
+    test('R1 a slot replace deep-reads only the new body and gives one true mark', () => {
+        armed(probed(['a', 'b', 'c', 'd']))
+        const before = topLevelChangeCount()
+        mods()[1] = probe(makeModule('B'), 'B'); flushSync()
+        expect(readSet()).toEqual(['B'])
+        expect(trues()).toBe(1)
+        expect(tracker.modules).toBe(true)
+        expect(topLevelChangeCount() - before).toBe(1)
+    })
+    // Regression reproducer.
+    test('R2 a slot replace at either end deep-reads no other module', () => {
+        armed(probed(['a', 'b', 'c', 'd']))
+        mods()[3] = probe(makeModule('D'), 'D'); flushSync()
+        expect(readSet()).toEqual(['D'])
+        reads = []
+        mods()[0] = probe(makeModule('A'), 'A'); flushSync()
+        expect(readSet()).toEqual(['A'])
+    })
+    // Regression reproducer: the load path installs a body over a stub one module at a time.
+    test('R3 installing stub by stub deep-reads only the installed body', () => {
+        const ids = ['a', 'b', 'c', 'd']
+        armed(ids.map(id => probe(stub(id), 'stub-' + id)))
+        for (const [i, id] of ids.entries()) {
+            reads = []; content.mockClear()
+            mods()[i] = probe(moduleWithAssetList(id), 'body-' + id); flushSync()
+            expect(readSet()).toEqual(['body-' + id])
+            expect(trues()).toBe(1)
+        }
+    })
+    // Regression reproducer.
+    test.each([
+        ['fill an undefined slot', (m: RisuModule[]) => { m[1] = hole }, (m: RisuModule[]) => { m[1] = probe(makeModule('B'), 'B') }, ['B']],
+        ['fill a sparse hole', (m: RisuModule[]) => { delete m[1] }, (m: RisuModule[]) => { m[1] = probe(makeModule('B'), 'B') }, ['B']],
+        ['clear a slot', () => {}, (m: RisuModule[]) => { m[1] = hole }, []],
+        ['delete a slot', () => {}, (m: RisuModule[]) => { delete m[1] }, []],
+    ] as const)('R4 %s deep-reads only that slot', (_name, prepare, mutate, expectedReads) => {
+        reads = []
+        const list = probed(['a', 'b', 'c']); prepare(list)
+        armed(list)
+        mutate(mods()); flushSync()
+        expect(readSet()).toEqual(expectedReads)
+        expect(trues()).toBe(1)
+    })
+    // Regression reproducer.
+    test('R5 two slot writes in one flush read only those two and give one true mark', () => {
+        armed(probed(['a', 'b', 'c', 'd']))
+        const m = mods(); const a = m[0]; m[0] = m[1]; m[1] = a; flushSync()
+        expect(readSet()).toEqual(['a', 'b'])
+        expect(trues()).toBe(1)
+    })
+    // Regression reproducer: no flushSync, so the write is flushed by the scheduler.
+    test('R6 without flushSync a slot replace reads no other module', async () => {
+        armed(probed(['a', 'b', 'c']))
+        mods()[0] = probe(makeModule('A'), 'A')
+        await tick()
+        expect(readSet()).toEqual(['A'])
+        expect(trues()).toBe(1)
+    })
+    // Regression reproducer.
+    test('R7 a throwing new body costs no read of another module, is reported once, and its later edit marks', async () => {
+        armed(probed(['a', 'b', 'c', 'd']))
+        captureReports()
+        mods()[3] = bomb(probe(makeModule('D'), 'D'), () => true)
+        const failure = await flushReports()
+        expect(readSet()).toEqual(['D'])
+        expect(failure).toEqual(['deep read'])
+        expect(tracker.modules).toBe(true)
+        expect(trues()).toBe(1)
+        settle(); mods()[3].name = 'still unreadable'
+        expect(await flushReports()).toEqual(['deep read'])
+        expect(tracker.modules).toBe(true)
+        expect(trues()).toBe(1)
+    })
+    // Regression reproducer.
+    test('R8 two throwing bodies in one flush read no other module and are reported', async () => {
+        armed(probed(['a', 'b', 'c', 'd']))
+        captureReports()
+        mods()[2] = bomb(probe(makeModule('C'), 'C'), () => true)
+        mods()[3] = bomb(probe(makeModule('D'), 'D'), () => true)
+        const failures = await flushReports()
+        expect(readSet()).toEqual(['C', 'D'])
+        expect(failures.length).toBeGreaterThanOrEqual(1)
+        expect(failures.every(m => m === 'deep read')).toBe(true)
+        expect(tracker.modules).toBe(true)
+        expect(trues()).toBe(1)
+    })
+    // Regression reproducer: a module whose read failed is read again only when its own slot is written, when modules
+    // are added or removed, or after a restart. Another slot's write does not read it.
+    test('R9 a module unreadable at the first run is not read again by a write of another slot, and its edit marks', async () => {
+        reads = []
+        const list = probed(['a', 'b', 'c', 'd']); bomb(list[1], () => true)
+        register(list)
+        captureReports()
+        expect(await flushReports()).toEqual(['deep read'])
+        reads = []; settle()
+        mods()[3] = probe(makeModule('D'), 'D')
+        const second = await flushReports()
+        expect(readSet()).toEqual(['D'])
+        expect(second).toEqual([])
+        expect(tracker.modules).toBe(true)
+        expect(trues()).toBe(1)
+        settle(); mods()[1].name = 'still unreadable'
+        expect(await flushReports()).toEqual(['deep read'])
+        expect(tracker.modules).toBe(true)
+        expect(trues()).toBe(1)
+    })
+
+    // Compatibility guard (passes before and after).
+    test('G1 a leaf edit reads only k and marks once', () => {
+        armed(probed(['a', 'b', 'c']))
+        mods()[1].name = 'x'; flushSync()
+        expect(readSet()).toEqual(['b'])
+        expect(content.mock.calls).toEqual([[true]])
+        expect(tracker.modules).toBe(true)
+    })
+
+    // Compatibility guard (passes before and after): every mutation kind marks, and every live module still marks after it.
+    type Kind = [string, () => RisuModule[] | undefined, (m: RisuModule[]) => void, number, boolean?]
+    const kinds: Kind[] = [
+        ['slot replace', abc, m => { m[1] = makeModule('B') }, 1],
+        ['stub install', () => ['a', 'b', 'c'].map(stub), m => { m[1] = moduleWithAssetList('b') }, 1],
+        ['fill undefined', () => [makeModule('a'), hole, makeModule('c')], m => { m[1] = makeModule('B') }, 1],
+        ['fill sparse hole', () => { const a = abc(); delete a[1]; return a }, m => { m[1] = makeModule('B') }, 1],
+        ['fill null last', () => [makeModule('a'), makeModule('b'), null as unknown as RisuModule], m => { m[2] = makeModule('C') }, 2],
+        ['set undefined', abc, m => { m[1] = hole }, 1],
+        ['delete slot', abc, m => { delete m[1] }, 1],
+        ['alias another slot', abc, m => { m[1] = m[0] }, 1],
+        ['push', abc, m => { m.push(makeModule('d')) }, 3],
+        ['pop', abc, m => { m.pop() }, 1],
+        ['shift', abc, m => { m.shift() }, 0],
+        ['unshift', abc, m => { m.unshift(makeModule('z')) }, 0],
+        ['splice remove', abc, m => { m.splice(1, 1) }, 1],
+        ['splice insert', abc, m => { m.splice(1, 0, makeModule('x')) }, 1],
+        ['splice same length', abc, m => { m.splice(1, 1, makeModule('x')) }, 1],
+        ['shift then push', abc, m => { m.push(m.shift()!) }, 2],
+        ['write past the end', abc, m => { m[5] = makeModule('f') }, 5],
+        ['container same length', abc, () => { DBState.db.modules = ['x', 'y', 'z'].map(makeModule) }, 1, true],
+        ['container other length', abc, () => { DBState.db.modules = [makeModule('x')] }, 0, true],
+        ['container empty', abc, () => { DBState.db.modules = [] }, 0, true],
+        ['field unset then set', () => undefined, () => { DBState.db.modules = [makeModule('x')] }, 0, true],
+        ['sort', abc, m => { m.sort((p, q) => q.name.localeCompare(p.name)) }, 2],
+        ['reverse', abc, m => { m.reverse() }, 2],
+        ['copyWithin', abc, m => { m.copyWithin(0, 2) }, 0],
+        ['length grow', abc, m => { m.length = 5 }, 2],
+        ['length shrink', abc, m => { m.length = 1 }, 0],
+        ['length zero', abc, m => { m.length = 0 }, 0],
+        ['shrink then regrow', abc, m => { m.length = 1; m.length = 3 }, 0],
+        ['replace and push', abc, m => { m[0] = makeModule('A'); m.push(makeModule('d')) }, 0],
+        ['replace and edit another', abc, m => { m[0] = makeModule('A'); m[2].name = 'x' }, 0],
+        ['leaf', abc, m => { m[2].name = 'x' }, 2],
+        ['nested leaf', abc, m => { m[2].lorebook![0].content = 'x' }, 2],
+        ['nested push', abc, m => { m[2].regex!.push(makeModule('n').regex![0]) }, 2],
+        ['key add', abc, m => { m[2].cjs = 'x' }, 2],
+        ['key delete', abc, m => { delete m[2].description }, 2],
+        ['plain tuple', abc, m => { m[2].assets![0][2] = 'x' }, 2],
+        ['AssetList replace', () => ['a', 'b'].map(moduleWithAssetList), m => { m[1].assets = toAssetList([['n', 'p', 'e']]) }, 1],
+    ]
+    test.each(kinds)('G2 %s', (_name, make, mutate, first, container) => {
+        boot(make())
+        const before = topLevelChangeCount()
+        mutate(mods()); flushSync()
+        marked()
+        if (!container) expect(judged).not.toHaveBeenCalledWith(true)
+        expect(topLevelChangeCount() - before).toBe([...content.mock.calls, ...judged.mock.calls].filter(c => c[0]).length)
+        const live: Slot[] = mods()
+        const order = [first, ...Array.from({ length: live.length }, (_, i) => i).filter(i => i !== first)]
+        for (const i of order) {
+            const body = live[i]
+            if (!body) continue
+            settle(); body.name = `later-${i}`; flushSync()
+            marked()
+        }
+    })
+    // Compatibility guard.
+    test('G3 a whole database replace marks, then a leaf edit marks', () => {
+        boot(abc())
+        DBState.db = { ...DBState.db, modules: [makeModule('q')] } as unknown as Database; flushSync()
+        marked()
+        settle(); mods()[0].name = 'later'; flushSync()
+        markedOnce()
+    })
+    // Compatibility guard.
+    test('G4 without markContentChanged a slot replace reports markChanged(true)', () => {
+        installDbWithModules(abc()); const f = freshTrackerAndMarker()
+        cleanup = $effect.root(() => { registerDbChangeEffects({ ...f }) }); flushSync(); f.markChanged.mockClear()
+        mods()[1] = makeModule('B'); flushSync()
+        expect(f.markChanged).toHaveBeenCalledWith(true)
+    })
+    // Compatibility guard: the first run passes only false, holes and falsy slots included.
+    test('G5 the first run with holes is all false', () => {
+        const list: RisuModule[] = [makeModule('a'), hole, null as unknown as RisuModule, makeModule('d')]; list.length = 5
+        register(list); flushSync()
+        expect(tracker.modules).toBe(true)
+        expect(content).toHaveBeenCalled()
+        expect(trues()).toBe(0)
+        expect(judged).not.toHaveBeenCalledWith(true)
+    })
+    // Compatibility guard.
+    test('G6 a detached body no longer marks', () => {
+        boot(abc()); const old = mods()[1]
+        mods()[1] = makeModule('B'); flushSync(); settle()
+        old.name = 'detached'; flushSync()
+        expect(content).not.toHaveBeenCalled()
+    })
+
+    // Compatibility guard: the true-mark count per flush kind is what a whole-array effect gave. Slot writes or in-place
+    // reorders plus K leaf edits of other modules in one flush give 1 + K trues here (the readers of the edited modules
+    // still run), which is an extra mark and never a narrowing, so no row below combines them.
+    test.each([
+        ['one slot write', abc, (m: RisuModule[]) => { m[1] = makeModule('B') }, 1],
+        ['two slot writes', abc, (m: RisuModule[]) => { m[0] = makeModule('A'); m[2] = makeModule('C') }, 1],
+        ['a leaf edit', abc, (m: RisuModule[]) => { m[1].name = 'x' }, 1],
+        ['a push', abc, (m: RisuModule[]) => { m.push(makeModule('d')) }, 1],
+        ['a length change', abc, (m: RisuModule[]) => { m.length = 1 }, 1],
+        ['a container replace', abc, () => { DBState.db.modules = [makeModule('x')] }, 1],
+    ] as const)('G23 %s gives the whole-array count of true module marks', (_name, make, mutate, expected) => {
+        boot(make())
+        const before = topLevelChangeCount()
+        mutate(mods()); flushSync()
+        expect(trues()).toBe(expected)
+        expect(topLevelChangeCount() - before).toBe(expected + judged.mock.calls.filter(c => c[0]).length)
+    })
+
+    // An unrelated throw lands in the batch where the deep readers first run: no slot may lose its subscription.
+    function unrelatedThrowInReadersBatch() {
+        const other = $state({ kick: 0, fail: 0 })
+        const gate = { armed: false }
+        extraCleanup.push($effect.root(() => {
+            $effect(() => {
+                const n = other.kick
+                void mods().length
+                if (gate.armed) untrack(() => { other.fail = n + 1 })
+            })
+        }))
+        extraCleanup.push($effect.root(() => { $effect(() => { if (other.fail && gate.armed) throw new Error('unrelated') }) }))
+        flushSync()
+        return { other, gate }
+    }
+    // An effect created by the boot or shape flush, as the deep readers are, schedules an unrelated throw into the batch
+    // after its own. The deep readers have run, and subscribed, before that throw.
+    function unrelatedThrowOneBatchLater() {
+        const other = $state({ kick: 0, fail: 0 })
+        const gate = { armed: false }
+        extraCleanup.push($effect.root(() => {
+            $effect(() => {
+                void other.kick
+                void mods().length
+                if (gate.armed) $effect(() => { untrack(() => { other.fail = 1 }) })
+            })
+        }))
+        extraCleanup.push($effect.root(() => { $effect(() => { if (other.fail && gate.armed) throw new Error('unrelated') }) }))
+        flushSync()
+        return { other, gate }
+    }
+    // Compatibility guard.
+    test.each(['boot', 'push'] as const)('G8 an unrelated throw before the readers first run (%s) keeps the slots tracked', (when) => {
+        reads = []
+        installDb(); setModules(probed(['a', 'b', 'c']))
+        tracker = makeTracker(); content = vi.fn(); judged = vi.fn()
+        const { other, gate } = unrelatedThrowInReadersBatch()
+        if (when === 'boot') { gate.armed = true; other.kick = 1 }
+        cleanup = $effect.root(() => { registerDbChangeEffects({ tracker, markChanged: judged, markContentChanged: content }) })
+        if (when === 'push') { flushSync(); gate.armed = true; reads = []; mods().push(probe(makeModule('d'), 'd')) }
+        expect(() => flushSync()).toThrow('unrelated')
+        expect(reads).toEqual([])
+        gate.armed = false; settle()
+        const index = when === 'push' ? 3 : 1
+        mods()[index] = makeModule('B'); flushSync()
+        markedOnce()
+        settle(); mods()[index].name = 'later'; flushSync()
+        markedOnce()
+    })
+    // Compatibility guard: the holder is a pre-effect, so it subscribes in the creating run and a throw one batch later
+    // cannot leave a slot without its reader.
+    test.each(['boot', 'push'] as const)('G20 an unrelated throw one batch after the readers first run (%s) leaves their leaf edits tracked', (when) => {
+        installDb(); setModules(abc())
+        tracker = makeTracker(); content = vi.fn(); judged = vi.fn()
+        const { other, gate } = unrelatedThrowOneBatchLater()
+        if (when === 'boot') { gate.armed = true; other.kick = 1 }
+        cleanup = $effect.root(() => { registerDbChangeEffects({ tracker, markChanged: judged, markContentChanged: content }) })
+        if (when === 'push') { flushSync(); gate.armed = true; mods().push(makeModule('d')) }
+        expect(() => flushSync()).toThrow('unrelated')
+        gate.armed = false; settle()
+        const index = when === 'push' ? 3 : 1
+        mods()[index].name = 'later'; flushSync()
+        markedOnce()
+    })
+    // Compatibility guard.
+    test('G9i-iv a body whose deep read throws is marked and reported once, and a later edit elsewhere marks once', async () => {
+        boot(abc())
+        captureReports()
+        mods()[1] = bomb(makeModule('B'), () => true)
+        expect(await flushReports()).toEqual(['deep read'])
+        marked()
+        settle(); mods()[0].name = 'elsewhere'
+        expect(await flushReports()).toEqual([])
+        markedOnce()
+    })
+    // Compatibility guard.
+    test.each([1, 2])('G9ii a first-run throw, then a replace of slot %i', async (index) => {
+        let bad = true
+        const list = abc(); bomb(list[1], () => bad)
+        register(list)
+        captureReports()
+        expect(await flushReports()).toEqual(['deep read'])
+        bad = false; settle()
+        mods()[index] = makeModule('N'); flushSync()
+        marked()
+        settle(); mods()[index].name = 'later'; flushSync()
+        markedOnce()
+    })
+    // Compatibility guard.
+    test('G9iii an unshift of a throwing body, then a replace, then an edit of that body', async () => {
+        let bad = true
+        boot(abc())
+        captureReports()
+        mods().unshift(bomb(makeModule('X'), () => bad))
+        expect(await flushReports()).toEqual(['deep read'])
+        bad = false; settle()
+        mods()[3] = makeModule('D'); flushSync()
+        marked()
+        settle(); mods()[0].name = 'later'; flushSync()
+        markedOnce()
+    })
+    // Plain data overflows the deep read only by a cycle or by nesting thousands of levels deep. The depths are far past
+    // the stack limit of an effect, so stack warmth cannot hide the overflow. After an overflow raised while a child proxy
+    // is created the reading effect holds no dependency at all, so its slot must be held by an effect that never deep-reads.
+    const overflowing: Array<[string, () => RisuModule]> = [
+        ['a cyclic body', () => { const m = makeModule('X'); return Object.assign(m, { self: m }) }],
+        ['nested objects', () => ({ ...makeModule('X'), extra: JSON.parse('{"c":'.repeat(60000) + '1' + '}'.repeat(60000)) })],
+        ['nested arrays', () => ({ ...makeModule('X'), extra: JSON.parse('['.repeat(16000) + ']'.repeat(16000)) })],
+    ]
+    const g19 = overflowing.flatMap(([name, make]) => (['boot', 'push'] as const).map(when => [name, when, make] as const))
+    // Compatibility guard.
+    test.each(g19)('G19 %s that overflows at %s is reported once, and its readable replacement is tracked', async (_name, when, make) => {
+        const list = abc()
+        if (when === 'boot') list[1] = make()
+        register(list)
+        captureReports()
+        let failure = await flushReports()
+        if (when === 'push') {
+            expect(failure).toEqual([])
+            mods().push(make())
+            failure = await flushReports()
+        }
+        expect(failure).toHaveLength(1)
+        expect(failure[0]).toMatch(/call stack/)
+        const at = when === 'boot' ? 1 : 3
+        settle(); mods()[at] = makeModule('fixed')
+        expect(await flushReports()).toEqual([])
+        marked()
+        settle(); mods()[at].name = 'later'; flushSync()
+        markedOnce()
+    })
+    // Compatibility guard: a slot written by an effect before the readers first run is still marked.
+    test.each(['boot', 'push'] as const)('G10 a slot written before the readers first run (%s)', (when) => {
+        let arm = when === 'boot'
+        register(abc(), () => {
+            $effect(() => {
+                void mods().length
+                if (arm) { arm = false; untrack(() => { mods()[1] = makeModule('B') }) }
+            })
+        })
+        let expected = 1
+        if (when === 'push') { flushSync(); settle(); arm = true; mods().push(makeModule('d')); expected = 2 }
+        flushSync()
+        expect(tracker.modules).toBe(true); expect(trues()).toBe(expected)
+        settle(); mods()[1].name = 'later'; flushSync()
+        markedOnce()
+    })
+    // Compatibility guard.
+    test('G11 a throwing new body cancels no other effect of the write flush', async () => {
+        const other = $state({ n: 0 })
+        let seen = 0
+        boot(abc())
+        extraCleanup.push($effect.root(() => { $effect(() => { seen = other.n }) }))
+        flushSync(); settle()
+        captureReports()
+        mods()[1] = bomb(makeModule('B'), () => true)
+        loadouts().push({ name: 'L' })
+        other.n = 1
+        expect(await flushReports()).toEqual(['deep read'])
+        marked()
+        loadoutsRecorded(); expect(seen).toBe(1)
+        settle(); loadouts().push({ name: 'L2' }); flushSync()
+        expect(tracker.loadouts).toBe(true)
+    })
+    // Compatibility guard.
+    test('G12 an edit that makes another module unreadable cancels nothing in a slot-write flush', async () => {
+        let bad = false
+        const list = abc(); bomb(list[2], () => bad)
+        boot(list)
+        captureReports()
+        bad = true
+        mods()[2].name = 'unreadable'
+        mods()[0] = makeModule('A')
+        loadouts().push({ name: 'L' })
+        expect(await flushReports()).toEqual(['deep read'])
+        marked()
+        loadoutsRecorded()
+        settle(); mods()[0].name = 'later'; flushSync()
+        markedOnce()
+    })
+    // Compatibility guard: a module whose read failed is read again when modules are added or removed, or after a restart;
+    // a replacement of its own slot is G19 and G9ii. Another slot's write does not read it (R9).
+    test.each(['a push', 'a removal', 'a restart'] as const)('G13 a module whose read failed is read again after %s', async (event) => {
+        let bad = true
+        const list = abc()
+        const body = Object.assign(bomb(makeModule('B'), () => bad), { afterBomb: { value: 'x' } })
+        list[1] = body
+        register(list)
+        captureReports()
+        expect(await flushReports()).toEqual(['deep read'])
+        bad = false; settle()
+        if (event === 'a push') mods().push(makeModule('d'))
+        if (event === 'a removal') mods().splice(2, 1)
+        if (event === 'a restart') {
+            cleanup?.()
+            cleanup = $effect.root(() => { registerDbChangeEffects({ tracker, markChanged: judged, markContentChanged: content }) })
+        }
+        expect(await flushReports()).toEqual([])
+        settle(); (mods()[1] as typeof body).afterBomb.value = 'y'; flushSync()
+        markedOnce()
+    })
+    // Compatibility guard: at the first true mark of a slot write no body has been read yet, and the flag is set.
+    test('G14 a slot write is marked before the new body is deep-read', () => {
+        armed(probed(['a', 'b', 'c']))
+        let atFirstMark: { reads: string[], flag: boolean } | undefined
+        content.mockImplementation((dirty) => { if (dirty) atFirstMark ??= { reads: [...reads], flag: tracker.modules } })
+        mods()[1] = probe(makeModule('B'), 'B'); flushSync()
+        expect(atFirstMark).toEqual({ reads: [], flag: true })
+    })
+    // Compatibility guard.
+    test('G15 two unreadable modules, then a slot write with another edit, cancels neither', async () => {
+        const list = [...abc(), makeModule('d')]
+        bomb(list[1], () => true); bomb(list[2], () => true)
+        register(list)
+        captureReports()
+        const first = await flushReports()
+        expect(first.length).toBeGreaterThanOrEqual(1)
+        expect(first.every(m => m === 'deep read')).toBe(true)
+        settle()
+        mods()[3] = makeModule('D')
+        loadouts().push({ name: 'L' })
+        const later = await flushReports()
+        expect(later.every(m => m === 'deep read')).toBe(true)
+        marked()
+        loadoutsRecorded()
+    })
+    // Compatibility guard.
+    test('G16 an error already reported does not cancel a later flush', async () => {
+        const other = $state({ n: 0 })
+        let seen = 0
+        const list = [...abc(), makeModule('d')]
+        bomb(list[1], () => true); bomb(list[2], () => true)
+        register(list)
+        captureReports()
+        expect((await flushReports()).length).toBeGreaterThanOrEqual(1)
+        extraCleanup.push($effect.root(() => { $effect(() => { seen = other.n }) }))
+        flushSync(); settle()
+        mods()[3].name = 'later'
+        other.n = 1
+        expect(await flushReports()).toEqual([])
+        expect(seen).toBe(1)
+    })
+    // Compatibility guard.
+    test('G17 a second failure after a reported one is reported alone', async () => {
+        boot(abc())
+        captureReports()
+        mods()[0] = bomb(makeModule('A'), () => true)
+        expect(await flushReports()).toEqual(['deep read'])
+        mods()[0] = makeModule('A2')
+        expect(await flushReports()).toEqual([])
+        const second = makeModule('B')
+        Object.defineProperty(second, 'bomb', { get() { throw new Error('second failure') }, enumerable: true, configurable: true })
+        mods()[1] = second
+        expect(await flushReports()).toEqual(['second failure'])
+    })
+    // Compatibility guard.
+    test.each(['replaces it', 'empties the list'] as const)('G18 a failed read is reported once when a later effect %s', async (how) => {
+        const other = $state({ n: 0 })
+        let bad = false
+        const list = abc(); bomb(list[1], () => bad)
+        register(list, () => {
+            $effect(() => {
+                if (!other.n) return
+                untrack(() => {
+                    if (how === 'replaces it') mods()[1] = makeModule('fixed')
+                    else setModules([])
+                })
+            })
+        })
+        flushSync(); settle()
+        captureReports()
+        bad = true
+        mods()[1].name = 'unreadable'
+        other.n = 1
+        expect(await flushReports()).toEqual(['deep read'])
+    })
+    // Compatibility guard: a failed read leaves nothing that throws in a later flush of the same task.
+    test('G21 after a failed read and an unrelated throw, a later loadouts edit in the same task is recorded', async () => {
+        const other = $state({ kick: 0, fail: 0 })
+        boot(abc())
+        extraCleanup.push($effect.root(() => { $effect(() => { if (other.kick) other.fail = 1 }) }))
+        extraCleanup.push($effect.root(() => { $effect(() => { if (other.fail) throw new Error('unrelated') }) }))
+        flushSync(); settle()
+        captureReports()
+        mods().push(bomb(makeModule('X'), () => true))
+        other.kick++
+        flushNoting()
+        settle()
+        loadouts().push({ name: 'L' })
+        flushNoting()
+        expect(tracker.loadouts).toBe(true)
+        await reportsSettled()
+        expect(reported.every(m => m === 'deep read' || m === 'unrelated')).toBe(true)
+    })
+    // Compatibility guard: an effect queued behind a failed leaf read still runs, in another root too.
+    test('G22 a failed leaf read cancels no effect queued behind it', async () => {
+        const other = $state({ kick: 0, x: 0 })
+        let bad = false
+        let seen = -1
+        const list = abc(); bomb(list[1], () => bad)
+        boot(list)
+        extraCleanup.push($effect.root(() => { $effect(() => { if (other.kick === 1) other.x = 1 }) }))
+        extraCleanup.push($effect.root(() => { $effect(() => { seen = other.x }) }))
+        flushSync()
+        captureReports()
+        bad = true
+        mods()[1].name = 'edit'
+        other.kick = 1
+        expect(await flushReports()).toEqual(['deep read'])
+        other.x = 2
+        expect(await flushReports()).toEqual([])
+        expect(seen).toBe(2)
+    })
+})
+
+describe('registerDbChangeEffects — modules slot write in the net-signal counters', () => {
+    afterEach(() => { localStorage.clear(); resetNetSignalsForTest() })
+    // Compatibility guard: a slot replace books one true mark as a global part event and no part, whatever the switch.
+    test('G7 a module slot replace books one true mark as partGlobal and no part, with no stale tag', () => {
+        const step = () => { DBState.db.modules[0] = { id: 'm1', name: 'replaced', lorebook: [] } as unknown as RisuModule }
+        const on = runCounterScenario([step], { on: true })
+        expect(on.marks.filter(Boolean).length).toBe(1)
+        expect(on.steps[0].partGlobal).toBe(1)
+        expect(on.steps[0].part).toEqual({})
+        expect(on.steps[0].tagOverwritten).toBe(0)
+        const off = runCounterScenario([step], { on: false })
+        expect(on.marks).toEqual(off.marks); expect(on.runs).toEqual(off.runs); expect(on.tracker).toEqual(off.tracker)
     })
 })
