@@ -13,7 +13,7 @@
 import { recordCaughtError } from '../caughtErrors'
 import { spliceTextEdits, type TextEdit } from './assets/referenceRewrite'
 import type { ClassifiedTarget } from './assets/referenceTargets'
-import type { WriteOp } from './history/historyModel'
+import { textWriteFor, type WriteOp } from './history/historyModel'
 import type { OwnerKey } from './history/ownerPhase'
 import { keysOfText } from './toggleKeys'
 import { scanTextUses, type UseFlag, type UseHit } from './toggleUses'
@@ -248,16 +248,7 @@ export function planFromScan(reach: UpdateReach, scan: UseScan, renames: readonl
 
 /** The write a history replay would make for a registry path of this owner kind. */
 export function writeOpFor(kind: UseOwnerRef['kind'], path: string, value: string): WriteOp {
-    if (kind === 'character') {
-        if (path === 'desc' || path === 'firstMessage' || path === 'exampleMessage') {
-            return { op: 'set', path, value: { had: true, value } }
-        }
-        const greeting = /^alternateGreetings\/(\d+)$/.exec(path)
-        if (greeting) {
-            return { op: 'listSet', index: Number(greeting[1]), value }
-        }
-    }
-    return { op: 'textSet', target: path, value }
+    return kind === 'character' ? textWriteFor(path, value) : { op: 'textSet', target: path, value }
 }
 
 export interface UpdatePort {

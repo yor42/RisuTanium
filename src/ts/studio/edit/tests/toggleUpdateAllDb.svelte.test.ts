@@ -49,7 +49,7 @@ import type { RisuModule } from 'src/ts/process/modules'
 import { resetStudioHistoryAccessorForTests, primeStudioModuleSlots } from 'src/ts/studio/history/studioHistoryService.svelte'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
-import { applyUpdate, planFromScan, restoreUpdate, scanReach, type Rename, type UpdatePlan } from 'src/ts/studio/toggleUpdateAll'
+import { applyUpdate, checkUndo, planFromScan, restoreUpdate, scanReach, type Rename, type UpdatePlan } from 'src/ts/studio/toggleUpdateAll'
 import type { ToggleTarget } from 'src/ts/studio/toggleBuilder.svelte'
 import { createUpdateDbPort, readUpdateReach } from '../toggleUpdateAllDb'
 
@@ -164,6 +164,35 @@ describe('the character write (DB1)', () => {
         expect(written.triggerscript[0].effect[1]).toMatchObject({ code: 'getGlobal("toggle_a")' })
         expect(tracker.character).toEqual(['c1'])
         expect(scheduled).toEqual(['judged'])
+    })
+
+    test('every text field target is rewritten, the container keeps its other keys, the character is marked once, and undo puts every text back (DB1b)', () => {
+        seed([], [character('c1', {
+            systemPrompt: BEFORE('sys'),
+            personality: BEFORE('pers'),
+            depth_prompt: { depth: 2, prompt: BEFORE('depth') },
+            defaultVariables: BEFORE('dv'),
+        })])
+        const plan = planOf(CHARACTER)
+        const paths = plan.writes.map((write) => write.path)
+        expect(paths).toEqual(expect.arrayContaining(['systemPrompt', 'personality', 'depth_prompt/prompt', 'defaultVariables']))
+        const applied = applyUpdate(plan, createUpdateDbPort())
+        expect(applied.ok).toBe(true)
+        if (!applied.ok) {
+            return
+        }
+        const written = live() as unknown as Record<string, unknown>
+        expect(written.systemPrompt).toBe(AFTER('sys'))
+        expect(written.personality).toBe(AFTER('pers'))
+        expect(written.defaultVariables).toBe(AFTER('dv'))
+        expect(written.depth_prompt).toEqual({ depth: 2, prompt: AFTER('depth') })
+        expect(tracker.character).toEqual(['c1'])
+        expect(checkUndo(applied.journal, createUpdateDbPort())).toEqual({ ok: true })
+        expect(restoreUpdate(applied.journal, createUpdateDbPort())).toEqual({ ok: true })
+        expect(written.systemPrompt).toBe(BEFORE('sys'))
+        expect(written.personality).toBe(BEFORE('pers'))
+        expect(written.defaultVariables).toBe(BEFORE('dv'))
+        expect(written.depth_prompt).toEqual({ depth: 2, prompt: BEFORE('depth') })
     })
 
     test('the regex in pattern and the Lua code are listed and untouched', () => {

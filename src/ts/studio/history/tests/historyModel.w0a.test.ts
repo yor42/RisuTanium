@@ -23,16 +23,18 @@ const KEYS: Record<OwnerKind, OwnerKey> = {
     module: moduleOwnerKey('m1'),
 }
 
-const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note']
+const S1_PATHS: readonly SetPath[] = ['systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'additionalData.creator', 'additionalData.character_version', 'nickname', 'defaultVariables', 'translatorNote']
+
+const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS]
 
 const EXPECTED_SET: Record<OwnerKind, readonly SetPath[]> = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS],
     chat: ['note'],
     module: ['customModuleToggle'],
 }
 
 const EXPECTED_RESTORE: Record<OwnerKind, readonly RestorePath[]> = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'alternateGreetings'],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, 'alternateGreetings'],
     chat: ['note'],
     module: ['customModuleToggle'],
 }
@@ -88,13 +90,14 @@ describe('A2: the set-path table is the only list of what each owner kind accept
             const kind: OwnerKind = EXPECTED_SET.character.includes(path) ? 'character' : 'chat'
             expect(readable(kind, { done: [rawStep([], { kind: 'field', field: path })] }), path).not.toBeNull()
         }
-        expect(readable('character', { done: [rawStep([], { kind: 'field', field: 'systemPrompt' })] })).toBeNull()
+        expect(readable('character', { done: [rawStep([], { kind: 'field', field: 'zzNeverRegistered' })] })).toBeNull()
+        expect(readable('character', { done: [rawStep([], { kind: 'field', field: 'depth_prompt.zzNeverRegistered' })] })).toBeNull()
     })
 })
 
 describe('A8 (model half): the restore order lists every restore key once, the toggle before hideChatIcon', () => {
     test('RESTORE_PATH_ORDER is the literal order', () => {
-        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', 'alternateGreetings'])
+        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, 'alternateGreetings'])
     })
 
     test('every restore key of every owner kind has a place in the order', () => {
@@ -142,7 +145,7 @@ describe('rule K: isOpAllowedFor is the acceptance the parser applies', () => {
     })
 
     test('the text paths of a kind are its row without the boolean field', () => {
-        expect([...textPathsFor('character')]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle'])
+        expect([...textPathsFor('character')]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1_PATHS])
         expect([...textPathsFor('chat')]).toEqual(['note'])
         expect([...textPathsFor('module')]).toEqual(['customModuleToggle'])
     })
