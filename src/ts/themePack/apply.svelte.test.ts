@@ -7,6 +7,7 @@
  */
 import { createHash } from 'node:crypto'
 import { flushSync } from 'svelte'
+import { get } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { canonicalStylesheet } from './canonical'
 import { shapeOnlySheet, shapeTokenNames } from './shapeMode'
@@ -22,6 +23,7 @@ import {
 import studioScratchWhite from '../../../docs/design/studio/themes/scratch-white.css?raw'
 import { declareSurface, installThemePackGate, registerThemePackElement, resetThemePackGateForTests } from './surfaceGate.svelte'
 import { getFileSrc } from '../globalApi.svelte'
+import { packBaseTone } from '../gui/surfaceTone'
 import { chatCommitInput, chatElementOf } from './fixtures/packCommit'
 import {
     CHAT_SHEET, concat, fakeFont, manifestText, PLAIN_CHAT_SHEET, PNG_1X1, utf8, validPackFiles, zipPack, type PackFile,
@@ -580,7 +582,7 @@ describe('T3-4 a pack that cannot apply', () => {
     it('a built-in that the validator accepts applies its judged text with no blobs and no skipped areas', async () => {
         const builtin: BuiltinPack = { id: 'builtin:ok', slug: 'ok', name: 'Ok', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET }
         const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
-        expect(prepared).toEqual({ ok: true, blobs: [], skippedAreas: [], defaultScheme: null, elements: [{ area: 'chat', text: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, shapeText: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, base: 'dark' }] })
+        expect(prepared).toEqual({ ok: true, blobs: [], skippedAreas: [], defaultScheme: null, elements: [{ area: 'chat', text: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, shapeText: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, base: 'dark' }], popups: null })
     })
 
     it('a built-in whose raw text differs from its canonical text applies the judged canonical text, never the raw one', async () => {
@@ -589,7 +591,7 @@ describe('T3-4 a pack that cannot apply', () => {
         const canonical = judgeAreaSheet('chat', raw, undefined, 'chat').canonical
         expect(canonical).not.toBe(raw)
         const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
-        expect(prepared).toEqual({ ok: true, blobs: [], skippedAreas: [], defaultScheme: null, elements: [{ area: 'chat', text: canonical, shapeText: canonical, base: 'dark' }] })
+        expect(prepared).toEqual({ ok: true, blobs: [], skippedAreas: [], defaultScheme: null, elements: [{ area: 'chat', text: canonical, shapeText: canonical, base: 'dark' }], popups: null })
         expect(chatElementOf(prepared).text).not.toContain('note')
     })
 })
@@ -833,8 +835,8 @@ describe('T3-15 only the chat sheet is applied', () => {
     it('judges the chat key only for a pack with only skipped areas besides chat, applies one element and reports the skipped areas', async () => {
         const rig = judgeRig()
         const hostile = '[data-part]{padding-inline:60px}'
-        const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [], { 'home.css': hostile, 'popups.css': hostile }), rig))
-        expect(prepared.skippedAreas).toEqual(['home', 'popups'])
+        const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [], { 'home.css': hostile, 'sidebar.css': hostile }), rig))
+        expect(prepared.skippedAreas).toEqual(['home', 'sidebar'])
         expect(rig.posts.map((post) => post.jobs.map((job) => job.area))).toEqual([['chat']])
         commitPrepared(prepared)
         const elements = packElements()
@@ -1480,5 +1482,182 @@ describe('S3a-3 the settings element (MC-3121: shape variant only, no base, in b
         expect(accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('settings', 'contrast') }))).ownColourTrigger).toBe(true)
         expect(Object.hasOwn(accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('settings', 'layout') }))), 'ownColourTrigger')).toBe(false)
         expect(Object.hasOwn(accepted(await prepareArchive(bytes, judgeRig())), 'ownColourTrigger')).toBe(false)
+    })
+})
+
+describe('S3c-B the popups overlays (MC-3009, MC-3126, MC-3247, MC-3660)', () => {
+    const BASE = 'data-theme-pack-base'
+    const CHAT_COLOURS = '[data-part="chat-message-avatar"]{color:#ffffff}'
+    const FACE_P = '@font-face{font-family:"pack-p";src:url(fonts/p.woff2) format("woff2")}'
+    const POPUPS_X = '[data-part="toast-text"]{background-color:#7a1f5c;background-image:url(images/p.png);border-radius:6px}'
+    const STUDIO_LEAF = '[data-part="studio-asset-row"]{opacity:0.5}'
+    const pack = (chat: string, extra: Readonly<Record<string, PackFile>>): Uint8Array => packOf(chat, [], { 'images/p.png': PNG_1X1, ...extra })
+    const popupsOverlays = (): HTMLStyleElement[] => packElements().filter((element) => element.getAttribute('data-theme-pack') === 'popups')
+    const overlayOf = (variant: 'colour' | 'shape'): HTMLStyleElement => {
+        const found = popupsOverlays().find((element) => element.getAttribute('data-theme-pack-variant') === variant)
+        if (found === undefined) {
+            throw new Error(`no ${variant} popups overlay`)
+        }
+        return found
+    }
+    const commitWithPopups = (prepared: Extract<Prepared, { ok: true }>, colours: boolean): void => {
+        expect(commitPackSheet({ elements: prepared.elements, popups: prepared.popups, blobs: prepared.blobs, colours })).toEqual({ ok: true })
+    }
+    const tagged = (label: string, rule: 'contrast' | 'readability') => (response: JudgeResponse): JudgeResponse => {
+        if (!response.ok || !Object.hasOwn(response.results, label)) {
+            return response
+        }
+        const verdict = response.results[label]
+        return { ...response, results: { ...response.results, [label]: { ...verdict, warnings: [...verdict.warnings, { selector: 's', prop: 'color', why: 'w', rule }] } } }
+    }
+    /** Chat shown, in the given colour mode, over a chat plus popups pack. */
+    async function chatShown(chat: string, colours: boolean, extra: Readonly<Record<string, PackFile>> = { 'popups.css': POPUPS_X }): Promise<Extract<Prepared, { ok: true }>> {
+        const prepared = accepted(await prepareArchive(pack(chat, extra)))
+        installThemePackGate(() => false)
+        declareSurface('chat')
+        flushSync()
+        commitWithPopups(prepared, colours)
+        return prepared
+    }
+
+    it('A-1 (acceptance): a chat plus popups pack prepares both texts and commits two off overlays before #customcss', async () => {
+        const rig = judgeRig()
+        const prepared = accepted(await prepareArchive(pack(LEAF, { 'popups.css': POPUPS_X }), rig))
+        expect(prepared.popups?.colourText).not.toBeNull()
+        expect(prepared.popups?.shapeText).not.toBeNull()
+        expect(prepared.skippedAreas).toEqual([])
+        commitWithPopups(prepared, true)
+        const overlays = popupsOverlays()
+        expect(overlays.map((element) => element.getAttribute('data-theme-pack-variant'))).toEqual(['colour', 'shape'])
+        expect(overlays.every((element) => element.getAttribute('media') === 'not all')).toBe(true)
+        expect(overlays[1].nextElementSibling?.id).toBe('customcss')
+    })
+
+    it('A-2 (acceptance): the colour text keeps the background and the minted image; the shape text keeps only the shape', async () => {
+        const prepared = accepted(await prepareArchive(pack(LEAF, { 'popups.css': POPUPS_X })))
+        expect(prepared.popups?.colourText).toContain('background-color')
+        expect(prepared.popups?.colourText).toContain(blobs.minted[0])
+        expect(prepared.popups?.shapeText).toContain('border-radius')
+        expect(prepared.popups?.shapeText).not.toContain('background')
+        expect(prepared.popups?.shapeText).not.toContain(blobs.minted[0])
+    })
+
+    it('A-3 (acceptance): studio plus popups, no chat sheet: no colour text, the image only the colours name is never minted', async () => {
+        const bytes = zipPack({ 'manifest.json': fontManifest('No Chat', []), 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_X, 'images/p.png': PNG_1X1 })
+        const prepared = accepted(await prepareArchive(bytes))
+        expect(prepared.popups?.colourText).toBeNull()
+        expect(prepared.popups?.shapeText).toContain('border-radius')
+        expect(blobs.minted).toHaveLength(0)
+    })
+
+    it('E-8 (acceptance): a whitespace-only chat.css gives no colour overlay and mints no colour-only image', async () => {
+        const prepared = accepted(await prepareArchive(pack('/* nothing */', { 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_X })))
+        expect(prepared.popups?.colourText).toBeNull()
+        expect(prepared.popups?.shapeText).not.toBeNull()
+        expect(blobs.minted).toHaveLength(0)
+        commitWithPopups(prepared, true)
+        expect(popupsOverlays().map((element) => element.getAttribute('data-theme-pack-variant'))).toEqual(['shape'])
+    })
+
+    it('A-4 (guard, passes before and after): a contrast or readability warning on popups.css never carries the own-colour trigger', async () => {
+        const bytes = pack(LEAF, { 'popups.css': POPUPS_X })
+        for (const rule of ['contrast', 'readability'] as const) {
+            const prepared = accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('popups', rule) })))
+            expect(Object.hasOwn(prepared, 'ownColourTrigger')).toBe(false)
+        }
+    })
+
+    it('A-5 (acceptance): a null commit removes the popups overlays, revokes their blobs and unregisters them', async () => {
+        const prepared = accepted(await prepareArchive(pack(LEAF, { 'popups.css': POPUPS_X })))
+        commitWithPopups(prepared, true)
+        expect(popupsOverlays()).toHaveLength(2)
+        expect(commitPackSheet(null)).toEqual({ ok: true })
+        expect(popupsOverlays()).toHaveLength(0)
+        expectBalanced()
+    })
+
+    it('a commit with no screen element creates no popups overlay', async () => {
+        const prepared = accepted(await prepareArchive(pack(LEAF, { 'popups.css': POPUPS_X })))
+        expect(commitPackSheet({ elements: [], popups: prepared.popups, blobs: prepared.blobs })).toEqual({ ok: true })
+        expect(popupsOverlays()).toHaveLength(0)
+    })
+
+    it('A-6 (acceptance): switching colour mode leaves the overlay texts as they are and re-reads the screen element as themed or not', async () => {
+        await chatShown(CHAT_COLOURS, true)
+        const colourText = overlayOf('colour').textContent
+        const shapeText = overlayOf('shape').textContent
+        expect(overlayOf('colour').getAttribute('media')).toBe('all')
+        setPackSheetColours(false)
+        expect(overlayOf('colour').textContent).toBe(colourText)
+        expect(overlayOf('shape').textContent).toBe(shapeText)
+        expect(overlayOf('colour').getAttribute('media')).toBe('not all')
+        expect(overlayOf('shape').getAttribute('media')).toBe('not all')
+        setPackSheetColours(true)
+        expect(overlayOf('colour').getAttribute('media')).toBe('all')
+        expect(overlayOf('shape').getAttribute('media')).toBe('not all')
+    })
+
+    it('G-1 (acceptance): chat shown in colour mode turns the colour overlay on and the shape overlay off', async () => {
+        await chatShown(LEAF, true)
+        expect(overlayOf('colour').getAttribute('media')).toBe('all')
+        expect(overlayOf('shape').getAttribute('media')).toBe('not all')
+    })
+
+    it('G-2 (acceptance): chat shown in shape mode turns the shape overlay on and the colour overlay off', async () => {
+        await chatShown(LEAF, false)
+        expect(overlayOf('shape').getAttribute('media')).toBe('all')
+        expect(overlayOf('colour').getAttribute('media')).toBe('not all')
+    })
+
+    it('G-2 (acceptance): studio shown with studio.css applied gives the shape overlay, whatever the colour mode', async () => {
+        const prepared = accepted(await prepareArchive(pack(LEAF, { 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_X })))
+        installThemePackGate(() => false)
+        declareSurface('chat')
+        declareSurface('studio')
+        flushSync()
+        commitWithPopups(prepared, true)
+        expect(overlayOf('shape').getAttribute('media')).toBe('all')
+        expect(overlayOf('colour').getAttribute('media')).toBe('not all')
+    })
+
+    it('G-3 (acceptance): a colours-only chat sheet in shape mode applies nothing, so both overlays stay off (MC-3247)', async () => {
+        await chatShown(CHAT_COLOURS, false)
+        expect(overlayOf('colour').getAttribute('media')).toBe('not all')
+        expect(overlayOf('shape').getAttribute('media')).toBe('not all')
+    })
+
+    it('E-6 (acceptance): a chat sheet of only a font face and emptied blocks in shape mode is not themed, so both overlays stay off', async () => {
+        const chat = FACE_P + CHAT_COLOURS
+        const prepared = accepted(await prepareArchive(packOf(chat, ['fonts/p.woff2'], { 'images/p.png': PNG_1X1, 'popups.css': POPUPS_X })))
+        installThemePackGate(() => false)
+        declareSurface('chat')
+        flushSync()
+        commitWithPopups(prepared, false)
+        const chatElement = packElements().find((element) => element.getAttribute('data-theme-pack') === 'chat')
+        expect(chatElement?.textContent).toContain('@font-face')
+        expect(overlayOf('shape').getAttribute('media')).toBe('not all')
+        expect(overlayOf('colour').getAttribute('media')).toBe('not all')
+    })
+
+    it('G-4 (acceptance): Settings shown with no settings.css, or masked, leaves both overlays off', async () => {
+        const prepared = accepted(await prepareArchive(pack(LEAF, { 'popups.css': POPUPS_X })))
+        installThemePackGate((area) => area === 'chat')
+        declareSurface('chat')
+        declareSurface('settings')
+        flushSync()
+        commitWithPopups(prepared, true)
+        expect(overlayOf('colour').getAttribute('media')).toBe('not all')
+        expect(overlayOf('shape').getAttribute('media')).toBe('not all')
+    })
+
+    it('G-5 (acceptance): an overlay that is on never sets the base attribute or the base tone', async () => {
+        const prepared = accepted(await prepareArchive(pack(LEAF, { 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_X })))
+        installThemePackGate(() => false)
+        declareSurface('studio')
+        flushSync()
+        commitWithPopups(prepared, true)
+        expect(overlayOf('shape').getAttribute('media')).toBe('all')
+        expect(document.documentElement.hasAttribute(BASE)).toBe(false)
+        expect(get(packBaseTone)).toBeNull()
     })
 })

@@ -5,8 +5,10 @@
 // CHAT_PARTS is generated from the markup and guarded by areaParts.test.ts, which recomputes it and prints the expected constant
 // on a mismatch. The chat screen is the shell surface: the ChatShell tree and the shell sidebar (src/lib/ChatShell/**).
 
+import { isPopupsPart } from './registries/popups'
+
 /** The areas whose stylesheets the scope rules judge. */
-export type ScopedArea = 'chat' | 'studio' | 'settings'
+export type ScopedArea = 'chat' | 'studio' | 'settings' | 'popups'
 
 /** Parts the shell renders from a component under src/lib/ChatScreens/** that the legacy chat screen renders as well. */
 export const SHARED_CHAT_PARTS: readonly string[] = ['notifications-off-notice', 'reply-running-notice']
@@ -101,5 +103,6 @@ export const SETTINGS_PARTS: ReadonlySet<string> = new Set<string>(SETTINGS_PART
 /** Whether a stylesheet of the area may name this part. */
 export function isAreaPart(area: ScopedArea, name: string): boolean {
     if (area === 'chat') return CHAT_PARTS.has(name)
+    if (area === 'popups') return isPopupsPart(name)
     return area === 'settings' ? isSettingsPart(name) : isStudioPart(name)
 }

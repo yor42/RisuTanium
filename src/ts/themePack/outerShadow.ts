@@ -14,7 +14,7 @@ import { effective, normalise, resolve, CHAT_REGISTRY, type LintError, type Toke
 import { inlinePrivate } from './failclosed'
 import { shadowLayers, shadowReach, MAX_OUTER_REACH_PX } from './paintOver'
 import { STUDIO_REGISTRY } from './registries/studio'
-import type { ThemeArea } from './index'
+import type { JudgedArea } from './index'
 
 const RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 64 px past its element and an inset box-shadow at most 64 px into it, offset, blur and spread together, whatever its colour (MC-3427, MC-3431)'
 const LABEL_MAX = 200
@@ -56,7 +56,7 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
 }
 
 /** The E-2 refusals of one area's stylesheet: one error per declaration and variant, none for any area but chat and Studio. */
-export function outerShadowPass(area: ThemeArea, css: string): LintError[] {
+export function outerShadowPass(area: JudgedArea, css: string): LintError[] {
     if (area !== 'chat' && area !== 'studio') return []
     const text = normalise(css)
     const errors: LintError[] = []

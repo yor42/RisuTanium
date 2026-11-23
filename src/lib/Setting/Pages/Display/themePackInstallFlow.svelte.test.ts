@@ -559,6 +559,35 @@ describe('S4a notices: colours held back and a pack that shows nothing (MC-3125,
         await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': '/* nothing */' }))).deps)
         expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
     })
+
+    describe('popups.css is judged and never held while a chat sheet carries it, and never shows by itself (MC-3126, MC-3127)', () => {
+        const POPUPS_COLOURS = '[data-part="toast-text"]{background-color:#7a1f5c;border-radius:6px}'
+        const STUDIO_LEAF = '[data-part="studio-asset-row"]{opacity:0.5}'
+
+        test('N-1 (acceptance): a chat and popups pack installs with the installed line alone, no skipped-areas line and no held line', async () => {
+            attach()
+            await runThemePackInstall(runOf(zipPack(validPackFiles({ 'popups.css': POPUPS_COLOURS }))).deps)
+            expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
+        })
+
+        test('N-1 (acceptance): a studio and popups pack without chat.css holds the popups colours back', async () => {
+            attach()
+            await runThemePackInstall(runOf(zipPack({ 'manifest.json': manifestText(), 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_COLOURS })).deps)
+            expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('popups.css')])
+        })
+
+        test('N-1 (acceptance): a popups sheet beside a studio sheet that shows nothing does not make the pack show', async () => {
+            attach()
+            await runThemePackInstall(runOf(zipPack({ 'manifest.json': manifestText(), 'studio.css': TOKEN_COLOURS, 'popups.css': POPUPS_COLOURS })).deps)
+            expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('studio.css, popups.css'), language.themePackShowsNothing])
+        })
+
+        test('E-8 (acceptance): a comment-only chat sheet counts as no chat sheet, so the popups colours are held', async () => {
+            attach()
+            await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': '/* nothing */', 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_COLOURS }))).deps)
+            expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('popups.css')])
+        })
+    })
 })
 
 describe('W1 warnings of an accepted sheet show under the installed line', () => {

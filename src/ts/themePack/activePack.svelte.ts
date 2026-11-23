@@ -248,7 +248,7 @@ async function run(key: ApplyKey, mine: number, session: JudgeSession): Promise<
     ownColours.verdict = prepared.ownColourTrigger === true
     const enteredByTurnOn = consumeSchemeRequest(status.activeId, prepared.defaultScheme)
     appliedDefault = prepared.defaultScheme
-    const result = commitPackSheet({ elements: prepared.elements, blobs: prepared.blobs, colours: coloursOn() })
+    const result = commitPackSheet({ elements: prepared.elements, popups: prepared.popups, blobs: prepared.blobs, colours: coloursOn() })
     if (!result.ok) {
         // A turn-on whose sheet could not be committed is a broken turn-on: the scheme it just entered is left again.
         if (enteredByTurnOn) {

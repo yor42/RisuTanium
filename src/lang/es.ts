@@ -3912,7 +3912,7 @@ export const languageSpanish = {
     "themePackInstalled": (name: string) => `Se instaló "${name}".`,
     "themePackPacksOffSession": "Los paquetes de tema están desactivados en esta sesión.",
     "themePackSelectToTurnOn": "Selecciona este paquete para activarlo ahora.",
-    "themePackSkippedAreas": (files: string) => `Este paquete también incluye ${files}. Esta versión solo aplica el tema a la nueva pantalla de chat, a Studio y a la nueva pantalla de ajustes; esas partes se conservan junto con el paquete.`,
+    "themePackSkippedAreas": (files: string) => `Este paquete también incluye ${files}. Esta versión solo aplica el tema a la nueva pantalla de chat, a Studio, a la nueva pantalla de ajustes y a las ventanas emergentes sobre ellas; esas partes se conservan junto con el paquete.`,
     "themePackColoursHeld": (files: string) => `Esta versión solo usa las formas de ${files}; sus colores se conservan junto con el paquete para una versión posterior.`,
     "themePackInstalledWithWarnings": (sheet: string) => `Instalado con advertencias (${sheet}):`,
     "themePackInstalledWithNotes": (sheet: string) => `Notas (${sheet}):`,
