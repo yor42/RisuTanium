@@ -133,7 +133,7 @@ export type StudioConfirm = 'lowLevelOn'
 const LOW_LEVEL_PATH: SetPath = 'moduleLowLevelAccess'
 
 // The intents that can produce a write of the flag. Text, asset and restoreDeleted intents never can.
-const confirmableKinds: ReadonlySet<string> = new Set(['field', 'replay', 'revert', 'restore'])
+const confirmableKinds: ReadonlySet<string> = new Set(['field', 'value', 'replay', 'revert', 'restore'])
 
 // The engine's reading of a Low Level Access value: stored `true`, or a truthy value of another type, is on.
 function engineReadsOn(value: FieldValue): boolean {
@@ -260,8 +260,9 @@ export interface OwnerHistoryService {
     editText(owner: OwnerKey, path: SetPath, value: string, mode?: 'typing' | 'single'): StudioResult
     // A whole-value edit of a path whose value is not text (a boolean today), as its own step. It reads only the live reader, so
     // it reaches any owner kind that carries the path, session kinds included; a value of the wrong kind or a path the owner
-    // kind does not carry is refused precondition.
-    editValue(owner: OwnerKey, path: SetPath, value: boolean): StudioResult
+    // kind does not carry is refused precondition. Turning a module's Low Level Access on needs `confirm: 'lowLevelOn'`,
+    // as for `editField`; otherwise it is refused confirm-low-level.
+    editValue(owner: OwnerKey, path: SetPath, value: boolean, confirm?: StudioConfirm): StudioResult
     greetingAdd(owner: OwnerKey): StudioResult
     greetingEdit(owner: OwnerKey, index: number, value: string): StudioResult
     greetingDelete(owner: OwnerKey, index: number): StudioResult
@@ -406,7 +407,7 @@ type Intent =
     // A set path of either value type, planned from the live reader alone: it needs no character target.
     | { kind: 'field'; path: SetPath; value: string | boolean; confirm?: StudioConfirm }
     // A whole-value edit of a path that carries a boolean; like `text`, it reads only the live reader and needs no character target.
-    | { kind: 'value'; path: SetPath; value: boolean }
+    | { kind: 'value'; path: SetPath; value: boolean; confirm?: StudioConfirm }
     | { kind: 'replay'; direction: 'undo' | 'redo'; confirm?: StudioConfirm }
     | { kind: 'revert'; stepId: string; confirm?: StudioConfirm }
     | { kind: 'restore'; keep: ReadonlySet<RestorePath>; confirm?: StudioConfirm }
@@ -1499,7 +1500,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             }
         },
         editField: (owner, path, value, confirm) => applyStudioWrite(owner, { kind: 'field', path, value, confirm }),
-        editValue: (owner, path, value) => applyStudioWrite(owner, { kind: 'value', path, value }),
+        editValue: (owner, path, value, confirm) => applyStudioWrite(owner, { kind: 'value', path, value, confirm }),
         editText: (owner, path, value, mode = 'typing') =>
             applyStudioWrite(owner, { kind: 'text', path, value, coalesce: mode === 'typing' }),
         greetingAdd: (owner) => applyStudioWrite(owner, { kind: 'edit', build: (_id, live, target) => buildGreetingAdd(live, target) }),
