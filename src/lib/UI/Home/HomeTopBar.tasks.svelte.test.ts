@@ -211,7 +211,7 @@ describe('the Tasks button', () => {
         expect(buttonOf(root)!.getAttribute('aria-label')).toBeNull()
     })
 
-    test('T-S6-17: phone order is menu, brand, Tasks, switcher, chip; mid and wide put Tasks in the chip cluster; it cannot shrink', () => {
+    test('T-S6-17: phone order is menu, brand, Tasks, chip, switcher; mid and wide put Tasks in the chip cluster; it cannot shrink', () => {
         const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
 
         const phone = mountBar('phone')
@@ -221,7 +221,7 @@ describe('the Tasks button', () => {
         const fieldset = phone.querySelector('fieldset')!
         const chip = phone.querySelector('[data-part="home-persona-chip"]')!
         expect(menu.parentElement!.contains(tasks)).toBe(true)
-        expect([before(menu, brand), before(brand, tasks), before(tasks, fieldset), before(fieldset, chip)]).toEqual([true, true, true, true])
+        expect([before(menu, brand), before(brand, tasks), before(tasks, chip), before(chip, fieldset)]).toEqual([true, true, true, true])
         expect(tasks.classList.contains('shrink-0')).toBe(true)
         expect(tasks.classList.contains('min-w-11')).toBe(true)
         expect(tasks.classList.contains('min-h-11')).toBe(true)

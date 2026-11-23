@@ -2,12 +2,15 @@
     import 'src/lib/Nexus/brand/nexus-mark.css'
     import { MenuIcon } from '@lucide/svelte'
     import { language } from 'src/lang'
+    import { ColorSchemeTypeStore } from 'src/ts/gui/surfaceTone'
+    import { DBState } from 'src/ts/stores.svelte'
     import { MARK_VIEWBOX, markInner } from 'src/lib/Nexus/brand/nexusMark'
     import HomeModeSwitcher from './HomeModeSwitcher.svelte'
     import HomePersonaChip from './HomePersonaChip.svelte'
     import HomeTasks from './HomeTasks.svelte'
     import SeasonalBrand from 'src/lib/UI/Seasonal/SeasonalBrand.svelte'
     import { WIDE_BAR_MIN, type HomeBand } from './homeLayout'
+    import { switcherEntries } from './homeSwitcher'
 
     interface Props {
         band: HomeBand
@@ -27,6 +30,12 @@
     // status on the mark later hides the seasonal mark again.
     const uid = $props.id()
     const inner = markInner(uid)
+
+    // The phone bar draws the switcher row only when HomeModeSwitcher would list entries; hidden modes stay out of it.
+    const hasSwitcher = $derived(switcherEntries({
+        visibleModes: DBState.db.visibleModes,
+        hideUnusedModes: DBState.db.hideUnusedModes,
+    }).length > 0)
 
     // Lives here, not in HomeTasks: a band change replaces the Tasks instance, and the open dialog must survive it.
     let tasksOpen = $state(false)
@@ -64,8 +73,9 @@
         return () => observer.disconnect()
     })
 
-    // The phone order is menu button, brand, Tasks, switcher, chip, equal to its visual order; mid and wide keep
-    // brand, switcher, then the chip cluster (Tasks and the chip), with only the grid placement changing.
+    // The phone order is menu button, brand, Tasks, icon chip (one row), then the switcher row when it has entries,
+    // equal to its visual order; mid and wide keep brand, switcher, then the chip cluster (Tasks and the chip), with
+    // only the grid placement changing.
     // The start inset keeps the brand clear of the sidebar arrow that sits at the top-left corner; the phone has
     // no arrow (the menu button replaces it), so it needs only the edge gap.
     // The switcher and the chip carry their own top margin, which the wrappers cancel.
@@ -121,14 +131,15 @@
     // While a seasonal occasion shows (the host's data-seasonal-active), the cell adds 22 px of end padding: a scene's
     // final pose may reach 22 px right of the word and the focus ring sits past it, and the clip edge is the padding
     // box, so both stay visible without the cell drawing into the next track; the phone band takes this padding too.
-    // The phone band has no container and no sliver rule (MC-1415).
+    // The phone band has no container and no sliver rule (MC-1415); its wordmark leaves the layout under 350 px of
+    // viewport (a viewport variant, since there is no container), visually hidden so the brand keeps its text.
     const brandClass: Record<HomeBand, string> = {
         phone: 'flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] data-seasonal-active:pe-[22px] text-textcolor',
         mid: '@container flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] data-seasonal-active:pe-[22px] text-textcolor',
         wide: '@container flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] data-seasonal-active:pe-[22px] text-textcolor',
     }
     const wordmarkClass: Record<HomeBand, string> = {
-        phone: 'min-w-0',
+        phone: 'min-w-0 max-[349.98px]:sr-only',
         mid: 'min-w-0 @max-[4rem]:sr-only',
         wide: 'min-w-0 @max-[4rem]:sr-only',
     }
@@ -145,6 +156,7 @@
             focusable="false"
             data-status="idle"
             data-still=""
+            data-tone={$ColorSchemeTypeStore === 'light' ? 'light' : undefined}
             data-seasonal-mark
         >
             {@html inner}
@@ -177,18 +189,21 @@
             </button>
             {@render brand()}
             <HomeTasks bind:open={tasksOpen} class="ms-auto" />
+            <HomePersonaChip compact />
         </div>
     {:else}
         {@render brand()}
     {/if}
-    <div class={switcherClass[layout]}>
-        <HomeModeSwitcher />
-    </div>
-    <!-- Roleplay content: while Roleplay is the only built mode (BUILT_HOME_MODES) the landing is Roleplay. -->
-    <div class={chipClass[layout]}>
-        {#if band !== 'phone'}
+    {#if band !== 'phone' || hasSwitcher}
+        <div class={switcherClass[layout]}>
+            <HomeModeSwitcher />
+        </div>
+    {/if}
+    {#if band !== 'phone'}
+        <!-- Roleplay content: while Roleplay is the only built mode (BUILT_HOME_MODES) the landing is Roleplay. -->
+        <div class={chipClass[layout]}>
             <HomeTasks bind:open={tasksOpen} />
-        {/if}
-        <HomePersonaChip />
-    </div>
+            <HomePersonaChip />
+        </div>
+    {/if}
 </header>

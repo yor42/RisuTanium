@@ -6,6 +6,7 @@
     import { language } from '../../lang'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
     import { createStudioToasts, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
+    import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import type { StepLabel } from '../../ts/studio/history/historyModel'
     import type { OwnerHistoryService, ReplayDesc, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { parseOwnerKey, type OwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -168,16 +169,7 @@
 
     function stepText(label: StepLabel): string {
         switch (label.kind) {
-            case 'field':
-                switch (label.field) {
-                    case 'desc': return language.description
-                    case 'firstMessage': return language.firstMessage
-                    case 'exampleMessage': return language.exampleMessage
-                    case 'customModuleToggle': return language.customPromptTemplateToggle
-                    case 'hideChatIcon': return language.hideChatIcon
-                    case 'risutanium_render_when_complete': return language.studioFormRenderWhenComplete
-                    case 'note': return language.note
-                }
+            case 'field': return language[fieldLabelKey(label.field)]
             case 'greetingAdd': return language.studioStepGreetingAdd
             case 'greetingRemove': return language.studioStepGreetingRemove
             case 'greetingEdit': return language.studioStepGreetingEdit

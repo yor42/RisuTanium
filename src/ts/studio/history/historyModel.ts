@@ -1,4 +1,4 @@
-// Pure model of one Studio owner's history: the closed field union, the stored record shape with
+// Pure model of one Studio owner's history: the field registry's tables, the stored record shape with
 // its strict guards, and every state transition (edit, undo, redo, revert, restore point, deleted
 // items). It never reads a clock, a global or the live character: the live values reach it
 // through a `LiveReader` snapshot, and the writes it decides on leave it as `WriteOp`s.
@@ -7,6 +7,8 @@ import { applyFolderOps, folderOpAtTarget, invertFolderOp, type FolderFieldValue
 import type { AssetArrayName } from '../assets/mergePreview'
 import { scanReferences } from '../assets/referenceScan'
 import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
+import { factsOf, isHeldBy, registryPaths } from './fieldAccess'
+import { FIELD_SPECS, type SetPath } from './fieldRegistry'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
 import { parseOwnerKey, type OwnerKey, type ParsedOwnerKey } from './ownerPhase'
 
@@ -26,21 +28,21 @@ export interface HistoryClock {
 
 // ---------------------------------------------------------------- field paths and values
 
-export type CharacterField = 'desc' | 'firstMessage' | 'exampleMessage' | 'customModuleToggle' | 'hideChatIcon' | 'risutanium_render_when_complete'
-export type ChatField = 'note'
-export type SetPath = CharacterField | ChatField
+export type { SetPath }
 export type ListPath = 'alternateGreetings'
 export type RestorePath = SetPath | ListPath
 export type OwnerKind = ParsedOwnerKey['kind']
 
-// The one table of the set paths each owner kind accepts. `isSetPath`, the `set` acceptance of `parseOp`,
-// `isOpAllowedFor` and the restore table all derive from it; nothing else decides which set paths an owner kind
-// accepts. The module row holds `customModuleToggle` only: a module record holding a `set` op on any other path is
-// refused whole.
+const REGISTRY_PATHS: readonly SetPath[] = registryPaths()
+
+// The one table of the set paths each owner kind accepts, derived from the field registry: a kind's row is the
+// registered paths whose holders include it, in registry order. The `set` acceptance of `parseOp`, `isOpAllowedFor`
+// and the restore table all derive from it; nothing else decides which set paths an owner kind accepts. A record
+// holding a `set` op on a path outside its kind's row is refused whole.
 export const SET_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly SetPath[] } = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'],
-    chat: ['note'],
-    module: ['customModuleToggle'],
+    character: REGISTRY_PATHS.filter((path) => isHeldBy(path, 'character')),
+    chat: REGISTRY_PATHS.filter((path) => isHeldBy(path, 'chat')),
+    module: REGISTRY_PATHS.filter((path) => isHeldBy(path, 'module')),
 }
 export const LIST_PATH: ListPath = 'alternateGreetings'
 // The paths a restore point may hold per owner kind: every set path, plus the greeting list for a character.
@@ -51,13 +53,14 @@ export const RESTORE_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly Restor
 }
 export const CHARACTER_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.character
 export const CHAT_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.chat
-export const RESTORE_PATH_ORDER: readonly RestorePath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', 'alternateGreetings']
+export const RESTORE_PATH_ORDER: readonly RestorePath[] = [...REGISTRY_PATHS, LIST_PATH]
 // The set paths whose value is a boolean; every other set path carries text.
-export const BOOLEAN_SET_PATHS: readonly SetPath[] = ['hideChatIcon', 'risutanium_render_when_complete']
+export const BOOLEAN_SET_PATHS: readonly SetPath[] = REGISTRY_PATHS.filter((path) => factsOf(path).value === 'bool')
 export function isBooleanSetPath(path: SetPath): boolean {
-    return BOOLEAN_SET_PATHS.includes(path)
+    return factsOf(path).value === 'bool'
 }
-// The character text fields whose whole value a set op carries.
+// The character text fields whose whole value a set op carries: the merge-recording rule (an explicit list, not
+// derived from the registry).
 export type TextFieldPath = 'desc' | 'firstMessage' | 'exampleMessage'
 export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = ['desc', 'firstMessage', 'exampleMessage']
 
@@ -214,12 +217,7 @@ function nullableString(value: unknown): string | null | undefined {
 }
 
 function isSetPath(value: unknown): value is SetPath {
-    return (
-        typeof value === 'string' &&
-        (SET_PATHS_BY_KIND.character.includes(value as SetPath) ||
-            SET_PATHS_BY_KIND.chat.includes(value as SetPath) ||
-            SET_PATHS_BY_KIND.module.includes(value as SetPath))
-    )
+    return typeof value === 'string' && Object.hasOwn(FIELD_SPECS, value)
 }
 
 function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
@@ -232,7 +230,7 @@ function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
     if (value.had !== true) {
         return null
     }
-    if (isBooleanSetPath(path)) {
+    if (factsOf(path).value === 'bool') {
         return typeof value.value === 'boolean' ? { had: true, value: value.value } : null
     }
     return typeof value.value === 'string' ? { had: true, value: value.value } : null
