@@ -278,7 +278,7 @@ describe('U-1: a character revert whose writes turn the flag on and later off st
 describe('U-3: the value intent passes the same guard as the field intent, for each character flag', () => {
     const flags = ['lowLevelAccess', 'utilityBot', 'escapeOutput'] as const
 
-    // Each flag is stored as false: an absent optional flag is refused `precondition` in planning, before the guard runs.
+    // Each flag is stored as false: an absent required flag (`utilityBot`) is refused `precondition` in planning, before the guard runs; an absent optional flag reaches the guard.
     const stored = { lowLevelAccess: false, utilityBot: false, escapeOutput: false }
 
     test.each(flags)('%s: refused without a pin and with nothing written, recorded or marked', async (path) => {

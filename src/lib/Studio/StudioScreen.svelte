@@ -156,7 +156,7 @@
         const visitId = studioScreen.visitId
         let result: StudioResult
         try {
-            const still =(): boolean => !destroyed && studioScreen.visitId === visitId && selectedHistoryOwner() === owner
+            const still = (): boolean => !destroyed && studioScreen.visitId === visitId && selectedHistoryOwner() === owner
             const settled = await withRiskyConfirm(
                 owner,
                 (confirmed, pin) =>

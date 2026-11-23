@@ -351,17 +351,17 @@ The stored `textEdit` op shape does not change.
 - The live reading is `live.field('moduleLowLevelAccess')` from the reader the plan used (`ownerHistory.svelte.ts:1088`).
 - It runs on every intent kind with no kind list: `field` (the direct turn-on), `value`, `replay` (undo and redo), `revert` and `restore`, so a new intent is guarded by default.
 - `text`, `asset` and `restoreDeleted` can never produce it. Text paths exclude booleans. An asset step holds no `set`. A deleted item is a first message.
-- The guard looks at this one path only. It is not the all-owner, all-flag replay guard (MC-3984).
+- The guard covers the four risky paths of `RISKY_FLAG_PATHS` (`riskyFlags.ts`) for module and character owners alike, on every intent (MC-3966a).
 
 **Why the live reading is now part of the rule.** Revision 1 checked the write alone (`{had: true, value: true}`). With E11 an undo can write back a foreign truthy value such as `1`, which the engine reads as on. A write-only rule on `true` would let that undo turn the flag on unasked. A write-only rule on `engineOn` would ask on on→on, for example a restore from a live `true` to a recorded `1`. Comparing the last write with the live reading asks exactly on a net off→on, which is MC-3984's wording.
 
 **Where it sits.** It is one check in `applyStudioWrite`:
-- after `planFor` has returned writes and after the session branch (`:1093`; a session owner never holds the path);
+- after `planFor` has returned writes and before the session branch (`ownerHistory.svelte.ts`; a session owner never holds a risky path, so the guard is a no-op there);
 - before the asset-removal check, the record assignment, the live write and the save.
 
 Its place relative to the `noWrite` branch (`:1105-1123`) is free (G1a): an `already` or dropped replay returns `writes: []` (`historyModel.ts:1648-1660`), so a guard on writes sees nothing there either way. The guard reads `planned.writes`, never the replayed step's ops. In a partial replay, an op that fails its precondition is left out of the writes (`historyModel.ts:1583-1611`), so a failed turn-on op never asks (H1, I1, T5-GUARD-QUIET (d)). The op fails when the live reading differs from the op's `before`. `absent` and `false` are different readings (`fieldValueEquals` compares `had` first, `historyModel.ts:115-120`), so a flag that was `false` when the step was stored and is absent now fails it.
 
-Every entry point reaches this one place: `editField`, sync `undo`, `redo`, `revertTo` and `restore`, and the queued `replay` through `applyReplay` (`ownerHistory.svelte.ts:1310-1318`).
+Every entry point reaches this one place: `editField`, `editValue`, sync `undo`, `redo`, `revertTo` and `restore`, and the queued `replay` through `applyReplay` (`ownerHistory.svelte.ts:1310-1318`).
 
 **The refusal it returns:**
 - `{ok: false, reason: 'riskyConfirm', paths: SetPath[], pin?: RiskyPin}`, with `paths` the flags left unconfirmed.
