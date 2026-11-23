@@ -37,7 +37,6 @@ import {
     buildGreetingEdit,
     buildWrittenModule,
     createLiveReader,
-    createModuleLiveReader,
     isModuleTarget,
     isRestrictedChaId,
     resolveLiveTarget,
@@ -50,6 +49,8 @@ import {
     type SetterRefusal,
 } from '../edit/studioSetters'
 import type { SaveAck } from '../edit/saveAck.svelte'
+import { isSessionTarget, liveReaderOf, resolveOwnerTarget } from '../edit/ownerTargets'
+import { sessionAdapterOf, type SessionTarget } from '../edit/sessionAdapters'
 import { createElementHashCache, WARM_CHUNK_MS, WARM_MAX_YIELDS, WARM_MS_PER_ELEMENT, WARM_MS_PER_UNIT, type ElementHashCache, type IdleScheduler } from './elementHashCache'
 export { browserIdleScheduler } from './elementHashCache'
 import type { ListElementHash } from './listFingerprint'
@@ -91,6 +92,7 @@ import {
     isWaitingPhase,
     nextPhase,
     parseOwnerKey,
+    parseStoredOwnerKey,
     READY_DEADLINE_MS,
     SAVE_DEBOUNCE_MS,
     SAVE_MAX_WAIT_MS,
@@ -99,6 +101,7 @@ import {
     type OwnerKey,
     type OwnerPhase,
     type ReadyReason,
+    type StoredOwnerKey,
 } from './ownerPhase'
 import { nameOfPathIn, stepNamesAssetPath, stepsOf } from './retainedPaths'
 import type {
@@ -324,14 +327,21 @@ class OwnerSlot {
     tail: Promise<void> = Promise.resolve()
     waiters: (() => void)[] = []
 
-    // `chaId` is null for a module owner. The claim key names what is claimed: `c:<chaId>` for the
-    // character and chat owners of a character, `m:<id>` for a module, so the two never share an entry.
+    // `chaId` is null for a module owner and for a session owner. `stored` is the part that reaches the store
+    // and the claim port, and a session owner has none: the store and claim calls take their key and subject
+    // only from it. The claim key names what is claimed: `c:<chaId>` for the character and chat owners of a
+    // character, `m:<id>` for a module, so the two never share an entry.
     constructor(
         readonly key: OwnerKey,
         readonly chaId: string | null,
-        readonly claimKey: string,
-        readonly claimSubject: { kind: 'character' | 'module'; id: string },
+        readonly stored: StoredPart | null,
     ) {}
+}
+
+interface StoredPart {
+    readonly key: StoredOwnerKey
+    readonly claimKey: string
+    readonly claimSubject: { kind: 'character' | 'module'; id: string }
 }
 
 function isRestorePlan(plan: StepPlan): plan is RestorePlan {
@@ -499,15 +509,15 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
     }
 
-    function claimEntryFor(slot: OwnerSlot): Entry<ClaimResult> {
-        const known = claims.get(slot.claimKey)
+    function claimEntryFor(slot: OwnerSlot, stored: StoredPart): Entry<ClaimResult> {
+        const known = claims.get(stored.claimKey)
         if (known) {
             return known
         }
         const entry = createEntry<ClaimResult>(slot.key, clock)
-        claims.set(slot.claimKey, entry)
+        claims.set(stored.claimKey, entry)
         try {
-            claim.tryClaim(slot.claimSubject).then(
+            claim.tryClaim(stored.claimSubject).then(
                 (result) => entry.settle(result),
                 () => entry.settle('failed'),
             )
@@ -543,7 +553,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         slot.deadline = null
         if (slot.phase?.kind === 'claiming') {
             // Only the owner that created the claim request settles its entry.
-            const entry = claims.get(slot.claimKey)
+            const entry = slot.stored ? claims.get(slot.stored.claimKey) : undefined
             if (entry && !entry.settled && entry.creator === slot.key) {
                 entry.settle('failed')
             }
@@ -552,9 +562,13 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     }
 
     async function runLoad(slot: OwnerSlot): Promise<void> {
+        const stored = slot.stored
+        if (!stored) {
+            return
+        }
         let result: LoadResult
         try {
-            result = await store.load(slot.key)
+            result = await store.load(stored.key)
         } catch {
             result = { kind: 'failed' }
         }
@@ -601,8 +615,12 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         switch (to.kind) {
             case 'claiming': {
+                // Only a stored owner claims; a session owner never enters `claiming`.
+                if (!slot.stored) {
+                    break
+                }
                 slot.deadline = clock.setTimeout(() => onDeadline(slot), READY_DEADLINE_MS)
-                const entry = claimEntryFor(slot)
+                const entry = claimEntryFor(slot, slot.stored)
                 void entry.promise.then((result) => deliver(slot, claimEvent(result, tauri)))
                 break
             }
@@ -657,15 +675,26 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         let slot = slots.get(owner)
         if (!slot) {
+            const stored = parseStoredOwnerKey(owner)
+            if (!stored) {
+                // A session owner: memory only from first use, no store, claim, open, load or timer.
+                slot = new OwnerSlot(owner, null, null)
+                slot.record = emptyRecord(owner, clock.now())
+                slot.acked = slot.record
+                slots.set(owner, slot)
+                slotCount += 1
+                deliver(slot, { type: 'firstUseSession' })
+                return slot
+            }
             slot =
-                parsed.kind === 'module'
-                    ? new OwnerSlot(owner, null, 'm:' + parsed.moduleId, { kind: 'module', id: parsed.moduleId })
-                    : new OwnerSlot(owner, parsed.chaId, 'c:' + parsed.chaId, { kind: 'character', id: parsed.chaId })
+                stored.kind === 'module'
+                    ? new OwnerSlot(owner, null, { key: owner as StoredOwnerKey, claimKey: 'm:' + stored.moduleId, claimSubject: { kind: 'module', id: stored.moduleId } })
+                    : new OwnerSlot(owner, stored.chaId, { key: owner as StoredOwnerKey, claimKey: 'c:' + stored.chaId, claimSubject: { kind: 'character', id: stored.chaId } })
             slot.record = emptyRecord(owner, clock.now())
             slot.acked = slot.record
             slots.set(owner, slot)
             slotCount += 1
-            deliver(slot, { type: 'firstUse', restricted: parsed.kind !== 'module' && isRestrictedChaId(parsed.chaId) })
+            deliver(slot, { type: 'firstUse', restricted: stored.kind !== 'module' && isRestrictedChaId(stored.chaId) })
         }
         return slot
     }
@@ -682,7 +711,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
 
     async function runSave(slot: OwnerSlot): Promise<void> {
         slot.jobWaiting = false
-        if (slot.phase?.kind !== 'ready') {
+        if (slot.phase?.kind !== 'ready' || !slot.stored) {
             return
         }
         // A timer or job armed before the character became private or a group writes nothing.
@@ -700,7 +729,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         let result: SaveResult
         try {
-            result = await store.save(slot.key, saved, new Set<OwnerKey>([slot.key]))
+            result = await store.save(slot.stored.key, saved, new Set<StoredOwnerKey>([slot.stored.key]))
         } catch {
             result = { kind: 'unwritable' }
         }
@@ -822,7 +851,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (intent.kind === 'asset') {
             // Asset intents belong to a character or a module owner, never to one of a character's chats.
             const assetOwnerKind = parseOwnerKey(slot.key)?.kind
-            if (assetOwnerKind === undefined || assetOwnerKind === 'chat') {
+            if (assetOwnerKind !== 'character' && assetOwnerKind !== 'module') {
                 return refused('unknown')
             }
             const built = intent.build(live)
@@ -1028,10 +1057,11 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     // notification runs inside the live write, so a notification that throws never leaves a landed step without its save.
     function applyStudioWrite(owner: OwnerKey, intent: Intent): StudioResult {
         cancelWarm()
-        // A module owner that is not selected, shares its id or is a stub is refused before its lifecycle starts, so
-        // no claim, load or save is made for it.
-        if (parseOwnerKey(owner)?.kind === 'module') {
-            const early = resolveLiveTarget(owner, openModuleId)
+        // A module or session owner that is not selected, shares its id, is a stub or is gone is refused before its
+        // lifecycle starts, so no slot, claim, load or save is made for it.
+        const storedKey = parseStoredOwnerKey(owner)
+        if (storedKey === null || storedKey.kind === 'module') {
+            const early = resolveOwnerTarget(owner, openModuleId)
             if (early.ok === false) {
                 return refused(early.reason)
             }
@@ -1047,17 +1077,21 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (phase.kind === 'excluded') {
             return refused('restricted')
         }
-        const resolved = resolveLiveTarget(owner, openModuleId)
+        // Resolved again on every action: no target or reader is kept across calls.
+        const resolved = resolveOwnerTarget(owner, openModuleId)
         if (resolved.ok === false) {
             return refused(resolved.reason)
         }
         const target = resolved.target
         const at = clock.now()
-        const characterTarget = isModuleTarget(target) ? null : target
-        const live = isModuleTarget(target) ? createModuleLiveReader(target.module) : createLiveReader(target)
+        const characterTarget = isSessionTarget(target) || isModuleTarget(target) ? null : target
+        const live = liveReaderOf(target)
         const planned = planFor(slot, intent, live, characterTarget, at, goneRowsFor(slot, intent))
         if (!('writes' in planned)) {
             return planned
+        }
+        if (isSessionTarget(target)) {
+            return applySessionWrite(owner, slot, target, planned)
         }
         // A replay puts a row back only over a file this replay read as present; a gone file's row was left out by the
         // plan. The check runs before anything changes, so a refusal leaves record, stacks, field and marks as they were.
@@ -1135,7 +1169,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (isModuleTarget(target)) {
             const moduleExtras = extras ?? { folder: { kind: 'keep' as const }, retained: null }
             // No port is passed: it is told below, after the save is armed, and never from inside the write.
-            landed = writeLiveModule(slot.claimSubject.id, (module) => buildWrittenModule(module, planned.writes, moduleExtras))
+            landed = writeLiveModule(moduleIdOf(slot), (module) => buildWrittenModule(module, planned.writes, moduleExtras))
         } else if (chaId === null) {
             landed = false
         } else if (target.chat) {
@@ -1170,10 +1204,38 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             acks.get(chaId)?.noteEdit(chaId, before)
         } else if (isModuleTarget(target)) {
             // `before` was read ahead of the write; the module's own ack reads the count again and finds its mark counted.
-            moduleAcks.get(slot.claimSubject.id)?.noteEdit(slot.claimSubject.id, before)
+            moduleAcks.get(moduleIdOf(slot))?.noteEdit(moduleIdOf(slot), before)
         }
         landedNotice(owner, slot)
         return { ok: true, ...planned.notes, ...(intent.kind === 'asset' ? { stepId: slot.record.done.at(-1)?.id } : {}) }
+    }
+
+    // The id of a module owner's slot; a module slot always has its stored part.
+    function moduleIdOf(slot: OwnerSlot): string {
+        return slot.stored?.claimSubject.id ?? ''
+    }
+
+    // The write of a session owner: the adapter re-resolves by id and writes, and a false answer records and marks
+    // nothing. The phase is never `ready`, so no save is requested.
+    function applySessionWrite(owner: OwnerKey, slot: OwnerSlot, target: SessionTarget, planned: Planned): StudioResult {
+        if (planned.noWrite) {
+            const moved = planned.land({ record: slot.record, open: slot.open })
+            slot.record = moved.record
+            slot.open = moved.open
+            landedNotice(owner, slot)
+            return { ok: true, ...planned.notes }
+        }
+        const adapter = sessionAdapterOf(target.session)
+        const before = getMarkCount()
+        if (!adapter || !adapter.write(target.id, planned.writes)) {
+            return refused('gone')
+        }
+        const next = planned.land({ record: slot.record, open: slot.open })
+        slot.record = next.record
+        slot.open = next.open
+        adapter.noteEdit?.(target.id, before)
+        landedNotice(owner, slot)
+        return { ok: true, ...planned.notes }
     }
 
     function landedNotice(owner: OwnerKey, slot: OwnerSlot): void {
@@ -1312,7 +1374,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     function view(owner: OwnerKey): OwnerView {
         void slotCount
         const slot = slots.get(owner)
-        const parsed = parseOwnerKey(owner)
+        // Only a stored character or chat key can be restricted: a session key has no character.
+        const parsed = parseStoredOwnerKey(owner)
         const restricted = parsed !== null && parsed.kind !== 'module' && isRestrictedChaId(parsed.chaId)
         const phase = slot?.phase ?? null
         const kind = phase ? phase.kind : 'unused'

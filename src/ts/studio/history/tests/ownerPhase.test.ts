@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
     characterOwnerKey,
     chatOwnerKey,
-    isOwnerKey,
+    isStoredOwnerKey,
     moduleOwnerKey,
     nextPhase,
     parseOwnerKey,
@@ -180,13 +180,24 @@ describe('owner keys', () => {
         expect(parseOwnerKey('module:')).toBeNull()
         expect(parseOwnerKey(moduleOwnerKey('a/b|c'))).toEqual({ kind: 'module', moduleId: 'a/b|c' })
         expect(moduleOwnerKey('x')).not.toBe(characterOwnerKey('x'))
-        expect(isOwnerKey('module:x')).toBe(true)
+        expect(isStoredOwnerKey('module:x')).toBe(true)
     })
 
     test('malformed keys are not owner keys', () => {
         for (const bad of ['', 'character:', 'chat:', 'chat:c1', 'chat:c1/', 'chat:/x', 'rec:character:c1', 'other:c1']) {
             expect(parseOwnerKey(bad), bad).toBeNull()
-            expect(isOwnerKey(bad), bad).toBe(false)
+            expect(isStoredOwnerKey(bad), bad).toBe(false)
+        }
+    })
+})
+
+describe('T-O3 session phase', () => {
+    test('firstUseSession leaves the unused state for memoryOnly(session), and every event leaves it unchanged by reference', () => {
+        const phase = nextPhase(null, { type: 'firstUseSession' })
+        expect(phase).toEqual({ kind: 'memoryOnly', reason: 'session' })
+        const events: OwnerEvent[] = [...ALL_EVENTS, { type: 'firstUseSession' }]
+        for (const event of events) {
+            expect(nextPhase(phase, event), event.type).toBe(phase)
         }
     })
 })

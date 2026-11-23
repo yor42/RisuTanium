@@ -6,6 +6,7 @@
 
 import { language } from '../../../lang'
 import type { SaveAck } from '../edit/saveAck.svelte'
+import { sessionAdapterOf } from '../edit/sessionAdapters'
 import type { ModuleSlotReplaced } from '../edit/studioSetters'
 import { resetStudioToastsForTests, retireAssetToasts } from '../edit/studioToasts'
 import { openStudioModuleId } from '../assets/openModuleForm.svelte'
@@ -13,7 +14,7 @@ import { studioOpen } from '../studioOpen'
 import { studioScreen } from '../studioScreen.svelte'
 import type { HistoryClock } from './historyModel'
 import type { OwnerHistoryService } from './ownerHistory.svelte'
-import { parseOwnerKey, type MemoryOnlyReason, type OwnerKey, type ReadyReason } from './ownerPhase'
+import { parseOwnerKey, parseSessionOwnerKey, parseStoredOwnerKey, type MemoryOnlyReason, type OwnerKey, type ReadyReason } from './ownerPhase'
 import type { StudioClaimPort, StudioHistoryStore } from './studioHistoryStore'
 
 // The page's real timers, resolved at call time so timers installed after import govern the service.
@@ -248,14 +249,21 @@ export function beginOwnerVisit(owner: OwnerKey): SaveAck | null {
     if (!parsed || !service) {
         return null
     }
-    if (parsed.kind === 'module') {
+    const stored = parseStoredOwnerKey(owner)
+    if (!stored) {
+        // A session owner assumes no character: no visit ack of the character path, and `setAck` is never called.
+        service.useOwner(owner)
+        const session: { kind: string; id: string } | null = parseSessionOwnerKey(owner)
+        return (session ? sessionAdapterOf(session.kind)?.beginVisit?.(session.id) : null) ?? null
+    }
+    if (stored.kind === 'module') {
         // A module owner has no character visit ack: it is used, and its writes mark through the module slot write.
         void primeModuleSlotPort()
         service.useOwner(owner)
         return null
     }
     const visitId = studioScreen.visitId
-    if (held && (held.visitId !== visitId || held.chaId !== parsed.chaId)) {
+    if (held && (held.visitId !== visitId || held.chaId !== stored.chaId)) {
         endVisitAck()
     }
     if (!held) {
@@ -275,11 +283,11 @@ export function beginOwnerVisit(owner: OwnerKey): SaveAck | null {
                 endVisitAck()
             }
         })
-        held = { visitId, chaId: parsed.chaId, ack, owners: new Set<OwnerKey>(), stop }
+        held = { visitId, chaId: stored.chaId, ack, owners: new Set<OwnerKey>(), stop }
         heldAck = ack
     }
     held.owners.add(owner)
-    service.setAck(parsed.chaId, held.ack)
+    service.setAck(stored.chaId, held.ack)
     service.useOwner(owner)
     // Input already happened in this visit: the use above must leave no warm-up pending.
     if (inputVisitId === visitId) {
@@ -370,6 +378,8 @@ export function historyBannerText(banner: MemoryOnlyReason | ReadyReason | null)
         case 'keptUnreadable': return language.studioBannerKeptUnreadable
         case 'unreadable': return language.studioBannerUnreadable
         case 'trimmed': return language.studioBannerTrimmed
+        // A session owner shows no history note in S0b; the first session kind supplies its own.
+        case 'session': return null
     }
 }
 

@@ -283,13 +283,33 @@ export function setStudioNotice(message: string | null): void {
     studioScreen.noticePlaces = null
 }
 
+function noticeOwnerKindOf(owner: OwnerKey): 'module' | 'character' {
+    const parsed = parseOwnerKey(owner)
+    if (parsed === null) {
+        return 'character'
+    }
+    switch (parsed.kind) {
+        case 'module':
+            return 'module'
+        case 'character':
+        case 'chat':
+            return 'character'
+        default: {
+            // Adding an owner kind must decide its place kind here; the fallback is the character wording.
+            const unhandled: never = parsed
+            void unhandled
+            return 'character'
+        }
+    }
+}
+
 /**
  * The notice of a merge undo that left places as they were: `message` ("{j} places not restored") with the list behind
  * Show. Ctrl+Z and the History panel call it from their own replay, which has already checked its visit and owner.
  */
 export function setStudioNotRestoredNotice(owner: OwnerKey, message: string, places: readonly string[]): void {
     studioScreen.notice = message
-    studioScreen.noticePlaces = { ownerKind: parseOwnerKey(owner)?.kind === 'module' ? 'module' : 'character', places: [...places] }
+    studioScreen.noticePlaces = { ownerKind: noticeOwnerKindOf(owner), places: [...places] }
 }
 
 /**

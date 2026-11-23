@@ -456,6 +456,16 @@ describe('T-W1b / T-W1c the main realm builds no database request and loads no f
         expect((await readStoredMap(rig.channel.factory)).has(headerKey(A))).toBe(true)
     })
 
+    test('a save whose record names a non-stored key is unwritable and is never posted to the worker', async () => {
+        const rig = proxyRig()
+        await openAndLoad(rig, A)
+        const posted = rig.channel.posted.length
+        const foreign = 'preset:x' as string as OwnerKey
+        expect(await rig.proxy.save(A, chain(foreign, 2), protectOnly(A))).toEqual({ kind: 'unwritable' })
+        expect(rig.channel.posted).toHaveLength(posted)
+        expect((await readStoredMap(rig.channel.factory)).size).toBe(0)
+    })
+
     test('T-W1c the proxy module loads and answers a request while the adapter, the format and the host modules cannot load', async () => {
         const unavailable = (name: string) => () => {
             throw new Error(`${name} must not load in the main realm`)
