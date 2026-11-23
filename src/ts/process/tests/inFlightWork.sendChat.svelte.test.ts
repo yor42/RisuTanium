@@ -267,7 +267,7 @@ vi.mock('src/ts/process/inFlightWork', async (importOriginal) => {
 import { sendChat, doingChat } from 'src/ts/process/index.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { isWriting } from 'src/ts/process/chatOrigin'
-import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
+import { stopAllReplyWork } from 'src/ts/process/chatOrigin'
 
 //#region fixtures
 
@@ -588,7 +588,7 @@ describe('the chat in-flight token', () => {
         installSingleChat()
         const { source, outcome } = await startHeldSend(() => sendChat())
 
-        abortUnitInProgress()
+        stopAllReplyWork()
         source.close()
         await outcome
 
@@ -648,7 +648,7 @@ describe('the chat in-flight token', () => {
         const { source, outcome } = await startHeldSend(() => sendChat())
         expect(inFlightKinds()).toEqual(['chat'])
 
-        abortUnitInProgress()
+        stopAllReplyWork()
         source.close()
         await outcome
 

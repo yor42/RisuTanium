@@ -6,7 +6,8 @@
     import SendHorizontalIcon from '@lucide/svelte/icons/send-horizontal'
     import SquareIcon from '@lucide/svelte/icons/square'
     import { DBState, popUpEditorStore, selIdState } from '../../ts/stores.svelte'
-    import { doingChat, chatProcessStage } from '../../ts/process/index.svelte'
+    import { doingChat } from '../../ts/process/index.svelte'
+    import { processStageIn } from '../../ts/process/generationOwnership.svelte'
     import { sendMain, stopComposerWorkIn, isComposerBusy, isComposerBusyIn, isComposerLocked, reroll, updateInputTransateMessage, type ComposerActionsSource } from '../../ts/process/composerActions.svelte'
     import { createComposerSurface, beginChatFileUpload, trackChatFileUpload, trackChatFileAttachment, attachmentsForDraft } from '../../ts/process/composerSurface.svelte'
     import * as composerDrafts from '../../ts/process/composerDrafts.svelte'
@@ -232,7 +233,7 @@
         <button data-part="chat-composer-plus" data-kind="icon-button" aria-label={language.tools} onclick={(event) => onplus(event.currentTarget)}><PlusIcon aria-hidden="true" /></button>
         <textarea bind:this={input} data-part="chat-composer-input" data-kind="field" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncontextmenu={openPopup}></textarea>
         {#if shownBusy && shownOrigin}
-            <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={() => stopComposerWorkIn(shownOrigin)}><span data-part="chat-composer-progress" data-stage={$chatProcessStage} use:streamTextHold={{ origin: shownOrigin }}></span><SquareIcon aria-hidden="true" fill="currentColor" /></button>
+            <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={() => stopComposerWorkIn(shownOrigin)}><span data-part="chat-composer-progress" data-stage={processStageIn(shownOrigin)} use:streamTextHold={{ origin: shownOrigin }}></span><SquareIcon aria-hidden="true" fill="currentColor" /></button>
         {:else}
             <button data-part="chat-send" data-kind="icon-button" aria-label={language.chatShellSend} disabled={sendBlocked} title={sendWaitsForDelete ? language.chatShellSendWaitsForDelete : (writingElsewhere ? language.chatShellSendBlockedWriting : undefined)} aria-describedby={writingElsewhere ? blockedReasonId : undefined} onclick={() => { if (!sendBlocked) void sendMain(source, false) }}><SendHorizontalIcon aria-hidden="true" /></button>
             {#if writingElsewhere}<span id={blockedReasonId} hidden>{language.chatShellSendBlockedWriting}</span>{/if}

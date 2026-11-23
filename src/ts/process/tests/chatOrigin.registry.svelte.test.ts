@@ -17,7 +17,7 @@ vi.mock(import('../../stores.svelte'), () => {
 })
 
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, hasAnyWork, isWorkInProgress, isGeneratingIn, generatingChatIdsIn, replyTargets, stopRepliesOf, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
+import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, stopAllReplyWork, hasAnyWork, isWorkInProgress, isGeneratingIn, generatingChatIdsIn, replyTargets, stopRepliesOf, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
 
 type CharacterFixture = Database['characters'][number]
 
@@ -230,6 +230,61 @@ describe('stopWorkIn calls each matching registration\'s stop once', () => {
 
         try {
             expect(() => stopWorkIn({ chaId: 'char-a' })).not.toThrow()
+            expect(stopAfter).toHaveBeenCalledTimes(1)
+            expect(logged).toHaveBeenCalledTimes(1)
+        } finally {
+            logged.mockRestore()
+        }
+    })
+})
+
+// Specification tests: they pin the contract of stopAllReplyWork (stop-all, MC-3309, MC-3743).
+describe('stopAllReplyWork stops every reply and preview registration', () => {
+    test('R3: reply and preview stops run once whatever the chat, work and ended registrations are left alone, and a repeat or a later stopWorkIn does nothing', () => {
+        const stopA = vi.fn()
+        const stopP = vi.fn()
+        const stopW = vi.fn()
+        const stopEnded = vi.fn()
+        const stopS2 = vi.fn()
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, stopA, 'reply'))
+        open(registerWork({ chaId: 'char-b', chatId: 'chat-b' }, stopP, 'preview'))
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, stopW))
+        // A registration that ended before the stop is no longer registered, so its stop is never called.
+        registerWork({ chaId: 'char-c', chatId: 'chat-c' }, stopEnded, 'reply').end()
+        // S1 ends its own registration from inside its stop, and S2 is the very next registration after it: a loop
+        // over the live registry instead of a snapshot would skip S2.
+        let s1Handle: WorkHandle | undefined
+        const stopS1 = vi.fn(() => { s1Handle?.end() })
+        s1Handle = open(registerWork({ chaId: 'char-d', chatId: 'chat-d' }, stopS1, 'reply'))
+        open(registerWork({ chaId: 'char-e', chatId: 'chat-e' }, stopS2, 'reply'))
+
+        stopAllReplyWork()
+
+        expect(stopA).toHaveBeenCalledTimes(1)
+        expect(stopP).toHaveBeenCalledTimes(1)
+        expect(stopS1).toHaveBeenCalledTimes(1)
+        expect(stopS2).toHaveBeenCalledTimes(1)
+        expect(stopW).not.toHaveBeenCalled()
+        expect(stopEnded).not.toHaveBeenCalled()
+
+        stopAllReplyWork()
+        stopWorkIn({ chaId: 'char-a', chatId: 'chat-a' })
+
+        expect(stopA).toHaveBeenCalledTimes(1)
+        expect(stopP).toHaveBeenCalledTimes(1)
+        expect(stopS1).toHaveBeenCalledTimes(1)
+        expect(stopS2).toHaveBeenCalledTimes(1)
+        expect(stopW).toHaveBeenCalledTimes(1)
+    })
+
+    test('R13: a stop that throws is logged and does not keep the next from running', () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const stopAfter = vi.fn()
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, () => { throw new Error('stop failed') }, 'reply'))
+        open(registerWork({ chaId: 'char-b', chatId: 'chat-b' }, stopAfter, 'reply'))
+
+        try {
+            expect(() => stopAllReplyWork()).not.toThrow()
             expect(stopAfter).toHaveBeenCalledTimes(1)
             expect(logged).toHaveBeenCalledTimes(1)
         } finally {

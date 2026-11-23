@@ -199,6 +199,7 @@ class RendererLossTest {
     val events = mutableListOf<String>()
     val outcomes = mutableListOf<String>()
     val logged = mutableListOf<String>()
+    val prefs = FakePrefs(true)
 
     private fun record(name: String) {
       events.add(name)
@@ -217,10 +218,11 @@ class RendererLossTest {
       outcomes.add("durable=$durable ok=$ok relaunch=$relaunchCalled")
     }
     override fun warn(step: String, error: Exception) { record("warn") }
-    override fun persist(value: String): Boolean {
+    override fun persist(value: String, crashLoop: Boolean): Boolean {
       record("persist")
+      val committed = persistLossTimes(prefs, value, crashLoop)
       if (persistResult) stored = value
-      return persistResult
+      return persistResult && committed
     }
     override fun stopKeepAlive() { record("stop") }
     override fun relaunch() { record("relaunch") }
@@ -367,8 +369,12 @@ class RendererLossTest {
 
   private class FakePrefs(private val commitResult: Boolean) : SharedPreferences {
     val written = mutableMapOf<String, String?>()
+    val flags = mutableMapOf<String, Boolean>()
+    val flagWrites = mutableListOf<String>()
+    val removed = mutableListOf<String>()
     var applyCalls = 0
     var commitCalls = 0
+    var clearCalls = 0
 
     val editor = object : SharedPreferences.Editor {
       override fun putString(key: String, value: String?): SharedPreferences.Editor { written[key] = value; return this }
@@ -376,9 +382,18 @@ class RendererLossTest {
       override fun putInt(key: String, value: Int): SharedPreferences.Editor = this
       override fun putLong(key: String, value: Long): SharedPreferences.Editor = this
       override fun putFloat(key: String, value: Float): SharedPreferences.Editor = this
-      override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor = this
-      override fun remove(key: String): SharedPreferences.Editor = this
-      override fun clear(): SharedPreferences.Editor = this
+      override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor {
+        flags[key] = value
+        flagWrites.add("$key=$value")
+        return this
+      }
+      override fun remove(key: String): SharedPreferences.Editor {
+        removed.add(key)
+        flags.remove(key)
+        written.remove(key)
+        return this
+      }
+      override fun clear(): SharedPreferences.Editor { clearCalls++; return this }
       override fun commit(): Boolean { commitCalls++; return commitResult }
       override fun apply() { applyCalls++ }
     }
@@ -389,8 +404,8 @@ class RendererLossTest {
     override fun getInt(key: String, defValue: Int) = defValue
     override fun getLong(key: String, defValue: Long) = defValue
     override fun getFloat(key: String, defValue: Float) = defValue
-    override fun getBoolean(key: String, defValue: Boolean) = defValue
-    override fun contains(key: String) = written.containsKey(key)
+    override fun getBoolean(key: String, defValue: Boolean) = flags[key] ?: defValue
+    override fun contains(key: String) = written.containsKey(key) || flags.containsKey(key)
     override fun edit(): SharedPreferences.Editor = editor
     override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {}
     override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {}
@@ -399,13 +414,101 @@ class RendererLossTest {
   @Test
   fun persistReturnsCommitsOwnResultAndNeverApplies() {
     val failing = FakePrefs(false)
-    assertFalse(persistLossTimes(failing, "1,2"))
+    assertFalse(persistLossTimes(failing, "1,2", false))
     assertEquals(0, failing.applyCalls)
     assertEquals(1, failing.commitCalls)
     val working = FakePrefs(true)
-    assertTrue(persistLossTimes(working, "1,2"))
+    assertTrue(persistLossTimes(working, "1,2", false))
     assertEquals(0, working.applyCalls)
     assertEquals("1,2", working.written[KEY_LOSS_TIMES])
     assertNotNull(working.written[KEY_LOSS_TIMES])
+  }
+
+  @Test
+  fun aNonLoopPersistNeitherWritesNorRemovesAnExistingFlag() {
+    val prefs = FakePrefs(true)
+    prefs.editor.putBoolean(KEY_PACK_FREE_NEXT_START, true)
+    prefs.flagWrites.clear()
+    assertTrue(persistLossTimes(prefs, "1,2", false))
+    assertEquals(emptyList<String>(), prefs.flagWrites)
+    assertEquals(emptyList<String>(), prefs.removed)
+    assertEquals(true, prefs.flags[KEY_PACK_FREE_NEXT_START])
+  }
+
+  @Test
+  fun aCrashLoopPersistWritesTheTimesAndTheFlagInOneCommit() {
+    val prefs = FakePrefs(true)
+    assertTrue(persistLossTimes(prefs, "1,2,3", true))
+    assertEquals("1,2,3", prefs.written[KEY_LOSS_TIMES])
+    assertEquals(listOf("$KEY_PACK_FREE_NEXT_START=true"), prefs.flagWrites)
+    assertEquals(1, prefs.commitCalls)
+    assertEquals(0, prefs.applyCalls)
+    val failing = FakePrefs(false)
+    assertFalse(persistLossTimes(failing, "1,2,3", true))
+    assertEquals(1, failing.commitCalls)
+  }
+
+  @Test
+  fun clearingTheFlagIsOneCommitOnThatKeyOnly() {
+    val prefs = FakePrefs(true)
+    prefs.editor.putString(KEY_LOSS_TIMES, "1,2")
+    prefs.editor.putBoolean(KEY_PACK_FREE_NEXT_START, true)
+    assertTrue(clearPackFreeNextStart(prefs))
+    assertEquals(1, prefs.commitCalls)
+    assertEquals(0, prefs.applyCalls)
+    assertEquals(0, prefs.clearCalls)
+    assertEquals(listOf(KEY_PACK_FREE_NEXT_START), prefs.removed)
+    assertEquals("1,2", prefs.written[KEY_LOSS_TIMES])
+    assertFalse(prefs.flags.containsKey(KEY_PACK_FREE_NEXT_START))
+    val failing = FakePrefs(false)
+    assertFalse(clearPackFreeNextStart(failing))
+    assertEquals(1, failing.commitCalls)
+  }
+
+  // ---- the crash-loop start ----
+
+  @Test
+  fun theThirdLossWithinTheWindowIsACrashLoopInTheForegroundAndTheBackground() {
+    for (foreground in listOf(true, false)) {
+      val decision = decideRendererLoss("90000,95000", foreground, 100_000L)
+      assertEquals(RendererLossAction.EXIT, decision.action)
+      assertTrue(decision.crashLoop)
+      val fx = FakeEffects(stored = "90000,95000", foreground = foreground)
+      runRendererLoss(true, true, fx)
+      assertEquals(listOf("persist", "stop", "exit"), fx.effects())
+      assertEquals(listOf("$KEY_PACK_FREE_NEXT_START=true"), fx.prefs.flagWrites)
+      assertEquals("90000,95000,100000", fx.prefs.written[KEY_LOSS_TIMES])
+      assertEquals(1, fx.prefs.commitCalls)
+      assertEquals(0, fx.prefs.applyCalls)
+    }
+  }
+
+  @Test
+  fun fewerThanThreeLossesInTheWindowAreNoCrashLoop() {
+    val cases = listOf(
+      Triple(null as String?, true, 100_000L),
+      Triple("99000" as String?, true, 100_000L),
+      Triple("99000" as String?, false, 100_000L),
+      Triple("39999,99000" as String?, true, 100_000L),
+      Triple("500000,600000,99000" as String?, true, 100_000L)
+    )
+    for ((stored, foreground, now) in cases) {
+      val decision = decideRendererLoss(stored, foreground, now)
+      assertFalse("$stored/$foreground", decision.crashLoop)
+      val fx = FakeEffects(stored = stored, foreground = foreground, now = now)
+      runRendererLoss(true, true, fx)
+      assertEquals(emptyList<String>(), fx.prefs.flagWrites)
+      assertEquals(emptyList<String>(), fx.prefs.removed)
+    }
+    val spanning = chain(true, 0L, 30_000L, 60_001L)
+    assertTrue(spanning.none { it.crashLoop })
+  }
+
+  @Test
+  fun aCrashLoopWhoseRecordFailsStillExitsWithoutRelaunch() {
+    val fx = FakeEffects(stored = "90000,95000", persistResult = false)
+    runRendererLoss(true, true, fx)
+    assertEquals(listOf("persist", "stop", "exit"), fx.effects())
+    assertEquals(listOf("durable=false ok=true relaunch=false"), fx.outcomes)
   }
 }

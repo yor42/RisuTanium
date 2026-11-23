@@ -234,7 +234,7 @@ import { language } from 'src/lang'
 import {
     reroll, unReroll, stepSibling, branchAt, abortChat, resetComposerActionsForTests, type ComposerActionsSource,
 } from 'src/ts/process/composerActions.svelte'
-import { setComposerWindow } from 'src/ts/process/generationOwnership.svelte'
+import { openComposerWindow, resetComposerWindowsForTests } from 'src/ts/process/generationOwnership.svelte'
 import { detachTail, endTarget, siblingsAt, switchTo } from 'src/ts/process/chatTree'
 import { treeView } from 'src/ts/process/chatTreeView'
 import { keepLiveAlt } from 'src/ts/plugins/chatAltBridge'
@@ -364,7 +364,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-    setComposerWindow(false)
+    resetComposerWindowsForTests()
     selectedCharID.set(-1)
 })
 
@@ -666,7 +666,7 @@ describe('the gate', () => {
         mockReply('New reply')
         await reroll(source)
         const before = copyOf(chat)
-        setComposerWindow(true)
+        openComposerWindow({ chaId: 'char-held-elsewhere', chatId: 'chat-held-elsewhere' })
 
         await branchAt(source, 0, 'u0')
         await stepSibling(source, 1, chat.message[1].chatId, 'back')

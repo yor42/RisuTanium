@@ -45,8 +45,8 @@ import { isLite } from 'src/ts/lite'
 import { defaultColorScheme, effectiveColorScheme, PACK_SCHEME_NAME, updateColorScheme } from 'src/ts/gui/colorscheme'
 import { packSafe } from './packSafeFlag.svelte'
 import {
-    bannerAccess, bannerPalette, bootThemePackStep, dismissPackBanner, enterPackSafeMode, leavePackSafeMode, offerBootEscape,
-    packAnnouncement, packBanner, resetPackSafeModeForTests, setBannerTouchExploration, tapTurnOff,
+    bannerAccess, bannerPalette, bootThemePackStep, dismissPackBanner, enterPackSafeMode, holdPackUntilDecided, leavePackSafeMode, offerBootEscape,
+    packAnnouncement, packBanner, releasePackHold, resetPackSafeModeForTests, setBannerTouchExploration, tapTurnOff,
 } from './packSafeMode.svelte'
 
 const USER = { bgcolor: '#101820', darkbg: '#0a1016', borderc: '#445566', selected: '#223344', draculared: '#ff5555', textcolor: '#e0e8f0', textcolor2: '#a0a8b0', darkBorderc: '#334455', darkbutton: '#203040', type: 'dark' } as const
@@ -119,6 +119,58 @@ describe('TA-8: the scheme branch', () => {
         expect(rootText()).toBe('#f5f5f5')
         leavePackSafeMode()
         expect(rootText()).toBe(PACK_COPY.textcolor)
+    })
+})
+
+describe('PM-1: the Android hold', () => {
+    it('holds only a page with safe mode off, as `undecided`, and says whether it held', () => {
+        expect(holdPackUntilDecided()).toBe(true)
+        expect(packSafe.on).toBe(true)
+        expect(packSafe.source).toBe('undecided')
+        expect(holdPackUntilDecided()).toBe(false)
+        expect(packSafe.source).toBe('undecided')
+    })
+
+    it('does not take over a page that already has safe mode on', () => {
+        enterPackSafeMode('url')
+        expect(holdPackUntilDecided()).toBe(false)
+        expect(packSafe.source).toBe('url')
+    })
+
+    it('the hold and its release repaint nothing, announce nothing and write nothing', () => {
+        updateColorScheme()
+        const painted = rootText()
+        const before = structuredClone(h.db)
+        holdPackUntilDecided()
+        expect(rootText()).toBe(painted)
+        expect(packAnnouncement.off).toBe(false)
+        expect(packBanner.mode).toBe('hidden')
+        releasePackHold()
+        expect(rootText()).toBe(painted)
+        expect(packAnnouncement.off).toBe(false)
+        expect(packBanner.mode).toBe('hidden')
+        expect(h.db).toEqual(before)
+        expect(h.turnOff).not.toHaveBeenCalled()
+    })
+
+    it('the release ends an `undecided` hold', () => {
+        holdPackUntilDecided()
+        releasePackHold()
+        expect(packSafe.on).toBe(false)
+        expect(packSafe.source).toBeNull()
+    })
+
+    it.each(['url', 'shortcut', 'boot', 'noAnswer'] as const)('the release leaves safe mode from `%s` on', (source) => {
+        enterPackSafeMode(source)
+        releasePackHold()
+        expect(packSafe.on).toBe(true)
+        expect(packSafe.source).toBe(source)
+    })
+
+    it('the release on a page with safe mode off changes nothing', () => {
+        releasePackHold()
+        expect(packSafe.on).toBe(false)
+        expect(packSafe.source).toBeNull()
     })
 })
 

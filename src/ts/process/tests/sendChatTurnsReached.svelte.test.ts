@@ -390,9 +390,11 @@ function coldPlaceholder(chaId: string): CharacterFixture {
 
 /** How many turns one `sendChat` call reached. */
 async function turnsOfOneSend(): Promise<{ turns: number, result: boolean }> {
-    const before = turnsReachedCount()
+    const selected = DBState.db.characters[0]
+    const target = { chaId: selected.chaId as string, chatId: selected.chats[selected.chatPage].id }
+    const before = turnsReachedCount(target)
     const result = await sendChat()
-    return { turns: turnsReachedCount() - before, result }
+    return { turns: turnsReachedCount(target) - before, result }
 }
 
 beforeEach(() => {

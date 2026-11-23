@@ -27,7 +27,7 @@ This is the check half of UI-S7 (MC-1699). It records defects; it changes no cod
   - All adb goes through `Agents/Tools/device-guard/adbg.mjs`.
   - Do not run pm clear, install anything or change app data or settings. Input is limited to located taps, swipes and keyevents needed to reach a screen.
   - Wi-Fi off, synthetic data, located crops, a whole-run STOP rule. PICK-LOCK means stop.
-  - **Note 9:** ask lane B for a window first, and confirm no other agent is driving that phone.
+  - **Note 9:** hold a `note9` lease for that phone first (`lease-acquire --pool note9`, see [live-checks](../../../docs/workflow/live-checks.md#device-leases)), and until the lease is live ask lane B for a window; either way confirm no other agent is driving that phone.
   - **Tab S9:** take the lane A lock `%TEMP%\risu-b715\device-tabs9.lock` (mkdir plus owner.txt). If it exists, wait; remove it when done. Stay inside your adbg scope file. Never touch other apps.
   - **Fold 7:** no adb.
 - **Run slots.**

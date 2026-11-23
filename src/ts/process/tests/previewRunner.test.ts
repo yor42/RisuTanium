@@ -86,7 +86,7 @@ import { initHotkey } from 'src/ts/hotkey'
 import { runPreviewPrompt } from 'src/ts/process/devToolActions'
 import { previewMayStart, renderPromptPreview, renderPromptResult, runPreview } from 'src/ts/process/previewRunner'
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
-import { setComposerWindow } from 'src/ts/process/generationOwnership.svelte'
+import { openComposerWindow, resetComposerWindowsForTests } from 'src/ts/process/generationOwnership.svelte'
 import { alertStore, DBState, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
 import { doingChat as doingChatStore, sendChat } from 'src/ts/process/index.svelte'
 import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertWait } from 'src/ts/alert'
@@ -123,7 +123,7 @@ beforeEach(() => {
     DBState.db = {} as unknown as Database
     selectedCharID.set(SELECTED)
     doingChat.set(false)
-    setComposerWindow(false)
+    resetComposerWindowsForTests()
     settingsOpen.set(false)
     alertStore.set(NONE)
     vi.mocked(sendChat).mockReset()
@@ -140,7 +140,7 @@ afterEach(() => {
     }
     document.body.replaceChildren()
     settingsOpen.set(false)
-    setComposerWindow(false)
+    resetComposerWindowsForTests()
     resetAlertPromptsForTests()
     alertStore.set(NONE)
     vi.restoreAllMocks()
@@ -423,7 +423,7 @@ describe('the preview hotkey, when it refuses', () => {
     test.each([
         ['a generation is running', () => { doingChat.set(true) }],
         ['no character is selected', () => { selectedCharID.set(-1) }],
-        ['the composer\'s window is open', () => { setComposerWindow(true) }],
+        ['the composer\'s window is open', () => { openComposerWindow({ chaId: 'char-held-elsewhere', chatId: 'chat-held-elsewhere' }) }],
     ])('it consumes Ctrl+U when %s', async (_label, arrange) => {
         arrange()
         const key = ctrlU()
@@ -851,7 +851,7 @@ describe('a newer preview run, and a refused attempt, while a result is pending'
 
     describe.each([
         ['a generation is running', () => { doingChat.set(true) }],
-        ['the composer\'s window is open', () => { setComposerWindow(true) }],
+        ['the composer\'s window is open', () => { openComposerWindow({ chaId: 'char-held-elsewhere', chatId: 'chat-held-elsewhere' }) }],
     ])('an attempt refused because %s', (_label, arrangeRefusal) => {
         test.each(previewEntries)('by $name leaves the pending result to show when the toast ends', async (entry) => {
             await pendingBehindToast()
@@ -862,7 +862,7 @@ describe('a newer preview run, and a refused attempt, while a result is pending'
 
             expect.soft(vi.mocked(sendChat), 'sends started').not.toHaveBeenCalled()
             doingChat.set(false)
-            setComposerWindow(false)
+            resetComposerWindowsForTests()
             alertClear()
             expect.soft(shown().type, 'the alert showing').toBe('markdown')
             expect.soft(shown().msg).toContain('EARLIER-PREVIEW-BODY')

@@ -52,9 +52,6 @@ class MainActivity : TauriActivity() {
   // The chat a notification tap named, held until the page asks for it; main thread only.
   private var pendingTarget: NoticeTarget? = null
 
-  // The shortcut's "start without theme pack" request, held until the page asks for the launch options.
-  private val pendingPackSafe = PendingPackSafe()
-
   private val replyNotifier by lazy { ReplyNotifier(applicationContext) }
 
   // Declared before barGate, which is built from it. The callback and the timeout it creates are
@@ -178,6 +175,9 @@ class MainActivity : TauriActivity() {
     AppUpdateService.init(applicationContext)
     AppUpdateService.shared.attach(updateLaunchers)
     AppUpdateService.shared.processStart()
+    // Every creation, a restored instance included, reads the crash-loop flag before the WebView
+    // exists, so no ask of the page can be answered before the session knows it.
+    packSafeSession.loadNextStart { lossPrefs().getBoolean(KEY_PACK_FREE_NEXT_START, false) }
     // Until the bridge mode is decided, the launch intent's force request is the one that counts.
     if (latchedBridgeMode == null) {
       forceLegacyRequested = intent.getBooleanExtra(EXTRA_FORCE_LEGACY_BRIDGES, false)
@@ -225,11 +225,11 @@ class MainActivity : TauriActivity() {
     // carry the intent that started the earlier instance, whose file was already handled.
     // A notification tap is held under the same rule, so a relaunch from the recents list or a
     // recreation never opens the chat again. The shortcut's request follows the same rule, so a
-    // relaunch from the recents list never turns the theme pack off.
+    // relaunch from the recents list is not a new request: its old action is ignored.
     if (savedInstanceState == null && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
       OpenedFilesBridge.enqueue(intent)
       pendingTarget = targetOfIntent(intent)
-      if (isPackSafeModeIntent(actionOfIntent(intent))) pendingPackSafe.arm()
+      if (isPackSafeModeIntent(actionOfIntent(intent))) packSafeSession.request()
       // Debug only. The worker is serial, so a page request after this sees the keys gone, and the
       // main thread does no Keystore work.
       if (shouldDeleteVaultKeys(BuildConfig.DEBUG, intent.getBooleanExtra(EXTRA_DEBUG_DELETE_VAULT_KEYS, false))) {
@@ -250,11 +250,14 @@ class MainActivity : TauriActivity() {
       null
     }
 
-  // The page asked for the launch options: the shortcut's request is answered once and cleared, the
-  // touch-exploration state is read at answer time. The page validates both.
+  // The page asked for the launch options: the session's decision is handed over every time it asks
+  // and is not consumed; the stored crash-loop flag is removed after the first hand-over that reached
+  // the page. The touch-exploration state is read at answer time. The page validates both.
   private fun answerLaunchOptions() {
-    val packSafe = pendingPackSafe.take()
-    callPage("window.__risuTaniumLaunchOptions?.(${encodeLaunchOptions(packSafe, touchExploration.enabled)})")
+    packSafeSession.answer(
+      { packSafe -> callPage("window.__risuTaniumLaunchOptions?.(${encodeLaunchOptions(packSafe, touchExploration.enabled)})") },
+      { clearPackFreeNextStart(lossPrefs()) }
+    )
   }
 
   // The page asked for the pending target: it is answered once, with null when there is none.
@@ -279,7 +282,7 @@ class MainActivity : TauriActivity() {
     }
     // The shortcut while the app runs: the page is told to ask again and enters safe mode live.
     if (isPackSafeModeIntent(actionOfIntent(intent))) {
-      pendingPackSafe.arm()
+      packSafeSession.request()
       callPage("window.__risuTaniumPackSafeModeReady?.()")
     }
   }
@@ -371,16 +374,17 @@ class MainActivity : TauriActivity() {
       Log.w("RendererLoss", "$step failed", error)
     }
 
-    override fun persist(value: String): Boolean = persistLossTimes(lossPrefs(), value)
+    override fun persist(value: String, crashLoop: Boolean): Boolean = persistLossTimes(lossPrefs(), value, crashLoop)
 
     override fun stopKeepAlive() = KeepAliveService.stop(applicationContext)
 
     // The start and the kill run in one message, so the new task can only begin in a new process.
+    // A pack-free session carries its action over, so the new process asks for pack-free too.
     override fun relaunch() {
-      startActivity(
-        Intent.makeRestartActivityTask(ComponentName(this@MainActivity, MainActivity::class.java))
-          .putExtra(EXTRA_FORCE_LEGACY_BRIDGES, forceLegacyRequested)
-      )
+      val restart = Intent.makeRestartActivityTask(ComponentName(this@MainActivity, MainActivity::class.java))
+        .putExtra(EXTRA_FORCE_LEGACY_BRIDGES, forceLegacyRequested)
+      packSafeSession.relaunchAction()?.let { restart.action = it }
+      startActivity(restart)
     }
 
     override fun exitProcess() = Process.killProcess(Process.myPid())

@@ -113,6 +113,7 @@ vi.mock(import('../storage/characterSaveMarks'), () => ({ markCharacterForSave: 
 import { applyRecoveredStreamReply, doingChat, sendChat } from './index.svelte'
 import { activeUnits } from './activeUnits'
 import { isWriting } from './chatOrigin'
+import { abortChat } from './composerActions.svelte'
 import { DBState } from '../stores.svelte'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
 import { createUsageMeter } from '../usage/usageMeter'
@@ -698,6 +699,24 @@ describe('the unit an apply holds', () => {
 
         expect(await run).toBe(expected)
         expect(get(doingChat)).toBe(false)
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    // R9s (regression reproducer, MC-3743): the global Stop reaches a running stream apply, which defers before its write.
+    test('R9s: the global Stop defers a running stream apply before its write: the partial is unchanged', async () => {
+        installDb()
+        const gate = holdOutputScript()
+        const run = applyRecoveredStreamReply(input())
+        try {
+            await gate.entered
+            abortChat()
+        } finally {
+            gate.open()
+        }
+
+        expect(await run).toBe('deferred')
+        expect(liveChat().message[1]).toMatchObject({ data: 'Hel', interrupted: true })
+        expect(usageKeys()).toEqual([])
         expect(activeUnits.any()).toBe(false)
     })
 

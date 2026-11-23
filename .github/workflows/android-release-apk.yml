@@ -1,0 +1,454 @@
+name: Android release APK
+
+# Reusable workflow, called only by android-build.yml in release mode (never dispatched on its own).
+#
+#   guard           refuses a run before any build: main branch only, no repository-level copy of the four
+#                   secrets or the variable, and environment android-release restricted to main.
+#   build           builds an unsigned APK. It runs repository, package, cargo and Gradle code and has no key.
+#   inspect         checks the unsigned bytes on a keyless runner: package, version, code, ABI set and
+#                   non-debuggability, by simple rules (util/androidRelease.mjs). It reports the file's hash.
+#   sign            the only job with the key, in environment android-release. It has no checkout, install,
+#                   cache or repository file. sign runs sha256sum and apksigner (Java) and no native APK parser.
+#   inspect-signed  runs the same checks on the signed bytes, plus 16 KB alignment, on a keyless runner.
+#
+# Trusted with the four secrets for the whole sign job (the runner holds them from the job's start, and
+# removing the key file afterwards is hygiene, not a boundary): GitHub, the runner image, both pinned artifact
+# actions including archive extraction, the JDK with its native zip and crypto code, apksigner, coreutils.
+#
+# Secrets and variable, all in environment android-release and nowhere else:
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+#   variable ANDROID_RELEASE_CERT_SHA256: the expected signer, 64 lower-case hex digits, no colons.
+#   Note: the variable is public and appears in logs: never put a secret in it.
+# Keep no repository-level copy of any of them.
+# After changing a variable or secret, confirm that no repository-level copy exists before "Re-run failed jobs", or use "Re-run all jobs", because a partial re-run does not repeat guard.
+#
+# The environment rule checks the ref a run starts from, not code that the run checks out later.
+#
+# The unsigned artifact lasts 3 days and the signed one 14 days.
+# Rule: never install or share an APK from a red run, even though its artifact exists.
+# Setup and the checks before a real-data install: Agents/Tools/device/SIGNING.md.
+on:
+  workflow_call:
+    inputs:
+      abi:
+        description: 'Target ABI: aarch64 or all'
+        type: string
+        required: true
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: true
+      ANDROID_KEYSTORE_PASSWORD:
+        required: true
+      ANDROID_KEY_ALIAS:
+        required: true
+      ANDROID_KEY_PASSWORD:
+        required: true
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+# onnxruntime-node's install script downloads its CUDA binaries on Linux x64 when nvcc is absent.
+# The build never uses the CUDA provider, and that download can fail, so the install skips it. A caller's env does not
+# reach a reusable workflow.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - id: guard
+        name: Guard the dispatch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ABI: ${{ inputs.abi }}
+          REPO_HAS_ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          REPO_HAS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          REPO_HAS_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          REPO_HAS_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+          REPO_HAS_ANDROID_RELEASE_CERT_SHA256: ${{ vars.ANDROID_RELEASE_CERT_SHA256 != '' }}
+        run: |
+          set -euo pipefail
+          node util/androidRelease.mjs guard
+
+  # Untrusted code runs here (repository scripts, packages, cargo, Gradle). No key source exists in this job.
+  build:
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The pnpm version comes from the packageManager field in package.json.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # The Android Gradle plugin and Gradle 8.14 need JDK 21 here; newer JDKs are not supported.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The runner image already carries the Android SDK and an NDK.
+      - name: Point the build at the runner's Android SDK and NDK
+        run: |
+          set -euo pipefail
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ inputs.abi == 'all' && 'aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android' || 'aarch64-linux-android' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android-${{ inputs.abi }}
+
+      - name: Install frontend dependencies
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+
+      # The legal flag comes from .env.production (on). Nothing here sets or overrides it. No signing key exists
+      # in this job, so Gradle can only produce the unsigned release APK.
+      - id: build
+        name: Build unsigned APK
+        env:
+          ABI: ${{ inputs.abi }}
+        run: |
+          set -euo pipefail
+          args=(android build --apk)
+          if [ "$ABI" != "all" ]; then
+            args+=(--target aarch64)
+          fi
+          pnpm tauri "${args[@]}"
+
+      - id: collect
+        name: Collect the unsigned APK
+        run: |
+          set -euo pipefail
+          dir=src-tauri/gen/android/app/build/outputs/apk/universal/release
+          if [ -e "$dir/app-universal-release.apk" ] || [ -L "$dir/app-universal-release.apk" ]; then
+            echo "::error::Gradle produced a signed release APK name, so a signing key was found in the build. Nothing is uploaded."
+            exit 1
+          fi
+          if [ ! -f "$dir/app-universal-release-unsigned.apk" ]; then
+            echo "::error::The unsigned release APK is missing from the Gradle output folder."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/unsigned"
+          cp "$dir/app-universal-release-unsigned.apk" "$RUNNER_TEMP/unsigned/app-unsigned.apk"
+
+      - id: upload
+        name: Upload the unsigned APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: risutanium-android-unsigned-${{ inputs.abi }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/unsigned/app-unsigned.apk
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  inspect:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      artifact-id: ${{ steps.check-inputs.outputs.artifact-id }}
+      sha256: ${{ steps.inspect.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - id: check-inputs
+        name: Check the artifact id
+        env:
+          ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
+        run: |
+          set -euo pipefail
+          case "$ARTIFACT_ID" in
+            '' | *[!0123456789]*)
+              echo "::error::The unsigned artifact id from build is not a number."
+              exit 1
+              ;;
+          esac
+          echo "artifact-id=$ARTIFACT_ID" >> "$GITHUB_OUTPUT"
+
+      - id: download
+        name: Download the unsigned APK
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ steps.check-inputs.outputs.artifact-id }}
+          path: ${{ runner.temp }}/in
+          merge-multiple: true
+
+      - id: inspect
+        name: Inspect the unsigned APK
+        env:
+          ABI: ${{ inputs.abi }}
+          APK_DIR: ${{ runner.temp }}/in
+        run: |
+          set -euo pipefail
+          node util/androidRelease.mjs inspect unsigned
+
+  # The only job with the four secrets. No checkout, install, cache or repository file; two pinned actions.
+  sign:
+    needs: inspect
+    runs-on: ubuntu-latest
+    environment: android-release
+    timeout-minutes: 15
+    permissions: {}
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      sha256: ${{ steps.check-signed.outputs.sha256 }}
+    steps:
+      - id: check-inputs
+        name: Check what inspect handed over
+        env:
+          ARTIFACT_ID: ${{ needs.inspect.outputs.artifact-id }}
+          UNSIGNED_SHA256: ${{ needs.inspect.outputs.sha256 }}
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          case "$ARTIFACT_ID" in
+            '' | *[!0123456789]*)
+              echo "::error::The artifact id from inspect is not a number."
+              exit 1
+              ;;
+          esac
+          case "$UNSIGNED_SHA256" in
+            *[!0123456789abcdef]*)
+              echo "::error::The unsigned file hash from inspect is not 64 lower-case hex digits."
+              exit 1
+              ;;
+          esac
+          if [ "${#UNSIGNED_SHA256}" -ne 64 ]; then
+            echo "::error::The unsigned file hash from inspect is not 64 lower-case hex digits."
+            exit 1
+          fi
+          case "$EXPECTED_CERT_SHA256" in
+            *[!0123456789abcdef]*)
+              echo "::error::Variable ANDROID_RELEASE_CERT_SHA256 of environment android-release must be 64 lower-case hex digits, no colons, no spaces."
+              exit 1
+              ;;
+          esac
+          if [ "${#EXPECTED_CERT_SHA256}" -ne 64 ]; then
+            echo "::error::Variable ANDROID_RELEASE_CERT_SHA256 of environment android-release must be 64 lower-case hex digits, no colons, no spaces."
+            exit 1
+          fi
+          if [ ! -x "${ANDROID_HOME:-}/build-tools/36.0.0/apksigner" ]; then
+            echo "::error::build-tools 36.0.0 apksigner is missing on this runner."
+            exit 1
+          fi
+
+      - id: download
+        name: Download the unsigned APK
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.inspect.outputs.artifact-id }}
+          path: ${{ runner.temp }}/in
+          merge-multiple: true
+
+      - id: check-unsigned
+        name: Check the downloaded file is the inspected one
+        env:
+          UNSIGNED_SHA256: ${{ needs.inspect.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob dotglob
+          entries=("$RUNNER_TEMP/in"/*)
+          file="$RUNNER_TEMP/in/app-unsigned.apk"
+          if [ "${#entries[@]}" -ne 1 ] || [ "${entries[0]}" != "$file" ] || [ -L "$file" ] || [ ! -f "$file" ]; then
+            echo "::error::The downloaded folder must hold exactly one regular file, app-unsigned.apk."
+            exit 1
+          fi
+          hash=$(sha256sum < "$file")
+          if [ "${hash%% *}" != "$UNSIGNED_SHA256" ]; then
+            echo "::error::The downloaded file differs from the file that inspect checked."
+            exit 1
+          fi
+
+      - id: sign
+        name: Sign
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is empty in environment android-release."
+              exit 1
+            fi
+          done
+          umask 077
+          mkdir -p "$RUNNER_TEMP/out"
+          keydir="$RUNNER_TEMP/signing-key"
+          mkdir -p "$keydir"
+          trap 'rm -rf "$keydir"' EXIT
+          if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$keydir/release.p12" 2> "$keydir/log"; then
+            echo "::error::The keystore secret is not valid base64."
+            exit 1
+          fi
+          if ! "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks "$keydir/release.p12" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --v1-signing-enabled false \
+            --v2-signing-enabled true \
+            --v3-signing-enabled false \
+            --v4-signing-enabled false \
+            --lib-page-alignment 16384 \
+            --out "$RUNNER_TEMP/out/app-release.apk" \
+            "$RUNNER_TEMP/in/app-unsigned.apk" > "$keydir/log" 2>&1; then
+            echo "::error::Signing failed. Check the keystore base64, the key alias and both passwords in environment android-release."
+            exit 1
+          fi
+
+      - id: remove-key
+        name: Remove the key file
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/signing-key"
+
+      - id: check-signed
+        name: Check the signer
+        env:
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          signed="$RUNNER_TEMP/out/app-release.apk"
+          if ! "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$signed" > "$RUNNER_TEMP/verify.out" 2> "$RUNNER_TEMP/verify.err"; then
+            echo "::error::apksigner could not verify the signed file."
+            exit 1
+          fi
+          expected="Signer #1 certificate SHA-256 digest: $EXPECTED_CERT_SHA256"
+          count=0
+          found=""
+          while IFS= read -r line || [ -n "$line" ]; do
+            line=${line%$'\r'}
+            case "$line" in
+              *'certificate SHA-256 digest:'*)
+                count=$((count + 1))
+                found="$line"
+                ;;
+            esac
+          done < "$RUNNER_TEMP/verify.out"
+          if [ "$count" -ne 1 ] || [ "$found" != "$expected" ]; then
+            echo "::error::The signed file must have exactly one signer, equal to variable ANDROID_RELEASE_CERT_SHA256 of environment android-release."
+            exit 1
+          fi
+          echo "$found"
+          hash=$(sha256sum < "$signed")
+          echo "sha256=${hash%% *}" >> "$GITHUB_OUTPUT"
+
+      - id: upload
+        name: Upload the signed APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: risutanium-android-release-${{ inputs.abi }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/out/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  inspect-signed:
+    needs: sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - id: check-inputs
+        name: Check what sign handed over
+        env:
+          ARTIFACT_ID: ${{ needs.sign.outputs.artifact-id }}
+          SIGNED_SHA256: ${{ needs.sign.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          case "$ARTIFACT_ID" in
+            '' | *[!0123456789]*)
+              echo "::error::The signed artifact id from sign is not a number."
+              exit 1
+              ;;
+          esac
+          case "$SIGNED_SHA256" in
+            *[!0123456789abcdef]*)
+              echo "::error::The signed file hash from sign is not 64 lower-case hex digits."
+              exit 1
+              ;;
+          esac
+          if [ "${#SIGNED_SHA256}" -ne 64 ]; then
+            echo "::error::The signed file hash from sign is not 64 lower-case hex digits."
+            exit 1
+          fi
+
+      - id: download
+        name: Download the signed APK
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.sign.outputs.artifact-id }}
+          path: ${{ runner.temp }}/in
+          merge-multiple: true
+
+      - id: inspect
+        name: Inspect the signed APK
+        env:
+          ABI: ${{ inputs.abi }}
+          APK_DIR: ${{ runner.temp }}/in
+          EXPECTED_SHA256: ${{ needs.sign.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          node util/androidRelease.mjs inspect signed
