@@ -2664,6 +2664,7 @@ export const languageChinese = {
     "studioPresetNotInChat": "此预设不是当前使用的预设，因此在切换到它之前，聊天不会使用这些设置。",
     "studioPresetNotSet": "此预设中未设置。切换到它时会保留当前值。",
     "studioPresetSectionNameIcon": "名称和图标",
+    "studioPresetIconRemove": "移除图标",
     "studioPresetSectionPromptOptions": "提示词选项",
     "studioPresetSectionOther": "其他",
     "studioPresetUsesTemplate": "此预设使用提示词模板，因此不会使用主提示词、越狱、全局备注和格式顺序。",

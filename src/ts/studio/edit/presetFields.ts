@@ -157,6 +157,8 @@ export const PRESET_FIELDS: { readonly [P in PresetPath]: PresetFieldSpec } = {
     presetFallbackTranslate: inFallbackModels('translate'),
     presetFallbackEmotion: inFallbackModels('emotion'),
     presetFallbackOtherAx: inFallbackModels('otherAx'),
+    // The icon is a data URL on the slot only; no working setting carries it, and the next save writes '' for none.
+    presetImage: { value: 'text', slot: 'image', db: 'slotOnly', absent: 'notSet' },
 }
 
 // The value a container is created with by the first write into an absent or null one: what `setPreset` gives a slot

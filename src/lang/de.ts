@@ -2666,6 +2666,7 @@ export const languageGerman = {
     "studioPresetNotInChat": "Diese Voreinstellung ist nicht die aktive, daher verwenden Chats diese Einstellungen erst, wenn du zu ihr wechselst.",
     "studioPresetNotSet": "In dieser Voreinstellung nicht gesetzt. Beim Wechsel zu ihr bleibt der aktuelle Wert erhalten.",
     "studioPresetSectionNameIcon": "Name und Symbol",
+    "studioPresetIconRemove": "Symbol entfernen",
     "studioPresetSectionPromptOptions": "Prompt-Optionen",
     "studioPresetSectionOther": "Sonstiges",
     "studioPresetUsesTemplate": "Diese Voreinstellung verwendet eine Prompt-Vorlage, daher werden Haupt-Prompt, Jailbreak, globale Notiz und Formatierungsreihenfolge nicht verwendet.",

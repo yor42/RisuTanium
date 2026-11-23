@@ -2709,6 +2709,7 @@ export const languageChineseTraditional = {
     "studioPresetNotInChat": "此預設集不是目前使用中的預設集，因此在切換到它之前，聊天不會使用這些設定。",
     "studioPresetNotSet": "此預設集中未設定。切換到它時會保留目前的值。",
     "studioPresetSectionNameIcon": "名稱與圖示",
+    "studioPresetIconRemove": "移除圖示",
     "studioPresetSectionPromptOptions": "提示詞選項",
     "studioPresetSectionOther": "其他",
     "studioPresetUsesTemplate": "此預設集使用提示詞範本，因此不會使用主提示詞、越獄、全域備註與格式順序。",

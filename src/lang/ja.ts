@@ -2801,6 +2801,7 @@ export const languageJapanese = {
     studioPresetNotInChat: "このプリセットは現在使用中ではないため、切り替えるまでチャットではこれらの設定は使われません。",
     studioPresetNotSet: "このプリセットでは未設定です。切り替えても現在の値が維持されます。",
     studioPresetSectionNameIcon: "名前とアイコン",
+    studioPresetIconRemove: "アイコンを削除",
     studioPresetSectionPromptOptions: "プロンプトオプション",
     studioPresetSectionOther: "その他",
     studioPresetUsesTemplate: "このプリセットはプロンプトテンプレートを使用しているため、メインプロンプト、ジェイルブレイク、グローバルノート、フォーマット順序は使われません。",

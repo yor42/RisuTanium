@@ -84,6 +84,7 @@ export const SESSION_OWNER_KINDS = {
             'presetFallbackTranslate',
             'presetFallbackEmotion',
             'presetFallbackOtherAx',
+            'presetImage',
         ],
     },
 } as const satisfies Record<string, SessionOwnerKindSpec>

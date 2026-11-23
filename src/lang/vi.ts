@@ -2664,6 +2664,7 @@ export const languageVietnamese = {
     "studioPresetNotInChat": "Cài đặt trước này không phải là cái đang dùng, nên cuộc trò chuyện sẽ không dùng các thiết lập này cho đến khi bạn chuyển sang nó.",
     "studioPresetNotSet": "Chưa đặt trong cài đặt trước này. Chuyển sang nó sẽ giữ nguyên giá trị hiện tại.",
     "studioPresetSectionNameIcon": "Tên và biểu tượng",
+    "studioPresetIconRemove": "Xóa biểu tượng",
     "studioPresetSectionPromptOptions": "Tùy chọn prompt",
     "studioPresetSectionOther": "Khác",
     "studioPresetUsesTemplate": "Cài đặt trước này dùng mẫu prompt, nên prompt chính, jailbreak, ghi chú toàn cục và thứ tự định dạng sẽ không được dùng.",

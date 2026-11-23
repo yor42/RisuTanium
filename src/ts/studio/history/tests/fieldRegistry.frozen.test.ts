@@ -109,6 +109,8 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['presetFallbackTranslate', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
     ['presetFallbackEmotion', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
     ['presetFallbackOtherAx', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    // The preset icon (S4d): session-only, no builtin holder.
+    ['presetImage', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
 ]
 
 // The containers a dotted path names, with the value an absent container reads as. An undo replays a seed reading, so
