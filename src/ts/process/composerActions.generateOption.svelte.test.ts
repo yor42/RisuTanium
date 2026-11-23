@@ -9,7 +9,7 @@ vi.mock('../stores.svelte', () => ({
 }))
 vi.mock('./index.svelte', () => ({ doingChat: writable(false), sendChat: sends.sendChat }))
 vi.mock('./generationOwnership.svelte', () => ({
-    isComposerWindowOpen: vi.fn(() => false), openComposerWindow: vi.fn(() => ({ close: vi.fn() })),
+    isComposerWindowOpen: vi.fn(() => false), composerWindowFor: vi.fn(() => false), openComposerWindow: vi.fn(() => ({ close: vi.fn() })),
     turnsReachedCount: vi.fn(() => 0),
 }))
 vi.mock('./coldstorageData', () => ({ isColdChat: vi.fn(() => false) }))

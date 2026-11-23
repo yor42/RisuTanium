@@ -2,7 +2,8 @@ import { get } from 'svelte/store'
 import { SvelteSet } from 'svelte/reactivity'
 import { DBState, selectedCharID } from '../stores.svelte'
 import type { Message, character, Chat, groupChat } from '../storage/database.svelte'
-import { doingChat, sendChat } from './index.svelte'
+import { sendChat } from './index.svelte'
+import { chatKeyOf, sendRefusalIn, starterRefusalIn } from './sendAdmission'
 import { hasChimedFor, hasFailedFor, hasSilencedFor, replySoundFor } from './replyNotice'
 import type { SendChatOriginHint } from './index.svelte'
 import { sleep } from '../util'
@@ -270,13 +271,6 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
         return
     }
 
-    if(get(doingChat)){
-        return
-    }
-    if(isComposerWindowOpen()){
-        return
-    }
-
     const selectedChar = get(selectedCharID)
     const char = DBState.db.characters[selectedChar]
     if(!char){
@@ -284,6 +278,11 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     }
     const startChat = char.chats?.[char.chatPage]
     if(!startChat){
+        return
+    }
+    // Only this chat's own work, a native reply for it, or an open window in it refuses the send: another chat's
+    // reply does not.
+    if(starterRefusalIn(chatKeyOf(char, startChat)) !== null){
         return
     }
 
@@ -610,15 +609,13 @@ function enterTree(target: TreeTarget): TreeEntry | null {
     if(refuseColdSelectedChat()){
         return null
     }
-    if(get(doingChat)){
-        return null
-    }
-    if(isComposerWindowOpen()){
-        return null
-    }
     const char = DBState.db.characters[get(selectedCharID)]
     const chat = char?.chats?.[char.chatPage]
     if(!char || !chat){
+        return null
+    }
+    // Every step is refused in a chat with work, a window or a native reply, including one that generates nothing.
+    if(starterRefusalIn(chatKeyOf(char, chat)) !== null){
         return null
     }
     // Fills a missing chat id, as a reroll always has: the records that follow
@@ -976,12 +973,12 @@ export async function runAutoMode(source: ComposerActionsSource): Promise<void> 
         autoRun = null
         return
     }
-    if(get(doingChat) || isComposerWindowOpen()){
-        return
-    }
     const char = DBState.db.characters[get(selectedCharID)]
     const chat = char?.chats?.[char.chatPage]
     if(!char || !chat){
+        return
+    }
+    if(starterRefusalIn(chatKeyOf(char, chat)) !== null){
         return
     }
     // Every tick generates into the chat auto mode was started in. A delete of
@@ -1007,10 +1004,11 @@ export async function runAutoMode(source: ComposerActionsSource): Promise<void> 
     try {
         let quietTicks = 0
         while(autoRun === run){
-            // The flag and the chat on screen are read in the same synchronous
-            // stretch as the tick's `sendChat`: no await between the reads
-            // and the call.
-            if(get(doingChat) || !isShowingChat(target.origin)){
+            // The run's chat and the chat on screen are read in the same
+            // synchronous stretch as the tick's `sendChat`: no await between
+            // the reads and the call. The run's own window is open, so only
+            // the send rules apply here.
+            if(sendRefusalIn(run.target) !== null || !isShowingChat(target.origin)){
                 break
             }
             const turnsBefore = turnsReachedCount(target.origin)
@@ -1025,7 +1023,7 @@ export async function runAutoMode(source: ComposerActionsSource): Promise<void> 
             // A quiet tick (a group with nobody to speak) ends without awaiting
             // anything, and would otherwise let the next one start on resolved
             // promises alone and never hand control back to the page. A stop,
-            // a switch of chat, or another send taking the flag that lands
+            // a switch of chat, or another send taking the chat that lands
             // here is seen at the top of the loop before another tick starts.
             await yieldToEventLoop()
         }

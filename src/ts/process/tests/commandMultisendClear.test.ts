@@ -4,11 +4,11 @@
  * `/multisend clear|||...` against a chat with alternatives, through the REAL `processMultiCommand`.
  * The clear empties a non-empty path, which is a full clear: the chat's alternatives go with it.
  *
- * Test kinds: "guard:" rows pass before and after the change; the other row is a regression reproducer
- * that fails on the code that clears the path and keeps `alt`.
+ * Test kinds: "guard:" rows pass before and after the change; the other rows are regression reproducers
+ * that fail on the code that clears the path and keeps `alt`, and on a send gate that is one flag for every chat.
  */
 
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Chat } from '../../storage/database.svelte'
 
 const dbBox = vi.hoisted(() => ({ db: { characters: [] as unknown[] } }))
@@ -23,14 +23,18 @@ vi.mock(import('../tts'), () => ({ sayTTS: vi.fn() }) as unknown as typeof impor
 vi.mock(import('../../parser/parser.svelte'), () => ({
     risuChatParser: vi.fn((text: string) => text),
 }) as unknown as typeof import('../../parser/parser.svelte'))
-vi.mock(import('../index.svelte'), () => ({
-    doingChat: { subscribe: (run: (value: boolean) => void) => { run(false); return () => {} } },
-    sendChat: vi.fn(),
-}) as unknown as typeof import('../index.svelte'))
+vi.mock(import('../index.svelte'), async () => {
+    const { activeUnits } = await import('../activeUnits')
+    return {
+        doingChat: activeUnits.active,
+        sendChat: vi.fn(async () => true),
+    } as unknown as typeof import('../index.svelte')
+})
 vi.mock(import('../lorebook.svelte'), () => ({ loadLoreBookV3Prompt: vi.fn() }) as unknown as typeof import('../lorebook.svelte'))
 vi.mock(import('../triggers'), () => ({ runTrigger: vi.fn() }) as unknown as typeof import('../triggers'))
 vi.mock(import('../generationOwnership.svelte'), () => ({
     isComposerWindowOpen: vi.fn(() => false),
+    composerWindowFor: vi.fn(() => false),
 }) as unknown as typeof import('../generationOwnership.svelte'))
 vi.mock(import('../../stores.svelte'), () => ({
     get DBState() { return dbBox },
@@ -44,6 +48,8 @@ vi.mock(import('../../storage/database.svelte'), () => ({
 }) as unknown as typeof import('../../storage/database.svelte'))
 
 import { processMultiCommand } from '../command'
+import { sendChat } from '../index.svelte'
+import { clearRunningSends, simulateRunningSend } from './activeUnits.test-helpers'
 
 const origin = { chaId: 'char-a', chatId: 'chat-a' }
 
@@ -65,6 +71,12 @@ function install(withAlt: boolean): Chat {
 
 beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.mocked(sendChat).mockClear()
+    clearRunningSends()
+})
+
+afterEach(() => {
+    clearRunningSends()
 })
 
 describe('/multisend clear and the alternatives of the chat', () => {
@@ -86,5 +98,27 @@ describe('/multisend clear and the alternatives of the chat', () => {
         const chat = install(false)
         await processMultiCommand('/multisend clear|||hello', { origin })
         expect('alt' in chat).toBe(false)
+    })
+})
+
+describe('/multisend generates per chat', () => {
+    // K1 (regression reproducer for the other-chat row, guard for the same-chat row).
+    test('K1: a line for chat A generates while chat B writes', async () => {
+        install(false)
+        simulateRunningSend({ chaId: 'char-b', chatId: 'chat-b' })
+
+        await processMultiCommand('/multisend hello', { origin })
+
+        expect(sendChat).toHaveBeenCalledTimes(1)
+    })
+
+    test('K1: guard: a line for chat A pushes without generating while chat A writes', async () => {
+        const chat = install(false)
+        simulateRunningSend(origin)
+
+        await processMultiCommand('/multisend hello', { origin })
+
+        expect(chat.message.map((message) => message.data)).toEqual(['one', 'two', 'hello'])
+        expect(sendChat).not.toHaveBeenCalled()
     })
 })

@@ -661,12 +661,12 @@ describe('the gate', () => {
         await running
     })
 
-    test('TB8: while another composer action holds the window, every entry changes nothing', async () => {
+    test('TB8: while another composer action holds the window in this chat, every entry changes nothing', async () => {
         const chat = simpleChat()
         mockReply('New reply')
         await reroll(source)
         const before = copyOf(chat)
-        openComposerWindow({ chaId: 'char-held-elsewhere', chatId: 'chat-held-elsewhere' })
+        openComposerWindow({ chaId: DBState.db.characters[0].chaId!, chatId: chat.id! })
 
         await branchAt(source, 0, 'u0')
         await stepSibling(source, 1, chat.message[1].chatId, 'back')

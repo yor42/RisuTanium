@@ -1,13 +1,13 @@
-import { get } from "svelte/store";
 import { alertInput, alertMd, alertNormal, alertSelect } from "../alert";
 import { sayTTS } from "./tts";
 import { stripThoughtsForCopy } from "../chatCopy";
 import { risuChatParser } from "../parser/parser.svelte";
-import { doingChat, sendChat } from "./index.svelte";
+import { sendChat } from "./index.svelte";
 import { loadLoreBookV3Prompt } from "./lorebook.svelte";
 import { runTrigger } from "./triggers";
 import { createRunSubject, createSendSubject, registerWork, type Origin, type OriginHint, type RunSubject } from "./chatOrigin";
-import { isComposerWindowOpen } from "./generationOwnership.svelte";
+import { composerWindowFor } from "./generationOwnership.svelte";
+import { sendRefusalIn } from "./sendAdmission";
 import { LOW_LEVEL_NESTED_TRIGGER_LIMIT, NORMAL_NESTED_TRIGGER_LIMIT } from "./triggerLimits";
 import { language } from "src/lang";
 import { clearSupaMemoryIfEmpty, withSupaRepoint } from "./memory/supaResume";
@@ -278,12 +278,14 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
                 splited.shift()
             }
             // Read once, before the first push. Replies are generated only
-            // when no send holds the flag and none is starting, unless this
-            // line is the work that opened the composer's window. While it
-            // runs, either an enclosing send holds the flag throughout, or
-            // nothing can take it: no task runs between one segment's
-            // settling and the next push.
-            const generates = !get(doingChat) && (ctx.ownsWindow === true || !isComposerWindowOpen())
+            // when no send holds this chat, no native reply targets it and no
+            // window is open in it, unless this line is the work that opened
+            // the composer's window. While it runs, either an enclosing send
+            // holds the chat throughout, or nothing can take it: no task runs
+            // between one segment's settling and the next push. Another
+            // chat's work does not matter here.
+            const chatKey = { chaId: subject.origin.chaId, chatId: subject.origin.chatId }
+            const generates = sendRefusalIn(chatKey) === null && (ctx.ownsWindow === true || !composerWindowFor(chatKey))
             for(const e of splited){
                 if(ctx.signal?.aborted){
                     break

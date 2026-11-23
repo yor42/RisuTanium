@@ -47,8 +47,9 @@ import { getLLMCache, searchLLMCache } from "src/ts/translator/translator";
 import { hasher, risuChatParser, type CbsConditions } from "src/ts/parser/parser.svelte";
 import localforage from "localforage";
 import { LLMFlags, LLMFormat, LLMProvider, LLMTokenizer, type LLMModel } from "src/ts/model/types";
-import { sendChat as processSendChat, doingChat } from "src/ts/process/index.svelte";
-import { isComposerWindowOpen } from "src/ts/process/generationOwnership.svelte";
+import { sendChat as processSendChat } from "src/ts/process/index.svelte";
+import { chatKeyOf, starterRefusalIn } from "src/ts/process/sendAdmission";
+import { beginWork, resolveOriginWithHint, type OriginHint } from "src/ts/process/chatOrigin";
 import { processScriptFull } from "src/ts/process/scripts";
 import { getModelInfo } from "src/ts/model/modellist";
 import type { ModelModeExtended } from "src/ts/process/request/shared";
@@ -1952,7 +1953,9 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 throw new Error("Message must be a string");
             }
 
-            if(get(doingChat) || isComposerWindowOpen()){
+            // The chat selected at the call is the one that is pinned: only its own work,
+            // a native reply for it or a window in it refuses the call.
+            if(starterRefusalIn(chatKeyOf(guardChar, guardChat)) !== null){
                 throw new Error("A chat is already in progress");
             }
 
@@ -1961,26 +1964,49 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 throw new Error("Sending chat with plugin-based model is currently blocked");
             }
 
-            const charId = get(selectedCharID);
-            const char = DBState.db.characters[charId];
-            if(!char){
+            // The pinned objects, not a re-read of the selection: the prompt can outlast a chat
+            // switch, and the message and the reply belong to the chat the plugin called from.
+            if(!guardChar){
                 throw new Error("No character selected");
             }
-
-            const chat = char.chats[char.chatPage];
-            if(!chat){
+            if(!guardChat){
                 throw new Error("No active chat found");
             }
-
-            if(message){
-                chat.message.push({
-                    role: 'user',
-                    data: message,
-                    time: Date.now(),
-                });
+            // The chat may have gone cold while the prompt was open; a plugin is never told `true`
+            // for a send the cold guard would refuse.
+            if(isColdChat(guardChat)){
+                throw new Error("This chat hasn't finished loading from cold storage yet");
             }
 
-            await processSendChat(-1, {});
+            // Every check that throws is above: nothing between the registration and the `try`
+            // can throw, so no path leaves the registration open.
+            const handle = beginWork(guardChar, guardChat);
+            if(!handle){
+                // A chat without an id that was deleted while the prompt was open cannot be given
+                // one: nothing is pushed and the call fails with the existing text.
+                throw new Error("No active chat found");
+            }
+            const hint: OriginHint = { owner: guardChar, chat: guardChat };
+            let run: Promise<boolean>;
+            try{
+                const ctx = resolveOriginWithHint(handle.origin, hint);
+                if(!ctx){
+                    throw new Error("No active chat found");
+                }
+                if(message){
+                    ctx.chat.message.push({
+                        role: 'user',
+                        data: message,
+                        time: Date.now(),
+                    });
+                    markCharacterForSave(ctx.owner.chaId);
+                }
+                run = processSendChat(-1, { origin: handle.origin, originHint: hint });
+            }
+            finally{
+                handle.end();
+            }
+            await run;
 
             return true;
         },
