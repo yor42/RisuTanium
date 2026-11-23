@@ -55,6 +55,7 @@ vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
 }) as unknown as typeof import('src/ts/plugins/plugins.svelte'))
 
 vi.mock('src/lib/Others/Help.svelte', () => ({ default: () => {} }))
+vi.mock('src/lib/Studio/StudioToggleLink.svelte', () => ({ default: () => {} }))
 vi.mock('src/lib/UI/ModelList.svelte', () => ({ default: () => {} }))
 vi.mock('src/lib/UI/PromptDataItem.svelte', () => ({ default: () => {} }))
 vi.mock('src/lib/Setting/Pages/Model/AuxModelSelectors.svelte', () => ({ default: () => {} }))

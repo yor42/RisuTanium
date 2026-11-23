@@ -18,6 +18,7 @@
     import { onDestroy, onMount } from "svelte";
     import {defaultAutoSuggestPrompt} from "../../../ts/storage/defaultPrompts";
     import { keyEventBlocked } from "src/ts/keyEventBlocked";
+    import StudioToggleLink from "../../Studio/StudioToggleLink.svelte";
 
     let sorted = 0
     let warns: string[] = $state([])
@@ -287,6 +288,7 @@
     </SelectInput>
     <span class="text-textcolor mt-4"><span id="{uid}-f2">{language.customPromptTemplateToggle}</span> <Help key='customPromptTemplateToggle' /></span>
     <TextAreaInput labelId="{uid}-f2" bind:value={DBState.db.customPromptTemplateToggle}/>
+    <StudioToggleLink owner={{ type: 'preset' }} />
     <span class="text-textcolor mt-4"><span id="{uid}-f3">{language.defaultVariables}</span> <Help key='defaultVariables' /></span>
     <TextAreaInput labelId="{uid}-f3" bind:value={DBState.db.templateDefaultVariables}/>
     <span class="text-textcolor mt-4" id="{uid}-f4">{language.predictedOutput}</span>
