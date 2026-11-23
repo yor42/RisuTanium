@@ -42,14 +42,39 @@
     const parsedOwner = $derived(owner === null ? null : parseOwnerKey(owner))
     // A module's history is the module's own: the bound character being private or a group does not hide it, as it
     // does not stop Ctrl+Z from replaying it.
-    const moduleOwner = $derived(parsedOwner?.kind === 'module')
-    const hiddenCharacter = $derived(!moduleOwner && (bound === undefined || bound.type === 'group' || bound.license === 'private'))
+    const boundCharacterHides = $derived.by((): boolean => {
+        if (parsedOwner === null) return true
+        switch (parsedOwner.kind) {
+            case 'module':
+                return false
+            case 'character':
+            case 'chat':
+                return true
+            default: {
+                // Adding an owner kind must decide here whether a private or group bound character hides it.
+                const unhandled: never = parsedOwner
+                void unhandled
+                return true
+            }
+        }
+    })
+    const hiddenCharacter = $derived(boundCharacterHides && (bound === undefined || bound.type === 'group' || bound.license === 'private'))
     // A chat without a unique id has no history.
     const historyOwner = $derived.by((): OwnerKey | null => {
         if (owner === null || parsedOwner === null) return null
-        if (parsedOwner.kind === 'module') return owner
-        if (bound === undefined || bound.type === 'group') return null
-        return parsedOwner.kind === 'chat' && uniqueChatById(bound.chats, parsedOwner.chatId) === null ? null : owner
+        switch (parsedOwner.kind) {
+            case 'module':
+                return owner
+            case 'character':
+            case 'chat':
+                if (bound === undefined || bound.type === 'group') return null
+                return parsedOwner.kind === 'chat' && uniqueChatById(bound.chats, parsedOwner.chatId) === null ? null : owner
+            default: {
+                const unhandled: never = parsedOwner
+                void unhandled
+                return owner
+            }
+        }
     })
     const view = $derived(service && historyOwner !== null && !hiddenCharacter ? service.view(historyOwner) : null)
     const hidden = $derived(hiddenCharacter || view?.restricted === true)

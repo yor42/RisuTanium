@@ -4,7 +4,7 @@
 // two instances over one Map stand for two tabs of one database.
 
 import type { OwnerRecord } from '../historyModel'
-import type { Expectation, OwnerKey } from '../ownerPhase'
+import type { Expectation, StoredOwnerKey } from '../ownerPhase'
 import {
     CAP_BYTES,
     HEADER_BOUNDS,
@@ -18,6 +18,7 @@ import {
     genBounds,
     headerKey,
     inBounds,
+    isStoredRecord,
     planFull,
     prepareSave,
     readHeader,
@@ -83,7 +84,7 @@ export interface MemoryStudioStoreOptions {
 }
 
 export interface SavedWrites {
-    owner: OwnerKey
+    owner: StoredOwnerKey
     // The write requests of one save, in the order they were applied.
     requests: WriteRequest[]
 }
@@ -96,10 +97,10 @@ export interface MemoryStudioStore extends StudioHistoryStore {
     forcedSave: SaveResult | null
     simulateClose(): void
     isClosed(): boolean
-    expectationOf(owner: OwnerKey): Expectation | undefined
-    baselineOf(owner: OwnerKey): Baseline | undefined
+    expectationOf(owner: StoredOwnerKey): Expectation | undefined
+    baselineOf(owner: StoredOwnerKey): Baseline | undefined
     // Every save request, in order: owner and the record reference it carried.
-    readonly saves: { owner: OwnerKey; record: OwnerRecord; protect: ReadonlySet<OwnerKey> }[]
+    readonly saves: { owner: StoredOwnerKey; record: OwnerRecord; protect: ReadonlySet<StoredOwnerKey> }[]
     // The write requests every save that wrote applied, in order.
     readonly writes: SavedWrites[]
 }
@@ -121,8 +122,8 @@ export function createMemoryStudioStore(options: MemoryStudioStoreOptions = {}):
     }
     const hooks: StoreHooks = {}
     const counts: StoreCounts = { open: 0, load: 0, save: 0, entryValueReads: 0 }
-    const expectations = new Map<OwnerKey, Expectation>()
-    const baselines = new Map<OwnerKey, Baseline>()
+    const expectations = new Map<StoredOwnerKey, Expectation>()
+    const baselines = new Map<StoredOwnerKey, Baseline>()
     const memo = new WeakMap<object, number>()
     const closedCallbacks: (() => void)[] = []
     const saves: MemoryStudioStore['saves'] = []
@@ -262,7 +263,7 @@ export interface StoredOwnerView {
 
 // The owner as a strict reader sees it in `shared`, or null when its header is missing or rejected
 // or its generation does not read.
-export function storedRecord(shared: ReadonlyMap<string, string>, owner: OwnerKey): StoredOwnerView | null {
+export function storedRecord(shared: ReadonlyMap<string, string>, owner: StoredOwnerKey): StoredOwnerView | null {
     const headerText = shared.get(headerKey(owner))
     const header = headerText === undefined ? null : readHeader(headerText, owner)
     if (!header) {
@@ -287,6 +288,9 @@ export function seedOwner(
     wid: string,
     ownerCap = Infinity,
 ): StoredHeader {
+    if (!isStoredRecord(record)) {
+        throw new Error('seedOwner writes a stored owner only.')
+    }
     const plan = planFull(record, wid, ownerCap, new WeakMap())
     for (const request of plan.requests) {
         if (request.op !== 'put' || typeof request.value !== 'string') {
