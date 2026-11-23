@@ -42,9 +42,9 @@ const MAX_QUIET_TICKS = 50
  * it, open from a Send's take, from the start of a Continue, reroll, unreroll
  * or auto mode, until that action's generation hand-off returns), a lock (a
  * Send's own span, from the take until the moment before generation starts or
- * until the values go back). A handle is released
- * only by its own holder and releasing it twice changes nothing, so a late
- * finally never clears a newer action's state.
+ * until the values go back). A handle is released only by its own holder and
+ * releasing it twice changes nothing, so a late finally never clears a newer
+ * action's state.
  * `autoRun` is the one running auto-mode loop; a toggle or an abort click in
  * any mounted composer instance -- including one mounted after the loop
  * started -- reaches it. All of this is global and survives a remount.
@@ -98,8 +98,8 @@ interface GenerationTarget {
  * record before its push; a
  * successful push never sets it, and instead removes the record from `inflights`
  * directly (see the `inflights.delete` call sites in `sendMain`), which is what stops a
- * later `abortChat` call from treating an already-pushed send as still
- * cancelable. `wrote` is true from the moment the take's own `/` pipe starts a
+ * later `stopTake` call (the Send's registration stop) from treating an
+ * already-pushed send as still cancelable. `wrote` is true from the moment the take's own `/` pipe starts a
  * command that can change chat state, whether or not that command then changes
  * anything; nothing else sets it. `sendMain`'s own `finally` always runs
  * `inflights.delete` and ends the work handle -- both are harmless to
@@ -133,10 +133,10 @@ function textToPutBack(record: InflightRecord): string {
 
 /**
  * The Sends currently between their take and their push. A record leaves the
- * set the moment its span ends, whichever way -- so a later `abortChat` call
- * (during generation, or with nothing in flight) falls through to aborting
- * the send's own controller, instead of re-cancelling a send that has
- * already finished with it.
+ * set the moment its span ends, whichever way -- so a later `stopTake` call
+ * through the Send's registration (during generation, or with nothing in
+ * flight) falls through to aborting the send's own controller, instead of
+ * re-cancelling a send that has already finished with it.
  */
 const inflights = new Set<InflightRecord>()
 
@@ -202,8 +202,8 @@ export interface GenerationRequest {
 /**
  * The composer's live state, reached through its hooks. The menu-close hook
  * is required: the three text/file values are reached by key through
- * `composerDrafts.svelte.ts`, and auto mode's running state and the current
- * generation's abort controller are this module's own state, not per instance.
+ * `composerDrafts.svelte.ts`, and auto mode's running state is this module's
+ * own state, not per instance.
  *
  * `refuseGeneration` is optional. It runs synchronously, before a Send or
  * Send takes the draft, and before a Continue or a new reply starts, and returns

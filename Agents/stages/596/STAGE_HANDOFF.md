@@ -1,4 +1,4 @@
-# Stage handoff: #596 parallel replies, after stage 5a
+# Stage handoff: #596 parallel replies, after stage 5b
 
 Read this, the issue, `s5-plan-r2.md` beside this file (the accepted stage 5 plan) and the repository at origin/main. Source statements below were read at d70df2cb3 or 105915cbe and not executed, unless a test is named. Re-pin them before use.
 
@@ -6,8 +6,9 @@ Read this, the issue, `s5-plan-r2.md` beside this file (the accepted stage 5 pla
 
 - Stage 1 (keyed active-units registry): PR https://github.com/yor42/RisuTanium/pull/636, merged as ab535a18c.
 - Stage 2 (per-unit Stop plumbing): PR https://github.com/yor42/RisuTanium/pull/648, merged as 1b23f5d1f.
-- Stage 5a (the send gate opens per chat; engine and starters): reviewed code commit 105915cbe on `claude/596-parallel-replies-s5a`, plus a Gate 2 editorial commit. PR: see the branch.
-- Refs #596. Remaining before the MVP update, in this order (MC-3736, orchestrator's order): 5b, 5c, stage 7, 5d. The final stage closes the ticket.
+- Stage 5a (the send gate opens per chat; engine and starters): PR https://github.com/yor42/RisuTanium/pull/669, merged as e5d5dc499.
+- Stage 5b (stop-all = per-chat Stop, MC-3790): reviewed code commit b8164c47c on `claude/596-parallel-replies-s5b`, plus a Gate 2 editorial commit. PR: see the branch.
+- Refs #596. Remaining before the MVP update, in this order (MC-3736, orchestrator's order): 5c, stage 7, 5d. The final stage closes the ticket.
 
 ## 2. Decisions
 
@@ -81,11 +82,16 @@ Each step is Tier 2 on the critical contract (send admission and write exclusion
 
 As `s5-plan-r2.md` (r1 steps carried): enumerate the chats that show Stop (`composerWindows` is module-private; add an enumeration in `generationOwnership`/`chatOrigin`), rewrite `abortChat` as `stopComposerWorkIn` per such chat plus the reply/preview sweep, delete the generation holds and the composer loops, and update the stale comment in `messageActions.svelte.ts` (O1). F3 and F7 from stage 2 disappear with the loops. Stage 7's hook checks must read the unit's signal (`signal: unit.signal`), never the caller's.
 
+### 5b result (done)
+
+- `abortChat` snapshots `composerWindowTargets()` (`generationOwnership`) and `busyTargets()` (`chatOrigin`: owner chats of reply/preview registrations), runs `stopComposerWorkIn` for each, then the `stopAllReplyWork()` sweep. The generation holds and stage 2's composer loops are gone; takes, continue, auto runs and replies are reached through their registrations (the composer Send's gap between push and `sendChat` through `stopTake`'s fallback).
+- Gate 2 r1 (Opus) EDITORIAL. Known limitations: B7 (DefaultChatScreen's no-shown-chat Stop fallback) has no test; its wiring is unchanged. B4 uses a take in C and a mocked `sendChat` (regenerate and auto-tick reach is covered by `chatTreeEngine` TB2 and `generationOwnership`'s auto-tick test, and by guards P0-P2 that run the real stop-to-silence chain). The final sweep is redundant by construction (mutant R4 and M42 survive as equivalent); keep it as the sweep MC-3790 names.
+
 ### 5c: per-chat UI
 
 As the plan: ShellComposer, DefaultChatScreen, BookmarkList, ChatShell (busy reader and header, MC-3740), Suggestion, `isComposerLockedIn`; delete `chatShellSendBlockedWriting`; add `chatShellSendWaitsForNativeReply` ('A reply is still being written in this chat. Send when it finishes.') in all 8 locales (translator, same PR); tree controls busy in a reload-edge chat (MC-3794); the O-6 re-list. About 27 one-line mock factory edits.
 
-After 5c merges: device row DV-596-S5-1 (lane B, Note 9, synthetic data): two native replies in two chats; the notification Stop for both; a reload with one still running (B refused with the new string, A works, B's Send returns when its native reply ends, without a reload). A fail stops stage 7's plan acceptance until dispositioned.
+After 5c merges: device row DV-596-S5-1 (this ticket's own session asks for it, leases a Note 9 through the main checkout's controller by absolute path and writes the row; lane B is retired, MC-3774; `Agents/Tools/device/BRIEF-TEMPLATE.md` sections 5 and 8; synthetic data): two native replies in two chats; the notification Stop for both; a reload with one still running (B refused with the new string, A works, B's Send returns when its native reply ends, without a reload). A fail stops stage 7's plan acceptance until dispositioned.
 
 ### Stage 7: plugin and hook stall (design starts after 5b merges)
 

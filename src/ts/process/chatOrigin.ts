@@ -1152,7 +1152,8 @@ export function stopWorkIn(target: { chaId: string, chatId?: string }): void {
  * recovered apply. `work` registrations (takes, tree edits, commands, trigger
  * runs, auto runs) are left alone. Same once-only mark as `stopWorkIn`, so a
  * later per-chat stop or delete skips what this stopped, and the other way
- * round.
+ * round. This is the sweep part of stop-all; `abortChat` first stops the work
+ * beside a reply per chat (MC-3790).
  */
 export function stopAllReplyWork(): void {
     stopRegistrations((registration) => registration.kind === 'reply' || registration.kind === 'preview')
