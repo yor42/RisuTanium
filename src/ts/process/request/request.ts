@@ -34,6 +34,7 @@ import { VaultKeyUnavailableError } from 'src/ts/connections/keyVaultStore.svelt
 import { beginUsageCapture, settleUsage, settleUsageFailure, usageModelKey } from '../../usage/usageCapture';
 import type { UsageMeterState, UsagePurpose } from '../../usage/usageTypes';
 import type { NativeReplyGrant } from '../../nativeReply/grant';
+import { raceAbort } from '../abortRace';
 
 export type ToolCall = {
     name: string;
@@ -263,7 +264,17 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
     const db = getDatabase()
     const fallBackModels:string[] = safeStructuredClone(db?.fallbackModels?.[model] ?? [])
     arg.toolLoop ??= newToolLoop(abortSignal)
-    const tools = arg.tools ?? (await getTools(arg.subject))
+    let tools = arg.tools
+    if(!tools){
+        const listed = await raceAbort(abortSignal, () => getTools(arg.subject), { label: 'The MCP tool list' })
+        if(!listed.settled){
+            return {
+                type: 'fail',
+                result: 'Aborted'
+            }
+        }
+        tools = listed.value
+    }
     // The selected model is attempt 0 (the blank name); the list follows it.
     fallBackModels.unshift('')
     let da:requestDataResponse
@@ -303,7 +314,14 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
     
             if(pluginV2.replacerbeforeRequest.size > 0){
                 for(const replacer of pluginV2.replacerbeforeRequest){
-                    arg.formated = await replacer(arg.formated, model)
+                    const replaced = await raceAbort(abortSignal, () => replacer(arg.formated, model), { label: 'A before-request replacer' })
+                    if(!replaced.settled){
+                        return {
+                            type: 'fail',
+                            result: 'Aborted'
+                        }
+                    }
+                    arg.formated = replaced.value
                 }
             }
             
@@ -318,23 +336,40 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
                         chatId: arg.subject.origin.chatId,
                     })
                     const ctx = target.resolve()
-                    if(ctx && ctx.owner.type !== 'group'){
-                        d = await runTrigger(ctx.owner, 'request', {
+                    const owner = ctx?.owner
+                    if(ctx && owner && owner.type !== 'group'){
+                        const triggerRaced = await raceAbort(abortSignal, () => runTrigger(owner, 'request', {
                             chat: ctx.chat,
                             displayMode: true,
                             displayData: JSON.stringify(arg.formated),
                             origin: target.origin,
-                        })
+                            signal: abortSignal ?? undefined,
+                        }), { label: 'The request trigger' })
+                        if(!triggerRaced.settled){
+                            return {
+                                type: 'fail',
+                                result: 'Aborted'
+                            }
+                        }
+                        d = triggerRaced.value
                     }
                 }
                 else{
                     const currentChar = getCurrentCharacter()
                     if(currentChar?.type !== 'group'){
-                        d = await runTrigger(currentChar, 'request', {
+                        const triggerRaced = await raceAbort(abortSignal, () => runTrigger(currentChar, 'request', {
                             chat: getCurrentChat(),
                             displayMode: true,
-                            displayData: JSON.stringify(arg.formated)
-                        })
+                            displayData: JSON.stringify(arg.formated),
+                            signal: abortSignal ?? undefined,
+                        }), { label: 'The request trigger' })
+                        if(!triggerRaced.settled){
+                            return {
+                                type: 'fail',
+                                result: 'Aborted'
+                            }
+                        }
+                        d = triggerRaced.value
                     }
                 }
 
@@ -350,8 +385,16 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
             catch(e){
                 console.error(e)
             }
-            
-    
+
+            // A trigger that settled after the Stop leaves no request to send.
+            if(abortSignal?.aborted){
+                return {
+                    type: 'fail',
+                    result: 'Aborted'
+                }
+            }
+
+
             try{
                 clearLease(keyRotation)
                 const offeredGrant = !grantOffered && tools.length === 0 ? arg.nativeReplyGrant : undefined
@@ -412,7 +455,16 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
     
             if(da.type === 'success' && pluginV2.replacerafterRequest.size > 0){
                 for(const replacer of pluginV2.replacerafterRequest){
-                    da.result = await replacer(da.result, model)
+                    const current = da.result
+                    const replaced = await raceAbort(abortSignal, () => replacer(current, model), { label: 'An after-request replacer' })
+                    if(!replaced.settled){
+                        // Never the half-replaced success.
+                        return {
+                            type: 'fail',
+                            result: 'Aborted'
+                        }
+                    }
+                    da.result = replaced.value
                 }
             }
     
@@ -1069,7 +1121,7 @@ async function requestPlugin(arg:RequestDataArgumentExtended):Promise<requestDat
             }
         }
     
-        const d = v2Function ? (await v2Function(applyParameters({
+        const raced = await raceAbort(arg.abortSignal, () => v2Function ? v2Function(applyParameters({
             prompt_chat: formated,
             mode: arg.mode,
             bias: [],
@@ -1078,15 +1130,27 @@ async function requestPlugin(arg:RequestDataArgumentExtended):Promise<requestDat
             'frequency_penalty','min_p','presence_penalty','repetition_penalty','top_k','top_p','temperature'
         ], {}, arg.mode, {
             modelId: arg.aiModel
-        }) as any, arg.abortSignal)) : await pluginProcess({
+        }) as any, arg.abortSignal) : pluginProcess({
             bias: bias,
             prompt_chat: formated,
             temperature: (db.temperature / 100),
             max_tokens: maxTokens,
             presence_penalty: (db.PresensePenalty / 100),
             frequency_penalty: (db.frequencyPenalty / 100)
+        }), {
+            label: 'The plugin provider',
+            // A provider that ignored the Stop and answers later: its stream is released. The cancel promise is
+            // returned so the race handles its rejection.
+            onLateValue: (late) => late?.content instanceof ReadableStream ? late.content.cancel() : undefined,
         })
-    
+        if(!raced.settled){
+            return {
+                type: 'fail',
+                result: 'Aborted'
+            }
+        }
+        const d = raced.value
+
         if(!d){
             return {
                 type: 'fail',
