@@ -1,9 +1,10 @@
 // The destination policy and the outbound header rules of the server's proxy
 // routes. Pure apart from the DNS lookup `createCheckedLookup` wraps.
 //
-// A destination is loopback (always allowed), private (allowed only when the
+// A destination is loopback (allowed), private (allowed only when the
 // operator turns the private-network toggle on) or public (allowed on the
-// /proxy routes, refused for stream jobs). The same rule decides a literal
+// /proxy routes, refused for stream jobs). A redirect target is judged by
+// `redirectPolicy`, which never lets a redirect move inward. The same rule decides a literal
 // address in a URL and every address a name resolves to, so a name cannot lead
 // to an address the literal form would have been refused.
 const net = require('net');
@@ -101,6 +102,10 @@ function classifyIPv6(bytes) {
     if (zeroUntil(10) && bytes[10] === 0xff && bytes[11] === 0xff) {
         return embedded(12);
     }
+    // ::ffff:0:0:0/96 (SIIT, IPv4-translated): the IPv4 address sits in bytes 12 to 15.
+    if (zeroUntil(8) && bytes[8] === 0xff && bytes[9] === 0xff && bytes[10] === 0 && bytes[11] === 0) {
+        return embedded(12);
+    }
     // 64:ff9b::/96 (NAT64) and the local-use 64:ff9b:1::/48.
     if (bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b) {
         if (bytes.slice(4, 12).every((byte) => byte === 0)) {
@@ -150,8 +155,34 @@ function classifyAddress(text) {
     return 'private';
 }
 
+// Loopback is allowed unless the policy sets `allowLoopback` to false.
 function isKindAllowed(kind, policy) {
-    return kind === 'loopback' || (kind === 'private' && policy.allowPrivate === true) || (kind === 'public' && policy.allowPublic === true);
+    return (kind === 'loopback' && policy.allowLoopback !== false) || (kind === 'private' && policy.allowPrivate === true) || (kind === 'public' && policy.allowPublic === true);
+}
+
+// The policy a redirect target is judged by once a hop has been answered from
+// `visitedKind` (the most outward kind of every hop so far): a redirect may stay
+// as far out as it has been or move outward, never inward. Derived policies are
+// memoized per base policy and kind, because the transport keeps its keep-alive
+// agents per policy object.
+const REDIRECT_POLICIES = new WeakMap();
+function redirectPolicy(basePolicy, visitedKind) {
+    if (visitedKind === 'loopback') {
+        return basePolicy;
+    }
+    let byKind = REDIRECT_POLICIES.get(basePolicy);
+    if (byKind === undefined) {
+        byKind = new Map();
+        REDIRECT_POLICIES.set(basePolicy, byKind);
+    }
+    let derived = byKind.get(visitedKind);
+    if (derived === undefined) {
+        derived = visitedKind === 'private'
+            ? { allowLoopback: false, allowPrivate: basePolicy.allowPrivate, allowPublic: basePolicy.allowPublic }
+            : { allowLoopback: false, allowPrivate: false, allowPublic: basePolicy.allowPublic };
+        byKind.set(visitedKind, derived);
+    }
+    return derived;
 }
 
 // The kind of a URL hostname that is an address literal, or null for a name
@@ -286,6 +317,7 @@ function sanitizeOutboundHeaders(input, { fromBrowser = false, fetchDefaults = f
 module.exports = {
     classifyAddress,
     isKindAllowed,
+    redirectPolicy,
     literalHostKind,
     createCheckedLookup,
     blockedError,
