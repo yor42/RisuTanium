@@ -17,6 +17,7 @@ import {
 } from '../historyModel'
 import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import type { SessionOwnerKind } from '../sessionKinds'
+import { PRESET_FORM_PATHS } from './presetPaths.test-helpers'
 
 // The stored kinds: a session kind has no stored key, record or restore row.
 type OwnerKind = Exclude<AnyOwnerKind, SessionOwnerKind>
@@ -101,7 +102,7 @@ describe('A2: the set-path table is the only list of what each owner kind accept
 
 describe('A8 (model half): the restore order lists every restore key once, the toggle before hideChatIcon', () => {
     test('RESTORE_PATH_ORDER is the literal order', () => {
-        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, 'alternateGreetings'])
+        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...PRESET_FORM_PATHS, 'alternateGreetings'])
     })
 
     test('every restore key of every owner kind has a place in the order', () => {

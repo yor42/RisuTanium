@@ -8,6 +8,7 @@
 import { afterFlush } from '../afterFlush'
 import { registryPaths } from './history/fieldAccess'
 import { FIELD_PRESENTATION, type SetPath } from './history/fieldRegistry'
+import { fieldValueEquals, type FieldValue } from './history/historyModel'
 import { cardSpans, cardText } from './longText/exampleCards'
 import type { OwnerFields } from './ownerFields'
 
@@ -47,6 +48,11 @@ function exampleTarget(before: unknown, after: unknown): FocusTarget {
     return b.length > 0 ? { kind: 'example', card: b.length - 1 } : { kind: 'exampleAdd' }
 }
 
+// A live field value as a history value: text and booleans are present values, anything else is absent.
+function fieldValueOf(value: unknown): FieldValue {
+    return typeof value === 'string' || typeof value === 'boolean' ? { had: true, value } : { had: false }
+}
+
 export function changedFieldTarget(before: OwnerFields, after: OwnerFields): FocusTarget | null {
     const a = before.greetings
     const b = after.greetings
@@ -62,7 +68,7 @@ export function changedFieldTarget(before: OwnerFields, after: OwnerFields): Foc
     if (before.firstMessage !== after.firstMessage) return { kind: 'firstMessage' }
     if (before.exampleMessage !== after.exampleMessage) return exampleTarget(before.exampleMessage, after.exampleMessage)
     for (const path of registryPaths()) {
-        if (hasElementFocus(path) && before[path] !== after[path]) return { kind: path }
+        if (hasElementFocus(path) && !fieldValueEquals(fieldValueOf(before[path]), fieldValueOf(after[path]))) return { kind: path }
     }
     return null
 }
@@ -74,6 +80,21 @@ export function registerGreetingReveal(reveal: (index: number) => Promise<void>)
     return () => {
         if (greetingReveal === reveal) greetingReveal = null
     }
+}
+
+// A form with collapsible sections registers how to reveal the one holding a path whose element is not mounted; the
+// returned function unregisters it. The reveal is transient, as the greeting list's: it only makes the element
+// reachable for this focus placement, and the collapse state the user left stays as it was.
+let fieldReveal: ((path: SetPath) => Promise<void>) | null = null
+export function registerFieldReveal(reveal: (path: SetPath) => Promise<void>): () => void {
+    fieldReveal = reveal
+    return () => {
+        if (fieldReveal === reveal) fieldReveal = null
+    }
+}
+
+function isElementTarget(target: FocusTarget): target is { kind: ElementFocusPath } {
+    return target.kind !== 'greeting' && target.kind !== 'greetingAdd' && target.kind !== 'firstMessage' && target.kind !== 'example' && target.kind !== 'exampleAdd'
 }
 
 function elementFor(scope: ParentNode, target: FocusTarget): HTMLElement | null {
@@ -117,6 +138,11 @@ export async function placeFocusAfterHistory(before: OwnerFields | null, after: 
     // A greeting card outside the list's window is not mounted: have the list mount it, then look again.
     if (!element && target?.kind === 'greeting' && greetingReveal) {
         await greetingReveal(target.index)
+        element = elementFor(scope() ?? document, target)
+    }
+    // A field inside a collapsed section is not mounted: have the form reveal its section, then look again.
+    if (!element && target && isElementTarget(target) && fieldReveal) {
+        await fieldReveal(target.kind)
         element = elementFor(scope() ?? document, target)
     }
     if (element && element.isConnected) {

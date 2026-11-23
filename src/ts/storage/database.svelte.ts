@@ -2361,6 +2361,8 @@ export function presetFromWorkingSettings(db:WorkingPresetSource, name:string, i
         NAIappendName: db.NAIappendName ?? false,
         localStopStrings: db.localStopStrings,
         autoSuggestPrompt: db.autoSuggestPrompt,
+        autoSuggestPrefix: db.autoSuggestPrefix,
+        autoSuggestClean: db.autoSuggestClean,
         customProxyRequestModel: db.customProxyRequestModel,
         reverseProxyOobaArgs: safeStructuredClone(db.reverseProxyOobaArgs) ?? null,
         top_p: db.top_p ?? 1,

@@ -299,8 +299,15 @@ describe('T-S3/T-R7: a gone owner and the stored resolver', () => {
         const resolves = adapter.resolves.length
         expect(resolveLiveTarget(PROBE)).toEqual({ ok: false, reason: 'gone' })
         expect(resolveLiveTarget(PROBE, () => null)).toEqual({ ok: false, reason: 'gone' })
-        expect(readOwnerFields(PROBE)).toBeNull()
         expect(adapter.resolves.length).toBe(resolves)
+    })
+
+    test('readOwnerFields reads a session owner through its adapter, which answers by id (focus after history)', () => {
+        const resolves = adapter.resolves.length
+        expect(readOwnerFields(PROBE)).toEqual({ greetings: [] })
+        expect(adapter.resolves.length).toBe(resolves + 1)
+        adapter.backings.delete('x')
+        expect(readOwnerFields(PROBE)).toBeNull()
     })
 
     test('resolveOwnerTarget reaches the adapter and liveReaderOf returns its reader', () => {

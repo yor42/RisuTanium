@@ -39,6 +39,8 @@
         label?: string
         labelId?: string
         ariaLabel?: string
+        // Hint text the empty textarea shows; display only.
+        placeholder?: string
         kind: LongTextKind
         mode: LongTextMode
         editable: boolean
@@ -69,7 +71,7 @@
         onresult: (result: StudioResult | null) => void
     }
 
-    let { port, part, index, label, labelId, ariaLabel, kind, mode, editable, busy, fieldClass, variant = 'inline', ownerLabel, onvalue, oncomposing, previewSource, previewValues, onpreviewvalues, onresult, extraMarks, onfocuslayer }: Props = $props()
+    let { port, part, index, label, labelId, ariaLabel, placeholder, kind, mode, editable, busy, fieldClass, variant = 'inline', ownerLabel, onvalue, oncomposing, previewSource, previewValues, onpreviewvalues, onresult, extraMarks, onfocuslayer }: Props = $props()
 
     const inFocus = $derived(variant === 'focus')
 
@@ -772,6 +774,7 @@
             readonly={!editable}
             aria-busy={busy ? 'true' : undefined}
             aria-label={ariaLabel}
+            {placeholder}
             aria-labelledby={label || inFocus ? headerId : undefined}
             aria-describedby={describedBy || undefined}
             aria-controls={pickerShown ? pickerListId : undefined}
