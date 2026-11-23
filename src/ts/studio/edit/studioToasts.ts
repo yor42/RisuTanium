@@ -66,7 +66,14 @@ function isModuleOwner(owner: OwnerKey): boolean {
     }
 }
 
+function isPresetOwner(owner: OwnerKey): boolean {
+    return parseOwnerKey(owner)?.kind === 'preset'
+}
+
 export function refusalTextOf(result: { reason: StudioRefusal; name?: string; listReason?: ListSkipReason }, owner?: OwnerKey): string {
+    if (owner !== undefined && result.reason === 'gone' && isPresetOwner(owner)) {
+        return language.studioRefusalPresetGone
+    }
     if (owner !== undefined && isModuleOwner(owner)) {
         switch (result.reason) {
             case 'not-selected': return language.studioRefusalModuleNotSelected

@@ -102,6 +102,11 @@ export interface CarryDeps {
     readonly stars: { has(ref: FavouriteRef): boolean, rename(ref: FavouriteRef, to: string): void }
     /** `own`: the owner's chats only; `loaded`: the chats of every loaded character. */
     readonly reachKind: 'own' | 'loaded'
+    /**
+     * A preset owner only: the question also names the active preset when it defines a key that is renamed, because the
+     * value under that key stays where the active preset still reads it.
+     */
+    readonly namesActiveKeeps?: boolean
 }
 
 /** One line of the question, already resolved to the keys and labels the text names. */
@@ -125,6 +130,8 @@ export interface CarryQuestion {
     readonly flagged: ReadonlySet<string>
     /** Every key rename of the question, late lines included: the uses list reads where the old keys are still read. */
     readonly renames: readonly UsesRename[]
+    /** The renamed keys the active preset still defines, with its name; empty unless the owner asked for it. */
+    readonly activeKeeps: readonly { readonly key: string, readonly name: string }[]
 }
 
 /** One key rename the uses list is about. */
@@ -158,6 +165,7 @@ interface OpenEditor {
 export type ToggleTarget =
     | { readonly kind: 'character', readonly chaId: string }
     | { readonly kind: 'module', readonly moduleId: string }
+    | { readonly kind: 'preset', readonly presetId: string }
 
 /** The toggle keys the app's other readable sources define: characters, resident modules and working presets, except the edited owner's own. */
 export function appToggleKeys(except: ToggleTarget): ReadonlySet<string> {
@@ -179,10 +187,22 @@ export function appToggleKeys(except: ToggleTarget): ReadonlySet<string> {
             add(module.customModuleToggle)
         }
     }
-    for (const preset of workingPresetsOf(DBState.db)) {
-        add(preset.toggles)
-    }
+    workingPresetsOf(DBState.db).forEach((preset, index) => {
+        if (!(except.kind === 'preset' && DBState.db.botPresets?.[index]?.id === except.presetId)) {
+            add(preset.toggles)
+        }
+    })
     return keys
+}
+
+/** The renamed keys the active preset (the `prompt` source of the reach) defines, each with that preset's name. */
+function activeKeepsOf(renames: readonly UsesRename[], reach: CarryReach): CarryQuestion['activeKeeps'] {
+    const active = reach.others.find((other) => other.id === 'prompt')
+    if (!active) {
+        return []
+    }
+    const keys = keysOfText(active.text)
+    return renames.filter((rename) => keys.has(rename.from)).map((rename) => ({ key: rename.from, name: active.name }))
 }
 
 /** Puts removed lines back into the current live text as one new step; the toast's Undo uses it. */
@@ -273,6 +293,7 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
                     renames.push({ from: item.from, to: item.to })
                 }
             }
+            const reach = deps.reach()
             const lines: CarryLine[] = []
             const flagged = new Set<string>()
             const live: CarryItem[] = []
@@ -314,9 +335,10 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
                 lines,
                 carryable: live.some((item) => item.kind === 'rename' || item.kind === 'optionRemap'),
                 numbers: live.some((item) => item.kind === 'optionRemap'),
-                planned: planCarryWrites(live, deps.reach()),
+                planned: planCarryWrites(live, reach),
                 flagged,
                 renames,
+                activeKeeps: deps.namesActiveKeeps === true ? activeKeepsOf(renames, reach) : [],
             }
         })
     }
@@ -370,7 +392,11 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
         if (!deps || !port.view().editable || readPending(port.owner).status === 'ok') {
             return
         }
-        if (writePending(port.owner, textOf(baselineDef)) === 'memoryOnly') {
+        // An owner whose history lasts for this page only keeps its question in memory too, never on the device.
+        if (port.carryKept === 'session') {
+            holdSession(port.owner, textOf(baselineDef))
+            notKept = true
+        } else if (writePending(port.owner, textOf(baselineDef)) === 'memoryOnly') {
             notKept = true
         }
     }

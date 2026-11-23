@@ -7,12 +7,18 @@ import type { RisuModule } from '../../process/modules'
 import { isModuleStub } from '../../storage/moduleStub'
 import { characterOwnerKey, moduleOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId } from './assetSetters'
+import { presetOwnerKey, presetStateOf, presetToggleText } from './presetTarget'
 import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText } from '../history/studioHistoryService.svelte'
 
 export type TogglePortMode = 'typing' | 'single'
 
 export interface ToggleTextPort {
     readonly owner: OwnerKey
+    /**
+     * Where the owner's pending saved-values question may be stored. `session`: the owner's history lives for this page
+     * only, so the question is held in memory too and never written to the device. Absent means `device`.
+     */
+    readonly carryKept?: 'device' | 'session'
     /** First use of the owner's history for this visit; builds the service first when it is not built. */
     begin(): void
     /** The live definition text; '' when the field is absent. */
@@ -89,6 +95,46 @@ export function moduleTogglePort(moduleId: string): ToggleTextPort {
         },
         view() {
             const hidden = slotOf() === null
+            const service = getStudioHistoryService()
+            if (!service) {
+                return { editable: false, banner: null, restricted: hidden }
+            }
+            const view = service.view(owner)
+            return { editable: view.editable, banner: historyBannerText(view.banner), restricted: hidden || view.restricted }
+        },
+        write(next, mode) {
+            const service = getStudioHistoryService()
+            return service && service.view(owner).editable ? service.editText(owner, 'customModuleToggle', next, mode) : null
+        },
+        closeOpenStep() {
+            getStudioHistoryService()?.closeOpenStep(owner)
+        },
+    }
+}
+
+/**
+ * The port of a bot preset's toggle definition, addressed by the preset's stable id. The text is read from whichever
+ * copy is live now (the working setting for the active preset, the slot for any other); a preset that is gone, or whose
+ * id is shared, shows nothing and the service refuses every write to it. Its history is memory-only, so the pending
+ * saved-values question is kept for this page only.
+ */
+export function presetTogglePort(presetId: string): ToggleTextPort {
+    const owner = presetOwnerKey(presetId)
+    return {
+        owner,
+        carryKept: 'session',
+        begin() {
+            if (getStudioHistoryService()) {
+                beginOwnerVisit(owner)
+            } else {
+                ensureStudioHistory()
+            }
+        },
+        read() {
+            return presetToggleText(presetId)
+        },
+        view() {
+            const hidden = presetStateOf(presetId) === null
             const service = getStudioHistoryService()
             if (!service) {
                 return { editable: false, banner: null, restricted: hidden }
