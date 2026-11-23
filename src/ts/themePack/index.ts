@@ -61,7 +61,7 @@ function appValues(area: ThemeArea): Map<string, string[]> {
  * families the pack registers (this sheet's, plus `packFamilies` from its other sheets) are the only non-generic ones
  * a font-family may name without a warning: any other name warns, except a symbol font, which is refused (MC-2542). A chat or Studio stylesheet that all of these accept is then judged by Rule S
  * (cascade.ts, the colour pairs the stylesheet's blocks can combine) and Rule SCOPE (scope.ts, what it can reach), and
- * then by Rule E-2 (outerShadow.ts, a flat 2 px limit on outer and inset shadows). Warnings never enter the result returned here. A contrast, readability or layout finding is a note: it is returned in `result.notes` with its `rule`, never changes `result.ok`, and does not stop the later passes.
+ * then by Rule E-2 (outerShadow.ts, a 64 px total reach limit on outer and inset shadows). Warnings never enter the result returned here. A contrast, readability or layout finding is a note: it is returned in `result.notes` with its `rule`, never changes `result.ok`, and does not stop the later passes.
  */
 export function lintAreaPack(area: ThemeArea, source: string, name = '', packFamilies?: ReadonlySet<string>): LintResult {
     return judgeSheet(area, source, name, packFamilies).result

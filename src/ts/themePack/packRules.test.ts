@@ -396,7 +396,6 @@ function expectAcceptedPack(area: PackArea, css: string): void {
     const result = lintAreaPack(area, css)
     expect(result.errors, `${area}: ${css}`).toEqual([])
 }
-const E2_WHY = /may reach at most 2 px past its element/
 const RE_1549 = /MC-1549/
 const RE_1550 = /MC-1550/
 const UNBUNDLED = (name: string): string => `font family "${name}" is not bundled with the pack: it shows only on devices that have it installed, and others use the next family in the list, so end the list with a generic family such as serif, sans-serif or monospace (MC-2542, MC-2543)`
@@ -739,9 +738,9 @@ describe('GN: compatibility guards (accepted before and after)', () => {
         ['a grid function in a token', ':root{--nexus-ease:cubic-bezier(0.2, 0, 0, 1)}'],
     ])('accepts %s', (_name, css) => { expectAcceptedPack('chat', css) })
 
-    // REPRO: the former spelling of 'a colour with alpha' reaches 3 px, so the flat 2 px limit on outer shadows (MC-2309) refuses it.
-    test('a colour with alpha whose shadow reaches 3 px is refused by the flat 2 px limit', () => {
-        expectRefused('chat', `${SAFE_LEAF}{border:1px solid rgb(0 0 0 / 0.4);box-shadow:0 1px 2px rgb(0 0 0 / 20%)}`, E2_WHY)
+    // REPRO: the former spelling of 'a colour with alpha' reaches 3 px, which the former flat 2 px limit on outer shadows (MC-2309) refused; the 64 px total reach (MC-3427) accepts it.
+    test('a colour with alpha whose shadow reaches 3 px is accepted under the 64 px total reach', () => {
+        expectAcceptedPack('chat', `${SAFE_LEAF}{border:1px solid rgb(0 0 0 / 0.4);box-shadow:0 1px 2px rgb(0 0 0 / 20%)}`)
     })
 
     test('the settings grid token guard', () => {

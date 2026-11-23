@@ -50,10 +50,10 @@ export function readAppValues(files: readonly TokenFile[]): Map<string, string[]
 const CSS_WIDE: ReadonlySet<string> = new Set(['initial', 'inherit', 'unset', 'revert', 'revert-layer'])
 const COLOUR_FUNCTIONS: ReadonlySet<string> = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix'])
 const GRADIENT = /^(?:repeating-)?(?:linear|radial|conic)-gradient$/
-const PLAIN_FUNCTIONS: ReadonlySet<string> = new Set(['var', 'url', 'image-set', '-webkit-image-set', 'minmax', 'repeat', 'fit-content', 'cubic-bezier', 'steps', 'rect'])
+const PLAIN_FUNCTIONS: ReadonlySet<string> = new Set(['var', 'url', 'image-set', '-webkit-image-set', 'minmax', 'repeat', 'fit-content', 'cubic-bezier', 'steps', 'rect', 'inset', 'circle', 'ellipse', 'polygon', 'path', 'xywh'])
 const RELATIVE_UNIT = /(?<![\w.#])(-?(?:\d+\.?\d*|\.\d+))(em|ex|ch|vw|vh|vmin|vmax|pt|cm|mm|in)(?![\w-])/g
 const PERCENT = /(?<![\w.#])-?(?:\d+\.?\d*|\.\d+)%/g
-const PERCENT_PROPS = /^(?:width|min-width|max-width|height|min-height|max-height|(?:min-|max-)?(?:block|inline)-size|flex-basis|flex|padding(?:-[a-z-]+)?|gap|row-gap|column-gap|border(?:-[a-z]+)*-radius|background-position|background-size)$/
+const PERCENT_PROPS = /^(?:width|min-width|max-width|height|min-height|max-height|(?:min-|max-)?(?:block|inline)-size|flex-basis|flex|padding(?:-[a-z-]+)?|gap|row-gap|column-gap|border(?:-[a-z]+)*-radius|background-position|background-size|clip-path|(?:-webkit-)?mask(?:-position|-size)?|border-image(?:-slice|-width)?)$/
 const LENGTH = /^(-?(?:\d+\.?\d*|\.\d+))(px|rem)$/
 const VAR_EXACT = /^var\(\s*(--[a-z0-9_-]+)\s*\)$/
 const NEGATION_NUMBER = /^-?(?:\d+\.?\d*|\.\d+)[a-z%]*$/
@@ -287,7 +287,7 @@ export function valueRulesPass(canon: string, env: ValueEnv): ValueVerdict {
             else if (call.name === '') allowed = true
             else if (call.name === 'calc') allowed = negation(v.slice(call.nameStart, call.close + 1), 0)
             else allowed = PLAIN_FUNCTIONS.has(call.name) || COLOUR_FUNCTIONS.has(call.name) || GRADIENT.test(call.name)
-            if (!allowed) out.push(`${call.name || '('}() is not allowed in a pack${call.name === 'calc' ? ' except as calc(<x> * -1)' : ''} (allowed: var(), colour functions, gradients, url(), image-set(), calc(<x> * -1), minmax(), repeat(), fit-content(), cubic-bezier(), steps(), rect()) (MC-1549, MC-1555)${suffix}`)
+            if (!allowed) out.push(`${call.name || '('}() is not allowed in a pack${call.name === 'calc' ? ' except as calc(<x> * -1)' : ''} (allowed: var(), colour functions, gradients, url(), image-set(), calc(<x> * -1), minmax(), repeat(), fit-content(), cubic-bezier(), steps(), rect(), inset(), circle(), ellipse(), polygon(), path(), xywh()) (MC-1549, MC-1555)${suffix}`)
         }
         if (percentOk === false) {
             for (const m of masked(v, calls, true).matchAll(PERCENT)) out.push(`a percentage is not allowed in ${prop} (${m[0]}): the checks read it as 0 there (MC-1549, MC-1555)${suffix}`)

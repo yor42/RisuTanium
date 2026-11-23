@@ -4,7 +4,7 @@
   import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
   import { language } from "src/lang";
   import { DBState, selectedCharID, hypaV3ModalOpen } from "src/ts/stores.svelte";
-  import { chroMemoryDiscarded, chroMemoryTrace } from "src/ts/process/memory/chroMemory/traceStore";
+  import { chroLoreTrace, chroMemoryDiscarded, chroMemoryTrace } from "src/ts/process/memory/chroMemory/traceStore";
   import LastSendTab from "./ChroMemoryModal/last-send-tab.svelte";
   import IndexTab from "./ChroMemoryModal/index-tab.svelte";
 
@@ -18,6 +18,7 @@
   // The key the engine publishes its trace under: the owner's id and the chat's id.
   const chatKey = $derived(char && chat ? `${char.chaId}:${chat.id ?? ""}` : "");
   const trace = $derived($chroMemoryTrace && $chroMemoryTrace.chatKey === chatKey ? $chroMemoryTrace : null);
+  const loreTrace = $derived($chroLoreTrace && $chroLoreTrace.chatKey === chatKey ? $chroLoreTrace : null);
   const discarded = $derived(chatKey !== "" && $chroMemoryDiscarded === chatKey);
 
   function closeModal() {
@@ -78,9 +79,9 @@
         class="flex flex-col gap-3 overflow-y-auto"
       >
         {#if tab === "last"}
-          <LastSendTab {trace} messages={chat?.message} />
+          <LastSendTab {trace} {loreTrace} messages={chat?.message} />
         {:else}
-          <IndexTab {trace} {chatKey} {discarded} />
+          <IndexTab {trace} {chatKey} {discarded} {loreTrace} />
         {/if}
       </div>
     </div>

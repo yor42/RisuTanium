@@ -313,7 +313,7 @@ import { decodeRisuSave } from 'src/ts/storage/risuSave'
 
 //#region helpers
 
-const SETTINGS = { budgetTokens: 1800, future: 1 }
+const SETTINGS = { budgetTokens: 1800, searchLore: true, loreRecallCap: 1234, future: 1 }
 const CHRO_PROMPT = 'ChroMemory'
 const USAGE_PROMPT = 'usage statistics'
 
@@ -421,6 +421,7 @@ describe.each([
         expect(Object.hasOwn(written, 'ltmSettings')).toBe(false)
         expect(db.ltmEngine).toBe(true)
         expect(db.ltmSettings).toEqual(SETTINGS)
+        expect(db.ltmSettings).toMatchObject({ searchLore: true, loreRecallCap: 1234 })
     }, 120_000)
 
     test('B4 reproducer: declining the prompt ends the export as declined, with nothing written', async () => {

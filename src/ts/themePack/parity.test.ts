@@ -373,19 +373,10 @@ const SCOPE_REFUSALS: readonly string[] = [
     'values REJECT: name-connection-warning|chat',
     'values REJECT: name-connection-warning|studio',
 ]
-// Rule E-2 (MC-2309, MC-2317): a chat or Studio stylesheet may not paint an outer shadow or a text-shadow more than 2 px past its element,
-// nor an inset shadow more than 2 px into it, so the four corpus pairs below, which the reference accepts, are refused for that reason alone.
-// The last is the sheet-root inset of 64 px. None is a shipped pack or an own-area benign pair.
-const E2_REFUSALS: readonly string[] = [
-    'studio-hostile: P17|studio',
-    'studio-hostile on Navy: P17|studio',
-    'studio reach: R5 toast-box border 16px|studio',
-    'studio reach: R6 sheet-root border 16 + shadow 64|studio',
-]
-const E2_WHY = /may reach at most 2 px past its element/
+const E2_WHY = /may reach at most 64 px past its element/
 // Measured on this change: the pairs the reference accepts, the app refuses, and no list above names (WIDENED_COUNT), with the first 16 hex digits of the SHA-256 of their sorted names joined by newlines.
-const WIDENED_COUNT = 235
-const WIDENED_DIGEST = '12eb9bbe01b5bfc3'
+const WIDENED_COUNT = 273
+const WIDENED_DIGEST = 'b8f30c4e0f346879'
 describe('PT1: comment placement keeps a verdict (A19)', () => {
     // A comment only stands where a space means the same to the browser, so deleting every comment outside strings keeps the
     // verdict of an accepted input. A compatibility guard over the corpus; the NF17 reproducers are in packRules.test.ts.
@@ -415,10 +406,9 @@ describe('P2: the corpus sweep of where lintAreaPack is stricter than the refere
         }
         const fontPacks = flips.filter((f) => /H52|studio reach: R9/.test(f))
         const others = flips.filter((f) => !fontPacks.includes(f))
-        // REPRO for the E-2 entries: the base sweep holds 74 entries, this one 75 (the R6 sheet-root inset).
         // Since #560 PR2 the reference accepts more inputs (a contrast, readability or layout finding is a note), so more (input, area) pairs are accepted by the reference and refused by the app, each for a reason the app
         // already refused it for: Rule SCOPE (a part of another screen) or the pack normal form. The entries listed above stay refused; the widened remainder is pinned by its size and a digest of its names.
-        const listed = new Set([...NAMED_REFUSALS, ...SCOPE_REFUSALS, ...E2_REFUSALS])
+        const listed = new Set([...NAMED_REFUSALS, ...SCOPE_REFUSALS])
         expect([...listed].filter((entry) => !others.includes(entry)), 'a listed entry is no longer refused').toEqual([])
         const widened = others.filter((entry) => !listed.has(entry)).sort()
         expect(widened).toHaveLength(WIDENED_COUNT)
@@ -456,29 +446,85 @@ describe('P2: the corpus sweep of where lintAreaPack is stricter than the refere
         }
     })
 
-    // REPRO: the E-2 census is 4 pairs of 4 inputs, each refused for the flat-limit reason alone.
-    it('the Rule E-2 census: 4 pairs of 4 inputs, none a shipped pack or an own-area benign pair', { timeout: 120_000 }, () => {
-        expect(E2_REFUSALS).toHaveLength(4)
-        expect(new Set(E2_REFUSALS.map((e) => e.split('|')[0])).size).toBe(4)
-        for (const entry of E2_REFUSALS) {
-            const [label, area] = entry.split('|')
-            const input = inputs.find((i) => i.label === label)
-            expect(input, label).toBeDefined()
-            expect(label.startsWith('shipped pack'), entry).toBe(false)
-            expect(label.startsWith(`NEW_BENIGN ${area}:`), entry).toBe(false)
-            const result = lintAreaPack(area as ThemeArea, input!.css, label)
-            expect(result.ok, entry).toBe(false)
-            expect(result.errors.length, entry).toBeGreaterThan(0)
-            expect(result.errors.every((e) => E2_WHY.test(e.why)), `${entry}: ${JSON.stringify(result.errors.map((e) => e.why))}`).toBe(true)
+    // GUARD (passes on the base too; the 64 px reproducers are SH2 in effectsAdmission.test.ts): the former 2 px limit refused four corpus pairs the reference accepts; the 64 px total reach refuses none, so no (input, area) pair is refused for the E-2 reason alone.
+    it('the Rule E-2 census: no corpus pair is refused by the total reach alone', { timeout: 120_000 }, () => {
+        const refused: string[] = []
+        for (const input of inputs) {
+            for (const area of ['chat', 'studio'] as const) {
+                const result = lintAreaPack(area, input.css, input.label)
+                if (!result.ok && result.errors.length > 0 && result.errors.every((e) => E2_WHY.test(e.why))) refused.push(`${input.label}|${area}`)
+            }
         }
+        expect(refused).toEqual([])
     })
-
     it('every named entry is still refused (no stale entries)', { timeout: 120_000 }, () => {
-        for (const entry of [...NAMED_REFUSALS, ...SCOPE_REFUSALS, ...E2_REFUSALS]) {
+        for (const entry of [...NAMED_REFUSALS, ...SCOPE_REFUSALS]) {
             const [label, area] = entry.split('|')
             const input = inputs.find((i) => i.label === label)
             expect(input, label).toBeDefined()
             expect(lintAreaPack(area as ThemeArea, input!.css, label).ok, entry).toBe(false)
         }
     })
+})
+
+// #560 PR3: the effects the port admits (outline with its focus-loss note, mask, clip-path, border-image and ::before / ::after) are judged identically by the reference.
+// The inputs are written for each area with real registry part names; every one goes through the area lint of the reference and of the port, and the chat engine entry points.
+describe('PR3 effects parity', { timeout: 120_000 }, () => {
+    const PARTS: Record<ThemeArea, { S: string, R: string }> = {
+        chat: { S: 'chat-message-avatar', R: 'chat-send' },
+        studio: { S: 'studio-asset-row', R: 'studio-item-apply' },
+        settings: { S: 'settings-section-title', R: 'settings-header' },
+        home: { S: 'home-brand', R: 'home-run-card' },
+    }
+    const sel = (area: ThemeArea, kind: 'S' | 'R', suffix = ''): string => `[data-part="${PARTS[area][kind]}"]${suffix}`
+    const inputsOf = (area: ThemeArea): Input[] => {
+        const list: Input[] = []
+        const put = (label: string, css: string): void => { list.push({ label: `PR3 ${label}`, css }) }
+        put('OL1 outline on a reach part', `${sel(area, 'R')}{outline:2px solid #ff0000}`)
+        put('OL1 outline longhands on a safe part', `${sel(area, 'S')}{outline-offset:2px;outline-color:#00ff00;outline-style:solid;outline-width:2px}`)
+        for (const decl of ['outline:none', 'outline:0 solid #000000', 'outline:2px hidden #000000', 'outline-width:0', 'outline-style:none', 'outline-color:transparent']) put(`OL3 focus rule with ${decl}`, `${sel(area, 'R', ':focus-visible')}{${decl}}`)
+        put('OL3n a ring that stays', `${sel(area, 'R', ':focus-visible')}{outline:2px solid rgb(0 0 0)}`)
+        put('OL3n outline removal outside a focus state', `${sel(area, 'R')}{outline:none}`)
+        put('OL4 outline over 64 px', `${sel(area, 'R')}{outline:65px solid #ff0000}`)
+        put('OL4 outline-offset over 64 px', `${sel(area, 'S')}{outline-offset:65px}`)
+        const grad = 'linear-gradient(#000000,transparent)'
+        put('MK1 mask-image on a safe part', `${sel(area, 'S')}{mask-image:${grad}}`)
+        put('MK1 webkit mask-image on a safe part', `${sel(area, 'S')}{-webkit-mask-image:${grad}}`)
+        put('MK2 mask-image on a reach part', `${sel(area, 'R')}{mask-image:${grad}}`)
+        put('MK2 webkit mask-image on a reach part', `${sel(area, 'R')}{-webkit-mask-image:${grad}}`)
+        put('MK4 bundled mask url', `${sel(area, 'S')}{mask:url(images/m.png) no-repeat center/100%}`)
+        put('CP1 clip-path circle', `${sel(area, 'S')}{clip-path:circle(50%)}`)
+        put('CP1 clip-path polygon', `${sel(area, 'S')}{clip-path:polygon(0 0,100% 0,50% 100%)}`)
+        put('CP2 clip-path on a reach part', `${sel(area, 'R')}{clip-path:inset(2px)}`)
+        put('BI1 border-image on a safe part', `${sel(area, 'S')}{border-style:solid;border-width:4px;border-image:linear-gradient(#ff0000,#0000ff) 1}`)
+        put('BI1 border-image on a reach part', `${sel(area, 'R')}{border-style:solid;border-width:4px;border-image:linear-gradient(#ff0000,#0000ff) 1}`)
+        put('BI2 border-image longhands on a reach part', `${sel(area, 'R')}{border-image-source:${grad};border-image-slice:1}`)
+        put('K9 unbundled mask url', `${sel(area, 'S')}{mask-image:url('https://example.test/a.png')}`)
+        put('K9 fragment clip-path url', `${sel(area, 'S')}{clip-path:url(#m)}`)
+        const box = 'content:"";position:absolute;top:0;left:0;width:8px;height:8px;background-color:#ff0000'
+        put('PE1 ::before on a safe part', `${sel(area, 'S', '::before')}{${box}}`)
+        put('PE2 ::after on a reach part', `${sel(area, 'R', '::after')}{content:'';position:absolute;bottom:0;left:4px;width:8px;height:8px}`)
+        put('PE3 state before the pseudo-element', `${sel(area, 'S', ':hover::after')}{${box}}`)
+        put('PE3 root attribute ancestor', `html[data-input="hover"] ${sel(area, 'S', '::before')}{content:""}`)
+        put('PE4 inherited colour on a reach pseudo box', `${sel(area, 'R', '::before')}{content:"";color:initial !important}`)
+        for (const value of ['"x"', 'attr(data-part)', 'counter(c)', '"" "x"', 'url(images/a.png)', 'none', 'inherit']) put(`K1 content ${value}`, `${sel(area, 'S', '::before')}{content:${value}}`)
+        put('K6 content on an element', `${sel(area, 'S')}{content:""}`)
+        for (const decl of ['z-index:1', 'direction:rtl', 'all:unset', 'transform:scale(2)', 'position:fixed', 'position:sticky']) put(`K3 ${decl} on a pseudo-element`, `${sel(area, 'S', '::before')}{content:"";${decl}}`)
+        const p = sel(area, 'S')
+        for (const s of [`${p}::before ${p}`, `${p}::before:hover`, `${p}:before`, `${p}::marker`, `${p}::selection`, `${p}::before::after`, `${p} ::before`, `${p}>::before`, `${p} > ::before`, `${p}+::before`, `${p}~::after`, '::before']) put(`K7 selector ${s}`, `${s}{content:"";position:absolute;width:8px;height:8px}`)
+        put('K8 protected part pseudo-element', `[data-part="chat-failed-card"]::before{content:""}`)
+        put('K10 root pseudo-element', `html::before{content:""}`)
+        put('K10 root pseudo-element with a pseudo class', `:root::after{content:""}`)
+        put('K10 no part pseudo-element', `[data-kind="peer"]::before{content:""}`)
+        put('K11 valueless part pseudo-element', `[data-part]::before{content:""}`)
+        return list
+    }
+    for (const area of THEME_AREAS) {
+        it(`the ${area} area lint and the chat engine entry points agree with the reference on the PR3 inputs`, () => {
+            for (const input of inputsOf(area)) {
+                expect(AREA_LINT[area](input.css, input.label), `${area} / ${input.label}`).toEqual(lib.LINT[area](input.css, input.label))
+                if (area === 'chat') expect(portLintPack(input.css, input.label), input.label).toEqual(chat.lintPack(input.css, input.label))
+            }
+        })
+    }
 })

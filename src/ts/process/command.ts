@@ -175,7 +175,7 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
         }
         case 'speak': {
             if(currentChar.type === 'character'){
-                await sayTTS(currentChar, stripThoughtsForCopy(arg))
+                await sayTTS(currentChar, stripThoughtsForCopy(arg), { signal: ctx.signal })
                 return pipe
             }
             if(currentChar.type === 'group'){

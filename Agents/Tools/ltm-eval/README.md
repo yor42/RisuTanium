@@ -173,3 +173,21 @@ node node_modules/vitest/vitest.mjs run --config Agents/Tools/ltm-eval/vitest.lt
 The CI-sized floor is `src/ts/process/memory/chroMemory/tests/recallFloor.test.ts`: on `corpus.ciSubset()` (context 4096 and budget 800, so the small chats leave a dropped set and a halved walk budget costs recall) src pack and delivered recall stay within 0.05 of the simulator's, knowledge updates included.
 
 `--ltm-bench [short|long]` of `../save-gen/synth-bin-gen.mjs` builds the device-row `.bin`: the device scale plus one character, "LTM Bench", with chats of 2000 and 5000 synthetic messages at spec 9's lengths, 40% Hangul, and `maxContext` 32768. A `.bin` cannot carry `ltmEngine`, so pick ChroMemory in Settings after the import. Without the flag the output is byte-identical.
+
+## S4 lore recall harness
+
+`s4/lore.harness.ts` is the lore-recall usefulness gate and the D1 timing diagnostic (spec 9, #687). It calls the shipped `loreIndex.ts` and `loreRecall.ts` directly: the real `pickHashRand` is the entry hash, the render is the identity and tokens come from S0's stub counter (4 characters per token, so token figures are approximate). Data is synthetic: `s4/loreGen.mjs` builds seeded English and Korean lore sets in the app's `loreBook` shape, 300 entries each (200 topic entries in 100 distractor pairs with unique invented keys, 50 filler entries in common vocabulary, 50 never-recall entries carrying an excluded decorator, `selective`, regex keys, constant or folder mode, or a keyless key), with character names in some entries and Korean particles on the attribute words.
+
+- Turns never contain the target's key. Paraphrase turns come in three strata: high (2 to 3 attribute words verbatim), low (one verbatim, the rest synonyms) and allude (synonyms only; reported, never gating). No-relevant turns are chit-chat with common words and character names. A turn is redrawn when its synonyms share a token with the target body or its overlap does not fit its stratum, measured with the real tokeniser.
+- Protocol: tune (tau, N) on seed A over tau in {0.01, 0.02, 0.05, 0.1, 0.2, null} and N in 1..5 (the cell must meet the O1 recommended rule in both languages: precision >= 0.6, no-evidence recall <= 0.2, hit rate @N >= 0.3 on high plus low turns; the best weaker-language hit rate wins, and when no cell meets the rule the cell closest to it is taken and the report says tier 2). Then report on fresh seed B at the tuned settings with Wilson 95% intervals, raising n from 300 paraphrase plus 300 no-relevant turns per language until every gating interval has a half-width of at most 0.05 or the 3000-turn cap binds (the report says so).
+- Common vocabulary has two frequency tiers (A: in a large share of the entries, B: in a few percent). The no-evidence recall rate depends on how often a chit-chat turn uses a B word, so the report gives it overall and split by that; the split is the honest range, and the overall figure rests on the generator's 25% B share per word.
+- It asserts that no recalled entry is in the never-recall set (and that the assertion bites). D1 reports build ms per 300 entries, scoring ms per send at 300 and 3000 entries, and hash calls per send at 3000 entries, including the worst case of id-less entries of one length.
+- Per-entry precision is structurally at most 1/k when k entries are recalled for a turn with one target; the report prints that ceiling beside precision@k.
+- Run it by hand (CI skips `Agents/**`). It needs its own config, `s4/vitest.s4.config.ts` (the app's `pickHashRand` import graph needs the repository's Svelte plugins). `LTM_S4_OUT` must lie under the temp folder; the run writes `harness-results.json` and `harness-results.md` there.
+
+```powershell
+$env:LTM_S4_OUT = "$env:TEMP\ltm-s4-out"
+node node_modules/vitest/vitest.mjs run --config Agents/Tools/ltm-eval/s4/vitest.s4.config.ts Agents/Tools/ltm-eval/s4/lore.harness.ts
+```
+
+The maintainer applies the O1 pass rule to the seed B numbers; the result sets `SEARCH_LORE_DEFAULT`.

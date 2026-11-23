@@ -86,10 +86,8 @@ const STUDIO_EXPECT: Record<string, RegExp> = {
     T01: /fully transparent/, T02: /would be [\d.]+:1/, T03: /fully transparent/, T04: /critical minimum/, T05: /not a pack-settable/, T06: /not a pack-settable/, T07: /not a pack-settable/, T08: /not a pack-settable/, T09: /not a pack-settable/, T10: /not a pack-settable/, T11: /not a pack-settable/, T12: /not a pack-settable/,
     T13: /critical minimum/, T14: /fully transparent/, T15: /not a pack-settable/, T16: /would be [\d.]+:1/, T17: /would be [\d.]+:1/, T18: /critical maximum/, T19: /would be [\d.]+:1/, T20: /would be [\d.]+:1/, T21: /not a pack-settable/, T22: /not a pack-settable/, T23: /not a pack-settable/, T24: /would be [\d.]+:1/, T25: /would be [\d.]+:1/, T26: /would be [\d.]+:1/,
 }
-// MC-2309 supersedes that freedom for an outer shadow over 2 px: such a pack is refused by decision (rule E-2).
-const STUDIO_DECIDED_ACCEPT = new Set(['H06', 'H07', 'H08', 'P06', 'P07', 'P08', 'P09', 'P10', 'P11'])
-const STUDIO_E2_REFUSED = new Set(['P17'])
-const E2_WHY = /may reach at most 2 px past its element/
+// P16 (an outline of 64 px) and P17 (a shadow of 64 px spread) are accepted by decision since MC-3427 and MC-3429: an outline is admitted and a shadow may reach 64 px in total. S07 (an empty ::after on a safe toast) is accepted by MC-3422.
+const STUDIO_DECIDED_ACCEPT = new Set(['H06', 'H07', 'H08', 'P06', 'P07', 'P08', 'P09', 'P10', 'P11', 'P16', 'P17', 'S07'])
 const studioExtra: [string, string | null, RegExp | null][] = [
     ['B1-token sheet transparent', ':root{--color-surface-sheet:transparent}', /fully transparent|opaque/], ['B1-token sheet alpha .05', ':root{--color-surface-sheet:rgb(0 1 28 / 0.05)}', /opaque colour/], ['toast transparent', ':root{--color-surface-toast:transparent}', /fully transparent|opaque/],
     ['sheet = canvas colour translucent', ':root{--color-surface-sheet:rgb(0 1 28 / 0.1)}', /opaque colour/], ['edge transparent', ':root{--nexus-edge:transparent;--nexus-edge-strong:transparent}', /fully transparent/], ['studio-tint-sheet-92 holder', ':root{--studio-tint-sheet-92:transparent}', /not a pack-settable/],
@@ -100,7 +98,7 @@ const studioExtra: [string, string | null, RegExp | null][] = [
 const HOME_RIGHT = (id: string): RegExp => {
     if (/^K(1|2|5|6|7|8|9|10|11|12|14|17|18|19|21|22|23)$/.test(id)) return /cannot be resolved to a concrete sRGB|would be [\d.]+:1|cannot be checked/
     if (/^K(3|4|13|15|16|20|24)$/.test(id)) return /fully transparent|opaque|would be [\d.]+:1|cannot be resolved|primary button label/
-    if (/^L[1-7]$/.test(id)) return /outlines|indication of focus|allowlist|visibility|not allowed in a pack selector/;   // L3 uses :focus, which no pack selector may use at all
+    if (/^L[1-7]$/.test(id)) return /outline-offset larger than 64 px|indication of focus|allowlist|visibility|not allowed in a pack selector/;   // L3 uses :focus, which no pack selector may use at all
     if (/^(H\d+|V\d|W\d|T\d|N\d+|G\d+|M\d+)$/.test(id) || id === 'A8') return /allowlist|can place|position|negative margin|outline|cursor|transform|clip|filter|z-index|animation|transition|font size|translucent|not allowed|beyond|inset|float|can cover, fade or disable|larger than 64|text colour that is|background that makes|writing-mode/
     if (/^F\d+$/.test(id)) return /critical m|cannot be|not a pack-settable|not allowed|@/
     if (/^C\d+$/.test(id)) return /would be [\d.]+:1|fully transparent|cannot be resolved|not allowed|@media|not a pack-settable/
@@ -134,7 +132,8 @@ const PRIV: [string, string, boolean, RegExp?][] = [
     ['a part-scoped private value that reaches a ceiling', '[data-part="chat-send"]{--pack-a:900px}:root{--header-height:var(--pack-a)}', false, /critical maximum/],
     ['an unlisted name that only looks private', ':root{--packs-x:#fff}', false, /not a pack-settable/],
     ['background through a private variable on a kind selector', ':root{--pack-b:#fff}[data-kind="restore"]{background:var(--pack-b)}', false, /background on a selector that names no part/],
-    ['outline through a private variable', ':root{--pack-o:none}[data-part="chat-message-name"]{outline:var(--pack-o)}', false, /outlines/],
+    ['outline through a private variable', ':root{--pack-o:none}[data-part="chat-message-name"]{outline:var(--pack-o)}', true],
+    ['an oversize outline through a private variable', ':root{--pack-o:65px solid #ffffff}[data-part="chat-message-name"]{outline:var(--pack-o)}', false, /outline larger than 64 px/],
     ['display through a private variable on Send', ':root{--pack-d:none}[data-part="chat-send"]{display:var(--pack-d)}', false, /allowlist/],
     ['a text colour through a private variable on a reach part', ':root{--pack-c:#0e0f2b}[data-part="chat-list-row"]{color:var(--pack-c)}', false, /text colour that is/],
 ]
@@ -189,16 +188,11 @@ const CEIL_PACKS: [ThemeArea, string, string, RegExp][] = [
     ['chat', 'transcript + message + body padding', '[data-part="chat-transcript"]{padding:0 64px}[data-part="chat-message"]{padding:0 64px}', /ancestor padding along/],
 ]
 const CEIL_ACCEPTED: [ThemeArea, string, string][] = [['studio', 'main + body padding 12px a side (48 px more than the default 24, 72 px in all), within the budget', '[data-part="studio-main"]{padding:0 12px}[data-part="studio-body"]{padding:0 12px}'], ['chat', 'a roomy header and gaps inside the ceilings', ':root{--header-height:64px;--message-gap:32px;--composer-field-height:72px}'], ['home', 'card padding 24px', '[data-part="home-story"]{padding:24px}']]
-const MUST: Record<string, RegExp> = { R1: /ancestor padding|larger than 64/, R2: /larger than 64|ancestor padding/, R3: /ancestor padding/, R4: /ancestor padding/, R11: /names no part/, R12: /names no part/, R15: /names no part|outlines/, R16: /root of a protected sheet/ }
+const MUST: Record<string, RegExp> = { R1: /ancestor padding|larger than 64/, R2: /larger than 64|ancestor padding/, R3: /ancestor padding/, R4: /ancestor padding/, R11: /names no part/, R12: /names no part/, R15: /names no part/, R16: /root of a protected sheet/ }
 
 describe('2 studio review packs', () => {
     for (const f of readReviewPacks('studio-hostile.json')) {
         for (const [label, css] of [['bare', f.css], ['on Navy', NAVY_STUDIO + '\n' + f.css]] as Named[]) {
-            if (STUDIO_E2_REFUSED.has(f.id)) {
-                // REPRO: the base accepts this pack; the flat 2 px limit on outer shadows refuses it.
-                it(`${f.id} ${label} is refused by decision (an outer shadow over 2 px, MC-2309): ${f.name}`, () => { expectRejected(lint('studio', css, f.id), E2_WHY) })
-                continue
-            }
             if (STUDIO_DECIDED_ACCEPT.has(f.id)) {
                 // Accepted by decision: only the key controls are protected, other safe parts keep their freedom.
                 it(`${f.id} ${label} is accepted by decision (${f.name})`, () => { expectAccepted(lint('studio', css, f.id)) })
@@ -210,7 +204,7 @@ describe('2 studio review packs', () => {
     }
     it('every decided-accept id and every expected id is a pack of the studio review list', () => {
         const ids = new Set(readReviewPacks('studio-hostile.json').map((f) => f.id))
-        for (const id of [...STUDIO_DECIDED_ACCEPT, ...STUDIO_E2_REFUSED, ...Object.keys(STUDIO_EXPECT)]) expect(ids.has(id), id).toBe(true)
+        for (const id of [...STUDIO_DECIDED_ACCEPT, ...Object.keys(STUDIO_EXPECT)]) expect(ids.has(id), id).toBe(true)
     })
     for (const [n, css, re] of studioExtra) {
         if (css === null || re === null) {
@@ -363,8 +357,13 @@ describe('5 benign fixtures', () => {
 
 // ---- 6. legacy suites of the areas
 describe('6 legacy hostile lists are still rejected', () => {
+    // An empty positioned ::before or ::after is accepted by decision since MC-3422 and MC-3427; covering a protected sheet with one is a known limitation (MC-3638).
+    const DECIDED_ACCEPT = new Set(['H16 pseudo-element'])
     const legacy: Named[] = [...hostile.HOSTILE, ...hostile.HOSTILE_3, ...hostile.HOSTILE_2.filter(([n]) => !hostile.BORDERLINE_OK.includes(n))]
-    for (const [n, css] of legacy) it(`chat: ${n} is flagged`, () => { expect(flaggedAny(lint('chat', css, '')), 'ACCEPTED WITHOUT A NOTE').toBe(true) })
+    for (const [n, css] of legacy) {
+        if (DECIDED_ACCEPT.has(n)) it(`chat: ${n} is accepted by decision`, () => { expectAccepted(lint('chat', css, '')) })
+        else it(`chat: ${n} is flagged`, () => { expect(flaggedAny(lint('chat', css, '')), 'ACCEPTED WITHOUT A NOTE').toBe(true) })
+    }
     for (const [k, [css]] of Object.entries(values.REJECT)) {
         it(`settings value fixture ${k} is flagged under its registry`, () => { expect(flaggedAny(lintEngine(css, k, values.SETTINGS_REGISTRY)), 'ACCEPTED WITHOUT A NOTE').toBe(true) })
     }
@@ -375,5 +374,5 @@ describe('6 legacy hostile lists are still rejected', () => {
 
 // Every row above that is flagged through a note only (its reason is a contrast, readability or layout finding), measured on this change. A refusal turned into a note or a note turned back into a refusal moves it.
 describe('7 census of the rows flagged by a note only', () => {
-    it('counts the rows whose reason is a note and no refusal', () => { expect(notedOnly).toBe(272) })
+    it('counts the rows whose reason is a note and no refusal', () => { expect(notedOnly).toBe(283) })
 })

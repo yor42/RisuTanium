@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { BUDGET_CAP_TOKENS, budgetInputValue, defaultBudgetTokens, normalizeBudgetInput, readLtmSettings, writeLtmSettings } from '../settings'
+import { BUDGET_CAP_TOKENS, LORE_RECALL_CAP_DEFAULT, SEARCH_LORE_DEFAULT, budgetInputValue, defaultBudgetTokens, loreRecallCapInputValue, normalizeBudgetInput, readLtmSettings, writeLtmSettings } from '../settings'
 
 describe('defaultBudgetTokens', () => {
     test('new rule: caps at the S0 budget and scales with a small context', () => {
@@ -18,7 +18,7 @@ describe('readLtmSettings', () => {
     test('new rule: a bad shape reads as the defaults', () => {
         const bad: unknown[] = [undefined, null, 'x', 7, [], { budgetTokens: '9' }, { budgetTokens: 0 }, { budgetTokens: 1.5 }, { budgetTokens: -3 }, { budgetTokens: NaN }, {}]
         for (const raw of bad) {
-            expect(readLtmSettings(raw, 8192), JSON.stringify(raw)).toEqual({ budgetTokens: fallback, shadow: false })
+            expect(readLtmSettings(raw, 8192), JSON.stringify(raw)).toEqual({ budgetTokens: fallback, shadow: false, searchLore: SEARCH_LORE_DEFAULT, loreRecallCap: LORE_RECALL_CAP_DEFAULT })
         }
     })
 
@@ -39,6 +39,33 @@ describe('readLtmSettings shadow', () => {
             expect(readLtmSettings(raw, 8192).shadow, JSON.stringify(raw)).toBe(false)
         }
         const raw = { shadow: 'yes', future: 1 }
+        const clone = structuredClone(raw)
+        readLtmSettings(raw, 8192)
+        expect(raw).toEqual(clone)
+    })
+})
+
+describe('readLtmSettings lore recall (T19)', () => {
+    test('new rule: searchLore reads only a boolean; anything else is the default', () => {
+        expect(SEARCH_LORE_DEFAULT).toBe(false)
+        expect(readLtmSettings({ searchLore: true }, 8192).searchLore).toBe(true)
+        expect(readLtmSettings({ searchLore: false }, 8192).searchLore).toBe(false)
+        for (const v of ['true', 1, null, undefined, {}, [], 'yes', 0]) {
+            expect(readLtmSettings({ searchLore: v }, 8192).searchLore, String(v)).toBe(SEARCH_LORE_DEFAULT)
+        }
+        expect(readLtmSettings({}, 8192).searchLore).toBe(SEARCH_LORE_DEFAULT)
+    })
+
+    test('new rule: loreRecallCap reads only a positive integer; anything else is 5000', () => {
+        expect(LORE_RECALL_CAP_DEFAULT).toBe(5000)
+        expect(readLtmSettings({ loreRecallCap: 1234 }, 8192).loreRecallCap).toBe(1234)
+        for (const v of [0, -1, 2.5, '5000', NaN, Infinity, null, undefined, true]) {
+            expect(readLtmSettings({ loreRecallCap: v }, 8192).loreRecallCap, String(v)).toBe(5000)
+        }
+    })
+
+    test('new rule: unknown keys are kept and nothing is written back', () => {
+        const raw = { searchLore: 'x', loreRecallCap: 0, future: { a: [1] } }
         const clone = structuredClone(raw)
         readLtmSettings(raw, 8192)
         expect(raw).toEqual(clone)
@@ -74,6 +101,20 @@ describe('writeLtmSettings', () => {
         expect('budgetTokens' in (db.ltmSettings as object)).toBe(false)
     })
 
+    test('T19: searchLore and loreRecallCap are written, unknown keys stay, and a null cap removes the key', () => {
+        const db: { ltmSettings?: unknown } = { ltmSettings: { budgetTokens: 900, future: 1 } }
+        writeLtmSettings(db, { searchLore: true, loreRecallCap: 1234 })
+        expect(db.ltmSettings).toEqual({ budgetTokens: 900, future: 1, searchLore: true, loreRecallCap: 1234 })
+        writeLtmSettings(db, { searchLore: false })
+        expect(db.ltmSettings).toEqual({ budgetTokens: 900, future: 1, searchLore: false, loreRecallCap: 1234 })
+        writeLtmSettings(db, { loreRecallCap: null })
+        expect(db.ltmSettings).toEqual({ budgetTokens: 900, future: 1, searchLore: false })
+        expect('loreRecallCap' in (db.ltmSettings as object)).toBe(false)
+        const bare: { ltmSettings?: unknown } = { ltmSettings: 'garbage' }
+        writeLtmSettings(bare, { loreRecallCap: null })
+        expect(bare.ltmSettings).toEqual({})
+    })
+
     test('ST2: a value that is not an object is replaced by the patch alone', () => {
         for (const bad of ['garbage', 7, null, undefined, [1, 2]]) {
             const db: { ltmSettings?: unknown } = { ltmSettings: bad }
@@ -83,5 +124,15 @@ describe('writeLtmSettings', () => {
         const db: { ltmSettings?: unknown } = { ltmSettings: 'garbage' }
         writeLtmSettings(db, { budgetTokens: null })
         expect(db.ltmSettings).toEqual({})
+    })
+})
+
+describe('loreRecallCapInputValue', () => {
+    test('shows the stored cap only when it is a positive integer, else blank', () => {
+        expect(loreRecallCapInputValue({ loreRecallCap: 1234, budgetTokens: 5 })).toBe(1234)
+        for (const v of [0, -1, 2.5, '5000', null, undefined]) {
+            expect(loreRecallCapInputValue({ loreRecallCap: v }), String(v)).toBeNull()
+        }
+        for (const raw of [undefined, null, 'x', [], 7]) expect(loreRecallCapInputValue(raw), JSON.stringify(raw)).toBeNull()
     })
 })

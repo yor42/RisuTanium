@@ -2,7 +2,7 @@
    Cream canvas, cocoa text and accent, banana yellow for the selected item. The Settings screen has no chat layout, so the rearrangement is the shell and the rows: the screen is a padded sheet with a
    floating header, the index a stack of rounded cards (the current one yellow), every settings row its own card with a gap, section titles yellow pills.
    Tokens first; part CSS only where a layout has to move, and only with what a pack install accepts (checks/th/packlint, DD-149, DD-155): [data-*] selectors, :hover, and declarations on the allowlist
-   (colours, borders, radii, shadows, bounded spacing). Everything that needs display, overflow or a pseudo-element is a role token of the screen instead: --settings-rows-gap, --settings-rows-overflow,
+   (colours, borders, radii, shadows, bounded spacing). Everything that needs display or overflow is a role token of the screen instead: --settings-rows-gap, --settings-rows-overflow,
    --settings-row-last-border-width, --settings-row-ring-radius, --settings-section-title-width. Critical parts (data-part-critical: dialogs and their backdrop, the failed-save retry, the failed row and chip,
    the Undo toast after a delete, the fix banner, the chat error card) are never named by a rule below. DOM order is never changed.
    Each colour is stated once (DD-146): the accent, danger, overlay and shade channels. Loaded by ?theme=banana-cocoa (theme.js). Not a finished pack. */

@@ -3,7 +3,7 @@
  * through the real dispatch over a memory backend (which registers the residency and the loader), a chosen module is turned
  * into its recorded stub, and the plugin reads and writes `modules` through `makeRisuaiAPIV3`. The sibling file with
  * a fake loader pins the plugin-side rules; what only a real load shows is that the copy a plugin gets holds the stored
- * body, the live slot is the installed module, and a plugin's edit of the copy lands in that slot.
+ * body while the live slot stays the stub, and a plugin's edit of the copy installs in its slot when written back.
  * Labels: reproducer (fails when the named mutant is applied: the loader leaves the stub in the slot), guard (passes
  * before and after).
  */
@@ -219,7 +219,10 @@ vi.mock(import('../../../process/modules'), () => ({
 
 import { makeRisuaiAPIV3 } from '../v3.svelte'
 import { DBState, selectedCharID } from '../../../stores.svelte'
-import { bumpModuleGui } from '../../../process/modules'
+import { alertConfirm } from '../../../alert'
+import { updateLorebooks } from '../../../characters'
+import { bumpModuleGui, getModuleLorebooks } from '../../../process/modules'
+import { moduleListOf, moduleRefIdsOf } from '../../../process/moduleRefList'
 // Registers the displayed origin's real reference read with the loader, as the page's import does.
 import '../../../process/moduleEnsure'
 import type { RisuPlugin } from '../../plugins.svelte'
@@ -257,6 +260,13 @@ interface World {
     unitKey: string
 }
 
+/** Races a promise against a real timer, so a call that never settles fails the case instead of hanging the file. */
+function within<T>(promise: Promise<T>, label: string, ms = 1500): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const bound = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} did not settle within ${ms} ms.`)), ms) })
+    return Promise.race([promise, bound]).finally(() => clearTimeout(timer))
+}
+
 const api = () => makeRisuaiAPIV3({} as HTMLIFrameElement, makePlugin())
 const liveModules = () => (DBState.db as unknown as { modules: RisuModule[] }).modules
 const modulesOf = (copy: unknown) => (copy as { modules: RisuModule[] }).modules
@@ -267,9 +277,9 @@ async function bootWithStub(): Promise<World> {
 }
 
 /** Boots a tree of three modules and turns each index of `stubbed` into its recorded stub; the world names the first one's unit. */
-async function bootWithStubs(stubbed: number[]): Promise<World> {
+async function bootWithStubs(stubbed: number[], modules: Obj[] = [moduleBody('a'), moduleBody('b'), moduleBody('c')]): Promise<World> {
     const memory = createMemoryBackend()
-    const source = { ...(buildSmall(2) as unknown as Obj), archiveCharacters: false, modules: [moduleBody('a'), moduleBody('b'), moduleBody('c')] } as unknown as Database
+    const source = { ...(buildSmall(2) as unknown as Obj), archiveCharacters: false, modules } as unknown as Database
     await seedTree(memory, JSON.parse(JSON.stringify(source)) as Database, testEnv(createClock(), 4242), fakeLists)
     const booted = await bootThroughDispatch(memory)
     if (booted.result.kind !== 'store2') {
@@ -321,44 +331,43 @@ afterEach(() => {
 })
 
 describe('a plugin reads and writes modules through the real loader', () => {
-    test('getDatabase gives the stored body of a stub in the copy, and the live slot is the installed module', async () => {
+    test('C1 reproducer: getDatabase gives the stored body of a stub in the copy, and the live slot stays the stub', async () => {
         await bootWithStub()
         expect(isModuleStub(liveModules()[1])).toBe(true)
 
-        const copy = await api().getDatabase(['modules'])
+        const copy = await within(api().getDatabase(['modules']), 'getDatabase')
 
         expect(modulesOf(copy).map((slot) => isModuleStub(slot))).toEqual([false, false, false])
         expect(modulesOf(copy)[1].name).toBe('b')
         expect(modulesOf(copy)[1].lorebook?.[0].content).toBe('text of b')
-        expect(isModuleStub(liveModules()[1])).toBe(false)
-        expect(liveModules()[1].lorebook?.[0].content).toBe('text of b')
+        expect(isModuleStub(liveModules()[1])).toBe(true)
     })
 
-    test('guard: plugin-getDatabase-default-read-loads-every-module', async () => {
+    test('reproducer: plugin-getDatabase-default-read-returns-every-module', async () => {
         await bootWithStub()
         expect(isModuleStub(liveModules()[1])).toBe(true)
 
-        const copy = await api().getDatabase()
+        const copy = await within(api().getDatabase(), 'getDatabase')
 
         expect(modulesOf(copy).map((slot) => isModuleStub(slot))).toEqual([false, false, false])
         expect(modulesOf(copy)[1].lorebook?.[0].content).toBe('text of b')
-        expect(isModuleStub(liveModules()[1])).toBe(false)
+        expect(isModuleStub(liveModules()[1])).toBe(true)
     })
 
-    test('guard: a default read with one damaged unit rejects naming the module and the slot stays the stub', async () => {
+    test('C17 guard: a default read with one damaged unit rejects naming the module and the slot stays the stub', async () => {
         const world = await bootWithStub()
         world.memory.poke(world.unitKey, null)
 
-        const result = api().getDatabase()
+        const result = within(api().getDatabase(), 'getDatabase')
 
         await expect(result).rejects.toThrow(/"b" \(id-b\)/)
         await expect(result).rejects.toThrow(/damaged/)
         expect(isModuleStub(liveModules()[1])).toBe(true)
     })
 
-    test('a plugin edit of the copy written back lands in the installed live slot', async () => {
+    test('a plugin edit of the copy written back installs the edited module in its live slot', async () => {
         await bootWithStub()
-        const copy = await api().getDatabase(['modules'])
+        const copy = await within(api().getDatabase(['modules']), 'getDatabase')
         modulesOf(copy)[1].lorebook![0].content = 'edited by plugin'
 
         await api().setDatabase(copy)
@@ -369,11 +378,11 @@ describe('a plugin reads and writes modules through the real loader', () => {
         expect(liveModules()[2].lorebook?.[0].content).toBe('text of c')
     })
 
-    test('guard: a stored unit that is damaged rejects naming the module and the loader\'s reason, and the slot stays the stub', async () => {
+    test('C17 guard: a stored unit that is damaged rejects naming the module and the loader\'s reason, and the slot stays the stub', async () => {
         const world = await bootWithStub()
         world.memory.poke(world.unitKey, null)
 
-        const result = api().getDatabase(['modules'])
+        const result = within(api().getDatabase(['modules']), 'getDatabase')
 
         await expect(result).rejects.toThrow(/"b" \(id-b\)/)
         await expect(result).rejects.toThrow(/damaged/)
@@ -384,30 +393,62 @@ describe('a plugin reads and writes modules through the real loader', () => {
 describe('getDatabase reloads the chat only for modules the chat references', () => {
     type Live = { characters: { chatPage: number, chats: { modules?: string[] }[] }[] }
 
-    test('a library-wide read bumps the GUI once, for the one stub the selected chat references, not once per stub', async () => {
+    test('C2 reproducer: a library-wide read installs nothing, so the GUI is not bumped and every slot stays a stub', async () => {
         await bootWithStubs([0, 1, 2])
         const live = DBState.db as unknown as Live
         live.characters[0].chats[live.characters[0].chatPage].modules = ['id-b']
         selectedCharID.set(0)
         vi.mocked(bumpModuleGui).mockClear()
         try {
-            const copy = await api().getDatabase(['modules'])
+            const copy = await within(api().getDatabase(['modules']), 'getDatabase')
 
             expect(modulesOf(copy).map((slot) => isModuleStub(slot))).toEqual([false, false, false])
-            expect(vi.mocked(bumpModuleGui)).toHaveBeenCalledTimes(1)
+            expect(vi.mocked(bumpModuleGui)).not.toHaveBeenCalled()
+            expect(liveModules().map((slot) => isModuleStub(slot))).toEqual([true, true, true])
         } finally {
             selectedCharID.set(-1)
         }
+    })
+
+    describe.each([
+        ['referenced', ['id-b'], 1],
+        ['unreferenced', [], 0],
+    ] as const)('an ask stub that is %s by the displayed chat', (_label, referenced, bumps) => {
+        beforeEach(() => {
+            vi.mocked(updateLorebooks).mockImplementation((book) => book.map((entry) => ({ ...entry, bookVersion: 2 })))
+            vi.mocked(getModuleLorebooks).mockImplementation(() => moduleListOf(moduleRefIdsOf()).filter((slot) => !isModuleStub(slot)).flatMap((slot) => slot.lorebook ?? []))
+        })
+
+        afterEach(() => {
+            selectedCharID.set(-1)
+            vi.mocked(alertConfirm).mockImplementation(async () => true)
+            vi.mocked(updateLorebooks).mockImplementation((book) => book)
+            vi.mocked(getModuleLorebooks).mockReset()
+        })
+
+        test(`MC-3594 reproducer: a read that asks and installs it bumps the module GUI ${bumps === 1 ? 'once' : 'never'}`, async () => {
+            await bootWithStubs([0, 1, 2], [moduleBody('a'), { ...moduleBody('b'), lorebook: 'broken' }, moduleBody('c')])
+            const live = DBState.db as unknown as Live
+            live.characters[0].chats[live.characters[0].chatPage].modules = [...referenced]
+            selectedCharID.set(0)
+            vi.mocked(bumpModuleGui).mockClear()
+
+            const copy = await within(api().getDatabase(['modules']), 'getDatabase')
+
+            expect(modulesOf(copy)[1].lorebook).toEqual([])
+            expect(liveModules().map((slot) => isModuleStub(slot))).toEqual([true, false, true])
+            expect(vi.mocked(bumpModuleGui)).toHaveBeenCalledTimes(bumps)
+        })
     })
 
     test('a read over stubs nothing displayed references sets no GUI pointer', async () => {
         await bootWithStubs([0, 1, 2])
         vi.mocked(bumpModuleGui).mockClear()
 
-        const copy = await api().getDatabase(['modules'])
+        const copy = await within(api().getDatabase(['modules']), 'getDatabase')
 
         expect(modulesOf(copy).map((slot) => isModuleStub(slot))).toEqual([false, false, false])
-        expect(liveModules().map((slot) => isModuleStub(slot))).toEqual([false, false, false])
+        expect(liveModules().map((slot) => isModuleStub(slot))).toEqual([true, true, true])
         expect(vi.mocked(bumpModuleGui)).not.toHaveBeenCalled()
     })
 })
