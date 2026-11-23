@@ -127,8 +127,9 @@ STATUS block and its ledger rows.
   with a stop, or be reached by its owner's, or a delete cannot stop it.
 - **Deletes** go through `removeChatConfirmed` (the three chat handlers) and `removeChar` in
   `characters.ts`; the stop runs in the same synchronous stretch as the removal.
-- **Trigger runs** check their signal before each trigger and effect (`MC-129` amendment); an effect
-  in flight, including a model call or a Lua script, finishes.
+- **Trigger runs** check their signal before each trigger and effect (`MC-129` amendment). An effect
+  already running when Stop is pressed, including a model call or a Lua script, may finish, but its
+  result is not saved and no later effect of that run begins (`MC-3958`).
 - **Backup loads** refuse through `refuseBackupLoadWhileBusy` (`src/ts/drive/backupWorkGuard.ts`).
 - **Left open, none scheduled:**
   - A registry match is by id: while an id has two holders mid-session, deleting one holder warns
