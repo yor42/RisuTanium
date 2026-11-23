@@ -765,7 +765,7 @@ describe('a send that fails or is stopped while its chat is not on screen (T19b,
 
         expect(await sendThenLeave(toB)).toBe(false)
 
-        expect(vi.mocked(alertError)).toHaveBeenCalledWith(expect.stringContaining('boom'))
+        expect(vi.mocked(alertError)).toHaveBeenCalledWith(expect.stringContaining('boom'), expect.objectContaining({ reply: expect.anything() }))
         expect(toastHost.visible).toEqual([])
         expect(firstChat().unseenReply).toBe('error')
     })

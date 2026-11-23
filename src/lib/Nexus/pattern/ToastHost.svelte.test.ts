@@ -61,6 +61,17 @@ describe('live regions', () => {
         expect(first!.textContent).toBe('Same')
     })
 
+    test('diagnostic: a toast that expired leaves its announcement in the polite region and no toast element', () => {
+        show()
+        host.post({ text: 'Saved', sub: 'Chat 1' })
+        flushSync()
+        clock.advance(5000)
+        flushSync()
+        const polite = document.querySelector('[data-part="toast-live-polite"]')!
+        expect(polite.textContent).toBe('Saved Chat 1')
+        expect(toastElements()).toHaveLength(0)
+    })
+
     test('TC3 a post of every kind never moves focus', () => {
         show()
         const input = addNode('input')

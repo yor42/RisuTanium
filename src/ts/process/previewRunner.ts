@@ -91,7 +91,9 @@ function showAfterAlertCloses(md: string): void {
  * - Cancelled: the notice is closed at the press and nothing is shown.
  * - The send returned false, or produced nothing to render: the runner closes
  *   its notice if the store still holds it, and shows nothing. An alert that
- *   replaced the notice (the failure's error, say) stays.
+ *   replaced the notice stays. The failure's own error waits behind the notice
+ *   (a reply error queues behind an alert the person can close) and is shown
+ *   once the runner closes it.
  * - The send threw: the notice is closed the same way and the error propagates.
  * - Otherwise the result is shown now if no prompt is waiting and the store
  *   holds the notice, nothing or a toast. Behind any other alert, or while a

@@ -2183,6 +2183,29 @@ describe('composerActions: a switch around a Send', () => {
     })
 })
 
+describe('composerActions: a generation that throws alerts as a reply error', () => {
+    beforeEach(() => { sendChatMock.mockReset() })
+
+    test('the alert names the chat the generation was addressed to after the screen moved to another chat', async () => {
+        const { origin } = installSwitchWorld()
+        origin.chats[0].name = 'Chat 1'
+        vi.mocked(alertError).mockClear()
+        seedDraft(origin, origin.chats[0], { messageInput: 'hello' })
+        const failure = new Error('request failed')
+        sendChatMock.mockImplementationOnce(async () => {
+            selectedCharID.set(1)
+            throw failure
+        })
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+
+        const { source } = makeSource()
+        await send(source)
+
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith(failure, { reply: { chat: 'c-origin: Chat 1' } })
+    })
+})
+
 describe('composerActions: a switch around a reroll and around auto mode', () => {
     // A stand-in generation queued by one test must not reach the next.
     beforeEach(() => { sendChatMock.mockReset() })
@@ -2743,7 +2766,7 @@ describe('CHORE-685 S1b: the playMessage chime after an off-screen notice (T18)'
         logged.mockRestore()
         expect(completed).toBe(false)
         expect(alertError).toHaveBeenCalledTimes(1)
-        expect(alertError).toHaveBeenCalledWith(refusal)
+        expect(alertError).toHaveBeenCalledWith(refusal, { reply: { chat: expect.stringMatching(/^c-acl-refusal: /) } })
     })
 })
 //#region 5a seam 2: starters refuse per chat

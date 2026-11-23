@@ -513,7 +513,6 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
         // A token minted from a referenced key is derived from a secret that is not stored, so it is
         // kept in memory only and never written to the database.
         if (!db.vertexClientEmail) {
-            alertError(language.errors.vertexAuthIncomplete);
             return { type: 'fail', result: language.errors.vertexAuthIncomplete };
         }
         const reference = vertexPrivateKey.trim()
@@ -533,7 +532,6 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
     else if(arg.modelInfo.format === LLMFormat.VertexAIGemini){
         if(db.vertexAccessTokenExpires < Date.now()){
             if (!db.vertexClientEmail || !vertexPrivateKey) {
-                alertError(language.errors.vertexAuthIncomplete);
                 return { type: 'fail', result: language.errors.vertexAuthIncomplete };
             }
             headers['Authorization'] = "Bearer " + await generateToken(db.vertexClientEmail, vertexPrivateKey)

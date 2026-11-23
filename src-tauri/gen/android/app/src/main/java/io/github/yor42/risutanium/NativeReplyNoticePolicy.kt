@@ -145,6 +145,12 @@ class NoticeTokens {
     }
   }
 
+  // A Stop tap entered Stopping while native will cancel every chat stream: every held token is marked,
+  // whatever chat it closes, because each of those replies was stopped.
+  fun stopPressedAll() {
+    for (entry in entries.values) entry.stopPressed = true
+  }
+
   // The poll's answer for a held token. An answer that ends the token (done, failed, quiet, absent)
   // removes it in the same call; KEEP and DISARM leave it and its mark unchanged. A marked token on a
   // done answer is skipped; a failure is not (D17 names only the finished-reply notice). A token that is
@@ -174,10 +180,17 @@ data class StopMark(val target: NoticeTarget?)
 fun stopMark(tap: StopTap, display: KeepAliveDisplay): StopMark? =
   if (tap == StopTap.ENTERED) StopMark(display.current()?.target) else null
 
-// The whole Stop tap sequence in one function: the display enters Stopping, then every held token that
-// closes the tapped chat is marked, in the same main-thread turn and before the page is told.
+// The whole Stop tap sequence in one function: the display enters Stopping, then the held tokens are
+// marked, in the same main-thread turn and before the page is told. Where native will cancel (a Generating
+// card, the same predicate the delivery uses) every held token is marked, since every chat stream is
+// cancelled whatever the card names. Under a card native does not cancel for (Speaking) only the tokens
+// of the card's chat are marked, so another chat's reply that nothing stopped still announces itself. A
+// stale or plain tap marks nothing.
 fun onStopTap(display: KeepAliveDisplay, tokens: NoticeTokens): StopTap =
-  display.stopTapped().also { tap -> stopMark(tap, display)?.let { tokens.stopPressed(it.target) } }
+  display.stopTapped().also { tap ->
+    val mark = stopMark(tap, display) ?: return@also
+    if (display.nativeCancelWanted()) tokens.stopPressedAll() else tokens.stopPressed(mark.target)
+  }
 
 // What one poll leaves to do: the action, the notice to post (its silent value already applied) and
 // whether the keep-alive card changed, so the service reposts it.

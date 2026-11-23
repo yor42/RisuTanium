@@ -11,7 +11,7 @@ import { fillLang } from '../../lang/fill'
 import { lowPowerMarked } from '../chatShell/lowPower'
 import { activeStreamChars, subscribeStreamChanges, type StreamChange } from '../process/activeStreams'
 import {
-    inFlightChatTarget, inFlightKinds, inFlightSince, subscribeInFlight, takeRunOutcome,
+    inFlightChatCount, inFlightChatTarget, inFlightKinds, inFlightSince, subscribeInFlight, takeRunOutcome,
     type InFlightKind, type InFlightTarget, type RunOutcome,
 } from '../process/inFlightWork'
 import { isAndroidTransport } from '../storage/tauriByteTransport'
@@ -96,6 +96,12 @@ export interface KeepAliveStateLabels {
     failed: string
     failedHint: string
     stopped: string
+    /** The title while two or more chats write; `{count}` is how many. */
+    repliesWriting: string
+    /** The closing title when two or more replies failed; `{count}` is how many. */
+    repliesFailed: string
+    /** The closing title when two or more replies were stopped and none failed; `{count}` is how many. */
+    repliesStopped: string
     /** The live count line, with a `{count}` placeholder; without it no count is shown. */
     characters?: string
 }
@@ -163,6 +169,8 @@ export interface KeepAliveV2Deps {
     takeRunOutcome: () => RunOutcome | null
     /** The target of the latest live chat. */
     chatTarget: () => InFlightTarget | null
+    /** How many chats are live; without it the count is 1. Two or more show the count card, which names no chat. */
+    chatCount?: () => number
     /** When the earliest live token of a kind began. */
     since: (kind: InFlightKind) => number | null
     /** The identity to show for a chat, when there is no `subjectOf` to give it with its images. */
@@ -409,9 +417,16 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
         return null
     }
 
+    /** True while two or more chats write: the card then counts them and names none. */
+    const isCountCard = (kinds: InFlightKind[], v2Deps: KeepAliveV2Deps): boolean =>
+        stateOf(kinds) === 'generating' && (v2Deps.chatCount?.() ?? 1) >= 2
+
     /** The speaker the notice for the work in flight names right now, without deciding anything new. */
     const liveSpeakerKey = (kinds: InFlightKind[]): string | null => {
         const state = stateOf(kinds)
+        if (v2 !== null && isCountCard(kinds, v2)) {
+            return null
+        }
         const record = state === 'generating' ? lastChat : state === 'speaking' ? speechSubject?.record ?? null : null
         return record?.identity?.key ?? null
     }
@@ -465,13 +480,16 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
         const labels = deps.labels()
         const stateLabels = v2Deps.labels()
         let record: ChatRecord | null = null
-        if (state === 'generating') {
+        const countCard = isCountCard(kinds, v2Deps)
+        if (countCard) {
+            record = null
+        } else if (state === 'generating') {
             record = lastChat
         } else if (state === 'speaking') {
             speechSubject ??= { record: endedChatInWindow() }
             record = speechSubject.record
         }
-        const title = {
+        const title = countCard ? fillLang(stateLabels.repliesWriting, { count: numberFormat.format(v2Deps.chatCount?.() ?? 0) }) : {
             generating: labels.generating,
             speaking: stateLabels.speaking,
             image: stateLabels.image,
@@ -518,6 +536,11 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
         if (outcome !== null) {
             state = outcome.outcome
             title = outcome.outcome === 'stopped' ? stateLabels.stopped : stateLabels.failed
+            if (outcome.count >= 2) {
+                title = fillLang(outcome.outcome === 'stopped' ? stateLabels.repliesStopped : stateLabels.repliesFailed, {
+                    count: numberFormat.format(outcome.count),
+                })
+            }
             text = outcome.outcome === 'failed' ? stateLabels.failedHint : ''
             record = outcome.target === null ? null : recordFor(outcome.target, v2Deps)
         }
@@ -667,7 +690,8 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
         if (change !== 'count' || v2 === null || !running || v2.pageHidden?.() !== true || v2.lowPower?.() === true) {
             return
         }
-        if (stateOf(deps.kinds()) !== 'generating' || Date.now() - lastNoticeAt < COUNT_INTERVAL_MS) {
+        const kinds = deps.kinds()
+        if (stateOf(kinds) !== 'generating' || isCountCard(kinds, v2) || Date.now() - lastNoticeAt < COUNT_INTERVAL_MS) {
             return
         }
         sync(true)
@@ -785,10 +809,14 @@ export function startKeepAliveService(): KeepAliveConsumer | null {
                 failed: language.keepAliveFailed,
                 failedHint: language.keepAliveFailedHint,
                 stopped: language.keepAliveStopped,
+                repliesWriting: language.keepAliveRepliesWriting,
+                repliesFailed: language.keepAliveRepliesFailed,
+                repliesStopped: language.keepAliveRepliesStopped,
                 characters: language.keepAliveCharacters,
             }),
             takeRunOutcome,
             chatTarget: inFlightChatTarget,
+            chatCount: inFlightChatCount,
             since: inFlightSince,
             subjectOf: (target) => subjectCode?.notificationSubjectOf(target) ?? null,
             avatar: {

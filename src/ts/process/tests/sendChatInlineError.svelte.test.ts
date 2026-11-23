@@ -44,6 +44,7 @@ const supaMemoryMock = vi.hoisted(() => vi.fn())
 const isLastCharPunctuationMock = vi.hoisted(() => vi.fn())
 const chatOutputListeners = vi.hoisted(() => new Set<(arg: ChatOutputArg) => unknown>())
 const restoreColdCharacterMock = vi.hoisted(() => vi.fn())
+const moduleGate = vi.hoisted(() => ({ stubs: false, ensure: vi.fn(async () => true) }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -254,6 +255,16 @@ vi.mock('../coldMemberRestore', () => ({
     restoreColdCharacterByChaId: restoreColdCharacterMock,
 }))
 
+vi.mock(import('../moduleRefList'), async (importOriginal) => ({
+    ...(await importOriginal()),
+    hasModuleStubs: () => moduleGate.stubs,
+}))
+
+vi.mock(import('../moduleEnsure'), async (importOriginal) => ({
+    ...(await importOriginal()),
+    ensureModulesOrAlert: moduleGate.ensure,
+}))
+
 //#endregion
 
 import { sendChat } from '../index.svelte'
@@ -425,6 +436,9 @@ beforeEach(() => {
     isLastCharPunctuationMock.mockReturnValue(true)
     chatOutputListeners.clear()
     restoreColdCharacterMock.mockReset()
+    moduleGate.stubs = false
+    moduleGate.ensure.mockReset()
+    moduleGate.ensure.mockResolvedValue(true)
     clearRunningSends()
 })
 
@@ -526,6 +540,7 @@ describe('a HypaV2 error that names a setting is an alert with a link to it', ()
         expect(message).toBe('X')
         expect(options.link.label).toBe(language.errors.openMemorySettings)
         expect(options.link.open).toBe(openMemorySettings)
+        expect(options.reply).toEqual({ chat: `char-0: ${language.settingsPage.unnamed}` })
         expect(chat.message.length).toBe(1)
     })
 
@@ -553,7 +568,7 @@ describe('a HypaV2 error that names a setting is an alert with a link to it', ()
         expect(chat.message[1].data).toBe(errorBlock('Y'))
     })
 
-    test('guard: with inline errors off, a HypaV2 error without a setting calls alertError with no link', async () => {
+    test('with inline errors off, a HypaV2 error without a setting calls alertError with no link and the failing chat\'s label', async () => {
         installSingleChat([msg('user', 'u0')], v2Character, v2Overrides(false))
         vi.mocked(hypaMemoryV2).mockResolvedValueOnce({ error: 'Y' } as Awaited<ReturnType<typeof hypaMemoryV2>>)
 
@@ -561,7 +576,55 @@ describe('a HypaV2 error that names a setting is an alert with a link to it', ()
 
         expect(alertErrorMock).toHaveBeenCalledTimes(1)
         expect(alertErrorMock.mock.calls[0][0]).toBe('Y')
-        expect(alertErrorMock.mock.calls[0][1]).toBeUndefined()
+        expect(alertErrorMock.mock.calls[0][1]).toEqual({ reply: { chat: `char-0: ${language.settingsPage.unnamed}` } })
+    })
+
+    test('the label names the failing unit\'s chat after the selection moved to another chat', async () => {
+        installDb([
+            makeCharacter('char-0', [makeChat('chat-0', [msg('user', 'u0')])], v2Character),
+            makeCharacter('char-1', [makeChat('chat-1', [msg('user', 'u1')])]),
+        ], v2Overrides(false))
+        DBState.db.characters[0].chats[0].name = 'Chat 1'
+        selectedCharID.set(0)
+        vi.mocked(hypaMemoryV2).mockImplementationOnce(async () => {
+            selectedCharID.set(1)
+            return { error: 'Y' } as Awaited<ReturnType<typeof hypaMemoryV2>>
+        })
+
+        await settled(() => sendChat())
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock.mock.calls[0][1]).toEqual({ reply: { chat: 'char-0: Chat 1' } })
+    })
+
+    test('with inline errors on and the chat gone from the database, the alert carries the label from the send\'s hint', async () => {
+        installSingleChat([msg('user', 'u0')], v2Character, v2Overrides(true))
+        DBState.db.characters[0].chats[0].name = 'Chat 1'
+        vi.mocked(hypaMemoryV2).mockImplementationOnce(async () => {
+            DBState.db.characters[0].chats = []
+            return { error: 'Y' } as Awaited<ReturnType<typeof hypaMemoryV2>>
+        })
+
+        await settled(() => sendChat())
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock.mock.calls[0][1]).toEqual({ reply: { chat: 'char-0: Chat 1' } })
+    })
+})
+
+describe('a module that fails to load is a reply error', () => {
+    test('E17b: the send runs the module check with asReply, through its own origin and hint, and a failed check ends the send', async () => {
+        installSingleChat([msg('user', 'u0')])
+        moduleGate.stubs = true
+        moduleGate.ensure.mockResolvedValue(false)
+
+        await settled(() => sendChat())
+
+        expect(moduleGate.ensure).toHaveBeenCalledTimes(1)
+        const args = moduleGate.ensure.mock.calls[0] as unknown as unknown[]
+        expect(args[0]).toMatchObject({ chaId: 'char-0' })
+        expect(args[3]).toEqual({ asReply: true })
+        expect(requestChatDataMock).not.toHaveBeenCalled()
     })
 })
 
