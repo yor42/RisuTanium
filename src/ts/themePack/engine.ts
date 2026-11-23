@@ -5,7 +5,7 @@
 // The rule is by REACH (DD-155), not by lists of dangerous properties:
 //  0. The text is normalised first: comments removed, CSS escapes decoded (\64isplay is display), upper case folded. Nothing is judged before that.
 //  1. Selectors: only :root / html and [data-*="value"] attribute selectors with :hover, :focus-within, :focus-visible. No tag, class, id, *, :not / :is / :has,
-//     pseudo-element, nesting, or attribute operator other than equals. At-rules: only @media. No @keyframes, @import, @font-face, @property, @supports, @layer, @container.
+//     nesting, or attribute operator other than equals. The only pseudo-elements are ::before and ::after, directly ending the last compound. At-rules: only @media. No @keyframes, @import, @font-face, @property, @supports, @layer, @container.
 //  2. A selector may not name a protected surface anywhere (data-part-critical, chat-failed-card, chat-save-guard, chat-critical-body, chat-critical-action, and a critical sheet's own chat-critical-title, -header, -handle).
 //  3. Token rules: custom properties (and color-scheme) only on :root and on html[data-input=..] / html[data-layout=..] and their combinations (DD-159, they cannot reach a part).
 //     The resulting tokens are checked: critical text keeps 4.5:1 on its surface, critical sizes stay usable (tokenCheck).
@@ -14,8 +14,8 @@
 //     (an ancestor, a descendant, any subject that names no part, [data-fail], [data-kind], html[...]) may be, hold or sit inside a protected element, and its declarations
 //     are checked against an ALLOWLIST: colours (never transparent or equal to the surface), borders, radii, shadows, font family / style / weight, bounded font size,
 //     bounded spacing, safe widths. Everything else (display, visibility, opacity, transform, clip, filter, position, flex and grid layout, overflow, order, heights, ...) is rejected.
-//  5. For every subject: position fixed / sticky, z-index, animation, transition, filter, backdrop-filter, mix-blend-mode, transform, content, contain, direction, all,
-//     and oversized shadows, outlines and borders (more than 64 px) are rejected, because they can cover or disable a protected surface from anywhere.
+//  5. For every subject: position fixed / sticky, z-index, animation, transition, filter, backdrop-filter, mix-blend-mode, transform, contain, direction, all, content
+//     other than the empty string on ::before or ::after, and oversized shadows, outlines and borders (more than 64 px) are rejected, because they can cover or disable a protected surface from anywhere.
 import { cr, lum, over } from './colour'
 import { decls } from './csslit'
 import { failClosedPass, settableTest, parseConcrete, inlinePrivate, pushUnique, splitFindings } from './failclosed'
@@ -298,6 +298,16 @@ interface Subject {
     pseudo: string
 }
 type Tier = 'root' | 'safe' | 'reach'
+/**
+ * A selector may end in ::before or ::after directly after a compound character. The suffix is cut off here, so COMPOUND still refuses every other pseudo-element and
+ * every consumer that does not call this keeps refusing them. A pseudo-element after whitespace or a combinator belongs to every descendant or sibling of the part,
+ * which the critical-part check cannot see, so it is not stripped and the grammar refuses it. The lookbehind makes the one-character check linear.
+ */
+export function pseudoElementOf(sel: string): { base: string, element: '' | 'before' | 'after' } {
+    const text = sel.trim()
+    const m = /(?<=[^\s>+~])::(before|after)$/.exec(text)
+    return m ? { base: text.slice(0, m.index), element: m[1] as 'before' | 'after' } : { base: text, element: '' }
+}
 interface Analysis {
     why: string[]
     ok: boolean
@@ -308,10 +318,13 @@ interface Analysis {
     sp?: string[]
     control?: boolean
     pseudo?: string
+    /** The ::before or ::after the selector ends in; '' when it has none. */
+    element?: '' | 'before' | 'after'
 }
 function analyse(sel: string, reg: Registry = CHAT_REGISTRY): Analysis {
     const why: string[] = []
-    const parts = compounds(sel)
+    const { base, element } = pseudoElementOf(sel)
+    const parts = compounds(base)
     if (!parts.length) return { why: ['empty selector'], ok: false, parsed: false }
     const attrs: Attr[] = []
     let syntax = true
@@ -334,14 +347,15 @@ function analyse(sel: string, reg: Registry = CHAT_REGISTRY): Analysis {
         if (k === 'data-own-scheme') why.push('names data-own-scheme')
         if (k === 'data-part' && reg.critical.has(v)) why.push(`names the protected part ${v}`)
     }
-    const rootOnly = !!(syntax && parts.length === 1 && subj && subj.root && subj.attrs.every(([k]) => ROOT_ATTRS.includes(k)) && !subj.pseudo)
+    const rootOnly = !!(syntax && parts.length === 1 && subj && subj.root && subj.attrs.every(([k]) => ROOT_ATTRS.includes(k)) && !subj.pseudo && !element)
     const safeCtx = attrs.some(([k, v]) => k === 'data-role' && (v === 'user' || v === 'system'))
     const sp = subj ? subj.attrs.filter(([k]) => k === 'data-part').map(([, v]) => v) : []
-    const tier: Tier = rootOnly ? 'root' : (safeCtx || (sp.length > 0 && sp.every((p) => reg.safe.has(p)))) ? 'safe' : 'reach'
+    // an empty pseudo-element box on a named part is judged as the safe tier: it paints only itself, and a control's own text and fill are not its (Rule S and Rule P skip it)
+    const tier: Tier = rootOnly ? 'root' : (safeCtx || (element && sp.length > 0) || (sp.length > 0 && sp.every((p) => reg.safe.has(p)))) ? 'safe' : 'reach'
     // a CONTROL (DD-243): a reach-tier part that is a key control (navigation, Tasks, Stop, composer, Send, Apply, Undo/Redo, the failed-save chip). It is restyled, never hidden or moved (the reach allowlist), but it holds no
     // critical text, so its colours are judged as a pair of its own (text on its fill, 4.5:1), not against the danger text of a dialog.
     const control = tier === 'reach' && sp.length > 0 && sp.every((p) => reg.controls.has(p))
-    return { why, ok: syntax && why.length === 0, parsed: syntax, tier, rootOnly, sp, control, pseudo: subj ? subj.pseudo : '' }
+    return { why, ok: syntax && why.length === 0, parsed: syntax, tier, rootOnly, sp, control, pseudo: subj ? subj.pseudo : '', element }
 }
 // The part-value rule (settings and home, reg.partRequired): every compound names a part by a non-empty [data-part] value, except a root compound (:root / html), which may only be an ancestor; the one exemption is a lone root-tier compound (a.rootOnly, which lintOnce keeps to custom properties). A valueless or empty [data-part] is refused anywhere. It
 // reads the grammar result: an unparseable selector keeps its single "not allowed in a pack selector" reason. It never gates a.ok, so the declaration checks (DD-242, DD-265) still run and keep their own reasons.
@@ -349,7 +363,7 @@ function analyse(sel: string, reg: Registry = CHAT_REGISTRY): Analysis {
 const PART_VALUE_WHY = 'every compound of the selector must name a part by value: [data-part="..."] with a non-empty value (MC-1586)'
 function partValueWhy(sel: string, a: Analysis, reg: Registry): string {
     if (!reg.partRequired || !a.parsed || a.rootOnly) return ''
-    const cs = compounds(sel)
+    const cs = compounds(pseudoElementOf(sel).base)
     for (const c of cs) {
         const m = COMPOUND.exec(c)
         if (!m) return ''
@@ -364,13 +378,21 @@ function partValueWhy(sel: string, a: Analysis, reg: Registry): string {
 export function selectorTier(sel: string, registry?: RegistryInput): 'root' | 'safe' | 'reach' | undefined {
     return analyse(sel, effective(registry)).tier
 }
-// DD-243: a rule in a focus state (:focus-visible, :focus-within) may add to the indication but not take it away: no outline at all (see lintOnce), and no border or shadow that is none or fully transparent
+// DD-243: a rule in a focus state (:focus-visible, :focus-within) may add to the indication but not take it away: no outline that is none, hidden, zero wide or fully transparent, and no border or shadow that is none or fully transparent
 const colourWords = (v: string): Rgba[] => [...v.matchAll(/#[0-9a-f]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|\b[a-z]+\b/g)].map((m) => parseConcrete(m[0])).filter((c): c is Rgba => Boolean(c))
 function focusLoss(prop: string, value: string, T: TokenMap): string {
     const v = resolve(value.replace(/\s*!important\s*$/, '').trim(), T)
     if (/^(box-shadow|border(-(top|right|bottom|left))?)$/.test(prop) && /^(none|0)$/.test(v)) return `${prop}: ${v} would remove the indication of focus`
     if (/^border(-(top|right|bottom|left))?-style$/.test(prop) && v === 'none') return `${prop}: none would remove the indication of focus`
     if (/^(box-shadow|border(-(top|right|bottom|left))?(-color)?)$/.test(prop) && colourWords(v).some((c) => c[3] === 0)) return `${prop}: a fully transparent colour would remove the indication of focus`
+    if (prop === 'outline') {
+        // function interiors go first, so the zero channels of rgb(0 0 0) are not read as a zero width; one pass, each scan stops at the next parenthesis
+        const w = v.replace(/\([^()]*\)/g, ' ')
+        if (/(^|\s)(none|hidden)(?=\s|$)/.test(w) || /(^|\s)0+(\.0+)?[a-z]*(?=\s|$)/.test(w)) return `outline: ${v.slice(0, 60)} would remove the indication of focus`
+    }
+    if (prop === 'outline-style' && /^(none|hidden)$/.test(v)) return `outline-style: ${v} would remove the indication of focus`
+    if (prop === 'outline-width' && /^0+(\.0+)?[a-z]*$/.test(v)) return 'outline-width: a zero width would remove the indication of focus'
+    if (/^outline(-color)?$/.test(prop) && colourWords(v).some((c) => c[3] === 0)) return `${prop}: a fully transparent colour would remove the indication of focus`
     return ''
 }
 /** The pack-settable test of a registry, built once; one call per area replaces one registry rebuild per candidate name. */
@@ -390,7 +412,7 @@ export function lintSelector(sel: string, reg?: RegistryInput): string[] {
 }
 
 // ---- declarations
-const GLOBAL_PROPS = /^(z-index|animation(-[\w-]+)?|transition(-[\w-]+)?|will-change|filter|backdrop-filter|mix-blend-mode|transform(-[\w-]+)?|translate|scale|rotate|perspective|zoom|content|contain(-[\w-]+)?|container(-[\w-]+)?|direction|unicode-bidi|writing-mode|isolation|all|offset(-[\w-]+)?|clip-path|mask(-[\w-]+)?|-webkit-mask(-[\w-]+)?)$/
+const GLOBAL_PROPS = /^(z-index|animation(-[\w-]+)?|transition(-[\w-]+)?|will-change|filter|backdrop-filter|mix-blend-mode|transform(-[\w-]+)?|translate|scale|rotate|perspective|zoom|contain(-[\w-]+)?|container(-[\w-]+)?|direction|unicode-bidi|writing-mode|isolation|all|offset(-[\w-]+)?)$/
 /** The reason one declaration is flagged. A reason with a `rule` is a note and does not refuse; one without refuses. No reason is null. */
 interface Why {
     why: string
@@ -421,7 +443,10 @@ function reachAllowed(prop: string, value: string, T: TokenMap, ctl: boolean | u
         }
         return colourUnsafe(v, T)
     }
-    if (/^(background|background-color|border(-(top|right|bottom|left))?(-color|-style)?|border-image|outline|outline-color|outline-style|box-shadow|text-shadow)$/.test(prop)) return /url\(/.test(v) ? refuseWhy('an image') : null
+    if (/^(background|background-color|border(-(top|right|bottom|left))?(-color|-style)?|outline|outline-color|outline-style|outline-width|outline-offset|box-shadow|text-shadow)$/.test(prop)) return /url\(/.test(v) ? refuseWhy('an image') : null
+    // a mask or a clip can hide a control or the area that takes its taps; border-image only paints. url() is judged on its own (bundled files only)
+    if (/^(clip-path|(-webkit-)?mask(-[\w-]+)?)$/.test(prop)) return noteWhy('can hide a control or clip away the area that takes its taps (MC-3429)', 'layout')
+    if (/^border-image(-(source|slice|width|outset|repeat))?$/.test(prop)) return null
     if (/^border(-(top|right|bottom|left))?(-width)?$/.test(prop)) return maxLen(v, T) > 16 ? noteWhy('a border wider than 16 px', 'layout') : null
     if (/^border-(top|bottom)-(left|right)-radius$|^border-radius$/.test(prop)) return null
     if (/^(background-image)$/.test(prop)) return /url\(/.test(v) ? refuseWhy('an image') : null
@@ -451,7 +476,10 @@ function reachAllowed(prop: string, value: string, T: TokenMap, ctl: boolean | u
     }
     return refuseWhy('is not on the declaration allowlist for a surface that can contain or be a protected element')
 }
-function globalBan(prop: string, value: string, T: TokenMap): string {
+const CONTENT_WHY = 'content may only be the empty string ("" or \'\') on ::before or ::after: text, counters, attributes, quotes and images in content can imitate the app (MC-3422)'
+function globalBan(prop: string, value: string, T: TokenMap, element = ''): string {
+    // none, normal and the CSS-wide keywords stay refused: content: none blanks an app pseudo-element, which is restyling
+    if (prop === 'content') return element && /^(""|'')$/.test(value.replace(/\s*!important\s*$/, '').trim()) ? '' : CONTENT_WHY
     if (GLOBAL_PROPS.test(prop)) return `${prop} can cover, fade or disable a protected surface from anywhere`
     const v = value.trim()
     if (prop === 'position' && /fixed|sticky/.test(v)) return `position: ${v} can cover a protected surface`
@@ -658,9 +686,11 @@ const VALUES: ValueSpace = (() => {
         if (parts.length === 1 && /^(:root|html)/.test(last) && !sp.length) return 'root'
         return sp.length > 0 && sp.every((p) => reg.safe.has(p)) ? 'safe' : 'reach'
     }
-    function safeDecl(prop: string, value: string, T: TokenMap, reg: Registry, sp: string[] = []): Why | null {
+    function safeDecl(prop: string, value: string, T: TokenMap, reg: Registry, sp: string[] = [], element = ''): Why | null {
         const canPos = !reg.strictSafe && sp.length > 0 && sp.every((p) => reg.positionable.has(p))
         const v = value.replace(/\s*!important\s*$/, '').trim()
+        // a pseudo-element box may be placed inside its part (MC-3427): position without fixed or sticky, offsets that can be read; the 64 px paint bound is a known limitation
+        if (element && (prop === 'position' ? /^(absolute|relative|static)$/.test(v) : /^(top|right|bottom|left|inset(-[\w]+)*)$/.test(prop) && (v === 'auto' || nums(v, T).every((n) => n !== null)))) return null
         // chat's own safe leaves (the avatar and the actions of Banana Cocoa's side layout) may be positioned, with offsets bounded to 64 px; a screen that passes strictSafe (Settings) gets no position at all
         if (canPos && (prop === 'position' ? /^(absolute|relative|static)$/.test(v) : /^(top|right|bottom|left|inset(-[\w]+)*)$/.test(prop) && (v === 'auto' || nums(v, T).every((n) => n !== null && Math.abs(n) <= 64)))) return null
         if (!reg.strictSafe && /^(width|max-width)$/.test(prop) && /^\d+(\.\d+)?%$/.test(v) && parseFloat(v) <= 100) return null   // a bubble's max-width: a share of its row, never more than the row
@@ -763,7 +793,7 @@ const VALUES: ValueSpace = (() => {
                 const an = analyse(sel, reg)
                 const tier = an.tier || tierOf(sel, reg)
                 if (tier === 'root') continue   // chat's own tier (a user or system message is a safe context too)
-                const w = tier === 'safe' ? safeDecl(d.prop, d.value, base, reg, partsOf(sel)) : reachExtra(d.prop, d.value, base, props.get(d.ctx.selector.trim()) || new Map(), an.control)
+                const w = tier === 'safe' ? safeDecl(d.prop, d.value, base, reg, partsOf(sel), an.element) : reachExtra(d.prop, d.value, base, props.get(d.ctx.selector.trim()) || new Map(), an.control)
                 if (w) fail(sel, d.prop, w.why, w.rule)
             }
         }
@@ -971,11 +1001,6 @@ function lintOnce(css: string, name: string, reg: Registry, skipStructure: boole
                 fail(sel, d.prop, 'a token may only be set on :root or html[data-input] / html[data-layout]')
                 continue
             }
-            // DD-243: no pack rule may change an outline (the focus ring is drawn with outlines and the --nexus-ring colour, which is contrast-checked)
-            if (/^outline(-|$)/.test(d.prop)) {
-                fail(sel, d.prop, 'a pack may not change outlines or focus rings (DD-243): the ring is set by its tokens, which have a floor')
-                continue
-            }
             if (/focus/.test(a.pseudo || '')) {
                 const f = focusLoss(d.prop, d.value, T)
                 // a note, not a refusal: the declaration still goes through the bans and the reach allowlist below
@@ -996,7 +1021,7 @@ function lintOnce(css: string, name: string, reg: Registry, skipStructure: boole
                 // a note, not a refusal: the reach allowlist below still judges min-width and inline-size
                 note(sel, d.prop, FIXED_WIDTH_WHY, 'layout')
             }
-            const g = globalBan(d.prop, d.value, T)
+            const g = globalBan(d.prop, d.value, T, a.element)
             if (g) {
                 fail(sel, d.prop, g)
                 continue

@@ -174,7 +174,7 @@ describe('T5b the shape token and property partition', () => {
         expect(stripped.sort()).toEqual([
             'accent-color', 'background', 'background-clip', 'background-color', 'background-image', 'background-origin', 'background-position', 'background-position-x', 'background-size', 'background-repeat',
             'border', 'border-block', 'border-color', 'border-inline-end-color', 'border-inline-start', 'border-top', 'border-top-color',
-            'box-shadow', 'caret-color', 'color', 'color-scheme', 'fill', 'scrollbar-color', 'stroke', 'text-decoration', 'text-decoration-color', 'text-shadow',
+            'border-image', 'box-shadow', 'caret-color', 'color', 'color-scheme', 'content', 'fill', 'mask', 'outline', 'outline-color', 'scrollbar-color', 'stroke', 'text-decoration', 'text-decoration-color', 'text-shadow',
         ].sort())
     })
 })

@@ -88,7 +88,8 @@ const isWrittenImportant = (value: string): boolean => /!important\s*$/.test(val
 /** The parts of the registry's reach tier that a selector-list entry has as its subject. */
 const reachedParts = (registry: Registry, entry: string): string[] => {
     const parsed = parseSelectorEntry(entry)
-    if (parsed.grammarWhy || !parsed.compounds.length) return []
+    // an empty pseudo-element box is neither the control's text nor its fill, so it joins no pair
+    if (parsed.grammarWhy || !parsed.compounds.length || parsed.element) return []
     return parsed.compounds[parsed.compounds.length - 1].attrs.filter(([name, v]) => name === 'data-part' && v !== undefined && registry.reach.has(v)).map(([, v]) => v as string)
 }
 const hex = (c: readonly number[]): string => '#' + c.slice(0, 3).map((x) => Math.round(x).toString(16).padStart(2, '0')).join('')
