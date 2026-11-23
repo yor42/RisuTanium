@@ -647,6 +647,23 @@ describe('T-RT refusalTextOf names a module only for a module owner', () => {
     })
 })
 
+describe('U-6a: the one riskyConfirm code reads per kind through the paths it names', () => {
+    test('a refusal naming the module path reads as the module text, wherever no owner is passed', () => {
+        expect(refusalTextOf({ reason: 'riskyConfirm', paths: ['moduleLowLevelAccess'] })).toBe('studioRefusalConfirmLowLevel')
+        expect(refusalTextOf({ reason: 'riskyConfirm', paths: ['moduleLowLevelAccess'] }, moduleOwnerKey('M1'))).toBe('studioRefusalConfirmLowLevel')
+    })
+
+    test('a character path, no paths and the bare reason read as the generic text', () => {
+        expect(refusalTextOf({ reason: 'riskyConfirm', paths: ['utilityBot'] })).toBe('studioRefusalRiskyConfirm')
+        expect(refusalTextOf({ reason: 'riskyConfirm' })).toBe('studioRefusalRiskyConfirm')
+        expect(refusalText('riskyConfirm')).toBe('studioRefusalRiskyConfirm')
+    })
+
+    test('paths change no other reason\'s text', () => {
+        expect(refusalTextOf({ reason: 'precondition', paths: ['moduleLowLevelAccess'] })).toBe('studioRefusalPrecondition')
+    })
+})
+
 describe('the list reason joins a precondition refusal only', () => {
     test('the reason sentences follow the outcome sentence, joined with a space', () => {
         expect(listReasonText('neither')).toBe('studioHistoryListChangedElsewhere')

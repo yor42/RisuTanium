@@ -778,7 +778,7 @@ describe('T5-FOCUS: an Undo of a module field focuses its control', () => {
         ['moduleDescription', 'studio-module-description', () => ({ ...base() }), (rig: Rig) => rig.service.editText(M1, 'moduleDescription', 'd2', 'single')],
         ['moduleNamespace', 'studio-module-namespace', () => ({ ...base() }), (rig: Rig) => rig.service.editText(M1, 'moduleNamespace', 'ns', 'single')],
         ['moduleHideIcon', 'studio-module-hide-icon', () => ({ ...base(), hideIcon: false }), (rig: Rig) => rig.service.editField(M1, 'moduleHideIcon', true)],
-        ['moduleLowLevelAccess', 'studio-module-low-level', () => ({ ...base(), lowLevelAccess: false }), (rig: Rig) => rig.service.editField(M1, 'moduleLowLevelAccess', true, 'lowLevelOn')],
+        ['moduleLowLevelAccess', 'studio-module-low-level', () => ({ ...base(), lowLevelAccess: false }), (rig: Rig) => rig.service.editField(M1, 'moduleLowLevelAccess', true, { confirmed: ['moduleLowLevelAccess'] })],
         // An undo that writes a foreign object back.
         ['moduleHideIcon (foreign object)', 'studio-module-hide-icon', () => ({ ...base(), hideIcon: { x: 1 } }), (rig: Rig) => rig.service.editField(M1, 'moduleHideIcon', false)],
     ])('%s', async (_path, partName, build, edit) => {

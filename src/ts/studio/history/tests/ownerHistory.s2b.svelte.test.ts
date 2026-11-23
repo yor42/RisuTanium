@@ -254,6 +254,55 @@ describe('T2-RF-8: confirmation never outlives its call', () => {
     })
 })
 
+describe('U-1: a character revert whose writes turn the flag on and later off still asks (compatibility guard: passes before and after the unification)', () => {
+    // Character writes land in place one at a time, so the intermediate turn-on is live whatever the last write says.
+    test('the refusal carries the pin and changes nothing; the confirmed pinned retry lands whole', async () => {
+        const service = await ready({ utilityBot: false })
+        service.editText(A, 'desc', 'd1', 'single')
+        const base = topId(service, 'done')!
+        expect(service.editField(A, 'utilityBot', true, { confirmed: ['utilityBot'], coalesceKey: null }).ok).toBe(true)
+        service.editText(A, 'systemPrompt', 's1', 'single')
+        expect(service.editField(A, 'utilityBot', false, { coalesceKey: null }).ok).toBe(true)
+        const done = service.view(A).done.map((step) => step.id)
+        const refused = await service.replay(A, { kind: 'revert', stepId: base })
+        expect(refused).toEqual({ ok: false, reason: 'riskyConfirm', paths: ['utilityBot'], pin: { expectIds: done } })
+        expect(live().utilityBot).toBe(false)
+        expect(live().systemPrompt).toBe('s1')
+        expect(service.view(A).done.map((step) => step.id)).toEqual(done)
+        expect((await service.replay(A, { kind: 'revert', stepId: base, expectIds: done, confirmed: ['utilityBot'] })).ok).toBe(true)
+        expect(live().utilityBot).toBe(false)
+        expect(live().systemPrompt).toBe('s0')
+    })
+})
+
+describe('U-3: the value intent passes the same guard as the field intent, for each character flag', () => {
+    const flags = ['lowLevelAccess', 'utilityBot', 'escapeOutput'] as const
+
+    // Each flag is stored as false: an absent optional flag is refused `precondition` in planning, before the guard runs.
+    const stored = { lowLevelAccess: false, utilityBot: false, escapeOutput: false }
+
+    test.each(flags)('%s: refused without a pin and with nothing written, recorded or marked', async (path) => {
+        const service = await ready(stored)
+        expect(service.editValue(A, path, true)).toEqual({ ok: false, reason: 'riskyConfirm', paths: [path] })
+        expect(live()[path]).toBe(false)
+        expect(service.view(A).done).toHaveLength(0)
+        expect(h.marks).toBe(0)
+    })
+
+    test.each(flags)('%s: lands when confirmed', async (path) => {
+        const service = await ready(stored)
+        expect(service.editValue(A, path, true, { confirmed: [path] })).toEqual({ ok: true })
+        expect(live()[path]).toBe(true)
+    })
+
+    test.each(flags)('%s: still refused when another risky path is confirmed', async (path) => {
+        const other = flags.find((candidate) => candidate !== path)!
+        const service = await ready(stored)
+        expect(service.editValue(A, path, true, { confirmed: [other] })).toEqual({ ok: false, reason: 'riskyConfirm', paths: [path] })
+        expect(live()[path]).toBe(false)
+    })
+})
+
 describe('T2-RF-10: a write that holds no flag passes the gate unchanged (compatibility guard: passes before and after)', () => {
     test('a text edit, an undo and a redo land with no confirmation', async () => {
         const service = await ready({})

@@ -35,11 +35,12 @@ import type { RisuModule } from 'src/ts/process/modules'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWriteHook'
 import type { toSaveType } from 'src/ts/storage/risuSave'
+import { pinnedDesc } from 'src/ts/studio/edit/riskyReplay'
 import { stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
 import { classifyModules } from 'src/ts/studio/studioModules'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { buildWrittenModule, createModuleLiveReader } from '../../edit/studioSetters'
-import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
+import { createOwnerHistoryService, type OwnerHistoryService, type RiskyPin } from '../ownerHistory.svelte'
 import { characterOwnerKey, moduleOwnerKey, SAVE_DEBOUNCE_MS, type OwnerKey } from '../ownerPhase'
 import { createFakeClock, drainMicrotasks, type FakeClock } from './historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, type MemoryStudioStore } from './studioStoreDoubles'
@@ -186,7 +187,7 @@ describe('T5-PROP: a write lands under the property of its path, never a key nam
 
     test('moduleLowLevelAccess writes lowLevelAccess', async () => {
         await ready()
-        expect(harness.service.editField(M1, 'moduleLowLevelAccess', true, 'lowLevelOn')).toEqual({ ok: true })
+        expect(harness.service.editField(M1, 'moduleLowLevelAccess', true, { confirmed: ['moduleLowLevelAccess'] })).toEqual({ ok: true })
         expect(slot().lowLevelAccess).toBe(true)
         expect(keyed('moduleLowLevelAccess')).toBe(false)
     })
@@ -219,7 +220,7 @@ describe('T5-ABS: an absent key is deleted again by undo; a present false comes 
     test('lowLevelAccess on a create-shaped module: the confirmed turn-on is deleted again by undo, never undefined or false', async () => {
         await ready()
         expect(keyed('lowLevelAccess')).toBe(false)
-        expect(harness.service.editField(M1, 'moduleLowLevelAccess', true, 'lowLevelOn')).toEqual({ ok: true })
+        expect(harness.service.editField(M1, 'moduleLowLevelAccess', true, { confirmed: ['moduleLowLevelAccess'] })).toEqual({ ok: true })
         expect(slot().lowLevelAccess).toBe(true)
         expect(harness.service.undo(M1)).toMatchObject({ ok: true })
         expect(keyed('lowLevelAccess')).toBe(false)
@@ -229,7 +230,7 @@ describe('T5-ABS: an absent key is deleted again by undo; a present false comes 
     test('lowLevelAccess on a module holding false: undo of the turn-on restores false', async () => {
         put({ ...createShaped(), lowLevelAccess: false })
         await ready()
-        expect(harness.service.editField(M1, 'moduleLowLevelAccess', true, 'lowLevelOn')).toEqual({ ok: true })
+        expect(harness.service.editField(M1, 'moduleLowLevelAccess', true, { confirmed: ['moduleLowLevelAccess'] })).toEqual({ ok: true })
         expect(harness.service.undo(M1)).toMatchObject({ ok: true })
         expect(keyed('lowLevelAccess')).toBe(true)
         expect(slot().lowLevelAccess).toBe(false)
@@ -305,9 +306,12 @@ describe('T5-FOREIGN-UNDO: an undo puts back the exact stored value of another t
         expect(harness.service.editField(M1, 'moduleLowLevelAccess', false)).toEqual({ ok: true })
         expect(slot().lowLevelAccess).toBe(false)
         const refused = await harness.service.replay(M1, { kind: 'undo' })
-        expect(refused).toMatchObject({ ok: false, reason: 'confirm-low-level' })
+        expect(refused).toMatchObject({ ok: false, reason: 'riskyConfirm', paths: ['moduleLowLevelAccess'] })
         expect(slot().lowLevelAccess).toBe(false)
-        expect(await harness.service.replay(M1, { kind: 'undo', expectTop: (refused as { expectTop?: string }).expectTop, confirm: 'lowLevelOn' })).toMatchObject({ ok: true })
+        // The retry carries the refusal's pin: a missing pin would silently run the undo unpinned.
+        const pin = (refused as { pin?: RiskyPin }).pin
+        expect(pin).toEqual({ expectTop: expect.any(String) })
+        expect(await harness.service.replay(M1, pinnedDesc({ kind: 'undo' }, ['moduleLowLevelAccess'], pin))).toMatchObject({ ok: true })
         expect(slot().lowLevelAccess).toBe(1)
         expect(keyed('lowLevelAccess')).toBe(true)
         expect(await harness.service.replay(M1, { kind: 'redo' })).toMatchObject({ ok: true })
@@ -494,13 +498,13 @@ describe('T5-KEYS: the low-level flag', () => {
             expect(next.x_upstream_future).toEqual({ nested: [1] })
         }
         let previous = slot()
-        expect(harness.service.editField(M1, 'moduleLowLevelAccess', true, 'lowLevelOn')).toEqual({ ok: true })
+        expect(harness.service.editField(M1, 'moduleLowLevelAccess', true, { confirmed: ['moduleLowLevelAccess'] })).toEqual({ ok: true })
         check(previous)
         previous = slot()
         expect(harness.service.undo(M1)).toMatchObject({ ok: true })
         check(previous)
         previous = slot()
-        expect(await harness.service.replay(M1, { kind: 'redo', confirm: 'lowLevelOn' })).toMatchObject({ ok: true })
+        expect(await harness.service.replay(M1, { kind: 'redo', confirmed: ['moduleLowLevelAccess'] })).toMatchObject({ ok: true })
         check(previous)
         expect(slot().lowLevelAccess).toBe(true)
     })
