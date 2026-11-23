@@ -201,6 +201,12 @@
 //     in a WebView that honours interception.
 //     Tests: test/file-chooser.test.ps1.
 //
+//   r23 (#647, MC-3773, MC-3774; device lease helper cleanup): on the two Note 9 serials only, `uninstall <pkg>` with exactly one positional
+//     is also allowed when the RAW token matches NOTE9_HELPER, ^dev\.risu\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$ (case-sensitive, no
+//     normalisation), so a row can remove a helper app it installed. `uninstall -k <pkg>` (two arguments), the shell `pm uninstall|clear` forms,
+//     every other package and every other serial keep their refusal (DZ-6, 89; emulator-5580 97; restricted 95). The lease controller holds
+//     a copy of the same pattern; both are tested against the same hazard list. Tests: test/lease-reset.test.ps1.
+//
 //   node adbg.mjs pick <common> --state <run>/guard-state.json --name <exact-name>
 //     MC-1438 picker helper. One device-side command dumps the UI to a device file, greps for the exact
 //     text, prints only the bounds, and deletes the dump by its exact name. Output: `match bounds=[l,t][r,b]`
@@ -650,6 +656,8 @@ const NOTE9_DANGER_VERBS = new Map([
   ['bugreport', ['DZ-11', 'whole-device dump']],
 ])
 const NOTE9_TEST_APPS = new Set([PG_PACKAGE])
+// r23: helper apps a row installs live in this namespace. Tested on the raw token, case-sensitive, never lower-cased or decoded.
+const NOTE9_HELPER = /^dev\.risu\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/
 // Words are matched with [^a-z0-9] boundaries (dzWord) or as word prefixes (dzPrefix), so `swipe` never matches `wipe`.
 const dzWord = (x) => `(?<![a-z0-9])(?:${x})(?![a-z0-9])`
 const dzPrefix = (x) => `(?<![a-z0-9])(?:${x})`
@@ -840,6 +848,7 @@ function note9Refusal(a) {
     case 'uninstall': {
       const pos = args[0] === '-k' ? args.slice(1) : args
       if (pos.length !== 1 || !/^[A-Za-z0-9._]+$/.test(pos[0])) return shape('needs one package name')
+      if (args.length === 1 && NOTE9_HELPER.test(args[0])) return null
       return NOTE9_TEST_APPS.has(pos[0]) ? null : zone('DZ-6', 'uninstall of a package that is not the test app')
     }
     case 'logcat': return null

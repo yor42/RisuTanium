@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -105,6 +106,8 @@ export function loadPolicy(root = defaultRoot) {
   p.routeHealthMaxAgeDays ??= 7; p.optInProviders ??= ['codex', 'agy'];
   if (p.routeHealthMaxAgeDays !== 7 || !Array.isArray(p.optInProviders) || p.optInProviders.some(x => !['codex', 'agy'].includes(x))) throw Error('Unsupported or unsafe policy');
   if (Object.values(p.nativeModelChoices ?? {}).some(list => !Array.isArray(list))) throw Error('Unsupported or unsafe policy');
+  if (p.scheduling.deviceRoles !== undefined && (!Array.isArray(p.scheduling.deviceRoles) || p.scheduling.deviceRoles.some(r => r !== p.scheduling.devicePrimary.role && !p.nativeFallbackRoles.implement?.[r]))) throw Error('Unsupported or unsafe policy');
+  if (p.devicePool !== undefined) validateDevicePool(p.devicePool);
   return p;
 }
 export function loadState(root = defaultRoot) {
@@ -219,11 +222,230 @@ function resourceClaims(d, root) {
   if (codeWriter(d)) claims.push(normalizeResource(`checkout:${d.repoRoot ?? d.workdir ?? root}`));
   return [...new Set(claims)];
 }
+// ---- Device pool leases -------------------------------------------------------------------------
+// Every lease read-modify-write runs inside one mutateState call, so a grant, an expiry and a release are
+// serialized by the state lock. Liveness is the single predicate leaseLive; the stored status is bookkeeping.
+// HELPER_RE is a hard-coded constant: no flag, environment variable or state file can widen it. The device
+// guard (adbg) carries the same pattern.
+const HELPER_RE = /^dev\.risu\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
+const PACKAGE_RE = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/;
+const TOKEN_RE = /^[A-Za-z0-9-]{16,128}$/;
+const TICKET_RE = /^[A-Za-z0-9-]{1,32}$/;
+const unsafePolicy = () => Error('Unsupported or unsafe policy');
+const expandTemp = resource => resource.replace(/^([A-Za-z]+:)%TEMP%/, (_, kind) => kind + os.tmpdir());
+function poolMembers(dp) {
+  const out = [];
+  for (const [pool, def] of Object.entries(dp.pools)) for (const m of def.members) out.push({ pool, resource: normalizeResource(expandTemp(m.resource)), ports: m.ports ?? null, prefix: m.prefix === true });
+  return out;
+}
+function validateDevicePool(dp) {
+  const bad = () => { throw unsafePolicy(); };
+  const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+  if (!isObj(dp) || !isObj(dp.pools) || !Object.keys(dp.pools).length) bad();
+  const seen = new Set(); const taken = [];
+  for (const [name, def] of Object.entries(dp.pools)) {
+    if (!ident.test(name) || !isObj(def) || !Array.isArray(def.members) || !def.members.length) bad();
+    for (const m of def.members) {
+      if (!isObj(m) || typeof m.resource !== 'string') bad();
+      let resource; try { resource = normalizeResource(expandTemp(m.resource)); } catch { bad(); }
+      if (seen.has(resource)) bad(); seen.add(resource);
+      if (resource.startsWith('device:')) {
+        const [min, max] = m.ports ?? [];
+        if (!Array.isArray(m.ports) || m.ports.length !== 2 || !Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max < min || max > 65535 || max - min + 1 > 128) bad();
+        if (taken.some(([a, b]) => min <= b && max >= a)) bad();
+        taken.push([min, max]);
+      } else if (resource.startsWith('build:')) { if (m.ports !== undefined) bad(); } else bad();
+    }
+  }
+  const names = Object.keys(dp.pools);
+  if (!Array.isArray(dp.lockOrder) || dp.lockOrder.length !== names.length || new Set(dp.lockOrder).size !== names.length || dp.lockOrder.some(n => !names.includes(n))) bad();
+  if (!Array.isArray(dp.priorityClasses) || !dp.priorityClasses.length || new Set(dp.priorityClasses).size !== dp.priorityClasses.length || dp.priorityClasses.some(c => typeof c !== 'string' || !ident.test(c))) bad();
+  const num = v => typeof v === 'number' && Number.isFinite(v) && v > 0;
+  if (![dp.leaseTtlSeconds, dp.heartbeatSeconds, dp.queueTtlSeconds, dp.pollSeconds, dp.retainEndedHours].every(num) || dp.heartbeatSeconds >= dp.leaseTtlSeconds || dp.pollSeconds >= dp.queueTtlSeconds || !Number.isInteger(dp.maxWaiting) || dp.maxWaiting < 1) bad();
+  const standing = dp.standingPackages;
+  if (!Array.isArray(standing) || new Set(standing).size !== standing.length || standing.some(x => typeof x !== 'string' || !PACKAGE_RE.test(x) || HELPER_RE.test(x))) bad();
+}
+function devicePool(p) { if (!p.devicePool) throw Error('No device pool in policy'); return p.devicePool; }
+// The pool member a normalized resource belongs to: the member itself, a port inside a device member's
+// range, or a build path under a prefix member.
+function memberOf(dp, resource) {
+  for (const m of poolMembers(dp)) {
+    if (resource === m.resource) return m;
+    if (m.prefix && resource.startsWith('build:') && resource.startsWith(m.resource)) return m;
+    const port = /^tcp:(\d+)$/.exec(resource);
+    if (m.ports && port && Number(port[1]) >= m.ports[0] && Number(port[1]) <= m.ports[1]) return m;
+  }
+  return null;
+}
+const leaseRequests = s => s.deviceLeases?.requests ?? {};
+function leaseLive(req, p, now) {
+  return !!req && !!p.devicePool && req.status === 'granted' && Date.parse(req.heartbeatAt) + p.devicePool.leaseTtlSeconds * 1000 > now;
+}
+const isDeviceMember = resource => resource.startsWith('device:');
+// Bookkeeping only: it keeps stored state consistent with leaseLive. Decisions never depend on it having run.
+function sweepLeases(s, p, now) {
+  const dp = p.devicePool; const L = s.deviceLeases; const iso = new Date(now).toISOString();
+  for (const [id, req] of Object.entries(L.requests)) {
+    if (req.status === 'granted' && !leaseLive(req, p, now)) {
+      req.status = 'expired'; req.endedAt = iso;
+      if (isDeviceMember(req.member)) L.members[req.member] = { ...memberState(L, req.member), needsReset: true, reason: 'lease-expired', since: iso };
+    } else if (req.status === 'waiting' && Date.parse(req.lastPollAt) + dp.queueTtlSeconds * 1000 <= now) { req.status = 'dropped'; req.endedAt = iso; }
+    else if (!['waiting', 'granted'].includes(req.status) && Date.parse(req.endedAt) + dp.retainEndedHours * 3600000 <= now) delete L.requests[id];
+  }
+}
+const memberState = (L, member) => L.members[member] ?? { needsReset: false, reason: null, since: null, stranded: [] };
+const ensureLeases = s => { s.deviceLeases ??= { requests: {}, members: {} }; s.deviceLeases.requests ??= {}; s.deviceLeases.members ??= {}; return s.deviceLeases; };
+// A lapsed lease stops its dispatch from claiming pool resources only; every other claim stays.
+function effectiveClaims(entry, s, p, now, root) {
+  const claims = resourceClaims(entry, root);
+  if (!entry.lease || !p.devicePool || leaseLive(leaseRequests(s)[entry.lease], p, now)) return claims;
+  return claims.filter(c => !memberOf(p.devicePool, c));
+}
+function busyMembers(s, p, now, root) {
+  const dp = p.devicePool; const busy = new Set();
+  for (const req of Object.values(leaseRequests(s))) if (leaseLive(req, p, now)) busy.add(req.member);
+  for (const entry of Object.values(s.dispatches)) {
+    if (!active.has(entry.status)) continue;
+    for (const claim of effectiveClaims(entry, s, p, now, root)) { const m = memberOf(dp, claim); if (m) busy.add(m.resource); }
+  }
+  return busy;
+}
+function waitingQueue(s, p, pool) {
+  const classes = p.devicePool.priorityClasses;
+  return Object.entries(leaseRequests(s)).filter(([, r]) => r.pool === pool && r.status === 'waiting')
+    .sort(([ia, a], [ib, b]) => classes.indexOf(a.priority) - classes.indexOf(b.priority) || Date.parse(a.enqueuedAt) - Date.parse(b.enqueuedAt) || (ia < ib ? -1 : ia > ib ? 1 : 0)).map(([id]) => id);
+}
+function freeMembers(s, p, pool, now, root) {
+  const busy = busyMembers(s, p, now, root); const L = s.deviceLeases ?? { members: {} };
+  const free = poolMembers(p.devicePool).filter(m => m.pool === pool && !busy.has(m.resource));
+  const dirty = m => (L.members?.[m.resource]?.needsReset ? 1 : 0);
+  return free.map((m, i) => [m, i]).sort(([a, i], [b, j]) => dirty(a) - dirty(b) || i - j).map(([m]) => m);
+}
+function grantView(s, p, id, now) {
+  const req = leaseRequests(s)[id]; const dp = p.devicePool;
+  const out ={ request: id, pool: req.pool, status: 'granted', member: req.member };
+  if (isDeviceMember(req.member)) { out.serial = req.member.slice('device:'.length); out.ports = { min: req.ports[0], max: req.ports[1] }; }
+  Object.assign(out, { expiresAt: new Date(Date.parse(req.heartbeatAt) + dp.leaseTtlSeconds * 1000).toISOString(), ttlSeconds: dp.leaseTtlSeconds, heartbeatSeconds: dp.heartbeatSeconds, resetRequired: req.resetRequired === true, strandedPackages: [...(s.deviceLeases.members[req.member]?.stranded ?? [])], standingPackages: [...dp.standingPackages], helperPattern: HELPER_RE.source });
+  return out;
+}
+const tokenMatches = (req, token) => typeof token === 'string' && req.tokenHash === digest(token);
+function leaseRequest(s, id, token) {
+  const req = leaseRequests(s)[safeId(id)];
+  if (!req || !tokenMatches(req, token)) throw Error('Request belongs to another holder');
+  return req;
+}
+function evaluateGrant(s, p, id, now, root) {
+  const L = s.deviceLeases; const req = L.requests[id];
+  const rank = waitingQueue(s, p, req.pool).indexOf(id); const free = freeMembers(s, p, req.pool, now, root);
+  if (rank < 0 || rank >= free.length) return { status: 'waiting', position: rank + 1, ahead: rank, free: free.length, pollSeconds: p.devicePool.pollSeconds };
+  const m = free[rank]; const iso = new Date(now).toISOString(); const member = memberState(L, m.resource);
+  L.members[m.resource] = member;
+  Object.assign(req, { status: 'granted', member: m.resource, ports: m.ports ? [...m.ports] : null, grantedAt: iso, heartbeatAt: iso, resetRequired: member.needsReset === true });
+  return null;
+}
+export function leaseAcquire({ root = defaultRoot, pool, request, token, holder, priority, ticket }) {
+  const p = loadPolicy(root); const dp = devicePool(p);
+  // The clock is read under the state lock so enqueue order is the order the lock was won.
+  return mutateState(root, null, s => {
+    const now = Date.now();
+    const L = ensureLeases(s); sweepLeases(s, p, now);
+    safeId(request); safeId(holder);
+    if (!TOKEN_RE.test(token ?? '')) throw Error('Invalid lease token');
+    if (!TICKET_RE.test(ticket ?? '')) throw Error('Invalid ticket');
+    if (!dp.pools[pool]) throw Error('Unknown pool');
+    if (!dp.priorityClasses.includes(priority)) throw Error('Unknown priority class');
+    const iso = new Date(now).toISOString(); let req = L.requests[request];
+    // A new request and a waiting re-poll are both refused while the ticket holds a live lease on a later pool.
+    const lockOrderCheck = () => {
+      const order = dp.lockOrder.indexOf(pool);
+      for (const other of Object.values(L.requests)) if (other !== req && leaseLive(other, p, now) && other.ticket === ticket && dp.lockOrder.indexOf(other.pool) > order) throw Error(`Lock order: release ${other.pool} first`);
+    };
+    if (req) {
+      if (!tokenMatches(req, token)) throw Error('Request belongs to another holder');
+      if (req.pool !== pool || req.priority !== priority || req.holder !== holder || req.ticket !== ticket) throw Error('Request identity cannot change');
+      if (req.status === 'granted') return grantView(s, p, request, now);
+      if (req.status !== 'waiting') return { request, status: req.status };
+      lockOrderCheck();
+      req.lastPollAt = iso;
+    } else {
+      lockOrderCheck();
+      if (Object.values(L.requests).filter(r => r.pool === pool && r.status === 'waiting').length >= dp.maxWaiting) throw Error('Queue full');
+      req = L.requests[request] = { pool, holder, ticket, priority, tokenHash: digest(token), status: 'waiting', enqueuedAt: iso, lastPollAt: iso, member: null, ports: null, grantedAt: null, heartbeatAt: null, endedAt: null, resetRequired: false, resetEvidence: null, releaseCensus: null };
+    }
+    const waiting = evaluateGrant(s, p, request, now, root);
+    return waiting ? { request, pool, ...waiting } : grantView(s, p, request, now);
+  });
+}
+export function leaseRenew({ root = defaultRoot, request, token }) {
+  const p = loadPolicy(root); devicePool(p);
+  return mutateState(root, null, s => {
+    const now = Date.now();
+    const req = leaseRequest(s, request, token);
+    if (req.status === 'expired' || req.status === 'granted' && !leaseLive(req, p, now)) throw Error('Lease expired; stop using the device');
+    if (req.status !== 'granted') throw Error('Lease not granted');
+    req.heartbeatAt = new Date(now).toISOString();
+    return { request, status: 'granted', expiresAt: new Date(now + p.devicePool.leaseTtlSeconds * 1000).toISOString() };
+  });
+}
+const absoluteFile = file => typeof file === 'string' && path.isAbsolute(file) && fs.existsSync(file) && fs.statSync(file).isFile();
+export function leaseRelease({ root = defaultRoot, request, token, clean }) {
+  const p = loadPolicy(root); devicePool(p);
+  return mutateState(root, null, s => {
+    const now = Date.now();
+    const L = ensureLeases(s); leaseRequest(s, request, token); sweepLeases(s, p, now);
+    const req = L.requests[request]; const iso = new Date(now).toISOString();
+    if (req.status === 'waiting') { req.status = 'withdrawn'; req.endedAt = iso; return { request, status: 'withdrawn', member: null, needsReset: false }; }
+    if (req.status !== 'granted') return { request, status: req.status, member: req.member, needsReset: L.members[req.member]?.needsReset === true };
+    req.status = 'released'; req.endedAt = iso;
+    if (isDeviceMember(req.member)) {
+      const member = memberState(L, req.member);
+      // A lease that never acknowledged its reset leaves the member's reset obligation in place.
+      if (!req.resetRequired) {
+        if (clean !== undefined && absoluteFile(clean)) { req.releaseCensus = clean; member.needsReset = false; }
+        else Object.assign(member, { needsReset: true, reason: 'released-unchecked', since: iso });
+      }
+      L.members[req.member] = member;
+    }
+    return { request, status: 'released', member: req.member, needsReset: L.members[req.member]?.needsReset === true };
+  });
+}
+export function leaseResetDone({ root = defaultRoot, request, token, evidence, stranded }) {
+  const p = loadPolicy(root); const dp = devicePool(p);
+  return mutateState(root, null, s => {
+    const now = Date.now();
+    const L = ensureLeases(s); leaseRequest(s, request, token);
+    const req = L.requests[request];
+    if (!leaseLive(req, p, now)) throw Error('Lease expired; stop using the device');
+    if (!absoluteFile(evidence)) throw Error('Reset needs an existing absolute evidence file');
+    const names = stranded ? stranded.split(',').filter(Boolean) : [];
+    for (const name of names) if (!PACKAGE_RE.test(name) || HELPER_RE.test(name) || dp.standingPackages.includes(name)) throw Error(`Cannot mark ${name} stranded`);
+    const member = memberState(L, req.member);
+    member.stranded = [...new Set([...(member.stranded ?? []), ...names])]; member.needsReset = false;
+    L.members[req.member] = member; req.resetRequired = false; req.resetEvidence = evidence;
+    return { request, resetRequired: false, stranded: member.stranded };
+  });
+}
+export function leaseStatus({ root = defaultRoot, pool, now = Date.now() }) {
+  const p = loadPolicy(root); const dp = devicePool(p);
+  const s = structuredClone(loadState(root)); ensureLeases(s); sweepLeases(s, p, now);
+  const busy = busyMembers(s, p, now, root); const out = {};
+  for (const name of Object.keys(dp.pools)) {
+    if (pool && pool !== name) continue;
+    const members = poolMembers(dp).filter(m => m.pool === name).map(m => {
+      const holder = Object.entries(s.deviceLeases.requests).find(([, r]) => leaseLive(r, p, now) && r.member === m.resource);
+      const st = memberState(s.deviceLeases, m.resource);
+      return { resource: m.resource, busy: busy.has(m.resource), holder: holder?.[1].holder ?? null, ticket: holder?.[1].ticket ?? null, needsReset: st.needsReset, reason: st.reason, stranded: st.stranded };
+    });
+    const waiting = waitingQueue(s, p, name).map((id, i) => ({ request: id, position: i + 1, priority: s.deviceLeases.requests[id].priority, holder: s.deviceLeases.requests[id].holder }));
+    out[name] = { members, waiting };
+  }
+  return { pools: out };
+}
 function resourceKey(resource) {
   const normalized = normalizeResource(resource);
   return normalized.replace(/^(checkout|build|output):/, 'filesystem:');
 }
-function validateScheduling(d) {
+function validateScheduling(d, p) {
   const kind = schedulingClass(d);
   if (kind === 'records') {
     if (d.mode !== 'implement' || d.role !== 'record-clerk' || d.changedContracts.length || d.allowedWrites.some(file => !clerkPath(file))) throw Error('Records class is clerical Haiku authoring only; authoritative decisions/governance require a parent-applied scratch draft');
@@ -235,7 +457,8 @@ function validateScheduling(d) {
   if (kind === 'documents' && d.allowedWrites.some(file => !documentPath(file))) throw Error('Documents class cannot carry application/configuration writes');
   if (kind === 'device') {
     if (d.allowedWrites.length) throw Error('Device track cannot write application or repository records');
-    if (!d.resources.some(resource => resource.startsWith('device:'))) throw Error('Device track requires its explicit device resource');
+    const buildSlot = d.devicePhase === 'build' && p.devicePool && d.resources.some(resource => resource.startsWith('build:') && memberOf(p.devicePool, resource));
+    if (!buildSlot && !d.resources.some(resource => resource.startsWith('device:'))) throw Error('Device track requires its explicit device resource');
     if (d.devicePhase === 'build') {
       if (!d.resources.some(resource => resource.startsWith('checkout:'))) throw Error('Device build must reserve its source checkout');
     } else if (!/^[a-f0-9]{64}$/i.test(d.artifact?.sha256 ?? '') || !d.artifact?.sourceRevision) throw Error('Device run requires pinned artifact hash and source revision');
@@ -280,8 +503,10 @@ export async function selectRoute({ root = defaultRoot, jobId, mode, role, workC
     routes = [p.scheduling.recordsPrimary];
   }
   if (!legacy && mode === 'implement' && workClass === 'device') {
-    if (role && role !== p.scheduling.devicePrimary.role || changedContracts.length) throw Error('Device primary cannot perform substantive design, code or review');
-    routes = [p.scheduling.devicePrimary];
+    const deviceRoles = p.scheduling.deviceRoles ?? [p.scheduling.devicePrimary.role];
+    if (role && !deviceRoles.includes(role) || changedContracts.length) throw Error('Device primary cannot perform substantive design, code or review');
+    // A listed role other than the primary runs on its own configured model.
+    routes = [role && role !== p.scheduling.devicePrimary.role ? { ...p.scheduling.devicePrimary, role, model: p.nativeFallbackRoles.implement[role], effort: 'low' } : p.scheduling.devicePrimary];
   }
   if (!legacy && mode === 'implement' && testOnly) {
     if (role && role !== p.scheduling.testPrimary.role || changedContracts.length) throw Error('Test primary writes test files only and cannot carry critical contracts');
@@ -344,7 +569,10 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
   if (d.provider === 'agy' && d.mode !== 'scout') throw Error('Flash only scouts');
   if (!Array.isArray(d.resources ?? [])) throw Error('Resources must be an array');
   d.resources = resourceClaims(d, root);
-  validateScheduling(d);
+  validateScheduling(d, p);
+  // The token proves the caller holds the lease at registration; it never reaches the receipt or the state.
+  const leaseToken = d.leaseToken; delete d.leaseToken;
+  if (d.lease != null) safeId(d.lease);
   if (d.provider !== 'claude') {
     for (const key of ['workdir', 'promptFile', 'outFile', 'manifestFile']) if (!path.isAbsolute(d[key] ?? '')) throw Error(`Absolute ${key} required`);
     const manifestBytes = fs.readFileSync(d.manifestFile);
@@ -367,10 +595,22 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
       if (d.correction !== true || job.correctionCount >= p.maxCorrectionAttempts) throw Error('One explicit bounded correction required');
       job.correctionCount++; job.needsCorrection = false;
     } else if (d.correction) throw Error('Correction must follow observed failure');
+    const now = Date.now();
+    if (p.devicePool) {
+      const hits = d.resources.map(r => [r, memberOf(p.devicePool, r)]).filter(([, m]) => m);
+      if (hits.length && !d.lease) throw Error('Pool resource needs its live lease');
+      if (d.lease) {
+        const req = leaseRequests(s)[d.lease];
+        if (!leaseLive(req, p, now) || !tokenMatches(req, leaseToken)) throw Error('Lease not live or token mismatch');
+        if (!hits.length) throw Error('Lease names no leased resource');
+        if (hits.some(([, m]) => m.resource !== req.member)) throw Error('Dispatch does not agree with its lease');
+        if (d.workClass === 'device' && d.devicePhase !== 'build' && isDeviceMember(req.member) && !d.resources.includes(req.member)) throw Error('Dispatch does not agree with its lease');
+      }
+    }
     const live = Object.values(s.dispatches).filter(x => active.has(x.status));
     if (codeWriter(d) && live.filter(codeWriter).length >= p.maxImplementationTracks) throw Error('Implementation track cap');
     if (d.workClass === 'records' && live.filter(x => schedulingClass(x) === 'records').length >= p.scheduling.maxRecordsTracks) throw Error('Records track cap');
-    if (d.workClass === 'device' && live.filter(x => schedulingClass(x) === 'device').length >= p.scheduling.maxDeviceTracks) throw Error('Device track cap');
+    if (d.workClass === 'device' && live.filter(x => schedulingClass(x) === 'device' && (!x.lease || leaseLive(leaseRequests(s)[x.lease], p, now))).length >= p.scheduling.maxDeviceTracks) throw Error('Device track cap');
     for (const other of live) {
       const sameCheckout = pathKey(other.repoRoot ?? other.workdir ?? root) === pathKey(d.repoRoot);
       if (codeWriter(d) && codeWriter(other) && sameCheckout) throw Error('Code writer checkout ownership overlaps; use separate source worktrees');
@@ -378,7 +618,7 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
       // separate worktrees are reconciled when they merge.
       const writes = new Set((other.allowedWrites ?? []).map(fileKey));
       if (sameCheckout && d.allowedWrites.some(file => writes.has(fileKey(file)))) throw Error('Exact file ownership overlaps');
-      const claims = new Set(resourceClaims(other, root).map(resourceKey));
+      const claims = new Set(effectiveClaims(other, s, p, now, root).map(resourceKey));
       if (d.resources.some(resource => claims.has(resourceKey(resource)))) throw Error('Declared resource ownership overlaps');
     }
     if (d.independentOf) {
@@ -386,7 +626,7 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
       if (!prior || active.has(prior.status) || prior.owner === d.owner) throw Error('Independent review requires a finished different owner');
     }
     atomicWrite(receipt, d); wroteReceipt = true;
-    s.dispatches[d.id] = { hash: digest(d), logicalJobId: d.logicalJobId, mode: d.mode, provider: d.provider, model: d.model, role: d.role, owner: d.owner, workdir: d.workdir, repoRoot: d.repoRoot, allowedWrites: d.allowedWrites, workClass: d.workClass, resources: d.resources, healthCheck: d.healthCheck, status: 'registered' };
+    s.dispatches[d.id] = { hash: digest(d), logicalJobId: d.logicalJobId, mode: d.mode, provider: d.provider, model: d.model, role: d.role, owner: d.owner, workdir: d.workdir, repoRoot: d.repoRoot, allowedWrites: d.allowedWrites, workClass: d.workClass, resources: d.resources, ...(d.lease ? { lease: d.lease } : {}), healthCheck: d.healthCheck, status: 'registered' };
     job.workClass = d.workClass; job.attempts.push(d.id); job.status = 'registered'; s.jobs[d.logicalJobId] = job;
     return d;
   }); } catch (e) { if (wroteReceipt) { try { fs.unlinkSync(receipt); } catch {} } throw e; }
@@ -400,7 +640,9 @@ export async function validateDispatch(d, { root = defaultRoot, claim = false } 
   if (!entry || entry.hash !== digest(d) || digest(savedDispatch(root, d.id)) !== entry.hash || !knownRevision || entry.status !== 'registered') throw Error('Unregistered, changed, stale or already consumed dispatch');
   const route = await selectRoute({ root, jobId: d.logicalJobId, mode: d.mode, role: d.requestedRole, workClass: d.workClass, testOnly: d.testOnly === true, legacy: !d.schedulingAmendment, escalation: d.escalation, gate: d.gate, effortReason: d.effortReason, changedContracts: d.changedContracts, scoutEffort: d.effort, optIn: d.optIn ?? null, healthCheck: d.healthCheck === true, model: d.model });
   if (route.provider !== d.provider || route.model !== d.model) throw Error('Route changed before dispatch');
-  if (claim) mutateState(root, s.generation, next => { if (next.dispatches[d.id].status !== 'registered') throw Error('Dispatch already claimed'); next.dispatches[d.id].status = 'running'; });
+  if (claim) mutateState(root, s.generation, next => { if (next.dispatches[d.id].status !== 'registered') throw Error('Dispatch already claimed');
+    if (d.lease && !leaseLive(leaseRequests(next)[d.lease], p, Date.now())) throw Error('Lease no longer live');
+    next.dispatches[d.id].status = 'running'; });
   return d;
 }
 export function finishDispatch({ root = defaultRoot, id, status, reason, resetAt, evidence }) {
@@ -429,9 +671,15 @@ export function finishDispatch({ root = defaultRoot, id, status, reason, resetAt
     return { id, status, correctionCount: job.correctionCount };
   });
 }
-export function checkDevice({ root = defaultRoot, claim, result, required = false, evidence }) {
+export function checkDevice({ root = defaultRoot, claim, result, required = false, evidence, lease, token }) {
   safeId(claim);
   return mutateState(root, null, s => {
+    // A row only counts while its lease is live and any reset it owed has been acknowledged.
+    if (lease != null) {
+      const p = loadPolicy(root); devicePool(p); const req = leaseRequest(s, lease, token);
+      if (!leaseLive(req, p, Date.now())) throw Error('Lease expired; stop using the device');
+      if (req.resetRequired) throw Error('Lease reset not acknowledged');
+    }
     const item = s.deviceAttempts[claim] ?? { attempts: 0, required };
     if (item.attempts >= 2 && !item.closed) throw Error('Device check parked; changed applicability or maintainer decision required');
     if (item.closed) throw Error('Accepted check is closed');
@@ -463,7 +711,7 @@ export async function main(args = process.argv.slice(2)) {
   const [command, ...rest] = args; const a = flags(rest); const root = a.root ? path.resolve(a.root) : defaultRoot;
   if (command === 'status') {
     const s = loadState(root);
-    const { jobs, dispatches, ...summary } = s;
+    const { jobs, dispatches, deviceLeases, ...summary } = s;
     return { ...summary, jobCount: Object.keys(jobs).length, dispatchCount: Object.keys(dispatches).length, liveDispatches: Object.entries(dispatches).filter(([, entry]) => active.has(entry.status)).map(([id, entry]) => ({ id, ...entry })) };
   }
   if (command === 'route') return selectRoute({ root, jobId: a.job, mode: a.mode, role: a.role, workClass: a['work-class'], testOnly: a['test-only'] === 'true', gate: a.gate, effortReason: a['effort-reason'], escalation: a.trigger ? { kind: a.trigger, evidence: a.evidence } : undefined, changedContracts: a.contracts?.split(',').filter(Boolean), scoutEffort: a.effort, optIn: a['opt-in'] ?? null, healthCheck: a['health-check'] === 'true' });
@@ -471,7 +719,12 @@ export async function main(args = process.argv.slice(2)) {
   if (command === 'finish' || command === 'failure') return finishDispatch({ root, id: a.id, status: a.status ?? 'failed', reason: a.reason, resetAt: a.reset, evidence: a.evidence });
   if (command === 'refresh') return mutateState(root, null, s => { if (!['codex', 'agy', 'openrouter', 'claude'].includes(a.provider)) throw Error('Invalid provider'); delete s.routeHealth[a.provider]; return { refreshed: a.provider }; });
   if (command === 'adopt-revision') return adoptRevision({ root, from: a.from });
-  if (command === 'device') return checkDevice({ root, claim: a.claim, result: a.result, required: a.required === 'true', evidence: a.evidence });
+  if (command === 'device') return checkDevice({ root, claim: a.claim, result: a.result, required: a.required === 'true', evidence: a.evidence, lease: a.lease, token: a.token });
+  if (command === 'lease-acquire') return leaseAcquire({ root, pool: a.pool, request: a.request, token: a.token, holder: a.holder, priority: a.priority, ticket: a.ticket });
+  if (command === 'lease-renew') return leaseRenew({ root, request: a.request, token: a.token });
+  if (command === 'lease-release') return leaseRelease({ root, request: a.request, token: a.token, clean: a.clean });
+  if (command === 'lease-reset-done') return leaseResetDone({ root, request: a.request, token: a.token, evidence: a.evidence, stranded: a.stranded });
+  if (command === 'lease-status') return leaseStatus({ root, pool: a.pool });
   if (command === 'state') return mutateState(root, Number(a.generation), s => {
     const patch = read(a.file); const allowed = ['batch', 'stage', 'queue', 'acceptedReceipts', 'pendingClaims', 'parkedChecks', 'integrations', 'cutoverEvidence', 'activation', 'activeRevision'];
     for (const key of Object.keys(patch)) if (!allowed.includes(key)) throw Error(`State field not patchable: ${key}`);
@@ -481,7 +734,7 @@ export async function main(args = process.argv.slice(2)) {
     let input = ''; for await (const chunk of process.stdin) input += chunk;
     return hook(JSON.parse(input), { root });
   }
-  return { usage: ['status', 'route --job ID --mode scout|implement|review [--role ROLE] [--work-class code|records|device|documents] [--opt-in codex|agy [--health-check true]]', 'register --file ABS_DISPATCH_JSON', 'finish --id ID --status completed|partial|failed --evidence PATH', 'failure --id ID --reason quota|unavailable|failed [--reset ISO] --evidence PATH', 'refresh --provider NAME', 'adopt-revision --from PREVIOUS_REVISION', 'state --file PATCH_JSON --generation N', 'device --claim ID --result pass|inconclusive|fail --required true --evidence PATH'], notes: 'No model invocation. State and dispatch locks fail closed; inspect owner before removing abandoned locks.' };
+  return { usage: ['status', 'route --job ID --mode scout|implement|review [--role ROLE] [--work-class code|records|device|documents] [--opt-in codex|agy [--health-check true]]', 'register --file ABS_DISPATCH_JSON', 'finish --id ID --status completed|partial|failed --evidence PATH', 'failure --id ID --reason quota|unavailable|failed [--reset ISO] --evidence PATH', 'refresh --provider NAME', 'adopt-revision --from PREVIOUS_REVISION', 'state --file PATCH_JSON --generation N', 'device --claim ID --result pass|inconclusive|fail --required true --evidence PATH [--lease REQUEST --token TOKEN]', 'lease-acquire --pool P --request R --token T --holder H --priority CLASS --ticket N', 'lease-renew --request R --token T', 'lease-release --request R --token T [--clean CENSUS_PATH]', 'lease-reset-done --request R --token T --evidence PATH [--stranded PKG1,PKG2]', 'lease-status [--pool P]'], notes: 'No model invocation. State and dispatch locks fail closed; inspect owner before removing abandoned locks.' };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().then(value => console.log(JSON.stringify(value, null, 2))).catch(error => { console.error(`Workflow blocked: ${error.message}`); process.exitCode = process.argv[2] === 'hook' ? 2 : 1; });
