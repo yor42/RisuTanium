@@ -84,6 +84,7 @@ import { splitAtOpenCbsSpan } from "../chatShell/streamSpans";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
 import { classifyReplyOutcome, noteUnitAlerted, noteUnitFailure, recordReplyOutcome, setReplyMark, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, nativeNoticeArmOf, noteReplySound } from "./replyNotice";
+import { raceAbort } from "./abortRace";
 
 export interface OpenAIChat{
     role: 'system'|'user'|'assistant'|'function'
@@ -97,27 +98,32 @@ export interface OpenAIChat{
     cachePoint?: boolean
 }
 
-async function runChatOutputListeners(char: any, chat: any, characterIndex: number, chatIndex: number, messageIndex: number){
+/** False when the unit's signal abandoned a listener; no later listener is called then. */
+async function runChatOutputListeners(char: any, chat: any, characterIndex: number, chatIndex: number, messageIndex: number, signal?: AbortSignal | null): Promise<boolean>{
     if(pluginV2.chatOutput.size === 0){
-        return
+        return true
     }
 
     const charSnapshot = $state.snapshot(char)
     const chatSnapshot = $state.snapshot(chat)
     for(const listener of pluginV2.chatOutput){
         try {
-            await listener({
+            const raced = await raceAbort(signal, () => listener({
                 char: charSnapshot,
                 chat: chatSnapshot,
                 characterIndex,
                 chatIndex,
                 messageIndex,
-            })
+            }), { label: 'A chat output listener' })
+            if(!raced.settled){
+                return false
+            }
         }
         catch(e) {
             console.error(e)
         }
     }
+    return true
 }
 
 export interface MultiModal{
@@ -657,12 +663,13 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
         if(parsedCtx){
             expandChatVariables(parsedCtx, subject, currentChar, undefined)
             // The result of the output trigger is read for nothing: a recovered reply never asks for another request.
-            await runTrigger(currentChar, 'output', { chat: parsedCtx.chat, origin, signal: unit.signal })
+            // The reply is already in the chat: an abandoned trigger or listener ends the hooks, and the apply still finishes.
+            await raceAbort(unit.signal, () => runTrigger(currentChar, 'output', { chat: parsedCtx.chat, origin, signal: unit.signal }), { label: 'The output trigger' })
         }
         const listenerCtx = subject.resolve()
         if(listenerCtx){
             const messageIndex = listenerCtx.chat.message.findIndex((message) => message.chatId === key)
-            await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, messageIndex)
+            await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, messageIndex, unit.signal)
         }
         const markCtx = subject.resolve()
         if(markCtx && !isChatOnScreen(origin)){
@@ -809,7 +816,7 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
             if(parsedCtx){
                 expandChatVariables(parsedCtx, subject, currentChar, undefined)
                 // The result of the output trigger is read for nothing: a recovered reply never asks for another request.
-                await runTrigger(currentChar, 'output', { chat: parsedCtx.chat, origin, signal: unit.signal })
+                await raceAbort(unit.signal, () => runTrigger(currentChar, 'output', { chat: parsedCtx.chat, origin, signal: unit.signal }), { label: 'The output trigger' })
             }
             // Only the emotion rewrite applies: an image generation tag is left as it came.
             const inlayCtx = subject.resolve()
@@ -822,7 +829,7 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
             const listenerCtx = subject.resolve()
             if(listenerCtx){
                 const messageIndex = listenerCtx.chat.message.findIndex((message) => message.chatId === key)
-                await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, messageIndex)
+                await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, messageIndex, unit.signal)
             }
         }
         const markCtx = subject.resolve()
@@ -1432,7 +1439,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     {
         let description = risuChatParser((DBState.db.promptPreprocess ? DBState.db.descriptionPrefix: '') + currentChar.desc, {chara: currentChar, subject, promptView})
 
-        const additionalInfo = await additionalInformations(currentChar, currentChat, promptView)
+        const additionalRaced = await raceAbort(abortSignal, () => additionalInformations(currentChar, currentChat, promptView), { label: 'The additional information search' })
+        if(!additionalRaced.settled){
+            return false
+        }
+        const additionalInfo = additionalRaced.value
 
         if(additionalInfo){
             description += '\n\n' + risuChatParser(additionalInfo, {chara: currentChar, subject, promptView})
@@ -1903,7 +1914,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     if(abortSignal.aborted){
         return false
     }
-    const triggerResult = await runTrigger(currentChar, 'start', {chat: currentChat, origin, promptFirstSent: firstMessageSent, signal: abortSignal})
+    const startRaced = await raceAbort(abortSignal, () => runTrigger(currentChar, 'start', {chat: currentChat, origin, promptFirstSent: firstMessageSent, signal: abortSignal}), { label: 'The start trigger' })
+    if(!startRaced.settled){
+        return false
+    }
+    const triggerResult = startRaced.value
     if(triggerResult){
         // A trigger run resolves the origin by id alone, so it writes nothing
         // while the id has two holders. This send goes on with the holder it
@@ -2197,11 +2212,15 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         setProcessStage(origin, 2)
         stageTimings.stage2Start = Date.now()
         if(DBState.db.hanuraiEnable){
-            const hn = await hanuraiMemory(chats, {
+            const hnRaced = await raceAbort(abortSignal, () => hanuraiMemory(chats, {
                 currentTokens,
                 maxContextTokens,
                 tokenizer
-            })
+            }), { label: 'The memory summary' })
+            if(!hnRaced.settled){
+                return false
+            }
+            const hn = hnRaced.value
 
             if(hn === false){
                 return false
@@ -2212,7 +2231,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
         else if(DBState.db.hypav2){
             console.log("Current chat's hypaV2 Data: ", currentChat.hypaV2Data)
-            const sp = await hypaMemoryV2(chats, currentTokens, maxContextTokens, currentChat, nowChatroom, tokenizer, subject)
+            const spRaced = await raceAbort(abortSignal, () => hypaMemoryV2(chats, currentTokens, maxContextTokens, currentChat, nowChatroom, tokenizer, subject), { label: 'The memory summary' })
+            if(!spRaced.settled){
+                return false
+            }
+            const sp = spRaced.value
             if(sp.error){
                 console.log(sp)
                 throwError(sp.error, sp.errorSetting === 'summaryModel'
@@ -2232,7 +2255,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
         else if(DBState.db.hypaV3){
             console.log("Current chat's hypaV3 Data: ", currentChat.hypaV3Data)
-            const sp = await hypaMemoryV3(chats, currentTokens, maxContextTokens, currentChat, nowChatroom, tokenizer, subject)
+            const spRaced = await raceAbort(abortSignal, () => hypaMemoryV3(chats, currentTokens, maxContextTokens, currentChat, nowChatroom, tokenizer, subject), { label: 'The memory summary' })
+            if(!spRaced.settled){
+                return false
+            }
+            const sp = spRaced.value
             if(sp.error){
                 // Save new summary
                 if (sp.memory) {
@@ -2256,9 +2283,13 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             console.log("[Expected to be updated] chat's HypaV3Data: ", currentChat.hypaV3Data)
         }
         else{
-            const sp = await supaMemory(chats, currentTokens, maxContextTokens, currentChat, nowChatroom, tokenizer, {
+            const spRaced = await raceAbort(abortSignal, () => supaMemory(chats, currentTokens, maxContextTokens, currentChat, nowChatroom, tokenizer, {
                 asHyper: DBState.db.hypaMemory
-            }, subject)
+            }, subject), { label: 'The memory summary' })
+            if(!spRaced.settled){
+                return false
+            }
+            const sp = spRaced.value
             if(sp.error){
                 throwError(sp.error)
                 return false
@@ -3245,7 +3276,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 return endGone()
             }
             currentChat = parsedChat
-            const outputTriggerResult = await runTrigger(currentChar, 'output', {chat:currentChat, origin, signal: abortSignal})
+            const outputRaced = await raceAbort(abortSignal, () => runTrigger(currentChar, 'output', {chat:currentChat, origin, signal: abortSignal}), { label: 'The output trigger' })
+            if(!outputRaced.settled){
+                return false
+            }
+            const outputTriggerResult = outputRaced.value
             if(outputTriggerResult && outputTriggerResult.sendAIprompt){
                 resendChat = true
             }
@@ -3255,10 +3290,14 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 const inlayr = runInlayScreen(currentChar, outputMessage.data)
                 outputMessage.data = inlayr.text
                 if(inlayr.promise){
-                    const t = await inlayr.promise
+                    // The promise already exists: it is raced as itself, so the race always handles its rejection.
+                    const inlayRaced = await raceAbort(abortSignal, inlayr.promise, { label: 'The inlay image' })
+                    if(!inlayRaced.settled){
+                        return false
+                    }
                     const asyncInlayTarget = resolveReply()
                     if(asyncInlayTarget){
-                        asyncInlayTarget.ctx.chat.message[asyncInlayTarget.index].data = t
+                        asyncInlayTarget.ctx.chat.message[asyncInlayTarget.index].data = inlayRaced.value
                     }
                 }
             }
@@ -3266,7 +3305,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             if(!listenerCtx){
                 return endGone()
             }
-            await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, locateReply(listenerCtx.chat))
+            if(!(await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, locateReply(listenerCtx.chat), abortSignal))){
+                return false
+            }
         }
     }
     else{
@@ -3326,10 +3367,13 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     }
                     trackReply(replaceTarget.ctx.chat, replaceTarget.index)
                     if(inlayResult.promise){
-                        const p = await inlayResult.promise
+                        const inlayRaced = await raceAbort(abortSignal, inlayResult.promise, { label: 'The inlay image' })
+                        if(!inlayRaced.settled){
+                            return false
+                        }
                         const asyncInlayTarget = resolveReply()
                         if(asyncInlayTarget){
-                            asyncInlayTarget.ctx.chat.message[asyncInlayTarget.index].data = p
+                            asyncInlayTarget.ctx.chat.message[asyncInlayTarget.index].data = inlayRaced.value
                         }
                     }
                 }
@@ -3359,10 +3403,13 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     noteReplyPushed(generationId, origin.chaId, getSaveMarkCount())
                 }
                 if(inlayResult.promise){
-                    const p = await inlayResult.promise
+                    const inlayRaced = await raceAbort(abortSignal, inlayResult.promise, { label: 'The inlay image' })
+                    if(!inlayRaced.settled){
+                        return false
+                    }
                     const asyncInlayTarget = resolveReply()
                     if(asyncInlayTarget){
-                        asyncInlayTarget.ctx.chat.message[asyncInlayTarget.index].data = p
+                        asyncInlayTarget.ctx.chat.message[asyncInlayTarget.index].data = inlayRaced.value
                     }
                 }
                 mrerolls.push(result)
@@ -3389,7 +3436,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
         currentChat = parsedChat
 
-        const outputTriggerResult = await runTrigger(currentChar, 'output', {chat:currentChat, origin, signal: abortSignal})
+        const outputRaced = await raceAbort(abortSignal, () => runTrigger(currentChar, 'output', {chat:currentChat, origin, signal: abortSignal}), { label: 'The output trigger' })
+        if(!outputRaced.settled){
+            return false
+        }
+        const outputTriggerResult = outputRaced.value
         if(outputTriggerResult && outputTriggerResult.sendAIprompt){
             resendChat = true
         }
@@ -3398,7 +3449,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             if(!listenerCtx){
                 return endGone()
             }
-            await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, locateReply(listenerCtx.chat))
+            if(!(await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, locateReply(listenerCtx.chat), abortSignal))){
+                return false
+            }
         }
     }
 
@@ -3452,6 +3505,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         needsAutoContinue = true
     }
 
+    // A Stop that landed during the token count above ends the unit before it starts another request.
+    if(abortSignal.aborted){
+        return false
+    }
+
     if(needsAutoContinue){
         if(!subject.resolve()){
             return endGone()
@@ -3501,6 +3559,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     setProcessStage(origin, 4)
     stageTimings.stage4Start = Date.now()
 
+    // A Stop that landed during the igp request ends the unit before it resends.
+    if(abortSignal.aborted){
+        return false
+    }
+
     if(resendChat){
         stageTimings.stage4Duration = Date.now() - stageTimings.stage4Start
 
@@ -3541,8 +3604,14 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
             if(DBState.db.emotionProcesser === 'embedding'){
                 const hypaProcesser = new HypaProcesser()
-                await hypaProcesser.addText(emotionList.map((v) => 'emotion:' + v))
-                let searched = (await hypaProcesser.similaritySearchScored(result)).map((v) => {
+                const searchRaced = await raceAbort(abortSignal, async () => {
+                    await hypaProcesser.addText(emotionList.map((v) => 'emotion:' + v))
+                    return await hypaProcesser.similaritySearchScored(result)
+                }, { label: 'The emotion embedding search' })
+                if(!searchRaced.settled){
+                    return false
+                }
+                let searched = searchRaced.value.map((v) => {
                     v[0] = v[0].replace("emotion:",'')
                     return v
                 })
@@ -3725,7 +3794,10 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             }
 
 
-            await stableDiff(currentChar, msgStr, subject)
+            const diffRaced = await raceAbort(abortSignal, () => stableDiff(currentChar, msgStr, subject, abortSignal), { label: 'The image generation step' })
+            if(!diffRaced.settled){
+                return false
+            }
         }
     }
 

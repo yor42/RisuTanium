@@ -13,7 +13,7 @@ import { fillLang } from "src/lang/fill";
 import { addFetchLog } from "src/ts/globalApi.svelte"
 import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseChunk } from './request'
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type LLMParameter } from './shared'
-import { bodyIntercepterStore } from "src/ts/stores.svelte"
+import { notifyBodyInterceptors } from "./bodyInterceptors"
 import { isSecretRef, registerSensitive, resolveSecret } from "src/ts/secretRef"
 import { limitedField, readKeyField, sendArgKey, sendKeyLine } from "./secretKey"
 import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from "./toolLoop"
@@ -835,19 +835,12 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
         }
 
         if(data?.usageMetadata){
-            
-            for (const interceptor of bodyIntercepterStore) {
-                try {
-                    await interceptor.callback({
-                        usageMetadata: data.usageMetadata,
-                        modelStatus: data.modelStatus,
-                        promptFeedback: data.promptFeedback
-                    }, 'meta_gemini')
-                }
-                catch (e) {
-                    console.error(e)
-                }
-            }
+            // The response is already in hand: an abandoned interceptor ends the notification, not the reply.
+            await notifyBodyInterceptors(() => ({
+                usageMetadata: data.usageMetadata,
+                modelStatus: data.modelStatus,
+                promptFeedback: data.promptFeedback
+            }), 'meta_gemini', arg.abortSignal)
         }
         return parts
     }
@@ -1312,14 +1305,7 @@ function wrapToolStream(
                         continue
                     }
 
-                    for (const interceptor of bodyIntercepterStore) {
-                        try {
-                            await interceptor.callback(value, 'meta_gemini_stream')
-                        }
-                        catch (e) {
-                            console.error(e)
-                        }
-                    }
+                    await notifyBodyInterceptors(() => value, 'meta_gemini_stream', arg.abortSignal)
                     return controller.close()
                 }
                 

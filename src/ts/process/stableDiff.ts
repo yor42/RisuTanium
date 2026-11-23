@@ -28,7 +28,7 @@ async function resolveImageKey(value: string | Promise<string>): Promise<string|
     }
 }
 
-export async function stableDiff(currentChar:character,prompt:string,subject?:RunSubject){
+export async function stableDiff(currentChar:character,prompt:string,subject?:RunSubject,signal?:AbortSignal){
     let db = getDatabase()
 
     if(db.sdProvider === ''){
@@ -65,8 +65,12 @@ export async function stableDiff(currentChar:character,prompt:string,subject?:Ru
         useStreaming: false,
         noMultiGen: true,
         subject,
-    }, 'submodel')
+    }, 'submodel', signal)
 
+    // A stopped step raises no alert and starts no image generation.
+    if(signal?.aborted){
+        return false
+    }
 
     if(rq.type === 'fail'){
         alertError(rq.result)
