@@ -9,7 +9,7 @@ vi.mock('./request/request', () => ({ requestChatData: vi.fn() }))
 
 import { applyImageOrientation, generateAIImage } from './stableDiff'
 import { getDatabase, type character } from '../storage/database.svelte'
-import { globalFetch } from '../globalApi.svelte'
+import { globalFetch, readImage } from '../globalApi.svelte'
 import { absorbLegacyForTest } from '../connections/tests/legacyFixture'
 
 describe('DALL-E reads one line of a multi-line OpenAI key', () => {
@@ -23,6 +23,38 @@ describe('DALL-E reads one line of a multi-line OpenAI key', () => {
     const [, init] = vi.mocked(globalFetch).mock.calls[0]
     expect((init as { headers: Record<string, string> }).headers.Authorization).toBe('Bearer sk-test-A')
   })
+})
+
+describe('a reference image the access control list refuses (G)', () => {
+  const ACL_STRINGS = [
+    'Command plugin:fs|read_file not allowed by ACL',
+    'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file',
+  ]
+  const reference = '/data/user/0/io.github.yor42.risutanium/shared_prefs/secrets.xml'
+
+  function characterWith(image: string): character {
+    return { image, chaId: 'cha' } as unknown as character
+  }
+
+  const providers: Array<[string, Record<string, unknown>]> = [
+    ['wavespeed character reference', { sdProvider: 'wavespeed', wavespeedImage: { key: 'k', reference_mode: 'character' } }],
+    ['novelai character reference', { sdProvider: 'novelai', NAIImgModel: 'nai-diffusion-4-5-full', NAIApiKey: 'k', NAII2I: false, NAIImgConfig: { width: 512, height: 512, reference_mode: 'character', character_image: '' } }],
+    ['novelai image to image', { sdProvider: 'novelai', NAIImgModel: 'nai-diffusion-3', NAIApiKey: 'k', NAII2I: true, NAIImgConfig: { width: 512, height: 512, reference_mode: '', image: '' } }],
+  ]
+
+  test.each(providers.flatMap(([name, config]) => ACL_STRINGS.map((text) => [name, config, text] as const)))(
+    '%s rejects with the refusal and makes no provider call',
+    async (_name, config, text) => {
+      vi.mocked(getDatabase).mockReturnValue(config as unknown as ReturnType<typeof getDatabase>)
+      vi.mocked(globalFetch).mockClear()
+      vi.mocked(readImage).mockRejectedValue(text)
+
+      await expect(generateAIImage('a prompt', characterWith(reference), '', 'inlay')).rejects.toBe(text)
+
+      expect(readImage).toHaveBeenCalledWith(reference)
+      expect(globalFetch).not.toHaveBeenCalled()
+    },
+  )
 })
 
 describe('applyImageOrientation', () => {

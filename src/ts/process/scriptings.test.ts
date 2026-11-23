@@ -306,3 +306,81 @@ test('a listener registered after the code loaded is seen by the next run', asyn
   const after = await runScripted(code, options)
   expect(after.res).toBe('original edited')
 })
+
+const REFUSAL_STRINGS = [
+  'Command plugin:fs|read_file not allowed by ACL',
+  'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file',
+]
+
+test.each(REFUSAL_STRINGS)('getCharacterImage and getPersonaImage return an empty string, log, and raise no alert when the read is refused: %s', async (refusal) => {
+  const { readImage } = await import('../globalApi.svelte')
+  const { alertError } = await import('../alert')
+  const { getUserIcon } = await import('../util')
+  const { writeInlayImage } = await import('./files/inlays')
+  vi.mocked(readImage).mockRejectedValue(refusal)
+  vi.mocked(getUserIcon).mockReturnValue('/data/user/0/app/shared_prefs/x.png')
+  vi.mocked(alertError).mockClear()
+  vi.mocked(writeInlayImage).mockClear()
+  const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  try {
+    const result = await runScripted(
+      `
+        onStart = async(function(id)
+          return "[" .. getCharacterImage(id) .. "|" .. getPersonaImage(id) .. "]"
+        end)
+      `,
+      {
+        char: { type: 'character', image: '/data/user/0/app/shared_prefs/x.png' } as never,
+        chat: { message: [] } as never,
+        setVar: () => false,
+        getVar: () => 'null',
+        lowLevelAccess: true,
+        mode: 'start',
+      }
+    )
+    expect(result.res).toBe('[|]')
+    expect(logged).toHaveBeenCalled()
+    expect(alertError).not.toHaveBeenCalled()
+    expect(writeInlayImage).not.toHaveBeenCalled()
+  } finally {
+    logged.mockRestore()
+    vi.mocked(readImage).mockReset()
+    vi.mocked(getUserIcon).mockReset()
+  }
+})
+
+test.each(REFUSAL_STRINGS)('generateImage with a refused reference ends the run without an alert and writes no inlay: %s', async (refusal) => {
+  const { generateAIImage } = await import('./stableDiff')
+  const { alertError } = await import('../alert')
+  const { writeInlayImage } = await import('./files/inlays')
+  vi.mocked(generateAIImage).mockRejectedValue(refusal)
+  vi.mocked(alertError).mockClear()
+  vi.mocked(writeInlayImage).mockClear()
+  const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  try {
+    const result = await runScripted(
+      `
+        onStart = async(function(id)
+          generateImage(id, "a prompt"):await()
+          return "continued"
+        end)
+      `,
+      {
+        char: { type: 'character', image: '/data/user/0/app/shared_prefs/x.png' } as never,
+        chat: { message: [] } as never,
+        setVar: () => false,
+        getVar: () => 'null',
+        lowLevelAccess: true,
+        mode: 'start',
+      }
+    )
+    expect(result.res).not.toBe('continued')
+    expect(logged).toHaveBeenCalled()
+    expect(logged.mock.calls.some((call) => call.some((arg) => String(arg).includes(refusal)))).toBe(true)
+    expect(alertError).not.toHaveBeenCalled()
+    expect(writeInlayImage).not.toHaveBeenCalled()
+  } finally {
+    logged.mockRestore()
+    vi.mocked(generateAIImage).mockReset()
+  }
+})

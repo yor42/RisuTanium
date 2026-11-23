@@ -44,6 +44,28 @@
     },
     "shell:allow-kill",
     "shell:allow-stdin-write",
-    "http:default"
+    "http:default",
+    "dialog:allow-open",
+    "fs:allow-read-file",
+    "fs:allow-open",
+    "fs:allow-read",
+    "fs:allow-seek",
+    "fs:allow-fstat",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-exists",
+    "fs:deny-default",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        "$APPDATA",
+        "$APPDATA/*",
+        "$APPDATA/**/*",
+        "$DOWNLOAD/*"
+      ]
+    }
   ]
 }

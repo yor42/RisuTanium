@@ -405,12 +405,12 @@ mod tests {
     #[test]
     fn exists_answers_for_file_directory_missing_and_root() {
         let s = Scratch::new("exists");
-        fs::create_dir_all(s.base.join("dir")).unwrap();
-        fs::write(s.base.join("dir").join("file"), b"x").unwrap();
-        assert!(exists_key(&s.base, "dir/file").unwrap());
-        assert!(exists_key(&s.base, "dir").unwrap());
-        assert!(!exists_key(&s.base, "dir/none").unwrap());
-        assert!(!exists_key(&s.base, "missing/child").unwrap());
+        fs::create_dir_all(s.base.join("assets")).unwrap();
+        fs::write(s.base.join("assets").join("file"), b"x").unwrap();
+        assert!(exists_key(&s.base, "assets/file").unwrap());
+        assert!(exists_key(&s.base, "assets").unwrap());
+        assert!(!exists_key(&s.base, "assets/none").unwrap());
+        assert!(!exists_key(&s.base, "inlays/child").unwrap());
         assert!(exists_key(&s.base, "").unwrap());
     }
 
@@ -418,10 +418,11 @@ mod tests {
     #[test]
     fn exists_follows_links_and_a_dangling_link_does_not_exist() {
         let s = Scratch::new("exists-link");
-        std::os::unix::fs::symlink(&s.sentinel, s.base.join("live")).unwrap();
-        std::os::unix::fs::symlink(s.root.join("nowhere"), s.base.join("dangling")).unwrap();
-        assert!(exists_key(&s.base, "live").unwrap());
-        assert!(!exists_key(&s.base, "dangling").unwrap());
+        fs::create_dir_all(s.base.join("assets")).unwrap();
+        std::os::unix::fs::symlink(&s.sentinel, s.base.join("assets").join("live")).unwrap();
+        std::os::unix::fs::symlink(s.root.join("nowhere"), s.base.join("assets").join("dangling")).unwrap();
+        assert!(exists_key(&s.base, "assets/live").unwrap());
+        assert!(!exists_key(&s.base, "assets/dangling").unwrap());
     }
 
     #[test]
@@ -452,9 +453,9 @@ mod tests {
     #[test]
     fn mkdir_creates_nested_directories_and_repeating_is_not_an_error() {
         let s = Scratch::new("mkdir");
-        mkdir_all_key(&s.base, "a/b/c").unwrap();
-        mkdir_all_key(&s.base, "a/b/c").unwrap();
-        assert!(s.base.join("a").join("b").join("c").is_dir());
+        mkdir_all_key(&s.base, "assets/b/c").unwrap();
+        mkdir_all_key(&s.base, "assets/b/c").unwrap();
+        assert!(s.base.join("assets").join("b").join("c").is_dir());
         mkdir_all_key(&s.base, "").unwrap();
         assert!(s.base.is_dir());
     }
@@ -471,45 +472,51 @@ mod tests {
     #[test]
     fn remove_deletes_a_file_and_names_a_missing_one_with_the_os_error_suffix() {
         let s = Scratch::new("remove");
-        fs::create_dir_all(s.base.join("d")).unwrap();
-        fs::write(s.base.join("d").join("f"), b"x").unwrap();
-        remove_key(&s.base, "d/f").unwrap();
-        assert!(!s.base.join("d").join("f").exists());
-        let message = remove_key(&s.base, "d/f").unwrap_err();
+        fs::create_dir_all(s.base.join("assets")).unwrap();
+        fs::write(s.base.join("assets").join("f"), b"x").unwrap();
+        remove_key(&s.base, "assets/f").unwrap();
+        assert!(!s.base.join("assets").join("f").exists());
+        let message = remove_key(&s.base, "assets/f").unwrap_err();
         assert!(message.ends_with("(os error 2)"), "{}", message);
-        let message = remove_key(&s.base, "missing/child").unwrap_err();
+        let message = remove_key(&s.base, "inlays/child").unwrap_err();
         assert!(message.ends_with("(os error 2)") || message.ends_with("(os error 3)"), "{}", message);
     }
 
     #[test]
     fn remove_takes_an_empty_directory_but_never_a_full_one() {
         let s = Scratch::new("remove-dir");
-        fs::create_dir_all(s.base.join("empty")).unwrap();
-        fs::create_dir_all(s.base.join("full")).unwrap();
-        fs::write(s.base.join("full").join("f"), b"x").unwrap();
-        remove_key(&s.base, "empty").unwrap();
-        assert!(!s.base.join("empty").exists());
-        assert!(remove_key(&s.base, "full").is_err());
-        assert_eq!(fs::read(s.base.join("full").join("f")).unwrap(), b"x");
+        fs::create_dir_all(s.base.join("assets").join("empty")).unwrap();
+        fs::create_dir_all(s.base.join("assets").join("full")).unwrap();
+        fs::write(s.base.join("assets").join("full").join("f"), b"x").unwrap();
+        remove_key(&s.base, "assets/empty").unwrap();
+        assert!(!s.base.join("assets").join("empty").exists());
+        assert!(remove_key(&s.base, "assets/full").is_err());
+        assert_eq!(fs::read(s.base.join("assets").join("full").join("f")).unwrap(), b"x");
     }
 
     #[test]
     fn remove_takes_names_that_cannot_be_created() {
         let s = Scratch::new("remove-odd");
-        fs::write(s.base.join(".hidden"), b"x").unwrap();
+        fs::create_dir_all(s.base.join("assets")).unwrap();
+        fs::write(s.base.join("assets").join(".hidden"), b"x").unwrap();
         fs::write(s.base.join("risu-write-0123456789abcdef.tmp"), b"x").unwrap();
-        remove_key(&s.base, ".hidden").unwrap();
+        remove_key(&s.base, "assets/.hidden").unwrap();
         remove_key(&s.base, "risu-write-0123456789abcdef.tmp").unwrap();
-        assert_eq!(fs::read_dir(&s.base).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(s.base.join("assets")).unwrap().count(), 0);
+        assert!(!s.base.join("risu-write-0123456789abcdef.tmp").exists());
+        let names: Vec<String> =
+            fs::read_dir(&s.base).unwrap().map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        assert_eq!(names, vec!["assets".to_string()]);
     }
 
     #[cfg(unix)]
     #[test]
     fn remove_of_a_link_removes_the_link_and_not_its_target() {
         let s = Scratch::new("remove-link");
-        std::os::unix::fs::symlink(&s.sentinel, s.base.join("link")).unwrap();
-        remove_key(&s.base, "link").unwrap();
-        assert!(fs::symlink_metadata(s.base.join("link")).is_err());
+        fs::create_dir_all(s.base.join("assets")).unwrap();
+        std::os::unix::fs::symlink(&s.sentinel, s.base.join("assets").join("link")).unwrap();
+        remove_key(&s.base, "assets/link").unwrap();
+        assert!(fs::symlink_metadata(s.base.join("assets").join("link")).is_err());
         assert!(s.sentinel_intact());
     }
 
@@ -520,9 +527,10 @@ mod tests {
         let target = s.root.join("elsewhere");
         fs::create_dir_all(&target).unwrap();
         fs::write(target.join("f"), b"x").unwrap();
-        std::os::unix::fs::symlink(&target, s.base.join("link")).unwrap();
-        remove_key(&s.base, "link").unwrap();
-        assert!(fs::symlink_metadata(s.base.join("link")).is_err());
+        fs::create_dir_all(s.base.join("assets")).unwrap();
+        std::os::unix::fs::symlink(&target, s.base.join("assets").join("link")).unwrap();
+        remove_key(&s.base, "assets/link").unwrap();
+        assert!(fs::symlink_metadata(s.base.join("assets").join("link")).is_err());
         assert_eq!(fs::read(target.join("f")).unwrap(), b"x");
     }
 

@@ -10,7 +10,9 @@ vi.mock('./stableDiff', () => ({
     generateAIImage: vi.fn(),
 }))
 
-import { updateInlayScreen } from './inlayScreen'
+import { runInlayScreen, updateInlayScreen } from './inlayScreen'
+import { writeInlayImage } from './files/inlays'
+import { generateAIImage } from './stableDiff'
 
 type NewGenData = character['newGenData']
 type NewGenDataShape = NonNullable<NewGenData>
@@ -308,5 +310,29 @@ describe('updateInlayScreen', () => {
             expect(char.newGenData.prompt).toBe(IMGGEN_PROMPT_DEFAULT)
             expect(typeof char.newGenData.prompt).toBe('string')
         })
+    })
+})
+
+describe('runInlayScreen', () => {
+    it.each([
+        ['release', 'Command plugin:fs|read_file not allowed by ACL'],
+        ['debug', 'fs.read_file not allowed. Permissions associated with this command: fs:allow-read-file'],
+    ])('G: an image tag whose generation rejects with the access control list string (%s wording) rejects the promise with that string and writes no inlay', async (_wording, refusal) => {
+        vi.mocked(generateAIImage).mockReset()
+        vi.mocked(writeInlayImage).mockReset()
+        vi.mocked(generateAIImage).mockRejectedValue(refusal)
+        const char = makeChar({
+            viewScreen: 'imggen',
+            inlayViewScreen: true,
+            newGenData: { prompt: 'best quality, {{slot}}', negative: 'worse quality', instructions: '', emotionInstructions: '' },
+        })
+
+        const result = runInlayScreen(char, 'Hello <ImgGen="a cat">')
+
+        expect(result.promise).toBeDefined()
+        const outcome = await result.promise!.then(() => 'resolved' as const, (error: unknown) => error)
+        expect(outcome).toBe(refusal)
+        expect(generateAIImage).toHaveBeenCalledTimes(1)
+        expect(writeInlayImage).not.toHaveBeenCalled()
     })
 })

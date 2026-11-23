@@ -139,11 +139,17 @@ describe('the platform files', () => {
         }
     })
 
-    // Guard: passes before and after. Android merges only an Android platform file, and none may exist.
-    test('no Android platform file exists, and the Windows and Linux files set nothing but the file associations', () => {
-        for (const name of ['tauri.android.conf.json', 'tauri.android.conf.json5', 'Tauri.android.toml']) {
+    // Guard: passes before and after. Android's intent filters come from the base associations only, so the one Android platform file sets nothing but the asset scope.
+    test('the Android platform file sets only the asset scope, and the Windows and Linux files set nothing but the file associations', () => {
+        for (const name of ['tauri.android.conf.json5', 'Tauri.android.toml']) {
             expect(existsSync(tauriDir(name)), name).toBe(false)
         }
+        expect(readConfig('tauri.android.conf.json')).toEqual({
+            app: { security: { assetProtocol: { scope: ['$APPDATA/assets/**/*', '$APPDATA/inlays/b-*'] } } },
+        })
+        expect(effectiveAssociations('tauri.android.conf.json')).toEqual(
+            readConfig('tauri.conf.json')?.bundle?.fileAssociations ?? [],
+        )
         for (const name of ['tauri.windows.conf.json', 'tauri.linux.conf.json']) {
             const config = readConfig(name)
             if (config === null) {
