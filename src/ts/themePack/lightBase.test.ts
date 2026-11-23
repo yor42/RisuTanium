@@ -191,7 +191,9 @@ describe('the second judgement is the eligibility proof', () => {
         expect(judgeAreaSheet('chat', ORDER_SHEET, undefined, 'chat').result.ok).toBe(true)
         expect(await baseOf(['light'], ORDER_SHEET)).toBe('light')
         const canonical = judgeAreaSheet('chat', ORDER_SHEET, undefined, 'chat').canonical
-        expect(judgeAreaSheet('chat', `${canonical}\n${LIGHT_BASE_JUDGE_PREFIX}`, undefined, 'chat').result.ok).toBe(false)
+        // the pack first, the base after it: the base's own muted text wins and the pair no longer reads, which is a contrast note since #560 PR2 (the eligibility proof reads contrast notes, not only refusals)
+        const reversed = judgeAreaSheet('chat', `${canonical}\n${LIGHT_BASE_JUDGE_PREFIX}`, undefined, 'chat').result
+        expect((reversed.notes ?? []).some((note) => note.rule === 'contrast')).toBe(true)
     })
 
     test('the applied text is the first judgement text; the prefix never reaches it', async () => {

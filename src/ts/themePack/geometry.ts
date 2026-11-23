@@ -10,12 +10,14 @@
 //      The estimate is a model of the DOM (not a measurement): it is an upper bound built from the part list and token reads.
 import { decls } from './csslit'
 import { parseConcrete } from './failclosed'
+import type { NoteKind } from './failclosed'
 
-/** One rejection reason of the validator. */
+/** One finding of the validator; `rule` is set on notes (a finding that does not refuse), never on a refusal. */
 export interface LintError {
     selector: string
     prop: string
     why: string
+    rule?: NoteKind
 }
 
 /** A chain of ancestor parts, outermost first, whose summed horizontal inset is bounded. */
@@ -278,6 +280,7 @@ const UNREADABLE_FIX_BORDER = 'write each border side as a px or rem width, 0, t
 export function geometryPass(text: string, reg: GeometryRegistry): GeometryErrors {
     const errs: GeometryErrors = []
     const fail = (selector: string, prop: string, why: string): void => { errs.push({ selector, prop, why }) }
+    const note = (selector: string, prop: string, why: string): void => { errs.push({ selector, prop, why, rule: 'layout' }) }
     const all = decls(text).filter((d) => !d.ctx.keyframes)
     const app: Map<string, string> = reg.app || new Map<string, string>()
     const byName = new Map<string, TokenRead[]>()
@@ -403,7 +406,7 @@ export function geometryPass(text: string, reg: GeometryRegistry): GeometryError
             per.set(p, across(kinds?.padding ?? blankSides(), floor, floor) + across(kinds?.border ?? blankSides(), 0, 0) + across(kinds?.margin ?? blankSides(), 0, 0))
         }
         const sum = [...per.values()].reduce((a, b) => a + b, 0), budget = ch.budget ?? 120
-        if (sum > budget) fail(ch.parts.filter((p) => per.get(p)! > 0).map((p) => `[data-part="${p}"]`).join(' '), 'padding', `ancestor padding along ${ch.name} sums to ${Math.round(sum)} px of ${VIEW_W} (${[...per].filter(([, v]) => v).map(([p, v]) => p + ' ' + Math.round(v)).join(', ')}): over the ${budget} px budget that keeps ${ch.minInner ?? 240} px for the protected block on a phone (DD-260)`)
+        if (sum > budget) note(ch.parts.filter((p) => per.get(p)! > 0).map((p) => `[data-part="${p}"]`).join(' '), 'padding', `ancestor padding along ${ch.name} sums to ${Math.round(sum)} px of ${VIEW_W} (${[...per].filter(([, v]) => v).map(([p, v]) => p + ' ' + Math.round(v)).join(', ')}): over the ${budget} px budget that keeps ${ch.minInner ?? 240} px for the protected block on a phone (DD-260)`)
     }
 
     // 2. the worst-case height of each protected sheet
@@ -445,11 +448,11 @@ export function geometryPass(text: string, reg: GeometryRegistry): GeometryError
             const fixed = sh.fixed ? sum(sh.fixed, (b) => { bad = b }) : 0
             if (bad || fixed === null) { fail(':root', bad || sh.name, `${sh.name}: the fixed part of the sheet cannot be judged (${bad})`); continue }
             (errs.heights ||= []).push([sh.name, Math.round(content), Math.round(Math.min(content, sh.cap)), Math.round(fixed)])
-            if (fixed + (sh.minScroll ?? 96) > sh.cap) fail(':root', sh.name, `${sh.name}: with every size at the largest value this pack gives it, the part of the sheet that does not scroll is about ${Math.round(fixed)} px and leaves no room for the scrolling actions under the ${Math.round(sh.cap)} px the page allows (DD-256)`)
+            if (fixed + (sh.minScroll ?? 96) > sh.cap) note(':root', sh.name, `${sh.name}: with every size at the largest value this pack gives it, the part of the sheet that does not scroll is about ${Math.round(fixed)} px and leaves no room for the scrolling actions under the ${Math.round(sh.cap)} px the page allows (DD-256)`)
             continue
         }
         (errs.heights ||= []).push([sh.name, Math.round(content)])
-        if (content > VIEW_H) fail(':root', sh.name, `${sh.name}: with every size at the largest value this pack gives it, the sheet is about ${Math.round(content)} px tall and does not fit a ${VIEW_W}x${VIEW_H} phone (${VIEW_H} px): its buttons would leave the screen (DD-256)`)
+        if (content > VIEW_H) note(':root', sh.name, `${sh.name}: with every size at the largest value this pack gives it, the sheet is about ${Math.round(content)} px tall and does not fit a ${VIEW_W}x${VIEW_H} phone (${VIEW_H} px): its buttons would leave the screen (DD-256)`)
     }
     return errs
 }

@@ -55,6 +55,15 @@ function readErrors(value: unknown): LintError[] | null {
     return errors
 }
 
+/** `result.notes`: absent stays absent; a present field must be a non-empty list whose every item names its rule, or the whole read fails. */
+function readNotes(value: unknown): LintError[] | undefined | null {
+    if (value === undefined) {
+        return undefined
+    }
+    const notes = readErrors(value)
+    return notes === null || notes.length === 0 || notes.some((note) => note.rule === undefined) ? null : notes
+}
+
 /** Safe-integer offsets in order, each span inside the canonical text and starting with the token its form names. */
 function readResources(value: unknown, canonical: string): ResourceSpan[] | null {
     if (!Array.isArray(value)) {
@@ -110,7 +119,8 @@ function readAreaSheet(value: unknown): AreaSheetJudgement | null {
     }
     const { ok, errors, name } = value.result
     const errorList = readErrors(errors)
-    if (typeof ok !== 'boolean' || errorList === null) {
+    const noteList = readNotes(value.result.notes)
+    if (typeof ok !== 'boolean' || errorList === null || noteList === null) {
         return null
     }
     const resources = readResources(value.resources, value.canonical)
@@ -119,7 +129,8 @@ function readAreaSheet(value: unknown): AreaSheetJudgement | null {
     if (resources === null || fontFaceBlocks === null || warnings === null) {
         return null
     }
-    return { result: { ok, errors: errorList, name: typeof name === 'string' ? name : '' }, canonical: value.canonical, resources, fontFaceBlocks, warnings }
+    const resultName = typeof name === 'string' ? name : ''
+    return { result: noteList === undefined ? { ok, errors: errorList, name: resultName } : { ok, errors: errorList, notes: noteList, name: resultName }, canonical: value.canonical, resources, fontFaceBlocks, warnings }
 }
 
 /** Narrows a worker answer into a fresh judgement, or null when any part is out of shape. Only the applied areas are read. */

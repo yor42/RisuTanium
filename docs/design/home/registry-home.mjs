@@ -174,17 +174,17 @@ const solve = (v, T, d = 0) => (d > 12 ? v : v.replace(/var\(\s*(--[\w-]+)\s*(?:
 const lum1 = (c) => { const f = c.slice(0, 3).map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2]; };
 const ratio = (a, b) => { const x = lum1(a), y = lum1(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 export function homeSupplement(css) {
-  const errs = []; const fail = (selector, prop, why) => errs.push({ selector, prop, why });
+  const errs = []; const fail = (selector, prop, why, rule) => errs.push(rule ? { selector, prop, why, rule } : { selector, prop, why });
   const text = chat.normalise(css);
   for (const m of text.matchAll(/(?<![\w-])(url|image-set|image|src|element)\s*\(/g)) fail('(stylesheet)', m[1] + '()', `${m[1]}() loads or draws a resource: a pack carries none (images and fonts are out of scope, THEMING.md)`);
   const T = new Map(APP_TOKENS); const own = []; for (const d of decls(text)) { if (!d.prop.startsWith('--')) continue; own.push(d); if (d.ctx.selector.trim() === ':root') T.set(d.prop, d.value.replace(/\s*!important\s*$/, '').trim()); }
   for (const d of own) if (LOCKED.includes(d.prop)) fail(d.ctx.selector.trim(), d.prop, `${d.prop} is locked: a critical surface reads it in place of the shared token that the surfaces check judges (set its source instead)`);
   const on = parseConcrete(solve(T.get('--home-on-accent') || '', T)), acc = parseConcrete(solve(T.get('--nexus-accent') || '', T));
   if (!on || !acc) fail(':root', '--home-on-accent', 'the primary button label and fill cannot be checked (a colour that does not resolve)');
-  else { const k = ratio(on[3] < 1 ? [0, 1, 2].map((i) => on[i] * on[3] + acc[i] * (1 - on[3])).concat([1]) : on, acc); if (k < 4.5) fail(':root', '--home-on-accent', `the primary button label would be ${k.toFixed(2)}:1 on --nexus-accent (needs 4.5:1)`); }
+  else { const k = ratio(on[3] < 1 ? [0, 1, 2].map((i) => on[i] * on[3] + acc[i] * (1 - on[3])).concat([1]) : on, acc); if (k < 4.5) fail(':root', '--home-on-accent', `the primary button label would be ${k.toFixed(2)}:1 on --nexus-accent (needs 4.5:1)`, 'contrast'); }
   return errs;
 }
-export const lintHome = (css, name = '') => { const r = chat.lintPack(css, name, HOME_REGISTRY); const extra = homeSupplement(css); if (extra.length) { r.errors.push(...extra); r.ok = false; } return r; };
+export const lintHome = (css, name = '') => { const r = chat.lintPack(css, name, HOME_REGISTRY); const extra = homeSupplement(css); const refusals = extra.filter((e) => !e.rule), tagged = extra.filter((e) => e.rule); if (refusals.length) { r.errors.push(...refusals); r.ok = false; } if (tagged.length) r.notes = [...(r.notes ?? []), ...tagged]; return r; };
 export const lintHomeSelector = (sel) => chat.lintSelector(sel, HOME_REGISTRY);
 
 if (process.argv[1] && process.argv[1].endsWith('registry-home.mjs')) {

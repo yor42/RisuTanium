@@ -3942,6 +3942,7 @@ export const languageEnglish = {
     themePackSkippedAreas: (files: string) => `This pack also has ${files}. This version themes only the new chat screen, Studio and the new Settings screen; those parts are kept with the pack.`,
     themePackColoursHeld: (files: string) => `This version uses only the shapes from ${files}; their colours are kept with the pack for a later version.`,
     themePackInstalledWithWarnings: (sheet: string) => `Installed with warnings (${sheet}):`,
+    themePackInstalledWithNotes: (sheet: string) => `Notes (${sheet}):`,
     themePackRefusedHeader: 'This file was not installed:',
     themePackBusy: 'Another task is running (a save, a restore or another theme pack install). Try again when it finishes.',
     themePackInstallFailedFiles: 'The theme pack did not read back correctly after saving, so it was not installed. Try again.',

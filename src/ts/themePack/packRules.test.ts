@@ -380,6 +380,15 @@ function expectRefused(area: PackArea, css: string, ...reasons: RegExp[]): void 
     expect(result.ok, `${area}: accepted`).toBe(false)
     for (const re of reasons) expect(result.errors.some((e) => re.test(e.why)), `${area}: ${re} against ${JSON.stringify(result.errors.map((e) => e.why))}`).toBe(true)
 }
+// Since #560 PR2 a symbol font and a focus ring that forced colours remove are readability notes: the sheet is accepted and each reason is reported in `notes`, never in `errors`.
+const flaggedReasonsOf = (area: PackArea, css: string): string[] => { const result = lintAreaPack(area, css); return [...result.errors, ...(result.notes ?? [])].map((e) => e.why) }
+function expectNoted(area: PackArea, css: string, rule: 'contrast' | 'readability' | 'layout', ...reasons: RegExp[]): void {
+    const result = lintAreaPack(area, css)
+    for (const re of reasons) {
+        expect(result.errors.some((e) => re.test(e.why)), `${area}: ${re} must not refuse, errors ${JSON.stringify(result.errors.map((e) => e.why))}`).toBe(false)
+        expect((result.notes ?? []).some((n) => re.test(n.why) && n.rule === rule), `${area}: ${re} as a ${rule} note against ${JSON.stringify(result.notes)}`).toBe(true)
+    }
+}
 function expectNoReason(area: PackArea, css: string, re: RegExp): void {
     expect(reasonsOf(area, css).filter((why) => re.test(why)), `${area}: ${css}`).toEqual([])
 }
@@ -616,7 +625,7 @@ describe('font size, line height, bounded tokens (MC-1549, MC-1555, MC-1556, DD-
     test.each([
         ['zero', ':root{--focus-ring-w-forced:0px}'],
         ['under a pixel through a helper', ':root{--pack-r:0px;--focus-ring-w-forced:var(--pack-r)}'],
-    ])('B2 refuses a forced-colours ring of %s', (_name, css) => { expectRefused('chat', css, /--focus-ring-w-forced below 1px removes the focus ring/, /DD-243/) })
+    ])('B2 notes a forced-colours ring of %s', (_name, css) => { expectNoted('chat', css, 'readability', /--focus-ring-w-forced below 1px removes the focus ring/, /DD-243/) })
 })
 
 describe('A16 case-significant spans, A19 comment placement (MC-1568, MC-1549)', () => {
@@ -741,7 +750,7 @@ describe('GN: compatibility guards (accepted before and after)', () => {
 
     test('the home alias form is measured: a bad alias value is refused (control)', () => {
         const alias = ':root{--pack-r:2px;--focus-ring-w:var(--pack-r)}html[data-input="touch"]{--pack-r:0px}'
-        expectRefused('chat', alias, /no focus ring/)
+        expectNoted('chat', alias, 'readability', /no focus ring/)
         expectAcceptedPack('home', ':root{--pack-row:56px;--home-row-height:var(--pack-row)}html[data-input="touch"]{--pack-row:60px}')
     })
 
@@ -772,6 +781,9 @@ describe('N0: the engine and the browser split the stylesheet the same way (MC-1
 })
 
 describe('MC-1550 and the font rules', () => {
+    // The rows whose font is a symbol font: a readability note since #560 PR2. Every other row (a system font keyword, a var() fallback, a non-font token) is still a refusal.
+    const F_NOTED = new Set(['Wingdings', 'an unquoted system font', 'a mixed-case system font', 'a list with a system font', 'the shorthand', 'a family through a helper', 'a font token', 'the mono token'])
+    const FF_NOTED = new Set(['a leading space in a quoted name'])
     test.each([
         ['Wingdings', `${TEXT_LEAF}{font-family:"Wingdings","Webdings"}`],
         ['an unquoted system font', `${SAFE_LEAF}{font-family:Wingdings}`],
@@ -784,9 +796,9 @@ describe('MC-1550 and the font rules', () => {
         ['a font token', ':root{--font:Wingdings}'],
         ['the mono token', ':root{--mono:Wingdings}'],
         ['an unresolved non-font token', `${SAFE_LEAF}{font-family:var(--nexus-text)}`],
-    ])('F refuses %s', (_name, css) => { expectRefused('chat', css, RE_1550) })
+    ])('F flags %s', (name, css) => { if (F_NOTED.has(name)) expectNoted('chat', css, 'readability', RE_1550); else expectRefused('chat', css, RE_1550) })
 
-    test('F refuses the settings font token', () => { expectRefused('settings', ':root{--settings-font:Wingdings}', RE_1550) })
+    test('F notes the settings font token', () => { expectNoted('settings', ':root{--settings-font:Wingdings}', 'readability', RE_1550) })
 
     test.each([
         ['a duplicate family descriptor', `@font-face{font-family:Wingdings;font-family:serif;src:url(f.woff2)}${TEXT_LEAF}{font-family:Wingdings}`],
@@ -798,7 +810,7 @@ describe('MC-1550 and the font rules', () => {
         ['a CSS-wide name', '@font-face{font-family:inherit;src:url(f.woff2)}'],
         ['default as a name', '@font-face{font-family:default;src:url(f.woff2)}'],
         ['a generic word in a run', '@font-face{font-family:Pack serif;src:url(f.woff2)}'],
-    ])('FF refuses %s', (_name, css) => { expectRefused('chat', css, RE_1550) })
+    ])('FF flags %s', (name, css) => { if (FF_NOTED.has(name)) expectNoted('chat', css, 'readability', RE_1550); else expectRefused('chat', css, RE_1550) })
 
     test.each([
         ['a digit word at the descriptor', `@font-face{font-family:Wingdings 2;src:url(f.woff2)}${SAFE_LEAF}{font-family:"Wingdings 2"}`],
@@ -851,7 +863,7 @@ describe('MC-2542: an unbundled family warns', () => {
     })
 })
 
-describe('MC-2542: symbol fonts stay refused', () => {
+describe('MC-2542: symbol fonts are readability notes', () => {
     const SYMBOLS = ['wingdings', 'wingdings 2', 'wingdings 3', 'webdings', 'symbol', 'marlett', 'zapf dingbats', 'itc zapf dingbats', 'segoe mdl2 assets', 'segoe fluent icons', 'segoe ui symbol']
     const rows: (readonly [string, PackArea, string, string])[] = [
         ...SYMBOLS.map((n): readonly [string, PackArea, string, string] => [`"${n}" quoted`, 'chat', `${TEXT_LEAF}{font-family:"${n}"}`, n]),
@@ -879,8 +891,8 @@ describe('MC-2542: symbol fonts stay refused', () => {
     ]
     test.each(rows)('V-T2 %s', (_name, area, css, key) => {
         const judged = judgeAreaSheet(area, css)
-        expect(judged.result.ok).toBe(false)
-        expect(judged.result.errors.some((e) => RE_SYMBOL.test(e.why) && e.why.includes(`"${key}"`)), JSON.stringify(judged.result.errors)).toBe(true)
+        expect(judged.result.errors.some((e) => RE_SYMBOL.test(e.why)), JSON.stringify(judged.result.errors)).toBe(false)
+        expect((judged.result.notes ?? []).some((n) => RE_SYMBOL.test(n.why) && n.why.includes(`"${key}"`) && n.rule === 'readability'), JSON.stringify(judged.result.notes)).toBe(true)
         expect(judged.warnings.some((w) => w.why.includes(`"${key}"`))).toBe(false)
     })
 })
@@ -928,10 +940,10 @@ describe('MC-1708: the chat message font token', () => {
     ])('U1b: accepts %s', (_name, css) => { expectAcceptedPack('chat', css) })
 
     test('U1c: a system family is refused with the font tokens\' reasons', () => {
-        const own = reasonsOf('chat', TOKEN_FAMILY('Wingdings')).filter((why) => RE_1550.test(why))
+        const own = flaggedReasonsOf('chat', TOKEN_FAMILY('Wingdings')).filter((why) => RE_1550.test(why))
         expect(own.length).toBeGreaterThan(0)
-        expect(own).toEqual(reasonsOf('chat', ':root{--font:Wingdings}').filter((why) => RE_1550.test(why)))
-        expectRefused('chat', TOKEN_FAMILY('Wingdings'), RE_1550)
+        expect(own).toEqual(flaggedReasonsOf('chat', ':root{--font:Wingdings}').filter((why) => RE_1550.test(why)))
+        expectNoted('chat', TOKEN_FAMILY('Wingdings'), 'readability', RE_1550)
     })
 
     test.each([
@@ -1006,7 +1018,7 @@ describe('R5: every refusal class names its token, unit, function or span and it
         ['I3', '[data-x="A"]{opacity:1}', /may hold only a-z, 0-9, - and _.*\(MC-1568\)$/],
         ['F', `${SAFE_LEAF}{font-family:Wingdings}`, /font family "wingdings" is not allowed: it is a symbol font.*\(MC-1550, MC-2542\)$/],
         ['U', `${SAFE_LEAF}{background:url(c|/x.png)}`, /\(MC-1351\): c\|\/x\.png$/],
-    ])('%s', (_name, css, why) => { expect(reasonsOf('chat', css).some((text) => why.test(text)), JSON.stringify(reasonsOf('chat', css))).toBe(true) })
+    ])('%s', (_name, css, why) => { expect(flaggedReasonsOf('chat', css).some((text) => why.test(text)), JSON.stringify(flaggedReasonsOf('chat', css))).toBe(true) })
 })
 
 describe('drift guard: the font tokens', () => {
@@ -1086,9 +1098,10 @@ describe('S2: the app shape tokens are pack-settable and bounded (MC-3128, MC-31
     const RADII = ['--ui-radius', ...STEPS.map((step) => `--ui-radius-${step}`)]
     const BELOW = /below the critical minimum/
     const ABOVE = /above the critical maximum/
-    const verdict = (area: 'chat' | 'studio' | 'settings' | 'home', css: string): { ok: boolean, why: string } => {
+    // A bound is a layout note since #560 PR2: the sheet is accepted and `why` joins the refusals and the notes, `noted` tells whether a note was reported.
+    const verdict = (area: 'chat' | 'studio' | 'settings' | 'home', css: string): { ok: boolean, why: string, noted: boolean } => {
         const result = judgeAreaSheet(area, css, undefined, area).result
-        return { ok: result.ok, why: result.errors.map((e) => e.why).join(' | ') }
+        return { ok: result.ok, why: [...result.errors, ...(result.notes ?? [])].map((e) => e.why).join(' | '), noted: (result.notes ?? []).length > 0 }
     }
 
     test('R1: Studio accepts a radius step', () => {
@@ -1108,12 +1121,12 @@ describe('S2: the app shape tokens are pack-settable and bounded (MC-3128, MC-31
         test.each(RADII)('%s: 0 to 32px', (name) => {
             for (const value of ['-1px', '-0.1rem', '-5px']) {
                 const refusal = verdict(area, `:root{${name}:${value}}`)
-                expect(refusal.ok, `${name}:${value}`).toBe(false)
+                expect(refusal.ok && refusal.noted, `${name}:${value}`).toBe(true)
                 expect(refusal.why, `${name}:${value}`).toMatch(BELOW)
             }
             for (const value of ['32.5px', '33px', '2.1rem']) {
                 const refusal = verdict(area, `:root{${name}:${value}}`)
-                expect(refusal.ok, `${name}:${value}`).toBe(false)
+                expect(refusal.ok && refusal.noted, `${name}:${value}`).toBe(true)
                 expect(refusal.why, `${name}:${value}`).toMatch(ABOVE)
             }
             for (const value of ['0', '0px', '0.5rem', '2rem', '32px']) {

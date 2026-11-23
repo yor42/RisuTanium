@@ -3800,6 +3800,7 @@ export const languageVietnamese = {
     "themePackSkippedAreas": (files: string) => `Gói này còn có ${files}. Phiên bản này chỉ áp dụng chủ đề cho màn hình trò chuyện mới, Studio và màn hình Cài đặt mới; các phần đó vẫn được giữ cùng gói.`,
     "themePackColoursHeld": (files: string) => `Phiên bản này chỉ dùng các hình dạng từ ${files}; màu sắc của chúng được giữ cùng gói cho phiên bản sau.`,
     "themePackInstalledWithWarnings": (sheet: string) => `Đã cài đặt kèm cảnh báo (${sheet}):`,
+    "themePackInstalledWithNotes": (sheet: string) => `Ghi chú (${sheet}):`,
     "themePackRefusedHeader": "Tệp này chưa được cài đặt:",
     "themePackBusy": "Một tác vụ khác đang chạy (lưu, khôi phục hoặc cài đặt gói chủ đề khác). Hãy thử lại khi nó hoàn tất.",
     "themePackInstallFailedFiles": "Gói chủ đề không đọc lại đúng sau khi lưu, nên chưa được cài đặt. Hãy thử lại.",

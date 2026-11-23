@@ -593,15 +593,100 @@ describe('W1 warnings of an accepted sheet show under the installed line', () =>
         expect(storedPacks()).toHaveLength(1)
     })
 
-    test('V-T11: a real symbol font is refused with its reason and nothing is written', async () => {
+    test('V-T11: a real symbol font installs with a readability note under the notes header', async () => {
         attach()
-        const bytes = zipPack(validPackFiles({ 'chat.css': '[data-part="chat-message-text"]{font-family:wingdings, serif}' }))
+        const sheet = '[data-part="chat-message-text"]{font-family:wingdings, serif}'
+        const bytes = zipPack(validPackFiles({ 'chat.css': sheet }))
+        await runThemePackInstall(runOf(bytes).deps)
+        const lines = outcomeLines() ?? []
+        expect(installFlowState.outcome?.tone).toBe('info')
+        expect(lines[0]).toBe(language.themePackInstalled('Test Pack'))
+        expect(lines[1]).toBe(language.themePackInstalledWithNotes('chat.css'))
+        expect(lines[2]).toContain('it is a symbol font')
+        expect(lines.some((line) => line === language.themePackRefusedHeader)).toBe(false)
+        expect(storedPacks()).toHaveLength(1)
+    })
+
+    test('V-T11b: a kept refusal beside a symbol font still refuses, and shows no note header', async () => {
+        attach()
+        const bytes = zipPack(validPackFiles({ 'chat.css': '[data-part="chat-message-text"]{font-family:wingdings, serif;z-index:5}' }))
         await runThemePackInstall(runOf(bytes).deps)
         const lines = outcomeLines() ?? []
         expect(installFlowState.outcome?.tone).toBe('error')
         expect(lines[0]).toBe(language.themePackRefusedHeader)
-        expect(lines[1]).toContain('it is a symbol font')
+        expect(lines.some((line) => line === language.themePackInstalledWithNotes('chat.css'))).toBe(false)
         expect(world.log).toEqual([])
+    })
+
+    // The real producer (MC-329): a plain dark header colour, judged by the real validator, installs with contrast notes.
+    const NOTED_SHEET = '[data-part="chat-header"]{color:#111111}'
+    const notedLines = (sheet: string): string[] => (judgePackSheets({ chat: sheet }).areas.chat?.result.notes ?? []).map((n) => language.themePackLintLine(n.selector, n.prop, n.why))
+
+    test('T-IF1: a pack whose sheet only carries notes installs and lists them after the notes header', async () => {
+        attach()
+        const expected = notedLines(NOTED_SHEET)
+        expect(expected.length).toBeGreaterThan(0)
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': NOTED_SHEET }))).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackInstalledWithNotes('chat.css'), ...expected])
+        expect(installFlowState.outcome?.tone).toBe('info')
+        expect(storedPacks()).toHaveLength(1)
+    })
+
+    test('T-IF1: the notes come after the warning groups', async () => {
+        attach()
+        const judge: PackJudge = async (sheets) => {
+            const judged = judgePackSheets(sheets)
+            const chat = judged.areas.chat
+            if (chat === undefined) throw new Error('the fixture pack has no chat sheet')
+            return { ...judged, areas: { ...judged.areas, chat: { ...chat, warnings: WARNINGS } } }
+        }
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': NOTED_SHEET })), [], { intake: (verified) => intakePackBytes(verified, judge) }).deps)
+        expect(outcomeLines()).toEqual([
+            language.themePackInstalled('Test Pack'),
+            language.themePackInstalledWithWarnings('chat.css'),
+            ...warningLines,
+            language.themePackInstalledWithNotes('chat.css'),
+            ...notedLines(NOTED_SHEET),
+        ])
+    })
+
+    test('T-IF1: a stored record carries no notes', async () => {
+        attach()
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': NOTED_SHEET }))).deps)
+        const record = storedPacks()[0]
+        expect(record).toBeDefined()
+        expect(Object.keys(record as object)).not.toContain('notes')
+        expect(JSON.stringify(record)).not.toContain('contrast')
+    })
+
+    test('T-IF2: a refused sheet that also carries notes shows only the refusal, and nothing is stored', async () => {
+        attach()
+        const sheet = '[data-part="chat-header"]{z-index:5;color:#111111}'
+        const judged = judgePackSheets({ chat: sheet })
+        expect(judged.areas.chat?.result.notes?.length).toBeGreaterThan(0)
+        expect(judged.areas.chat?.result.ok).toBe(false)
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': sheet }))).deps)
+        const lines = outcomeLines() ?? []
+        expect(installFlowState.outcome?.tone).toBe('error')
+        expect(lines[0]).toBe(language.themePackRefusedHeader)
+        expect(lines).toHaveLength(2)
+        expect(lines.some((line) => line === language.themePackInstalledWithNotes('chat.css') || notedLines(sheet).includes(line))).toBe(false)
+        expect(world.log).toEqual([])
+        expect(storedPacks()).toEqual([])
+    })
+
+    test.each([
+        ['the write fails', { ok: false, kind: 'writeFailed', error: new Error('write') } as const, language.themePackWriteFailed],
+        ['the stored files are found damaged', { ok: false, kind: 'filesDamaged' } as const, language.themePackInstallFailedFiles],
+    ])('verify accepts a noted pack, then %s: only the failure line shows', async (_name, failure, text) => {
+        attach()
+        const install = async <R>(request: InstallRequest<R>): Promise<InstallOutcome<R>> => {
+            const verdict = await request.verify(request.bytes)
+            if (verdict.ok === false) return { ok: false, kind: 'refused', refusal: verdict.refusal }
+            return failure
+        }
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': NOTED_SHEET })), [], { install }).deps)
+        expect(outcomeLines()).toEqual([text])
     })
 
     test('the installed line is followed by the header and one line per warning, in the info tone', async () => {

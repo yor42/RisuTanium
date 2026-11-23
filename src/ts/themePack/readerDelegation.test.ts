@@ -29,12 +29,12 @@ describe('chat token check (T2a-1, T2a-2)', () => {
     test.each([['hsl', 'hsl(0 0% 20%)'], ['a named colour', 'black'], ['color-mix', MIX_DARK]])('--nexus-text as %s is judged against the sheet', (_name, value) => {
         expect(whys(tokenCheck(`:root{--nexus-text:${value}}`)).join('\n')).toMatch(/critical text would be [\d.]+:1 on the sheet/)
     })
-    test('a legible color-mix text is accepted, an illegible one is refused by contrast and not as unreadable', () => {
+    test('a legible color-mix text is accepted, an illegible one is flagged by a contrast note and not as unreadable', () => {
         expect(lintAreaPack('chat', `:root{--nexus-text:${MIX_WHITE}}`, 'p').ok).toBe(true)
         const bad = lintAreaPack('chat', `:root{--nexus-text:${MIX_DARK}}`, 'p')
-        expect(bad.ok).toBe(false)
-        expect(bad.errors.some((e) => /would be [\d.]+:1/.test(e.why))).toBe(true)
-        expect(bad.errors.some((e) => /cannot be resolved/.test(e.why))).toBe(false)
+        expect(bad.ok).toBe(true)
+        expect((bad.notes ?? []).some((n) => /would be [\d.]+:1/.test(n.why) && n.rule === 'contrast')).toBe(true)
+        expect([...bad.errors, ...(bad.notes ?? [])].some((e) => /cannot be resolved/.test(e.why))).toBe(false)
     })
 })
 
@@ -92,6 +92,8 @@ describe('each site returns the reference verdict (T2a-9 per site)', () => {
     test.each(SITES.flatMap(([name, css]) => THEME_AREAS.map((area): [string, ThemeArea, string] => [name, area, css])))('%s in %s', (_name, area, css) => {
         const port = lintAreaPack(area, css, 'p')
         const ref = lib.LINT[area](css, 'p')
-        expect(port.ok).toBe(ref.ok)
+        // The port may refuse what the reference accepts only for Rule SCOPE (a part of another screen): the reference has no such rule, and a contrast finding no longer hides it.
+        const scopeOnly = !port.ok && port.errors.every((e) => /MC-1586/.test(e.why))
+        expect(port.ok === ref.ok || (ref.ok && scopeOnly), JSON.stringify(port.errors.map((e) => e.why))).toBe(true)
     })
 })

@@ -498,14 +498,15 @@ describe('T3-4 a pack that cannot apply', () => {
         expectBalanced()
     })
 
-    it('R12 a chat ring over the 4 px cap: refused for the ceiling reason, the stored archive untouched (REPRO, MC-2320)', async () => {
-        const bytes = packOf(':root{--focus-ring-w:5px}')
+    // A ring over the 4 px cap is a layout note since #560 PR2 (MC-2320); the ring token that cannot be ruled out is still refused, and the stored archive stays untouched.
+    it('R12 a chat ring that cannot be ruled out: refused for the limit reason, the stored archive untouched (MC-2320)', async () => {
+        const bytes = packOf(':root{--focus-ring-w:var(--nope)}')
         const key = store(bytes)
         const before = new Map(world.files)
         const prepared = await prepare({ kind: 'archive', key })
         expect(prepared).toMatchObject({ ok: false, reason: 'refused' })
         const refusals = prepared.ok === false && 'refusals' in prepared ? prepared.refusals : []
-        expect(JSON.stringify(refusals)).toMatch(/--focus-ring-w can be 5 .*the ceiling is 4px/)
+        expect(JSON.stringify(refusals)).toMatch(/--focus-ring-w cannot be resolved.*the ceiling is 4px|cannot be ruled out/)
         expect(world.files).toEqual(before)
         expectBalanced()
     })
@@ -648,6 +649,20 @@ describe('TB-3 the own-colour verdict carried by prepareBuiltin and prepareArchi
         expect(viaChat.ownColourTrigger).toBe(true)
         const viaLight = accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('chat#light', 'contrast') })))
         expect(Object.hasOwn(viaLight, 'ownColourTrigger')).toBe(false)
+    })
+
+    // The real producer (MC-329): the real validator's contrast notes cross the worker as `result.notes`, never as a warning.
+    it('T-APP: a sheet whose real judgement carries contrast notes applies without the own-colour trigger (MC-3642)', async () => {
+        const bytes = archiveOf(['dark'], '[data-part="chat-header"]{color:#111111}')
+        const prepared = accepted(await prepareArchive(bytes, judgeRig()))
+        expect(Object.hasOwn(prepared, 'ownColourTrigger')).toBe(false)
+    })
+
+    it('a light-labelled archive whose real light proof carries a contrast note keeps the dark base', async () => {
+        const bytes = archiveOf(['light'], MID_TONE_SHEET)
+        const prepared = accepted(await prepareArchive(bytes, judgeRig()))
+        expect(chatElementOf(prepared).base).toBe('dark')
+        expect(Object.hasOwn(prepared, 'ownColourTrigger')).toBe(false)
     })
 })
 

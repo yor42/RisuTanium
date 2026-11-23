@@ -169,7 +169,7 @@ export function settableTest(reg) {
   return (n) => settable(n) || bounded(n) || priv(n);
 }
 export function failClosedPass(text, reg) {
-  const errs = []; const fail = (selector, prop, why) => errs.push({ selector, prop, why });
+  const errs = []; const fail = (selector, prop, why, rule) => errs.push(rule ? { selector, prop, why, rule } : { selector, prop, why });
   const ds = decls(text).filter((d) => d.prop.startsWith('--') && !d.ctx.keyframes);
   const app = reg.app || new Map();
   const transparentOk = makeMatcher([...SHARED_TRANSPARENT_OK, ...(reg.transparentOk || [])]);
@@ -219,8 +219,8 @@ export function failClosedPass(text, reg) {
     const { cols, bad, channel } = colAlts(n);
     if (n === '--color-scheme') continue;
     if (bad.length) { fail(selOf(n), n, `${n}: ${channel ? 'a colour channel that is not three numbers from 0 to 255' : 'a colour that cannot be resolved to a concrete sRGB colour (hex, rgb(), hsl(), a named colour or color-mix() in srgb, srgb-linear or oklab)'}: ${bad[0].slice(0, 50)}`); continue; }
-    if (!channel && cols.some((c) => c[3] === 0) && !defaultTransparent(n) && !transparentOk(n)) { fail(selOf(n), n, `${n}: a fully transparent colour (the token would draw nothing)`); continue; }
-    if (opaque.has(n) && cols.some((c) => c[3] < 1 - 1e-9)) fail(selOf(n), n, `${n}: a protected surface must resolve to an opaque colour (alpha 1), not ${cols.find((c) => c[3] < 1).map((x, i) => (i < 3 ? Math.round(x) : +x.toFixed(2))).join(' ')}`);
+    if (!channel && cols.some((c) => c[3] === 0) && !defaultTransparent(n) && !transparentOk(n)) { fail(selOf(n), n, `${n}: a fully transparent colour (the token would draw nothing)`, 'readability'); }
+    if (opaque.has(n) && cols.some((c) => c[3] < 1 - 1e-9)) fail(selOf(n), n, `${n}: a protected surface must resolve to an opaque colour (alpha 1), not ${cols.find((c) => c[3] < 1).map((x, i) => (i < 3 ? Math.round(x) : +x.toFixed(2))).join(' ')}`, 'readability');
   }
   if (byName.has('--color-scheme')) for (const x of byName.get('--color-scheme')) if (!/^(light|dark)$/.test(x.v)) fail(x.sel, '--color-scheme', '--color-scheme must be light or dark');
 
@@ -237,13 +237,13 @@ export function failClosedPass(text, reg) {
     const { cols: fgs, bad } = colAlts(fgTok); if (bad.length || !fgs.length || !bgCols.length) return;   // an unresolvable colour is reported above
     let worst = Infinity;
     for (const bg of bgCols) for (const fg of fgs) { const r = ratio(fg[3] < 1 ? flat(fg, bg) : fg, bg); if (r < worst) worst = r; }
-    if (worst < need - 1e-9) fail(selOf(fgTok), fgTok, `${fgTok.replace('--', '')} would be ${worst.toFixed(2)}:1 on ${label} (needs ${need}:1), judged over the worst case of everything the pack sets`);
+    if (worst < need - 1e-9) fail(selOf(fgTok), fgTok, `${fgTok.replace('--', '')} would be ${worst.toFixed(2)}:1 on ${label} (needs ${need}:1), judged over the worst case of everything the pack sets`, 'contrast');
   };
   // registry.same: [[channel token, colour token, label]]: a channel that stands for a colour (--studio-canvas-rgb for --nexus-canvas) must be that colour in every case (within 8 per channel), so a tint drawn from it cannot disagree with the surface
   for (const [chanTok, colTok, label] of reg.same || []) {
     const a = colAlts(chanTok).cols, b = colAlts(colTok).cols; let bad = null;
     for (const x of a) for (const y of b) if ([0, 1, 2].some((i) => Math.abs(x[i] - y[i]) > 8)) bad = [x, y];
-    if (bad) fail(selOf(chanTok), chanTok, `${chanTok} (${bad[0].slice(0, 3).map(Math.round).join(' ')}) is not the colour of ${colTok} (${bad[1].slice(0, 3).map(Math.round).join(' ')}): ${label || 'the channel must stand for the same colour'}`);
+    if (bad) fail(selOf(chanTok), chanTok, `${chanTok} (${bad[0].slice(0, 3).map(Math.round).join(' ')}) is not the colour of ${colTok} (${bad[1].slice(0, 3).map(Math.round).join(' ')}): ${label || 'the channel must stand for the same colour'}`, 'contrast');
   }
   for (const [fg, bg, need, label] of reg.pairs || []) judge(fg, bg.startsWith('--') ? (() => { const c = colAlts(bg).cols; return c.map((x) => (x[3] < 1 ? flat(x, canvasCols()[0]) : x)); })() : surfAlts(bg), need, label || bg, bg);
   for (const [tok, key, label, need] of reg.surfaces || []) judge(tok, surfAlts(key), need, label, 'surface:' + key);

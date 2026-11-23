@@ -3801,6 +3801,7 @@ export const languageChinese = {
     "themePackSkippedAreas": (files: string) => `此包还包含 ${files}。此版本仅为新的聊天界面、Studio 和新的设置界面换肤；这些部分会随主题包一并保留。`,
     "themePackColoursHeld": (files: string) => `此版本仅使用 ${files} 中的形状；其颜色会随主题包一并保留，供以后的版本使用。`,
     "themePackInstalledWithWarnings": (sheet: string) => `已安装，但有警告（${sheet}）：`,
+    "themePackInstalledWithNotes": (sheet: string) => `备注（${sheet}）：`,
     "themePackRefusedHeader": "此文件未被安装：",
     "themePackBusy": "另一项任务正在运行（保存、恢复或另一个主题包的安装）。请在其完成后重试。",
     "themePackInstallFailedFiles": "保存后重新读取主题包时内容不正确，因此未安装。请重试。",
