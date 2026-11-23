@@ -39,6 +39,7 @@
         sendUtility,
         stopUtility,
         utilityConversation,
+        utilitySelection,
     } from 'src/ts/process/utility/utilityConversation.svelte'
     import { DBState } from 'src/ts/stores.svelte'
     import Button from '../UI/GUI/Button.svelte'
@@ -50,14 +51,13 @@
     import WorkspaceManager from './WorkspaceManager.svelte'
     import WorkspacePicker from './WorkspacePicker.svelte'
 
-    let presetId = $state('')
     let draft = $state('')
     let editing = $state(false)
     let managing = $state(false)
     let notice = $state('')
 
     const presets = $derived(DBState.db.taskPresets ?? [])
-    const chosen = $derived(presets.find((preset) => preset.id === presetId))
+    const chosen = $derived(presets.find((preset) => preset.id === utilitySelection.presetId))
     const chosenProblems = $derived(chosen ? validateTaskPreset(chosen) : [])
     const running = $derived(utilityConversation.runId !== null)
     const canSend = $derived(!running && chosen !== undefined && chosenProblems.length === 0 && draft.trim() !== '')
@@ -69,7 +69,7 @@
         const text = draft
         draft = ''
         notice = ''
-        await sendUtility(presetId, text)
+        await sendUtility(utilitySelection.presetId, text)
     }
 
     async function startNew() {
@@ -105,7 +105,7 @@
         <div class="flex flex-wrap items-center gap-2">
             {#if presets.length > 0}
                 <span id="utility-preset-label" class="text-textcolor2">{language.utility.presetLabel}</span>
-                <SelectInput labelId="utility-preset-label" bind:value={presetId} className="min-w-48">
+                <SelectInput labelId="utility-preset-label" bind:value={utilitySelection.presetId} className="min-w-48">
                     <option value="" disabled>{language.utility.presetLabel}</option>
                     {#each presets as preset (preset.id)}
                         <option value={preset.id}>

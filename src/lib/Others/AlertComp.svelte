@@ -61,9 +61,6 @@
             case 'addchar':
             case 'chatOptions':
             case 'cardexport':
-            case 'pluginconfirm':
-            case 'patternSelect':
-            case 'patternInput':
             case 'updateOffer':
             case 'presetBundle':
             case 'toolApproval':
@@ -93,8 +90,8 @@
         error: 'message', normal: 'message', none: 'excluded', ask: 'message', wait: 'message', selectChar: 'tool',
         input: 'message', toast: 'excluded', wait2: 'message', markdown: 'message', select: 'message',
         tos: 'message', cardexport: 'tool', requestdata: 'tool', addchar: 'tool', hypaV2: 'tool', selectModule: 'excluded',
-        chatOptions: 'tool', pukmakkurit: 'excluded', branches: 'tool', progress: 'message', pluginconfirm: 'message', requestlogs: 'tool',
-        staleAccountNotice: 'message', patternSelect: 'message', patternInput: 'message', peerConflicts: 'message', parkedReply: 'message', updateOffer: 'tool', presetBundle: 'message', toolApproval: 'message',
+        chatOptions: 'tool', branches: 'tool', progress: 'message', requestlogs: 'tool',
+        staleAccountNotice: 'message', peerConflicts: 'message', parkedReply: 'message', updateOffer: 'tool', presetBundle: 'message', toolApproval: 'message',
     } satisfies Record<alertData['type'], 'message' | 'tool' | 'excluded'>
 
     // The headline of a dialog that has one. A tool dialog is named by it, so every tool dialog that moves into the shared box adds its case here.
@@ -104,8 +101,6 @@
                 return language.error
             case 'ask':
                 return language.confirm
-            case 'pluginconfirm':
-                return language.alertComp.pluginImport
             case 'selectChar':
                 return language.select
             case 'addchar':
@@ -528,24 +523,6 @@
                     }}>{language.upstreamAgreementTermsOfService}</a>{language.upstreamAgreementPromptBetween}<a role="button" tabindex="0" class="risu-link risu-focus-ring underline transition-colors duration-200 cursor-pointer" onclick={() => {
                         openURL('https://account.sionyw.com/privacy')
                     }}>{language.upstreamAgreementPrivacyPolicy}</a>{language.upstreamAgreementPromptAfter}</div>
-            {:else if a.type === 'pluginconfirm'}
-                {@const parts = a.msg.split('\n\n')}
-                {@const mainPart = parts[0]}
-                {@const confirmMessage = parts[1]}
-                {@const mainParts = mainPart.split('\n')}
-                {@const pluginName = mainParts[0]}
-                {@const warnings = mainParts.slice(1)}
-                <div id={messageId} class="plugin-confirm-content">
-                    <p class="plugin-name">{pluginName}</p>
-                    {#if warnings.length > 0}
-                        <ul class="warnings-list">
-                            {#each warnings as warning}
-                                <li class="warning-item">{warning}</li>
-                            {/each}
-                        </ul>
-                    {/if}
-                    <p class="confirm-message">{confirmMessage}</p>
-                </div>
             {:else if a.type === 'peerConflicts'}
                 <PeerConflicts rows={a.peerConflicts ?? []} title={a.msg} titleId={headingId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
@@ -632,7 +609,7 @@
                 <span data-part="pattern-warn-detail">{a.submsg + '%'}</span>
             {/if}
 
-            {#if a.type === 'ask' || a.type === 'pluginconfirm'}
+            {#if a.type === 'ask'}
                 <div data-part="pattern-warn-actions" data-count="2">
                     <button type="button" class="pattern-button" onclick={() => {
                         alertStore.set({
@@ -1242,7 +1219,7 @@
 {/snippet}
 
 {#snippet alertView(a: alertData, slot: 'held' | 'live')}
-{#if a.type !== 'none' &&  a.type !== 'toast' && a.type !== 'selectModule' && a.type !== 'pukmakkurit'}
+{#if a.type !== 'none' &&  a.type !== 'toast' && a.type !== 'selectModule'}
     {@const heading = headingOf(a)}
     {@const headingId = `${uid}-${slot}-heading`}
     {@const messageId = `${uid}-${slot}-message`}
@@ -1289,16 +1266,6 @@
             msg: d
         })
     }} />
-{:else if a.type === 'pukmakkurit'}
-    <!-- Log Generator by dootaang, GPL3 -->
-    <!-- Svelte, Typescript version by Kwaroran -->
-    
-    <div class="absolute w-full h-full z-50 bg-black/50 flex justify-center items-center">
-        <div class="bg-darkbg p-4 break-any rounded-md flex flex-col max-w-3xl  max-h-full overflow-y-auto outline-none" tabindex="-1" data-alert-box>
-            <h2 class="text-green-700 mt-0 mb-2 w-40 max-w-full">{language.preview}</h2>
-
-        </div>
-    </div>
 {/if}
 {/snippet}
 
@@ -1317,26 +1284,6 @@
 </div>
 
 <style>
-    .plugin-confirm-content .plugin-name {
-        font-size: 1.25rem;
-        font-weight: bold;
-        color: inherit;
-    }
-    .plugin-confirm-content .warnings-list {
-        list-style-type: disc;
-        list-style-position: inside;
-        margin-top: 0.5rem;
-        margin-bottom: 0.5rem;
-        padding-left: 1rem;
-        color: inherit;
-    }
-    .plugin-confirm-content .warning-item {
-        margin-bottom: 0.25rem;
-    }
-    .plugin-confirm-content .confirm-message {
-        margin-top: 1rem;
-        color: inherit;
-    }
     .break-any{
         word-break: normal;
         overflow-wrap: anywhere;

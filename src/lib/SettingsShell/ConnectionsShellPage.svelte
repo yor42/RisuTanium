@@ -6,6 +6,7 @@
     import { afterFlush } from '../../ts/afterFlush'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { providerLabel, storedConnections } from '../../ts/connections/connections'
+    import { addCustomModelUnder, customModelsUnder, editCustomModelUnder, ownsCustomModels, removeCustomModelUnder } from '../../ts/connections/customModelsUnder'
     import { connectionKeyHint } from '../../ts/connections/connectionHint'
     import { clearKey, deleteConnection, keyEffectsOf, needsKey, renameConnection, replaceKey, useProxyForCurrent, type KeyEffect } from '../../ts/connections/connectionEditor'
     import { connectionUndoAction } from '../../ts/connections/connectionUndo'
@@ -266,6 +267,10 @@
                     onreplace={(plain) => replace(detailConn.id, plain)}
                     onclear={(el) => { ask = { kind: 'clear', id: detailConn.id, trigger: el ?? trigger() } }}
                     onuse={() => use(detailConn.id)}
+                    models={ownsCustomModels(DBState.db, detailConn.id) ? customModelsUnder(DBState.db, detailConn.id) : null}
+                    onaddmodel={() => { addCustomModelUnder(DBState.db, detailConn.id) }}
+                    oneditmodel={(id, patch) => { editCustomModelUnder(DBState.db, detailConn.id, id, patch) }}
+                    onremovemodel={(id) => { removeCustomModelUnder(DBState.db, detailConn.id, id) }}
                     ondelete={(el) => { ask = { kind: 'delete', id: detailConn.id, trigger: el ?? trigger() } }}
                 />
             {/if}

@@ -28,6 +28,7 @@
     WrenchIcon,
     User2Icon,
     XIcon,
+    ArrowLeft,
   } from "@lucide/svelte";
     import CharConfig from "./CharConfig.svelte";
     import { language } from "../../lang";
@@ -570,7 +571,7 @@
 </div>
 
 {#if $DynamicGUI}
-    <div role="button" tabindex="0" aria-label={language.closeSidebar} data-panel-surface {@attach panelGestureAttachment} class="grow h-full min-w-12" class:hidden={hidden} onclick={() => {
+    <div role="button" tabindex="0" aria-label={language.closeSidebar} data-panel-surface {@attach panelGestureAttachment} class="grow h-full min-w-12 relative" class:hidden={hidden} onclick={() => {
       if($sideBarClosing){
         return
       }
@@ -590,7 +591,10 @@
       class:sidebar-dark-close-animation={$sideBarClosing && !followMode}
       class:follow-dark-in={followEnter}
       class:follow-dark-out={followExit}>
-
+      <!-- Closing arrow for the overlay: the strip starts at the panel's right edge, so the arrow never sits under the rail or over the panel. A click falls through to the backdrop's own close. -->
+      <span data-part="overlay-close-arrow" aria-hidden="true" class="absolute top-3 left-0 h-12 w-12 border-r border-b border-t border-borderc rounded-r-md bg-darkbg flex items-center justify-center text-textcolor opacity-50 hover:opacity-90">
+        <ArrowLeft aria-hidden="true" />
+      </span>
     </div>
 
 {/if}

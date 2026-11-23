@@ -181,6 +181,9 @@ test('T13 unknown pools, bad input and unsafe device-pool policy are refused', a
     'standing helper': p => { p.standingPackages.push('dev.risu.x'); },
     'duplicate standing': p => { p.standingPackages.push('io.github.yor42.tbdriver'); },
     'bad standing shape': p => { p.standingPackages.push('not a package'); },
+    'keep helper not helper-shaped': p => { p.keepHelpers = [{ package: 'com.example.app', note: 'n' }]; },
+    'keep helper without note': p => { p.keepHelpers = [{ package: 'dev.risu.x', note: ' ' }]; },
+    'duplicate keep helper': p => { p.keepHelpers = [{ package: 'dev.risu.x', note: 'n' }, { package: 'dev.risu.x', note: 'n' }]; },
     'bad lock order': p => { p.lockOrder = ['note9', 'note9']; },
     'lock order missing a pool': p => { p.lockOrder = ['note9']; },
     'no priority class': p => { p.priorityClasses = []; },
@@ -211,6 +214,7 @@ test('T15 release without a census marks the phone for reset; stranded and helpe
   assert.equal((await release(root, 'r1')).needsReset, true);
   const g = await acquire(root, 'r5'); assert.deepEqual([g.member, g.resetRequired], [PHONE1, true]);
   assert.ok(g.standingPackages.includes('io.github.yor42.risutanium') && g.standingPackages.includes('io.github.yor42.tbdriver'));
+  assert.deepEqual(g.keepHelpers, JSON.parse(fs.readFileSync(new URL('../workflow-policy.json', import.meta.url), 'utf8')).devicePool.keepHelpers.map(k => k.package));
   assert.equal(g.helperPattern, '^dev\\.risu\\.[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$');
   const census = evidence('census.txt');
   for (const bad of ['dev.risu.x', 'dev.risu.a_b.c2', 'io.github.yor42.tbdriver', 'dev.risu.', 'dev.risu..x', 'not a package']) await assert.rejects(resetDone(root, 'r5', census, bad), /Cannot mark|stranded/, bad);
@@ -323,4 +327,15 @@ test('T19 the device-runner role routes to haiku and other roles stay refused', 
   const policyFile = path.join(root, '.claude/workflow-policy.json'); const p = JSON.parse(fs.readFileSync(policyFile, 'utf8'));
   p.scheduling.deviceRoles = ['sonnet-coder', 'ghost']; fs.writeFileSync(policyFile, JSON.stringify(p));
   await assert.rejects(selectRoute({ root, jobId: 'dr-5', mode: 'implement', workClass: 'device' }), /unsafe policy/);
+});
+test("T17 the committed standing list keeps the phone apps, has no duplicates and no helper-pattern package; dv603 is a keep-helper", () => {
+  const pol = JSON.parse(fs.readFileSync(new URL("../workflow-policy.json", import.meta.url), "utf8")).devicePool;
+  const s = pol.standingPackages;
+  const helper = /^dev\.risu\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
+  assert.equal(new Set(s).size, s.length);
+  for (const keep of ["io.github.yor42.risutanium", "io.github.yor42.tbdriver"]) assert.ok(s.includes(keep), keep);
+  assert.ok(!s.includes("dev.risu.dv603"));
+  assert.deepEqual(s.filter(x => helper.test(x)), []);
+  assert.deepEqual(pol.keepHelpers.map(k => k.package), ["dev.risu.dv603"]);
+  assert.ok(pol.keepHelpers.every(k => helper.test(k.package) && k.note.length > 0));
 });

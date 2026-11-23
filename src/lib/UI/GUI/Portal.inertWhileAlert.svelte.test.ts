@@ -36,10 +36,9 @@ import { alertStore } from 'src/ts/stores.svelte'
 import Portal from './Portal.svelte'
 
 const ALERT_TYPES: Array<alertData['type']> = [
-    'ask', 'pluginconfirm', 'select', 'input', 'selectChar', 'addchar', 'chatOptions', 'cardexport',
+    'ask', 'select', 'input', 'selectChar', 'addchar', 'chatOptions', 'cardexport',
     'selectModule', 'tos', 'staleAccountNotice', 'progress', 'normal', 'error', 'markdown',
-    'requestdata', 'hypaV2', 'branches', 'requestlogs', 'pukmakkurit', 'wait2', 'wait',
-    'patternSelect', 'patternInput',
+    'requestdata', 'hypaV2', 'branches', 'requestlogs', 'wait2', 'wait',
 ]
 const NOT_COVERING: Array<alertData['type']> = ['none', 'toast']
 

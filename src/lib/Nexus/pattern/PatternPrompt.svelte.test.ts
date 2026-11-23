@@ -1,4 +1,4 @@
-import { get, writable } from 'svelte/store'
+import { writable } from 'svelte/store'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -10,7 +10,6 @@ import { alertStore } from '../../../ts/stores.svelte'
 import { encodeChoice, encodeText, PATTERN_PROMPT_CANCEL } from '../../../ts/patternPromptAnswer'
 import { enterKeydown, imeEventSequence } from '../../../ts/ime/tests/imeEventSequence'
 import PatternPrompt from './PatternPrompt.svelte'
-import PatternPromptHost from './PatternPromptHost.svelte'
 
 const mounted: { target: HTMLElement, app: Record<string, unknown> }[] = []
 
@@ -150,56 +149,5 @@ describe('PatternPrompt input', () => {
         const list = target.querySelector('datalist')!
         expect(field.getAttribute('list')).toBe(list.id)
         expect([...list.querySelectorAll('option')].map((option) => option.value)).toEqual(['v1', 'v2'])
-    })
-})
-
-describe('PatternPromptHost', () => {
-    test('renders nothing for other alert types', () => {
-        const target = render(PatternPromptHost, {})
-        alertStore.set({ type: 'select', msg: 'a||b' })
-        flushSync()
-        expect(target.querySelector('[data-part="pattern-dialog"]')).toBeNull()
-    })
-
-    test('renders a patternSelect and writes the encoded answer to the store', () => {
-        const target = render(PatternPromptHost, {})
-        alertStore.set({ type: 'patternSelect', msg: 'Pick', choices: ['a', 'b'] })
-        flushSync()
-        target.querySelectorAll<HTMLButtonElement>('[data-part="pattern-prompt-choice"]')[1].click()
-        expect(get(alertStore)).toEqual({ type: 'none', msg: encodeChoice(1) })
-        flushSync()
-        expect(target.querySelector('[data-part="pattern-dialog"]')).toBeNull()
-    })
-
-    test('renders a patternInput with its default and writes the cancel value', () => {
-        const target = render(PatternPromptHost, {})
-        alertStore.set({ type: 'patternInput', msg: 'Name', defaultValue: 'zed', datalist: [] })
-        flushSync()
-        expect((part(target, 'field') as HTMLInputElement).value).toBe('zed')
-        part(target, 'cancel').click()
-        expect(get(alertStore)).toEqual({ type: 'none', msg: PATTERN_PROMPT_CANCEL })
-    })
-
-    test('the same prompt written back again accepts the next press', () => {
-        const target = render(PatternPromptHost, {})
-        const data = { type: 'patternSelect' as const, msg: 'Pick', choices: ['a'] }
-        alertStore.set(data)
-        flushSync()
-        // The prompt controller writes the prompt back inside the same store notification when an answer
-        // arrives inside its guard, so the host sees the answer and the prompt with no flush between.
-        let writtenBack = false
-        const stop = alertStore.subscribe((value) => {
-            if (value.type === 'none' && !writtenBack) {
-                writtenBack = true
-                alertStore.set(data)
-            }
-        })
-        target.querySelector<HTMLButtonElement>('[data-part="pattern-prompt-choice"]')!.click()
-        expect(writtenBack).toBe(true)
-        expect(get(alertStore)).toBe(data)
-        flushSync()
-        target.querySelector<HTMLButtonElement>('[data-part="pattern-prompt-choice"]')!.click()
-        stop()
-        expect(get(alertStore)).toEqual({ type: 'none', msg: encodeChoice(0) })
     })
 })

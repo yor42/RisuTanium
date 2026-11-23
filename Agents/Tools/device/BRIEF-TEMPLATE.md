@@ -77,6 +77,7 @@ Always, in addition:
 - `shell pm clear io.github.yor42.risutanium`.
 - Reinstall of the pinned APK (`install -r <apk>`), then read the device `base.apk` hash back as live-checks "State and data" says.
 - `uninstall` of the `dev.risu.*` packages the census (section 8) finds.
+- On a Note 9 only (MC-3874): when `install -r <apk>` fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because the installed `io.github.yor42.risutanium` is signed with a different key than the pinned APK, `uninstall io.github.yor42.risutanium` (no `-k`, one call) and then `install -r <apk>`. This destroys the app's data, so it needs synthetic data only on that phone. Record the old signer and the new signer (certificate SHA-256, read from the installed `base.apk` and the pinned APK with `apksigner verify --print-certs`, or the signer the install step reports) in the result before the uninstall. Stop and report instead on any other serial, on the Fold 7 and the Tab S9, on any other failure, or when the phone holds data that is not synthetic.
 
 Never a factory reset, never another package, never a settings reset beyond restoring the values the run changed.
 
@@ -108,7 +109,9 @@ Run it at every grant start (before any row) and at the end. The end census's re
 2. Classify each `package:<name>` line against the grant's lists:
    - in `standingPackages`: keep;
    - in `strandedPackages`: keep and report;
+   - in `keepHelpers`: keep and report, even though it matches `helperPattern` (a test app another run still needs; never uninstall it and never mark it stranded), and the end census counts as clean with it present;
    - matches `helperPattern`: remove with `uninstall <name>`, one call each;
+   - a vendor or OneUI preinstall (Samsung, Google, Naver/Daum, Microsoft and similar; never `io.github.yor42.*` or `dev.risu.*`; MC-3875): not a maintainer question. Mark it with `lease-reset-done ... --stranded <name>`, list it in the result file and continue; it counts as clean;
    - anything else: STOP.
 3. On STOP: no row counts. Release WITHOUT `--clean` and hand back with the package names in the result file. The PR session asks the maintainer whether a later holder marks the package with `lease-reset-done ... --stranded <name>` (a package matching the helper pattern or listed in `standingPackages` cannot be marked stranded).
 4. The result file lists every package seen and the action taken.

@@ -187,6 +187,26 @@ describe('character sidebar close strip', () => {
         expect(get(sideBarClosing)).toBe(true)
     })
 
+    // Regression reproducer (#612): the arrow used to sit at the chat area's left edge, under the 80 px rail.
+    // It now lives in the backdrop strip, a sibling after the panel, so the rail and the panel never cover it.
+    test('regression reproducer: the overlay draws its closing arrow in the backdrop strip, and a click on it closes', () => {
+        DynamicGUI.set(true)
+        mounted = mountSidebar()
+        const arrow = mounted.target.querySelector<HTMLElement>('[data-part="overlay-close-arrow"]')
+        expect(arrow).not.toBeNull()
+        const backdrop = arrow!.parentElement!
+        expect(backdrop.getAttribute('aria-label')).toBe(language.closeSidebar)
+        expect(backdrop.closest('[data-rail-root]')).toBeNull()
+        expect(mounted.target.querySelector('[data-rail-root]')!.contains(arrow)).toBe(false)
+        arrow!.click()
+        expect(get(sideBarClosing)).toBe(true)
+    })
+
+    test('guard: no overlay arrow without the overlay (wide layout has no backdrop strip)', () => {
+        mounted = mountSidebar()
+        expect(mounted.target.querySelector('[data-part="overlay-close-arrow"]')).toBeNull()
+    })
+
     test('regression reproducer: the close button is found by its accessible name and contains an svg icon', () => {
         mounted = mountSidebar()
         const btn = closeButton(mounted.target)
