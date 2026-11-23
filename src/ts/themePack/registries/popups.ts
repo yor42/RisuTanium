@@ -78,7 +78,8 @@ export const POPUPS_SAFE: string[] = POPUPS_PARTS.filter((name) => !POPUPS_CRITI
 /**
  * The registry the applied popups area is judged under. It declares no tokens, minimums, maximums or surfaces: popups.css sets no tokens (Rule SCOPE
  * refuses every custom property there), and effective() adds chat's critical and escape-route names, so a popups sheet can never name them.
- * A stylesheet whose root entry sets `color-scheme` is still admitted; the colour overlay then carries that declaration (known limitation).
+ * A stylesheet whose `:root` or `html` entry sets `color-scheme` to light or dark is still admitted; the colour overlay then carries
+ * that declaration (known limitation).
  */
 export const POPUPS_REGISTRY: RegistryInput = { critical: POPUPS_CRITICAL, safe: POPUPS_SAFE, reach: POPUPS_REACH, controls: POPUPS_REACH, strictSafe: true, partRequired: true }
 

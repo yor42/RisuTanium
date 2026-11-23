@@ -1,9 +1,12 @@
 // The popups area's judge, Rule SCOPE membership and no-token clause, and its registry (#438 S3c-B stage 1). These are
-// acceptance tests: each one fails on the base by absence of the popups area (an assertion on the verdict). The registry row (P-1)
-// is a guard over new symbols and fails on the base with a TypeError instead.
+// acceptance tests that fail on the base by absence of the popups area (an assertion on the verdict), except these guards, which
+// also pass on the base because a missing popups judge refuses every sheet: SC-2 "anywhere else", SC-3 "--pack helper", the J-2 rows
+// for chat critical and escape names, escape ancestors, own-scheme and critical-marker attributes, and reach-part hiding. P-1 fails
+// on the base on an assertion for its shape-mode row (shapeTokenNames('popups') returns chat's list there) and on a TypeError for
+// the registry row, which reads symbols the base lacks.
 import { describe, expect, it } from 'vitest'
 import { CRITICAL_PARTS, ESCAPE_ANCESTORS } from './engine'
-import { AREA_LINT, THEME_AREAS, judgeAreaSheet, lintAreaPack, type JudgedArea } from './index'
+import { AREA_LINT, THEME_AREAS, judgeAreaSheet } from './index'
 import { POPUPS_CRITICAL, POPUPS_PARTS, POPUPS_REACH, POPUPS_REGISTRY, POPUPS_SAFE, isPopupsPart } from './registries/popups'
 import { scopePass } from './scope'
 import { shapeTokenNames } from './shapeMode'
@@ -131,9 +134,6 @@ describe('P-1 the popups registry is the census', () => {
     })
 
     it('the reference area list is unchanged: popups is a judged area, not a reference area', () => {
-        const area: JudgedArea = 'popups'
-        expect(lintAreaPack('chat', '[data-part="chat-message-avatar"]{opacity:1}').ok).toBe(true)
-        expect(area).toBe('popups')
         expect([...THEME_AREAS]).not.toContain('popups')
     })
 })

@@ -1550,6 +1550,26 @@ describe('S3c-B the popups overlays (MC-3009, MC-3126, MC-3247, MC-3660)', () =>
         expect(blobs.minted).toHaveLength(0)
     })
 
+    it('A-3b (guard): a dropped or refused popups#shape verdict gives no shape text and never falls back to the whole sheet', async () => {
+        const dropped = (response: JudgeResponse): JudgeResponse => response.ok
+            ? { ...response, results: Object.fromEntries(Object.entries(response.results).filter(([label]) => label !== 'popups#shape')) }
+            : response
+        const refusedShape = (response: JudgeResponse): JudgeResponse => response.ok
+            ? {
+                ...response,
+                results: Object.fromEntries(Object.entries(response.results).map(([label, verdict]) => [
+                    label,
+                    label === 'popups#shape' ? { ...verdict, result: { ok: false as const, errors: [{ selector: 's', prop: 'p', why: 'w' }], name: 'popups' } } : verdict,
+                ])),
+            }
+            : response
+        for (const rewrite of [dropped, refusedShape]) {
+            const prepared = accepted(await prepareArchive(pack(LEAF, { 'popups.css': POPUPS_X }), judgeRig({ rewrite })))
+            expect(prepared.popups?.shapeText).toBeNull()
+            expect(prepared.popups?.colourText).not.toBeNull()
+        }
+    })
+
     it('E-8 (acceptance): a whitespace-only chat.css gives no colour overlay and mints no colour-only image', async () => {
         const prepared = accepted(await prepareArchive(pack('/* nothing */', { 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_X })))
         expect(prepared.popups?.colourText).toBeNull()
@@ -1650,6 +1670,8 @@ describe('S3c-B the popups overlays (MC-3009, MC-3126, MC-3247, MC-3660)', () =>
         expect(overlayOf('shape').getAttribute('media')).toBe('not all')
     })
 
+    // The screen-only condition in syncThemePackMedia's base step is redundant with an overlay's null base, so this test pins the
+    // outcome (no base attribute or tone from an overlay), not that condition: dropping the condition alone survives.
     it('G-5 (acceptance): an overlay that is on never sets the base attribute or the base tone', async () => {
         const prepared = accepted(await prepareArchive(pack(LEAF, { 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_X })))
         installThemePackGate(() => false)

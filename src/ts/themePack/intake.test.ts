@@ -816,7 +816,7 @@ describe('S3c-B the popups sheet is an applied area (MC-3007, MC-3123)', () => {
         expect(pack.sheets.popups?.result.ok).toBe(true)
     })
 
-    it('I-2: a popups.css naming a chat part is refused by name', async () => {
+    it('I-2: a popups.css naming a chat part is refused, and no longer skipped (the membership reason is pinned by SC-1)', async () => {
         const { result } = await run(zipPack(validPackFiles({ 'popups.css': HOSTILE_POPUPS })))
         expect(popupsErrors(HOSTILE_POPUPS).length).toBeGreaterThan(0)
         expect(refusalsOf(result)).toEqual([{ code: 'sheetRefused', sheet: 'popups.css', errors: popupsErrors(HOSTILE_POPUPS) }])

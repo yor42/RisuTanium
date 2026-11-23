@@ -16,15 +16,16 @@ Branch `claude/438-s3c-b`, PR "Refs #438" (the issue stays open). Tier 2, critic
 
 ## Tests and evidence
 - Own run on the combined tree: `pnpm check` 0 errors; `pnpm vitest run src/ts/themePack src/lib/Setting/Pages/Display src/lang` 104 files, 4797 tests passed.
-- Reproducers I-1..I-4, I4 and T1-36 fail on the base (assertions); the other new tests are acceptance or guards, labelled in the files. P-1 and the surfaceGate overlay tests fail on the base with a TypeError (new symbols).
+- Reproducers I-1..I-4, I4 and T1-36 fail on the base (assertions); the other new tests are acceptance or guards, labelled in the files. Seven popupsJudge rows are guards that also pass on the base (SC-2 'anywhere else', SC-3 '--pack helper', four J-2 refusal rows, P-1 'reference area list unchanged'); P-1's shape-mode row fails on an assertion there, its registry row on a TypeError. The surfaceGate overlay tests fail on the base with a TypeError (new symbols). I-2 pins refusal, not the reason (SC-1 pins the membership reason). A-3b guards a dropped or refused popups#shape verdict.
 - Mutants M1-M14 killed (coder reports), 10 re-run by the Gate 2 reviewer by in-memory substitution.
 - Process note (Gate 2 F-6): the coders ran base runs and mutants by swapping repository files in place and restoring them; the tree was checked hash-identical afterwards. Future briefs should name an in-memory transform harness.
 
 ## Known limitations (MC-3638, no guard)
-- popups.css may set `color-scheme` on `:root`; the colour overlay carries it (MC-4142).
+- popups.css may set `color-scheme` (light or dark) on `:root` or `html`; the colour overlay carries it (MC-4142).
 - Popup colours over a light-based chat are not checked against that base.
 - A popups value reading an app token is judged against the app's own value; a screen sheet may set it differently within its bounds.
 - A popups.css holding only `@font-face` mints its font and shows nothing.
+- popups.css can restyle reach and safe parts inside an own-scheme save-guard dialog (MC-3638, MC-3639, no guard).
 
 ## Open for the next stage / lane A
 - Device rows (Note 9, synthetic, lease; plan section "Note 9 device rows" DV-0..DV-6, including the control row "a plain launch applies the pack") are NOT run. Lane B owns the lease.
