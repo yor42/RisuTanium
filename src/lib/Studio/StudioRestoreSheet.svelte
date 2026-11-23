@@ -4,6 +4,7 @@
     import { openStudioModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
     import { createLiveReader, createModuleLiveReader, isModuleTarget, resolveLiveTarget } from '../../ts/studio/edit/studioSetters'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
+    import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath } from '../../ts/studio/history/historyModel'
     import type { StudioRefusal } from '../../ts/studio/history/ownerHistory.svelte'
     import { parseOwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -52,16 +53,7 @@
     })
 
     function labelOf(path: RestorePath): string {
-        switch (path) {
-            case 'desc': return language.description
-            case 'firstMessage': return language.firstMessage
-            case 'exampleMessage': return language.exampleMessage
-            case 'customModuleToggle': return language.customPromptTemplateToggle
-            case 'hideChatIcon': return language.hideChatIcon
-            case 'risutanium_render_when_complete': return language.studioFormRenderWhenComplete
-            case 'note': return language.note
-            case 'alternateGreetings': return language.altGreet
-        }
+        return path === 'alternateGreetings' ? language.altGreet : language[fieldLabelKey(path)]
     }
 
     function toggle(path: RestorePath, keep: boolean): void {

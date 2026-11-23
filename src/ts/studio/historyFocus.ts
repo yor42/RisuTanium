@@ -6,8 +6,14 @@
 // not on screen, focus is left where it is unless it was lost (removed, disabled or on the body); then it goes to
 // the fallback the caller names.
 import { afterFlush } from '../afterFlush'
+import { registryPaths } from './history/fieldAccess'
+import { FIELD_PRESENTATION, type SetPath } from './history/fieldRegistry'
 import { cardSpans, cardText } from './longText/exampleCards'
 import type { OwnerFields } from './ownerFields'
+
+// A registered path other than the two first message paths, which have their own targets: its focus is the element
+// its presentation names, and the target kind is the path itself.
+export type ElementFocusPath = Exclude<SetPath, 'firstMessage' | 'exampleMessage'>
 
 export type FocusTarget =
     | { kind: 'greeting'; index: number }
@@ -15,10 +21,12 @@ export type FocusTarget =
     | { kind: 'firstMessage' }
     | { kind: 'example'; card: number }
     | { kind: 'exampleAdd' }
-    | { kind: 'desc' }
-    | { kind: 'hideChatIcon' }
-    | { kind: 'risutanium_render_when_complete' }
-    | { kind: 'note' }
+    | { kind: ElementFocusPath }
+
+function hasElementFocus(path: SetPath): path is ElementFocusPath {
+    const focus = FIELD_PRESENTATION[path].focus
+    return focus !== null && typeof focus === 'object'
+}
 
 // The cards of an example text as the list shows them, with a held marker line treated as a marker.
 function exampleCardTexts(value: unknown): string[] {
@@ -53,10 +61,9 @@ export function changedFieldTarget(before: OwnerFields, after: OwnerFields): Foc
     }
     if (before.firstMessage !== after.firstMessage) return { kind: 'firstMessage' }
     if (before.exampleMessage !== after.exampleMessage) return exampleTarget(before.exampleMessage, after.exampleMessage)
-    if (before.desc !== after.desc) return { kind: 'desc' }
-    if (before.hideChatIcon !== after.hideChatIcon) return { kind: 'hideChatIcon' }
-    if (before.renderWhenComplete !== after.renderWhenComplete) return { kind: 'risutanium_render_when_complete' }
-    if (before.note !== after.note) return { kind: 'note' }
+    for (const path of registryPaths()) {
+        if (hasElementFocus(path) && before[path] !== after[path]) return { kind: path }
+    }
     return null
 }
 
@@ -77,14 +84,10 @@ function elementFor(scope: ParentNode, target: FocusTarget): HTMLElement | null 
                 ? scope.querySelectorAll<HTMLElement>('[data-part="studio-example-form"] [data-part="studio-example-input"]')[target.card] ?? null
                 : scope.querySelector<HTMLElement>('[data-part="studio-example-form"] [data-part="studio-example-add"]')
         }
-        case 'desc':
-            return scope.querySelector<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-form-desc"]')
-        case 'hideChatIcon':
-            return scope.querySelector<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-form-hide-icon"]')
-        case 'risutanium_render_when_complete':
-            return scope.querySelector<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-form-render-when-complete"]')
-        case 'note':
-            return scope.querySelector<HTMLElement>('[data-part="studio-chat-note-form"] [data-part="studio-form-note"]')
+        default: {
+            const focus = FIELD_PRESENTATION[target.kind].focus
+            return focus !== null && typeof focus === 'object' ? scope.querySelector<HTMLElement>(`[data-part="${focus.form}"] [data-part="${focus.part}"]`) : null
+        }
     }
 }
 
