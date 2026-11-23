@@ -81,9 +81,32 @@ export function isBooleanSetPath(path: SetPath): boolean {
     return factsOf(path).value === 'bool'
 }
 // The character text fields whose whole value a set op carries: the merge-recording rule (an explicit list, not
-// derived from the registry).
-export type TextFieldPath = 'desc' | 'firstMessage' | 'exampleMessage'
-export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = ['desc', 'firstMessage', 'exampleMessage']
+// derived from the registry). A target addresses a nested field with `/` where its path has a `.`.
+export type TextFieldPath =
+    | 'desc'
+    | 'firstMessage'
+    | 'exampleMessage'
+    | 'systemPrompt'
+    | 'replaceGlobalNote'
+    | 'additionalText'
+    | 'personality'
+    | 'scenario'
+    | 'depth_prompt.prompt'
+    | 'defaultVariables'
+    | 'translatorNote'
+export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
+    'desc',
+    'firstMessage',
+    'exampleMessage',
+    'systemPrompt',
+    'replaceGlobalNote',
+    'additionalText',
+    'personality',
+    'scenario',
+    'depth_prompt.prompt',
+    'defaultVariables',
+    'translatorNote',
+]
 
 // `had: false` is an absent optional key. Writing it deletes the key; it never assigns false or undefined.
 export type FieldValue = { had: false } | { had: true; value: string | boolean }
@@ -863,7 +886,9 @@ function fromFolderOp(op: FolderOp): Extract<Op, { op: 'assetFolderSet' | 'asset
 
 // How a `textEdit` target is read and written: one of the owner's text fields, an entry of the first message list, or
 // any other registry text (served by the live reader). Null when the path is no registry address at all. Every
-// classification of a target goes through `parseTargetPath`, so a path is one kind everywhere.
+// classification of a target goes through `parseTargetPath`, so a path is one kind everywhere. `routeOf` is the one
+// router: the history replay (`textWriteFor`), Update-All (`writeOpFor`) and the character text writer's skip
+// (`textFieldOf`) all ask it, so no target is both written as a `set` and skipped as a `textSet`.
 type TextRoute = { kind: 'field'; path: TextFieldPath } | { kind: 'greeting'; index: number } | { kind: 'text' }
 
 function routeOf(target: string): TextRoute | null {
@@ -876,8 +901,9 @@ function routeOf(target: string): TextRoute | null {
     if ('greeting' in parsed) {
         return { kind: 'greeting', index: parsed.greeting }
     }
-    if (!('trigger' in parsed) && !('entry' in parsed) && !('nested' in parsed)) {
-        const path = TEXT_FIELD_PATHS.find((candidate) => candidate === parsed.field)
+    if (!('trigger' in parsed) && !('entry' in parsed)) {
+        const candidate = 'nested' in parsed ? `${parsed.nested}.${parsed.field}` : parsed.field
+        const path = TEXT_FIELD_PATHS.find((entry) => entry === candidate)
         if (path !== undefined) {
             return { kind: 'field', path }
         }
@@ -885,7 +911,8 @@ function routeOf(target: string): TextRoute | null {
     return { kind: 'text' }
 }
 
-function textFieldOf(target: string): TextFieldPath | null {
+// The text field a registry target is, null for every other target (including a field path written with a dot).
+export function textFieldOf(target: string): TextFieldPath | null {
     const route = routeOf(target)
     return route !== null && route.kind === 'field' ? route.path : null
 }
@@ -909,6 +936,11 @@ function countOf(rows: readonly (readonly string[])[], tuple: readonly string[])
     return count
 }
 
+// The registry target that addresses a text field path: the dotted path with its one dot as a slash.
+function textTargetOfField(path: TextFieldPath): string {
+    return path.replace('.', '/')
+}
+
 // The registry target of a value op that changes a text: a `textEdit`'s target, a text field's `set`, an alternate
 // first message's `listSet`. Null for every op that is not a text change (rows, folders, other fields, chat indexes).
 function textTargetOfOp(op: Op): string | null {
@@ -916,7 +948,8 @@ function textTargetOfOp(op: Op): string | null {
         return op.target
     }
     if (op.op === 'set') {
-        return TEXT_FIELD_PATHS.find((path) => path === op.path) ?? null
+        const path = TEXT_FIELD_PATHS.find((entry) => entry === op.path)
+        return path === undefined ? null : textTargetOfField(path)
     }
     return op.op === 'listSet' ? `alternateGreetings/${op.index}` : null
 }
@@ -980,8 +1013,8 @@ function spliceText(text: string, edit: { offset: number; from: string; to: stri
     return text.slice(0, edit.offset) + edit.to + text.slice(edit.offset + edit.from.length)
 }
 
-// The write that lands a text target's whole new value.
-function textWriteFor(target: string, next: string): WriteOp {
+// The write that lands a text target's whole new value: the one target-to-write decision.
+export function textWriteFor(target: string, next: string): WriteOp {
     const route = routeOf(target)
     if (route !== null && route.kind === 'field') {
         return { op: 'set', path: route.path, value: { had: true, value: next } }

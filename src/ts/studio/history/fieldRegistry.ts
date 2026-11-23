@@ -9,9 +9,15 @@
 //   never derived from the holder property and never required to equal it. Holder access goes only through
 //   `propertyOf(path)`, which is `property` when given and the path otherwise. To move a field to another holder
 //   property, set `property`; never rename the path.
-// - A dot in a path or in a `property` is reserved for nested holder properties (a dotted path names container `a`,
-//   key `b`, for example `depth_prompt.depth`). No dotted path and no `number` value is registered yet: the generic
-//   reader and writer support flat properties and text or boolean values only.
+// - A dot in a path or in a `property` is reserved for nested holder properties: a dotted path names container `a`,
+//   key `b` (for example `depth_prompt.prompt`), is held by `character` only and gives no `property`. Its container
+//   is one of CONTAINER_SEEDS, whose seeds are persisted facts (an undo replays a seed reading). An absent or null
+//   container reads as its seed, so a restore point captures `''` for the three container paths of an absent
+//   container. A `had: true` write creates the container from a fresh copy of the seed, and a container is never
+//   deleted. A restore onto an existing container writes into it, and a restore whose live reading already equals
+//   `before` writes nothing, so it creates no container. A session owner kind that lists a dotted path owns the seed
+//   and container rule in its own adapter. No `number` value is registered: the generic reader and writer support
+//   text and boolean values only.
 // - Never rename or remove a path, and never change an existing path's `value`, `absent`, `editWhenAbsent`,
 //   `holders` or `property`: older builds refuse a record whole on a path they do not know, and the frozen-facts test
 //   (append-only) pins every existing row. A path new to older builds is a widening they refuse whole.
@@ -55,7 +61,26 @@ export const FIELD_SPECS = {
     hideChatIcon: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     risutanium_render_when_complete: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     note: { value: 'text', holders: ['chat'], absent: 'keep', editWhenAbsent: true },
+    systemPrompt: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    replaceGlobalNote: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    additionalText: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    personality: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    scenario: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    'depth_prompt.prompt': { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    'additionalData.creator': { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    'additionalData.character_version': { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    nickname: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    defaultVariables: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    translatorNote: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
 } as const satisfies Record<string, FieldFacts>
+
+// The containers a dotted path names, with the value an absent container reads as: the classic character select's own
+// defaults. Frozen with the rows, because an undo replays a seed reading.
+export const CONTAINER_SEEDS = {
+    depth_prompt: { depth: 0, prompt: '' },
+    additionalData: { tag: [], creator: '', character_version: '' },
+} as const satisfies { [C in 'depth_prompt' | 'additionalData']: Required<NonNullable<character[C]>> }
+export type ContainerName = keyof typeof CONTAINER_SEEDS
 
 export type SetPath = keyof typeof FIELD_SPECS
 
@@ -67,6 +92,17 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     hideChatIcon: { labelKey: 'hideChatIcon', focus: { form: 'studio-character-form', part: 'studio-form-hide-icon' } },
     risutanium_render_when_complete: { labelKey: 'studioFormRenderWhenComplete', focus: { form: 'studio-character-form', part: 'studio-form-render-when-complete' } },
     note: { labelKey: 'note', focus: { form: 'studio-chat-note-form', part: 'studio-form-note' } },
+    systemPrompt: { labelKey: 'systemPrompt', focus: { form: 'studio-advanced-form', part: 'studio-form-system-prompt' } },
+    replaceGlobalNote: { labelKey: 'replaceGlobalNote', focus: { form: 'studio-advanced-form', part: 'studio-form-replace-global-note' } },
+    additionalText: { labelKey: 'additionalText', focus: { form: 'studio-advanced-form', part: 'studio-form-additional-text' } },
+    personality: { labelKey: 'personality', focus: { form: 'studio-advanced-form', part: 'studio-form-personality' } },
+    scenario: { labelKey: 'scenario', focus: { form: 'studio-advanced-form', part: 'studio-form-scenario' } },
+    'depth_prompt.prompt': { labelKey: 'depthPrompt', focus: { form: 'studio-advanced-form', part: 'studio-form-depth-prompt' } },
+    'additionalData.creator': { labelKey: 'creator', focus: { form: 'studio-advanced-form', part: 'studio-form-creator' } },
+    'additionalData.character_version': { labelKey: 'CharVersion', focus: { form: 'studio-advanced-form', part: 'studio-form-character-version' } },
+    nickname: { labelKey: 'nickname', focus: { form: 'studio-advanced-form', part: 'studio-form-nickname' } },
+    defaultVariables: { labelKey: 'defaultVariables', focus: { form: 'studio-advanced-form', part: 'studio-form-default-variables' } },
+    translatorNote: { labelKey: 'translatorNote', focus: { form: 'studio-advanced-form', part: 'studio-form-translator-note' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed
@@ -77,10 +113,26 @@ interface HolderTypes {
     chat: Chat
     module: RisuModule
 }
-type PropertyName<P extends SetPath> = (typeof FIELD_SPECS)[P] extends { readonly property: infer Q extends string } ? Q : P
-type MissingHolderProperty = {
-    [P in SetPath]: {
-        [H in (typeof FIELD_SPECS)[P]['holders'][number]]: PropertyName<P> extends keyof HolderTypes[H] ? never : P
-    }[(typeof FIELD_SPECS)[P]['holders'][number]]
-}[SetPath]
-export const HOLDER_PROPERTIES_EXIST: [MissingHolderProperty] extends [never] ? true : never = true
+type PropertyNameOf<Specs, P extends keyof Specs> = Specs[P] extends { readonly property: infer Q extends string } ? Q : P
+type HoldersOf<Specs extends Record<string, FieldFacts>, P extends keyof Specs & string> = Specs[P]['holders'][number]
+// The paths of `Specs` whose holder access does not exist. A flat path's property must be a key of each holder. A dotted
+// path `A.B` must name a container `A` of CONTAINER_SEEDS and a key `B` of its seed whose type matches the value type,
+// be held by `character` only and give no `property`.
+export type MissingHolderPropertyOf<Specs extends Record<string, FieldFacts>> = {
+    [P in keyof Specs & string]: P extends `${infer A}.${infer B}`
+        ? A extends ContainerName
+            ? B extends keyof (typeof CONTAINER_SEEDS)[A]
+                ? HoldersOf<Specs, P> extends 'character'
+                    ? Specs[P] extends { readonly property: string }
+                        ? P
+                        : Specs[P]['value'] extends 'text'
+                          ? (typeof CONTAINER_SEEDS)[A][B] extends string
+                              ? never
+                              : P
+                          : P
+                    : P
+                : P
+            : P
+        : { [H in HoldersOf<Specs, P>]: PropertyNameOf<Specs, P> extends keyof HolderTypes[H] ? never : P }[HoldersOf<Specs, P>]
+}[keyof Specs & string]
+export const HOLDER_PROPERTIES_EXIST: [MissingHolderPropertyOf<typeof FIELD_SPECS>] extends [never] ? true : never = true
