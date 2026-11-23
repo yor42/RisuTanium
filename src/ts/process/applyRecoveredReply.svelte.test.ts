@@ -193,7 +193,7 @@ describe('applyRecoveredReply', () => {
         const listener = vi.fn()
         chatOutputListeners.add(listener)
         await applyRecoveredReply(input('  spaced  '))
-        expect(processScriptFullMock).toHaveBeenCalledWith(expect.anything(), 'spaced', 'editoutput', 2, {}, undefined, expect.anything(), null)
+        expect(processScriptFullMock).toHaveBeenCalledWith(expect.anything(), 'spaced', 'editoutput', 2, {}, undefined, expect.anything(), null, undefined, 'use', undefined, expect.any(AbortSignal))
         expect(runTriggerMock).toHaveBeenCalledWith(expect.anything(), 'output', expect.objectContaining({ chat: expect.anything() }))
         expect(listener).toHaveBeenCalledWith(expect.objectContaining({ messageIndex: 2 }))
     })

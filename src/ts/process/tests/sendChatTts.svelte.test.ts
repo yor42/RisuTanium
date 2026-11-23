@@ -338,7 +338,9 @@ vi.mock('../coldMemberRestore', () => ({
 
 import { sendChat, doingChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { writeAt, stopWorkIn } from '../chatOrigin'
+import { writeAt, stopWorkIn, stopAllReplyWork } from '../chatOrigin'
+import { runLuaEditTrigger } from '../scriptings'
+import { processScript } from '../scripts'
 import { stopTTS } from '../tts'
 import { getUserName } from '../../util'
 import { clearRunningSends } from './activeUnits.test-helpers'
@@ -570,7 +572,7 @@ describe('what a fresh reply speaks', () => {
         expect(result).toBe(true)
         expect(spoken()).toEqual(['Hello User.'])
         expect(sayTTSMock.mock.calls[0][0]).toBe(charById('char-0'))
-        expect(sayTTSMock.mock.calls[0][2]).toEqual({ skipTextFilter: true })
+        expect(sayTTSMock.mock.calls[0][2]).toEqual({ skipTextFilter: true, signal: expect.any(AbortSignal) })
     })
 
     test('regression reproducer: a streamed reply with deferred post-processing is spoken once, as the parse of the stored reply', async () => {
@@ -663,7 +665,7 @@ describe('what a fresh reply speaks', () => {
         await settled(() => sendChat())
 
         expect(spoken()).toEqual(['Hello there.'])
-        expect(sayTTSMock.mock.calls[0][2]).toEqual({ skipTextFilter: true })
+        expect(sayTTSMock.mock.calls[0][2]).toEqual({ skipTextFilter: true, signal: expect.any(AbortSignal) })
     })
 
     test('regression reproducer: a read-only-quoted character with no quote in the reply is not spoken', async () => {
@@ -1277,5 +1279,123 @@ describe('auto speech in the shown, translated language', () => {
 
         expect(result).toBe(true)
         expect(sayTTSMock).not.toHaveBeenCalled()
+    })
+})
+describe('an edit pass or a speech that outlives the unit at its Stop', () => {
+    const hang = () => new Promise<never>(() => {})
+
+    interface Run {
+        state: { done: boolean, value: boolean | Error | undefined }
+    }
+
+    function startSend(): Run {
+        const state: Run['state'] = { done: false, value: undefined }
+        void settled(() => sendChat()).then((value) => {
+            state.done = true
+            state.value = value
+        })
+        return { state }
+    }
+
+    async function stopAndSettle(run: Run): Promise<void> {
+        stopAllReplyWork()
+        await until(() => run.state.done, 'the send to settle after the Stop')
+    }
+
+    beforeEach(() => {
+        // Earlier tests in this file also call the edit-request pass; a stale call history would satisfy the waits below before the send reaches the raced site.
+        vi.mocked(runLuaEditTrigger).mockClear()
+        vi.mocked(processScript).mockClear()
+        vi.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        vi.mocked(runLuaEditTrigger).mockImplementation(async (_char, _mode, content) => content)
+        vi.mocked(processScript).mockImplementation(async (_char, text) => text)
+        vi.restoreAllMocks()
+    })
+
+    test('T-3 regression reproducer: the unit signal reaches sayTTS, and the unit\'s Stop aborts it', async () => {
+        installSingle()
+        mockReplyIn('non-streaming', 'Hello.')
+        sayTTSMock.mockImplementation((_char: unknown, _text: string, options?: { signal?: AbortSignal }) => new Promise<void>((resolve) => {
+            options?.signal?.addEventListener('abort', () => resolve())
+        }))
+
+        const run = startSend()
+        await until(() => sayTTSMock.mock.calls.length > 0, 'the speech to start')
+        const signal = (sayTTSMock.mock.calls[0][2] as { signal?: AbortSignal }).signal
+
+        expect(signal).toBeInstanceOf(AbortSignal)
+        expect(signal?.aborted).toBe(false)
+        await stopAndSettle(run)
+        expect(signal?.aborted).toBe(true)
+    })
+
+    test('P-1 regression reproducer: an editprocess pass that never settles is abandoned by the Stop; the send ends with false and no request starts', async () => {
+        installSingle()
+        processScriptFullMock.mockImplementation(async (_char: unknown, text: string, mode: string) => (
+            mode === 'editprocess' ? hang() : { data: text, emoChanged: false }
+        ))
+
+        const run = startSend()
+        await until(() => processScriptFullMock.mock.calls.some((call) => call[2] === 'editprocess'), 'the editprocess pass to start')
+        expect(run.state.done).toBe(false)
+        await stopAndSettle(run)
+
+        expect(run.state.value).toBe(false)
+        expect(requestChatDataMock).not.toHaveBeenCalled()
+    })
+
+    test('P-2 regression reproducer: an editRequest Lua pass that never settles is abandoned by the Stop; the send ends with false and no request starts', async () => {
+        installSingle()
+        vi.mocked(runLuaEditTrigger).mockImplementation(async (_char, mode, content) => (
+            mode === 'editRequest' ? hang() : content
+        ))
+
+        const run = startSend()
+        await until(() => vi.mocked(runLuaEditTrigger).mock.calls.some((call) => call[1] === 'editRequest'), 'the editRequest pass to start')
+        expect(run.state.done).toBe(false)
+        await stopAndSettle(run)
+
+        expect(run.state.value).toBe(false)
+        expect(requestChatDataMock).not.toHaveBeenCalled()
+    })
+
+    test('P-1b regression reproducer: a first-message editprocess pass that never settles is abandoned by the Stop; the send ends with false and no request starts', async () => {
+        installSingle()
+        vi.mocked(processScript).mockImplementation(async (_char, text, mode) => (
+            mode === 'editprocess' ? hang() : text
+        ))
+
+        const run = startSend()
+        await until(() => vi.mocked(processScript).mock.calls.some((call) => call[2] === 'editprocess'), 'the first-message editprocess pass to start')
+        expect(run.state.done).toBe(false)
+        await stopAndSettle(run)
+
+        expect(run.state.value).toBe(false)
+        expect(requestChatDataMock).not.toHaveBeenCalled()
+    })
+
+    test('P-2b regression reproducer: the prompt-text editRequest pass that never settles is abandoned by the Stop; the send ends with false and no request starts', async () => {
+        installSingle({}, [msg('user', 'Hi')], { promptInfoInsideChat: true, promptTextInfoInsideChat: true })
+        let editRequestCalls = 0
+        vi.mocked(runLuaEditTrigger).mockImplementation(async (_char, mode, content) => {
+            if (mode === 'editRequest') {
+                editRequestCalls++
+                if (editRequestCalls > 1) {
+                    return hang()
+                }
+            }
+            return content
+        })
+
+        const run = startSend()
+        await until(() => vi.mocked(runLuaEditTrigger).mock.calls.filter((call) => call[1] === 'editRequest').length >= 2, 'the prompt-text editRequest pass to start')
+        expect(run.state.done).toBe(false)
+        await stopAndSettle(run)
+
+        expect(run.state.value).toBe(false)
+        expect(requestChatDataMock).not.toHaveBeenCalled()
     })
 })
