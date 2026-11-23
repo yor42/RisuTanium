@@ -27,6 +27,7 @@ const FORWARDING_COMPONENTS: Readonly<Record<string, string>> = {
 const REGISTRY_PART_FORMS: Readonly<Record<string, string>> = {
     '/src/lib/Studio/StudioAdvancedForm.svelte': 'partOf(spec.path)',
     '/src/lib/Studio/StudioModuleAdvancedForm.svelte': 'partOf(path)',
+    '/src/lib/Studio/StudioPresetAdvancedForm.svelte': 'partOf(path)',
 }
 
 interface Rendered {

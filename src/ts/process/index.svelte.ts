@@ -84,7 +84,7 @@ import { splitAtOpenCbsSpan } from "../chatShell/streamSpans";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
 import { classifyReplyOutcome, noteUnitAlerted, noteUnitFailure, recordReplyOutcome, setReplyMark, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, nativeNoticeArmOf, noteReplySound } from "./replyNotice";
-import { raceAbort } from "./abortRace";
+import { raceAbort, raceUntil, createStopDeadline, STOPPED_PASS_GRACE_MS, STOPPED_UNIT_WATCHDOG_MS, type StopDeadline } from "./abortRace";
 
 export interface OpenAIChat{
     role: 'system'|'user'|'assistant'|'function'
@@ -438,6 +438,9 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     let nativeAnnounced = false
     // The same classification, for the keep-alive notification's Stopped and Failed lingers. A preview send has none.
     let replyOutcome: ReplyOutcome | undefined
+    // Created after the module check and disposed with the unit; one of each per unit, never per body.
+    let passDeadline: StopDeadline | undefined
+    let watchdog: StopDeadline | undefined
     try {
         // Reset after admission, for the chat this unit writes to, so a refused call never clears the running send's
         // progress.
@@ -452,6 +455,12 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
             modulesFailed = true
             return false
         }
+        // The grace the output passes share starts at the Stop, wherever the unit is then; the recursion runs on the
+        // same signal and finds this deadline.
+        passDeadline = createStopDeadline(unit.signal, STOPPED_PASS_GRACE_MS)
+        stopDeadlineOfUnit.set(unit.signal, passDeadline)
+        const stoppedChatId = entry.context.origin.chatId
+        watchdog = createStopDeadline(unit.signal, STOPPED_UNIT_WATCHDOG_MS, () => console.warn('A stopped reply is still running', stoppedChatId))
         completed = await sendChatBody(chatProcessIndex, { ...arg, signal: unit.signal }, entry.context)
         return completed && !unit.signal.aborted
     } catch (error) {
@@ -460,6 +469,10 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     } finally {
         try {
             try {
+                // Neither outlives the unit: no timer or listener is left once the body has returned.
+                passDeadline?.dispose()
+                watchdog?.dispose()
+                stopDeadlineOfUnit.delete(unit.signal)
                 // First, before the hidden-page flush and while the registration is live: the mark it writes is then saved by
                 // that flush, and a put-back that waits on the registration cannot race it. Never throws.
                 if(!(arg.preview || arg.previewPrompt)){
@@ -546,6 +559,12 @@ function expandChatVariables(ctx: OriginContext, subject: SendSubject, currentCh
 
 /** The keys of the replies each running unit was granted, by the unit's signal; the outermost call settles them. */
 const replyKeysOfUnit = new WeakMap<AbortSignal, string[]>()
+
+/** The stop deadline of each running unit, by the unit's signal; the unit's outermost call owns and disposes it. */
+const stopDeadlineOfUnit = new WeakMap<AbortSignal, StopDeadline>()
+
+/** Used by a body that no unit wrapper started: it never expires, so its passes are awaited as before. */
+const unboundedDeadline: StopDeadline = { expired: false, dispose() {} }
 
 /**
  * The chats (`chaId` and `chatId` joined) a recovered reply was deferred for because a unit held them: the release of that
@@ -879,7 +898,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
     const { origin, hint, subject } = callCtx
     const abortSignal = arg.signal ?? (new AbortController()).signal
-    
+    // Shared by every output pass of this unit: they all give up at the same moment after a Stop.
+    const passDeadline = stopDeadlineOfUnit.get(abortSignal) ?? unboundedDeadline
+
     // NOTE: `throwError()` can be called before these are populated (e.g. HypaV3 early validation errors).
     // Keep them declared up-front to avoid TDZ ReferenceErrors in production builds.
     let currentChar:character
@@ -3121,21 +3142,27 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         let settleText: string | null = null
         // With `holdOpenSpan` the text from the opener of a CBS block that is still open stays raw, so the chat view can hide
         // it until the block closes; only the text before it is processed.
-        const processAndWriteReply = async (text:string, holdOpenSpan:boolean, bumpKeys = true):Promise<boolean> => {
+        // 'abandoned': the unit's stop deadline expired before the pass finished, so nothing was written and the reply keeps
+        // the text it last stored. The pass runs with the abandon signal, not the unit's, so a Stop does not disable its Lua.
+        const processAndWriteReply = async (text:string, holdOpenSpan:boolean, bumpKeys = true):Promise<'written'|'gone'|'abandoned'> => {
             const before = resolveReply()
             if(!before){
-                return false
+                return 'gone'
             }
             const { head, held } = holdOpenSpan ? splitAtOpenCbsSpan(text) : { head: text, held: '' }
             // Every text here is a partial or deferred reply that is never looked up again; caching it would only evict entries that are.
-            const processed = await processScriptFull(nowChatroom, head, 'editoutput', before.index, {}, undefined, subject, replyMessageRef(before), undefined, 'bypass')
+            const raced = await raceUntil(passDeadline, (abandoned) => processScriptFull(nowChatroom, head, 'editoutput', before.index, {}, undefined, subject, replyMessageRef(before), undefined, 'bypass', undefined, abandoned), { label: 'The output script pass' })
+            if(!raced.settled){
+                return 'abandoned'
+            }
+            const processed = raced.value
             emoChanged = processed.emoChanged
             const written = writeReplyData(processed.data + held, bumpKeys)
             // A pass that threw never reaches here, so the settle text stays the last one that was written.
             if(written){
                 settleText = held === '' ? null : text
             }
-            return written
+            return written ? 'written' : 'gone'
         }
         const flushStreamingDisplay = async () => {
             clearStreamingFlushSchedule()
@@ -3155,7 +3182,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         replyGone = !writeReplyData(reformatContent(prefix + nextResult))
                         continue
                     }
-                    replyGone = !(await processAndWriteReply(reformatContent(prefix + nextResult), true))
+                    const flushed = await processAndWriteReply(reformatContent(prefix + nextResult), true)
+                    replyGone = flushed === 'gone'
+                    if(flushed === 'abandoned'){
+                        break
+                    }
                 } while(streamingFlushQueued || pendingStreamingResult !== null)
             })().finally(() => {
                 streamingFlushPromise = null
@@ -3218,16 +3249,20 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         }
                         scheduleStreamingDisplayFlush()
                     }
-                    else if(!(await processAndWriteReply(reformatContent(prefix + result), true))){
-                        replyGone = true
-                        break
-                    }
-                    else if(!streamAborted){
-                        // One posted-message task, never a timer, frame or scheduler.yield: a hidden page must still finish
-                        // the reply, and native events queued during the pass must reach the snapshot reader first so the
-                        // next pass takes the newest snapshot. Superseded snapshots skip the scripts; unless Stop or a gone
-                        // reply ends the loop, the last snapshot is always written (MC-1451, MC-2990, MC-2991).
-                        await yieldTask()
+                    else {
+                        const written = await processAndWriteReply(reformatContent(prefix + result), true)
+                        if(written !== 'written'){
+                            // Gone: nothing more is written. Abandoned: the reply keeps its last stored text.
+                            replyGone = written === 'gone'
+                            break
+                        }
+                        if(!streamAborted){
+                            // One posted-message task, never a timer, frame or scheduler.yield: a hidden page must still finish
+                            // the reply, and native events queued during the pass must reach the snapshot reader first so the
+                            // next pass takes the newest snapshot. Superseded snapshots skip the scripts; unless Stop or a gone
+                            // reply ends the loop, the last snapshot is always written (MC-1451, MC-2990, MC-2991).
+                            await yieldTask()
+                        }
                     }
                 }
                 if(readed.done){
@@ -3250,12 +3285,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     throw streamingFlushError
                 }
                 if(deferStreamingPostProcessing && receivedStreamingResult && !replyGone){
-                    replyGone = !(await processAndWriteReply(reformatContent(prefix + result), false, false))
+                    replyGone = (await processAndWriteReply(reformatContent(prefix + result), false, false)) === 'gone'
                 }
                 // The last write held an open block raw: the stored reply is the pass over its whole text, as when no
                 // block was held. Done, Stop and a reader error all end here; a flush error has already thrown above.
                 if(!replyGone && settleText !== null && !deferStreamingPostProcessing){
-                    replyGone = !(await processAndWriteReply(settleText, false, false))
+                    replyGone = (await processAndWriteReply(settleText, false, false)) === 'gone'
                 }
             }
             finally {
@@ -3340,6 +3375,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     : (req.type === 'multiline') ? req.result
                     : []
         let mrerolls:string[] = []
+        // Set once a pass is abandoned at the stop deadline; every later pass is then not started either.
+        let outputAbandoned = false
         for(let i=0;i<msgs.length;i++){
             let msg = msgs[i]
             let mess = msg[1]
@@ -3354,13 +3391,28 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     trackReply(startCtx.chat, continuedIndex)
                 }
             }
-            let result2 = await processScriptFull(nowChatroom, reformatContent(mess), 'editoutput', startCtx.chat.message.length, {}, undefined, subject, null)
+            // A pass the stop deadline abandons (or never starts) gives back its own input: the reply is stored raw, like
+            // a stopped stream's, and nothing that follows starts a new hook.
+            const firstInput = reformatContent(mess)
+            const firstRaced = await raceUntil(passDeadline, (abandoned) => processScriptFull(nowChatroom, firstInput, 'editoutput', startCtx.chat.message.length, {}, undefined, subject, null, undefined, 'use', undefined, abandoned), { label: 'The output script pass' })
+            if(!firstRaced.settled){
+                outputAbandoned = true
+            }
+            let result2: { data: string, emoChanged: boolean } = firstRaced.settled ? firstRaced.value : { data: firstInput, emoChanged: false }
             if(continuing){
                 const continuedTarget = resolveReply()
                 if(continuedTarget){
                     const beforeData = continuedTarget.ctx.chat.message[continuedTarget.index].data
                     ttsBefore = beforeData
-                    result2 = await processScriptFull(nowChatroom, reformatContent(beforeData + mess), 'editoutput', continuedTarget.index, {}, undefined, subject, replyMessageRef(continuedTarget))
+                    const continuedInput = reformatContent(beforeData + mess)
+                    const continuedRaced = await raceUntil(passDeadline, (abandoned) => processScriptFull(nowChatroom, continuedInput, 'editoutput', continuedTarget.index, {}, undefined, subject, replyMessageRef(continuedTarget), undefined, 'use', undefined, abandoned), { label: 'The output script pass' })
+                    if(continuedRaced.settled){
+                        result2 = continuedRaced.value
+                    }
+                    else{
+                        outputAbandoned = true
+                        result2 = { data: continuedInput, emoChanged: false }
+                    }
                 }
             }
             modelText = DBState.db.removeIncompleteResponse ? trimUntilPunctuation(mess) : mess
@@ -3368,7 +3420,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 result2.data = trimUntilPunctuation(result2.data)
             }
             result = result2.data
-            const inlayResult = runInlayScreen(currentChar, result)
+            // An abandoned pass means a Stop: the inlay step would start an image generation, which a stopped unit does not.
+            const inlayResult = outputAbandoned ? { text: result, promise: undefined } : runInlayScreen(currentChar, result)
             result = inlayResult.text
             emoChanged = result2.emoChanged
             if(continuing){
@@ -3453,6 +3506,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
         if(mrerolls.length >1){
             addRerolls(generationId, mrerolls, { chaId: origin.chaId, chatId: origin.chatId }, candidateStartState)
+        }
+
+        // A Stop ends the unit here, as it does after a stopped stream: the variable CBS of the stored reply is expanded
+        // by the next send's entry, not by this stopped unit.
+        if(abortSignal.aborted){
+            return false
         }
 
         const parsedChat = runCurrentChatFunction()

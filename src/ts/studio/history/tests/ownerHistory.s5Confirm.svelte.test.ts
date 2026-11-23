@@ -197,6 +197,28 @@ describe('T5-GUARD-DIRECT: a direct turn-on asks', () => {
     })
 })
 
+describe('T5-GUARD-VALUE: the value intent passes the same guard as the field intent', () => {
+    const setValue = (value: boolean, confirm?: 'lowLevelOn'): StudioResult => {
+        const result = harness.service.editValue(M1, LOW, value, confirm)
+        harness.clock.tick(2000)
+        return result
+    }
+
+    test('refused without confirm with nothing written or recorded; lands with it; turning off never asks', async () => {
+        await ready()
+        tracker.modules = false
+        const before = take()
+        expect(setValue(true)).toEqual({ ok: false, reason: 'confirm-low-level' })
+        expectUnchanged(before)
+        expect(Object.hasOwn(slot(), 'lowLevelAccess')).toBe(false)
+        expect(setValue(true, 'lowLevelOn')).toEqual({ ok: true })
+        expect(slot().lowLevelAccess).toBe(true)
+        expect(harness.service.view(M1).done.length).toBe(before.doneIds.length + 1)
+        expect(setValue(false)).toEqual({ ok: true })
+        expect(slot().lowLevelAccess).toBe(false)
+    })
+})
+
 describe('T5-GUARD-UNDO: a replay that turns the flag on asks, also after a replace-import (MC-3984)', () => {
     test('undo of a turn-off over a replace-imported module', async () => {
         await ready()

@@ -275,7 +275,6 @@ describe('4d text of the chat, a resident module and a preset', () => {
         ['lore', 'res/lore:0', 'MODULE-LORE'],
         ['regex', 'res/regex:0', 'MODULE-IN'],
         ['scripts', 'res/scripts:0', 'module-lua'],
-        ['html', 'res/html:0', 'MODULE-HTML'],
     ]
 
     test.each(moduleCases)('a resident module %s shows its text', (kind, itemId, expected) => {
@@ -539,7 +538,7 @@ describe('the live forms and the save chip in the detail', () => {
         expect(history.useOwner).toEqual([])
     })
 
-    test('X-14 the advanced kind of a module and of a preset keeps the read-only note and mounts no example form', () => {
+    test('X-14 the advanced kind of a module mounts the module form, no example form and no read-only note', () => {
         setFull(makeInput({
             character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
             modules: [residentModule('res')],
@@ -550,9 +549,10 @@ describe('the live forms and the save chip in the detail', () => {
         show()
         flushSync()
         expect(part('studio-example-form')).toBeNull()
-        expect(part('studio-detail-readonly')).not.toBeNull()
+        expect(part('studio-detail-readonly')).toBeNull()
+        expect(part('studio-module-advanced-form')).not.toBeNull()
         expect(part('studio-chat-note-form')).toBeNull()
-        expect(history.useOwner).toEqual([])
+        expect(history.useOwner).toEqual(['module:res'])
     })
 
     test('X-14 the advanced kind of a preset keeps the read-only note and mounts no example form', () => {

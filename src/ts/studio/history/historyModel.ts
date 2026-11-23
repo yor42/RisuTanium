@@ -396,6 +396,12 @@ export function textPathsFor(kind: OwnerKind): readonly SetPath[] {
     return SET_PATHS_BY_KIND[kind].filter((path) => !isBooleanSetPath(path))
 }
 
+// The set paths of an owner kind whose value is not text (a boolean today): the paths editValue reaches. Together with
+// textPathsFor it holds every path of the kind exactly once.
+export function valuePathsFor(kind: OwnerKind): readonly SetPath[] {
+    return SET_PATHS_BY_KIND[kind].filter((path) => isBooleanSetPath(path))
+}
+
 const ASSET_ARRAYS: readonly string[] = ['additionalAssets', 'emotionImages', 'assets']
 
 function isCount(value: unknown): value is number {

@@ -19,6 +19,7 @@ import {
 } from '../historyModel'
 import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../ownerPhase'
 import type { SessionOwnerKind } from '../sessionKinds'
+import { PRESET_FORM_BOOLEAN_PATHS, PRESET_FORM_PATHS } from './presetPaths.test-helpers'
 import { createMemoryStudioStore, seedOwner, storedRecord } from './studioStoreDoubles'
 
 // The stored kinds: a session kind has no stored key, record or restore row.
@@ -64,8 +65,8 @@ describe('T-P1: the derived tables equal the literal lists (compatibility guard)
         expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, 'alternateGreetings'])
         expect(RESTORE_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(RESTORE_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, 'alternateGreetings'])
-        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, 'alternateGreetings'])
+        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess', ...PRESET_FORM_BOOLEAN_PATHS])
         expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1])
         expect(textPathsFor('chat')).toEqual(['note'])
         expect(textPathsFor('module')).toEqual(['customModuleToggle', 'moduleName', 'moduleDescription', 'moduleNamespace', 'backgroundEmbedding'])
@@ -103,7 +104,10 @@ describe('T-P2: a name inherited from Object is no path (compatibility guard)', 
 })
 
 describe('T-P3: a value of the wrong type for a registered path refuses the record whole (compatibility guard)', () => {
-    const rows = Object.entries(FIELD_SPECS).map(([path, facts]) => ({ path: path as SetPath, facts }))
+    // The session-only paths (no builtin holder) have no stored record to refuse.
+    const rows = Object.entries(FIELD_SPECS)
+        .map(([path, facts]) => ({ path: path as SetPath, facts }))
+        .filter(({ path }) => KINDS.some((candidate) => SET_PATHS_BY_KIND[candidate].includes(path)))
 
     test.each(rows)('$path', ({ path, facts }) => {
         const kind = KINDS.find((candidate) => SET_PATHS_BY_KIND[candidate].includes(path)) as OwnerKind
@@ -143,6 +147,40 @@ describe('T-L1: the label key of every registered path (diagnostic)', () => {
         moduleHideIcon: 'hideChatIcon',
         moduleLowLevelAccess: 'lowLevelAccess',
         backgroundEmbedding: 'backgroundHTML',
+        presetName: 'name',
+        presetMainPrompt: 'mainPrompt',
+        presetJailbreak: 'jailbreakPrompt',
+        presetGlobalNote: 'globalNote',
+        presetPromptPreprocess: 'promptPreprocess',
+        presetPostEndInnerFormat: 'postEndInnerFormat',
+        presetSendChatAsSystem: 'sendChatAsSystem',
+        presetSendName: 'formatGroupInSingle',
+        presetTrimStartNewChat: 'trimStartNewChat',
+        presetUtilOverride: 'utilOverride',
+        presetCustomChainOfThought: 'customChainOfThought',
+        presetJsonSchemaEnabled: 'enableJsonSchema',
+        presetOutputImageModal: 'outputImageModal',
+        presetStrictJsonSchema: 'strictJsonSchema',
+        presetJsonSchema: 'jsonSchema',
+        presetExtractJson: 'extractJson',
+        presetGroupOtherBotRole: 'groupOtherBotRole',
+        presetTemplateDefaultVariables: 'defaultVariables',
+        presetAutoSuggestPrompt: 'autoSuggest',
+        presetGroupTemplate: 'groupInnerFormat',
+        presetSystemContentReplacement: 'systemContentReplacement',
+        presetSystemRoleReplacement: 'systemRoleReplacement',
+        presetFallbackWhenBlank: 'fallbackWhenBlankResponse',
+        presetModuleIntegration: 'moduleIntergration',
+        presetUseInstructPrompt: 'useInstructPrompt',
+        presetAutoSuggestPrefix: 'studioPresetAutoSuggestPrefix',
+        presetAutoSuggestClean: 'studioPresetAutoSuggestClean',
+        presetDynamicAutoAdjustSchema: 'studioPresetDynamicAutoAdjustSchema',
+        presetDynamicMessages: 'studioPresetDynamicMessages',
+        presetDynamicMemory: 'studioPresetDynamicMemory',
+        presetDynamicResponseTiming: 'studioPresetDynamicResponseTiming',
+        presetDynamicOutputPrompt: 'studioPresetDynamicOutputPrompt',
+        presetDynamicShowTypingEffect: 'studioPresetDynamicShowTypingEffect',
+        presetDynamicRequest: 'studioPresetDynamicRequest',
     }
 
     test.each(Object.entries(EXPECTED))('%s', (path, key) => {
