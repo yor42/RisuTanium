@@ -9,6 +9,9 @@ import { pendingChatFileUploads, trackChatFileAttachment } from '../../ts/proces
 import type { InlayWriteProgress } from '../../ts/process/files/inlays'
 import { addActiveStream, noteStreamText, resetActiveStreamsForTest } from '../../ts/process/activeStreams'
 import { glyphsIn, iconsIn, lucideNames } from './tests/glyphFree'
+import { resetRunningRepliesForTests, setRunningReplies, type RunningReplyEntry } from '../../ts/nativeReply/runningReplies.svelte'
+import { resetPageStateForTests, setReconcileTrigger } from '../../ts/nativeReply/pageState'
+import { resetRelistForTests } from '../../ts/nativeReply/runningRelist.svelte'
 
 const state = $state({ db: {
     characters: [{ chaId: 'c', name: 'Character', chatPage: 0, chats: [{ id: 'chat', message: [] }] }],
@@ -20,13 +23,13 @@ const busy = writable(false)
 const sendMain = vi.fn(async () => {})
 const abortChat = vi.fn()
 const stopComposerWorkIn = vi.fn()
-// Whether work is registered in the shown chat, and whether the global send flag is held by another chat.
-const work = $state({ shown: false, window: false })
+// Whether work is registered in the shown chat, whether another chat writes (the any-chat flag and window, which the component must ignore), and which chats a Send holds the composer for.
+const work = $state({ shown: false, window: false, lockedChats: [] as string[] })
 const postChatFile = vi.fn(async (..._args: unknown[]) => [{ type: 'asset' as const, data: 'asset-id' }])
 
 vi.mock('../../ts/stores.svelte', () => ({ DBState: state, selIdState: selection, popUpEditorStore: popup }))
 vi.mock('../../ts/process/index.svelte', () => ({ doingChat: busy }))
-vi.mock('../../ts/process/composerActions.svelte', () => ({ sendMain, abortChat, stopComposerWorkIn, isComposerBusy: () => work.window, isComposerBusyIn: () => work.shown, isComposerLocked: () => false, reroll: vi.fn(), updateInputTransateMessage: vi.fn() }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ sendMain, abortChat, stopComposerWorkIn, isComposerBusy: () => work.window, isComposerBusyIn: () => work.shown, isComposerLocked: () => work.lockedChats.length > 0, isComposerLockedIn: (target: { chatId: string }) => work.lockedChats.includes(target.chatId), reroll: vi.fn(), updateInputTransateMessage: vi.fn() }))
 const pendingDelete = $state({ chatId: null as string | null })
 vi.mock('../../ts/process/chatOrigin', () => ({ beginWork: vi.fn(), originOf: (owner: { chaId: string }, chat: { id: string }) => ({ chaId: owner.chaId, chatId: chat.id }) }))
 vi.mock('../../ts/chatShell/stopDelete.svelte', () => ({
@@ -40,7 +43,7 @@ vi.mock('../ChatScreens/AssetInput.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../lang', () => ({ language: {
     chatShellMessage: 'Message', chatShellMoreActions: 'More actions', tools: 'Tools', chatShellChoosePersona: 'Choose persona',
     asPersona: (name: string) => `as ${name}`, chatShellStop: 'Stop', chatShellSend: 'Send', chatShellSendWaitsForDelete: 'Waiting for the reply to be deleted…',
-    chatShellSendBlockedWriting: 'Another chat is writing a reply. Send when it finishes.',
+    chatShellSendWaitsForNativeReply: 'A reply is still being written in this chat. Send when it finishes.',
     chatShellRemoveAttachment: 'Remove attachment', enterKey: 'Enter key',
     chatShellStickers: 'Stickers', chatShellOnThisDevice: 'On this device', chatShellOnThisDeviceHelp: 'Other devices keep their own setting.',
     chatShellAttachingFile: (name: string, written: string, total: string) => `Attaching ${name}: ${written} / ${total} MiB`,
@@ -59,6 +62,11 @@ afterEach(async () => {
     sendMain.mockClear(); abortChat.mockClear(); stopComposerWorkIn.mockClear(); postChatFile.mockClear()
     work.shown = false
     work.window = false
+    work.lockedChats = []
+    resetRunningRepliesForTests()
+    resetRelistForTests()
+    resetPageStateForTests()
+    vi.useRealTimers()
     busy.set(false)
     vi.unstubAllGlobals()
 })
@@ -324,46 +332,102 @@ describe('ShellComposer draft and actions', () => {
         })
     })
 
-    test('T10: a reply written in another chat shows no Stop, disables Send with the reason, and leaves typing alone', async () => {
+    test('C1: a reply written in another chat leaves Send, Enter and typing alone', async () => {
         const node = await show()
         busy.set(true)
+        work.window = true
         flushSync()
         expect(node.querySelector('[data-part="chat-composer-stop"]')).toBeNull()
         const send = node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!
-        expect(send.disabled).toBe(true)
-        expect(send.title).toBe('Another chat is writing a reply. Send when it finishes.')
-        const reasonId = send.getAttribute('aria-describedby')!
-        expect(node.querySelector(`#${reasonId}`)?.textContent).toBe('Another chat is writing a reply. Send when it finishes.')
+        expect(send.disabled).toBe(false)
+        expect(send.hasAttribute('title')).toBe(false)
+        expect(send.hasAttribute('aria-describedby')).toBe(false)
         send.click()
-        expect(sendMain).not.toHaveBeenCalled()
+        expect(sendMain).toHaveBeenCalledTimes(1)
         const input = node.querySelector<HTMLTextAreaElement>('[data-part="chat-composer-input"]')!
         expect(input.readOnly).toBe(false)
         input.value = 'typed meanwhile'
         input.dispatchEvent(new Event('input', { bubbles: true }))
         flushSync()
         expect(drafts.peek({ chaId: 'c', chatId: 'chat' }).messageInput).toBe('typed meanwhile')
-
-        busy.set(false)
-        flushSync()
-        expect(node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!.disabled).toBe(false)
-        expect(node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!.hasAttribute('aria-describedby')).toBe(false)
     })
 
-    test('T10: another chat\'s open take window (the send flag not yet held) disables Send with the reason, and it re-enables when the window closes', async () => {
+    test('C2: a native reply the page no longer holds for the shown chat disables Send with its own reason, and Send returns when it ends', async () => {
         const node = await show()
-        work.window = true
+        const send = () => node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!
+        const reason = 'A reply is still being written in this chat. Send when it finishes.'
+        setRunningReplies([{ key: 'k', target: { chaId: 'other', chatId: 'other-chat', name: 'Other' } }])
         flushSync()
-        const send = node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!
-        expect(get(busy)).toBe(false)
-        expect(send.disabled).toBe(true)
-        expect(send.title).toBe('Another chat is writing a reply. Send when it finishes.')
-        send.click()
+        expect(send().disabled).toBe(false)
+        setRunningReplies([{ key: 'k', target: { chaId: 'c', chatId: 'chat', name: 'Character' } }])
+        flushSync()
+        expect(send().disabled).toBe(true)
+        expect(send().title).toBe(reason)
+        expect(node.querySelector(`#${send().getAttribute('aria-describedby')}`)?.textContent).toBe(reason)
+        send().click()
+        const input = node.querySelector<HTMLTextAreaElement>('[data-part="chat-composer-input"]')!
+        input.value = 'x'
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
         expect(sendMain).not.toHaveBeenCalled()
-        work.window = false
+        setRunningReplies([])
         flushSync()
-        expect(node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!.disabled).toBe(false)
+        expect(send().disabled).toBe(false)
+        expect(send().hasAttribute('title')).toBe(false)
+        send().click()
+        expect(sendMain).toHaveBeenCalledTimes(1)
     })
 
+    // T1 (reproducer for O-6): a native reply that failed before its head sends no event, so only a re-list clears the block.
+    test('T1: Send is enabled again within 2 s once the native side no longer lists the reply, with no event', async () => {
+        vi.useFakeTimers()
+        const native: { entries: RunningReplyEntry[] } = { entries: [{ key: 'k', target: { chaId: 'c', chatId: 'chat', name: 'Character' } }] }
+        const trigger = vi.fn(async () => { setRunningReplies(native.entries) })
+        setReconcileTrigger(trigger)
+        setRunningReplies(native.entries)
+        const node = await show()
+        const send = () => node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!
+        expect(send().disabled).toBe(true)
+        native.entries = []
+        await vi.advanceTimersByTimeAsync(1999)
+        flushSync()
+        expect(trigger).not.toHaveBeenCalled()
+        expect(send().disabled).toBe(true)
+        await vi.advanceTimersByTimeAsync(1)
+        flushSync()
+        expect(trigger).toHaveBeenCalledTimes(1)
+        expect(send().disabled).toBe(false)
+    })
+
+    test('T8: a unit writing in the shown chat shows Stop and schedules no re-list; the schedule starts when it ends', async () => {
+        vi.useFakeTimers()
+        const trigger = vi.fn(async () => {})
+        setReconcileTrigger(trigger)
+        setRunningReplies([{ key: 'k', target: { chaId: 'c', chatId: 'chat', name: 'Character' } }])
+        work.shown = true
+        await show()
+        await vi.advanceTimersByTimeAsync(600_000)
+        expect(trigger).not.toHaveBeenCalled()
+        work.shown = false
+        flushSync()
+        await vi.advanceTimersByTimeAsync(1999)
+        expect(trigger).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(1)
+        expect(trigger).toHaveBeenCalledTimes(1)
+    })
+
+    test('C6: the textarea is read-only while the composer is held for the shown chat, not for another chat', async () => {
+        const node = await show()
+        const input = () => node.querySelector<HTMLTextAreaElement>('[data-part="chat-composer-input"]')!
+        work.lockedChats = ['other-chat']
+        flushSync()
+        expect(input().readOnly).toBe(false)
+        work.lockedChats = ['chat']
+        flushSync()
+        expect(input().readOnly).toBe(true)
+        work.lockedChats = []
+        flushSync()
+        expect(input().readOnly).toBe(false)
+    })
     test('paste counts the FileReader until load, error, or abort settles', async () => {
         const readers: FakeReader[] = []
         class FakeReader {

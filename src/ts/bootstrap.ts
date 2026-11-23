@@ -935,7 +935,7 @@ function startNativeReply(): void {
         },
         onUnreadable: reconciler.reportUnreadable,
     })
-    setReconcileTrigger(() => { void reconciler.request() })
+    setReconcileTrigger(() => reconciler.request())
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
             requestReconcile()

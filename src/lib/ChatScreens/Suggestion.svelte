@@ -4,7 +4,7 @@
     import { isBusyIn } from "../../ts/process/chatOrigin";
     import { type character, type Message, type groupChat } from "../../ts/storage/database.svelte";
 	import { DBState } from 'src/ts/stores.svelte';
-    import { isComposerLocked } from "src/ts/process/composerActions.svelte";
+    import { isComposerLockedIn } from "src/ts/process/composerActions.svelte";
     import { selectedCharID } from "../../ts/stores.svelte";
     import { isTauri } from 'src/ts/platform';
     import { translate } from "src/ts/translator/translator";
@@ -258,7 +258,7 @@
         {#each suggestMessages??[] as suggest, i}
             <div class="flex mr-2 mb-2">
                 <button class="bg-textcolor2 hover:bg-darkbutton text-textcolor font-bold py-2 px-4 rounded-sm" onclick={() => {
-                    if(isComposerLocked()){
+                    if(shownTarget && isComposerLockedIn(shownTarget)){
                         return
                     }
                     suggestMessages = []
@@ -270,7 +270,7 @@
                 {/await}
                 </button>
                 <button class="bg-textcolor2 hover:bg-darkbutton text-textcolor font-bold py-2 px-4 rounded-sm ml-1" aria-label={language.suggestionToInput} onclick={() => {
-                    if(isComposerLocked()){
+                    if(shownTarget && isComposerLockedIn(shownTarget)){
                         return
                     }
                     messageInput(suggest)

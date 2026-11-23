@@ -34,6 +34,7 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
 
 vi.mock(import('src/ts/process/composerActions.svelte'), () => ({
     isComposerLocked: vi.fn(() => false),
+    isComposerLockedIn: vi.fn(() => false),
 }) as unknown as typeof import('src/ts/process/composerActions.svelte'))
 
 vi.mock(import('src/ts/platform'), () => ({

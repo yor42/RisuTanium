@@ -7,16 +7,18 @@
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ReaderIntentSource } from '../../ts/chatShell/readerIntent'
-import { activeUnits } from '../../ts/process/activeUnits'
+import { DBState } from '../../ts/stores.svelte'
+import { activeUnits, type ActiveUnit } from '../../ts/process/activeUnits'
 
 const captured = vi.hoisted(() => ({
     hardware: null as null | ((seen: boolean) => void),
     intent: null as null | ReaderIntentSource,
+    work: null as null | { busy: string[] },
 }))
 
 vi.mock('../../ts/stores.svelte', async () => {
     const { writable: store } = await import('svelte/store')
-    const state = $state({ db: { characters: [{ chaId: 'c', type: 'character', name: 'Seraphina', chatPage: 0, chats: [{ id: 'chat', message: [] }] }] } })
+    const state = $state({ db: { characters: [{ chaId: 'c', type: 'character', name: 'Seraphina', chatPage: 0, chats: [{ id: 'chat', message: [] }, { id: 'idle', message: [] }] }] } })
     const selection = $state({ selId: 0 })
     return { DBState: state, selIdState: selection, MobileGUI: store(true), DynamicGUI: store(false), sideBarClosing: store(false), sideBarStore: store(false) }
 })
@@ -28,7 +30,7 @@ vi.mock('../../ts/process/index.svelte', async () => {
 vi.mock('../ChatScreens/chatSurface.svelte', () => ({ chatSurface: { hidden: false, closeEpoch: 0 } }))
 vi.mock('../../ts/parser/parser.svelte', () => ({ hasher: (value: string) => value, risuChatParser: (value: string) => value, assetRegex: /{{asset:[^}]+}}/g }))
 vi.mock('../../ts/parser/chatML', () => ({ parseChatML: () => [] }))
-vi.mock('../../lang', () => ({ language: { chatShellMessages: 'Messages', chatShellBack: 'Back', chatShellChoosePersona: 'Choose persona', chatShellThisChat: 'This chat' } }))
+vi.mock('../../lang', () => ({ language: { chatShellMessages: 'Messages', chatShellBack: 'Back', chatShellChoosePersona: 'Choose persona', chatShellThisChat: 'This chat', chatShellChatOpened: (chat: string) => `Opened ${chat}` } }))
 vi.mock('./ShellComposer.svelte', () => ({ default: (_anchor: Comment, props: { onhardwarechange: (seen: boolean) => void }) => {
     captured.hardware = props.onhardwarechange
     return {}
@@ -44,7 +46,12 @@ vi.mock('./PersonaSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./PlusSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ActionSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./CustomizeButtonsSheet.svelte', () => ({ default: () => ({}) }))
-vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, branchAt: vi.fn() }))
+// The busy keys are reactive, as the real registry is: the header rule reads the shown chat's entry only.
+vi.mock('../../ts/process/composerActions.svelte', () => {
+    const work = $state({ busy: [] as string[] })
+    captured.work = work
+    return { isComposerBusy: () => false, isComposerBusyIn: (target: { chaId: string, chatId: string }) => work.busy.includes(`${target.chaId}/${target.chatId}`), branchAt: vi.fn() }
+})
 
 import ChatShell from './ChatShell.svelte'
 
@@ -207,28 +214,55 @@ describe('the reader\'s input drives the header (C-3)', () => {
     })
 })
 
-describe('the header after a send ends', () => {
-    test('S1: today: the header comes back only when the last held unit is released, and stays hidden while another is held (pins registry counting, not a product rule)', async () => {
-        await mountShell()
-        const first = activeUnits.unit({ chaId: 'c', chatId: 'chat' })
-        const second = activeUnits.unit({ chaId: 'other', chatId: 'other-chat' })
-        try {
-            first.take()
-            second.take()
-            flushSync()
-            wheel(-40)
-            expect(hidden()).toBe(true)
-
-            first.release()
-            flushSync()
-            expect(hidden()).toBe(true)
-
-            second.release()
-            flushSync()
-            expect(hidden()).toBe(false)
-        } finally {
-            first.release()
-            second.release()
+describe('the header follows the reply of the shown chat (MC-3740)', () => {
+    const SHOWN = 'c/chat'
+    const OTHER = 'other/other-chat'
+    const held = new Map<string, ActiveUnit>()
+    // A busy chat holds a unit as production does, so a source that reads "any unit" (doingChat) would see it too.
+    const setBusy = (...keys: string[]): void => {
+        for (const [key, unit] of [...held]) {
+            if (!keys.includes(key)) { unit.release(); held.delete(key) }
         }
+        for (const key of keys) {
+            if (held.has(key)) continue
+            const [chaId, chatId] = key.split('/')
+            const unit = activeUnits.unit({ chaId, chatId })
+            unit.take()
+            held.set(key, unit)
+        }
+        captured.work!.busy = keys
+        flushSync()
+    }
+    afterEach(() => { for (const unit of held.values()) unit.release(); held.clear() })
+
+    test('C4a: the reply of the shown chat ends while another chat still writes: the header comes back', async () => {
+        await mountShell()
+        setBusy(SHOWN, OTHER)
+        wheel(-40)
+        expect(hidden()).toBe(true)
+        setBusy(OTHER)
+        expect(hidden()).toBe(false)
+    })
+    test('C4b: the reply of another chat ending does not show a header hidden by the reader', async () => {
+        await mountShell()
+        setBusy(OTHER)
+        wheel(-40)
+        expect(hidden()).toBe(true)
+        setBusy()
+        expect(hidden()).toBe(true)
+    })
+    test('C4c: a switch of chat neither shows nor hides the header; the end of the shown chat does', async () => {
+        await mountShell()
+        setBusy(SHOWN)
+        wheel(-40)
+        expect(hidden()).toBe(true)
+        DBState.db.characters[0].chatPage = 1
+        flushSync()
+        expect(hidden()).toBe(true)
+        DBState.db.characters[0].chatPage = 0
+        flushSync()
+        expect(hidden()).toBe(true)
+        setBusy()
+        expect(hidden()).toBe(false)
     })
 })

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 // The parser module graph is not under test: the JSON extraction and the model catalog are replaced.
 vi.mock('src/ts/model/modellist', () => ({ LLMFlags: { deepSeekThinkingOutput: 7 } }))
@@ -9,12 +9,13 @@ import { flushSync } from 'svelte'
 import { DBState } from 'src/ts/stores.svelte'
 import { createUsageMeter } from 'src/ts/usage/usageMeter'
 import { encodeReplyBlob, type ReplyBlobBase } from '../blob'
-import { configurePageState, holdInflight, resetPageStateForTests } from '../pageState'
+import { configurePageState, holdInflight, resetPageStateForTests, setReconcileTrigger } from '../pageState'
 import { createReconciler, type ApplyOutcome, type ReconcileDeps } from '../reconcile'
 import {
-    addRunningReplies, isNativeReplyRunning, noteWaitingForUnit, resetRunningRepliesForTests, runningReplyInChat, setRunningReplies,
+    addRunningReplies, isNativeReplyRunning, nativeReplyRunsIn, noteWaitingForUnit, resetRunningRepliesForTests, runningReplyInChat, setRunningReplies,
 } from '../runningReplies.svelte'
 import type { ReplyListing } from '../store'
+import { relistWhileNativeBlocked, resetRelistForTests } from '../runningRelist.svelte'
 
 /**
  * The running map the reconcile pass publishes (MC-3612, Q8): which keys are still being received elsewhere, and which chat
@@ -285,6 +286,40 @@ describe('the target of a running key', () => {
         addRunningReplies([{ key: K1, target: { chaId: 'cha', chatId: 'chat', name: 'Alice' } }])
         flushSync()
         expect(seen).toEqual([false, false, true])
+        stop()
+    })
+})
+
+describe('the bounded re-list against the real reconciler', () => {
+    afterEach(() => {
+        vi.useRealTimers()
+        resetRelistForTests()
+    })
+
+    // T6: a reply that failed before its head ends as a terminal failed record with no event; the re-list is what clears the block.
+    test('T6: the entry clears within the first gap once the listing is terminal, and a failed list keeps it until the next gap', async () => {
+        vi.useFakeTimers()
+        const r = rig([live(K1)])
+        const reconciler = createReconciler(r.deps)
+        setReconcileTrigger(() => reconciler.request())
+        await reconciler.request()
+        const chat = { chaId: 'cha', chatId: 'chat' }
+        expect(nativeReplyRunsIn(chat)).toBe(true)
+        const stop = $effect.root(() => { relistWhileNativeBlocked(() => nativeReplyRunsIn(chat) ? chat : null) })
+        flushSync()
+        r.list.mockClear()
+        r.list.mockRejectedValueOnce(new Error('list failed'))
+        r.current.listings = [listing(K1, { outcome: 'failed', status: undefined, bodyBytes: 0 })]
+        await vi.advanceTimersByTimeAsync(2000)
+        expect(r.list).toHaveBeenCalledTimes(1)
+        expect(nativeReplyRunsIn(chat)).toBe(true)
+        await vi.advanceTimersByTimeAsync(3999)
+        expect(r.list).toHaveBeenCalledTimes(1)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(r.list).toHaveBeenCalledTimes(2)
+        expect(nativeReplyRunsIn(chat)).toBe(false)
+        await vi.advanceTimersByTimeAsync(600_000)
+        expect(r.list).toHaveBeenCalledTimes(2)
         stop()
     })
 })

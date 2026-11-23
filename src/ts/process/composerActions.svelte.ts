@@ -185,6 +185,16 @@ export function isComposerLocked(): boolean {
     return locks.size > 0
 }
 
+/** True while a Send holds the composer for `target` alone; a lock held for another chat does not count. */
+export function isComposerLockedIn(target: { chaId: string, chatId: string }): boolean {
+    for(const lock of locks){
+        if(lock.target.chaId === target.chaId && lock.target.chatId === target.chatId){
+            return true
+        }
+    }
+    return false
+}
+
 /** True while auto mode's loop is running, in every composer instance. */
 export function isAutoModeActive(): boolean {
     return autoRun !== null

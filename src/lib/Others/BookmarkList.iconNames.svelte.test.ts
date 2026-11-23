@@ -26,7 +26,7 @@ vi.mock('src/ts/media/charImageLookups', () => ({
 }))
 vi.mock('src/ts/process/composerActions.svelte', () => ({
     branchAt: vi.fn(),
-    isComposerBusy: () => false,
+    isComposerBusy: () => false, isComposerBusyIn: () => false,
 }))
 vi.mock('src/ts/process/index.svelte', () => ({
     doingChat: writable(false),

@@ -521,7 +521,7 @@ export const languageChinese = {
     "chatShellDeleteChatConfirm": (name: string, count: number) => `要删除“${name}”及其 ${count} 条消息吗？`,
     "chatShellHideNames": "隐藏名称和头像",
     "chatShellEditNotSaved": "此聊天已关闭或已归档，因此更改未保存。",
-    "chatShellSendBlockedWriting": "另一个聊天正在撰写回复。请等其完成后再发送。",
+    "chatShellSendWaitsForNativeReply": "此聊天仍在撰写回复。请等其完成后再发送。",
     "replyFinishedElsewhere": "{name} 已回复",
     "replyFailedElsewhere": "{name} 的回复失败",
     "nativeReplyInterrupted": "应用关闭时，{name} 的回复被中断",

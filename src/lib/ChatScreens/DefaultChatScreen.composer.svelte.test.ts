@@ -351,6 +351,9 @@ import { compositionEnd, compositionStart, enterKeydown, imeEventSequence } from
 import DefaultChatScreen from './DefaultChatScreen.svelte'
 import { isComposerBusy, isComposerLocked, isAutoModeActive, resetComposerActionsForTests } from 'src/ts/process/composerActions.svelte'
 import { isWriting, registerWork } from 'src/ts/process/chatOrigin'
+import { resetRunningRepliesForTests, setRunningReplies, type RunningReplyEntry } from 'src/ts/nativeReply/runningReplies.svelte'
+import { resetPageStateForTests, setReconcileTrigger } from 'src/ts/nativeReply/pageState'
+import { resetRelistForTests } from 'src/ts/nativeReply/runningRelist.svelte'
 import { hasLocalDrafts, hasMessageEditorDrafts, resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { preLoadChat, retryLegacyColdChatLoad } from 'src/ts/process/coldstorage.svelte'
@@ -615,6 +618,10 @@ afterEach(async () => {
     sendChatGateQueue.splice(0)
     generationGateBox.current = Promise.resolve()
     doingChatMock.set(false)
+    resetRunningRepliesForTests()
+    resetRelistForTests()
+    resetPageStateForTests()
+    vi.useRealTimers()
     isExpTranslatorMock.mockReset()
     isExpTranslatorMock.mockReturnValue(false)
     translateMock.mockReset()
@@ -832,16 +839,18 @@ describe('a cancelled send puts its values back after a switch', () => {
         typeInto(mainTextarea(target), 'B-text')
         await settle()
 
-        // T11 (B half): the other chat shows no Stop, so it cannot cancel A's send; Send is disabled there.
+        // T11 (B half): the other chat shows no Stop, so it cannot cancel A's send; Send and typing stay free there (C3, C6).
         expect(busyButton(target)).toBeNull()
-        expect(sendButton(target).disabled).toBe(true)
-        expect(sendButton(target).title).toBe(language.chatShellSendBlockedWriting)
+        expect(sendButton(target).disabled).toBe(false)
+        expect(sendButton(target).hasAttribute('title')).toBe(false)
+        expect(mainTextarea(target).readOnly).toBe(false)
         expect(mainTextarea(target).value).toBe('B-text')
 
         selectedCharID.set(0)
         await settle()
         const busy = busyButton(target)
         expect(busy).not.toBeNull()
+        expect(mainTextarea(target).readOnly).toBe(true)
         busy!.click()
         await settle()
 
@@ -1737,13 +1746,75 @@ describe('the tree handlers the screen gives the message list', () => {
         expect(live().message.map((m: { chatId: string }) => m.chatId)).toEqual(['u0'])
 
         expect(props.getBusy()).toBe(false)
-        doingChatMock.set(true)
+        // C5: a reply written in another chat does not make the shown chat's tree controls busy.
+        const elsewhere = registerWork({ chaId: 'elsewhere', chatId: 'elsewhere-chat' }, undefined, 'reply')
+        try {
+            expect(props.getBusy()).toBe(false)
+        } finally {
+            elsewhere.end()
+        }
+        // C5: work in the shown chat, or a native reply the page no longer holds for it, does.
+        const shown = liveChar(0)
+        const own = registerWork({ chaId: shown.chaId, chatId: live().id }, undefined, 'reply')
         try {
             expect(props.getBusy()).toBe(true)
         } finally {
-            doingChatMock.set(false)
+            own.end()
         }
         expect(props.getBusy()).toBe(false)
+        setRunningReplies([{ key: 'k', target: { chaId: shown.chaId, chatId: live().id, name: 'Native' } }])
+        expect(props.getBusy()).toBe(true)
+        setRunningReplies([])
+        expect(props.getBusy()).toBe(false)
+    })
+})
+
+describe('a native reply the page no longer holds for the shown chat', () => {
+    // C3: Send is disabled with its own reason, only in that chat, and returns when the reply ends.
+    test('disables Send with the native-reply reason and enables it again when the reply ends', async () => {
+        const chatA = makeChat(freshId('chat'), [])
+        const charA = makeCharacter(freshId('cha'), [chatA])
+        installDb([charA])
+        const { target } = mountScreen()
+        await settle()
+        expect(sendButton(target).disabled).toBe(false)
+        setRunningReplies([{ key: 'k', target: { chaId: 'other', chatId: 'other-chat', name: 'Other' } }])
+        await settle()
+        expect(sendButton(target).disabled).toBe(false)
+        setRunningReplies([{ key: 'k', target: { chaId: liveChar(0).chaId, chatId: liveChar(0).chats[0].id, name: 'Native' } }])
+        await settle()
+        expect(sendButton(target).disabled).toBe(true)
+        expect(sendButton(target).title).toBe(language.chatShellSendWaitsForNativeReply)
+        const reasonId = sendButton(target).getAttribute('aria-describedby')!
+        expect(target.querySelector(`#${reasonId}`)?.textContent).toBe(language.chatShellSendWaitsForNativeReply)
+        setRunningReplies([])
+        await settle()
+        expect(sendButton(target).disabled).toBe(false)
+        expect(sendButton(target).hasAttribute('title')).toBe(false)
+    })
+
+    // T1b (reproducer for O-6): a reply that failed before its head sends no event, so only a re-list clears the block.
+    test('Send is enabled again within 2 s once the native side no longer lists the reply, with no event', async () => {
+        const chatA = makeChat(freshId('chat'), [])
+        const charA = makeCharacter(freshId('cha'), [chatA])
+        installDb([charA])
+        vi.useFakeTimers()
+        const native: { entries: RunningReplyEntry[] } = { entries: [{ key: 'k', target: { chaId: liveChar(0).chaId, chatId: liveChar(0).chats[0].id, name: 'Native' } }] }
+        const trigger = vi.fn(async () => { setRunningReplies(native.entries) })
+        setReconcileTrigger(trigger)
+        setRunningReplies(native.entries)
+        const { target } = mountScreen()
+        flushSync()
+        expect(sendButton(target).disabled).toBe(true)
+        native.entries = []
+        await vi.advanceTimersByTimeAsync(1999)
+        flushSync()
+        expect(trigger).not.toHaveBeenCalled()
+        expect(sendButton(target).disabled).toBe(true)
+        await vi.advanceTimersByTimeAsync(1)
+        flushSync()
+        expect(trigger).toHaveBeenCalledTimes(1)
+        expect(sendButton(target).disabled).toBe(false)
     })
 })
 

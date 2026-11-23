@@ -521,7 +521,7 @@ export const languageJapanese = {
     chatShellDeleteChatConfirm: (name: string, count: number) => `「${name}」と、その${count}件のメッセージを削除しますか？`,
     chatShellHideNames: "名前とアバターを隠す",
     chatShellEditNotSaved: "このチャットは閉じられたかアーカイブされたため、変更は保存されませんでした。",
-    chatShellSendBlockedWriting: "別のチャットが返信を作成中です。完了してから送信してください。",
+    chatShellSendWaitsForNativeReply: "このチャットでは返信をまだ作成中です。完了してから送信してください。",
     replyFinishedElsewhere: "{name}が返信しました",
     replyFailedElsewhere: "{name}の返信に失敗しました",
     nativeReplyInterrupted: "アプリが終了したため、{name}の返信が途中で中断されました",

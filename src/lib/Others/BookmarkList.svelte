@@ -10,8 +10,9 @@
     import { keyEventBlocked } from "src/ts/keyEventBlocked";
     import { get } from "svelte/store";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
-    import { branchAt, isComposerBusy } from "src/ts/process/composerActions.svelte";
-    import { doingChat } from "src/ts/process/index.svelte";
+    import { branchAt, isComposerBusyIn } from "src/ts/process/composerActions.svelte";
+    import { chatKeyOf } from "src/ts/process/sendAdmission";
+    import { nativeReplyRunsIn } from "src/ts/nativeReply/runningReplies.svelte";
 
     // One hold per speaker image, named by role and location: rows of one speaker share a read, and the holds end with the list.
     const lookups = useCharImageLookups();
@@ -131,7 +132,11 @@
         return branchAt({ closeMenu: () => {} }, index, expectedId);
     }
 
-    const treeControlsBusy = () => $doingChat || isComposerBusy()
+    // Busy is the selected chat's own: work in another chat leaves its tree controls alone.
+    const treeControlsBusy = () => {
+        const key = chatKeyOf(chara, chara?.chats?.[chara.chatPage]);
+        return key ? isComposerBusyIn(key) || nativeReplyRunsIn(key) : false;
+    }
 
     function goToChat(index: number) {
         ScrollToMessageStore.value = index;
