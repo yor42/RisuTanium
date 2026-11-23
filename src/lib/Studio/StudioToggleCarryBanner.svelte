@@ -42,6 +42,10 @@
             <p data-part="studio-toggle-carry-line" data-kind={line.kind} class="text-sm text-textcolor">{lineText(line)}</p>
             {#if line.kind === 'key'}
                 <p data-part="studio-toggle-carry-old-stays" class="text-sm text-textcolor2">{language.studioTgCarryOldStays(line.from)}</p>
+                {@const keeps = question.activeKeeps.find((entry) => entry.key === line.from)}
+                {#if keeps}
+                    <p data-part="studio-toggle-carry-active-keeps" class="text-sm text-textcolor2">{language.studioTgCarryActiveKeeps(keeps.key, keeps.name)}</p>
+                {/if}
             {/if}
         {/each}
         {#if question.carryable}

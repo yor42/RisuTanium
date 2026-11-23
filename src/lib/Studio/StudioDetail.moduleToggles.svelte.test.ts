@@ -64,6 +64,7 @@ vi.mock('src/lang', async () => {
 import { resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWriteHook'
+import { assignPresetIds } from 'src/ts/storage/presetMeta'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { RisuModule } from 'src/ts/process/modules'
 import { openStudioModuleId, publishOpenModuleId, resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
@@ -329,8 +330,8 @@ describe('R-C2 the toggles of a resident module', () => {
     })
 })
 
-describe('CG-C2m a preset keeps the read-only text of its toggles', () => {
-    test('no builder, the preset text shown, and the character toggles untouched (compatibility guard; passes before and after)', async () => {
+describe('CG-C2m a preset mounts the builder of its toggles', () => {
+    test('the builder replaces the read-only text and the character toggles stay untouched (replaces the read-only guard; fails before the preset builder exists)', async () => {
         const input = makeInput({
             character: makeCharacter({ chaId: 'A', customModuleToggle: 'ch=Char' } as Parameters<typeof makeCharacter>[0]),
             presets: [makePreset('P0', { toggles: 'p=Preset' })],
@@ -339,9 +340,11 @@ describe('CG-C2m a preset keeps the read-only text of its toggles', () => {
             enabledModules: ['M1'],
         })
         db.db = { ...studioDbOf(input), modules: [...input.modules] }
+        assignPresetIds(db.db as unknown as Parameters<typeof assignPresetIds>[0])
         await mountOn({ owner: { type: 'preset', id: '0' }, kind: 'toggles', from: 'chat' })
-        expect(part('studio-toggle-builder')).toBeNull()
-        expect(part('studio-detail-text')?.textContent).toContain('p=Preset')
+        expect(part('studio-toggle-builder')).not.toBeNull()
+        expect(part('studio-detail-text')).toBeNull()
+        expect(rowNames()).toEqual(['Preset'])
         expect(characterText()).toBe('ch=Char')
     })
 })
@@ -511,8 +514,9 @@ describe('CG3 no module chip outside the module toggle builder', () => {
             enabledModules: ['M1'],
         })
         db.db = { ...studioDbOf(input), modules: [...input.modules] }
+        assignPresetIds(db.db as unknown as Parameters<typeof assignPresetIds>[0])
         await mountOn({ owner: { type: 'preset', id: '0' }, kind: 'toggles', from: 'chat' })
-        expect(part('studio-detail-text')).not.toBeNull()
+        expect(part('studio-toggle-builder')).not.toBeNull()
         expect(part('studio-chip')).toBeNull()
         expect(moduleRig.built).toHaveLength(0)
     })
