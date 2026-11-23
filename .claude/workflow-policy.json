@@ -90,7 +90,22 @@
       "com.samsung.android.spay",
       "com.google.android.safetycore",
       "com.samsung.android.waterplugin",
-      "com.google.android.inputmethod.latin"
+      "com.google.android.inputmethod.latin",
+      "com.sec.android.inputmethod.beta",
+      "com.samsung.android.app.panel.naver.v",
+      "com.samsung.android.email.provider",
+      "io.github.yor42.tbprobe",
+      "com.samsung.android.widgetapp.daumedge.sports",
+      "com.samsung.android.app.panel.naver.tv",
+      "com.samsung.android.widgetapp.daumedge.news",
+      "com.samsung.android.timezone.autoupdate_O",
+      "com.samsung.android.widgetapp.daumedge.kakao",
+      "org.mozilla.firefox",
+      "com.sec.android.autodoodle.service",
+      "com.samsung.android.app.notes.addons",
+      "com.sec.android.easyMover",
+      "com.google.vr.vrcore",
+      "com.samsung.accessory.fridaymgr"
     ]
   },
   "openrouter": { "enabled": false, "model": "deepseek/deepseek-v4.1-flash", "perJobUSD": 0.5, "perDayUSD": 5, "perMonthUSD": 30, "timezone": "Asia/Seoul", "activationFile": ".claude/scratch/openrouter-activation.json", "ledgerFile": ".claude/scratch/budget/openrouter.json" },
