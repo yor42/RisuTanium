@@ -1346,6 +1346,11 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
             return setLocalVar(key, value, currentIndent)
         }
 
+        // An abandoned live run writes no chat variable, whichever effect was waiting.
+        if(arg.signal?.aborted){
+            return false
+        }
+
         const targetChat = subject ? subject.resolve()?.chat : chat
         if(!targetChat){
             return false
@@ -1731,6 +1736,7 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                         chat: chat,
                         origin: arg.origin,
                         liveScripts: liveLuaScripts,
+                        signal: arg.signal,
                     })
 
                     if(triggerCodeResult.stopSending){
