@@ -8,9 +8,9 @@
 import { afterFlush } from '../afterFlush'
 import { registryPaths } from './history/fieldAccess'
 import { FIELD_PRESENTATION, type SetPath } from './history/fieldRegistry'
-import { fieldValueEquals, type FieldValue } from './history/historyModel'
 import { cardSpans, cardText } from './longText/exampleCards'
-import type { OwnerFields } from './ownerFields'
+import { sameJsonValue } from '../storage/store2/codec/normalize'
+import type { ForeignFieldRead, OwnerFields } from './ownerFields'
 
 // A registered path other than the two first message paths, which have their own targets: its focus is the element
 // its presentation names, and the target kind is the path itself.
@@ -48,9 +48,15 @@ function exampleTarget(before: unknown, after: unknown): FocusTarget {
     return b.length > 0 ? { kind: 'example', card: b.length - 1 } : { kind: 'exampleAdd' }
 }
 
-// A live field value as a history value: text and booleans are present values, anything else is absent.
-function fieldValueOf(value: unknown): FieldValue {
-    return typeof value === 'string' || typeof value === 'boolean' ? { had: true, value } : { had: false }
+export function isForeignFieldRead(value: unknown): value is ForeignFieldRead {
+    return typeof value === 'object' && value !== null && Object.hasOwn(value, 'foreign')
+}
+
+// Two tagged foreign readings are equal when their values are (a read returns a fresh copy each time); a tagged reading
+// never equals a typed value or `undefined`. Anything else compares with `===`.
+function sameFieldRead(a: unknown, b: unknown): boolean {
+    if (isForeignFieldRead(a) || isForeignFieldRead(b)) return isForeignFieldRead(a) && isForeignFieldRead(b) && sameJsonValue(a.foreign, b.foreign)
+    return a === b
 }
 
 export function changedFieldTarget(before: OwnerFields, after: OwnerFields): FocusTarget | null {
@@ -68,7 +74,7 @@ export function changedFieldTarget(before: OwnerFields, after: OwnerFields): Foc
     if (before.firstMessage !== after.firstMessage) return { kind: 'firstMessage' }
     if (before.exampleMessage !== after.exampleMessage) return exampleTarget(before.exampleMessage, after.exampleMessage)
     for (const path of registryPaths()) {
-        if (hasElementFocus(path) && !fieldValueEquals(fieldValueOf(before[path]), fieldValueOf(after[path]))) return { kind: path }
+        if (hasElementFocus(path) && !sameFieldRead(before[path], after[path])) return { kind: path }
     }
     return null
 }

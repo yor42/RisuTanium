@@ -26,6 +26,12 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['nickname', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
     ['defaultVariables', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
     ['translatorNote', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['moduleName', { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'name', keepForeign: true }],
+    ['moduleDescription', { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'description', keepForeign: true }],
+    ['moduleNamespace', { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'namespace', keepForeign: true }],
+    ['moduleHideIcon', { value: 'bool', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'hideIcon', keepForeign: true }],
+    ['moduleLowLevelAccess', { value: 'bool', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'lowLevelAccess', keepForeign: true }],
+    ['backgroundEmbedding', { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, keepForeign: true }],
     // The preset advanced form's session-only paths (S4a): no builtin holder, listed by the preset session kind.
     ['presetName', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
     ['presetMainPrompt', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
@@ -108,6 +114,15 @@ describe('T-FZ: the persisted facts of the registered paths are frozen', () => {
         expect(Object.keys(CONTAINER_SEEDS)).toEqual(Object.keys(FROZEN_CONTAINER_SEEDS))
     })
 
+    test('F-g: keepForeign is set on the module rows of S5 only, and only with editWhenAbsent', () => {
+        const specs: Record<string, FieldFacts> = FIELD_SPECS
+        const foreignPaths = Object.keys(specs).filter((path) => specs[path].keepForeign === true)
+        expect(foreignPaths).toEqual(['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding'])
+        for (const path of foreignPaths) {
+            expect(specs[path].editWhenAbsent, path).toBe(true)
+            expect(specs[path].holders, path).toEqual(['module'])
+        }
+    })
     test('F-e: every value type is text or bool (number values are not implemented)', () => {
         const specs: Record<string, FieldFacts> = FIELD_SPECS
         for (const path of Object.keys(specs)) {

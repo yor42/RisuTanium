@@ -3,6 +3,7 @@
     import { language } from '../../lang'
     import { openStudioModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
     import { liveReaderOf, resolveOwnerTarget } from '../../ts/studio/edit/ownerTargets'
+    import { lowLevelAskName, runWithLowLevelConfirm } from '../../ts/studio/edit/lowLevelConfirm.svelte'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath } from '../../ts/studio/history/historyModel'
@@ -62,11 +63,19 @@
         overwritten = keep ? overwritten.filter((entry) => entry !== path) : [...overwritten, path]
     }
 
-    function confirm(): void {
+    async function confirm(): Promise<void> {
         if (!service || owner === null) return
+        const svc = service
+        const key = owner
         const keep = new Set(changed.filter((path) => !overwritten.includes(path)))
-        const before = readOwnerFields(owner)
-        const result = service.restore(owner, keep)
+        const before = readOwnerFields(key)
+        let result = svc.restore(key, keep)
+        // A restore that would turn Low Level Access on asks over this sheet, which stays open and shows no refusal for it.
+        // Cancel leaves both sheets as they were; Turn on runs the same restore with the same `keep`.
+        if (result.ok === false && result.reason === 'confirm-low-level') {
+            result = await runWithLowLevelConfirm(result, lowLevelAskName(key), (confirmed) => svc.restore(key, keep, confirmed))
+            if (result.ok === false && result.cancelled) return
+        }
         if (result.ok === false) {
             refusal = result.reason
             return
@@ -75,7 +84,7 @@
         // leaves focus to the panel's opener rule.
         const scope = layer?.closest('[data-part="studio"]') ?? null
         setStudioRestoreSheetOpen(false)
-        void placeFocusAfterHistory(before, readOwnerFields(owner), () => scope, () => null)
+        void placeFocusAfterHistory(before, readOwnerFields(key), () => scope, () => null)
     }
 
     const buttonClass = 'min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer disabled:cursor-default disabled:opacity-50'

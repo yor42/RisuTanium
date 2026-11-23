@@ -5,7 +5,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import { parseTargetPath } from '../../assets/referenceTargets'
 import { applyCharacterWrites, createLiveReader } from '../../edit/studioSetters'
-import { isHeldBy, registryPaths } from '../fieldAccess'
+import { factsOf, isHeldBy, registryPaths } from '../fieldAccess'
 import {
     assetStepWrites,
     deriveRestoreWrites,
@@ -82,7 +82,7 @@ describe('T1-TX (a)(b): the router membership', () => {
     test('(a) the text field paths are the literal list', () => {
         expect([...TEXT_FIELD_PATHS]).toEqual([
             'desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario',
-            'depth_prompt.prompt', 'defaultVariables', 'translatorNote',
+            'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding',
         ])
     })
 
@@ -95,6 +95,20 @@ describe('T1-TX (a)(b): the router membership', () => {
     })
 })
 
+describe('T5-TX: the module counterpart of T1-TX (b)', () => {
+    test('a registered module text path is a text field path exactly when a module registry target addresses it', () => {
+        for (const path of registryPaths().filter((entry) => isHeldBy(entry, 'module') && factsOf(entry).value === 'text')) {
+            const target = path.replace('.', '/')
+            const addressed = parseTargetPath('module', target) !== null
+            expect(TEXT_FIELD_PATHS.some((entry) => entry === path), path).toBe(addressed)
+        }
+    })
+
+    test('the module embedding is addressed by its own property name, so the path is the target', () => {
+        expect(textFieldOf('backgroundEmbedding')).toBe('backgroundEmbedding')
+        expect(parseTargetPath('module', 'backgroundEmbedding')).toEqual({ field: 'backgroundEmbedding' })
+    })
+})
 describe('T1-TX (c): a revert across a form edit and a merge on one text field', () => {
     const desc: Step = { id: 'p:0', at: 0, label: { kind: 'field', field: 'desc' }, ops: [{ op: 'set', path: 'desc', before: { had: true, value: 'd0' }, after: { had: true, value: 'd1' } }] }
 

@@ -69,7 +69,7 @@ describe('S4a-T1: the table, the registry and the kind rows', () => {
 
     test('the builtin kind rows are the stored paths only', () => {
         expect(SET_PATHS_BY_KIND.chat).toEqual(['note'])
-        expect(SET_PATHS_BY_KIND.module).toEqual(['customModuleToggle'])
+        expect(SET_PATHS_BY_KIND.module).toEqual(['customModuleToggle', 'moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding'])
         expect(SET_PATHS_BY_KIND.character.some((path) => path.startsWith('preset'))).toBe(false)
     })
 

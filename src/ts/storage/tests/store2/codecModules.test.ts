@@ -34,6 +34,20 @@ describe('module units', () => {
         expect(odd).toEqual({ id: 'y', name: 'Module y', description: 'about y', hasToggle: false, dsp: true })
     })
 
+    test('T5-STORE: the index entry follows a Studio edit of namespace, hideIcon and lowLevelAccess, and an undo to a non-boolean flag or a deleted key', () => {
+        const entryOf = (module: JsonObject): ModuleEntry => logicalModuleIndex(encodeWith(withModules([module]))).entries[0] as ModuleEntry
+        const edited = entryOf(mod('s', { namespace: 'ns', hideIcon: true, lowLevelAccess: true }))
+        expect(edited).toMatchObject({ namespace: 'ns', hideIcon: true, lowLevelAccess: true })
+        // An undo that writes back a truthy non-boolean flag: the entry carries no flag, as for any non-boolean.
+        const foreign = entryOf(mod('s', { namespace: 'ns', hideIcon: true, lowLevelAccess: 1 }))
+        expect(foreign).toMatchObject({ namespace: 'ns', hideIcon: true })
+        expect(Object.hasOwn(foreign, 'lowLevelAccess')).toBe(false)
+        // An undo that deletes the keys: the entry carries none of them.
+        const deleted = entryOf(mod('s'))
+        for (const key of ['namespace', 'hideIcon', 'lowLevelAccess']) {
+            expect(Object.hasOwn(deleted, key), key).toBe(false)
+        }
+    })
     test('asset and inlay lists of a module are units named by the index entry', () => {
         const tree = encodeWith(withModules([mod('m1', { assets: [['a', 'assets/AB.PNG', 'png']] })]))
         const entry = logicalModuleIndex(tree).entries[0] as ModuleEntry

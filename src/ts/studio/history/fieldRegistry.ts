@@ -24,6 +24,9 @@
 // - `absent` is applied by the builtin-holder writers only. `editWhenAbsent` is enforced by the kind-independent edit
 //   builder for every kind.
 // - Adding an existing path to another builtin kind's row is a widening for older builds too.
+// - `keepForeign` is set on new rows only, requires `editWhenAbsent: true`, and is never changed on an existing row: a
+//   present value of another type is then recorded as a foreign reading and an undo writes it back, instead of the
+//   value reading as absent. The frozen-facts test pins it with the other facts.
 
 import type { languageEnglish } from '../../../lang/en'
 import type { Chat, character } from '../../storage/database.svelte'
@@ -44,6 +47,9 @@ export interface FieldFacts {
     editWhenAbsent: boolean
     // The holder property; absent means the path itself.
     property?: string
+    // True: a present value of another type than `value` is read as a foreign value (kept as plain JSON) instead of as
+    // absent. Absent means false.
+    keepForeign?: boolean
 }
 
 export interface FieldPresentation {
@@ -72,6 +78,12 @@ export const FIELD_SPECS = {
     nickname: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     defaultVariables: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     translatorNote: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    moduleName: { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'name', keepForeign: true },
+    moduleDescription: { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'description', keepForeign: true },
+    moduleNamespace: { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'namespace', keepForeign: true },
+    moduleHideIcon: { value: 'bool', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'hideIcon', keepForeign: true },
+    moduleLowLevelAccess: { value: 'bool', holders: ['module'], absent: 'delete', editWhenAbsent: true, property: 'lowLevelAccess', keepForeign: true },
+    backgroundEmbedding: { value: 'text', holders: ['module'], absent: 'delete', editWhenAbsent: true, keepForeign: true },
     // The preset advanced form's paths. `holders: []` makes each one session-only: no builtin kind's rows, readers or
     // writers include it, and only the preset session kind (sessionKinds.ts) lists it. Its `absent` is unused (that is
     // applied by builtin-holder writers only); the preset adapter owns the routing and the absent rules.
@@ -140,6 +152,12 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     nickname: { labelKey: 'nickname', focus: { form: 'studio-advanced-form', part: 'studio-form-nickname' } },
     defaultVariables: { labelKey: 'defaultVariables', focus: { form: 'studio-advanced-form', part: 'studio-form-default-variables' } },
     translatorNote: { labelKey: 'translatorNote', focus: { form: 'studio-advanced-form', part: 'studio-form-translator-note' } },
+    moduleName: { labelKey: 'name', focus: { form: 'studio-module-advanced-form', part: 'studio-module-name' } },
+    moduleDescription: { labelKey: 'description', focus: { form: 'studio-module-advanced-form', part: 'studio-module-description' } },
+    moduleNamespace: { labelKey: 'namespace', focus: { form: 'studio-module-advanced-form', part: 'studio-module-namespace' } },
+    moduleHideIcon: { labelKey: 'hideChatIcon', focus: { form: 'studio-module-advanced-form', part: 'studio-module-hide-icon' } },
+    moduleLowLevelAccess: { labelKey: 'lowLevelAccess', focus: { form: 'studio-module-advanced-form', part: 'studio-module-low-level' } },
+    backgroundEmbedding: { labelKey: 'backgroundHTML', focus: { form: 'studio-module-html-form', part: 'studio-module-background' } },
     presetName: { labelKey: 'name', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetName' } },
     presetMainPrompt: { labelKey: 'mainPrompt', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMainPrompt' } },
     presetJailbreak: { labelKey: 'jailbreakPrompt', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetJailbreak' } },

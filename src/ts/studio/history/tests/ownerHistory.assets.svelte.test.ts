@@ -14,10 +14,12 @@ import type { MergePreview } from 'src/ts/studio/assets/mergePreview'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { stubModule, watchBodyKeys } from 'src/ts/studio/studioFixtures.test-helpers'
 import { createElementHashCache } from '../elementHashCache'
-import type { Op, Step } from '../historyModel'
+import { listChangedElsewhere, type Op, type Step } from '../historyModel'
 import { createOwnerHistoryService, type OwnerHistoryService, type StudioRefusal, type StudioResult } from '../ownerHistory.svelte'
 import { characterOwnerKey, moduleOwnerKey, SAVE_DEBOUNCE_MS, type OwnerKey } from '../ownerPhase'
 import type { SurvivorDeps } from '../../edit/assetSetters'
+import { createModuleLiveReader } from '../../edit/studioSetters'
+import type { RisuModule } from 'src/ts/process/modules'
 import { createFakeClock, drainMicrotasks, type FakeClock } from './historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, seedOwner, type ClaimDouble, type MemoryStudioStore } from './studioStoreDoubles'
 
@@ -873,6 +875,45 @@ describe('a merge edit of a registry text lands in the live owner, undoes and re
     })
 })
 
+describe('T5-ROUTE: a form edit and an asset merge on the module background embedding replay against each other', () => {
+    const START = 'be {{image::smile2}}'
+    const EDITED = 'bg {{image::smile2}}'
+    const MERGED = 'bg {{image::smile}}'
+    const mergeEdit = (): MergePreview => textOnlyModel('assets', [{ target: 'backgroundEmbedding', offset: 12, from: 'smile2', to: 'smile' }])
+    const changedElsewhere = (): string[] => {
+        const restore = harness.service.view(M1).restore
+        return restore === null ? [] : listChangedElsewhere(restore, createModuleLiveReader(liveModule() as unknown as RisuModule))
+    }
+
+    async function openVisit(): Promise<void> {
+        putModules(makeModule('M1', { backgroundEmbedding: START }))
+        harness.openModule = 'M1'
+        await ready(M1)
+        // The first write of the visit opens the restore point; the embedding is not touched yet.
+        expect(harness.service.editText(M1, 'moduleName', 'Renamed', 'single')).toEqual({ ok: true })
+    }
+
+    test('T5-ROUTE-a: edit, then merge: nothing is changed elsewhere and two undos restore the visit-start text', async () => {
+        await openVisit()
+        expect(harness.service.editText(M1, 'backgroundEmbedding', EDITED, 'single')).toEqual({ ok: true })
+        expect(harness.service.assetMerge(M1, mergeEdit(), byPathOnly).ok).toBe(true)
+        expect(liveModule().backgroundEmbedding).toBe(MERGED)
+        expect(changedElsewhere()).toEqual([])
+        expect(harness.service.undo(M1).ok).toBe(true)
+        expect(liveModule().backgroundEmbedding).toBe(EDITED)
+        expect(harness.service.undo(M1).ok).toBe(true)
+        expect(liveModule().backgroundEmbedding).toBe(START)
+    })
+
+    test('T5-ROUTE-b: merge, then edit: the restore point keeps the visit-start text as its before', async () => {
+        await openVisit()
+        expect(harness.service.assetMerge(M1, textOnlyModel('assets', [{ target: 'backgroundEmbedding', offset: 12, from: 'smile2', to: 'smile' }]), byPathOnly).ok).toBe(true)
+        expect(liveModule().backgroundEmbedding).toBe('be {{image::smile}}')
+        expect(harness.service.editText(M1, 'backgroundEmbedding', 'bg {{image::smile}}', 'single')).toEqual({ ok: true })
+        expect(harness.service.view(M1).restore?.fields.backgroundEmbedding?.before).toEqual({ had: true, value: START })
+        expect(changedElsewhere()).toEqual([])
+    })
+})
 describe('a merge edit of a target that may not be rewritten is refused whole', () => {
     interface Case {
         name: string
