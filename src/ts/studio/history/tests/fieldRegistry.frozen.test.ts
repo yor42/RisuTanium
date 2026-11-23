@@ -1,8 +1,9 @@
 // Append-only guard of the persisted facts of every registered set path. A path new to older builds is refused whole by
 // them, and an existing path's facts decide how records written earlier replay, so a row of FROZEN_FIELD_FACTS is
 // never edited or removed: a later PR appends its own row (with its own readBack and whole-record refusal tests) and
-// lifts the rule assertions (F-d′, F-e) only when it implements further nested containers or number values. This table is a
-// literal on purpose: deriving it from the registry would make the guard pass for any registry.
+// lifts the rule assertions (F-d′, F-e) only when it implements further nested containers or value kinds. F-e admits
+// text, bool, `number`, `textList` and `biasList`; `biasList` has its own reader, writer, parse guard and structural
+// comparison, and `number` (S4b) and `textList` (S4c) are carried by session-only paths alone. This table is a literal on purpose: deriving it from the registry would make the guard pass for any registry.
 import { describe, expect, test } from 'vitest'
 import { CONTAINER_SEEDS, FIELD_SPECS, type FieldFacts } from '../fieldRegistry'
 import { RESTORE_PATH_ORDER } from '../historyModel'
@@ -67,6 +68,49 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['presetDynamicOutputPrompt', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
     ['presetDynamicShowTypingEffect', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
     ['presetDynamicRequest', { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['creatorNotes', { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
+    ['removedQuotes', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['lowLevelAccess', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['utilityBot', { value: 'bool', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
+    ['escapeOutput', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['bias', { value: 'biasList', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
+    // The preset advanced form's model and parameter paths (S4b): session-only; the `number` rows are the first number kind.
+    ['presetAiModel', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetSubModel', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetAuxMemory', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetAuxTranslate', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetAuxEmotion', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetAuxOtherAx', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetMaxContext', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetMaxResponse', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetThinkingType', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetDeepseekThinkingType', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetThinkingTokens', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetAdaptiveThinkingEffort', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetDeepseekReasoningEffort', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetTemperature', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetTopK', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetMinP', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetTopA', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetRepetitionPenalty', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetReasonEffort', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetVerbosity', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetTopP', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFrequencyPenalty', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetPresencePenalty', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetMaxThoughtTagDepth', { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true }],
+    // The preset advanced form's list paths (S4c): session-only, no builtin holder.
+    ['presetModelTools', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetLocalStopStrings', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetBias', { value: 'biasList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFormatingOrder', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackModel', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackMemory', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackTranslate', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackEmotion', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    ['presetFallbackOtherAx', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
+    // The preset icon (S4d): session-only, no builtin holder.
+    ['presetImage', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
 ]
 
 // The containers a dotted path names, with the value an absent container reads as. An undo replays a seed reading, so
@@ -123,10 +167,13 @@ describe('T-FZ: the persisted facts of the registered paths are frozen', () => {
             expect(specs[path].holders, path).toEqual(['module'])
         }
     })
-    test('F-e: every value type is text or bool (number values are not implemented)', () => {
+    test('F-e: every value type is text, bool, number, textList or biasList; a number or textList path is session-only (no builtin holder)', () => {
         const specs: Record<string, FieldFacts> = FIELD_SPECS
         for (const path of Object.keys(specs)) {
-            expect(['text', 'bool'], path).toContain(specs[path].value)
+            expect(['text', 'bool', 'number', 'textList', 'biasList'], path).toContain(specs[path].value)
+            if (specs[path].value === 'number' || specs[path].value === 'textList') {
+                expect(specs[path].holders, path).toEqual([])
+            }
         }
     })
 })

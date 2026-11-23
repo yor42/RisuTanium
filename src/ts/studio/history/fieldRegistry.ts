@@ -16,8 +16,9 @@
 //   container. A `had: true` write creates the container from a fresh copy of the seed, and a container is never
 //   deleted. A restore onto an existing container writes into it, and a restore whose live reading already equals
 //   `before` writes nothing, so it creates no container. A session owner kind that lists a dotted path owns the seed
-//   and container rule in its own adapter. No `number` value is registered: the generic reader and writer support
-//   text and boolean values only.
+//   and container rule in its own adapter. The generic reader and writer support text, boolean
+//   and bias-list values; a number path (session-only today) reads and records a finite number, nothing else, and a
+//   `textList` path (session-only) reads and records an array of strings, nothing else.
 // - Never rename or remove a path, and never change an existing path's `value`, `absent`, `editWhenAbsent`,
 //   `holders` or `property`: older builds refuse a record whole on a path they do not know, and the frozen-facts test
 //   (append-only) pins every existing row. A path new to older builds is a widening they refuse whole.
@@ -26,7 +27,8 @@
 // - Adding an existing path to another builtin kind's row is a widening for older builds too.
 // - `keepForeign` is set on new rows only, requires `editWhenAbsent: true`, and is never changed on an existing row: a
 //   present value of another type is then recorded as a foreign reading and an undo writes it back, instead of the
-//   value reading as absent. The frozen-facts test pins it with the other facts.
+//   value reading as absent. The frozen-facts test pins it with the other facts. It is never set on a `biasList`
+//   row: a foreign reading is a boolean or text reading, and a bias list has no such reading.
 
 import type { languageEnglish } from '../../../lang/en'
 import type { Chat, character } from '../../storage/database.svelte'
@@ -36,9 +38,12 @@ export type StringKeyOf<T> = { [K in keyof T]: T[K] extends string ? K : never }
 
 export type Holder = 'character' | 'chat' | 'module'
 
+// One token bias row: the token text and its bias value.
+export type BiasRow = [string, number]
+
 // The persisted facts of a path: frozen by the append-only guard.
 export interface FieldFacts {
-    value: 'text' | 'bool'
+    value: 'text' | 'bool' | 'number' | 'textList' | 'biasList'
     // The builtin owner kinds whose set row and restore row hold the path, and whose writers write it.
     holders: readonly Holder[]
     // What a builtin-holder writer does with `{ had: false }`: leave the key or delete it.
@@ -56,7 +61,8 @@ export interface FieldPresentation {
     labelKey: StringKeyOf<typeof languageEnglish>
     // Where focus goes after a history action changed the path: the two special first message and example list
     // targets, an element named by its form and part, or nothing.
-    focus: 'firstMessage' | 'example' | { form: string; part: string } | null
+    // `byPath` narrows the element by its `data-path` attribute (the path itself), for parts that repeat per path.
+    focus: 'firstMessage' | 'example' | { form: string; part: string; byPath?: true } | null
 }
 
 export const FIELD_SPECS = {
@@ -121,6 +127,52 @@ export const FIELD_SPECS = {
     presetDynamicOutputPrompt: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
     presetDynamicShowTypingEffect: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
     presetDynamicRequest: { value: 'bool', holders: [], absent: 'keep', editWhenAbsent: true },
+    creatorNotes: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    removedQuotes: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    lowLevelAccess: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    utilityBot: { value: 'bool', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    escapeOutput: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    bias: { value: 'biasList', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    // The preset advanced form's model and parameter paths (S4b): session-only like the rows above. The `number` rows are
+    // the first number kind; no builtin holder carries one, so a stored character, chat or module record never holds a
+    // number.
+    presetAiModel: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetSubModel: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAuxMemory: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAuxTranslate: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAuxEmotion: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAuxOtherAx: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetMaxContext: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetMaxResponse: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetThinkingType: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDeepseekThinkingType: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetThinkingTokens: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetAdaptiveThinkingEffort: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetDeepseekReasoningEffort: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetTemperature: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetTopK: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetMinP: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetTopA: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetRepetitionPenalty: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetReasonEffort: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetVerbosity: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetTopP: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFrequencyPenalty: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetPresencePenalty: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetMaxThoughtTagDepth: { value: 'number', holders: [], absent: 'keep', editWhenAbsent: true },
+    // The preset advanced form's list paths (S4c): session-only like the rows above. A list is one whole value; the two
+    // list kinds are carried by session-only paths (and the character bias list) alone.
+    presetModelTools: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetLocalStopStrings: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetBias: { value: 'biasList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFormatingOrder: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackModel: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackMemory: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackTranslate: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackEmotion: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    presetFallbackOtherAx: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
+    // The preset icon (S4d): a data URL text on the slot only, session-only like the rows above.
+    presetImage: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -192,6 +244,46 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     presetDynamicOutputPrompt: { labelKey: 'studioPresetDynamicOutputPrompt', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDynamicOutputPrompt' } },
     presetDynamicShowTypingEffect: { labelKey: 'studioPresetDynamicShowTypingEffect', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDynamicShowTypingEffect' } },
     presetDynamicRequest: { labelKey: 'studioPresetDynamicRequest', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDynamicRequest' } },
+    creatorNotes: { labelKey: 'creatorNotes', focus: { form: 'studio-advanced-form', part: 'studio-form-creator-notes' } },
+    removedQuotes: { labelKey: 'studioFieldRemovedQuotes', focus: { form: 'studio-advanced-form', part: 'studio-form-creator-notes' } },
+    lowLevelAccess: { labelKey: 'lowLevelAccess', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    utilityBot: { labelKey: 'utilityBot', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    escapeOutput: { labelKey: 'escapeOutput', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    bias: { labelKey: 'studioFieldBias', focus: { form: 'studio-advanced-form', part: 'studio-form-bias' } },
+    presetAiModel: { labelKey: 'model', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAiModel' } },
+    presetSubModel: { labelKey: 'submodel', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetSubModel' } },
+    presetAuxMemory: { labelKey: 'studioPresetAuxMemory', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAuxMemory' } },
+    presetAuxTranslate: { labelKey: 'studioPresetAuxTranslate', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAuxTranslate' } },
+    presetAuxEmotion: { labelKey: 'studioPresetAuxEmotion', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAuxEmotion' } },
+    presetAuxOtherAx: { labelKey: 'studioPresetAuxOtherAx', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAuxOtherAx' } },
+    presetMaxContext: { labelKey: 'maxContextSize', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMaxContext' } },
+    presetMaxResponse: { labelKey: 'maxResponseSize', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMaxResponse' } },
+    presetThinkingType: { labelKey: 'thinkingType', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetThinkingType' } },
+    presetDeepseekThinkingType: { labelKey: 'studioPresetDeepseekThinking', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDeepseekThinkingType' } },
+    presetThinkingTokens: { labelKey: 'thinkingTokens', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetThinkingTokens' } },
+    presetAdaptiveThinkingEffort: { labelKey: 'adaptiveThinkingEffort', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetAdaptiveThinkingEffort' } },
+    presetDeepseekReasoningEffort: { labelKey: 'studioPresetDeepseekEffort', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetDeepseekReasoningEffort' } },
+    presetTemperature: { labelKey: 'temperature', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetTemperature' } },
+    presetTopK: { labelKey: 'studioPresetTopK', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetTopK' } },
+    presetMinP: { labelKey: 'studioPresetMinP', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMinP' } },
+    presetTopA: { labelKey: 'studioPresetTopA', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetTopA' } },
+    presetRepetitionPenalty: { labelKey: 'studioPresetRepetitionPenalty', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetRepetitionPenalty' } },
+    presetReasonEffort: { labelKey: 'studioPresetReasoningEffort', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetReasonEffort' } },
+    presetVerbosity: { labelKey: 'studioPresetVerbosity', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetVerbosity' } },
+    presetTopP: { labelKey: 'studioPresetTopP', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetTopP' } },
+    presetFrequencyPenalty: { labelKey: 'frequencyPenalty', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFrequencyPenalty' } },
+    presetPresencePenalty: { labelKey: 'presensePenalty', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetPresencePenalty' } },
+    presetMaxThoughtTagDepth: { labelKey: 'maxThoughtTagDepth', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetMaxThoughtTagDepth' } },
+    presetModelTools: { labelKey: 'studioPresetModelTools', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetModelTools' } },
+    presetLocalStopStrings: { labelKey: 'customStopWords', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetLocalStopStrings' } },
+    presetBias: { labelKey: 'studioPresetBias', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetBias' } },
+    presetFormatingOrder: { labelKey: 'formatingOrder', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFormatingOrder' } },
+    presetFallbackModel: { labelKey: 'studioPresetFallbackListMain', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackModel' } },
+    presetFallbackMemory: { labelKey: 'studioPresetFallbackListMemory', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackMemory' } },
+    presetFallbackTranslate: { labelKey: 'studioPresetFallbackListTranslate', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackTranslate' } },
+    presetFallbackEmotion: { labelKey: 'studioPresetFallbackListEmotion', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackEmotion' } },
+    presetFallbackOtherAx: { labelKey: 'studioPresetFallbackListOtherAx', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackOtherAx' } },
+    presetImage: { labelKey: 'icon', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetImage' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed

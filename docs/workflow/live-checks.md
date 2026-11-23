@@ -62,6 +62,8 @@ Identify a device by serial and model before any command; never run a command ag
 - Input that lands in another app (a stray tap, launcher or search keystrokes) is an incident: stop, report it in the run's disclosures, and the affected row is rerun.
 - A verb the brief does not allow (on 2026-11-22: `reverse --list` and `dumpsys --noredact` on a phone whose brief did not list them) is never sent; stop and hand back, and the PR session asks the maintainer.
 - A guard exit 99 (usage error) may be corrected once by completing the same call, with no flag, port, target or verb changed. Policy refusals (exits 93 and 97, and target, port, verb or foreground refusals) mean stop and report; never work around them.
+- Radios stay off until the CDP network block is attached and read back: attach as soon as the DevTools socket appears, then read Wi-Fi and mobile data again. Read them before each launch too, not only at the start and end of the run (lane A, 2026-11-22, after a #514 S3 run left about a second between launch and attach).
+- A run that checks a theme-pack safety path (safe start, crash-loop start, install warning) also runs the control row: a plain launch applies the installed pack. Without it, a pack that never applies passes every safety row (the advisor's standing control row on #629, `Agents/stages/629/STAGE_HANDOFF.md`).
 
 **Tab S9 and other restricted serials.** Taps only on elements located and identified in the same read (`locate-css` through the CDP DOM, then a scope-file `tap`); a refused verb (exit 95) stops that route, never a reason to improvise another. Never list a folder; touch exact file names only.
 

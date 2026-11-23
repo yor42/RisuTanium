@@ -29,9 +29,10 @@ import { presetAdapter, readPresetField } from '../presetTarget'
 import { SESSION_OWNER_KINDS } from 'src/ts/studio/history/sessionKinds'
 import { FIELD_SPECS } from 'src/ts/studio/history/fieldRegistry'
 import { SET_PATHS_BY_KIND, textPathsFor, valuePathsFor } from 'src/ts/studio/history/historyModel'
+import { PRESET_S4C_PATHS } from 'src/ts/studio/history/tests/presetPaths.test-helpers'
 import { keylessPreset, presetNamed, seedPresetDb } from './presetFixture.test-helpers'
 
-function setOp(path: PresetPath, value: string | boolean): WriteOp {
+function setOp(path: PresetPath, value: string | boolean | number | string[] | [string, number][]): WriteOp {
     return { op: 'set', path, value: { had: true, value } }
 }
 function unsetOp(path: PresetPath): WriteOp {
@@ -52,7 +53,7 @@ describe('S4a-T1: the table, the registry and the kind rows', () => {
     test('the table holds exactly the preset kind row, and the model row is that list', () => {
         expect(Object.keys(PRESET_FIELDS)).toEqual([...SESSION_OWNER_KINDS.preset.setPaths])
         expect(SET_PATHS_BY_KIND.preset).toEqual([...SESSION_OWNER_KINDS.preset.setPaths])
-        expect(presetPaths).toHaveLength(34)
+        expect(presetPaths).toHaveLength(68)
     })
 
     test('each new path is in the preset row and in no builtin kind row, with no holder and no property', () => {
@@ -80,7 +81,8 @@ describe('S4a-T1: the table, the registry and the kind rows', () => {
         expect(text).not.toContain('presetSendName')
         expect(value).toContain('presetSendName')
         expect(value).not.toContain('presetJsonSchema')
-        expect([...text, ...value].sort()).toEqual([...SESSION_OWNER_KINDS.preset.setPaths].sort())
+        // The list paths (S4c) are edited as whole values through `editField`: in neither row.
+        expect([...text, ...value, ...PRESET_S4C_PATHS].sort()).toEqual([...SESSION_OWNER_KINDS.preset.setPaths].sort())
     })
 })
 
@@ -112,14 +114,16 @@ describe('S4a-T2: write routing by the live copy', () => {
             if (spec.key !== undefined || spec.db === 'slotOnly') {
                 continue
             }
-            const value = spec.value === 'bool' ? !readBool(ids[0], path) : `w-${path}`
-            expect(presetAdapter.write(ids[0], [setOp(path, value)]), path).toBe(true)
-            expect(dbBag()[spec.db], `active ${path}`).toBe(value)
-            expect(slotBag(0)[spec.slot], `active slot ${path}`).not.toBe(value)
-            const other = spec.value === 'bool' ? !readBool(ids[1], path) : `s-${path}`
-            expect(presetAdapter.write(ids[1], [setOp(path, other)]), path).toBe(true)
-            expect(slotBag(1)[spec.slot], `inactive ${path}`).toBe(other)
-            expect(dbBag()[spec.db], `inactive leaves working ${path}`).toBe(value)
+            const sample = (tag: string, number: number) =>
+                spec.value === 'bool' ? !readBool(tag === 'w' ? ids[0] : ids[1], path) : spec.value === 'number' ? number : spec.value === 'textList' ? [`${tag}-${path}`] : spec.value === 'biasList' ? [[tag, number]] : `${tag}-${path}`
+            const value = sample('w', 41)
+            expect(presetAdapter.write(ids[0], [setOp(path, value as never)]), path).toBe(true)
+            expect(dbBag()[spec.db], `active ${path}`).toEqual(value)
+            expect(slotBag(0)[spec.slot], `active slot ${path}`).not.toEqual(value)
+            const other = sample('s', 42)
+            expect(presetAdapter.write(ids[1], [setOp(path, other as never)]), path).toBe(true)
+            expect(slotBag(1)[spec.slot], `inactive ${path}`).toEqual(other)
+            expect(dbBag()[spec.db], `inactive leaves working ${path}`).toEqual(value)
         }
     })
 

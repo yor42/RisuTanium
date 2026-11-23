@@ -223,9 +223,9 @@ describe('S4a-T12: what the form shows for the preset\'s own settings', () => {
         expect(field('presetCustomChainOfThought')).not.toBeNull()
     })
 
-    test('the section frame, the connections row and the provider line show; the Model section has no preset field', async () => {
+    test('the section frame, the connections row and the provider line show', async () => {
         await mountPreset(1)
-        for (const name of ['nameIcon', 'model', 'prompt', 'promptOptions', 'fallback', 'other']) {
+        for (const name of ['nameIcon', 'model', 'parameters', 'prompt', 'promptOptions', 'fallback', 'other']) {
             expect(section(name), name).not.toBeNull()
         }
         expect(part('studio-preset-connections-link')?.textContent).toBe('connectionsManageLink')

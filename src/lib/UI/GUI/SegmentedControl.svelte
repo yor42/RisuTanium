@@ -3,6 +3,7 @@
     interface SegmentOption {
         value: string | number;
         label: string;
+        disabled?: boolean;
     }
 
     interface Props {
@@ -77,6 +78,7 @@
         <button
             data-segment-btn
             type="button"
+            disabled={opt.disabled}
             class="segmented-btn"
             class:segmented-btn-active={opt.value === value}
             class:text-xs={size === 'sm'}

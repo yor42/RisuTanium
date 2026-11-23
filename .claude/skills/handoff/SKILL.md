@@ -4,7 +4,7 @@ description: Writes a step handoff file so a fresh orchestrator session can cont
 disable-model-invocation: true
 ---
 
-Write the handoff to `Agents/Handoff-<date>-<step>.md` (English, compact, under about 40 lines). Gather facts with `git status`, `git log` and the actual check logs; do not recall from memory. Sections:
+A ticket's stage handoff is `Agents/stages/<issue>/STAGE_HANDOFF.md`, carried in the stage's PR (MC-3621; [AGENTS](../../../AGENTS.md) "Tickets and PRs"). For a lane handoff, write the handoff to `Agents/Handoff-<date>-<step>.md` (English, compact, under about 40 lines). Gather facts with `git status`, `git log` and the actual check logs; do not recall from memory. Sections:
 
 1. Goal and done-criteria of the step.
 2. Base and dirty state: branch, HEAD, worktrees, untracked files. Never touch others' dirty files; list them as not yours.

@@ -6,7 +6,7 @@
 // not on screen, focus is left where it is unless it was lost (removed, disabled or on the body); then it goes to
 // the fallback the caller names.
 import { afterFlush } from '../afterFlush'
-import { registryPaths } from './history/fieldAccess'
+import { registryPaths, valuesEqual } from './history/fieldAccess'
 import { FIELD_PRESENTATION, type SetPath } from './history/fieldRegistry'
 import { cardSpans, cardText } from './longText/exampleCards'
 import { sameJsonValue } from '../storage/store2/codec/normalize'
@@ -53,10 +53,10 @@ export function isForeignFieldRead(value: unknown): value is ForeignFieldRead {
 }
 
 // Two tagged foreign readings are equal when their values are (a read returns a fresh copy each time); a tagged reading
-// never equals a typed value or `undefined`. Anything else compares with `===`.
+// never equals a typed value or `undefined`. Anything else compares by value (a bias list is a fresh copy per read).
 function sameFieldRead(a: unknown, b: unknown): boolean {
     if (isForeignFieldRead(a) || isForeignFieldRead(b)) return isForeignFieldRead(a) && isForeignFieldRead(b) && sameJsonValue(a.foreign, b.foreign)
-    return a === b
+    return valuesEqual(a, b)
 }
 
 export function changedFieldTarget(before: OwnerFields, after: OwnerFields): FocusTarget | null {
@@ -122,7 +122,8 @@ function elementFor(scope: ParentNode, target: FocusTarget): HTMLElement | null 
         }
         default: {
             const focus = FIELD_PRESENTATION[target.kind].focus
-            return focus !== null && typeof focus === 'object' ? scope.querySelector<HTMLElement>(`[data-part="${focus.form}"] [data-part="${focus.part}"]`) : null
+            if (focus === null || typeof focus !== 'object') return null
+            return scope.querySelector<HTMLElement>(`[data-part="${focus.form}"] [data-part="${focus.part}"]${focus.byPath ? `[data-path="${target.kind}"]` : ''}`)
         }
     }
 }

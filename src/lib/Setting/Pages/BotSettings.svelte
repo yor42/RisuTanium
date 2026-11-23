@@ -7,6 +7,7 @@
     
     import { DBState } from 'src/ts/stores.svelte';
     import { setCurrentPresetImage } from 'src/ts/storage/currentPreset';
+    import { pickPresetIcon } from 'src/ts/presetIcon';
     import { customProviderStore } from "src/ts/plugins/plugins.svelte";
     import { downloadFile } from "src/ts/globalApi.svelte";
     import { isTauri } from "src/ts/platform"
@@ -830,22 +831,11 @@
             </div>
         </div>
         <button aria-label={language.chooseIconImage} class="mt-2 text-textcolor2 hover:text-textcolor focus-within:text-textcolor" onclick={async () => {
-            const sel = await selectSingleFile(['png', 'jpg', 'jpeg', 'webp'])
-            if(!sel){
+            const data = await pickPresetIcon()
+            if(data === null){
                 return
             }
-            const canvas = document.createElement('canvas')
-            const ctx = canvas.getContext('2d')
-            const img = new Image()
-            //@ts-expect-error Uint8Array buffer type (ArrayBufferLike) is incompatible with BlobPart's ArrayBuffer
-            const blob = new Blob([sel.data], {type: "image/png"})
-            img.src = URL.createObjectURL(blob)
-            await img.decode()
-            canvas.width = 48
-            canvas.height = 48
-            ctx.drawImage(img, 0, 0, 48, 48)
-            const data = canvas.toDataURL('image/jpeg', 0.7)
-            setCurrentPresetImage(DBState.db, data) //Since its small (max 2304 pixels), its okay to store it directly
+            setCurrentPresetImage(DBState.db, data)
         }}>
             <UploadIcon aria-hidden="true" />
         </button>
