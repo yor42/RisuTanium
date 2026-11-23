@@ -77,6 +77,9 @@ export function readCarryReach(target: ToggleTarget): CarryReach {
 
     const others: OtherSource[] = []
     workingPresetsOf(DBState.db).forEach((preset, index) => {
+        if (target.kind === 'preset' && DBState.db.botPresets?.[index]?.id === target.presetId) {
+            return
+        }
         if (typeof preset.toggles === 'string' && preset.toggles !== '') {
             others.push({
                 id: index === DBState.db.botPresetsId ? 'prompt' : `preset:${index}`,

@@ -237,6 +237,22 @@ describe('the module write (DB2, DB2b)', () => {
     })
 })
 
+describe('the reach of a preset builder (T11)', () => {
+    const PRESET: ToggleTarget = { kind: 'preset', presetId: 'P-1' }
+
+    test('owners are the character and the active modules; no preset is an owner', () => {
+        seed([moduleRow('M1'), moduleRow('M5')], [character('c1')], ['M1'])
+        expect(readUpdateReach(PRESET, 'c1').owners.map((owner) => owner.key)).toEqual(['character:c1', 'module:M1'])
+    })
+
+    test('a private bound character is unreached, restricted, and the modules are still owners', () => {
+        seed([moduleRow('M1')], [character('c1', { license: 'private' })])
+        const reach = readUpdateReach(PRESET, 'c1')
+        expect(reach.owners.map((owner) => owner.key)).toEqual(['module:M1'])
+        expect(reach.unreached.map((entry) => [entry.name, entry.reason])).toEqual([['name-c1', 'restricted']])
+    })
+})
+
 describe('the reach (DB3)', () => {
     const reasonsOf = (target: ToggleTarget = CHARACTER) => readUpdateReach(target, 'c1').unreached.map((entry) => [entry.name, entry.reason])
     const ownersOf = (target: ToggleTarget = CHARACTER) => readUpdateReach(target, 'c1').owners.map((owner) => owner.key)

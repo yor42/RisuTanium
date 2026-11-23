@@ -1,7 +1,9 @@
 // The read model of the toggle preview sheet. Pure: it walks the lines of one toggle text exactly as the chat panel's
 // `itemsOf` does, so the preview shows what the chat shows, and it records which text line produced each item so a
-// preview selection can land on its row. Nothing here reads the database or writes.
+// preview selection can land on its row. Nothing here writes; only `panelIdOf` of a preset reads the database, to tell
+// whether the preset is the active one.
 import type { PanelGroup, PanelItem, PanelSource, SourceInput, ToggleKind } from '../chatShell/togglePanel'
+import { presetStateOf } from './edit/presetTarget'
 import type { ToggleTarget } from './toggleBuilder.svelte'
 import { parseDefinition } from './toggleDef'
 
@@ -91,6 +93,10 @@ export function previewSourcesOf(inputs: readonly SourceInput[]): PreviewSource[
 
 /** The panel id `toggleSourcesOf` gives the source of a builder's owner. */
 export function panelIdOf(target: ToggleTarget): string {
+    if (target.kind === 'preset') {
+        // The chat panel names only the active preset's text, as `prompt`; an inactive preset has no source there.
+        return presetStateOf(target.presetId)?.active ? 'prompt' : `preset:${target.presetId}`
+    }
     return target.kind === 'character' ? `character:${target.chaId}` : `module:${target.moduleId}`
 }
 
