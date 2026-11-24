@@ -60,3 +60,15 @@
 - Tag: decisions (maintainer, lane A AskUserQuestion, "No parts on them (Recommended)", PQ-W32-1 of the W3-2 plan). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4160`, `MC-4165`, `MC-3007`.
 
 **What the maintainer chose.** AllSeperateParameters and ClaudeThinkingSeparateParams get no theme parts in W3-2. They are shared with the Bot Settings page (the Settings closure reaches them through the custom component list), so a popups name there would also style that page. Only EasyPanel's own elements get parts. The two panels are deliberate skips, not omissions. Not chosen: parts on both panels with entries in the Settings census exemption list.
+
+### MC-4168 — #438 RealmLicense gets no parts and stays out of the overlay census list, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "No parts (Recommended)", PQ-W33-1 of the W3-3 plan). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4160`, `MC-4182` (lane A's record of the same ruling).
+
+**What the maintainer chose.** `src/lib/UI/Realm/RealmLicense.svelte`, used only by RealmPopUp, gets no theme parts in W3-3 and stays out of `OVERLAY_FILES`. Its license section is covered only through the `modal-body` of RealmPopUp, and its button is an external link, not a consent. A deliberate skip. Not chosen: `modal-text` on its heading and `modal-action` on its button with the file added to the census list.
+
+### MC-4169 — #438 The RealmFrame chrome device row is not run; the rendered tests are the evidence, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "Not run, test-only (Recommended)", DV-W33-6). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4165`, `MC-4175` and `MC-4183` (lane A's records of the related rulings).
+
+**What the maintainer chose.** The device row DV-W33-6 for the RealmFrame chrome (it needs Wi-Fi off plus the every-target network block, or a Realm reply) is recorded as NOT RUN, with the rendered tests as the evidence. Not chosen: running it on a Note 9 under a device ruling.
