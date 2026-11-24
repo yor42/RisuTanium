@@ -52,10 +52,10 @@ If a pack makes the app hard to use:
 
 ## What is not supported yet
 
-- Effects. Packs cannot use transitions, transforms, animations, filters, blur or layering. This is planned as ticket #751. Blur-based looks and a reduced-effects fallback do not exist yet.
+- Effects. Packs cannot use transitions, transforms, animations, filters, blur or layering. They are not available yet and are planned. Blur-based looks and a reduced-effects fallback do not exist yet.
 - Some popups and dialogs have no theme parts yet (for example the memory, bookmark and persona lists). Packs reach them only through shared shapes. This is planned.
 - Part of the chat sidebar (the heading, the "New chat" button and menu, the More menu and the row menu buttons) cannot be styled individually yet. This is planned.
-- The built-in packs only restyle the chat screen. They are being rebuilt in ticket #654.
+- The built-in packs only restyle the chat screen. They are planned to be rebuilt.
 - A file named `sidebar.css` (or any other extra `.css` file) in a pack is kept with the pack but never applied. A pack with only `popups.css` is refused.
 
 <!-- MC-4149, MC-4160, MC-4161, MC-3871, MC-3123; src/ts/themePack/intake.ts -->
