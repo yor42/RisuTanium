@@ -3893,7 +3893,7 @@ export const languageChinese = {
     },
     "themePackRowTitle": "主题包",
     "themePackRowHelp": (toggle: string, classicPage: string, newPage: string, newSection: string) =>
-        `安装 .risutheme 文件，为新的聊天界面换肤。仅在开启“${toggle}”（经典设置界面中位于${classicPage}，新界面中位于${newPage} > ${newSection}）且使用标准聊天主题时才会显示。其他界面、经典聊天界面、群聊和游乐场保持内置外观。自定义 CSS 仍会叠加生效。`,
+        `安装 .risutheme 文件，为新界面换肤：聊天、工作室、设置和主页，以及其上的弹窗。聊天、工作室和设置仅在各自的预览开关开启时才会显示主题包；聊天对应的开关是“${toggle}”（经典设置界面中位于${classicPage}，新界面中位于${newPage} > ${newSection}），并且需要使用标准聊天主题。主页无需开关。颜色仅应用于聊天界面，其他界面只采用主题包的形状。经典界面、群聊和游乐场保持内置外观。自定义 CSS 仍会叠加生效。`,
     "themePackRowLoadFailed": "无法加载主题包设置。请关闭设置后重新打开。",
     "themePackActiveLegend": "当前使用的主题包",
     "themePackNone": "无",

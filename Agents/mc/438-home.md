@@ -21,3 +21,9 @@
 - Tag: evidence (device run DV-P, MC-4145; result file `%TEMP%/risu-b715/438/home/dv/run1/dv438h-result.md`). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4143`, `MC-4145`.
 
 **What was observed.** On Note 9 phone 1 (synthetic data, debug APK of 4f090bea0), a pack pushed to `/sdcard/Download` was installed through the app's install-from-file control and the real DocumentsUI picker (`com.android.documentsui/.picker.PickActivity`), chosen by an exact file-name pick and a guarded tap, with no CDP file injection. The app installed it with the held-colours line for home.css and no read error. The S3c-B read failure (MC-4143) came from a CDP-set path, not from the picker. Not covered: a browser download, other file managers, other Android versions or phones.
+
+### MC-4148 — #438 Wrap-up starts with a read-only audit, then the maintainer is asked, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "Audit first, then ask (Recommended)"). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3871`, `MC-4144`.
+
+**What the maintainer chose.** The #438 wrap-up begins with a read-only audit (stage W0, no PR): a coverage matrix of every shell, popup, toast and dialog against an applied theme-pack area, the sidebar parts check, the status of the MC-2942 effects, what the #654 pack rebuild needs from the engine, and the docs gap list. The maintainer is asked the wrap-up questions afterwards, with the audit's findings. Nothing is built until that answer is relayed.
