@@ -1,3 +1,15 @@
+# #708 stage SC-1 handoff (2026-11-24): history registry rows and the character 배경 HTML form
+
+**Completed:** PR "Refs #708" on `claude/708-sc1` (history-core stage, ran alone): append-only registry rows for character `backgroundHTML` and `virtualscript` (FIELD_SPECS, FIELD_PRESENTATION, TEXT_FIELD_PATHS) after the #681 S3a rows, the amended literal pins, the Character 배경 HTML form `StudioCharacterHtmlForm.svelte` mounted in `StudioDetail.svelte`, the classic link removed for ('character','html') only, `studioCharHtmlHint` in en.ts plus the seven locales, lane A's three SC-2a editorials (triggerKinds comment, move-test partition self-check, spec TS11 rule moved out of "Named exceptions"). Decisions: MC-4118 (slot to SC-1). `ownerHistory.svelte.ts`, `studioSetters.ts`, the object-list files and classic are unchanged. Older registries refuse the new records whole.
+
+**Gates:** Gate 1 passed on round 1 (editorial). Gate 2 [EDITORIAL] on round 1: no substantive defect; the opus-reviewer ran 20 plan mutants (all killed; MS-H7 is killed by the amended item 11 in `StudioDetail.svelte.test.ts`, not by T1 as the plan says) plus 8 of its own in a TEMP copy; its survivor `o_nodestroy` (the form's teardown close, untested; `StudioDisplayForm` has the same pattern) is a known limitation.
+**Known limits (PR body):** T4's second case is labelled a guard but fails on main (it stores a `set` op on a path that cannot exist before SC-1); the `%s shows its text` title is wrong for the html case; the `StudioDetail.svelte` comment on `formLive` is ambiguous; MC-4116/4117 exact times unknown.
+**Routing and process:** coders were Sonnet (controller routes implement to Sonnet only), translator Sonnet, Gate 2 opus-reviewer xhigh. The harness refuses writes to a worktree other than the session's own, so the first SC-1 worktree was dropped and the branch rebuilt in this session's worktree; each writer needed an exact grant (revoked at hand-back). Mutants ran in a TEMP copy, not in the worktree.
+
+**Next:** SC-1 releases the history-core slot when it merges. SC-0 (trigger list in the seam) needs S7-0 merged; lane A asks the maintainer before each stage start.
+
+---
+
 # #708 stage SC-2a handoff (2026-11-24): classic goldens and pure trigger modules
 
 **Completed:** PR "Refs #708" on `claude/708-sc2a` adds the pure modules `triggerKinds.ts`, `triggerTemplates.ts`, `triggerV2Defaults.ts` and `triggerV2Blocks.ts` under `src/ts/studio/edit/`, two `export` keywords in `referenceTargets.ts`, and the classic-golden tests (recorder driving the real unchanged classic components in jsdom; the oracle `classicTriggerOracle.ts` holds `CLASSIC_V2ELSE_DEFAULT` and any verbatim copies it names; no app code imports it). Classic (`src/lib/SideBars/Scripts`) and all history-core files are unchanged; no locale keys.

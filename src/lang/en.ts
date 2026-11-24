@@ -2891,6 +2891,7 @@ export const languageEnglish = {
     studioModAdvNamespaceIntegrationOff: (before: string, after: string) => `Module Integration lists "${before}". With "${after}" this module stops turning on through it.`,
     studioModAdvNamespaceIntegrationOn: (after: string) => `Module Integration lists "${after}". This module now turns on through it.`,
     studioModAdvBackgroundHint: "Shown behind the chat wherever this module is on. A theme pack's background is turned off while it has content.",
+    studioCharHtmlHint: "Shown behind this character's chats.",
     studioModAdvValueForeign: (stored: string) => `Stored as ${stored}, which is not the kind of value this field uses. A change here replaces it, and undo puts it back.`,
     studioAssetRefusalNoUndo: "Cannot keep undo right now",
     studioAssetRefusalOtherTabCharacter: "Open this character in one tab to remove assets",

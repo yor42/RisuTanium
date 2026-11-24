@@ -231,6 +231,14 @@ describe('4d text of each kind of the bound character', () => {
         setFull(makeInput({ character: character() }))
         openStudio(ownerItem('character', 'cha-1', kind, itemId), null)
         show()
+        if (kind === 'html') {
+            // The 배경 HTML kind has its own form: no read-only view of the text and no classic link.
+            expect(part('studio-char-html-form')).not.toBeNull()
+            expect(part('studio-detail-text')).toBeNull()
+            expect(part('studio-detail-readonly')).toBeNull()
+            expect(part('studio-detail-classic')).toBeNull()
+            return
+        }
         const shown = part('studio-detail-text')?.textContent ?? ''
         for (const piece of expected) expect(shown).toContain(piece)
         // The basic info and the advanced kind of the character have a live form, so the read-only note does not apply to them.

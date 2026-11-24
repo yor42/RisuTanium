@@ -23,7 +23,7 @@ export function effectKindOf(type: unknown): EffectKind {
     return 'unknown'
 }
 
-/** True exactly when `row` is an object whose `effect` is an object whose `0` entry is an object of type `triggerlua` or `triggercode`. The engine reads `effect[0]` without requiring an array, so an object-keyed effect runs on every pass too. */
+/** True exactly when `row` is an object whose `effect` is an object whose `0` entry is an object of type `triggerlua` or `triggercode`. The engine reads `effect[0]` without requiring an array, so an object-keyed effect is checked on every pass too; the engine's effect loop is bounded by `effect.length`, so such an effect runs nothing unless it has a numeric `length`. */
 export function runsOnEveryTrigger(row: unknown): boolean {
     if (typeof row !== 'object' || row === null) return false
     const effect = (row as { effect?: unknown }).effect

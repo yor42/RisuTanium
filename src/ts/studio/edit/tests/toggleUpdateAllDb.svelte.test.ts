@@ -195,6 +195,22 @@ describe('the character write (DB1)', () => {
         expect(written.depth_prompt).toEqual({ depth: 2, prompt: BEFORE('depth') })
     })
 
+    test('the 배경 HTML is rewritten through its registry write, the character is marked once, and undo puts it back (T7; passes before and after the router change)', () => {
+        seed([], [character('c1', { backgroundHTML: BEFORE('bg') })])
+        const plan = planOf(CHARACTER)
+        expect(plan.writes.map((write) => write.path)).toContain('backgroundHTML')
+        const applied = applyUpdate(plan, createUpdateDbPort())
+        expect(applied.ok).toBe(true)
+        if (!applied.ok) {
+            return
+        }
+        const written = live() as unknown as Record<string, unknown>
+        expect(written.backgroundHTML).toBe(AFTER('bg'))
+        expect(tracker.character).toEqual(['c1'])
+        expect(restoreUpdate(applied.journal, createUpdateDbPort())).toEqual({ ok: true })
+        expect(written.backgroundHTML).toBe(BEFORE('bg'))
+    })
+
     test('the regex in pattern and the Lua code are listed and untouched', () => {
         const plan = planOf(CHARACTER)
         expect(plan.listed.map((use) => [use.path, use.reason])).toEqual([

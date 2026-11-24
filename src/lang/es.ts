@@ -2757,6 +2757,7 @@ export const languageSpanish = {
     "studioModAdvNamespaceIntegrationOff": (before: string, after: string) => `La Integración de Módulos incluye "${before}". Con "${after}", este módulo deja de activarse por esa vía.`,
     "studioModAdvNamespaceIntegrationOn": (after: string) => `La Integración de Módulos incluye "${after}". Ahora este módulo se activa por esa vía.`,
     "studioModAdvBackgroundHint": "Se muestra detrás del chat donde este módulo está activado. El fondo de un paquete de tema se desactiva mientras tenga contenido.",
+    "studioCharHtmlHint": "Se muestra detrás de los chats de este personaje.",
     "studioModAdvValueForeign": (stored: string) => `Almacenado como ${stored}, que no es el tipo de valor que usa este campo. Un cambio aquí lo reemplaza, y deshacer lo restaura.`,
     studioAssetRefusalNoUndo: "Ahora mismo no se puede conservar el historial para deshacer",
     studioAssetRefusalOtherTabCharacter: "Abre este personaje en una sola pestaña para quitar recursos",

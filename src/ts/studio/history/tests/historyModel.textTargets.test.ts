@@ -328,7 +328,7 @@ describe('the write kind follows the target', () => {
             { op: 'listSet', index: 0, value: 'g0 {{image::}}' },
             { op: 'textSet', target: 'lore/1/content', value: '{{image::l}} smile2' },
             { op: 'set', path: 'systemPrompt', value: { had: true, value: '{{image::sys}} smile2' } },
-            { op: 'textSet', target: 'backgroundHTML', value: '{{image::h}} smile2' },
+            { op: 'set', path: 'backgroundHTML', value: { had: true, value: '{{image::h}} smile2' } },
         ])
 
         const module = makeModule({ lorebook: [{ key: 'k0', content: '{{image::lore0}} smile2' }, { key: 'k1', content: 'lore1 smile2' }] })
@@ -497,12 +497,13 @@ describe('a revert and a restore point carry the first message and the example m
         expect(c.desc).toBe('desc two')
     })
 
-    test('a restore point learns both messages and the system prompt from a merge and restores them; a registry text that is no set path contributes nothing', () => {
+    test('a restore point learns both messages and the system prompt from a merge and restores them; a text that is no set path (a lore entry) contributes nothing', () => {
         const c = makeCharacter({
             firstMessage: 'first {{image::smile2}} message',
             exampleMessage: 'example {{image::smile2}}',
             systemPrompt: 'system {{image::smile2}}',
             backgroundHTML: 'html {{image::smile2}}',
+            globalLore: [{ key: 'k0', content: 'lore {{image::smile2}}' }],
         })
         let state = typeDesc(freshState(A), c, 'desc one')
         state = landCharacter(state, c, [
@@ -510,10 +511,12 @@ describe('a revert and a restore point carry the first message and the example m
             edit('exampleMessage', 17, 'smile2', 'smile'),
             edit('systemPrompt', 16, 'smile2', 'smile'),
             edit('backgroundHTML', 14, 'smile2', 'smile'),
+            edit('lore/0/content', 14, 'smile2', 'smile'),
         ]).state
         const restore = state.record.restore
-        expect(Object.keys(restore?.fields ?? {})).toEqual(expect.arrayContaining(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt']))
-        expect(Object.keys(restore?.fields ?? {})).not.toContain('backgroundHTML')
+        expect(Object.keys(restore?.fields ?? {})).toEqual(expect.arrayContaining(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'backgroundHTML']))
+        expect(Object.keys(restore?.fields ?? {})).not.toContain('lore/0/content')
+        expect(restore?.fields.backgroundHTML?.before).toEqual({ had: true, value: 'html {{image::smile2}}' })
         expect(restore?.fields.systemPrompt?.before).toEqual({ had: true, value: 'system {{image::smile2}}' })
         const plan = planRestorePoint(restore, charReader(c), new Set())
         if (plan.ok === false) {
@@ -620,7 +623,7 @@ function holderOf(kind: 'character' | 'module', owner: object, path: string): { 
 }
 
 function expectedKind(path: string): 'set' | 'listSet' | 'textSet' {
-    const SET_TARGETS = ['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt/prompt', 'defaultVariables', 'translatorNote', 'creatorNotes', 'newGenData/prompt', 'newGenData/negative', 'newGenData/instructions', 'newGenData/emotionInstructions']
+    const SET_TARGETS = ['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt/prompt', 'defaultVariables', 'translatorNote', 'creatorNotes', 'newGenData/prompt', 'newGenData/negative', 'newGenData/instructions', 'newGenData/emotionInstructions', 'backgroundHTML']
     if (SET_TARGETS.includes(path)) {
         return 'set'
     }

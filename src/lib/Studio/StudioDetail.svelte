@@ -18,6 +18,7 @@
     import StudioModuleAdvancedForm from './StudioModuleAdvancedForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
+    import StudioCharacterHtmlForm from './StudioCharacterHtmlForm.svelte'
     import StudioDisplayForm from './StudioDisplayForm.svelte'
     import StudioAdvancedForm from './StudioAdvancedForm.svelte'
     import StudioExampleForm from './StudioExampleForm.svelte'
@@ -113,7 +114,9 @@
     const chatFormLive = $derived(owner?.type === 'chat' && !owner.restricted && !owner.stub && studioScreen.selectedKind === null)
     // The advanced kind of a loaded character: its example dialogue is the one live part of it.
     const exampleFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'advanced')
-    const formLive = $derived(characterFormLive || assetFormLive || exampleFormLive || chatFormLive)
+    // The 배경 HTML kind of a loaded character mounts its form while the kind has no item yet, so it is part of `formLive` for the status chip.
+    const charHtmlFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'html')
+    const formLive = $derived(characterFormLive || assetFormLive || exampleFormLive || chatFormLive || charHtmlFormLive)
     // The toggle list builder of a character, or of a module while its id is published (loaded, private-free and not
     // shared), or of the preset the selection pinned by id.
     const characterToggleBuilderLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'toggles')
@@ -253,7 +256,7 @@
             {/if}
             {#if kindNode}
                 <p data-part="studio-detail-kind" class="font-bold">{kindLabelOf(kindNode.kind)}</p>
-                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive && !toggleBuilderLive && !moduleFormMounted}
+                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive && !toggleBuilderLive && !moduleFormMounted && !charHtmlFormLive}
                     <p class="text-textcolor2">{language.studioEmptyKind}</p>
                 {:else if kindNode.kind === 'lore' || kindNode.kind === 'regex'}
                     <p class="text-textcolor2">{language.studioItemCount(kindNode.count)}</p>
@@ -262,7 +265,7 @@
             {#if item}
                 <p data-part="studio-detail-item" class="break-words font-bold">{itemLabelOf(item)}</p>
             {/if}
-            {#if itemText && !toggleBuilderLive && !moduleFormMounted && !presetAdvancedFormLive}
+            {#if itemText && !toggleBuilderLive && !moduleFormMounted && !presetAdvancedFormLive && !charHtmlFormLive}
                 <pre data-part="studio-detail-text" class="whitespace-pre-wrap break-words rounded-md border border-darkborderc bg-darkbg p-3 font-sans">{itemText.shown}</pre>
                 {#if itemText.cut}
                     <p data-part="studio-detail-truncated" class="text-sm text-textcolor2">{language.studioTruncated(DETAIL_TEXT_LIMIT)}</p>
@@ -302,6 +305,10 @@
                     <StudioAdvancedForm chaId={studioScreen.chaId} section="prompts" />
                     <StudioExampleForm chaId={studioScreen.chaId} />
                     <StudioAdvancedForm chaId={studioScreen.chaId} section="details" />
+                {:else if charHtmlFormLive}
+                    {#key ownerKey}
+                        <StudioCharacterHtmlForm chaId={characterId} />
+                    {/key}
                 {:else if owner}
                     <StudioChatNoteForm chaId={studioScreen.chaId} chatId={owner.id} />
                 {/if}
