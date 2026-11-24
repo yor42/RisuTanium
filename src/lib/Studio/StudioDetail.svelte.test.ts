@@ -63,6 +63,7 @@ vi.mock('../../lang', async () => {
     return { language: new Proxy(base, { get: (target, key) => typeof key === 'string' && key in own ? own[key] : Reflect.get(target, key) }) }
 })
 
+import type { loreBook } from '../../ts/storage/database.svelte'
 import type { SaveAck } from '../../ts/studio/edit/saveAck.svelte'
 import type { OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import {
@@ -421,6 +422,42 @@ describe('4e notices for a target that cannot be honoured', () => {
         expect(studioScreen.selectedKind).toBe('lore')
         expect(studioScreen.selectedItemId).toBeNull()
     })
+
+    const entryTarget = (owner: { type: 'character' | 'module', id: string }, entry: string) => ({ owner, kind: 'lore', entry, from: 'chat' }) as const
+    const idEntry = (id: string, comment: string): loreBook => ({ id, comment, key: `${comment}-key`, secondkey: '', insertorder: 100, content: `${comment} body`, mode: 'normal', alwaysActive: false, selective: false })
+
+    test('regression reproducer: an entry named by id opens at its present place, with no notice', () => {
+        setDb({ globalLore: [idEntry('new', 'Newer'), idEntry('shared', 'Twin A'), idEntry('wanted', 'Renamed')] })
+        openStudio(entryTarget({ type: 'character', id: 'cha-1' }, 'wanted'), null)
+        show()
+        expect(studioScreen.notice).toBeNull()
+        expect(studioScreen.selectedKind).toBe('lore')
+        expect(studioScreen.selectedItemId).toBe(loreItem(2))
+    })
+
+    test('regression reproducer: a module entry named by id opens in its module', () => {
+        const lorebook = [idEntry('m-a', 'Mod A'), idEntry('m-b', 'Mod B')]
+        db.db = studioDbOf(makeInput({
+            character: makeCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
+            modules: [residentModule('mod-1', { lorebook })],
+            enabledModules: ['mod-1'],
+        }))
+        openStudio(entryTarget({ type: 'module', id: 'mod-1' }, 'm-b'), null)
+        show()
+        expect(studioScreen.notice).toBeNull()
+        expect(studioScreen.selectedItemId).toBe('mod-1/lore:1')
+    })
+
+    for (const entry of ['vanished', 'shared']) {
+        test(`regression reproducer: a ${entry} entry id opens the list with the entry-gone notice`, () => {
+            setDb({ globalLore: [idEntry('shared', 'Twin A'), idEntry('shared', 'Twin B')] })
+            openStudio(entryTarget({ type: 'character', id: 'cha-1' }, entry), null)
+            show()
+            expect(studioScreen.notice).toBe('studioLoreEntryGone')
+            expect(studioScreen.selectedKind).toBe('lore')
+            expect(studioScreen.selectedItemId).toBeNull()
+        })
+    }
 })
 
 describe('4e link-outs from the detail', () => {

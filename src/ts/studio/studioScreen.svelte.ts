@@ -7,6 +7,7 @@ import { studioEligible } from './studioSwitch.svelte'
 import { studioOpen } from './studioOpen'
 import { flushStudioFields } from './fieldFlush'
 import { clearClassicLinkRequest } from './classicLinks.svelte'
+import { liveLoreListOf } from './loreEntryLookup'
 import { resolveStudioTarget, type StudioNotice } from './resolveTarget'
 import { ownerKeyOf, type OwnerModel, type StudioKind } from './ownerModel'
 import type { StudioLayout } from './studioLayout'
@@ -463,7 +464,11 @@ function groupPathOf(owner: { type: string, active: boolean }): string[] {
 export function applyStudioTarget(model: OwnerModel, noticeText: (notice: StudioNotice) => string): void {
     if (!studioScreen.targetPending) return
     studioScreen.targetPending = false
-    const resolved = resolveStudioTarget(model, studioScreen.target)
+    // The guard must agree with ownerSource's boundCharacterOf: only the bound, readable character has lists to read.
+    const character = DBState.db.characters?.[selIdState.selId]
+    const bound = character && character.type !== 'group' && !character.coldstorage && character.chaId === studioScreen.chaId ? character : null
+    const resolved = resolveStudioTarget(model, studioScreen.target, (owner) =>
+        bound ? liveLoreListOf(owner, bound, DBState.db.modules ?? []) : undefined)
     if (resolved.notice) setStudioNotice(noticeText(resolved.notice))
     if (resolved.ownerKey === null) return
     const owner = model.ownerByKey(resolved.ownerKey)

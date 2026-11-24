@@ -2657,6 +2657,7 @@ export const languageChineseTraditional = {
     "studioNotFound": "找不到",
     "studioDeepKindFallback": (owner: string) => `${owner} 中沒有該類別。已開啟 ${owner} 的根層級`,
     "studioDeepItemMissing": (kind: string) => `找不到該項目。已開啟${kind}`,
+    "studioLoreEntryGone": "該條目已不在此 Lorebook 中。正在顯示清單。",
     "studioNoticeDismiss": "關閉",
     "studioFormLoading": "正在載入歷程記錄…",
     "studioGreetingsEmpty": "尚無替代開局訊息",

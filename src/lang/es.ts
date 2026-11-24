@@ -2614,6 +2614,7 @@ export const languageSpanish = {
     "studioNotFound": "No encontrado",
     "studioDeepKindFallback": (owner: string) => `Ese tipo no existe en ${owner}. Se abrió la raíz de ${owner}`,
     "studioDeepItemMissing": (kind: string) => `No se encontró ese elemento. Se abrió ${kind}`,
+    "studioLoreEntryGone": "Esa entrada ya no está en este Libro de Lore. Se muestra la lista.",
     "studioNoticeDismiss": "Cerrar",
     "studioFormLoading": "Cargando historial…",
     "studioGreetingsEmpty": "Aún no hay primeros mensajes alternativos",

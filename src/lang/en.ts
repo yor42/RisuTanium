@@ -2748,6 +2748,7 @@ export const languageEnglish = {
     studioNotFound: "Not found",
     studioDeepKindFallback: (owner: string) => `That kind does not exist in ${owner}. Opened the ${owner} root`,
     studioDeepItemMissing: (kind: string) => `That item was not found. Opened ${kind}`,
+    studioLoreEntryGone: "That entry isn't in this lorebook anymore. Showing the list.",
     studioNoticeDismiss: "Dismiss",
     studioFormLoading: "Loading history…",
     studioGreetingsEmpty: "No alternative first messages yet",

@@ -2612,6 +2612,7 @@ export const languageVietnamese = {
     "studioNotFound": "Không tìm thấy",
     "studioDeepKindFallback": (owner: string) => `Loại đó không tồn tại trong ${owner}. Đã mở gốc của ${owner}`,
     "studioDeepItemMissing": (kind: string) => `Không tìm thấy mục đó. Đã mở ${kind}`,
+    "studioLoreEntryGone": "Mục đó không còn trong Lorebook này nữa. Đang hiển thị danh sách.",
     "studioNoticeDismiss": "Đóng",
     "studioFormLoading": "Đang tải lịch sử…",
     "studioGreetingsEmpty": "Chưa có tin nhắn đầu tiên thay thế nào",

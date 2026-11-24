@@ -47,8 +47,20 @@ describe('2a studio target grammar', () => {
         expect(parseStudioTarget('owner=character:a&from=homepage')).toEqual({ owner: { type: 'character', id: 'a' } })
     })
 
+    test('an entry id is read with the lore kind, decoded, first value wins and may sit beside an item', () => {
+        expect(parseStudioTarget('owner=character:a&kind=lore&entry=e%2F1')).toEqual({ owner: { type: 'character', id: 'a' }, kind: 'lore', entry: 'e/1' })
+        expect(parseStudioTarget('owner=character:a&kind=lore&entry=x&entry=y')).toEqual({ owner: { type: 'character', id: 'a' }, kind: 'lore', entry: 'x' })
+        expect(parseStudioTarget('owner=character:a&kind=lore&item=a/lore:2&entry=x')).toEqual({ owner: { type: 'character', id: 'a' }, kind: 'lore', item: 'a/lore:2', entry: 'x' })
+    })
+
+    test('an entry id without an owner or without the lore kind is dropped', () => {
+        expect(parseStudioTarget('kind=lore&entry=x')).toEqual({})
+        expect(parseStudioTarget('owner=character:a&entry=x')).toEqual({ owner: { type: 'character', id: 'a' } })
+        expect(parseStudioTarget('owner=character:a&kind=regex&entry=x')).toEqual({ owner: { type: 'character', id: 'a' }, kind: 'regex' })
+    })
+
     test('malformed input is reported, not guessed', () => {
-        for (const input of ['owner=character', 'owner=character:', 'owner=widget:1', 'owner=:1', 'owner=character:a&kind=', 'owner=character:a&item=', 'owner=%E0%A4%A', 'owner=character:a%']) {
+        for (const input of ['owner=character', 'owner=character:', 'owner=widget:1', 'owner=:1', 'owner=character:a&kind=', 'owner=character:a&item=', 'owner=character:a&kind=lore&entry=', 'owner=%E0%A4%A', 'owner=character:a%']) {
             const result = parseStudioTarget(input)
             expect(isStudioError(result), input).toBe(true)
             expect(result).toEqual({ error: 'malformed' })

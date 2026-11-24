@@ -12,6 +12,8 @@ export interface LoreUsedEntry {
     ownerId: string
     index: number
     name: string
+    /** The entry's own non-empty string `id`, when it has one. */
+    entryId?: string
 }
 
 export interface LoreUseRecord {
@@ -50,6 +52,8 @@ export interface LoreEntryTarget {
     kind: 'lore'
     /** Present only while the live list still holds an entry of the same name at the recorded index. */
     item?: string
+    /** The entry's own id; set instead of `item`, since the recorded index may be stale. */
+    entry?: string
 }
 
 /**
@@ -59,6 +63,10 @@ export interface LoreEntryTarget {
  */
 export function loreEntryTarget(entry: LoreUsedEntry, liveList: readonly { comment?: string, key?: string }[] | undefined): LoreEntryTarget {
     const target: LoreEntryTarget = { owner: { type: entry.source, id: entry.ownerId }, kind: 'lore' }
+    if (typeof entry.entryId === 'string' && entry.entryId !== '') {
+        target.entry = entry.entryId
+        return target
+    }
     const live = liveList?.[entry.index]
     if (live && loreEntryName(live) === entry.name) target.item = `${entry.ownerId}/lore:${entry.index}`
     return target

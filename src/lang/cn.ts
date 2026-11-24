@@ -2612,6 +2612,7 @@ export const languageChinese = {
     "studioNotFound": "未找到",
     "studioDeepKindFallback": (owner: string) => `${owner} 中没有该类别。已打开 ${owner} 的根目录`,
     "studioDeepItemMissing": (kind: string) => `未找到该项目。已打开${kind}`,
+    "studioLoreEntryGone": "该条目已不在此世界书中。正在显示列表。",
     "studioNoticeDismiss": "关闭",
     "studioFormLoading": "正在加载历史记录…",
     "studioGreetingsEmpty": "暂无备选初始消息",
