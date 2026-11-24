@@ -67,37 +67,37 @@
 <ShellSheet open={target !== null} kind="menu" mode={wide ? 'wide-menu' : 'action'} anchor={target?.anchor} {label} opener={target?.opener ?? null} inertOutside {onclose}>
     <div data-part="row-menu" data-kind={target?.kind}>
         {#if chat}
-            <button type="button" role="menuitem" data-action="rename" data-sheet-initial onclick={() => onrename()}>{language.chatShellRename}</button>
-            <button type="button" role="menuitem" data-action="move" aria-haspopup="true" aria-expanded={moveOpen} onclick={() => { moveOpen = !moveOpen }}>{language.chatShellMoveToFolder}</button>
+            <button type="button" role="menuitem" data-part="row-menu-rename" data-action="rename" data-sheet-initial onclick={() => onrename()}>{language.chatShellRename}</button>
+            <button type="button" role="menuitem" data-part="row-menu-move" data-action="move" aria-haspopup="true" aria-expanded={moveOpen} onclick={() => { moveOpen = !moveOpen }}>{language.chatShellMoveToFolder}</button>
             {#if moveOpen}
                 <div data-part="row-menu-group" role="group" aria-label={language.chatShellMoveToFolder}>
-                    <button type="button" role="menuitemradio" aria-checked={unfiled} data-action="move-none" onclick={() => onmove(null)}>{language.chatShellNoFolder}</button>
+                    <button type="button" role="menuitemradio" data-part="row-menu-no-folder" aria-checked={unfiled} data-action="move-none" onclick={() => onmove(null)}>{language.chatShellNoFolder}</button>
                     {#each folders as option (option.id)}
-                        <button type="button" role="menuitemradio" aria-checked={chat.folderId === option.id} data-action="move-{option.id}" onclick={() => onmove(option.id)}>{option.name || language.settingsPage.unnamed}</button>
+                        <button type="button" role="menuitemradio" data-part="row-menu-folder-option" aria-checked={chat.folderId === option.id} data-action="move-{option.id}" onclick={() => onmove(option.id)}>{option.name || language.settingsPage.unnamed}</button>
                     {/each}
-                    <button type="button" role="menuitem" data-action="move-new" onclick={() => onnewfolder()}>{language.chatShellNewFolder}</button>
+                    <button type="button" role="menuitem" data-part="row-menu-new-folder" data-action="move-new" onclick={() => onnewfolder()}>{language.chatShellNewFolder}</button>
                 </div>
             {/if}
-            <button type="button" role="menuitem" data-action="duplicate" aria-disabled={archived ? 'true' : undefined} aria-describedby={archived ? `${uid}-duplicate-why` : undefined} onclick={(event) => { if (!archived) onduplicate(event) }}>{language.chatShellDuplicate}</button>
+            <button type="button" role="menuitem" data-part="row-menu-duplicate" data-action="duplicate" aria-disabled={archived ? 'true' : undefined} aria-describedby={archived ? `${uid}-duplicate-why` : undefined} onclick={(event) => { if (!archived) onduplicate(event) }}>{language.chatShellDuplicate}</button>
             {#if archived}
                 <p id="{uid}-duplicate-why" data-part="row-menu-reason">{language.chatShellDuplicateArchived}</p>
             {/if}
-            <button type="button" role="menuitem" data-action="export" onclick={() => onexport()}>{language.chatShellExportChat}</button>
-            <button type="button" role="menuitem" data-action="delete" data-destructive aria-disabled={soleChat ? 'true' : undefined} aria-describedby={soleChat ? `${uid}-delete-why` : undefined} onclick={() => { if (!soleChat) ondelete() }}>{language.chatShellDeleteChat}</button>
+            <button type="button" role="menuitem" data-part="row-menu-export" data-action="export" onclick={() => onexport()}>{language.chatShellExportChat}</button>
+            <button type="button" role="menuitem" data-part="row-menu-delete" data-action="delete" data-destructive aria-disabled={soleChat ? 'true' : undefined} aria-describedby={soleChat ? `${uid}-delete-why` : undefined} onclick={() => { if (!soleChat) ondelete() }}>{language.chatShellDeleteChat}</button>
             {#if soleChat}
                 <p id="{uid}-delete-why" data-part="row-menu-reason">{language.chatShellDeleteOnlyChat}</p>
             {/if}
         {:else if folder}
-            <button type="button" role="menuitem" data-action="folder-rename" data-sheet-initial onclick={() => onrename()}>{language.chatShellRenameFolder}</button>
-            <button type="button" role="menuitem" data-action="folder-colour" aria-haspopup="true" aria-expanded={colourOpen} onclick={() => { colourOpen = !colourOpen }}>{language.changeFolderColor}</button>
+            <button type="button" role="menuitem" data-part="row-menu-folder-rename" data-action="folder-rename" data-sheet-initial onclick={() => onrename()}>{language.chatShellRenameFolder}</button>
+            <button type="button" role="menuitem" data-part="row-menu-folder-colour" data-action="folder-colour" aria-haspopup="true" aria-expanded={colourOpen} onclick={() => { colourOpen = !colourOpen }}>{language.changeFolderColor}</button>
             {#if colourOpen}
                 <div data-part="row-menu-group" role="group" aria-label={language.changeFolderColor}>
                     {#each colours as colour (colour.value)}
-                        <button type="button" role="menuitemradio" aria-checked={folder.color === colour.value} data-action="colour-{colour.value}" onclick={() => onfoldercolor(colour.value)}>{colour.label}</button>
+                        <button type="button" role="menuitemradio" data-part="row-menu-colour-option" aria-checked={folder.color === colour.value} data-action="colour-{colour.value}" onclick={() => onfoldercolor(colour.value)}>{colour.label}</button>
                     {/each}
                 </div>
             {/if}
-            <button type="button" role="menuitem" data-action="folder-delete" data-destructive onclick={() => onfolderdelete()}>{language.chatShellDeleteFolder}</button>
+            <button type="button" role="menuitem" data-part="row-menu-folder-delete" data-action="folder-delete" data-destructive onclick={() => onfolderdelete()}>{language.chatShellDeleteFolder}</button>
         {/if}
     </div>
 </ShellSheet>
