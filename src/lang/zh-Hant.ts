@@ -2800,6 +2800,7 @@ export const languageChineseTraditional = {
     "studioModAdvNamespaceIntegrationOff": (before: string, after: string) => `模組整合列有「${before}」。改用「${after}」後，此模組將不再透過它開啟。`,
     "studioModAdvNamespaceIntegrationOn": (after: string) => `模組整合列有「${after}」。此模組現在會透過它開啟。`,
     "studioModAdvBackgroundHint": "顯示於啟用此模組的聊天背後。主題包的背景在此有內容時會被關閉。",
+    "studioCharHtmlHint": "顯示於此角色的聊天背後。",
     "studioModAdvValueForeign": (stored: string) => `目前儲存為 ${stored}，不是此欄位使用的值類型。在此變更會取代它，復原可還原。`,
     "studioAssetRefusalNoUndo": "目前無法保留復原功能",
     "studioAssetRefusalOtherTabCharacter": "請只在一個分頁中開啟此角色，才能移除資源",

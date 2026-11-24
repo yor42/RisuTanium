@@ -169,7 +169,7 @@ describe('A-T10: a merge step on newGenData/prompt keeps landing the same text (
 
     test('the router decides the write: a newGenData target is a set, another nested text stays a textSet', () => {
         expect(textWriteFor('newGenData/prompt', 'v')).toEqual({ op: 'set', path: 'newGenData.prompt', value: { had: true, value: 'v' } })
-        expect(textWriteFor('backgroundHTML', 'v')).toEqual({ op: 'textSet', target: 'backgroundHTML', value: 'v' })
+        expect(textWriteFor('lore/0/content', 'v')).toEqual({ op: 'textSet', target: 'lore/0/content', value: 'v' })
     })
 })
 

@@ -186,6 +186,9 @@ export const FIELD_SPECS = {
     'newGenData.negative': { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     'newGenData.instructions': { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
     'newGenData.emotionInstructions': { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    // Studio SC-1: the character's background HTML and CharacterJS. A stored non-string is kept and put back by undo.
+    backgroundHTML: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true, keepForeign: true },
+    virtualscript: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true, keepForeign: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -310,6 +313,9 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     'newGenData.negative': { labelKey: 'imgGenNegatives', focus: { form: 'studio-display-form', part: 'studio-display-gen-negative' } },
     'newGenData.instructions': { labelKey: 'imgGenInstructions', focus: { form: 'studio-display-form', part: 'studio-display-gen-instructions' } },
     'newGenData.emotionInstructions': { labelKey: 'emotionInstructions', focus: { form: 'studio-display-form', part: 'studio-display-emotion-instructions' } },
+    // Studio SC-1.
+    backgroundHTML: { labelKey: 'backgroundHTML', focus: { form: 'studio-char-html-form', part: 'studio-char-background' } },
+    virtualscript: { labelKey: 'charjs', focus: { form: 'studio-scripts-form', part: 'studio-scripts-charjs' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed

@@ -110,16 +110,23 @@ describe.each([
     ['TS11-W', WELL_FORMED_IDS],
     ['TS11-M', MALFORMED_IDS],
 ] as const)('%s move on the %s corpus', (_group, ids) => {
-    const check = async (id: string, index: number, direction: 'up' | 'down', to: number): Promise<void> => {
+    // Each cell checks the partition it sits in: a reproducer cell must see classic change the array, a guard cell must see
+    // it leave the array unchanged, so a cell in the wrong set fails instead of passing as a vacuous parity check.
+    const checkIn = (guard: boolean) => async (id: string, index: number, direction: 'up' | 'down', to: number): Promise<void> => {
         const input = corpusArray(id)
         const classic = await classicMove(id, index, to)
+        if (guard) {
+            expect(firstDifference(classic, input), 'classic must leave the array unchanged').toBeNull()
+        } else {
+            expect(firstDifference(classic, input), 'classic must change the array').not.toBeNull()
+        }
         const studio = direction === 'up' ? moveEffectUp(corpusArray(id), index) : moveEffectDown(corpusArray(id), index)
         expect(firstDifference(studio ?? input, classic)).toBeNull()
     }
     const isGuard = ([id, index, direction]: Cell): boolean => GUARD_MOVES.has([id, index, direction].join(':'))
 
-    test.each(moveCells(ids).filter((cell) => !isGuard(cell)))('regression reproducer: move %s row %i %s to the zone before %i equals classic, key order included', check)
-    test.each(moveCells(ids).filter(isGuard))('compatibility guard (classic leaves the array unchanged, so it passes before and after): move %s row %i %s to the zone before %i equals classic, key order included', check)
+    test.each(moveCells(ids).filter((cell) => !isGuard(cell)))('regression reproducer: move %s row %i %s to the zone before %i equals classic, key order included', checkIn(false))
+    test.each(moveCells(ids).filter(isGuard))('compatibility guard (classic leaves the array unchanged, so it passes before and after): move %s row %i %s to the zone before %i equals classic, key order included', checkIn(true))
 })
 
 describe('TS11-c recorder anchor for move (compatibility guard, passes before and after)', () => {

@@ -2892,6 +2892,7 @@ export const languageJapanese = {
     studioModAdvNamespaceIntegrationOff: (before: string, after: string) => `モジュール統合に「${before}」が登録されています。「${after}」にすると、このモジュールはそれによってオンにならなくなります。`,
     studioModAdvNamespaceIntegrationOn: (after: string) => `モジュール統合に「${after}」が登録されています。このモジュールはこれによってオンになります。`,
     studioModAdvBackgroundHint: "このモジュールがオンのチャットで、チャットの背後に表示されます。内容がある間は、テーマパックの背景はオフになります。",
+    studioCharHtmlHint: "このキャラクターのチャットの背後に表示されます。",
     studioModAdvValueForeign: (stored: string) => `${stored}として保存されていますが、これはこの欄が使う種類の値ではありません。ここで変更すると置き換えられ、元に戻すと復元されます。`,
     studioAssetRefusalNoUndo: "現在は元に戻す操作を保持できません",
     studioAssetRefusalOtherTabCharacter: "アセットを削除するには、このキャラクターを1つのタブだけで開いてください",

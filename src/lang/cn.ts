@@ -2755,6 +2755,7 @@ export const languageChinese = {
     "studioModAdvNamespaceIntegrationOff": (before: string, after: string) => `模块集成中列有"${before}"。使用"${after}"后，此模块将不再通过它开启。`,
     "studioModAdvNamespaceIntegrationOn": (after: string) => `模块集成中列有"${after}"。此模块现在会通过它开启。`,
     "studioModAdvBackgroundHint": "在启用此模块的聊天中显示于聊天背后。主题包的背景在此有内容时会被关闭。",
+    "studioCharHtmlHint": "显示于此角色的聊天背后。",
     "studioModAdvValueForeign": (stored: string) => `当前存储为 ${stored}，不是此字段使用的值类型。在此更改会替换它，撤销可恢复。`,
     "studioAssetRefusalNoUndo": "目前无法保留撤销记录",
     "studioAssetRefusalOtherTabCharacter": "请仅在一个标签页中打开此角色，才能移除资源",

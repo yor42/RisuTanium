@@ -2757,6 +2757,7 @@ export const languageGerman = {
     "studioModAdvNamespaceIntegrationOff": (before: string, after: string) => `Die Modul-Integration listet "${before}". Mit "${after}" wird dieses Modul dadurch nicht mehr aktiviert.`,
     "studioModAdvNamespaceIntegrationOn": (after: string) => `Die Modul-Integration listet "${after}". Dieses Modul wird dadurch jetzt aktiviert.`,
     "studioModAdvBackgroundHint": "Wird hinter dem Chat angezeigt, wo dieses Modul aktiv ist. Der Hintergrund eines Design-Pakets wird abgeschaltet, solange dieses Feld Inhalt hat.",
+    "studioCharHtmlHint": "Wird hinter den Chats dieses Charakters angezeigt.",
     "studioModAdvValueForeign": (stored: string) => `Gespeichert als ${stored}, was nicht die Art von Wert ist, die dieses Feld verwendet. Eine Änderung hier ersetzt ihn, und Rückgängig stellt ihn wieder her.`,
     "studioAssetRefusalNoUndo": "Rückgängig kann im Moment nicht beibehalten werden",
     "studioAssetRefusalOtherTabCharacter": "Öffne diesen Charakter in nur einem Tab, um Assets zu entfernen",
