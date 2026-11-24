@@ -8,6 +8,7 @@ import { extractFontFaces, type FontFaceExtraction } from './fontFace'
 import { pushUnique, splitFindings } from './failclosed'
 import { packSizeWarning, type PackSizeVerdict } from './packSize'
 import { lintHome } from './registries/home'
+import { lintPopups } from './registries/popups'
 import { lint5b } from './registries/settings5b'
 import { lintPack as lintStudio } from './registries/studio'
 import { APP_TOKEN_FILES } from './appThemeNames'
@@ -25,14 +26,19 @@ export type { PackSizeVerdict } from './packSize'
 export { PACK_SIZE_WARN_BYTES } from './packSize'
 
 export type ThemeArea = 'chat' | 'settings' | 'studio' | 'home'
+/** The reference-parity list: the reference validator has no popups lint, so popups is judged only through judgeAreaSheet and the judge worker. */
 export const THEME_AREAS: readonly ThemeArea[] = ['chat', 'settings', 'studio', 'home']
+/** Every area judgeAreaSheet judges: the reference areas and the popups area. */
+export type JudgedArea = ThemeArea | 'popups'
+const JUDGED_AREAS: readonly JudgedArea[] = [...THEME_AREAS, 'popups']
 
-/** The reference lint of each area: the registry its newest page set is judged with (docs/design/theme/checks/lib.mjs). */
-export const AREA_LINT: Readonly<Record<ThemeArea, (css: string, name: string) => LintResult>> = {
+/** The reference lint of each area: the registry its newest page set is judged with (docs/design/theme/checks/lib.mjs); popups is judged with the registry built from the popups census. */
+export const AREA_LINT: Readonly<Record<JudgedArea, (css: string, name: string) => LintResult>> = {
     chat: (css, name) => lintChat(css, name),
     settings: (css, name) => lint5b(css, name),
     studio: (css, name) => lintStudio(css, name),
     home: (css, name) => lintHome(css, name),
+    popups: (css, name) => lintPopups(css, name),
 }
 
 /**
@@ -45,8 +51,8 @@ export function preprocessCss(css: string): string {
     return css.replace(/\r\n|\r|\f/g, '\n').replace(/\u0000/g, '\ufffd')
 }
 
-const appValueCache = new Map<ThemeArea, Map<string, string[]>>()
-function appValues(area: ThemeArea): Map<string, string[]> {
+const appValueCache = new Map<JudgedArea, Map<string, string[]>>()
+function appValues(area: JudgedArea): Map<string, string[]> {
     let values = appValueCache.get(area)
     if (!values) { values = readAppValues(APP_TOKEN_FILES[area]); appValueCache.set(area, values) }
     return values
@@ -85,7 +91,7 @@ export interface AreaSheetJudgement {
 
 export interface PackSheetsJudgement {
     ok: boolean
-    areas: Partial<Record<ThemeArea, AreaSheetJudgement>>
+    areas: Partial<Record<JudgedArea, AreaSheetJudgement>>
 }
 
 const COULD_NOT_CHECK_REASON = 'the stylesheet could not be checked (the checks stopped on it)'
@@ -95,7 +101,7 @@ const COULD_NOT_CHECK_REASON = 'the stylesheet could not be checked (the checks 
  * @font-face locations in it. A stylesheet on which the checks throw is refused, never thrown on: the verdict is
  * `ok: false` with one error and no locations.
  */
-export function judgeAreaSheet(area: ThemeArea, source: string, packFamilies?: ReadonlySet<string>, name = ''): AreaSheetJudgement {
+export function judgeAreaSheet(area: JudgedArea, source: string, packFamilies?: ReadonlySet<string>, name = ''): AreaSheetJudgement {
     try {
         return judgeSheet(area, source, name, packFamilies)
     } catch {
@@ -108,10 +114,10 @@ export function judgeAreaSheet(area: ThemeArea, source: string, packFamilies?: R
  * names a family another area registers gets a warning (MC-1609, MC-2542). This is stricter than validateThemePack, which pools
  * the families of all areas.
  */
-export function judgePackSheets(files: Partial<Record<ThemeArea, string>>): PackSheetsJudgement {
-    const areas: Partial<Record<ThemeArea, AreaSheetJudgement>> = {}
+export function judgePackSheets(files: Partial<Record<JudgedArea, string>>): PackSheetsJudgement {
+    const areas: Partial<Record<JudgedArea, AreaSheetJudgement>> = {}
     let ok = true
-    for (const area of THEME_AREAS) {
+    for (const area of JUDGED_AREAS) {
         const css = files[area]
         if (css === undefined) continue
         const judged = judgeAreaSheet(area, css, undefined, area)
@@ -121,7 +127,7 @@ export function judgePackSheets(files: Partial<Record<ThemeArea, string>>): Pack
     return { ok, areas }
 }
 
-function judgeSheet(area: ThemeArea, source: string, name: string, packFamilies: ReadonlySet<string> | undefined): AreaSheetJudgement {
+function judgeSheet(area: JudgedArea, source: string, name: string, packFamilies: ReadonlySet<string> | undefined): AreaSheetJudgement {
     const canonical = canonicalStylesheet(preprocessCss(source))
     const structure = structurePass(canonical.text)
     const fonts = extractFontFaces(canonical.text, normalise)

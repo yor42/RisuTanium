@@ -3914,7 +3914,7 @@ export const languageChinese = {
     "themePackInstalled": (name: string) => `已安装“${name}”。`,
     "themePackPacksOffSession": '本次会话中主题包已关闭。',
     "themePackSelectToTurnOn": '选择此包即可立即开启。',
-    "themePackSkippedAreas": (files: string) => `此包还包含 ${files}。此版本仅为新的聊天界面、Studio 和新的设置界面换肤；这些部分会随主题包一并保留。`,
+    "themePackSkippedAreas": (files: string) => `此包还包含 ${files}。此版本仅为新的聊天界面、Studio、新的设置界面以及叠在它们上方的弹窗换肤；这些部分会随主题包一并保留。`,
     "themePackColoursHeld": (files: string) => `此版本仅使用 ${files} 中的形状；其颜色会随主题包一并保留，供以后的版本使用。`,
     "themePackInstalledWithWarnings": (sheet: string) => `已安装，但有警告（${sheet}）：`,
     "themePackInstalledWithNotes": (sheet: string) => `备注（${sheet}）：`,

@@ -11,6 +11,7 @@ import {
     declareSurface,
     installThemePackGate,
     registerThemePackElement,
+    registerThemePackOverlay,
     resetThemePackGateForTests,
     screenMasked,
     setThemePackElementBase,
@@ -529,5 +530,47 @@ describe('T16 a null base is shape mode: the element is on, but no base applies'
         syncThemePackMedia()
         expect(element.getAttribute('media')).toBe('not all')
         expect(document.documentElement.hasAttribute(ATTRIBUTE)).toBe(false)
+    })
+})
+
+describe('popups overlays (acceptance: registerThemePackOverlay is new, so a base run fails by absence)', () => {
+    function overlay(variant: 'colour' | 'shape'): HTMLStyleElement {
+        const element = document.createElement('style')
+        element.setAttribute('media', 'not all')
+        document.head.appendChild(element)
+        registerThemePackOverlay(element, variant)
+        return element
+    }
+
+    test('an element registered with the default themed flag counts as themed: the matching overlay turns on, the other stays off', () => {
+        installThemePackGate(() => cover.on)
+        probe('chat')
+        const colour = overlay('colour')
+        const shape = overlay('shape')
+        declareSurface('chat')
+        flushSync()
+        expect(colour.getAttribute('media')).toBe('all')
+        expect(shape.getAttribute('media')).toBe('not all')
+    })
+
+    test('a screen element registered as not themed keeps both overlays off, and setThemePackElementBase can switch it on', () => {
+        installThemePackGate(() => cover.on)
+        const chat = probe('chat')
+        setThemePackElementBase(chat, null, false)
+        const shape = overlay('shape')
+        declareSurface('chat')
+        flushSync()
+        expect(shape.getAttribute('media')).toBe('not all')
+        setThemePackElementBase(chat, null, true)
+        syncThemePackMedia()
+        expect(shape.getAttribute('media')).toBe('all')
+    })
+
+    test('an overlay with no element of the shown screen stays off', () => {
+        installThemePackGate(() => cover.on)
+        const shape = overlay('shape')
+        declareSurface('chat')
+        flushSync()
+        expect(shape.getAttribute('media')).toBe('not all')
     })
 })

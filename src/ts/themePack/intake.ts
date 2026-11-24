@@ -16,9 +16,12 @@ import { checkEntryPath } from '../drive/rtb/entryPath'
 import { RtbCouldNotReadError, rangeSourceFrom, type RangeSource } from '../drive/rtb/rangeSource'
 import { readDirectory, readEntry, type BodySink, type ContainerFinding, type ZipIndex } from '../drive/rtb/zip64Reader'
 
-export type AppliedArea = 'chat' | 'studio' | 'settings'
-/** The screen areas this build judges at install, in refusal order. An area joins only once every R20 tripwire row is refused there. */
-export const APPLIED_AREAS: readonly AppliedArea[] = ['chat', 'studio', 'settings']
+/** The areas whose sheet themes a whole screen; popups is applied over them and is not one. */
+export type ScreenArea = 'chat' | 'studio' | 'settings'
+export const SCREEN_AREAS: readonly ScreenArea[] = ['chat', 'studio', 'settings']
+export type AppliedArea = ScreenArea | 'popups'
+/** The areas this build judges at install, in refusal order. An area joins only once every R20 tripwire row is refused there (popups passes every row, test T1-36). */
+export const APPLIED_AREAS: readonly AppliedArea[] = ['chat', 'studio', 'settings', 'popups']
 
 function isAppliedArea(area: string): area is AppliedArea {
     return (APPLIED_AREAS as readonly string[]).includes(area)
@@ -371,7 +374,8 @@ async function runIntake(source: RangeSource, judge: PackJudge): Promise<IntakeR
                 break
         }
     }
-    if (APPLIED_AREAS.every((area) => appliedAt[area] === undefined)) {
+    // A pack with popups.css alone themes no screen, so it is refused (MC-3123).
+    if (SCREEN_AREAS.every((area) => appliedAt[area] === undefined)) {
         layoutRefusals.add({ code: 'noArea' })
     }
     const licensesOf = new Map<string, number>()

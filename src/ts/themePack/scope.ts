@@ -12,7 +12,7 @@ import { COMPOUND, normalise, pseudoElementOf, type LintError } from './engine'
 import { inlinePrivate } from './failclosed'
 import { isAreaPart, type ScopedArea } from './areaParts'
 import { allowedTokenNames, reservedNameReason, stackingNameReason } from './appThemeNames'
-import type { ThemeArea } from './index'
+import type { JudgedArea } from './index'
 
 /** The properties a stylesheet may set on a part: effects on the matched element, its descendants and its own ::before and ::after that define no document-wide name. Some paint outside the box (box-shadow, outline, outline-offset, border-image-outset), each within its own caps. */
 export const PROP_ALLOW: readonly RegExp[] = [
@@ -189,16 +189,18 @@ const rootWhy = (prop: string): string => `${prop} may not be set on the documen
 const propertyWhy = (prop: string): string => `${prop} is not on the list of properties a pack may set on a part (MC-1586)`
 const partWhy = (area: ScopedArea, value: string, role: 'subject' | 'ancestor'): string => `the part ${value} is not a part of the ${area} screen; a ${area} stylesheet may name only the ${area} screen's own parts, ${role === 'subject' ? 'as the element it styles' : 'in a selector that styles one of them'} (MC-1586)`
 const tokenWhy = (name: string): string => `${name} is not a token this stylesheet may set: a pack may set the tokens of its own screen's token stylesheets and its own --pack-* helpers (MC-1586)`
+const POPUPS_TOKENS_WHY = (name: string): string => `${name}: popups.css sets no tokens: it is on together with a screen sheet, so a custom property here would change that screen (MC-3007)`
 const familyWhy = (family: string): string => `the @font-face family ${family} must start with pack- (lower case letters, digits, space, _ and -, at most 63 characters after the first): a pack may not register a name the app or the system uses (MC-1586)`
 
 const isColourSchemeChoice = (d: Decl, entry: string): boolean => d.prop === 'color-scheme' && /^(:root|html)$/.test(entry) && d.ctx.at.length === 0 && /^(light|dark)$/.test(d.value.replace(/\s*!important\s*$/, '').trim())
 
 /**
- * Judges a chat, Studio or Settings stylesheet against Rule SCOPE. `css` is the stylesheet with its @font-face blocks taken out, `families`
- * the families those blocks register. Other areas are not scoped.
+ * Judges a chat, Studio, Settings or popups stylesheet against Rule SCOPE. `css` is the stylesheet with its @font-face blocks taken out, `families`
+ * the families those blocks register. Other areas are not scoped. A popups stylesheet is on together with a screen sheet and may name only popups parts
+ * (disjoint from every other area by the prefix rule in areaParts.ts and by popupsCriticalClosure.test.ts), and it declares no custom property at all.
  */
-export function scopePass(area: ThemeArea, css: string, families: readonly string[]): LintError[] {
-    if (area !== 'chat' && area !== 'studio' && area !== 'settings') return []
+export function scopePass(area: JudgedArea, css: string, families: readonly string[]): LintError[] {
+    if (area !== 'chat' && area !== 'studio' && area !== 'settings' && area !== 'popups') return []
     const errors: LintError[] = []
     const seen = new Set<string>()
     const add = (selector: string, prop: string, why: string): void => {
@@ -212,7 +214,8 @@ export function scopePass(area: ThemeArea, css: string, families: readonly strin
         if (d.ctx.keyframes) continue
         const custom = d.prop.startsWith('--')
         const listed = d.ctx.selector.trim() || '(no selector)'
-        if (custom && !d.prop.startsWith('--pack-') && !allowedTokens.has(d.prop)) add(listed, d.prop, reservedNameReason(d.prop) || stackingNameReason(area, d.prop) || tokenWhy(d.prop))
+        if (custom && area === 'popups') add(listed, d.prop, POPUPS_TOKENS_WHY(d.prop))
+        else if (custom && !d.prop.startsWith('--pack-') && !allowedTokens.has(d.prop)) add(listed, d.prop, reservedNameReason(d.prop) || stackingNameReason(area, d.prop) || tokenWhy(d.prop))
         for (const entry of d.ctx.selector.split(',').map((s) => s.trim()).filter(Boolean)) {
             const parsed = parseSelectorEntry(entry)
             if (parsed.grammarWhy) { add(entry, d.prop, `not a pack selector: ${parsed.grammarWhy} (MC-1586)`); continue }

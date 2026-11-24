@@ -11,14 +11,16 @@ import type { ScopedArea } from './areaParts'
 import { SETTINGS_LINT_REGISTRY } from './registries/settings5b'
 import { STUDIO_REGISTRY } from './registries/studio'
 import { tokenFile, type TokenFile } from './tokens'
-import type { ThemeArea } from './index'
+import type { JudgedArea } from './index'
 
 /** The token stylesheets each area's engine reads as the app's own tokens (engine APP merged with the registry's tokens). */
-export const APP_TOKEN_FILES: Readonly<Record<ThemeArea, readonly TokenFile[]>> = {
+export const APP_TOKEN_FILES: Readonly<Record<JudgedArea, readonly TokenFile[]>> = {
     chat: ['chat/theme-tokens.css', 'theme/nexus-tokens.css'],
     settings: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'settings/theme-tokens.css', 'theme/pattern-tokens.css'],
     studio: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'studio/studio-tokens.css', 'studio/st4.css'],
     home: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'home/home-tokens.css'],
+    // popups.css declares no custom property (Rule SCOPE), so these files only name what a value may read.
+    popups: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'theme/pattern-tokens.css'],
 }
 
 const APP_THEME_NAME_LIST: readonly string[] = [
@@ -131,7 +133,7 @@ export function reservedNameReason(name: string): string {
 }
 
 /** The names an area's token stylesheets declare, in file order. */
-export function declaredTokenNames(area: ThemeArea): string[] {
+export function declaredTokenNames(area: JudgedArea): string[] {
     const names = APP_TOKEN_FILES[area].flatMap((file) => [...tokenFile(file).matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]))
     return [...new Set(names)]
 }
@@ -146,7 +148,7 @@ export const SETTINGS_STACKING_TOKENS: ReadonlySet<string> = new Set(['--pattern
 const STACKING_WHY = (name: string): string => `${name} sets the stacking of the app's critical dialogs and toasts, and a pack stylesheet may set no stacking (MC-3422)`
 
 /** The reason an area refuses a token the engine would otherwise admit as pack-settable, or '' when it does not. */
-export function stackingNameReason(area: ThemeArea, name: string): string {
+export function stackingNameReason(area: JudgedArea, name: string): string {
     return area === 'settings' && SETTINGS_STACKING_TOKENS.has(name) ? STACKING_WHY(name) : ''
 }
 

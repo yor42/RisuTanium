@@ -23,7 +23,10 @@ let masked: (area: GatedArea) => boolean = () => false
 let stopRoot: (() => void) | null = null
 const declared: Record<GatedArea, number> = { chat: 0, studio: 0, settings: 0 }
 // A null base marks shape mode: the element is on, but no fixed base applies.
-const registry = new Map<HTMLStyleElement, { area: string, base: SchemeTone | null }>()
+// `themed` is whether the element's written text carries a declaration. An `overlay` entry is a popups sheet: it is on only
+// over a themed screen element, and its base is always null.
+interface RegistryEntry { area: string, base: SchemeTone | null, themed: boolean, overlay?: 'colour' | 'shape' }
+const registry = new Map<HTMLStyleElement, RegistryEntry>()
 // Declarations change this signal; the gate effect reads it. It is written under `untrack` so a caller that declares
 // from inside its own `$effect` never reads what it writes.
 let version = $state(0)
@@ -85,9 +88,20 @@ export function syncThemePackMedia(): void {
     const shown = shownScreen()
     let on = false
     let base: SchemeTone = 'dark'
+    // The shown screen's own element decides its popups overlay: none when that screen applies nothing, the colour variant
+    // when it paints its colour variant, the shape variant otherwise. An overlay never sets the base or the tone.
+    let target: RegistryEntry | null = null
+    for (const entry of registry.values()) {
+        if (entry.overlay === undefined && entry.area === shown) {
+            target = entry
+            break
+        }
+    }
     for (const [element, entry] of registry) {
-        const wanted = entry.area === shown ? 'all' : 'not all'
-        if (wanted === 'all' && entry.base !== null) {
+        const wanted = (entry.overlay === undefined
+            ? entry.area === shown
+            : target !== null && target.themed && entry.overlay === (target.base !== null ? 'colour' : 'shape')) ? 'all' : 'not all'
+        if (wanted === 'all' && entry.overlay === undefined && entry.base !== null) {
             on = true
             base = entry.base
         }
@@ -117,16 +131,22 @@ export function installThemePackGate(maskedNow: (area: GatedArea) => boolean): v
 }
 
 /** Registers a stylesheet element the apply code created; the returned function unregisters it on removal. A null base is shape mode. */
-export function registerThemePackElement(element: HTMLStyleElement, area: string, base: SchemeTone | null = 'dark'): () => void {
-    registry.set(element, { area, base })
+export function registerThemePackElement(element: HTMLStyleElement, area: string, base: SchemeTone | null = 'dark', themed: boolean = true): () => void {
+    registry.set(element, { area, base, themed })
     return () => { registry.delete(element) }
 }
 
-/** Re-registers a registered element under another base (colour mode or shape mode); the caller then syncs the gate. */
-export function setThemePackElementBase(element: HTMLStyleElement, base: SchemeTone | null): void {
+/** Registers a popups sheet element of one variant; it is on only while the shown screen's own element is themed and in that variant. */
+export function registerThemePackOverlay(element: HTMLStyleElement, variant: 'colour' | 'shape'): () => void {
+    registry.set(element, { area: 'popups', base: null, themed: true, overlay: variant })
+    return () => { registry.delete(element) }
+}
+
+/** Re-registers a registered element under another base (colour mode or shape mode) and, when given, `themed`; the caller then syncs the gate. */
+export function setThemePackElementBase(element: HTMLStyleElement, base: SchemeTone | null, themed?: boolean): void {
     const entry = registry.get(element)
     if (entry !== undefined) {
-        registry.set(element, { area: entry.area, base })
+        registry.set(element, { ...entry, base, themed: themed ?? entry.themed })
     }
 }
 

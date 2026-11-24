@@ -3913,7 +3913,7 @@ export const languageKorean = {
     "themePackInstalled": (name: string) => `"${name}"을(를) 설치했어요.`,
     "themePackPacksOffSession": "이번 세션에서는 테마 팩이 꺼져 있어요.",
     "themePackSelectToTurnOn": "이 팩을 선택하면 지금 바로 켜져요.",
-    "themePackSkippedAreas": (files: string) => `이 팩에는 ${files}도 들어 있어요. 이 버전은 새 채팅 화면, Studio, 새 설정 화면만 꾸밀 수 있어서, 해당 부분은 팩과 함께 보관만 해요.`,
+    "themePackSkippedAreas": (files: string) => `이 팩에는 ${files}도 들어 있어요. 이 버전은 새 채팅 화면, Studio, 새 설정 화면, 그리고 그 위에 뜨는 팝업만 꾸밀 수 있어서, 해당 부분은 팩과 함께 보관만 해요.`,
     "themePackColoursHeld": (files: string) => `이 버전은 ${files}의 모양만 사용해요. 색상은 이후 버전을 위해 팩과 함께 보관돼요.`,
     "themePackInstalledWithWarnings": (sheet: string) => `경고와 함께 설치했어요 (${sheet}):`,
     "themePackInstalledWithNotes": (sheet: string) => `참고 사항 (${sheet}):`,
