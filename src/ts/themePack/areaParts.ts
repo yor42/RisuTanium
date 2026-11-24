@@ -21,7 +21,7 @@ const CHAT_PART_NAMES: readonly string[] = [
     'chat-composer-attaching', 'chat-composer-enter-scope', 'chat-composer-host', 'chat-composer-input', 'chat-composer-persona', 'chat-composer-plus', 'chat-composer-progress',
     'chat-composer-row', 'chat-composer-stop', 'chat-composer-tools', 'chat-composer-translate', 'chat-critical-action', 'chat-critical-body', 'chat-critical-handle',
     'chat-critical-header', 'chat-critical-title', 'chat-customize-action', 'chat-customize-preview', 'chat-drag-handle', 'chat-drop-indicator', 'chat-extras-strip',
-    'chat-failed-card', 'chat-find-bar', 'chat-find-empty', 'chat-find-field', 'chat-find-filters', 'chat-find-results', 'chat-first-message', 'chat-floating-actions', 'chat-folder', 'chat-folder-host', 'chat-folder-menu', 'chat-folder-name',
+    'chat-failed-card', 'chat-find-bar', 'chat-find-empty', 'chat-find-field', 'chat-find-filters', 'chat-find-results', 'chat-first-message', 'chat-floating-actions', 'chat-folder', 'chat-folder-actions', 'chat-folder-count', 'chat-folder-editing', 'chat-folder-host', 'chat-folder-menu', 'chat-folder-name',
     'chat-folder-name-input', 'chat-gen-strip', 'chat-generate-reply', 'chat-header', 'chat-header-avatar', 'chat-header-back', 'chat-header-chat', 'chat-header-heading',
     'chat-header-host', 'chat-header-menu', 'chat-header-title', 'chat-jump-bookmarks', 'chat-jump-date', 'chat-jump-number', 'chat-legacy-cold-notice', 'chat-list', 'chat-list-character', 'chat-list-folder', 'chat-list-row',
     'chat-list-row-count', 'chat-list-row-last', 'chat-list-row-main', 'chat-list-row-mark', 'chat-list-row-menu', 'chat-list-row-name', 'chat-list-row-time',

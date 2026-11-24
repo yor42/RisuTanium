@@ -386,7 +386,7 @@
                     style:height="{ROW_HEIGHT}px"
                 >
                     {#if editing.renamingFolder === item.folder}
-                        <div class="flex h-full w-full items-center rounded-md bg-selected px-2">
+                        <div data-part="chat-folder-editing" class="flex h-full w-full items-center rounded-md bg-selected px-2">
                             <input
                                 data-part="chat-folder-name-input"
                                 class="w-full rounded-md border border-darkborderc bg-darkbg px-2 py-1 text-textcolor"
@@ -424,11 +424,11 @@
                                 <ChevronDownIcon size={16} />
                             {/if}
                             <span data-part="chat-folder-name" class="grow truncate font-medium">{item.folder.name || language.settingsPage.unnamed}</span>
-                            <span class="shrink-0 text-xs text-textcolor2">{item.count}</span>
+                            <span data-part="chat-folder-count" class="shrink-0 text-xs text-textcolor2">{item.count}</span>
                         </button>
                         {#if ordering}
                             {@const edge = edges?.get(item.folder)}
-                            <div class="absolute end-1 top-1/2 flex -translate-y-1/2 items-center">
+                            <div data-part="chat-folder-actions" class="absolute end-1 top-1/2 flex -translate-y-1/2 items-center">
                                 <button
                                     type="button"
                                     data-part="chat-move-up"
