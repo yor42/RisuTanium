@@ -1,6 +1,52 @@
-# #438 stage handoff: wrap-up W3-1 (this PR) and the merged stage W1
+# #438 stage handoff: wrap-up W3-2 (this PR), the merged W3-1 and the merged stage W1
 
-Each wrap-up stage adds a section; the section under review is first, the merged stages follow. Both sections come from their own PRs and were merged here without dropping either side.
+Each wrap-up stage adds a section; the section under review is first, the merged stages follow. The sections come from their own PRs and were merged here without dropping any.
+
+## #438 stage handoff: W3-2 overlay vocabulary (BookmarkList, EasyPanel, LoadoutModal, CustomSidebarConfig), device rows pending
+
+Branch `claude/438-w3-2`, PR "Refs #438" (PR 2 of 7 of wrap-up W3; the issue stays open). Tier 2, no new critical root. Plan r1 (designer) and Gate 1 r1 [EDITORIAL]: all seven findings F1..F7 applied (below). Decisions: MC-4160, MC-4164, MC-4165, MC-4166, MC-4167 (AllSeperateParameters and ClaudeThinkingSeparateParams get no parts: deliberate skips, they also render inline on the Bot Settings page). Base origin/main 45664d42f (W3-1 merged).
+
+### What changed
+- Markup only, literal `data-part` attributes on the overlays' own regular elements (no class, handler, element, order, aria or focus change; none on a component tag or inside a shared component):
+  - BookmarkList: `modal-bookmark-list` (root), `modal-frame`, `modal-header`, `modal-controls` (x2), `modal-action` (expand-all, Go-to, Rename, Remove), `modal-close`, `modal-list`, `modal-row` (the role=button row), reach; `modal-title`, `modal-text` (heading, empty state, row label), safe.
+  - EasyPanel: `modal-easy-panel` (root), `modal-frame`, `modal-header` (the h2: it holds the X, so not `modal-title`), `modal-close`, `modal-body` (models grid, parameters container), `modal-controls` (6 model cells), reach; `modal-text` (beta badge, requirements note, 6 cell labels), safe.
+  - LoadoutModal: `modal-loadout` (root), `modal-frame`, `modal-header`, `modal-close`, `modal-controls` (load bar), `modal-action` (4 toggles, Pick, Star, Remove, Save), `modal-body`, `modal-list` (x4), `modal-row` (card), `modal-footer`, `modal-field`, reach; `modal-title`, `modal-text` (Load label, 4 headings, name, meta line, empty state), safe.
+  - CustomSidebarConfig: `modal-custom-sidebar-config` (root), `modal-frame`, `modal-list`, `modal-row`, `modal-action` (Delete), `modal-body` (settings submenu), reach; `modal-text` (item label, empty state), safe.
+- Census: `OVERLAY_FILES` gains the four paths. `registries/popups.ts` regenerated from the printed values: `POPUPS_FILES` 20 to 24, `POPUPS_PARTS` 178 to 183, `POPUPS_REACH` 43 to 48. New names, all reach: `modal-list`, `modal-bookmark-list`, `modal-easy-panel`, `modal-loadout`, `modal-custom-sidebar-config`. `POPUPS_CRITICAL_CLOSURE` (97), the A1 roots pin, `POPUPS_HOLDERS` and `POPUPS_SHARED_TOKENS_ONLY` are unchanged (no critical marker, no new critical name).
+- Criticality (MC-2947): none of the four contains a confirm. Remove (bookmark, loadout), Pick, Delete (with the Undo toast, already critical) and Run are direct buttons in pickers or tool panels: reach, so a pack may restyle but never hide them.
+- Settings, Home and chat census: unchanged. The four files are imported only by `App.svelte`. `settingsOrigin.ts` reads `data-part` (opener capture, `restoreOpenerFocus` fallback): it matches any name generically, so no new name changes it; the effect (focus lands on another element with the opener's part when the opener was unmounted) is the same as for the W3-1 names.
+
+### Tests (class, true counts)
+- New render tests mount the real components, find each element by tag, text, aria-label, placeholder or structure (never by its part), and assert the part, the parent and a whole-tree outline of the part nesting: `BookmarkList.parts` (7), `EasyPanel.parts` (7), `LoadoutModal.parts` (9, four sections rendered), `CustomSidebarConfig.parts` (7). `acceptance:` tests fail on the base by absence; `guard:` tests (behaviour, no part on shared Buttons and unclaimed elements) pass before and after.
+- `overlayVocabulary.test.ts` (51 tests): 5 new name rows and the table row (reproducers, fail on the base registry), 5 new W1-T5a accept rows (reproducers), 5 new `display:none` reach rows (guards on the base, acceptance on head: they kill a reach demotion), the W1-T6 rules (guards).
+- `popupsCriticalClosure.test.ts` (18): the file-list pin fails against the base registry; the A8 parts and reach pins follow the census (fail with base components against the head registry, pass against the base registry). True base counts of the 6 files (99 tests): base components + head registry 24 fail, 75 pass; base components + base registry 34 fail, 65 pass. Head 99 of 99.
+
+### Evidence and limits
+- Base and mutants served in memory from a scratch vitest config under %TEMP% (no tracked file swapped). 28 mutants (the plan's 11, corrected, plus comment, sibling-swap, parent-swap, drop and rename variants) all killed; killers per mutant are in the coder report `w32-code-report.md`. Corrections to the plan: M5 is killed by the A1 closure rows, A8 holders and A10 (W1-T6a reads constants, not markup); M11 by W1-T4, the new `modal-easy-panel` hiding row and the A8 reach pins, not the plan's W2-T4b.
+- `pnpm vitest run src/ts/themePack` plus the 20 compatibility test files that mount the four components: 92 files, 4671 tests passed. `pnpm check`: 0 errors, 5 warnings (none in these files).
+- jsdom proves structure, not looks: no device run, no real pack applied.
+
+### Known limitations (MC-3638, MC-3639, MC-3659, no guard)
+- Unclaimed, so no pack hook: BookmarkList item container, expanded preview container and the embedded Chat; EasyPanel title text, both SegmentedControls, ModelList triggers, the Run Button, CustomModelsSettings, CheckInput, the by-model branch and all AllSeperateParameters and ClaudeThinkingSeparateParams content (MC-4167); LoadoutModal `<section>` elements and the nested meta spans; CustomSidebarConfig `display: contents` Add wrapper, every `Button` and the TextInput.
+- A pack may restyle Remove and Delete so they look harmless, paint over the star's `text-yellow-400`, the toggles' selected classes and the row's `hover:bg-selected`, and cover content inside its own frame.
+- EasyPanel's root is a full-screen `pointer-events-none` layer (only the frame takes pointer events). With `modal-easy-panel` on it, a popups pack over the colour-mode chat shell can paint the root opaque and hide the page beneath while taps still land on it; `pointer-events` is refused on reach parts, so a pack cannot make it modal. Covering under MC-3638, no guard.
+- EasyPanel's `backdrop-blur-sm` and translucent `bg-bgcolor/80` stay built-in (#751).
+
+### Device rows (not run; fold into W5)
+Test pack: chat.css (text, colour mode), settings.css (one shape rule), popups.css giving `modal-frame` an 18px radius and a magenta border, `modal-list` an 8px gap, `modal-row` a radius, and each of the four identity roots a distinct `modal-title` or `modal-header` letter-spacing. Synthetic data only. Pro tools must be on for rows 2 and 3 (Settings, Input, Menu, Pro tools).
+- DV-W32-1 BookmarkList, chat shell: a synthetic character with two messages (a seeded synthetic profile or chat import, or two user sends with no provider; the failure card is fine, no reply needed), both bookmarked from the message menu; sidebar More menu, Bookmarks. Read frame radius and border, list gap, row radius; expand a row; X and Back close.
+- DV-W32-2 EasyPanel, chat shell: Pro tools on; Plus sheet, Easy panel. A fresh profile shows the requirements note and Run. Read frame, header spacing, badge, X. Do not press Run.
+- DV-W32-3 EasyPanel, Settings shell: Pro tools on; Settings, Advanced page, Easy panel link (shown only on Advanced and only with Pro tools on). Frame radius shows, the magenta border colour does not (shape only).
+- DV-W32-4 LoadoutModal, chat shell: put three fingers down together within 300 ms (the hotkey counts touchstarts and resets on every touchend, so three sequential taps never open it; CDP multi-touch can, adb `input tap` cannot); quick menu, Loadout. Type `L1`, Save (appends one loadout); read row, Pick, Star, Remove, footer field. Do not Pick.
+- DV-W32-5 CustomSidebarConfig, Settings shell: Settings, Input page, Menu group, Custom sidebar row. Add item, Model; read list and row (shape only). Delete shows the Undo toast (tokens only, unchanged).
+- DV-W32-6 Home with a pack that has no home.css: three-finger touch, Loadout. Built-in look (MC-3009).
+- DV-W32-7 safe start with the pack installed, then BookmarkList and LoadoutModal: built-in look; run the plain-launch control row in the same run.
+- DV-W32-8 pack-free launch, rows 1, 2, 4 and 5: pixel-equal to base apart from timing.
+
+### For W3-3 and later
+- The popups registry and census test are serial (W3-2 to W3-6): regenerate from the printed constants, never hand-order (path sort puts `Others/ProTools/EasyPanel.svelte` after `PresetBundlePrompt.svelte`).
+- `modal-list` now exists (reach); reuse it for item lists. `modal-title` and `modal-text` stay safe only while they sit on elements with no interactive descendant: one interactive use turns the name reach for every modal. Test with `outline`-style nesting assertions, not a part-first lookup.
+- W3-5 adds parts inside `ModelList.svelte`'s own modal subtree; EasyPanel renders ModelList, so those names will appear inside EasyPanel.
 
 ## #438 stage handoff: W3-1 overlay vocabulary (PopupEditor, listedPersona, HypaV3Progress, SavePopupIcon), device rows pending
 

@@ -52,30 +52,35 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
+    data-part="modal-custom-sidebar-config"
     class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
     onclick={closeDialog}
 >
     <div
+        data-part="modal-frame"
         class="bg-darkbg p-4 rounded max-h-full overflow-auto flex flex-col gap-2"
         onclick={(e) => e.stopPropagation()}
     >
         {#if configPage === "list"}
             <div
+                data-part="modal-list"
                 class="m-4 border-darkborderc p-2 border rounded-sm flex flex-col w-xl max-w-full"
             >
                 {#if DBState.db.customSidebarItems.length === 0}
-                    <div class="text-textcolor2">
+                    <div data-part="modal-text" class="text-textcolor2">
                         {language.othersUi.noCustomSidebarItems}
                     </div>
                 {/if}
 
                 {#each DBState.db.customSidebarItems as item}
                     <div
+                        data-part="modal-row"
                         class="border-darkborderc p-2 border rounded-sm flex items-start"
                     >
-                        <div class="flex-1">{item.label}</div>
+                        <div data-part="modal-text" class="flex-1">{item.label}</div>
 
                         <button
+                            data-part="modal-action"
                             class="ml-2"
                             data-sidebar-item-delete
                             onclick={() => deleteItem(item.id)}
@@ -177,7 +182,7 @@
         {/if}
 
         {#if configPage === "addSettingsSubmenu"}
-            <div class="flex flex-col gap-2">
+            <div data-part="modal-body" class="flex flex-col gap-2">
                 <TextInput bind:value={search} label={language.settingsPage.searchEllipsis} placeholder={language.settingsPage.searchEllipsis} />
                 <Button
                     onclick={() => {
