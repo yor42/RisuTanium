@@ -2501,7 +2501,6 @@ export const languageEnglish = {
     studioNotApplied: "Not applied (same id as an earlier module)",
     studioOff: "Off",
     studioNotLoaded: "Not loaded",
-    studioOpenModules: "Open in Modules settings",
     studioModuleList: "Module list",
     studioShowInModuleList: "Show in module list",
     studioModuleListActions: (name: string) => `More for "${name}"`,
