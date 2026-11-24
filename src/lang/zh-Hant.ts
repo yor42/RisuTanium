@@ -3938,7 +3938,7 @@ export const languageChineseTraditional = {
         "clearedNotice": "統計已清除。",
     },
     "themePackRowTitle": '主題包',
-    "themePackRowHelp": (toggle: string, classicPage: string, newPage: string, newSection: string) => `安裝 .risutheme 檔案，即可改變新聊天畫面的外觀。只有在開啟「${toggle}」（經典設定畫面位於 ${classicPage}，新設定畫面位於 ${newPage} > ${newSection}）且使用標準聊天主題時才會顯示。其他畫面、經典聊天畫面、群組聊天和遊樂場仍維持內建外觀。自訂 CSS 仍會疊加套用。`,
+    "themePackRowHelp": (toggle: string, classicPage: string, newPage: string, newSection: string) => `安裝 .risutheme 檔案，即可改變新畫面的外觀：聊天、工作室、設定和首頁，以及其上的彈出視窗。聊天、工作室和設定只有在各自的預覽開關開啟時才會顯示主題包；聊天對應的開關是「${toggle}」（經典設定畫面位於 ${classicPage}，新設定畫面位於 ${newPage} > ${newSection}），且需使用標準聊天主題。首頁不需要開關。顏色只會套用在聊天畫面，其他畫面只採用主題包的形狀。經典畫面、群組聊天和遊樂場仍維持內建外觀。自訂 CSS 仍會疊加套用。`,
     "themePackRowLoadFailed": '無法載入主題包設定。請關閉設定後重新開啟。',
     "themePackActiveLegend": '使用中的主題包',
     "themePackNone": '無',

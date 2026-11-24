@@ -3896,7 +3896,7 @@ export const languageSpanish = {
     },
     "themePackRowTitle": "Paquete de tema",
     "themePackRowHelp": (toggle: string, classicPage: string, newPage: string, newSection: string) =>
-        `Instala un archivo .risutheme para cambiar el aspecto de la nueva pantalla de chat. Solo se muestra con "${toggle}" activado (en ${classicPage} en la pantalla de Ajustes clásica, o en ${newPage} > ${newSection} en la nueva) y con el tema de chat estándar. Las demás pantallas, la pantalla de chat clásica, los chats grupales y el playground conservan el aspecto integrado. El CSS personalizado se sigue aplicando encima.`,
+        `Instala un archivo .risutheme para cambiar el aspecto de las nuevas pantallas: chat, Estudio, Configuración e Inicio, y las ventanas emergentes sobre ellas. Chat, Estudio y Configuración solo muestran un paquete mientras su propio interruptor de vista previa está activado; para el chat es "${toggle}" (en ${classicPage} en la pantalla de Ajustes clásica, o en ${newPage} > ${newSection} en la nueva), junto con el tema de chat estándar. Inicio no necesita interruptor. Los colores se aplican solo en la pantalla de chat; las demás pantallas toman únicamente las formas de un paquete. Las pantallas clásicas, los chats grupales y el playground conservan el aspecto integrado. El CSS personalizado se sigue aplicando encima.`,
     "themePackRowLoadFailed": "No se pudieron cargar los ajustes del paquete de tema. Cierra Ajustes y ábrelos de nuevo.",
     "themePackActiveLegend": "Paquete de tema activo",
     "themePackNone": "Ninguno",

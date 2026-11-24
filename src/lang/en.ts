@@ -4035,7 +4035,7 @@ export const languageEnglish = {
         clearedNotice: 'Statistics cleared.',
     },
     themePackRowTitle: 'Theme pack',
-    themePackRowHelp: (toggle: string, classicPage: string, newPage: string, newSection: string) => `Install a .risutheme file to restyle the new chat screen. It shows only with "${toggle}" turned on (under ${classicPage} on the classic Settings screen, or ${newPage} > ${newSection} on the new one) and the standard chat theme. Other screens, the classic chat screen, group chats and the playground keep the built-in look. Custom CSS still applies on top.`,
+    themePackRowHelp: (toggle: string, classicPage: string, newPage: string, newSection: string) => `Install a .risutheme file to restyle the new screens: chat, Studio, Settings and Home, and the popups over them. Chat, Studio and Settings show a pack only while their own preview switch is on; for chat that is "${toggle}" (under ${classicPage} on the classic Settings screen, or ${newPage} > ${newSection} on the new one), together with the standard chat theme. Home needs no switch. Colours apply on the chat screen only; the other screens take a pack's shapes. The classic screens, group chats and the playground keep the built-in look. Custom CSS still applies on top.`,
     themePackRowLoadFailed: 'The theme pack settings could not be loaded. Close Settings and open it again.',
     themePackActiveLegend: 'Active theme pack',
     themePackNone: 'None',
