@@ -23,7 +23,7 @@
 
 ## Disposition of what the spec and gates ask
 
-- **Device rows (spec section 8; MC-4123 run before merge; MC-4125 the SAF ruling).** Run on Note 9 phone 1 (synthetic data, leases r709-phone, -phone2, -phone3), debug APK of `c6afd4e53`, SHA-256 9AFBE52D…71E3 (device `base.apk` hash read back equal). Result files (session temp, not kept in the repo): `%TEMP%89-dv1\dv709-result-2.md` and `dv709-result-3.md`; `dv709-result.md` is the first run, NOT RUN for all rows because the brief lacked row forms, and is superseded.
+- **Device rows (spec section 8; MC-4123 run before merge; MC-4125 the SAF ruling).** Run on Note 9 phone 1 (synthetic data, leases r709-phone, -phone2, -phone3), debug APK of `c6afd4e53`, SHA-256 9AFBE52DEB9D8BF7BD95F67A3075958119C2C3B74D665621DA582551FA3B71E3 (device `base.apk` hash read back equal). Result files (session temp, not kept in the repo): `%TEMP%89-dv1\dv709-result-2.md` and `dv709-result-3.md`; `dv709-result.md` is the first run, NOT RUN for all rows because the brief lacked row forms, and is superseded.
   - DV-709-1 create and open: **PASS** (Cancel makes no module; `DV709 A` is created and its Advanced form opens).
   - DV-709-5 delete: **PASS**.
   - DV-709-4 `internal:dice` MCP import: **PASS** (the refused URL `http://localhost@evil.invalid/` showed the invalid-URL error and added no module). Not verified: that Edit is disabled on the Dice row (Open is enabled there).
