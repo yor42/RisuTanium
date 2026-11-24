@@ -23,12 +23,12 @@ export function effectKindOf(type: unknown): EffectKind {
     return 'unknown'
 }
 
-/** True exactly when `row` is an object whose `effect` is an array whose first element is an object of type `triggerlua` or `triggercode`. */
+/** True exactly when `row` is an object whose `effect` is an object whose `0` entry is an object of type `triggerlua` or `triggercode`. The engine reads `effect[0]` without requiring an array, so an object-keyed effect runs on every pass too. */
 export function runsOnEveryTrigger(row: unknown): boolean {
     if (typeof row !== 'object' || row === null) return false
     const effect = (row as { effect?: unknown }).effect
-    if (!Array.isArray(effect)) return false
-    const first: unknown = effect[0]
+    if (typeof effect !== 'object' || effect === null) return false
+    const first: unknown = (effect as { 0?: unknown })[0]
     if (typeof first !== 'object' || first === null) return false
     const type = (first as { type?: unknown }).type
     return type === 'triggerlua' || type === 'triggercode'

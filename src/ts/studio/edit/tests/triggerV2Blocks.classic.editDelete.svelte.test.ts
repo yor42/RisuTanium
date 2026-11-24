@@ -3,7 +3,8 @@
 /**
  * TS11, edit and delete cells. `replaceEffect` equals, key order included, what the real classic `TriggerV2List`
  * writes when a user opens Edit on an If row, optionally flips the Else checkbox and presses Save; `deleteEffect`
- * equals what classic writes for the Delete key. Classic is mounted unchanged and driven live (MC-329).
+ * equals what classic writes for the Delete key. The edit cells type a real edit into the open editor before Save, so the
+ * compared array carries the typed change, not a no-op round trip. Classic is mounted unchanged and driven live (MC-329).
  *
  * MC-4117: classic's Else toggle on an If row whose `v2EndIndent` is missing splices the Else pair in at the wrong
  * place and then overwrites the row at the edited index, which corrupts the list. Three cells (M1 row 0, M3 row 1,

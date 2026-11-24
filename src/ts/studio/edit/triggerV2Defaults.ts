@@ -110,7 +110,7 @@ const DEFAULTS: { readonly [K in V2DefaultType]: () => Extract<triggerEffectV2, 
     v2Else: () => ({ type: 'v2Else', indent: 0 }),
 }
 
-/** The 98 types of the classic picker in picker order, then 2Else, which no picker category offers. */
+/** The 98 types of the classic picker in picker order, then v2Else, which no picker category offers. */
 export const V2_DEFAULT_TYPES: readonly V2DefaultType[] = Object.keys(DEFAULTS) as V2DefaultType[]
 
 export function v2DefaultEffect(type: V2DefaultType): triggerEffectV2 {

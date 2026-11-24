@@ -73,6 +73,11 @@ const downTarget = (id: string, index: number): number => (BLOCK_END[id]?.[index
 
 type Cell = readonly [string, number, 'up' | 'down', number]
 
+/** Cells where classic refuses the move and leaves the array unchanged: they equal Studio's unchanged input on any base. */
+const GUARD_MOVES: ReadonlySet<string> = new Set([
+    'W3:1:down', 'W3:4:up', 'W6:2:down', 'W6:5:up', 'W7:1:down', 'M3:1:down', 'M7:1:down', 'M7:4:up',
+])
+
 /** [array, row, direction, drop target] for every row that has a handle and whose target zone exists. */
 const moveCells = (ids: readonly string[]): Cell[] =>
     ids.flatMap((id) => {
@@ -105,12 +110,16 @@ describe.each([
     ['TS11-W', WELL_FORMED_IDS],
     ['TS11-M', MALFORMED_IDS],
 ] as const)('%s move on the %s corpus', (_group, ids) => {
-    test.each(moveCells(ids))('regression reproducer: move %s row %i %s to the zone before %i equals classic, key order included', async (id, index, direction, to) => {
+    const check = async (id: string, index: number, direction: 'up' | 'down', to: number): Promise<void> => {
         const input = corpusArray(id)
         const classic = await classicMove(id, index, to)
         const studio = direction === 'up' ? moveEffectUp(corpusArray(id), index) : moveEffectDown(corpusArray(id), index)
         expect(firstDifference(studio ?? input, classic)).toBeNull()
-    })
+    }
+    const isGuard = ([id, index, direction]: Cell): boolean => GUARD_MOVES.has([id, index, direction].join(':'))
+
+    test.each(moveCells(ids).filter((cell) => !isGuard(cell)))('regression reproducer: move %s row %i %s to the zone before %i equals classic, key order included', check)
+    test.each(moveCells(ids).filter(isGuard))('compatibility guard (classic leaves the array unchanged, so it passes before and after): move %s row %i %s to the zone before %i equals classic, key order included', check)
 })
 
 describe('TS11-c recorder anchor for move (compatibility guard, passes before and after)', () => {

@@ -195,12 +195,17 @@ describe('runsOnEveryTrigger', () => {
         expect(runsOnEveryTrigger(row([{ type: 'triggercode', code: '' }, { type: 'setvar' }]))).toBe(true)
     })
 
+    test('regression reproducer: an object-keyed or array-like effect is read at index 0 as the engine does', () => {
+        expect(runsOnEveryTrigger(row({ 0: { type: 'triggerlua' } }))).toBe(true)
+        expect(runsOnEveryTrigger(row({ 0: { type: 'triggerlua' }, length: 1 }))).toBe(true)
+        expect(runsOnEveryTrigger(row({ 1: { type: 'triggerlua' } }))).toBe(false)
+    })
+
     test('compatibility guard (passes before and after): does not hold for rows that do not start with code', () => {
         expect(runsOnEveryTrigger(row([{ type: 'setvar' }, { type: 'triggerlua', code: '' }]))).toBe(false)
         expect(runsOnEveryTrigger(row([]))).toBe(false)
         expect(runsOnEveryTrigger(row(undefined))).toBe(false)
         expect(runsOnEveryTrigger(row('triggerlua'))).toBe(false)
-        expect(runsOnEveryTrigger(row({ 0: { type: 'triggerlua' } }))).toBe(false)
         expect(runsOnEveryTrigger(row(['triggerlua']))).toBe(false)
         expect(runsOnEveryTrigger(row([null]))).toBe(false)
         expect(runsOnEveryTrigger({ comment: '', type: 'manual', conditions: [] })).toBe(false)
