@@ -17,10 +17,13 @@ const patternDir = path.join(root, 'src/lib/Nexus/pattern')
 // The two test harness components render no part and are not part of the app.
 const HARNESSES = new Set(['TaskToastHarness.svelte', 'TaskYieldHarness.svelte'])
 const OTHERS = ['AlertComp', 'ParkedReplyPrompt', 'PasswordPrompt', 'PeerConflicts', 'PresetBundlePrompt', 'SelectCharCard', 'SelectCharGrid', 'UpdateOfferPrompt']
+// Overlay components of the modal vocabulary (modal-*, memory-progress*, save-status-*); each stage that adds an overlay extends this list.
+const OVERLAY_FILES = ['src/lib/Others/PopupEditor.svelte', 'src/lib/Others/HypaV3Progress.svelte', 'src/lib/Others/SavePopupIcon.svelte', 'src/lib/Setting/listedPersona.svelte']
 const relative = (file: string): string => path.relative(root, file).split(path.sep).join('/')
 const files = [
     ...readdirSync(patternDir).filter((name) => name.endsWith('.svelte') && !HARNESSES.has(name)).map((name) => path.join(patternDir, name)),
     ...OTHERS.map((name) => path.join(root, 'src/lib/Others', `${name}.svelte`)),
+    ...OVERLAY_FILES.map((name) => path.join(root, name)),
 ].sort((a, b) => (relative(a) < relative(b) ? -1 : 1))
 
 /** An in-memory source tree: paths are resolved against `/t`. */
@@ -61,7 +64,7 @@ describe('A1 the closure of the real popup components', () => {
     it('follows every construct under the marked roots', () => {
         expect(census.problems).toEqual([])
         expect([...census.roots].sort()).toEqual(['password-prompt-root', 'pattern-alert-bundle', 'pattern-alert-stack', 'pattern-alert-stack', 'pattern-prompt-root', 'pattern-task-root',
-            'pattern-warn-root', 'pattern-warn-root', 'task-toast', 'toast-undo'])
+            'pattern-warn-root', 'pattern-warn-root', 'save-status-alert', 'save-status-alert', 'save-status-alert', 'save-status-alert', 'task-toast', 'toast-undo'])
     })
 
     it('the pinned file list equals the popup components', () => {
