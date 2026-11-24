@@ -71,6 +71,7 @@ interface LiveCharacter {
     chaId: string
     type: string
     license?: string
+    name?: string
     desc: string
     firstMessage?: string
     hideChatIcon?: boolean
@@ -231,7 +232,7 @@ const part = (name: string) => document.querySelector<HTMLElement>(`[data-part="
 const parts = (name: string) => Array.from(document.querySelectorAll<HTMLElement>(`[data-part="${name}"]`))
 const desc = () => part('studio-form-desc') as HTMLTextAreaElement
 const note = () => part('studio-form-note') as HTMLTextAreaElement
-const hideIcon = () => part('studio-form-hide-icon') as HTMLInputElement
+const nameField = () => part('studio-form-name') as HTMLInputElement
 const renderBox = () => part('studio-form-render-when-complete') as HTMLInputElement
 const greetingInputs = () => parts('studio-greeting-input') as HTMLTextAreaElement[]
 const firstMessage = () => part('studio-form-first-message') as HTMLTextAreaElement
@@ -290,7 +291,8 @@ describe('T-UI11 the form is read-only while the owner loads', () => {
         expect(desc().readOnly).toBe(true)
         expect(desc().getAttribute('aria-busy')).toBe('true')
         expect(part('studio-form-loading')?.textContent).toBe('studioFormLoading')
-        expect(hideIcon().disabled).toBe(true)
+        expect(renderBox().disabled).toBe(true)
+        expect(nameField().readOnly).toBe(true)
         expect((part('studio-greeting-add') as HTMLButtonElement).disabled).toBe(true)
         expect(greetingInputs()[0].readOnly).toBe(true)
 
@@ -672,13 +674,33 @@ describe('the character form edits through the history service', () => {
             expect(field.dataset.studioFocusValue).toBe(field.value)
             field.blur()
         }
-        hideIcon().focus()
-        hideIcon().blur()
+        renderBox().focus()
+        renderBox().blur()
+        nameField().focus()
+        nameField().blur()
         flushSync()
         expect(h.marks).toBe(0)
         expect(rig.service.view(A).done).toHaveLength(0)
         expect('hideChatIcon' in live()).toBe(false)
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
+    })
+
+    test('regression reproducer: a name composition still held at page hide is written (MC-1813)', async () => {
+        db.db.characters = [makeCharacter({ name: 'Alice' })]
+        makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        const field = nameField()
+        const before = live().name
+        expect(before).toBe('Alice')
+        field.dispatchEvent(new CompositionEvent('compositionstart'))
+        field.value = before + 'X'
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }))
+        flushSync()
+        expect(live().name).toBe(before)
+        window.dispatchEvent(new Event('pagehide'))
+        flushSync()
+        expect(live().name).toBe(before + 'X')
     })
 
     test('typing lands in the character, marks it, records a step and moves the chip through pending to saved (T-UI2)', async () => {
@@ -726,19 +748,63 @@ describe('the character form edits through the history service', () => {
         expect(rig.service.view(A).done).toHaveLength(2)
     })
 
-    test('the hide-icon checkbox writes true, then false, through the service', async () => {
+    test('the character form no longer carries the hide-icon switch: it lives in the Display form', async () => {
+        makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        expect(part('studio-form-hide-icon')).toBeNull()
+    })
+
+    test('A1: typing a new name lands one coalesced step in the character and undo puts the old name back', async () => {
+        db.db.characters = [makeCharacter({ name: 'Alice' })]
         const rig = makeRig()
         mountInto(StudioCharacterForm, { chaId: 'A' })
         await settle()
-        expect(hideIcon().checked).toBe(false)
-        hideIcon().click()
-        flushSync()
-        expect(live().hideChatIcon).toBe(true)
-        hideIcon().click()
-        flushSync()
-        expect(live().hideChatIcon).toBe(false)
+        expect(nameField().value).toBe('Alice')
+        type(nameField() as unknown as HTMLTextAreaElement, 'Alic')
+        rig.clock.set(100)
+        type(nameField() as unknown as HTMLTextAreaElement, 'Alicia')
+        expect(live().name).toBe('Alicia')
         expect(h.marks).toBe(2)
-        expect(rig.service.view(A).done).toHaveLength(2)
+        expect(rig.service.view(A).done).toHaveLength(1)
+        expect(rig.service.undo(A).ok).toBe(true)
+        expect(live().name).toBe('Alice')
+    })
+
+    test('A1: a name that is empty after trim is never written, and blur puts the live name back with the note', async () => {
+        db.db.characters = [makeCharacter({ name: 'Alice' })]
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        type(nameField() as unknown as HTMLTextAreaElement, '')
+        type(nameField() as unknown as HTMLTextAreaElement, '   ')
+        expect(live().name).toBe('Alice')
+        expect(h.marks).toBe(0)
+        expect(rig.service.view(A).done).toHaveLength(0)
+        nameField().dispatchEvent(new FocusEvent('blur'))
+        flushSync()
+        expect(nameField().value).toBe('Alice')
+        expect(document.querySelector('[data-part="studio-field-note"]')?.textContent).toBe('studioFormNameEmpty')
+        expect(live().name).toBe('Alice')
+        type(nameField() as unknown as HTMLTextAreaElement, 'Bob')
+        expect(document.querySelector('[data-part="studio-field-note"]')).toBeNull()
+        expect(live().name).toBe('Bob')
+    })
+
+    test('A1: deleting the whole name one character at a time and leaving the field puts back the name it had at focus', async () => {
+        db.db.characters = [makeCharacter({ name: 'Alice' })]
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        nameField().dispatchEvent(new FocusEvent('focus'))
+        for (const value of ['Alic', 'Ali', 'Al', 'A', '']) type(nameField() as unknown as HTMLTextAreaElement, value)
+        expect(live().name).toBe('A')
+        nameField().dispatchEvent(new FocusEvent('blur'))
+        flushSync()
+        expect(nameField().value).toBe('Alice')
+        expect(live().name).toBe('Alice')
+        expect(document.querySelector('[data-part="studio-field-note"]')?.textContent).toBe('studioFormNameEmpty')
+        expect(rig.service.view(A).done.length).toBeGreaterThan(0)
     })
 
     test('the render-when-complete checkbox writes true, then false, through the service and leaves hideChatIcon alone', async () => {

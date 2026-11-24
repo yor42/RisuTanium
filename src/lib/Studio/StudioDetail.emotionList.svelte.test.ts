@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * What the Studio detail mounts for the display kind of a character besides the asset list: the emotion-image list,
- * after it, over the character's own emotion rows and nothing of the additional assets. The history service is real, on
+ * What the Studio detail mounts for the display kind of a character besides the asset list: the emotion-image list, in
+ * the screen segment under the emotion mode, over the character's own emotion rows and nothing of the additional assets. The history service is real, on
  * the memory doubles, so a delete through the mounted list is a real step.
  */
 import { flushSync, mount, unmount } from 'svelte'
@@ -60,6 +60,7 @@ import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
+import { writeDisplaySegment } from '../../ts/studio/displaySegment'
 import { openStudio, resetStudioScreenForTests } from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
 import { resetToastHostForTests } from '../../ts/toast/toastHost.svelte'
@@ -91,10 +92,14 @@ async function settle(): Promise<void> {
     await drainMicrotasks()
 }
 
+// The emotion list shows only under the emotion mode.
+const MODE: Record<string, unknown> = { viewScreen: 'emotion' }
+
 async function show(overrides: Record<string, unknown>): Promise<void> {
     db.db = studioDbOf(makeInput({
-        character: { ...makeCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }), ...overrides },
+        character: { ...makeCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }), ...MODE, ...overrides },
     }))
+    writeDisplaySegment('cha-1', 'screen')
     openStudio(displayTarget, null)
     service = createOwnerHistoryService({
         store: createMemoryStudioStore(),
@@ -148,13 +153,15 @@ afterEach(async () => {
 describe('the display kind of a character with emotion images', () => {
     const emotions = [['happy', pA], ['sad', pB], ['hat', pC]]
 
-    test('R2: the emotion list follows the asset list and shows the emotion rows', async () => {
+    test('R2: the emotion list is in the screen segment, before the asset list of the assets segment, and shows the emotion rows', async () => {
         await show({ emotionImages: emotions, additionalAssets: [['smile', 'assets/smile.png', 'png']] })
         const assets = part('studio-asset-list') as HTMLElement
         const emotionList = part('studio-emotion-list') as HTMLElement
         expect(assets).not.toBeNull()
         expect(emotionList).not.toBeNull()
-        expect(assets.compareDocumentPosition(emotionList) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(emotionList.closest('[data-seg]')?.getAttribute('data-seg')).toBe('screen')
+        expect(assets.closest('[data-seg]')?.getAttribute('data-seg')).toBe('assets')
+        expect(emotionList.compareDocumentPosition(assets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
         expect(rowNamesIn('studio-emotion-list')).toEqual(['happy', 'sad', 'hat'])
     })
 
@@ -180,6 +187,17 @@ describe('the display kind of a character with emotion images', () => {
         await show({ emotionImages: emotions, additionalAssets: [['smile', 'assets/smile.png', 'png']] })
         expect(rowNamesIn('studio-emotion-list')).toEqual(['happy', 'sad', 'hat'])
         expect(rowNamesIn('studio-emotion-list')).not.toContain('smile')
+    })
+
+    test('the emotion list shows only under the emotion mode: none and image generation hide it', async () => {
+        for (const viewScreen of ['none', 'imggen']) {
+            await show({ viewScreen, emotionImages: emotions })
+            expect(part('studio-emotion-list')).toBeNull()
+            await unmount(app!)
+            app = undefined
+            host?.remove()
+            host = undefined
+        }
     })
 
     test('a private character shows no emotion list', async () => {

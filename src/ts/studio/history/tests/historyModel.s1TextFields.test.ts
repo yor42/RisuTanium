@@ -83,6 +83,8 @@ describe('T1-TX (a)(b): the router membership', () => {
         expect([...TEXT_FIELD_PATHS]).toEqual([
             'desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario',
             'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding', 'creatorNotes',
+            // Studio S3a.
+            'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions',
         ])
     })
 
@@ -186,7 +188,7 @@ describe('T1-TX (e): notRestored names the registry target', () => {
 })
 
 describe('T1-TX (f): the character text writer skips what the router sends to a set', () => {
-    test('a textSet on a text field path leaves the value, and one on a nested non-field text writes it', () => {
+    test('a textSet on a text field path leaves the value, and one on a text outside the registry writes it', () => {
         const live = makeLive()
         applyCharacterWrites(
             live,
@@ -201,7 +203,7 @@ describe('T1-TX (f): the character text writer skips what the router sends to a 
         expect(bag(live).depth_prompt).toStrictEqual({ depth: 2, prompt: 'dp' })
         expect(bag(live).personality).toBe('pers')
         applyCharacterWrites(live, [{ op: 'textSet', target: 'newGenData/prompt', value: 'N' }, { op: 'textSet', target: 'backgroundHTML', value: 'B' }], null)
-        expect((bag(live).newGenData as Bag).prompt).toBe('N')
+        expect((bag(live).newGenData as Bag).prompt).toBe('ng')
         expect(bag(live).backgroundHTML).toBe('B')
     })
 })
@@ -210,7 +212,10 @@ describe('T1-TX (g)(h): textFieldOf is the exact inverse and textWriteFor is the
     test('(g) a registry target maps to its field path and nothing else does', () => {
         expect(textFieldOf('depth_prompt/prompt')).toBe('depth_prompt.prompt')
         expect(textFieldOf('systemPrompt')).toBe('systemPrompt')
-        for (const other of ['depth_prompt.prompt', 'depth_prompt/other', 'newGenData/prompt', 'backgroundHTML', 'nickname', 'additionalData/creator', 'lore/0/content', 'Desc']) {
+        for (const key of ['prompt', 'negative', 'instructions', 'emotionInstructions']) {
+            expect(textFieldOf('newGenData/' + key), key).toBe('newGenData.' + key)
+        }
+        for (const other of ['depth_prompt.prompt', 'depth_prompt/other', 'newGenData/other', 'backgroundHTML', 'nickname', 'additionalData/creator', 'lore/0/content', 'Desc']) {
             expect(textFieldOf(other), other).toBeNull()
         }
     })
@@ -218,7 +223,8 @@ describe('T1-TX (g)(h): textFieldOf is the exact inverse and textWriteFor is the
     test('(h) the write for a nested field target is a set of its dotted path', () => {
         expect(textWriteFor('depth_prompt/prompt', 'v')).toEqual({ op: 'set', path: 'depth_prompt.prompt', value: { had: true, value: 'v' } })
         expect(textWriteFor('alternateGreetings/2', 'v')).toEqual({ op: 'listSet', index: 2, value: 'v' })
-        expect(textWriteFor('newGenData/prompt', 'v')).toEqual({ op: 'textSet', target: 'newGenData/prompt', value: 'v' })
+        expect(textWriteFor('newGenData/prompt', 'v')).toEqual({ op: 'set', path: 'newGenData.prompt', value: { had: true, value: 'v' } })
+        expect(textWriteFor('backgroundHTML', 'v')).toEqual({ op: 'textSet', target: 'backgroundHTML', value: 'v' })
     })
 })
 

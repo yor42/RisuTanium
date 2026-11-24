@@ -57,6 +57,8 @@ import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { ReloadGUIPointer } from 'src/ts/stores.svelte'
 import { resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
 import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
+import { readDisplaySegment, writeDisplaySegment } from '../../ts/studio/displaySegment'
+import { FIELD_PRESENTATION } from '../../ts/studio/history/fieldRegistry'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey, chatOwnerKey, moduleOwnerKey } from '../../ts/studio/history/ownerPhase'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
@@ -90,6 +92,7 @@ const A = characterOwnerKey('A')
 const CHAT = chatOwnerKey('A', 'c1')
 const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
 const basicTarget = { owner: { type: 'character', id: 'A' }, kind: 'basic', item: 'A/basic:0', from: 'chat' } as const
+const displayTarget = { owner: { type: 'character', id: 'A' }, kind: 'display', item: 'A/display:0', from: 'chat' } as const
 
 // ---------------------------------------------------------------- rigs
 
@@ -227,11 +230,11 @@ function narrow(width: number): void {
     vi.stubGlobal('ResizeObserver', Narrow)
 }
 
-async function screenWithPanel(options: { width?: number; patch?: Partial<Live> } = {}): Promise<Rig> {
+async function screenWithPanel(options: { width?: number; patch?: Partial<Live>; target?: typeof basicTarget | typeof displayTarget } = {}): Promise<Rig> {
     if (options.patch) db.db = fixtureDb(options.patch)
     if (options.width !== undefined) narrow(options.width)
     const rig = makeRig()
-    openStudio(basicTarget, null)
+    openStudio(options.target ?? basicTarget, null)
     mountInto(StudioScreen)
     await settle()
     click('studio-history-toggle')
@@ -380,16 +383,39 @@ describe('F: focus lands on the first message an Undo, Redo or Restore put back 
         expect(document.activeElement).toBe(part('studio-form-desc'))
     })
 
-    test('F17 an Undo that changed only the hide-icon box focuses the hide-icon box', async () => {
-        const rig = await screenWithPanel()
+    test('F17 an Undo that changed only the hide-icon box focuses the hide-icon box of the Display form', async () => {
+        const rig = await screenWithPanel({ target: displayTarget })
         expect(rig.service.editField(A, 'hideChatIcon', true).ok).toBe(true)
         rig.service.closeOpenStep(A)
         flushSync()
         await press('studio-history-undo')
         expect(live().hideChatIcon).not.toBe(true)
-        const box = document.querySelector<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-form-hide-icon"]')
+        const box = document.querySelector<HTMLElement>('[data-part="studio-display-form"] [data-part="studio-display-hide-icon"]')
         expect(box).not.toBeNull()
         expect(document.activeElement).toBe(box)
+    })
+
+    test('F17a the hide-icon box is not in the Basic form any more', async () => {
+        await screenWithPanel()
+        expect(document.querySelector('[data-part="studio-form-hide-icon"]')).toBeNull()
+        expect(FIELD_PRESENTATION.hideChatIcon.focus).toEqual({ form: 'studio-display-form', part: 'studio-display-hide-icon' })
+    })
+
+    test('F17c an Undo of a field in a segment that is not shown selects that segment and focuses the field', async () => {
+        writeDisplaySegment('A', 'assets')
+        const rig = await screenWithPanel({ target: displayTarget })
+        expect(document.querySelector('[data-part="studio-display-hide-icon"]')).toBeNull()
+        expect(rig.service.editField(A, 'hideChatIcon', true).ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        flushSync()
+        await press('studio-history-undo')
+        const box = document.querySelector<HTMLElement>('[data-part="studio-display-form"] [data-part="studio-display-hide-icon"]')
+        expect(box).not.toBeNull()
+        expect(document.activeElement).toBe(box)
+        expect(document.querySelector('[data-part="studio-segment"][data-seg="photo"]')?.getAttribute('aria-selected')).toBe('true')
+        // The reveal is transient: the remembered segment is still the one the user picked.
+        expect(readDisplaySegment('A')).toBe('assets')
+        window.localStorage.clear()
     })
 
     test('F17b an Undo that changed only the render-when-complete box focuses that box', async () => {

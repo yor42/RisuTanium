@@ -948,7 +948,7 @@ describe('parseOwnerRecord guards', () => {
     })
 
     test.each([
-        ['a path outside the union', (r: ReturnType<typeof good>) => { (r.done[0].ops[0] as { path: string }).path = 'name' }],
+        ['a path outside the union', (r: ReturnType<typeof good>) => { (r.done[0].ops[0] as { path: string }).path = 'zzNeverRegistered' }],
         ['an unknown op', (r: ReturnType<typeof good>) => { (r.done[0].ops[0] as { op: string }).op = 'wipe' }],
         ['a wrong value type for desc', (r: ReturnType<typeof good>) => { (r.done[0].ops[0] as { after: unknown }).after = { had: true, value: 5 } }],
         ['a non-boolean hideChatIcon', (r: ReturnType<typeof good>) => { r.done[0].ops[0] = { op: 'set', path: 'hideChatIcon', before: { had: false }, after: { had: true, value: 'yes' } } as never }],
@@ -956,7 +956,7 @@ describe('parseOwnerRecord guards', () => {
         ['a non-array stack', (r: ReturnType<typeof good>) => { (r as { done: unknown }).done = {} }],
         ['a negative list index', (r: ReturnType<typeof good>) => { r.done[0].ops[0] = { op: 'listInsert', index: -1, value: 'x' } as never }],
         ['an unknown label', (r: ReturnType<typeof good>) => { (r.done[0] as { label: unknown }).label = { kind: 'other' } }],
-        ['a restore field outside the union', (r: ReturnType<typeof good>) => { (r as { restore: unknown }).restore = { visitId: 'v', at: 1, fields: { name: { before: { had: false }, last: { had: false } } } } }],
+        ['a restore field outside the union', (r: ReturnType<typeof good>) => { (r as { restore: unknown }).restore = { visitId: 'v', at: 1, fields: { zzNeverRegistered: { before: { had: false }, last: { had: false } } } } }],
         ['a missing touchedAt', (r: ReturnType<typeof good>) => { delete (r as { touchedAt?: number }).touchedAt }],
     ])('rejects %s', (_name, mutate) => {
         const record = good()
