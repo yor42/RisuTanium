@@ -115,6 +115,15 @@ function one(name: string): HTMLElement {
     return found[0]
 }
 
+/** Every element carrying `name` has `parent` as the nearest part-carrying ancestor, so a part cannot swap with its container. */
+function inside(name: string, parent: string) {
+    const found = all(name)
+    expect(found.length, `${name} is rendered`).toBeGreaterThan(0)
+    for (const el of found) {
+        expect(el.parentElement?.closest('[data-part]')?.getAttribute('data-part'), `${name} sits inside ${parent}`).toBe(parent)
+    }
+}
+
 function rowHost(name: string): HTMLElement {
     return Array.from(target.querySelectorAll('[data-part="chat-row"]'))
         .find((row) => row.querySelector('[data-part="chat-row-name"]')?.textContent?.trim() === name)!
@@ -172,6 +181,14 @@ describe('the sidebar header', () => {
         const help = one('sidebar-sort-help')
         expect(help.textContent).toBe(language.chatShellOnThisDevice)
         expect(target.querySelector('select')!.getAttribute('aria-describedby')).toContain(help.id)
+
+        inside('chat-sidebar-heading', 'chat-sidebar-header')
+        inside('chat-sidebar-new-row', 'chat-sidebar-header')
+        inside('chat-sidebar-new-chat', 'chat-sidebar-new-row')
+        inside('chat-sidebar-new-menu-toggle', 'chat-sidebar-new-row')
+        inside('sidebar-sort-label', 'chat-sidebar-header')
+        inside('sidebar-sort-help', 'chat-sidebar-header')
+        expect(row.parentElement?.getAttribute('data-part')).toBe('chat-sidebar-header')
     })
 
     test('the new chat menu and its two items', () => {
@@ -186,6 +203,9 @@ describe('the sidebar header', () => {
         expect(exportAll.getAttribute('role')).toBe('menuitem')
         expect(exportAll.textContent?.trim()).toBe(language.chatShellExportAllChats)
         expect(menu.contains(importItem) && menu.contains(exportAll)).toBe(true)
+        inside('chat-sidebar-new-menu', 'chat-sidebar-new-row')
+        inside('chat-sidebar-import', 'chat-sidebar-new-menu')
+        inside('chat-sidebar-export-all', 'chat-sidebar-new-menu')
     })
 
     test('the search box wraps the text field', () => {
@@ -194,6 +214,9 @@ describe('the sidebar header', () => {
         const field = box.querySelector('input')
         expect(field?.getAttribute('type')).toBe('text')
         expect(field?.getAttribute('placeholder')).toBe(language.chatShellSearchPlaceholder)
+        inside('chat-sidebar-search-box', 'chat-sidebar-search')
+        inside('chat-sidebar-search-field', 'chat-sidebar-search-box')
+        expect(field?.parentElement).toBe(box)
     })
 })
 
@@ -213,6 +236,9 @@ describe('chat rows and folder rows', () => {
         expect(nameLine.textContent).not.toContain('zeta-preview')
         expect(meta.textContent).toContain('zeta-preview')
         expect(meta.textContent).not.toContain('Zeta')
+        inside('chat-row-name-line', 'chat-row')
+        inside('chat-row-meta', 'chat-row')
+        inside('chat-row-name', 'chat-row-name-line')
     })
 
     test('the folder count is the count of its chats, on the folder row', () => {
@@ -223,6 +249,7 @@ describe('chat rows and folder rows', () => {
         expect(folderRow.getAttribute('role')).toBe('treeitem')
         expect(folderRow.getAttribute('data-part')).toBe('chat-folder')
         expect(folderRow.textContent).toContain('Folder One')
+        inside('chat-folder-count', 'chat-folder')
     })
 
     test('Edit order shows the move cluster of a chat row and of a folder row, each named for its own row', () => {
@@ -240,6 +267,8 @@ describe('chat rows and folder rows', () => {
         expect(upLabel(chatActions)).toBe(`${language.chatShellMoveUp} Xi`)
         expect(folderActions.querySelectorAll('button')).toHaveLength(2)
         expect(chatActions.querySelectorAll('button')).toHaveLength(2)
+        inside('chat-row-actions', 'chat-row-host')
+        inside('chat-folder-actions', 'chat-folder-host')
     })
 
     test('the folder rename wrapper holds the folder name field', async () => {
@@ -253,6 +282,8 @@ describe('chat rows and folder rows', () => {
         expect(input.getAttribute('data-part')).toBe('chat-folder-name-input')
         expect(editing.closest('[data-part="chat-folder-host"]')).not.toBeNull()
         expect(target.querySelector('[data-part="chat-folder"]')).toBeNull()
+        inside('chat-folder-editing', 'chat-folder-host')
+        inside('chat-folder-name-input', 'chat-folder-editing')
     })
 })
 
@@ -281,6 +312,9 @@ describe('the search results', () => {
         expect(chatPreview.textContent).toBe('one-preview')
         expect(chatName.parentElement).toBe(chatPreview.parentElement)
         expect(chatName.parentElement?.getAttribute('data-part')).toBe('chat-search-chat')
+        inside('chat-search-character-name', 'chat-search-character')
+        inside('chat-search-chat-name', 'chat-search-chat')
+        inside('chat-search-chat-preview', 'chat-search-chat')
     })
 })
 
@@ -310,7 +344,10 @@ describe('the row menu', () => {
     test('each chat menu item carries its own part, and the delete item is the destructive one', () => {
         render([owner([chat('Zeta', 'zeta-preview'), chat('Xi', 'xi-preview')])])
         click(rowHost('Xi').querySelector('[data-part="chat-row-menu"]')!)
-        for (const [part, action, role, text] of CHAT_MENU) expectItem(part, action, role, text())
+        for (const [part, action, role, text] of CHAT_MENU) {
+            expectItem(part, action, role, text())
+            inside(part, 'row-menu')
+        }
         expect(one('row-menu-delete').hasAttribute('data-destructive')).toBe(true)
         for (const part of ['row-menu-rename', 'row-menu-move', 'row-menu-duplicate', 'row-menu-export']) {
             expect(one(part).hasAttribute('data-destructive'), part).toBe(false)
@@ -321,7 +358,10 @@ describe('the row menu', () => {
         render([owner([chat('Zeta', 'zeta-preview'), chat('Xi', 'xi-preview')])])
         click(rowHost('Xi').querySelector('[data-part="chat-row-menu"]')!)
         click(menuItem('move'))
-        for (const [part, action, role, text] of MOVE_MENU) expectItem(part, action, role, text())
+        for (const [part, action, role, text] of MOVE_MENU) {
+            expectItem(part, action, role, text())
+            inside(part, 'row-menu-group')
+        }
         expect(one('row-menu-no-folder').getAttribute('aria-checked')).toBe('true')
     })
 
@@ -334,6 +374,7 @@ describe('the row menu', () => {
         expect(one('row-menu-folder-delete').hasAttribute('data-destructive')).toBe(true)
         expect(one('row-menu-folder-rename').hasAttribute('data-destructive')).toBe(false)
         expect(one('row-menu-folder-colour').hasAttribute('data-destructive')).toBe(false)
+        for (const part of ['row-menu-folder-rename', 'row-menu-folder-colour', 'row-menu-folder-delete']) inside(part, 'row-menu')
     })
 
     test('the colour list carries one colour-option part per palette entry', () => {
@@ -348,6 +389,7 @@ describe('the row menu', () => {
             expect(option.getAttribute('data-action')).toMatch(/^colour-/)
         }
         expect(document.querySelectorAll('[role^="menuitem"][data-action^="colour-"]')).toHaveLength(8)
+        inside('row-menu-colour-option', 'row-menu-group')
     })
 })
 

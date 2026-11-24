@@ -1,7 +1,8 @@
 // @vitest-environment node
 // The chat sidebar's elements that carried no part now carry literal chat parts, so a chat pack can name each one as the last
 // compound of a selector (sidebar.css itself stays a skipped sheet). Every new name is a CHAT_PARTS member, takes the default
-// reach tier of its sidebar neighbours (display:none and positioning on the part are refused, recolour and respace accepted),
+// reach tier of its sidebar neighbours (everything off the tier's allowlist is refused, for example display:none, positioning,
+// opacity:0, visibility:hidden and font-size:0; recolour and respace are accepted),
 // and is disjoint from the other areas. The ?raw scans below only inventory the sources; that each part sits on the intended
 // element is proved by the rendered tests ShellSidebar.parts.svelte.test.ts and SidebarMoreMenu.parts.svelte.test.ts.
 import { describe, expect, it } from 'vitest'
@@ -82,8 +83,9 @@ describe('the chat sidebar parts that were unmarked', () => {
         expect(isAreaPart('studio', name)).toBe(false)
     })
 
-    // MC-3638 known limitation, same as the existing this-chat-delete part: the pack may still make these destructive controls
-    // unreadable or unclickable, because only display:none and positioning on the part are refused. Their confirm is unchanged.
+    // MC-3638 known limitation, same as the existing this-chat-delete part: these install although they can make the control
+    // unreadable or cover it (a transparent colour, clip-path and width:0 pass with notes; an empty positioned ::after cover
+    // passes). The two deletes keep their protected confirm; chat-sidebar-export-all has no confirm, so a hijacked tap starts the export.
     it.each(['row-menu-delete', 'row-menu-folder-delete', 'chat-sidebar-export-all'])('known limitation: %s still accepts a transparent colour, clip-path, zero width and a covering ::after', (name) => {
         const subject = `[data-part="${name}"]`
         for (const css of [

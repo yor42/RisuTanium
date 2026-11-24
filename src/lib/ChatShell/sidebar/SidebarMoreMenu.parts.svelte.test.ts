@@ -85,6 +85,8 @@ describe('SidebarMoreMenu parts', () => {
         expect(title.querySelector('button')).toBeNull()
         expect(header.contains(back) && header.contains(title)).toBe(true)
         expect(header.parentElement?.getAttribute('data-part')).toBe('sidebar-more-panel')
+        expect(back.parentElement).toBe(header)
+        expect(title.parentElement).toBe(header)
     })
 
     test('each row is a button with its own label inside the list', () => {
