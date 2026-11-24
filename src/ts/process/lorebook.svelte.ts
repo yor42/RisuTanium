@@ -206,7 +206,8 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
     const characterLore = char?.globalLore ?? []
     const chatLore = chat?.localLore ?? []
     const moduleOwners: string[] = []
-    const moduleLorebook = getModuleLorebooks(subject, moduleOwners)
+    const moduleStarts: number[] = []
+    const moduleLorebook = getModuleLorebooks(subject, moduleOwners, moduleStarts)
     const fullLore = safeStructuredClone(characterLore.concat(chatLore).concat(moduleLorebook))
     // The `fullLore` index of every activated entry: `used` names each sent entry by it, and so does the probe.
     const activeIndexOf = new Map<object, number>()
@@ -214,15 +215,18 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
     const probeIndexOf = probe ? activeIndexOf : null
     const usedEntryOf = (index: number): LoreUsedEntry => {
         const name = loreEntryName(fullLore[index])
+        // The entry's own id names it for the deep link when it has a usable one; never written anywhere.
+        const entryId = (fullLore[index] as { id?: unknown } | undefined)?.id
+        const idPart = typeof entryId === 'string' && entryId !== '' ? { entryId } : {}
         if(index < characterLore.length){
-            return { source: 'character', ownerId: char?.chaId ?? '', index, name }
+            return { source: 'character', ownerId: char?.chaId ?? '', index, name, ...idPart }
         }
         const chatIndex = index - characterLore.length
         if(chatIndex < chatLore.length){
-            return { source: 'chat', ownerId: chat?.id ?? '', index: chatIndex, name }
+            return { source: 'chat', ownerId: chat?.id ?? '', index: chatIndex, name, ...idPart }
         }
         const moduleIndex = chatIndex - chatLore.length
-        return { source: 'module', ownerId: moduleOwners[moduleIndex] ?? '', index: moduleIndex, name }
+        return { source: 'module', ownerId: moduleOwners[moduleIndex] ?? '', index: moduleIndex - (moduleStarts[moduleIndex] ?? 0), name, ...idPart }
     }
     const currentChat = chat?.message ?? []
     let scannedMessages: Message[] | undefined

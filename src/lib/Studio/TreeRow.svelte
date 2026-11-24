@@ -65,6 +65,7 @@
             case 'studioNotFound': return language.studioNotFound
             case 'studioDeepKindFallback': return language.studioDeepKindFallback(notice.ownerName)
             case 'studioDeepItemMissing': return language.studioDeepItemMissing(notice.kind === null ? notice.ownerName : kindLabelOf(notice.kind))
+            case 'studioLoreEntryGone': return language.studioLoreEntryGone
         }
     }
 </script>
