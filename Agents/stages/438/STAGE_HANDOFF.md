@@ -1,10 +1,49 @@
-# #438 stage handoffs: wrap-up W3-2 (this PR) and the merged stages W2, W3-1 and W1
+# #438 stage handoffs: wrap-up W3-3 (this PR) and the merged stages W3-2, W2, W3-1 and W1
 
 Each wrap-up stage adds a section; the one under review is first, the merged ones follow. The sections come from their own PRs and were merged here without dropping any.
 
+## #438 stage handoff: W3-3 Realm family (RealmPopUp, RealmFrame chrome, RealmBlockedCreators), device rows pending
+
+Branch `claude/438-w3-3`, PR "Refs #438" (PR 3 of 7 of wrap-up W3; the issue stays open). Tier 2, no new critical root. Plan r2 (designer), Gate 1 r1 [REJECT] (device rows, fixed in r2) and Gate 1 r2 [EDITORIAL] (reports `%TEMP%/risu-b715/438/w3/w33-g1-r1.md`, `w33-g1-r2.md`); both r2 findings applied (F1: the device pack gets a 2px solid border so the "no magenta" read can fail; F2: MC-4168 and MC-4169 followed). Decisions: MC-4160, MC-4164, MC-4165, MC-4167, MC-4168 (RealmLicense gets no parts and stays out of `OVERLAY_FILES`), MC-4169 (DV-W33-6 not run). Base origin/main c33cfb061 (W3-2 merged).
+
+### What changed
+- Markup only, literal `data-part` attributes (23 on RealmPopUp, 4 on RealmFrame, 11 on RealmBlockedCreators), stripped of the attributes each file equals its base blob; no class, handler, element, order, aria, focus or Back change. CRLF kept.
+  - New identity roots, all reach: `modal-realm-popup` (backdrop layer), `modal-realm-frame` (full-screen root), `modal-realm-blocked-creators` (backdrop layer).
+  - Existing names. Reach: `modal-frame`, `modal-header`, `modal-body`, `modal-footer`, `modal-controls`, `modal-list`, `modal-row`, `modal-action` (forked, Import, Copy, `summary`, Report, Block, Unblock), `modal-close`. Safe: `modal-title`, `modal-text` (author, description heading, tag chips, popularity, three badges, blocked-creator name and id, empty state).
+  - RealmFrame's `<iframe>`, its loading container and everything in the iframe document carry no part (no part between iframe and root).
+- Census: `OVERLAY_FILES` +3; `registries/popups.ts` regenerated from the printed values: `POPUPS_FILES` 24 to 27, `POPUPS_PARTS` 183 to 186, `POPUPS_REACH` 48 to 51. Only the three new reach names changed; the critical closure, the A1 roots pin, holders and shared-tokens-only are unchanged. Home `FOREIGN` +13 `modal-*` names (RealmPopUp is in the HomeShell closure through RealmMain; `HOME_PARTS` unchanged). No chat, Settings or Studio change.
+- Criticality (MC-2947): no new critical root. Block, Report and the agreement go through AlertComp prompts (already critical); Unblock is a direct reversible button, reach.
+
+### Tests (class, true counts)
+- New render tests mount the real components, find each element by tag, id, role, aria-label, text or structure (never by its part), assert the part for every name and the DIRECT parent, plus whole-tree outlines: `RealmPopUp.parts` (9: 7 acceptance, 2 guard), `RealmBlockedCreators.parts` (6: 4 acceptance, 2 guard), `RealmFrame.parts` (5, happy-dom: 3 acceptance, 2 guard). Acceptance fail on the base by absence; guards pass before and after.
+- `overlayVocabulary.test.ts` (60): 3 new W1-T4 rows plus the table row, 3 new W1-T5a rows (reproducers), 3 new `display:none` reach rows (guards on the base, acceptance on head). `popupsCriticalClosure.test.ts` (18) and `homeParts.test.ts` (8, `FOREIGN` pin: reproducer under both base sets).
+- True base counts of the 6 files (106 tests, head tests against base sources served in memory): base components + base registry 23 fail, 83 pass (homeParts 1, overlayVocabulary 7, popupsCriticalClosure 1, RealmPopUp.parts 7, RealmBlockedCreators.parts 4, RealmFrame.parts 3); base components + head registry 17 fail, 89 pass (homeParts 1, popupsCriticalClosure 2, RealmPopUp.parts 7, RealmBlockedCreators.parts 4, RealmFrame.parts 3). Head 106 of 106.
+
+### Evidence and limits
+- 20 named in-memory mutants (comment, sibling swap, part swapped with its parent, dropped, renamed, moved inward and outward, part on the iframe, reach demotion, critical marker added, file dropped from the census, a safe name made reach) all killed; scratch config under `%TEMP%`, no tracked file touched. Killers per mutant are in `%TEMP%/risu-b715/438/w3/w33-code-report.md`.
+- `pnpm vitest run src/ts/themePack src/lib/UI/Realm src/lib/UI/GUI/MainMenu`: 91 files, 4888 tests passed. `pnpm check`: 0 errors, 5 warnings (none in these files).
+- jsdom/happy-dom prove structure, not looks: no device run, no real pack applied. RealmFrame's chrome row (DV-W33-6) is not run (MC-4169): the rendered tests are the evidence.
+
+### Known limitations (MC-3638, MC-3639, MC-3659, no guard)
+- A pack may restyle Report, Block and Unblock so they look harmless (colours only over the chat shell) and hide the safe `modal-text` and `modal-title`: author line, tags, badges, a blocked creator's name and id (the row's Unblock button no longer shows which creator it unblocks), and RealmFrame's "Upload to Realm" title.
+- A pack may shrink or push RealmFrame's iframe out of view through the root or header box; it cannot overlay it or reach its document (`z-index`, `content`, `transform`, `filter` and fixed or sticky positioning are refused, and every compound needs a part).
+- Unclaimed, so no pack hook: RealmPopUp's h1 column, cover image, hidden-image placeholder, details column, description section and container, badge row and `details`; RealmFrame's loading container; RealmBlockedCreators' name column. RealmLicense gets no parts and MultiLangDisplay is shared (MC-4167, MC-4168).
+- RealmBlockedCreators is mounted only inside Home: it gets the popups shape subset only (MC-3009).
+
+### Device rows (fold into W5; synthetic data; Note 9; network blocks per live-checks)
+Test pack: popups.css `[data-part="modal-frame"]{border-radius:4px;border-width:2px;border-style:solid;border-color:#ff00ff}` and `[data-part="modal-realm-blocked-creators"] [data-part="modal-title"]{letter-spacing:2px}`; home.css one shape rule; chat.css text, colour mode. The built-in panel is `rounded-[18px]` with no border.
+- DV-W33-1 RealmBlockedCreators over Home (no Realm traffic): synthetic profile with the upstream agreement NOT accepted, so the Realm view shows its placeholder and sends no request. Trigger: Home's Realm panel title button, then the toolbar "blocked creators" button (shown in every state). Read: empty state, 4px corners, a 2px border in the default border colour (light gray, `--color-gray-200`), NOT magenta, title letters 2px wider. Back and X close, focus returns to the button. A populated list stays test-only (only Block in RealmPopUp fills it, which needs a Realm reply).
+- DV-W33-2 same with a pack without home.css: 18px corners, no border, normal title. DV-W33-3 safe start with the pack installed: built-in look, plain-launch control in the same run. DV-W33-4 pack-free launch: pixel-equal to base apart from timing.
+- DV-W33-5 RealmPopUp: not run, test-only (MC-4165 PQ-5: `getRealmInfo` and the hub list need a Realm reply). DV-W33-6 RealmFrame: not run, test-only (MC-4169).
+
+### For W3-4 and later
+- The popups registry and census test are serial (W3-2 to W3-6): regenerate from the printed constants, never hand-order (`src/lib/UI/Realm/*` sorts after `src/lib/Setting/listedPersona.svelte`).
+- Home's `FOREIGN` list in `homeParts.test.ts` now holds 13 `modal-*` names: any later popups name rendered inside the HomeShell closure (RealmPopUp, RealmBlockedCreators) fails that pin until reviewed.
+- Lane A fold-ins applied: the `overlayVocabulary.test.ts` header parenthetical now reads "display:none never yields the membership reason", and the W3-2 section below carries its Gate 2 verdict and report paths.
+
 ## #438 stage handoff: W3-2 overlay vocabulary (BookmarkList, EasyPanel, LoadoutModal, CustomSidebarConfig), device rows pending
 
-Branch `claude/438-w3-2`, PR "Refs #438" (PR 2 of 7 of wrap-up W3; the issue stays open). Tier 2, no new critical root. Plan r1 (designer) and Gate 1 r1 [EDITORIAL]: all seven findings F1..F7 applied (below). Decisions: MC-4160, MC-4164, MC-4165, MC-4166, MC-4167 (AllSeperateParameters and ClaudeThinkingSeparateParams get no parts: deliberate skips, they also render inline on the Bot Settings page). Base origin/main 45664d42f (W3-1 merged).
+Branch `claude/438-w3-2`, PR "Refs #438" (PR 2 of 7 of wrap-up W3; the issue stays open). Tier 2, no new critical root. Plan r1 (designer) and Gate 1 r1 [EDITORIAL]: all seven findings F1..F7 applied (report `%TEMP%/risu-b715/438/w3/w32-g1-r1.md`). Gate 2 r1 [EDITORIAL] by a fresh opus-reviewer (report `%TEMP%/risu-b715/438/w3/w32-g2-r1.md`): base counts 24/75 and 34/65 reproduced, 20 of 20 mutants killed; four wording or limitation findings applied in commit 21f6868f1 (F1 Run unclaimed, F2 W3-1 trigger note, F3 test title and W3-3 advice, F4 the `modal-text` line). Decisions: MC-4160, MC-4164, MC-4165, MC-4166, MC-4167 (AllSeperateParameters and ClaudeThinkingSeparateParams get no parts: deliberate skips, they also render inline on the Bot Settings page). Base origin/main 45664d42f (W3-1 merged).
 
 ### What changed
 - Markup only, literal `data-part` attributes on the overlays' own regular elements (no class, handler, element, order, aria or focus change; none on a component tag or inside a shared component):

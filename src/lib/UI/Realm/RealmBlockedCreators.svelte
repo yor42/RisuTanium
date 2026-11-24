@@ -84,7 +84,7 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div bind:this={layer} class="fixed left-0 top-0 z-60 flex h-full w-full items-center justify-center bg-black/50 p-4 text-textcolor" onclick={close}>
+<div bind:this={layer} data-part="modal-realm-blocked-creators" class="fixed left-0 top-0 z-60 flex h-full w-full items-center justify-center bg-black/50 p-4 text-textcolor" onclick={close}>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
         bind:this={panel}
@@ -92,14 +92,16 @@
         aria-modal="true"
         aria-labelledby="blocked-creators-title"
         tabindex="-1"
+        data-part="modal-frame"
         class="flex max-h-full w-xl max-w-full flex-col gap-4 overflow-y-auto rounded-[18px] bg-darkbg p-6 outline-hidden"
         onclick={(e) => e.stopPropagation()}
     >
-        <div class="flex items-center justify-between gap-4">
-            <h1 id="blocked-creators-title" class="min-w-0 text-2xl font-bold wrap-anywhere">{language.blockedRealmCreators}</h1>
+        <div data-part="modal-header" class="flex items-center justify-between gap-4">
+            <h1 id="blocked-creators-title" data-part="modal-title" class="min-w-0 text-2xl font-bold wrap-anywhere">{language.blockedRealmCreators}</h1>
             <button
                 type="button"
                 bind:this={closeButton}
+                data-part="modal-close"
                 class="risu-focus-ring flex size-11 shrink-0 items-center justify-center rounded-md text-textcolor2 hover:bg-selected/50"
                 onclick={close}
                 aria-label={language.uiCommon.close}
@@ -109,16 +111,16 @@
         </div>
 
         {#if DBState.db.blockedRealmCreators.length === 0}
-            <p class="text-textcolor2">{language.noBlockedRealmCreators}</p>
+            <p data-part="modal-text" class="text-textcolor2">{language.noBlockedRealmCreators}</p>
         {:else}
-            <div class="flex flex-col gap-2">
+            <div data-part="modal-list" class="flex flex-col gap-2">
                 {#each DBState.db.blockedRealmCreators as creator (creator.id)}
-                    <div class="flex items-center gap-3 rounded-xl border border-darkborderc p-3">
+                    <div data-part="modal-row" class="flex items-center gap-3 rounded-xl border border-darkborderc p-3">
                         <div class="min-w-0 grow">
-                            <div class="truncate font-bold">{creator.name}</div>
-                            <div class="truncate text-xs text-textcolor2">{creator.id}</div>
+                            <div data-part="modal-text" class="truncate font-bold">{creator.name}</div>
+                            <div data-part="modal-text" class="truncate text-xs text-textcolor2">{creator.id}</div>
                         </div>
-                        <button type="button" class="risu-focus-ring min-h-11 rounded-md bg-selected px-3 text-textcolor hover:bg-selected/50" onclick={async () => {
+                        <button type="button" data-part="modal-action" class="risu-focus-ring min-h-11 rounded-md bg-selected px-3 text-textcolor hover:bg-selected/50" onclick={async () => {
                             DBState.db.blockedRealmCreators = removeBlockedRealmCreator(
                                 DBState.db.blockedRealmCreators,
                                 creator.id,
