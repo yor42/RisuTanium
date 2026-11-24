@@ -23,12 +23,12 @@
 
 </script>
 
-<div class="absolute w-full h-full z-40 bg-black/50 flex justify-center items-center">
-    <div class="bg-darkbg p-4 break-any rounded-md flex flex-col max-w-3xl w-96 max-h-full overflow-y-auto">
-        <div class="flex items-center text-textcolor mb-4">
-            <h2 class="mt-0 mb-0 font-bold">{language.persona}</h2>
+<div data-part="modal-listed-persona" class="absolute w-full h-full z-40 bg-black/50 flex justify-center items-center">
+    <div data-part="modal-frame" class="bg-darkbg p-4 break-any rounded-md flex flex-col max-w-3xl w-96 max-h-full overflow-y-auto">
+        <div data-part="modal-header" class="flex items-center text-textcolor mb-4">
+            <h2 data-part="modal-title" class="mt-0 mb-0 font-bold">{language.persona}</h2>
             <div class="grow flex justify-end">
-                <button aria-label={language.uiCommon.close} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer items-center" onclick={close}>
+                <button data-part="modal-close" aria-label={language.uiCommon.close} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer items-center" onclick={close}>
                     <XIcon size={24} aria-hidden="true"/>
                 </button>
             </div>
@@ -37,7 +37,7 @@
             <button onclick={() => {
                 changeUserPersona(i)
                 close()
-            }} class="flex items-center text-textcolor border-t-1 border-solid border-0 border-darkborderc p-2 cursor-pointer" class:bg-selected={i === DBState.db.selectedPersona}>
+            }} data-part="modal-row" class="flex items-center text-textcolor border-t-1 border-solid border-0 border-darkborderc p-2 cursor-pointer" class:bg-selected={i === DBState.db.selectedPersona}>
                 <span class="overflow-x-auto whitespace-nowrap w-full text-left">
                     <span class="font-medium">{persona.name}</span>
                     {#if persona.note}
