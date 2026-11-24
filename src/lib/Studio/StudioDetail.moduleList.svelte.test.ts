@@ -645,6 +645,30 @@ describe('T9-CONVERT: the row menu makes a character through the shared helper',
         expect(db.db.characters).toHaveLength(before)
         expect(status()).toBe('')
     })
+
+    // Regression reproducer: a page that converts without the shared helper never asks, so a Low Level Access module
+    // silently became a character with the flag on.
+    test('a module with Low Level Access asks first: Cancel makes no character, confirming pushes it with the flag on', async () => {
+        await showList([mod('M1', { name: 'One', lowLevelAccess: true })])
+        h.convert.mockImplementation((m: RisuModule) => ({ ...made(m), lowLevelAccess: m.lowLevelAccess }))
+        const before = db.db.characters.length
+        h.alertConfirm.mockResolvedValue(false)
+        click(menuItem(rowParts()[0], 'studio-module-list-convert'))
+        await settle()
+        expect(h.alertConfirm).toHaveBeenCalledTimes(1)
+        expect(h.alertConfirm).toHaveBeenCalledWith('studioModuleListConvertLowLevel(One)')
+        expect(h.convert).not.toHaveBeenCalled()
+        expect(db.db.characters).toHaveLength(before)
+        expect(status()).toBe('')
+        h.alertConfirm.mockResolvedValue(true)
+        click(menuItem(rowParts()[0], 'studio-module-list-convert'))
+        await settle()
+        expect(h.alertConfirm).toHaveBeenCalledTimes(2)
+        expect(h.convert).toHaveBeenCalledTimes(1)
+        expect(db.db.characters).toHaveLength(before + 1)
+        expect((db.db.characters[before] as unknown as { lowLevelAccess?: boolean }).lowLevelAccess).toBe(true)
+        expect(status()).toBe('successfullyConverted')
+    })
 })
 
 describe('T9-IMPORT: the toolbar starts the existing imports', () => {

@@ -9,7 +9,7 @@
     import { lowLevelAskName } from '../../ts/studio/edit/riskyText'
     import { refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { registerStudioField } from '../../ts/studio/fieldFlush'
-import { FIELD_PRESENTATION, type SetPath } from '../../ts/studio/history/fieldRegistry'
+    import { FIELD_PRESENTATION, type SetPath } from '../../ts/studio/history/fieldRegistry'
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { moduleOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginModuleAck, beginOwnerVisit, endModuleAck, ensureStudioHistory, getStudioHistoryService } from '../../ts/studio/history/studioHistoryService.svelte'
