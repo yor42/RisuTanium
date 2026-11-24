@@ -2,7 +2,8 @@
 // The chat sidebar's elements that carried no part now carry literal chat parts, so a chat pack can name each one as the last
 // compound of a selector (sidebar.css itself stays a skipped sheet). Every new name is a CHAT_PARTS member, takes the default
 // reach tier of its sidebar neighbours (everything off the tier's allowlist is refused, for example display:none, positioning,
-// opacity:0, visibility:hidden and font-size:0; recolour and respace are accepted),
+// opacity:0 and visibility:hidden; font-size:0 is refused by the font-size value check, MC-1549/1555, and 4px installs with a
+// note; recolour and respace are accepted; the cases below assert display:none and positioning),
 // and is disjoint from the other areas. The ?raw scans below only inventory the sources; that each part sits on the intended
 // element is proved by the rendered tests ShellSidebar.parts.svelte.test.ts and SidebarMoreMenu.parts.svelte.test.ts.
 import { describe, expect, it } from 'vitest'

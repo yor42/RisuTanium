@@ -228,7 +228,7 @@ describe('LoadoutModal overlay parts', () => {
         expect(spies.saveCurrentLoadout).toHaveBeenCalledWith('L1')
     })
 
-    test('guard: the section elements, the nested meta spans and the sibling cards carry no part', () => {
+    test('guard: the section elements and the nested meta spans carry no part', () => {
         const root = mountModal()
         const heading = spanWithText(root, L.recentlyUsed).parentElement as HTMLElement
         expect(partOf(heading.parentElement)).toBeNull()
