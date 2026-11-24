@@ -646,8 +646,8 @@ describe('T9-CONVERT: the row menu makes a character through the shared helper',
         expect(status()).toBe('')
     })
 
-    // Regression reproducer: a page that converts without the shared helper never asks, so a Low Level Access module
-    // silently became a character with the flag on.
+    // Guard (passes on the code as built; fails only when the page converts without the shared helper): the ask is
+    // asked once, on the acquired module, before any character is made.
     test('a module with Low Level Access asks first: Cancel makes no character, confirming pushes it with the flag on', async () => {
         await showList([mod('M1', { name: 'One', lowLevelAccess: true })])
         h.convert.mockImplementation((m: RisuModule) => ({ ...made(m), lowLevelAccess: m.lowLevelAccess }))

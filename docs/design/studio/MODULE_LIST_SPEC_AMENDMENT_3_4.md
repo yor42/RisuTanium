@@ -7,6 +7,7 @@ STATUS: AS BUILT (PR 750). The reviewed plan text below is unchanged; this note 
 - The S5 form's deferred flush has no reachable landing path today: every unmount of that form is preceded by a registered flush or ends in a refusal. Its step close is the live part. A mutant that removes the deferred flush is therefore expected to survive.
 - In a release build `console.*` calls are stripped (`vite.config.ts`), so the deferred closures' error logging exists in dev and tests only.
 - Known limitations: the Y5 stale toggle carry record, and a plugin full-list write that keeps the id and changes content, stay as listed under "Not covered".
+- T9-GONE-DELETE-NAME (a held name composition at an outside `splice` removal) is the only test that kills the S5 half mutant (a synchronous name flush in `onDestroy`); T9-GONE-REPLACE now also holds a name composition but does not kill it, because a replace is refused even from a teardown.
 - The preset list field and four other Studio forms write from `onDestroy` without a registered flush; this is pre-existing and filed as #752.
 
 # #709 spec amendment, revision 3 (final text): section 3.4 (a module deleted or replaced while a Studio form is open)
@@ -257,7 +258,7 @@ Owner: the L1 Opus coder (changed contract 2), with a grant for the three compon
 - **Same class, outside #709: the preset list field.** `StudioPresetListField.svelte:98-101` flushes its gates in `onDestroy` and is not registered. An outside preset removal could write against the old `botPresets` list. Not traced to a write. Lane A may want a ticket.
 - **Non-module forms with an `onDestroy` write** were not surveyed. The reviewer's survey covered only the module owners (4 files). A `code-searcher` pass over `onDestroy` bodies under `src/lib/Studio/**` that call a service write, a gate flush or a port write would close this.
 - **Option D (drop at unmount) for the toggle components** would be simpler but changes R-C9. It is the maintainer's call only if Gate 2 finds the deferred path too costly.
-- **Spec placement.** The orchestrator copies this text into `docs/design/studio/MODULE_LIST_SPEC.md` (sections 3.4, 3.5, 6, 8, 9 and 11) and records the amendment (a section 10e entry or a build-amendment note).
+- **Spec placement.** Settled: the text was not copied into the spec. The spec's pointer note ("where the two differ, the amendment wins") replaces the copy, and this file stays the as-built plan.
 
 ## Artifacts
 

@@ -16,14 +16,15 @@
 
 - T9-NAME-LEAVE and T9-NAME-CLOSE: compatibility guards (pass before and after); they kill the mutant "`nameGate.flush()` removed from the registered closure".
 - T9-NAME-HIDE: a regression reproducer (fails on the pre-fix form, which was not registered with the page-hide flush).
-- T9-GONE-DELETE-NAME: a regression reproducer (a held name composition at an outside `splice` removal; red on the base form). It kills the S5 half mutant (synchronous name flush in `onDestroy`), which survived 59 of 59 tests before it.
+- T9-GONE-DELETE-NAME: a regression reproducer (a held name composition at an outside `splice` removal; red on the base form). It is the only test that kills the S5 half mutant (synchronous name flush in `onDestroy`): lane A's re-run found exactly one failure in 324 files and 6788 tests (the coder's own run: the four touched suites, 59 tests, all passed before the test was added).
+- Sweep scope, stated as it was: the S5 halves (name and namespace registration; synchronous name flush in `onDestroy`) were executed in this round. The toggle-text and toggle-editor halves rest on the earlier L1b mutant receipts, and the classic-page against Studio-page pairs were checked by test name only (two gaps are listed under Known limitations).
 - T9-GONE-REPLACE now also holds a name composition. It does not kill the half mutant (a replace is refused even from a teardown); T9-GONE-DELETE-NAME does.
 - The Studio page test for the low-level ask is a mutation-killing guard (the page already called the helper), not a reproducer.
 
 ## Disposition of what the spec and gates ask
 
 - **Device rows (spec section 8; MC-4123, run before merge):** PENDING at this push. Rows: DV-709-1 create and open a module; DV-709-2 `.risum` import through the Android picker; DV-709-3 CharX export (save dialog and task card over Studio); DV-709-4 `internal:dice` MCP import; DV-709-5 delete; DV-709-6 replace-import with a module form open (needs a setup that really holds uncommitted text; see the advisor's row-6 notes). Results are added to this file before merge.
-- **Section 12 asks:** MC-3896 applied to modules: confirmed by the maintainer (MC-4122). Grilling (MC-778): the four product questions and the F2 residual were asked and answered (MC-4120); no separate grilling pass was run; lane A accepts or says otherwise. Shared-id fixture producer: none exists; the tests use hand-built pairs, and the MCP fixture in the page and helper tests is hand-built too (T9-MCP-STORE pins the real stored shape).
+- **Section 12 asks:** MC-3896 applied to modules: confirmed by the maintainer (MC-4122). Grilling (MC-778): the four product questions and the F2 residual were asked and answered (MC-4120); no separate grilling pass was run; accepted by lane A, 2026-11-24. Shared-id fixture producer: none exists; the tests use hand-built pairs. The MCP fixture is hand-built too, which deviates from spec section 8: a producer exists (`importMCPModule` with `getMCPMeta` mocked) and the build did not use it in the page and helper tests (T9-MCP-STORE does pin the real stored shape).
 - **MC-4121 deviation:** it named Opus coders for L1 and L3; all coders were `sonnet-coder` because the controller routes code edits to Sonnet only. The Opus Gate 2 covers the contracts.
 - **T9-EXPORT-COMPAT** (`.risum` byte equality, Studio vs classic) was not built: both surfaces call the same `exportModuleRow` over unchanged exporters.
 
@@ -44,4 +45,4 @@
 - #753: the `ModuleChatMenu` (per-chat module choice) Studio counterpart.
 - #754: an import from Studio opens Settings without closing Studio.
 
-- MC IDs MC-4124..4129 are unused. Gate and coder reports live in session scratch; the decisions above are the durable record.
+- MC IDs MC-4125..4129 are unused. Gate and coder reports live in session scratch; the decisions above are the durable record.
