@@ -1,0 +1,156 @@
+{
+  "blank": {
+    "globalLore": [
+      {
+        "key": "",
+        "comment": "New Lore 1",
+        "content": "",
+        "mode": "normal",
+        "insertorder": 100,
+        "alwaysActive": false,
+        "secondkey": "",
+        "selective": false
+      },
+      {
+        "key": "folder:00000000-0000-4000-8000-000000000003",
+        "comment": "New Folder",
+        "content": "",
+        "mode": "folder",
+        "insertorder": 100,
+        "alwaysActive": false,
+        "secondkey": "",
+        "selective": false
+      }
+    ],
+    "localLore": [
+      {
+        "key": "",
+        "comment": "New Lore 1",
+        "content": "",
+        "mode": "normal",
+        "insertorder": 100,
+        "alwaysActive": false,
+        "secondkey": "",
+        "selective": false
+      },
+      {
+        "key": "folder:00000000-0000-4000-8000-000000000004",
+        "comment": "New Folder",
+        "content": "",
+        "mode": "folder",
+        "insertorder": 100,
+        "alwaysActive": false,
+        "secondkey": "",
+        "selective": false
+      }
+    ]
+  },
+  "mixedRows": {
+    "globalLore": [
+      {
+        "key": "a",
+        "comment": "A",
+        "content": "alpha",
+        "mode": "normal",
+        "insertorder": 100,
+        "alwaysActive": false,
+        "secondkey": "",
+        "selective": false,
+        "id": "id-a"
+      },
+      null,
+      "x",
+      5,
+      [],
+      {
+        "key": "b",
+        "comment": "B",
+        "content": "beta",
+        "mode": "normal",
+        "insertorder": 90,
+        "alwaysActive": true,
+        "secondkey": "",
+        "selective": false,
+        "extentions": {
+          "risu_case_sensitive": true
+        }
+      }
+    ]
+  },
+  "twins": {
+    "globalLore": [
+      {
+        "key": "twin",
+        "comment": "Twin",
+        "content": "same",
+        "mode": "normal",
+        "insertorder": 100,
+        "alwaysActive": false,
+        "secondkey": "",
+        "selective": false
+      },
+      {
+        "key": "twin",
+        "comment": "Twin",
+        "content": "same",
+        "mode": "normal",
+        "insertorder": 100,
+        "alwaysActive": false,
+        "secondkey": "",
+        "selective": false
+      }
+    ],
+    "localLore": [
+      {
+        "key": "twin",
+        "comment": "Twin",
+        "content": "same",
+        "mode": "normal",
+        "insertorder": 100,
+        "alwaysActive": false,
+        "secondkey": "",
+        "selective": false
+      }
+    ]
+  },
+  "folderWithId": {
+    "globalLore": [
+      {
+        "key": "folder:from-file",
+        "comment": "Imported folder",
+        "content": "",
+        "mode": "folder",
+        "insertorder": 100,
+        "alwaysActive": false,
+        "secondkey": "",
+        "selective": false,
+        "id": "folder-id"
+      },
+      {
+        "key": "a",
+        "comment": "A",
+        "content": "alpha",
+        "mode": "normal",
+        "insertorder": 100,
+        "alwaysActive": false,
+        "secondkey": "",
+        "selective": false,
+        "id": "id-a"
+      }
+    ]
+  },
+  "wrongKinds": {
+    "globalLore": [
+      {
+        "key": "w",
+        "comment": "Wrong kinds",
+        "content": null,
+        "mode": "normal",
+        "insertorder": "100",
+        "alwaysActive": "true",
+        "secondkey": "",
+        "selective": false
+      }
+    ]
+  }
+}

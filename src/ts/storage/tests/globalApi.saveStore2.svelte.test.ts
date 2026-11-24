@@ -804,6 +804,18 @@ describe('guard: dependency closure through the real loop, each field changes th
         expect(written).toEqual(expected)
     })
 
+    test('a chat lore entry written through the Studio chat writer saves the chat core unit', async () => {
+        const page = await startPage(small())
+        // The setters are loaded inside the page's module graph, so they write the page's reactive database.
+        const { applyChatWrites } = await import('src/ts/studio/edit/studioSetters')
+        const chat = (characters(page.db)[0].chats as Entry[])[0]
+        const written = await commitAfter(page, () => {
+            applyChatWrites(chat as never, [{ op: 'objInsert', list: 'lore', index: 0, entry: { id: 'lore-1', key: 'k', comment: 'c', content: 'chat lore', mode: 'normal', insertorder: 100, alwaysActive: false, selective: false } }])
+            page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)
+        })
+        expect(written).toEqual(['chatCore', 'manifest', 'shard'])
+        expect(JSON.stringify(chat.localLore)).toContain('chat lore')
+    })
     test('a stub\'s trashTime writes its shard and the manifest and encodes no character', async () => {
         const db = small()
         const live = JSON.parse(JSON.stringify(db)) as Database

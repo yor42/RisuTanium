@@ -12,6 +12,29 @@ import { sameJsonValue, toPlainJson } from '../../storage/store2/codec/normalize
 import { cloneValue, factsOf, isHeldBy, registryPaths, typeofKind, valueMatchesKind, valuesEqual } from './fieldAccess'
 import { FIELD_SPECS, type BiasRow, type SetPath } from './fieldRegistry'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
+import {
+    invertObjOp,
+    isObjFamilyOp,
+    isObjListName,
+    journalListOf,
+    lineOpsOf,
+    listingEffectOf,
+    mergeObjEffects,
+    parseObjItem,
+    parseObjLabel,
+    parseObjOp,
+    planObjStep,
+    type ObjDeletedItem,
+    type ObjEffect,
+    type ObjFailure,
+    type ObjFamilyOp,
+    type ObjJournalEntry,
+    type ObjLabel,
+    type ObjWrite,
+    type PropLabel,
+    type PropValue,
+} from './objectListOps'
+import { OBJ_LIST_ASSET_PREFIX, OBJ_LIST_FIELDS, OBJ_LIST_HOLDERS, OBJ_PROPS, type ObjListName, type PropName } from './objectLists'
 import { parseStoredOwnerKey, type OwnerKey, type ParsedOwnerKey, type StoredOwnerKey } from './ownerPhase'
 import { SESSION_OWNER_KINDS, type SessionOwnerKind, type SessionOwnerKindSpec } from './sessionKinds'
 
@@ -74,6 +97,47 @@ export const RESTORE_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly Restor
     chat: SET_PATHS_BY_KIND.chat,
     module: SET_PATHS_BY_KIND.module,
 }
+// The owner kinds that hold each object list and each object-family property. A stored kind holds a list when its
+// `OBJ_LIST_HOLDERS` row names a property; a session kind holds the lists its table entry names. `parseOp`,
+// `parseLabel`, `parseDeleted` and `isOpAllowedFor` all decide kind acceptance from these two tables.
+function objHolderKinds(): Record<string, readonly string[]> {
+    const table: Record<string, string[]> = {}
+    for (const list of Object.keys(OBJ_LIST_FIELDS)) {
+        const row: Partial<Record<string, string>> = OBJ_LIST_HOLDERS[list as ObjListName]
+        table[list] = (['character', 'chat', 'module'] as const).filter((kind) => row[kind] !== undefined)
+    }
+    for (const [kind, spec] of Object.entries<SessionOwnerKindSpec>(SESSION_OWNER_KINDS)) {
+        for (const list of spec.objLists ?? []) {
+            if (!Object.hasOwn(table, list)) {
+                throw new Error(`The session kind ${kind} names the unknown object list ${list}.`)
+            }
+            table[list].push(kind)
+        }
+    }
+    return table
+}
+const OBJ_HOLDER_KINDS: Record<string, readonly string[]> = objHolderKinds()
+const PROP_HOLDER_KINDS: Record<string, readonly string[]> = Object.fromEntries(
+    Object.entries<{ readonly holders: readonly string[] }>(OBJ_PROPS).map(([prop, row]) => [prop, row.holders]),
+)
+
+export function holdsObjList(kind: OwnerKind, list: ObjListName): boolean {
+    return Object.hasOwn(OBJ_HOLDER_KINDS, list) && OBJ_HOLDER_KINDS[list].includes(kind)
+}
+
+export function holdsObjProp(kind: OwnerKind, prop: PropName): boolean {
+    return Object.hasOwn(PROP_HOLDER_KINDS, prop) && PROP_HOLDER_KINDS[prop].includes(kind)
+}
+
+// Whether an owner of this kind may hold the deleted item: it holds the item's list.
+export function objItemAllowedFor(kind: OwnerKind, item: ObjDeletedItem): boolean {
+    return holdsObjList(kind, item.list)
+}
+
+function objLabelAllowedFor(kind: OwnerKind, label: ObjLabel | PropLabel): boolean {
+    return label.kind === 'obj' ? holdsObjList(kind, label.list) : holdsObjProp(kind, label.prop)
+}
+
 export const CHARACTER_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.character
 export const CHAT_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.chat
 export const RESTORE_PATH_ORDER: readonly RestorePath[] = [...REGISTRY_PATHS, LIST_PATH]
@@ -162,6 +226,8 @@ export type StepLabel =
     | { kind: 'assetAdd'; count: number }
     | { kind: 'folderCreate'; name: string }
     | { kind: 'folderReorder' }
+    | ObjLabel
+    | PropLabel
 
 // Asset ops carry fresh plain copies of their rows and lists, never a live array or proxy. `count` is the
 // number of tuples element-wise equal to `tuple` in the array before the op. They carry no deleted-item id:
@@ -187,6 +253,7 @@ export type Op =
     | { op: 'chatFm'; chatId: string | null; before: FmValue; after: FmValue }
     | AssetOp
     | TextEditOp
+    | ObjFamilyOp
 
 // Fingerprints of the whole greeting list on the two sides of the step's list ops: `before` is the
 // list its forward ops start from, `after` the list they produce.
@@ -204,12 +271,19 @@ export interface Step {
     listFingerprint?: ListFingerprint
 }
 
-export interface DeletedItem {
+export interface GreetingDeletedItem {
     id: string
     at: number
     index: number
     value: string
     sideChat: { chatId: string; before: FmValue } | null
+}
+
+// A greeting item holds one removed greeting; an obj item holds the rows one delete removed from an object list.
+export type DeletedItem = GreetingDeletedItem | ObjDeletedItem
+
+export function isObjItem(item: DeletedItem): item is ObjDeletedItem {
+    return 'entries' in item
 }
 
 export type RestoreValue = FieldValue | { list: string[] }
@@ -316,7 +390,8 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): b
     return Object.keys(value).every((key) => keys.includes(key))
 }
 
-function parseLabel(value: unknown): StepLabel | null {
+// Exported for the service: Rule K runs the owner's own label parse on a label before it lands.
+export function parseLabel(value: unknown, kind: OwnerKind): StepLabel | null {
     if (!isObject(value)) {
         return null
     }
@@ -364,6 +439,12 @@ function parseLabel(value: unknown): StepLabel | null {
             return hasOnlyKeys(value, ['kind', 'name']) && typeof value.name === 'string' ? { kind: 'folderCreate', name: value.name } : null
         case 'folderReorder':
             return hasOnlyKeys(value, ['kind']) ? { kind: 'folderReorder' } : null
+        case 'obj':
+        case 'prop': {
+            // The label's list or property must be one the owner kind holds, as for its ops.
+            const label = parseObjLabel(value)
+            return label !== null && objLabelAllowedFor(kind, label) ? label : null
+        }
         default:
             return null
     }
@@ -388,6 +469,12 @@ export function isOpAllowedFor(kind: OwnerKind, op: Op): boolean {
         case 'assetFolderOrder':
         case 'textEdit':
             return kind === 'character' || kind === 'module'
+        case 'objInsert':
+        case 'objRemove':
+        case 'objSet':
+            return holdsObjList(kind, op.list)
+        case 'propSet':
+            return holdsObjProp(kind, op.prop)
     }
 }
 
@@ -489,6 +576,9 @@ function parseOpShape(value: unknown): Op | null {
     if (asset !== undefined) {
         return asset
     }
+    if (typeof value.op === 'string' && isObjFamilyOp({ op: value.op })) {
+        return parseObjOp(value)
+    }
     switch (value.op) {
         case 'listSet':
             return isIndex(value.index) && typeof value.before === 'string' && typeof value.after === 'string'
@@ -535,7 +625,7 @@ function parseStep(value: unknown, kind: OwnerKind): Step | null {
     if (!isObject(value) || typeof value.id !== 'string' || !isFiniteNumber(value.at) || !Array.isArray(value.ops)) {
         return null
     }
-    const label = parseLabel(value.label)
+    const label = parseLabel(value.label, kind)
     if (!label) {
         return null
     }
@@ -567,7 +657,15 @@ function parseListFingerprint(value: unknown): ListFingerprint | null {
     return { before: value.before, after: value.after }
 }
 
-function parseDeleted(value: unknown): DeletedItem | null {
+function parseDeleted(value: unknown, kind: OwnerKind): DeletedItem | null {
+    // An item with an `entries` key is an obj item and nothing else; a greeting item is character-only.
+    if (isObject(value) && Object.hasOwn(value, 'entries')) {
+        const item = parseObjItem(value)
+        return item !== null && objItemAllowedFor(kind, item) ? item : null
+    }
+    if (kind !== 'character') {
+        return null
+    }
     if (
         !isObject(value) ||
         typeof value.id !== 'string' ||
@@ -664,8 +762,8 @@ export function parseOwnerRecord(value: unknown, ownerKey: StoredOwnerKey): Owne
         undone.push(step)
     }
     for (const raw of value.deleted) {
-        const item = parseDeleted(raw)
-        if (!item || kind !== 'character') {
+        const item = parseDeleted(raw, kind)
+        if (!item) {
             return null
         }
         deleted.push(item)
@@ -697,6 +795,11 @@ export interface LiveReader {
     // The text at a registry path, or null for anything not rewritable at read time. The three text fields
     // (`desc`, `firstMessage`, `exampleMessage`) are read through `field`, so this serves every other text path.
     text?(target: string): string | null
+    // The owner's rows of one object list, or null when it cannot be read; an absent list reads empty. Absent on a
+    // reader that serves no object list, which then cannot apply or recognise an obj op.
+    objList?(list: ObjListName): readonly unknown[] | null
+    // The owner's object-family property, or null when it cannot be read.
+    prop?(prop: PropName): PropValue | null
 }
 
 export type WriteOp =
@@ -709,6 +812,7 @@ export type WriteOp =
     // `set`, an alternate first message entry a `listSet`, every other registry text a `textSet`. Never stored or posted.
     | AssetOp
     | { op: 'textSet'; target: string; value: string }
+    | ObjWrite
 
 export interface RestoreWrite {
     path: RestorePath
@@ -769,11 +873,25 @@ export interface StepPlan {
     // path), unique and in the step's own order. Absent when none. In memory only, never stored or posted; it changes no
     // verdict and no branch of the replay.
     notRestored?: string[]
+    // The deleted items an object-list plan lists and consumes, net of the plan. In memory only, never stored or posted.
+    objEffect?: ObjEffect
+    // The obj-family ops as applied, in application order, for the visit journal. In memory only.
+    objExecuted?: ObjFamilyOp[]
+    // Restore point only: the lists whose line applied and the lists whose line was refused. In memory only.
+    linesApplied?: ObjListName[]
+    linesRefused?: ObjListName[]
+}
+
+// Which object-list rule refused a plan: `changed` (a row moved or was edited elsewhere), `idTaken` (a restore would
+// add an identity holder that now exists) or `mixed` (a revert range mixes object ops with text edits of the list).
+export interface ObjRefusal {
+    list: ObjListName
+    kind: 'changed' | 'idTaken' | 'mixed'
 }
 
 export type PlanResult =
     | StepPlan
-    | { ok: false; reason: Exclude<ModelRefusal, 'unchanged'>; listReason?: ListSkipReason }
+    | { ok: false; reason: Exclude<ModelRefusal, 'unchanged'>; listReason?: ListSkipReason; obj?: ObjRefusal; linesRefused?: ObjListName[] }
     | { ok: false; reason: 'unchanged'; listSkipped?: number; listReason?: ListSkipReason; pairSkipped?: number; fmNotRestored?: boolean; goneRows?: string[] }
 
 interface Working {
@@ -873,6 +991,11 @@ export function invertOp(op: Op): Op {
             return fromFolderOp(invertFolderOp(toFolderOp(op)))
         case 'textEdit':
             return { op: 'textEdit', target: op.target, offset: op.offset, from: op.to, to: op.from }
+        case 'objInsert':
+        case 'objRemove':
+        case 'objSet':
+        case 'propSet':
+            return invertObjOp(op)
     }
 }
 
@@ -1191,6 +1314,12 @@ function applyForward(op: Op, working: Working): ApplyOutcome {
             storeText(op.target, next, working)
             return { kind: 'applied', write: textWriteFor(op.target, next) }
         }
+        case 'objInsert':
+        case 'objRemove':
+        case 'objSet':
+        case 'propSet':
+            // Obj-family ops are planned whole by `planObjStep` and never enter the per-op loops.
+            return { kind: 'failed' }
     }
 }
 
@@ -1231,6 +1360,12 @@ function holdsResultOf(op: Op, working: Working): boolean {
             const text = textOf(op.target, working)
             return text !== null && spanHoldsAt(text, op.offset, op.to, op.target)
         }
+        case 'objInsert':
+        case 'objRemove':
+        case 'objSet':
+        case 'propSet':
+            // Obj-family ops never enter the per-op loops (see `applyForward`).
+            return false
     }
 }
 
@@ -1334,6 +1469,32 @@ function touchesGreetingList(op: Op): boolean {
 
 function hasInsertOrRemove(ops: readonly Op[]): boolean {
     return ops.some((op) => op.op === 'listInsert' || op.op === 'listRemove')
+}
+
+// The refusal an object-list plan names: the list of the op that failed (a property op names its journal list). A
+// count failure on a restore is the only `idTaken`; the caller says so.
+// Exported for the service, which reports an obj plan refusal the same way the model does.
+export function objRefusalOf(failure: ObjFailure, forward: readonly ObjFamilyOp[], kind: ObjRefusal['kind'] = 'changed'): ObjRefusal {
+    const list = failure.kind === 'count' ? failure.list : failure.kind === 'changed' && failure.list !== null ? failure.list : journalListOf(forward[failure.at])
+    return { list, kind }
+}
+
+// The first list whose asset prefix a merge text edit of these steps (newest first) targets. A revert range holding
+// one next to the list's obj ops cannot keep the text and the rows consistent, so it is refused whole.
+function mixedListOf(steps: readonly Step[]): ObjListName | null {
+    for (const step of steps) {
+        for (const op of step.ops) {
+            if (op.op !== 'textEdit') {
+                continue
+            }
+            for (const [list, prefix] of Object.entries<string>(OBJ_LIST_ASSET_PREFIX)) {
+                if (isObjListName(list) && op.target.startsWith(prefix)) {
+                    return list
+                }
+            }
+        }
+    }
+    return null
 }
 
 // ---------------------------------------------------------------- bound-step rule
@@ -1511,6 +1672,61 @@ export function planReplay(
     if (!step) {
         return { ok: false, reason: 'empty' }
     }
+    // The obj-family ops of a step are planned once, all or nothing, before the greeting-list machinery sees the step.
+    // The step's class is decided by its ops, never by its label.
+    const objOps = step.ops.filter(isObjFamilyOp)
+    let objPlanned: { writes: ObjWrite[]; executed: ObjFamilyOp[]; effect: ObjEffect } | null = null
+    if (objOps.length > 0) {
+        const listed = new Set(record.deleted.map((item) => item.id))
+        const forward = direction === 'undo' ? [...objOps].reverse().map(invertObjOp) : objOps
+        const planned = planObjStep(forward, live, listed, true)
+        if (objOps.length === step.ops.length) {
+            if (planned.ok === true) {
+                return {
+                    ok: true,
+                    label: step.label,
+                    ops: step.ops,
+                    writes: planned.writes,
+                    restoreWrites: [],
+                    deletedRemove: [],
+                    skipped: 0,
+                    fmNotRestored: false,
+                    objEffect: planned.effect,
+                    objExecuted: planned.executed,
+                }
+            }
+            // An undo of a delete whose deleted item was consumed (restored from History) has nothing left to undo.
+            if (planned.failure.kind === 'tag' && planned.failure.run === 'insert') {
+                return { ok: true, label: step.label, ops: [], writes: [], restoreWrites: [], deletedRemove: [], skipped: 0, fmNotRestored: false, dropStep: true }
+            }
+            // The step's result may already stand: the opposite plan, with tags off, is its witness.
+            const opposite = direction === 'undo' ? objOps : [...objOps].reverse().map(invertObjOp)
+            if (planObjStep(opposite, live, listed, false).ok) {
+                const effect = listingEffectOf(forward, listed)
+                if (effect !== null) {
+                    return {
+                        ok: true,
+                        label: step.label,
+                        ops: step.ops,
+                        writes: [],
+                        restoreWrites: [],
+                        deletedRemove: [],
+                        skipped: 0,
+                        fmNotRestored: false,
+                        already: direction,
+                        objEffect: effect,
+                    }
+                }
+            }
+            return { ok: false, reason: 'precondition', obj: objRefusalOf(planned.failure, forward) }
+        }
+        // A mixed step: the obj half gates the whole step, with no `already` and no `dropStep`, so an applied obj half
+        // never turns into a moved or dropped step.
+        if (planned.ok === false) {
+            return { ok: false, reason: 'precondition', obj: objRefusalOf(planned.failure, forward) }
+        }
+        objPlanned = planned
+    }
     const working = makeWorking(live)
     const rowsAndText = holdsRowsAndText(step)
     const greetingsBefore = working.list ? [...working.list] : null
@@ -1530,14 +1746,17 @@ export function planReplay(
     if (working.list === null && step.ops.some(touchesGreetingList)) {
         return { ok: false, reason: 'precondition' }
     }
-    const order = direction === 'undo' ? [...step.ops].reverse() : step.ops
+    const stepOrder = direction === 'undo' ? [...step.ops].reverse() : step.ops
+    // A mixed step's obj half is already planned; the loop below sees only the other ops.
+    const order = objPlanned === null ? stepOrder : stepOrder.filter((op) => !isObjFamilyOp(op))
     const applied: Op[] = []
     const executed: Op[] = []
     const writes: WriteOp[] = []
     const deletedRemove: string[] = []
     const kept: Op[] = []
     let skipped = 0
-    let real = 0
+    // The applied obj half counts as real work, so a step with it applied is never `already` or dropped.
+    let real = objPlanned === null ? 0 : objPlanned.executed.length
     let consumed = 0
     let unverifiable = 0
     let failed = 0
@@ -1700,15 +1919,18 @@ export function planReplay(
             notRestored.push(target)
         }
     }
+    const appliedSet = new Set(applied)
     return {
         ok: true,
         label: step.label,
-        ops: applied,
-        writes,
+        // A mixed step keeps its obj ops, in the step's own order, next to the other ops that applied.
+        ops: objPlanned === null ? applied : step.ops.filter((op) => isObjFamilyOp(op) || appliedSet.has(op)),
+        writes: objPlanned === null ? writes : [...objPlanned.writes, ...writes],
         restoreWrites: deriveRestoreWrites(executed, greetingsBefore, textBefore),
         deletedRemove,
         skipped,
         fmNotRestored,
+        ...(objPlanned === null ? {} : { objEffect: objPlanned.effect, objExecuted: objPlanned.executed }),
         ...(notRestored.length > 0 && listsLeftTexts(step) ? { notRestored } : {}),
         ...(goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}),
         ...(hash === undefined ? {} : { liveListHash: hash }),
@@ -1890,6 +2112,22 @@ export function planRevert(
     if (above.length === 0) {
         return { ok: false, reason: 'empty' }
     }
+    // The obj half of every step above is planned once, newest first, all or nothing: the steps' other ops run in the
+    // loop below. A range that also holds a merge text edit under a list's asset prefix is refused whole.
+    const objOrder = above.flatMap((step) => [...step.ops].reverse().filter(isObjFamilyOp).map(invertObjOp))
+    let objPlanned: { writes: ObjWrite[]; executed: ObjFamilyOp[]; effect: ObjEffect } | null = null
+    if (objOrder.length > 0) {
+        const mixed = mixedListOf(above)
+        if (mixed !== null) {
+            return { ok: false, reason: 'precondition', obj: { list: mixed, kind: 'mixed' } }
+        }
+        const planned = planObjStep(objOrder, live, new Set(record.deleted.map((item) => item.id)), true)
+        if (planned.ok === false) {
+            return { ok: false, reason: 'precondition', obj: objRefusalOf(planned.failure, objOrder) }
+        }
+        objPlanned = planned
+    }
+    const objExecuted = objPlanned === null ? [] : objPlanned.executed
     const working = makeWorking(live)
     const greetingsBefore = working.list ? [...working.list] : null
     const ops: Op[] = []
@@ -2002,6 +2240,10 @@ export function planRevert(
             }
         }
         for (const original of [...step.ops].reverse()) {
+            // The obj ops were planned once above.
+            if (isObjFamilyOp(original)) {
+                continue
+            }
             if (side === 'none' && afterStop && touchesGreetingList(original)) {
                 skipped += 1
                 listSkipped += 1
@@ -2095,7 +2337,7 @@ export function planRevert(
     }
     const gone = goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}
     const reason = hashStop !== null && skippedBeforeHashStop === 0 && listSkipped > 0 ? { listReason: hashStop } : {}
-    if (ops.length === 0) {
+    if (ops.length === 0 && objExecuted.length === 0) {
         // Nothing applied: a pair stop with no other failure refuses with its own reason, which wins over the
         // gone-rows note (nothing was changed). A revert whose only failures are re-inserts of gone rows lands
         // nothing but names them; any other failure refuses.
@@ -2143,7 +2385,7 @@ export function planRevert(
         }
     }
     const stored = revertStepOps(ops, greetingsBefore, working.list, consumedValues, producedValues, netZero)
-    if (stored.length === 0) {
+    if (stored.length === 0 && objExecuted.length === 0) {
         return {
             ok: false,
             reason: 'unchanged',
@@ -2157,8 +2399,9 @@ export function planRevert(
     return {
         ok: true,
         label: { kind: 'revert', toStepId },
-        ops: stored,
-        writes,
+        ops: objPlanned === null ? stored : [...stored, ...objExecuted],
+        writes: objPlanned === null ? writes : [...writes, ...objPlanned.writes],
+        ...(objPlanned === null ? {} : { objEffect: objPlanned.effect, objExecuted }),
         restoreWrites: deriveRestoreWrites(ops, greetingsBefore),
         deletedRemove: consumedNet,
         ...gone,
@@ -2448,6 +2691,81 @@ export function planRestorePoint(restore: RestorePoint | null, live: LiveReader,
     }
 }
 
+// One list's visit journal as the restore line sees it: entries oldest first.
+export interface RestoreLine {
+    list: ObjListName
+    entries: readonly ObjJournalEntry[]
+}
+
+// A restore point plus the visit's object-list lines. The field half is `planRestorePoint`; each line reverts one
+// list's journal, newest entry first, as one all-or-nothing plan against the listing the earlier lines left. A refused
+// line is named in `linesRefused` and the others proceed. With no field op and no applied line the restore is refused.
+export function planRestoreWithLines(
+    restore: RestorePoint | null,
+    live: LiveReader,
+    keep: ReadonlySet<RestorePath>,
+    lines: readonly RestoreLine[],
+    listed: ReadonlySet<string>,
+): RestorePlanResult {
+    const fieldPlan = planRestorePoint(restore, live, keep)
+    if (fieldPlan.ok === false && fieldPlan.reason === 'empty') {
+        return fieldPlan
+    }
+    const linesApplied: ObjListName[] = []
+    const linesRefused: ObjListName[] = []
+    const lineOps: ObjFamilyOp[] = []
+    const lineWrites: ObjWrite[] = []
+    let effect: ObjEffect = { list: [], consume: [] }
+    const listing = new Set(listed)
+    for (const line of lines) {
+        const ops = lineOpsOf(line.entries)
+        if (ops.length === 0) {
+            continue
+        }
+        const planned = planObjStep(ops, live, listing, true)
+        if (planned.ok === false) {
+            linesRefused.push(line.list)
+            continue
+        }
+        linesApplied.push(line.list)
+        lineOps.push(...planned.executed)
+        lineWrites.push(...planned.writes)
+        effect = mergeObjEffects(effect, planned.effect)
+        for (const item of planned.effect.list) {
+            listing.add(item.id)
+        }
+        for (const id of planned.effect.consume) {
+            listing.delete(id)
+        }
+    }
+    if (fieldPlan.ok === false && linesApplied.length === 0) {
+        return { ok: false, reason: 'precondition', ...(linesRefused.length > 0 ? { linesRefused } : {}) }
+    }
+    const base: RestorePlan = fieldPlan.ok === true
+        ? fieldPlan
+        : {
+              ok: true,
+              label: { kind: 'restorePoint' },
+              ops: [],
+              writes: [],
+              restoreWrites: [],
+              deletedRemove: [],
+              skipped: 0,
+              fmNotRestored: false,
+              changedElsewhere: restore ? listChangedElsewhere(restore, live) : [],
+          }
+    if (linesApplied.length === 0 && linesRefused.length === 0) {
+        return base
+    }
+    return {
+        ...base,
+        ops: [...base.ops, ...lineOps],
+        writes: [...base.writes, ...lineWrites],
+        ...(linesApplied.length > 0 ? { objEffect: effect, objExecuted: lineOps, linesApplied } : {}),
+        ...(linesRefused.length > 0 ? { linesRefused } : {}),
+    }
+}
+
 // The stored first-message index of the chat that shows an alternative after the entry at `d` is removed: main stays
 // main, a removal after the shown entry leaves it, the shown entry itself sends the chat to main, an earlier removal
 // moves it down one. `e` is the effective index (-1 for the default first message).
@@ -2477,6 +2795,38 @@ export function planRestoreDeleted(record: OwnerRecord, deletedId: string, live:
     const greetings = live.greetings()
     if (!item) {
         return { ok: false, reason: 'unknown' }
+    }
+    // An obj item reinserts its rows through the obj planner, before the greeting list is read: a chat or module owner
+    // has no greeting list. Each row goes back at its old index, clamped to the list as the earlier inserts left it.
+    if (isObjItem(item)) {
+        const rows = live.objList?.(item.list) ?? null
+        if (rows === null) {
+            return { ok: false, reason: 'precondition', obj: { list: item.list, kind: 'changed' } }
+        }
+        const ops: ObjFamilyOp[] = item.entries.map((entry, k) => ({
+            op: 'objInsert',
+            list: item.list,
+            index: Math.min(entry.index, rows.length + k),
+            entry: entry.entry,
+            counts: entry.counts,
+            deletedId: item.id,
+        }))
+        const planned = planObjStep(ops, live, new Set(record.deleted.map((listedItem) => listedItem.id)), true)
+        if (planned.ok === false) {
+            return { ok: false, reason: 'precondition', obj: objRefusalOf(planned.failure, ops, planned.failure.kind === 'count' ? 'idTaken' : 'changed') }
+        }
+        return {
+            ok: true,
+            label: { kind: 'restoreDeleted', deletedId },
+            ops,
+            writes: planned.writes,
+            restoreWrites: [],
+            deletedRemove: [],
+            skipped: 0,
+            fmNotRestored: false,
+            objEffect: planned.effect,
+            objExecuted: planned.executed,
+        }
     }
     if (greetings === null) {
         return { ok: false, reason: 'precondition' }
@@ -2558,9 +2908,15 @@ export function noteRestoreWrites(
     at: number,
     writes: readonly RestoreWrite[],
     replaces: boolean,
+    // An object-list edit creates or replaces the point even when it has no field write: its lines live in the service's
+    // journal, and the point only marks the visit. A point of this visit is returned as is, so the store reuses it.
+    objEdit = false,
 ): RestorePoint | null {
     if (writes.length === 0) {
-        return restore
+        if (!objEdit) {
+            return restore
+        }
+        return restore !== null && restore.visitId === visitId ? restore : { visitId, at, fields: {} }
     }
     const sameVisit = restore !== null && restore.visitId === visitId
     let base: RestorePoint | null
@@ -2568,7 +2924,7 @@ export function noteRestoreWrites(
     if (sameVisit) {
         base = restore
         addUnknown = true
-    } else if (replaces) {
+    } else if (replaces || objEdit) {
         base = { visitId, at, fields: {} }
         addUnknown = true
     } else {
@@ -2667,6 +3023,8 @@ export interface StepCommit {
     // reuses them instead of hashing the restore write's lists again.
     liveListHash?: number
     afterListHash?: number
+    // The object-list plan's net effect on the deleted items (list and consume), applied by the commit.
+    objEffect?: ObjEffect
 }
 
 function mergeCoalesced(top: Step, next: Op[]): Op[] | null {
@@ -2681,13 +3039,49 @@ function mergeCoalesced(top: Step, next: Op[]): Op[] | null {
     if (a.op === 'listSet' && b.op === 'listSet' && a.index === b.index) {
         return [{ op: 'listSet', index: a.index, before: a.before, after: b.after }]
     }
+    // A merged obj op is a new object: the store reuses an unchanged step by identity, and a commit shares its ops.
+    if (a.op === 'objSet' && b.op === 'objSet' && a.list === b.list && a.index === b.index && a.field === b.field) {
+        return [
+            {
+                op: 'objSet',
+                list: a.list,
+                index: a.index,
+                field: a.field,
+                before: a.before,
+                after: b.after,
+                anchorBefore: a.anchorBefore,
+                anchorAfter: b.anchorAfter,
+            },
+        ]
+    }
+    if (a.op === 'propSet' && b.op === 'propSet' && a.prop === b.prop) {
+        return [{ op: 'propSet', prop: a.prop, before: a.before, after: b.after }]
+    }
     return null
+}
+
+// The deleted items after an object-list plan: the consumed ids leave, then every listed item not already listed
+// joins, stamped with the time of the move. The cap drops the oldest.
+function applyObjEffect(deleted: DeletedItem[], effect: ObjEffect | undefined, at: number): DeletedItem[] {
+    if (effect === undefined || (effect.list.length === 0 && effect.consume.length === 0)) {
+        return deleted
+    }
+    const consumed = new Set(effect.consume)
+    const next = deleted.filter((item) => !consumed.has(item.id))
+    for (const item of effect.list) {
+        if (!next.some((listedItem) => listedItem.id === item.id)) {
+            next.push({ id: item.id, at, list: item.list, entries: item.entries })
+        }
+    }
+    return capped(next, MAX_DELETED)
 }
 
 // Records a landed action as a new step (or extends the open one) and clears the redo stack.
 export function commitStep(state: ModelState, commit: StepCommit, hashFor?: ListElementHash): ModelState {
     const { record } = state
-    const restore = noteRestoreWrites(record.restore, commit.visitId, commit.at, commit.restoreWrites, commit.replacesRestore)
+    // An obj edit makes the point even with no field write (the point only marks the visit).
+    const objEdit = commit.replacesRestore && commit.ops.some(isObjFamilyOp)
+    const restore = noteRestoreWrites(record.restore, commit.visitId, commit.at, commit.restoreWrites, commit.replacesRestore, objEdit)
     const removed = new Set(commit.deletedRemove ?? [])
     const top = record.done[record.done.length - 1]
     if (
@@ -2722,7 +3116,7 @@ export function commitStep(state: ModelState, commit: StepCommit, hashFor?: List
         }
     }
     const kept = record.deleted.filter((item) => !removed.has(item.id))
-    const deleted = capped([...kept, ...producedItems(record, kept, commit.label, commit.ops, commit.at)], MAX_DELETED)
+    const deleted = applyObjEffect(capped([...kept, ...producedItems(record, kept, commit.label, commit.ops, commit.at)], MAX_DELETED), commit.objEffect, commit.at)
     return {
         record: {
             ...record,
@@ -2801,6 +3195,8 @@ export function applyReplayMove(
         deleted = deleted.filter((item) => !consumed.has(item.id))
         deleted = capped([...deleted, ...producedItems(record, deleted, step.label, plan.ops, step.at)], MAX_DELETED)
     }
+    // The obj plan's listing and consuming, also for an `already` move; a dropped step carries none.
+    deleted = applyObjEffect(deleted, plan.objEffect, at)
     const restore = noteRestoreWrites(record.restore, visitId, at, plan.restoreWrites, false)
     if (plan.dropStep) {
         // The step leaves its list and goes nowhere; the deleted bookkeeping above is the move's.

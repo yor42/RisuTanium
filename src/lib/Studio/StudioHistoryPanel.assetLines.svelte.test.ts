@@ -52,7 +52,7 @@ function stepOf(id: string, label: StepLabel): Step {
 }
 
 function viewOf(done: Step[], deleted: OwnerView['deleted'] = []): OwnerView {
-    return { ownerKey: A, phase: 'ready', banner: null, restricted: false, editable: true, persisted: true, done, undone: [], deleted, restore: null }
+    return { ownerKey: A, phase: 'ready', banner: null, restricted: false, editable: true, persisted: true, done, undone: [], deleted, restore: null, restoreLines: [], restoreNotes: [] }
 }
 
 let app: ReturnType<typeof mount> | undefined
@@ -151,6 +151,9 @@ const everyLabel: { [K in StepLabel['kind']]: { labels: StepLabel[], lines: stri
     assetAdd: { labels: [{ kind: 'assetAdd', count: 3 }], lines: ['studioStepAssetAdd(3)'] },
     folderCreate: { labels: [{ kind: 'folderCreate', name: 'New' }], lines: ['studioStepFolderCreate(New)'] },
     folderReorder: { labels: [{ kind: 'folderReorder' }], lines: ['studioStepFolderReorder'] },
+    // Interim line until the lore list UI names these steps.
+    obj: { labels: [{ kind: 'obj', list: 'lore', action: 'edit', name: null, field: 'content' }], lines: ['loreBook'] },
+    prop: { labels: [{ kind: 'prop', prop: 'loreSettings' }], lines: ['loreBook'] },
 }
 
 describe('the line of every kind of step, after a reload', () => {

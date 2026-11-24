@@ -9,6 +9,8 @@ import type { SetPath } from './fieldRegistry'
 export interface SessionOwnerKindSpec {
     // Any registered path; the kind needs no holder membership for them.
     readonly setPaths: readonly SetPath[]
+    // The object lists this session kind holds; the kind's holder row for each derives from it.
+    readonly objLists?: readonly string[]
 }
 
 export const SESSION_OWNER_KINDS = {

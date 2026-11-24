@@ -9,7 +9,7 @@
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
     import { createStudioToasts, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
-    import type { StepLabel } from '../../ts/studio/history/historyModel'
+    import type { DeletedItem, StepLabel } from '../../ts/studio/history/historyModel'
     import type { OwnerHistoryService, ReplayDesc, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { boundCharacterHides } from '../../ts/studio/history/ownerKindRules'
     import { parseOwnerKey, type OwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -222,10 +222,18 @@
             case 'assetAdd': return language.studioStepAssetAdd(label.count)
             case 'folderCreate': return language.studioStepFolderCreate(label.name)
             case 'folderReorder': return language.studioStepFolderReorder
+            // Interim text until the lore list UI names these steps.
+            case 'obj':
+            case 'prop': return language.loreBook
         }
     }
 
     const DELETED_PREVIEW = 80
+
+    // An obj item holds rows of a list, not one text: it shows the list's name.
+    function itemPreview(item: DeletedItem): string {
+        return 'value' in item ? previewOf(item.value) : language.loreBook
+    }
 
     function previewOf(value: string): string {
         return value.length <= DELETED_PREVIEW ? value : `${value.slice(0, DELETED_PREVIEW)}…`
@@ -305,8 +313,8 @@
                     <ul class="flex flex-col gap-1" data-part="studio-history-deleted">
                         {#each [...view.deleted].reverse() as item (item.id)}
                             <li data-part="studio-history-deleted-item" data-deleted-id={item.id} class="flex items-center justify-between gap-2 rounded-md border border-darkborderc px-2 py-1">
-                                <span class="min-w-0 break-words">{previewOf(item.value)}</span>
-                                <button type="button" class={buttonClass} data-part="studio-history-restore-item" aria-label="{language.studioHistoryRestoreItem}: {previewOf(item.value)}" disabled={!view.editable} onclick={() => run((svc, key) => svc.restoreDeleted(key, item.id))}>{language.studioHistoryRestoreItem}</button>
+                                <span class="min-w-0 break-words">{itemPreview(item)}</span>
+                                <button type="button" class={buttonClass} data-part="studio-history-restore-item" aria-label="{language.studioHistoryRestoreItem}: {itemPreview(item)}" disabled={!view.editable} onclick={() => run((svc, key) => svc.restoreDeleted(key, item.id))}>{language.studioHistoryRestoreItem}</button>
                             </li>
                         {/each}
                     </ul>
