@@ -2,10 +2,15 @@
 // accept a module write and the History panel needs to reach the module's steps. A leaf: it imports no store and no service, so a module that
 // imports it reads nothing from the database and no import cycle can form.
 //
-// Only the published id is reactive. The token counter and the check in `clearOpenModuleId` are plain variables, so a
-// publish never reads what it writes.
+// Only the published id and the withdrawn id are reactive. The token counter, the check in `clearOpenModuleId` and the
+// plain copy of the withdrawn id are plain variables, so a publish never reads what it writes: a publish runs inside the
+// detail's effect, and a read of reactive state there would run that effect again.
 
 let published = $state<string | null>(null)
+// The id an import replace took from the published slot. The detail reads it to clear its selection; it is reactive for
+// that read only and never gates a write.
+let withdrawn = $state<string | null>(null)
+let withdrawnNow: string | null = null
 let counter = 0
 let current = 0
 
@@ -22,6 +27,7 @@ export function publishOpenModuleId(id: string | null): number {
     counter += 1
     current = counter
     published = id
+    if (id !== withdrawnNow) clearWithdrawnOpenModuleId()
     return counter
 }
 
@@ -31,8 +37,34 @@ export function clearOpenModuleId(token: number): void {
     published = null
 }
 
+/**
+ * Takes the published slot away from id when id is the published id, and records it as withdrawn. Every module write
+ * is refused `not-selected` from then on, so text a form still holds never lands on the content that replaced the
+ * module. The token is left alone: a teardown's later clear only sets an already-null id to null. Any other id changes
+ * nothing.
+ */
+export function withdrawOpenModuleId(id: string): void {
+    if (published !== id) return
+    published = null
+    withdrawnNow = id
+    withdrawn = id
+}
+
+/** The id a replace withdrew and the detail has not yet handled, or null. */
+export function withdrawnOpenModuleId(): string | null {
+    return withdrawn
+}
+
+/** The detail calls this once it has cleared its selection for the withdrawn id. */
+export function clearWithdrawnOpenModuleId(): void {
+    withdrawnNow = null
+    withdrawn = null
+}
+
 export function resetOpenModuleIdForTests(): void {
     published = null
+    withdrawnNow = null
+    withdrawn = null
     counter = 0
     current = 0
 }

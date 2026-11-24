@@ -107,9 +107,17 @@
         field?.setSelectionRange(caretAt, caretAt)
         return registerStudioField(() => gate.flush())
     })
+    // A teardown reads state as it was before the flush that removed this view, so a write from it can land on the wrong
+    // module slot. The held text is written in a microtask, and the step closes after it.
     onDestroy(() => {
-        gate.flush()
-        port.closeOpenStep()
+        queueMicrotask(() => {
+            try {
+                gate.flush()
+                port.closeOpenStep()
+            } catch (error) {
+                console.error('Studio toggle text flush failed', error)
+            }
+        })
     })
 </script>
 

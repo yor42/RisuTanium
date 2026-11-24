@@ -60,7 +60,7 @@ import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWrite
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
 import { makeCharacter, makeInput, residentModule, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
-import { openStudio, resetStudioScreenForTests } from 'src/ts/studio/studioScreen.svelte'
+import { closeStudio, openStudio, resetStudioScreenForTests } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
 import { resetStudioHistoryAccessorForTests } from '../../ts/studio/history/studioHistoryService.svelte'
@@ -235,13 +235,26 @@ describe('T5-NSCOMMIT: the namespace commits on blur or Enter, and only when the
         expect(tracker.modules).toBe(false)
     })
 
-    test('unmounting flushes a differing draft', async () => {
+    // Compatibility guard (passes before and after): the registered flush writes the held draft when Studio closes.
+    test('closing Studio flushes a differing draft', async () => {
+        const rig = await mountForm(createShaped())
+        typeInto(input('studio-module-namespace'), 'late')
+        expect('namespace' in live()).toBe(false)
+        closeStudio()
+        await unmountAll()
+        expect(live().namespace).toBe('late')
+        expect(rig.service.view(M1).done).toHaveLength(1)
+    })
+
+    // Regression reproducer: a screen that unmounts without a close publishes no module any more, so the draft is dropped.
+    test('unmounting the screen without a close drops a differing draft', async () => {
         const rig = await mountForm(createShaped())
         typeInto(input('studio-module-namespace'), 'late')
         expect('namespace' in live()).toBe(false)
         await unmountAll()
-        expect(live().namespace).toBe('late')
-        expect(rig.service.view(M1).done).toHaveLength(1)
+        await settle()
+        expect('namespace' in live()).toBe(false)
+        expect(rig.service.view(M1).done).toHaveLength(0)
     })
 
     test('a landed change that Module Integration lists shows its note, and the note follows the live value', async () => {

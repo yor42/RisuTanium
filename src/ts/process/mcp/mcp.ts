@@ -535,6 +535,47 @@ export async function callTool(methodName:string, args:any, ctx?:MCPCallContext)
     return await callMCPTool(methodName, args, ctx);
 }
 
+/**
+ * Plain `http://` is for this device only: `localhost`, an IPv4 address in `127.0.0.0/8` and `[::1]`, on any port.
+ * `https:` passes. The scheme and host are read from the parsed URL, never from the text, so a userinfo URL such as
+ * `http://localhost@evil.invalid/` is judged by its real host `evil.invalid`.
+ */
+function admitHttpUrl(url: string): boolean {
+    let parsed: URL
+    try {
+        parsed = new URL(url)
+    } catch {
+        return false
+    }
+    if(parsed.protocol === 'https:'){
+        return true
+    }
+    if(parsed.protocol !== 'http:'){
+        return false
+    }
+    const host = parsed.hostname
+    return host === 'localhost' || host === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+}
+
+/**
+ * The check at the explicit Import MCP prompt. `internal:` and `plugin:` pass. A `stdio:` value that names a program,
+ * or whose body is invalid, passes here and meets its own refusal or consent later; one that carries an inner `url`
+ * must pass the same rule as a top-level URL, because the client connects to that inner URL. It gates this prompt only:
+ * a module that arrives in a file, a plugin write or a restore keeps the run-time rule.
+ */
+export function admitMcpImportUrl(text: string): boolean {
+    if(text.startsWith('internal:') || text.startsWith('plugin:')){
+        return true
+    }
+    if(text.startsWith('stdio:')){
+        const parsed = parseMcpUrl(text)
+        if(parsed.kind === 'stdio-url'){
+            return typeof parsed.url === 'string' && admitHttpUrl(parsed.url)
+        }
+        return true
+    }
+    return admitHttpUrl(text)
+}
 export async function importMCPModule(){
     const x = await alertInput(language.alerts.mcpEnterModuleUrl, [
         ['internal:aiaccess', 'LLM Call Client (internal:aiaccess)'],
@@ -554,14 +595,7 @@ export async function importMCPModule(){
         return
     }
 
-    if(
-        !x.startsWith('http://localhost') &&
-        !x.startsWith('http://127') &&
-        !x.startsWith('https:') &&
-        !x.startsWith('internal:') &&
-        !x.startsWith('stdio:') &&
-        !x.startsWith('plugin:')
-    ){
+    if(!admitMcpImportUrl(x)){
         alertError(language.errors.invalidUrl);
         return;
     }

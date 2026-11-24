@@ -227,7 +227,8 @@ describe('4b roles and roving focus', () => {
         expect(owner?.getAttribute('role')).toBe('treeitem')
         expect(owner?.getAttribute('aria-level')).toBe('1')
         expect(owner?.getAttribute('aria-expanded')).toBe('true')
-        expect(owner?.getAttribute('aria-setsize')).toBe('7')
+        // The seven top rows and the module list entry.
+        expect(owner?.getAttribute('aria-setsize')).toBe('8')
         expect(owner?.getAttribute('aria-posinset')).toBe('1')
         expect(owner?.getAttribute('aria-selected')).toBe('true')
 
@@ -480,6 +481,38 @@ describe('Combined entries', () => {
         show(StudioTree)
         click(row('g:combined'))
         const entry = row('c:regex')!
+        entry.focus()
+        press(entry, 'F10', { shiftKey: true })
+        await settle()
+        expect(document.querySelector('[data-part="studio-row-menu"]')).toBeNull()
+    })
+})
+describe('T9-TREE: the module list entry', () => {
+    test('with no module at all the tree still has the entry, before any module group, and activating it selects the list page', () => {
+        db.db = studioDbOf(makeInput({ character: makeCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }), modules: [] }))
+        openStudio(ownerTarget, null)
+        studioScreen.layout = 'stack'
+        show(StudioTree)
+        const ids = Array.from(document.querySelectorAll<HTMLElement>('[data-part="studio-row"]')).map((element) => element.dataset.rowId)
+        expect(ids.indexOf('l:modules')).toBeGreaterThan(-1)
+        expect(row('g:modules')).toBeNull()
+        expect(row('g:otherModules')).toBeNull()
+        expect(ids.indexOf('l:modules')).toBeLessThan(ids.indexOf('g:combined'))
+        expect(row('l:modules')?.textContent).toContain('studioModuleList')
+        expect(row('l:modules')?.hasAttribute('aria-expanded')).toBe(false)
+        click(row('l:modules'))
+        expect(studioScreen.selectedOwnerKey).toBe('list:modules')
+        expect(studioScreen.selectedKind).toBeNull()
+        expect(studioScreen.detailShown).toBe(true)
+        expect(row('l:modules')?.getAttribute('aria-selected')).toBe('true')
+    })
+
+    test('with modules the entry sits directly before the Modules group, and it has no row menu', async () => {
+        openStudio(ownerTarget, null)
+        show(StudioTree)
+        const ids = Array.from(document.querySelectorAll<HTMLElement>('[data-part="studio-row"]')).map((element) => element.dataset.rowId)
+        expect(ids.indexOf('l:modules') + 1).toBe(ids.indexOf('g:modules'))
+        const entry = row('l:modules')!
         entry.focus()
         press(entry, 'F10', { shiftKey: true })
         await settle()
