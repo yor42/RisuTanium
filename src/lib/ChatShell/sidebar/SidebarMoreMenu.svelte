@@ -60,16 +60,16 @@
 </script>
 
 <div data-part="sidebar-more-panel" class="absolute inset-0 z-10 flex flex-col bg-darkbg text-textcolor">
-    <div class="flex items-center gap-2 border-b border-darkborderc p-2">
-        <button class="flex items-center gap-1 rounded-md px-2 py-1 text-textcolor2 hover:text-textcolor cursor-pointer" onclick={back}>
+    <div data-part="more-header" class="flex items-center gap-2 border-b border-darkborderc p-2">
+        <button data-part="more-back" class="flex items-center gap-1 rounded-md px-2 py-1 text-textcolor2 hover:text-textcolor cursor-pointer" onclick={back}>
             <ArrowLeft size={18} />
             <span>{language.settingsPage.back}</span>
         </button>
-        <span class="ml-auto pr-2 font-bold">{language.chatShellMore}</span>
+        <span data-part="more-title" class="ml-auto pr-2 font-bold">{language.chatShellMore}</span>
     </div>
     {#if view === 'menu'}
         <div data-part="more-list" class="flex flex-col gap-1 overflow-y-auto p-2">
-            <button class={itemClass} onclick={() => { view = 'settings' }}>
+            <button data-part="more-character-settings" class={itemClass} onclick={() => { view = 'settings' }}>
                 <SettingsIcon size={18} />
                 <span>{language.chatShellCharacterSettings}</span>
             </button>
@@ -79,26 +79,26 @@
                     <span>{language.studioOpenIn}</span>
                 </button>
             {/if}
-            <button class={itemClass} onclick={openPlayground}>
+            <button data-part="more-playground" class={itemClass} onclick={openPlayground}>
                 <ToolboxIcon size={18} />
                 <span>{language.playground.playground}</span>
             </button>
-            <button class={itemClass} onclick={() => { bookmarkListOpen.set(true); afterAction(); }}>
+            <button data-part="more-bookmarks" class={itemClass} onclick={() => { bookmarkListOpen.set(true); afterAction(); }}>
                 <BookmarkCheckIcon size={18} />
                 <span>{language.bookmarks}</span>
             </button>
-            <button class={itemClass} onclick={() => { alertStore.set({ type: 'branches', msg: '' }); afterAction(); }}>
+            <button data-part="more-branches" class={itemClass} onclick={() => { alertStore.set({ type: 'branches', msg: '' }); afterAction(); }}>
                 <SplitIcon size={18} />
                 <span>{language.chatShellBranches}</span>
             </button>
             {#if DBState.db.enableDevTools}
-                <button class={itemClass} onclick={() => { view = 'dev' }}>
+                <button data-part="more-dev-tool" class={itemClass} onclick={() => { view = 'dev' }}>
                     <WrenchIcon size={18} />
                     <span>{language.chatShellDevTool}</span>
                 </button>
             {/if}
             {#each additionalHamburgerMenu as menu (menu.id)}
-                <button class={itemClass} onclick={() => { reseter(); menu.callback(); }}>
+                <button data-part="more-plugin-item" class={itemClass} onclick={() => { reseter(); menu.callback(); }}>
                     <PluginDefinedIcon ico={menu} />
                     <span>{menu.name}</span>
                 </button>
