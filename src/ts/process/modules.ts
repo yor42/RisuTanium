@@ -22,6 +22,7 @@ import { ExportCancelToken } from "../exportCancel"
 import { createExportTask } from "../exportTask"
 import { isTauri } from "../platform"
 import { ASSET_RETAINED_KEY } from "../studio/assets/assetOwnerKeys"
+import { withdrawOpenModuleId } from "../studio/assets/openModuleForm.svelte"
 import { risumFileName, streamRisum } from "../risumStream"
 import { moduleListOf, moduleRefIdsOf } from "./moduleRefList"
 import { bumpModuleGui } from "./moduleGuiBump"
@@ -679,6 +680,9 @@ function commitModule(module:RisuModule, decision:DuplicateDecision, session:Dup
         progress.committed({kind: 'module', slot: DBState.db.modules[DBState.db.modules.length - 1]})
         return []
     }
+    //The replaced module keeps its id, so a Studio form that shows it stays mounted over the new content. Taking the id away
+    //here, in the same synchronous block as the write, refuses every later write of that form, held text included.
+    withdrawOpenModuleId(placement.previous.id)
     progress.committed({kind: 'notUndoable', why: 'replace'})
     refreshModules()
     session.replaced = true

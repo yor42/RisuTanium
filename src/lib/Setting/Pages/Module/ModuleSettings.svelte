@@ -4,7 +4,8 @@
     import { DBState, ReloadGUIPointer } from 'src/ts/stores.svelte';
     import Button from "src/lib/UI/GUI/Button.svelte";
     import ModuleMenu from "src/lib/Setting/Pages/Module/ModuleMenu.svelte";
-    import { exportModule, exportModuleLegacy, importModule, refreshModules, type RisuModule } from "src/ts/process/modules";
+    import { importModule, refreshModules, type RisuModule } from "src/ts/process/modules";
+    import { convertModuleRow, exportModuleRow, moduleIntegrationState, removeModuleRow, setModuleGlobal } from "src/ts/process/moduleListOps";
     import { SquarePen, TrashIcon, Globe, Share2Icon, PlusIcon, HardDriveUpload, Waypoints, UserIcon } from "@lucide/svelte";
     import { v4 } from "uuid";
     import { tooltip } from "src/ts/gui/tooltip";
@@ -13,8 +14,6 @@
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import { onDestroy } from "svelte";
     import { importMCPModule } from "src/ts/process/mcp/mcp";
-    import { convertModuleToCharacter } from "src/ts/interchangeability";
-    import { checkCharOrder } from "src/ts/globalApi.svelte";
     import { useModuleRow } from "src/ts/process/moduleUse";
     import { createWindowHost } from "src/ts/windowing/windowHost.svelte";
     import WindowedSegment from "src/lib/UI/Windowed/WindowedSegment.svelte";
@@ -96,27 +95,17 @@
                         {#if charConversionMode}
                             <button class="cursor-pointer risu-state-violet mr-2" aria-label={language.moduleConvertRow} onclick={async (e) => {
                                 e.stopPropagation()
-                                const used = await useModuleRow(rmodule)
-                                if(!used){
-                                    return
+                                if(await convertModuleRow(rmodule)){
+                                    alertNormal(language.successfullyConverted)
                                 }
-                                try{
-                                    const char = convertModuleToCharacter(used.module)
-                                    DBState.db.characters.push(char)
-                                }
-                                finally{
-                                    used.release()
-                                }
-                                alertNormal(language.successfullyConverted)
-                                checkCharOrder()
                             }}>
                                 <UserIcon size={18} aria-hidden="true"/>
                                 
                             </button>
                         {:else}
-                            {@const enabledGlobally = DBState.db.enabledModules.includes(rmodule.id)}
-                            {@const integrated = !enabledGlobally && !!rmodule.namespace &&
-                                !!DBState.db.moduleIntergration?.split(',').map((s) => s.trim()).includes(rmodule.namespace)}
+                            {@const integrationState = moduleIntegrationState(rmodule, DBState.db)}
+                            {@const enabledGlobally = integrationState === 'global'}
+                            {@const integrated = integrationState === 'integration'}
                             <button class={enabledGlobally ?
                                     "mr-2 cursor-pointer rounded-sm bg-selected text-textcolor ring-1 ring-borderc" :
                                     integrated ?
@@ -126,13 +115,7 @@
                                 aria-describedby={integrated ? `${uid}-int-${i}` : undefined}
                                 use:tooltip={language.enableGlobal} onclick={async (e) => {
                                 e.stopPropagation()
-                                if(DBState.db.enabledModules.includes(rmodule.id)){
-                                    DBState.db.enabledModules.splice(DBState.db.enabledModules.indexOf(rmodule.id), 1)
-                                }
-                                else{
-                                    DBState.db.enabledModules.push(rmodule.id)
-                                }
-                                DBState.db.enabledModules = DBState.db.enabledModules
+                                setModuleGlobal(rmodule.id, !enabledGlobally)
                                 charConversionMode = false
                             }}>
                                 <Globe size={18} aria-hidden="true"/>
@@ -147,22 +130,7 @@
                                     if(answer === ALERT_SELECT_CANCEL){
                                         return
                                     }
-                                    const sel = parseInt(answer)
-                                    const used = await useModuleRow(rmodule)
-                                    if(!used){
-                                        return
-                                    }
-                                    try{
-                                        if(sel === 0){
-                                            await exportModule(used.module)
-                                        }
-                                        else{
-                                            await exportModuleLegacy(used.module)
-                                        }
-                                    }
-                                    finally{
-                                        used.release()
-                                    }
+                                    await exportModuleRow(rmodule, parseInt(answer) === 0 ? 'charx' : 'risum')
                                 }}>
                                     <Share2Icon size={18} aria-hidden="true"/>
                                 </button>
@@ -207,16 +175,7 @@
                                 const target = rmodule
                                 const d = await alertConfirm(`${language.removeConfirm}` + target.name)
                                 if(d){
-                                    const index = DBState.db.modules.indexOf(target)
-                                    if(index === -1){
-                                        return
-                                    }
-                                    DBState.db.modules.splice(index, 1)
-                                    DBState.db.modules = DBState.db.modules
-                                    if(!DBState.db.modules.some((v) => v.id === target.id) && DBState.db.enabledModules.includes(target.id)){
-                                        DBState.db.enabledModules.splice(DBState.db.enabledModules.indexOf(target.id), 1)
-                                        DBState.db.enabledModules = DBState.db.enabledModules
-                                    }
+                                    removeModuleRow(target)
                                 }
                             }}>
                                 <TrashIcon size={18} aria-hidden="true"/>

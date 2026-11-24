@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, untrack } from 'svelte'
+    import { onDestroy, onMount, untrack } from 'svelte'
     import { language } from '../../lang'
     import type { RisuModule } from '../../ts/process/modules'
     import { isModuleStub } from '../../ts/storage/moduleStub'
@@ -8,7 +8,8 @@
     import { resolveRiskyRefusal } from '../../ts/studio/edit/riskyReplay'
     import { lowLevelAskName } from '../../ts/studio/edit/riskyText'
     import { refusalTextOf } from '../../ts/studio/edit/studioToasts'
-    import { FIELD_PRESENTATION, type SetPath } from '../../ts/studio/history/fieldRegistry'
+    import { registerStudioField } from '../../ts/studio/fieldFlush'
+import { FIELD_PRESENTATION, type SetPath } from '../../ts/studio/history/fieldRegistry'
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { moduleOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginModuleAck, beginOwnerVisit, endModuleAck, ensureStudioHistory, getStudioHistoryService } from '../../ts/studio/history/studioHistoryService.svelte'
@@ -182,15 +183,29 @@
     // The questions this form asked end with it, so none outlives the form that asked.
     let destroyed = false
     const asks = new Set<RiskyAsk>()
+    // Held text is written by the registered flush while the form lives. A teardown reads state as it was before the flush
+    // that removed the form, so a write from it can land on another module's slot: the late write runs in a microtask,
+    // where the service refuses a module that is gone or replaced, and the step closes after it. The module ack ends at
+    // once: a deferred end would end the ack that the next form of this module has just kept.
+    onMount(() => registerStudioField(() => {
+        nameGate.flush()
+        commitNamespace()
+    }))
     onDestroy(() => {
         destroyed = true
         for (const ask of [...asks]) ask.cancel()
-        nameGate.flush()
-        commitNamespace()
-        if (!readOnlyShared) {
-            service?.closeOpenStep(owner)
-            endModuleAck(moduleId)
-        }
+        if (readOnlyShared) return
+        const closing = service
+        queueMicrotask(() => {
+            try {
+                nameGate.flush()
+                commitNamespace()
+                closing?.closeOpenStep(owner)
+            } catch (error) {
+                console.error('Studio module form flush failed', error)
+            }
+        })
+        endModuleAck(moduleId)
     })
 
     const ownIndex = $derived.by(() => {

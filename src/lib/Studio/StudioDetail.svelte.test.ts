@@ -621,6 +621,17 @@ describe('a selected owner that leaves the model', () => {
         expect(part('studio-detail-title')).toBeNull()
     })
 
+    // Compatibility guard (T9-GONE-NOTFOUND): only a module owner gets the module-gone notice.
+    test('T9-GONE-NOTFOUND: a chat owner that vanishes still clears with studioNotFound, never the module notice', () => {
+        setDb({ chats: [makeChat({ id: 'chat-1', name: 'First chat' }), makeChat({ id: 'chat-2', name: 'Second chat' })] })
+        openStudio({ owner: { type: 'chat', id: 'chat-1' }, from: 'chat' }, null)
+        show()
+        db.db.characters[0].chatPage = 1
+        flushSync()
+        expect(studioScreen.selectedOwnerKey).toBeNull()
+        expect(studioScreen.notice).toBe('studioNotFound')
+        expect(studioScreen.notice).not.toBe('studioRefusalModuleGone')
+    })
     test('a selection that is still in the model is kept and raises no notice', () => {
         setDb({ chats: [makeChat({ id: 'chat-1', name: 'First chat' }), makeChat({ id: 'chat-2', name: 'Second chat' })] })
         openStudio({ owner: { type: 'character', id: 'cha-1' }, from: 'chat' }, null)

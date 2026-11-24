@@ -32,6 +32,14 @@ describe('matchingModulePositions', () => {
         expect(matchingModulePositions([{ name: 'Bx' }, { name: 'a' }, { name: 'cX' }], 'x')).toEqual([0, 2])
         expect(matchingModulePositions([{ name: 'b' }, { name: 'a' }], '')).toEqual([0, 1])
     })
+
+    // Regression reproducer (T9-SEARCH-NAME): a name that is not a string made the search throw on the previous code.
+    test('a name that is not a string matches nothing and never throws', () => {
+        const modules = [{ name: 5 }, { name: 'Alpha' }] as unknown as { name: string }[]
+        expect(() => matchingModulePositions(modules, 'a')).not.toThrow()
+        expect(matchingModulePositions(modules, 'a')).toEqual([1])
+        expect(matchingModulePositions(modules, '')).toEqual([0, 1])
+    })
 })
 
 describe('moduleListScroller', () => {

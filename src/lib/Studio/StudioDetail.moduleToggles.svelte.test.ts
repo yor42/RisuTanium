@@ -713,3 +713,71 @@ describe('G-C4m an owner undo of a module step re-reads the open editor', () => 
         expect(service.view(M1).undone).toHaveLength(1)
     })
 })
+describe('T9-GONE-DELETE-TOGGLES: an outside removal of a module drops what its toggle builder held', () => {
+    // The removal an import Undo makes: the row leaves the list and the list is reassigned.
+    function removeFirstModule(): void {
+        db.db.modules.splice(0, 1)
+        db.db.modules = db.db.modules
+    }
+
+    // Regression reproducer: the text view's unmount flush wrote into the slot that now holds the next module.
+    test('(a) a composition held in the text view writes nothing, and the next module keeps its slot and text', async () => {
+        const service = await mountOn(moduleToggles('M1'))
+        await service.whenReady(M1)
+        const other = db.db.modules[1]
+        await showText()
+        const area = part('studio-toggle-textarea') as HTMLTextAreaElement
+        compositionStart(area)
+        composeText(area, 'm1=One\nh=Ha')
+        removeFirstModule()
+        await settle()
+        await settle()
+        expect(db.db.modules).toHaveLength(1)
+        expect(db.db.modules[0]).toBe(other)
+        expect(slotText(0)).toBe('m2=Two')
+        expect(service.view(M1).done).toHaveLength(0)
+    })
+
+    // Regression reproducer: the row editor's unmount flush wrote into the slot that now holds the next module.
+    test('(b) a label composition held in the row editor writes nothing, and the next module keeps its slot and text', async () => {
+        const service = await mountOn(moduleToggles('M1'))
+        await service.whenReady(M1)
+        const other = db.db.modules[1]
+        parts('studio-toggle-row')[0].click()
+        flushSync()
+        const label = part('studio-toggle-label') as HTMLInputElement
+        compositionStart(label)
+        composeText(label, 'Onex')
+        removeFirstModule()
+        await settle()
+        await settle()
+        expect(db.db.modules).toHaveLength(1)
+        expect(db.db.modules[0]).toBe(other)
+        expect(slotText(0)).toBe('m2=Two')
+        expect(service.view(M1).done).toHaveLength(0)
+    })
+})
+
+describe('T9-DEFER-STEP-TEXT: the text view writes its held text before it closes the step', () => {
+    // Compatibility guard (passes before and after): the held write and the later row edit stay two undo steps.
+    test('a composition held when the list view is chosen, then a label edit, are two steps', async () => {
+        const service = await mountOn(moduleToggles('M1'))
+        await service.whenReady(M1)
+        await showText()
+        const area = part('studio-toggle-textarea') as HTMLTextAreaElement
+        compositionStart(area)
+        composeText(area, 'm1=One\nh=Ha')
+        part('studio-toggle-view-list')!.click()
+        await settle()
+        expect(slotText(0)).toBe('m1=One\nh=Ha')
+        parts('studio-toggle-row')[0].click()
+        flushSync()
+        const label = part('studio-toggle-label') as HTMLInputElement
+        label.value = 'One 2'
+        label.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        await settle()
+        expect(slotText(0)).toContain('m1=One 2')
+        expect(service.view(M1).done).toHaveLength(2)
+    })
+})

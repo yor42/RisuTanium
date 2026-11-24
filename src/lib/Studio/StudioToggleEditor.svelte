@@ -99,9 +99,17 @@
         }
         return stop
     })
+    // A teardown reads state as it was before the flush that removed this editor, so a write from it can land on the
+    // wrong module slot. The held text is written in a microtask, and the step closes after it.
     onDestroy(() => {
-        flushAll()
-        actions.closeStep()
+        queueMicrotask(() => {
+            try {
+                flushAll()
+                actions.closeStep()
+            } catch (error) {
+                console.error('Studio toggle editor flush failed', error)
+            }
+        })
     })
 
     // The attributes every text field shares; each field names its own `data-part` where it is rendered.

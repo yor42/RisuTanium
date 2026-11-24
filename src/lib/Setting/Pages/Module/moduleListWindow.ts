@@ -18,12 +18,16 @@ export function moduleRowKeys(modules: readonly Pick<RisuModule, 'id'>[]): strin
     return keys
 }
 
-/** The positions of `modules` whose name contains `search`, ignoring case, in array order. */
+/**
+ * The positions of `modules` whose name contains `search`, ignoring case, in array order. A name that is not a string
+ * (an MCP server may report any JSON value) matches only the empty search.
+ */
 export function matchingModulePositions(modules: readonly Pick<RisuModule, 'name'>[], search: string): number[] {
     const needle = search.toLowerCase()
     const positions: number[] = []
     modules.forEach((module, i) => {
-        if (needle === '' || (module?.name ?? '').toLowerCase().includes(needle)) {
+        const name = typeof module?.name === 'string' ? module.name : ''
+        if (needle === '' || name.toLowerCase().includes(needle)) {
             positions.push(i)
         }
     })

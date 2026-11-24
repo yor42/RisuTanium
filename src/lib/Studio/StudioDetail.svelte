@@ -9,7 +9,7 @@
     import { moduleListOf, moduleRefIdsOf } from '../../ts/process/moduleRefList'
     import { isModuleStub } from '../../ts/storage/moduleStub'
     import { isStudioModuleLoading, requestStudioModuleLoad } from '../../ts/studio/assets/moduleStubLoad.svelte'
-    import { clearOpenModuleId, moduleRowOf, publishOpenModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
+    import { clearOpenModuleId, clearWithdrawnOpenModuleId, moduleRowOf, publishOpenModuleId, withdrawnOpenModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
     import { DBState } from '../../ts/stores.svelte'
     import StudioAssetList, { type EnabledModuleAssets } from './assets/StudioAssetList.svelte'
@@ -23,7 +23,7 @@
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
     import StudioToggleBuilder from './StudioToggleBuilder.svelte'
-    import type { StudioItem } from '../../ts/studio/ownerModel'
+    import { ownerKeyOf, type StudioItem } from '../../ts/studio/ownerModel'
     import { ownerRoleLabelOf } from './StudioTree.svelte'
     import { badgeLabelOf, itemLabelOf, kindLabelOf, noticeTextOf, tagLabelOf } from './TreeRow.svelte'
 
@@ -131,8 +131,22 @@
     const moduleFormMounted = $derived(moduleAdvancedFormLive || moduleHtmlFormLive || moduleAdvancedShared || moduleHtmlShared)
     const moduleAssetFormLive = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub && kindNode?.kind === 'display' && moduleRawId !== null && moduleSlotIndex !== null)
 
+    const MODULE_KEY_PREFIX = ownerKeyOf('module', '')
+
+    // An import replaced the selected module: it keeps its id, so its owner stays in the model and its form stays mounted
+    // over the new content. The replace took the id away from the published slot, so the form's held text is refused; the
+    // selection is dropped and the notice says the module is gone.
+    $effect(() => {
+        const gone = withdrawnOpenModuleId()
+        if (gone === null || gone !== moduleRawId) return
+        untrack(() => {
+            clearWithdrawnOpenModuleId()
+            clearStudioSelection(language.studioRefusalModuleGone)
+        })
+    })
+
     // A selected owner the model no longer has (the chat page moved, a module was removed) leaves the detail
-    // empty; the selection is dropped and the notice says so.
+    // empty; the selection is dropped and the notice says so. A module that is gone says so in its own words.
     $effect(() => {
         const current = model
         const key = studioScreen.selectedOwnerKey
@@ -148,7 +162,7 @@
         }
         if (!current || key === null || combinedKindOf(key) !== null) return
         if (current.ownerByKey(key)) return
-        untrack(() => clearStudioSelection(language.studioNotFound))
+        untrack(() => clearStudioSelection(key.startsWith(MODULE_KEY_PREFIX) ? language.studioRefusalModuleGone : language.studioNotFound))
     })
 
     function fieldLabelOf(field: TextField): string {
