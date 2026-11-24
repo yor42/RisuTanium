@@ -12,6 +12,8 @@
     import { editBetween, type Note } from '../../ts/studio/longText/highlightSpans'
     import { registerStudioBackLayer } from '../../ts/studio/studioBack.svelte'
     import { setStudioNotice, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import type { PickSource } from '../../ts/studio/longText/macroPick'
+    import type { ExtraProblem } from '../../ts/studio/longText/problemsModel'
     import LongTextField from './LongTextField.svelte'
     import LongTextFind from './LongTextFind.svelte'
     import LongTextPreview, { type PreviewSourceInput, type PreviewValues } from './LongTextPreview.svelte'
@@ -32,6 +34,9 @@
         ownerLabel?: string
         // The same display notes the opening field draws; the nested field never writes through them.
         extraMarks?: (text: string) => Note[]
+        // The same display problems and picker source the opening field has.
+        extraProblems?: (text: string) => ExtraProblem[]
+        extraPicks?: PickSource
         // Whether the find bar is showing when the layer opens.
         findOnOpen?: boolean
         // The CBS preview: its source, and the values the opening field owns so the field's chip and the pane share them.
@@ -43,7 +48,7 @@
         onclose: () => void
     }
 
-    let { port, kind, mode, editable, busy, onresult, title, ownerLabel, extraMarks, findOnOpen = false, previewSource, values, onvalues, returnTo, onclose }: Props = $props()
+    let { port, kind, mode, editable, busy, onresult, title, ownerLabel, extraMarks, extraProblems, extraPicks, findOnOpen = false, previewSource, values, onvalues, returnTo, onclose }: Props = $props()
 
     const titleId = $props.id()
     const token = {}
@@ -251,6 +256,8 @@
                 {busy}
                 variant="focus"
                 {extraMarks}
+                {extraProblems}
+                {extraPicks}
                 {previewSource}
                 previewValues={values}
                 onpreviewvalues={onvalues}

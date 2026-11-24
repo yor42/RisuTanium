@@ -14,13 +14,24 @@ import { shiftSpans, type Edit } from './highlightSpans'
 
 export type ProblemRow = {
     key: string
-    kind: CbsProblemKind
+    kind: CbsProblemKind | ExtraProblemKind
     severity: CbsProblem['severity']
     line: number
     start: number
     end: number
     message: string
     fix: CbsFix | null
+}
+
+/** A problem another module reports for the same text (for example lore decorators); the kind prefix keeps it apart from the checker's. */
+export type ExtraProblemKind = `x-${string}`
+
+export type ExtraProblem = {
+    kind: ExtraProblemKind
+    severity: CbsProblem['severity']
+    start: number
+    end: number
+    message: string
 }
 
 // One message per kind. The mapped type fails the type check when the checker gains a kind.
@@ -42,7 +53,7 @@ const KIND_TABLE: Record<CbsProblemKind, true> = {
 export const PROBLEM_KINDS = Object.keys(KIND_TABLE) as CbsProblemKind[]
 
 // `kind:start:end`, with `#2`, `#3` on a repeat of the same triple.
-function keyed<T extends { kind: CbsProblemKind; start: number; end: number }>(items: readonly T[]): (T & { key: string })[] {
+function keyed<T extends { kind: CbsProblemKind | ExtraProblemKind; start: number; end: number }>(items: readonly T[]): (T & { key: string })[] {
     const seen = new Map<string, number>()
     return items.map((item) => {
         const base = `${item.kind}:${item.start}:${item.end}`
@@ -69,6 +80,23 @@ function lineAt(text: string, offset: number): number {
     let line = 1
     for (let at = text.indexOf('\n'); at >= 0 && at < offset; at = text.indexOf('\n', at + 1)) line++
     return line
+}
+
+/**
+ * The checker's rows merged with another module's problems for the same `text`, ordered by `start`. At an equal start
+ * the checker's row comes first; each side keeps its own order. Extra rows have no fix, and every key is made again so
+ * the merged list stays unique.
+ */
+export function withExtraRows(rows: readonly ProblemRow[], extra: readonly ExtraProblem[], text: string): ProblemRow[] {
+    const added: ProblemRow[] = extra.map((problem) => ({ ...problem, key: '', line: lineAt(text, problem.start), fix: null })).sort((a, b) => a.start - b.start)
+    const merged: ProblemRow[] = []
+    let from = 0
+    for (const row of rows) {
+        while (from < added.length && added[from].start < row.start) merged.push(added[from++])
+        merged.push(row)
+    }
+    while (from < added.length) merged.push(added[from++])
+    return keyed(merged)
 }
 
 /** The rows after `edit` turned the checked text into `text`: later rows move, touched rows are dropped, lines and keys follow. */

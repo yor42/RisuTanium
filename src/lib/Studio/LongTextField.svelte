@@ -13,10 +13,10 @@
     import { MACRO_ROWS } from '../../ts/studio/longText/macroGroups'
     import type { MacroIndex } from '../../ts/studio/longText/macroIndex'
     import { loadMacroIndex } from '../../ts/studio/longText/macroIndexService'
-    import { filterPicks, macroTrigger, pickItems, type MacroTrigger, type PickItem } from '../../ts/studio/longText/macroPick'
+    import { filterPicks, macroTrigger, pickItems, type MacroTrigger, type PickItem, type PickSource } from '../../ts/studio/longText/macroPick'
     import { LT_TEXT_LAYOUT } from '../../ts/studio/longText/overlayMetrics'
     import { createPauseScheduler } from '../../ts/studio/longText/pauseScheduler'
-    import { fixApplies, problemRows, shiftRows, type CheckedText, type ProblemCopy, type ProblemRow } from '../../ts/studio/longText/problemsModel'
+    import { fixApplies, problemRows, shiftRows, withExtraRows, type CheckedText, type ExtraProblem, type ProblemCopy, type ProblemRow } from '../../ts/studio/longText/problemsModel'
     import { loadPreviewEngine } from '../../ts/studio/longText/previewEngineService'
     import { tokenChipView, type FilledCount, type TokenChipCopy, type TokenChipView } from '../../ts/studio/longText/tokenChip'
     import { requestTokens } from '../../ts/studio/longText/tokenService'
@@ -59,6 +59,12 @@
         // Display-only notes for the text it is given (LF). Read when the overlay runs; the field shifts them with the
         // text between runs, so a handler never decides what is written.
         extraMarks?: (text: string) => Note[]
+        // Display-only problems for the text it is given (LF), listed beside the checker's. Read when the check runs;
+        // never while composing or in plain mode, and they carry no fix.
+        extraProblems?: (text: string) => ExtraProblem[]
+        // A second picker source next to the macro one. It opens the picker where its own trigger matches and inserts
+        // through the field's insert path.
+        extraPicks?: PickSource
         // Called with `true` when this field opens its full-screen layer and with `false` once when that layer closes or
         // the field is destroyed while it is open. A handler only reads and holds state; it never writes through the field.
         onfocuslayer?: (open: boolean) => void
@@ -71,7 +77,7 @@
         onresult: (result: StudioResult | null) => void
     }
 
-    let { port, part, index, label, labelId, ariaLabel, placeholder, kind, mode, editable, busy, fieldClass, variant = 'inline', ownerLabel, onvalue, oncomposing, previewSource, previewValues, onpreviewvalues, onresult, extraMarks, onfocuslayer }: Props = $props()
+    let { port, part, index, label, labelId, ariaLabel, placeholder, kind, mode, editable, busy, fieldClass, variant = 'inline', ownerLabel, onvalue, oncomposing, previewSource, previewValues, onpreviewvalues, onresult, extraMarks, extraProblems, extraPicks, onfocuslayer }: Props = $props()
 
     const inFocus = $derived(variant === 'focus')
 
@@ -180,8 +186,10 @@
 
     // The macro picker opens when a `{{` is typed and filters as the name grows. `trigger` is the open one (where its
     // `{{` sits and the name typed since); `activeAt` is the arrow choice, -1 until an arrow key is pressed. The sheet
-    // lists every macro and inserts at the selection saved when it opened.
-    let trigger = $state.raw<MacroTrigger | null>(null)
+    // lists every macro and inserts at the selection saved when it opened. `source` says which trigger opened it: the
+    // macro one, or the extra source's.
+    type PickerSource = 'macro' | 'extra'
+    let trigger = $state.raw<(MacroTrigger & { source: PickerSource }) | null>(null)
     let activeAt = $state(-1)
     let macroIndex = $state.raw<MacroIndex | null>(null)
     let pickerEl = $state<HTMLElement | undefined>()
@@ -190,8 +198,10 @@
     const pickerListId = `${instanceId}-picker`
     const pickerOptionId = (at: number): string => `${instanceId}-pick-${at}`
 
-    const allPicks = $derived(macroIndex !== null && (trigger !== null || sheetOpen) ? pickItems(MACRO_ROWS, macroIndex, (id) => language.ltMacroRows[id]) : [])
-    const matches = $derived(trigger === null ? [] : filterPicks(allPicks, trigger.query))
+    // The sheet always lists macros; the picker lists the items of the source that opened it.
+    const macroPicks = $derived(macroIndex !== null && (trigger?.source === 'macro' || sheetOpen) ? pickItems(MACRO_ROWS, macroIndex, (id) => language.ltMacroRows[id]) : [])
+    const pickerItems = $derived(trigger === null ? [] : trigger.source === 'extra' ? (extraPicks?.items() ?? []) : macroPicks)
+    const matches = $derived(trigger === null ? [] : filterPicks(pickerItems, trigger.query))
     const pickerShown = $derived(editable && trigger !== null && matches.length > 0)
 
     const overlaySchedule = createPauseScheduler(OVERLAY_PAUSE_MS, runOverlay)
@@ -268,8 +278,9 @@
             if (disposed || run !== checkRun || seen !== text) return
             const result = checkCbs(text, index, { mode: checkMode, slotAllowed: false, typingAt })
             checked = { text, result }
-            rows = problemRows(result.problems, problemCopy)
-            marks = result.problems.filter((problem) => problem.end > problem.start).map((problem) => ({ start: problem.start, end: problem.end, severity: problem.severity }))
+            const extra = extraProblems?.(text) ?? []
+            rows = withExtraRows(problemRows(result.problems, problemCopy), extra, text)
+            marks = [...result.problems, ...extra].filter((problem) => problem.end > problem.start).map((problem) => ({ start: problem.start, end: problem.end, severity: problem.severity }))
         }, () => {})
     }
 
@@ -349,9 +360,14 @@
         activeAt = -1
     }
 
-    // The `{{` the caret is inside, read from the text the field shows.
-    function triggerAtCaret(): MacroTrigger | null {
-        return area ? macroTrigger(surfaceValue().slice(0, area.selectionStart)) : null
+    // The trigger the caret is inside, read from the text the field shows: the macro `{{` first, then the extra source's.
+    function triggerAtCaret(): (MacroTrigger & { source: PickerSource }) | null {
+        if (!area) return null
+        const before = surfaceValue().slice(0, area.selectionStart)
+        const macro = macroTrigger(before)
+        if (macro !== null) return { ...macro, source: 'macro' }
+        const extra = extraPicks?.trigger(before) ?? null
+        return extra === null ? null : { ...extra, source: 'extra' }
     }
 
     // An open picker follows the text: it closes when the caret is no longer inside the same `{{`, and filters by
@@ -359,7 +375,7 @@
     function refreshPicker(): void {
         if (trigger === null) return
         const now = triggerAtCaret()
-        if (now === null || now.start !== trigger.start) {
+        if (now === null || now.start !== trigger.start || now.source !== trigger.source) {
             closePicker()
             return
         }
@@ -378,7 +394,7 @@
         if (found === null) return
         if (trigger === null || trigger.start !== found.start || trigger.query !== found.query) activeAt = -1
         trigger = found
-        loadPickIndex()
+        if (found.source === 'macro') loadPickIndex()
     }
 
     function inPicker(target: EventTarget | null): boolean {
@@ -392,9 +408,11 @@
         const field = area
         if (!field) return
         const insertion = item.insertion
+        const source = trigger?.source ?? 'macro'
         if (controller.composing) field.blur()
         const caret = field.selectionStart
-        const found = macroTrigger(surfaceValue().slice(0, caret))
+        const before = surfaceValue().slice(0, caret)
+        const found = source === 'extra' ? (extraPicks?.trigger(before) ?? null) : macroTrigger(before)
         if (found === null) {
             closePicker()
             return
@@ -798,6 +816,7 @@
         {#if showOverlay}
             <LongTextOverlay {area} {segments} phase={overlayState} {scrollTop} onmisalign={() => { misaligned = true }} />
         {/if}
+        <!-- Both trigger prefixes (`{{` and `@@`) are two characters, so the offset is the same for either source. -->
         {#if trigger !== null && pickerShown}
             <MacroPicker
                 bind:root={pickerEl}
@@ -805,6 +824,8 @@
                 items={matches}
                 active={activeAt}
                 offset={trigger.start + 2 + trigger.query.length}
+                label={trigger.source === 'extra' ? extraPicks?.label?.() : undefined}
+                matches={trigger.source === 'extra' ? extraPicks?.matches : undefined}
                 stack={studioScreen.layout === 'stack'}
                 listId={pickerListId}
                 optionId={pickerOptionId}
@@ -838,7 +859,7 @@
     {/if}
     <LongTextProblems {rows} {editable} onjump={jumpTo} onfix={applyFix} />
     {#if sheetOpen}
-        <MacroSheet items={allPicks} isOpen={() => sheetOpen} onchoose={chooseFromSheet} onclose={closeSheet} />
+        <MacroSheet items={macroPicks} isOpen={() => sheetOpen} onchoose={chooseFromSheet} onclose={closeSheet} />
     {/if}
     {#if previewOpen && previewSource}
         <LongTextPreview
@@ -866,6 +887,8 @@
         title={label ?? ariaLabel ?? ''}
         {ownerLabel}
         {extraMarks}
+        {extraProblems}
+        {extraPicks}
         findOnOpen={focusFind}
         {previewSource}
         {values}

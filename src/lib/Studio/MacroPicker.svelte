@@ -19,9 +19,12 @@
         onpick: (item: PickItem) => void
         onclose: () => void
         root?: HTMLElement | undefined
+        // What the list is called and how its live count reads; the macro wording when absent.
+        label?: string
+        matches?: (n: number) => string
     }
 
-    let { area, items, active, offset, stack, listId, optionId, isOpen, onpick, onclose, root = $bindable() }: Props = $props()
+    let { area, items, active, offset, stack, listId, optionId, isOpen, onpick, onclose, root = $bindable(), label, matches }: Props = $props()
 
     // Back closes the picker before anything below it; the Back handler blurs the focused field first, which
     // closes the picker through the field's blur rule.
@@ -113,7 +116,7 @@
     onmousedown={keepFocus}
     onfocusout={leave}
 >
-    <ul id={listId} role="listbox" aria-label={language.ltInsertMacro} class="max-h-56 overflow-y-auto">
+    <ul id={listId} role="listbox" aria-label={label ?? language.ltInsertMacro} class="max-h-56 overflow-y-auto">
         {#each items as item, at (item.key)}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <li
@@ -132,5 +135,5 @@
             </li>
         {/each}
     </ul>
-    <div data-part="studio-lt-picker-count" aria-live="polite" class="sr-only">{language.ltMacroMatches(items.length)}</div>
+    <div data-part="studio-lt-picker-count" aria-live="polite" class="sr-only">{(matches ?? language.ltMacroMatches)(items.length)}</div>
 </div>

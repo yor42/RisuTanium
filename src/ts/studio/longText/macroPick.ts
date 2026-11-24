@@ -22,6 +22,14 @@ export type PickItem = {
     group: MacroGroupId | null
 }
 
+/** A second list the field can offer beside the macro picker; the field stays unaware of what the items are. */
+export type PickSource = {
+    trigger(beforeCaret: string): MacroTrigger | null
+    items(): readonly PickItem[]
+    matches?(n: number): string
+    label?(): string
+}
+
 const TRIGGER = /\{\{([^{}:\s]*)$/
 
 /** The open `{{` before the caret and the name typed after it, or null when the caret is not inside one. */
