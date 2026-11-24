@@ -2509,6 +2509,7 @@ export const languageEnglish = {
     studioModuleListDeleted: (name: string) => `Removed "${name}".`,
     studioModuleListCreatePrompt: "Name of the new module",
     studioModuleListNameNeeded: "Give the module a name to create it.",
+    studioModuleListConvertLowLevel: (name: string) => `"${name}" has Low Level Access on, and the new character will too. It can use AI models and your storage directly. Make the character?`,
     studioPluginRetired: (version: string) => `Retired (${version})`,
     studioKindBasic: "Basic info",
     studioKindDisplay: "Display and assets",

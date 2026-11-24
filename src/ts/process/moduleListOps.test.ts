@@ -18,6 +18,7 @@ import { residentModule, stubModule } from 'src/ts/studio/studioFixtures.test-he
 
 const h = vi.hoisted(() => ({
     alertError: vi.fn(),
+    alertConfirm: vi.fn(),
     acquire: vi.fn(),
     release: vi.fn(),
     exportModule: vi.fn(),
@@ -28,7 +29,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('uuid', () => ({ v4: () => 'new-id' }))
-vi.mock('src/ts/alert', () => ({ alertError: h.alertError }))
+vi.mock('src/ts/alert', () => ({ alertError: h.alertError, alertConfirm: h.alertConfirm }))
 vi.mock('src/ts/stores.svelte', () => ({
     DBState: { get db() { return h.db.current } },
 }))
@@ -65,7 +66,7 @@ const mod = (id: string, over: Partial<RisuModule> = {}): RisuModule => resident
 const mcpBody = (id: string): RisuModule => ({ ...mod(id), mcp: { url: 'internal:dice' } })
 
 beforeEach(() => {
-    for (const fn of [h.alertError, h.acquire, h.release, h.exportModule, h.exportModuleLegacy, h.refreshModules, h.checkCharOrder]) fn.mockReset()
+    for (const fn of [h.alertError, h.alertConfirm, h.acquire, h.release, h.exportModule, h.exportModuleLegacy, h.refreshModules, h.checkCharOrder]) fn.mockReset()
 })
 
 describe('T9-DELETE (unit): removeModuleRow', () => {
@@ -263,5 +264,51 @@ describe('convertModuleRow', () => {
         h.acquire.mockResolvedValue(null)
         expect(await convertModuleRow(stub)).toBeNull()
         expect(db.characters).toEqual([])
+    })
+})
+
+describe('T9-CONVERT (unit, L3): the low-level ask', () => {
+    const flagOnes: [string, boolean | number][] = [['true', true], ['a truthy foreign 1', 1]]
+
+    test.each(flagOnes)('a resident module with lowLevelAccess %s asks with its name; Yes pushes a character with the flag on', async (_label, flag) => {
+        const row = mod('a', { name: 'Alpha', lowLevelAccess: flag as boolean })
+        const db = installDb([row])
+        h.alertConfirm.mockResolvedValue(true)
+        const made = await convertModuleRow(row)
+        expect(h.alertConfirm).toHaveBeenCalledTimes(1)
+        expect(h.alertConfirm).toHaveBeenCalledWith(language.studioModuleListConvertLowLevel('Alpha'))
+        expect(made).toEqual({ chaId: 'made-a', name: 'Alpha' })
+        expect(db.characters).toHaveLength(1)
+        expect(h.checkCharOrder).toHaveBeenCalledTimes(1)
+    })
+
+    test('Cancel makes no character, checks no order and still releases the acquired stub', async () => {
+        const stub = stubModule('S1')
+        const db = installDb([stub])
+        h.acquire.mockResolvedValue({ module: mod('S1', { name: 'Loaded', lowLevelAccess: true }), release: h.release })
+        h.alertConfirm.mockResolvedValue(false)
+        expect(await convertModuleRow(stub)).toBeNull()
+        expect(h.alertConfirm).toHaveBeenCalledTimes(1)
+        expect(db.characters).toEqual([])
+        expect(h.checkCharOrder).not.toHaveBeenCalled()
+        expect(h.release).toHaveBeenCalledTimes(1)
+    })
+
+    test('stub case: the stub shows no flag, the acquired body holds 1, and the ask reads the body after the acquire', async () => {
+        const stub = stubModule('S1')
+        expect((stub as { lowLevelAccess?: unknown }).lowLevelAccess).toBeFalsy()
+        const db = installDb([stub])
+        h.acquire.mockResolvedValue({ module: mod('S1', { name: 'Loaded', lowLevelAccess: 1 as unknown as boolean }), release: h.release })
+        h.alertConfirm.mockResolvedValue(true)
+        expect(await convertModuleRow(stub)).toEqual({ chaId: 'made-S1', name: 'Loaded' })
+        expect(h.alertConfirm).toHaveBeenCalledWith(language.studioModuleListConvertLowLevel('Loaded'))
+        expect(db.characters).toHaveLength(1)
+    })
+
+    test.each([['off', false], ['absent', undefined]])('a module with the flag %s never asks', async (_label, flag) => {
+        const row = mod('a', { lowLevelAccess: flag })
+        installDb([row])
+        expect(await convertModuleRow(row)).not.toBeNull()
+        expect(h.alertConfirm).not.toHaveBeenCalled()
     })
 })

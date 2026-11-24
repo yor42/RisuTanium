@@ -22,6 +22,7 @@ import type { RisuModule } from 'src/ts/process/modules'
 const h = vi.hoisted(() => ({
     alertError: vi.fn(),
     alertNormal: vi.fn(),
+    alertConfirm: vi.fn(),
     checkCharOrder: vi.fn(),
     unhandled: [] as unknown[],
 }))
@@ -30,6 +31,7 @@ vi.mock(import('src/ts/alert'), () => {
     const stub: Record<string, unknown> = {
         alertError: h.alertError,
         alertNormal: h.alertNormal,
+        alertConfirm: h.alertConfirm,
         alertStore: writable({ type: 'none', msg: '' }),
     }
     return new Proxy(stub, {
@@ -108,11 +110,16 @@ const onUnhandled = (reason: unknown) => { h.unhandled.push(reason) }
 beforeEach(() => {
     h.alertError.mockReset()
     h.alertNormal.mockReset()
+    h.alertConfirm.mockReset()
     h.checkCharOrder.mockReset()
     h.unhandled.length = 0
     process.on('unhandledRejection', onUnhandled)
     DBState.db = {
-        modules: [mcpModule(), { name: 'Plain', description: '', id: 'plain-1' } as RisuModule],
+        modules: [
+            mcpModule(),
+            { name: 'Plain', description: '', id: 'plain-1' } as RisuModule,
+            { name: 'Wide', description: '', id: 'wide-1', lowLevelAccess: true } as RisuModule,
+        ],
         enabledModules: [],
         moduleIntergration: '',
         characters: [],
@@ -171,5 +178,32 @@ describe('T9-CONVERT-MCP-CLASSIC: converting an MCP row', () => {
         expect(h.alertNormal).toHaveBeenCalledWith(language.successfullyConverted)
         expect(h.checkCharOrder).toHaveBeenCalledTimes(1)
         expect(h.alertError).not.toHaveBeenCalled()
+        expect(h.alertConfirm).not.toHaveBeenCalled()
+    })
+})
+
+describe('T9-CONVERT-CLASSIC-ASK: converting a module with Low Level Access on', () => {
+    test('asks first, and Cancel pushes no character and shows no success', async () => {
+        h.alertConfirm.mockResolvedValue(false)
+        const target = await mountInConvertMode()
+        convertButton(target, 'Wide').click()
+        await settle()
+
+        expect(h.alertConfirm).toHaveBeenCalledTimes(1)
+        expect(h.alertConfirm).toHaveBeenCalledWith(language.studioModuleListConvertLowLevel('Wide'))
+        expect(DBState.db.characters).toHaveLength(0)
+        expect(h.checkCharOrder).not.toHaveBeenCalled()
+        expect(h.alertNormal).not.toHaveBeenCalled()
+    })
+
+    test('Yes makes the character with the success message', async () => {
+        h.alertConfirm.mockResolvedValue(true)
+        const target = await mountInConvertMode()
+        convertButton(target, 'Wide').click()
+        await settle()
+
+        expect(DBState.db.characters).toHaveLength(1)
+        expect(DBState.db.characters[0]).toMatchObject({ chaId: 'made-wide-1', name: 'Wide' })
+        expect(h.alertNormal).toHaveBeenCalledWith(language.successfullyConverted)
     })
 })

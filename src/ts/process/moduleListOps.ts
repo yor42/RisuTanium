@@ -1,6 +1,6 @@
 import { v4 } from 'uuid'
 import { language } from 'src/lang'
-import { alertError } from '../alert'
+import { alertConfirm, alertError } from '../alert'
 import { checkCharOrder } from '../globalApi.svelte'
 import { convertModuleToCharacter } from '../interchangeability'
 import type { character, Database } from '../storage/database.svelte'
@@ -88,8 +88,10 @@ export async function exportModuleRow(row: RisuModule, format: 'charx' | 'risum'
 }
 
 /**
- * Makes a character from the module behind `row` and pushes it. An MCP module, or any other throw of the conversion,
- * shows its message and makes no character. A stub is released when the conversion ends, however it ends.
+ * Makes a character from the module behind `row` and pushes it. A module with Low Level Access on asks first, and Cancel
+ * makes no character; the flag is read from the acquired body, because a stub's index entry keeps it only as a boolean.
+ * An MCP module, or any other throw of the conversion, shows its message and makes no character. A stub is released when
+ * the conversion ends, however it ends.
  */
 export async function convertModuleRow(row: RisuModule): Promise<character | null> {
     const used = await useModuleRow(row)
@@ -97,6 +99,9 @@ export async function convertModuleRow(row: RisuModule): Promise<character | nul
         return null
     }
     try {
+        if (used.module.lowLevelAccess && !await alertConfirm(language.studioModuleListConvertLowLevel(used.module.name))) {
+            return null
+        }
         let made: character
         try {
             made = convertModuleToCharacter(used.module)
