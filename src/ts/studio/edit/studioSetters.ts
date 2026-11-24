@@ -12,6 +12,8 @@ import { toPlainJson } from '../../storage/store2/codec/normalize'
 import { firstMessageIndexOf } from '../../process/firstMessage'
 import type { Chat, character, groupChat } from '../../storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
+import { OBJ_LIST_FIELDS, OBJ_LIST_HOLDERS, OBJ_PROPS, type ObjHolderRow, type ObjListName, type ObjPropRow } from '../history/objectLists'
+import type { ObjEntry, ObjWrite } from '../history/objectListOps'
 import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
 import { cloneValue, factsOf, freshSeed, isHeldBy, isUsableContainer, propertyOf, slotOf, valueMatchesKind, valuesEqual, type SetValue } from '../history/fieldAccess'
@@ -183,9 +185,54 @@ function readHeld(holder: object | null | undefined, path: SetPath): FieldValue 
     return valueMatchesKind(path, value) ? { had: true, value: cloneValue(value) } : { had: false }
 }
 
+// The stored list at a holder's property: an array as it is, an absent value (undefined or null) as an empty list, and
+// anything else as null (a list the writers cannot edit).
+export function listOfHolder(holder: object, property: string): unknown[] | null {
+    const stored = fieldsView(holder)[property]
+    if (stored === undefined || stored === null) {
+        return []
+    }
+    return Array.isArray(stored) ? stored : null
+}
+
+// The property of an object list on one kind of holder, or null when the list has no row there.
+function listPropertyOf(list: ObjListName, kind: 'character' | 'chat' | 'module'): string | null {
+    const row: ObjHolderRow | undefined = OBJ_LIST_HOLDERS[list]
+    return row?.[kind] ?? null
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 export function createLiveReader(target: LiveTarget): LiveReader {
     const { character: live, chat } = target
+    const kind = chat ? 'chat' : 'character'
     return {
+        // A chat owner reads the chat's list and never the character's.
+        objList(list) {
+            const property = listPropertyOf(list, kind)
+            return property === null ? null : listOfHolder(chat ?? live, property)
+        },
+        prop(name) {
+            const row: ObjPropRow | undefined = OBJ_PROPS[name]
+            if (!row || !row.holders.includes(kind)) {
+                return null
+            }
+            const stored = fieldsView(live)[name]
+            if (stored === undefined) {
+                return { had: false }
+            }
+            if (!isJsonObject(stored)) {
+                return null
+            }
+            try {
+                const copy = toPlainJson(stored)
+                return isJsonObject(copy) ? { had: true, value: copy as ObjEntry } : null
+            } catch {
+                return null
+            }
+        },
         // A path no holder of this reader holds reads as absent; a value of the wrong type reads as absent too.
         field(path): FieldValue {
             if (isHeldBy(path, 'character')) {
@@ -224,6 +271,11 @@ function rowsOfList(value: unknown): readonly (readonly string[])[] | null {
 // own registry paths (the toggle definition and the S5 paths). A module has no first messages or chats.
 export function createModuleLiveReader(module: RisuModule): LiveReader {
     return {
+        objList(list) {
+            const property = listPropertyOf(list, 'module')
+            return property === null ? null : listOfHolder(module, property)
+        },
+        prop: () => null,
         field: (path) => (isHeldBy(path, 'module') ? readHeld(module, path) : { had: false }),
         greetings: () => null,
         fmIndex: () => null,
@@ -551,6 +603,62 @@ function writeCharacterFolder(live: character, folder: AssetWriteExtras['folder'
     }
 }
 
+// One obj write on a live holder (a character or a chat), in place. Every list is re-read through its property at the
+// moment of use and never held as a local array: a reactive proxy keeps a stale length for a raw array assigned into
+// it. An absent list is created by assigning the finished array; a stored non-list is never written.
+function writeObjInPlace(holder: object, kind: 'character' | 'chat', write: ObjWrite): void {
+    const fields = fieldsView(holder)
+    if (write.op === 'propSet') {
+        if (kind !== 'character' || !Object.hasOwn(OBJ_PROPS, write.prop)) {
+            return
+        }
+        if (!write.value.had) {
+            delete fields[write.prop]
+        } else {
+            const copy = toPlainJson(write.value.value)
+            if (copy !== undefined) {
+                fields[write.prop] = copy
+            }
+        }
+        return
+    }
+    const property = listPropertyOf(write.list, kind)
+    if (property === null || listOfHolder(holder, property) === null) {
+        return
+    }
+    if (write.op === 'objInsert') {
+        const copy = toPlainJson(write.entry)
+        if (copy === undefined) {
+            return
+        }
+        if (!Array.isArray(fields[property])) {
+            const created: unknown[] = []
+            created.splice(write.index, 0, copy)
+            fields[property] = created
+        } else {
+            ;(fields[property] as unknown[]).splice(write.index, 0, copy)
+        }
+    } else if (write.op === 'objRemove') {
+        if (Array.isArray(fields[property])) {
+            ;(fields[property] as unknown[]).splice(write.index, 1)
+        }
+    } else {
+        const list = fields[property]
+        const element = Array.isArray(list) ? list[write.index] : undefined
+        if (!isJsonObject(element) || !Object.hasOwn(OBJ_LIST_FIELDS[write.list].fields, write.field)) {
+            return
+        }
+        if (!write.value.had) {
+            delete element[write.field]
+        } else {
+            const copy = toPlainJson(write.value.value)
+            if (copy !== undefined) {
+                element[write.field] = copy
+            }
+        }
+    }
+}
+
 // The body of the one `writeLiveCharacter` call of a character owner's action.
 export function applyCharacterWrites(live: character | groupChat, writes: readonly WriteOp[], pageFm: number | null, extras?: AssetWriteExtras): void {
     if (live.type === 'group') {
@@ -599,6 +707,12 @@ export function applyCharacterWrites(live: character | groupChat, writes: readon
                 }
                 break
             }
+            case 'objInsert':
+            case 'objRemove':
+            case 'objSet':
+            case 'propSet':
+                writeObjInPlace(live, 'character', write)
+                break
         }
     }
     if (extras) {
@@ -635,6 +749,24 @@ function writeRetained(owner: { [ASSET_RETAINED_KEY]?: unknown }, result: Retain
 export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[], extras: AssetWriteExtras): RisuModule {
     const next: RisuModule = { ...live }
     let rows: string[][] | null = null
+    // Each touched obj list is one new array, filled from the live list on the first obj write of the call. The elements
+    // made in this call (inserted copies and element copies) are tracked by identity, never by index: inserts and
+    // removes of the same batch shift indexes.
+    const objLists = new Map<string, unknown[]>()
+    const ownElements = new Set<object>()
+    // A stored non-list (the repair-needed shape) is never replaced: its writes are skipped.
+    const objListOf = (property: string): unknown[] | null => {
+        let list = objLists.get(property)
+        if (!list) {
+            const stored = listOfHolder(live, property)
+            if (stored === null) {
+                return null
+            }
+            list = [...stored]
+            objLists.set(property, list)
+        }
+        return list
+    }
     for (const write of orderAssetWrites(writes)) {
         if (write.op === 'assetRowRemove' || write.op === 'assetRowInsert' || write.op === 'assetRowSet') {
             if (write.array !== 'assets') {
@@ -647,6 +779,43 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
                 rows.splice(write.index, 0, [...write.tuple])
             } else {
                 rows[write.index] = [...write.after]
+            }
+        } else if (write.op === 'objInsert' || write.op === 'objRemove' || write.op === 'objSet') {
+            const property = listPropertyOf(write.list, 'module')
+            if (property === null) {
+                continue
+            }
+            const list = objListOf(property)
+            if (list === null) {
+                continue
+            }
+            if (write.op === 'objInsert') {
+                const copy = toPlainJson(write.entry)
+                if (copy !== undefined && typeof copy === 'object' && copy !== null) {
+                    ownElements.add(copy)
+                    list.splice(write.index, 0, copy)
+                }
+            } else if (write.op === 'objRemove') {
+                list.splice(write.index, 1)
+            } else {
+                const element = list[write.index]
+                if (!isJsonObject(element) || !Object.hasOwn(OBJ_LIST_FIELDS[write.list].fields, write.field)) {
+                    continue
+                }
+                let target = element
+                if (!ownElements.has(element)) {
+                    target = { ...element }
+                    ownElements.add(target)
+                    list[write.index] = target
+                }
+                if (!write.value.had) {
+                    delete target[write.field]
+                } else {
+                    const copy = toPlainJson(write.value.value)
+                    if (copy !== undefined) {
+                        target[write.field] = copy
+                    }
+                }
             }
         } else if (write.op === 'textSet') {
             writeModuleText(next, write.target, write.value)
@@ -663,6 +832,9 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
                 delete fields[propertyOf(write.path)]
             }
         }
+    }
+    for (const [property, list] of objLists) {
+        fieldsView(next)[property] = list
     }
     if (rows) {
         // The rows are fresh copies, so the list can hold them as they are; a plain array here would put the whole
@@ -758,6 +930,8 @@ export function applyChatWrites(live: Chat, writes: readonly WriteOp[]): void {
     for (const write of writes) {
         if (write.op === 'set' && isHeldBy(write.path, 'chat')) {
             writeHeld(live, write.path, write.value)
+        } else if (write.op === 'objInsert' || write.op === 'objRemove' || write.op === 'objSet') {
+            writeObjInPlace(live, 'chat', write)
         }
     }
 }

@@ -173,6 +173,8 @@ export const FIELD_SPECS = {
     presetFallbackOtherAx: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
     // The preset icon (S4d): a data URL text on the slot only, session-only like the rows above.
     presetImage: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
+    // The lore plus setting (S7): a registry boolean on the character. Append-only: it must stay the last row.
+    lorePlus: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -284,6 +286,7 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     presetFallbackEmotion: { labelKey: 'studioPresetFallbackListEmotion', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackEmotion' } },
     presetFallbackOtherAx: { labelKey: 'studioPresetFallbackListOtherAx', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackOtherAx' } },
     presetImage: { labelKey: 'icon', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetImage' } },
+    lorePlus: { labelKey: 'lorePlus', focus: { form: 'studio-lore-settings', part: 'studio-lore-plus' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed

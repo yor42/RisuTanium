@@ -1,0 +1,567 @@
+{
+  "character": {
+    "ownerKey": "character:A",
+    "touchedAt": 241000,
+    "done": [
+      {
+        "id": "p1:1",
+        "at": 1000,
+        "label": {
+          "kind": "obj",
+          "list": "lore",
+          "action": "edit",
+          "name": null,
+          "field": "content"
+        },
+        "ops": [
+          {
+            "op": "objSet",
+            "list": "lore",
+            "index": 0,
+            "field": "content",
+            "before": {
+              "had": true,
+              "value": "body 0"
+            },
+            "after": {
+              "had": true,
+              "value": "edited body"
+            },
+            "anchorBefore": 6337837215603635,
+            "anchorAfter": 536293494507062
+          }
+        ]
+      },
+      {
+        "id": "p1:2",
+        "at": 61000,
+        "label": {
+          "kind": "obj",
+          "list": "lore",
+          "action": "add",
+          "name": null
+        },
+        "ops": [
+          {
+            "op": "objInsert",
+            "list": "lore",
+            "index": 1,
+            "entry": {
+              "key": "",
+              "comment": "Row 9",
+              "content": "body 9",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false,
+              "loreCache": {
+                "unknown": "kept"
+              }
+            },
+            "counts": {
+              "content": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "p1:3",
+        "at": 121000,
+        "label": {
+          "kind": "obj",
+          "list": "lore",
+          "action": "delete",
+          "name": null,
+          "count": 2
+        },
+        "ops": [
+          {
+            "op": "objRemove",
+            "list": "lore",
+            "index": 2,
+            "entry": {
+              "key": "",
+              "comment": "Row 1",
+              "content": "body 1",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            },
+            "deletedId": "D-character"
+          },
+          {
+            "op": "objRemove",
+            "list": "lore",
+            "index": 0,
+            "entry": {
+              "key": "",
+              "comment": "Row 0",
+              "content": "edited body",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            },
+            "deletedId": "D-character"
+          }
+        ]
+      },
+      {
+        "id": "p1:4",
+        "at": 181000,
+        "label": {
+          "kind": "prop",
+          "prop": "loreSettings"
+        },
+        "ops": [
+          {
+            "op": "propSet",
+            "prop": "loreSettings",
+            "before": {
+              "had": false
+            },
+            "after": {
+              "had": true,
+              "value": {
+                "tokenBudget": 800
+              }
+            }
+          },
+          {
+            "op": "propSet",
+            "prop": "loreExt",
+            "before": {
+              "had": false
+            },
+            "after": {
+              "had": true,
+              "value": {
+                "depth": 2
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "p1:5",
+        "at": 241000,
+        "label": {
+          "kind": "field",
+          "field": "lorePlus"
+        },
+        "ops": [
+          {
+            "op": "set",
+            "path": "lorePlus",
+            "before": {
+              "had": false
+            },
+            "after": {
+              "had": true,
+              "value": true
+            }
+          }
+        ]
+      }
+    ],
+    "undone": [],
+    "deleted": [
+      {
+        "id": "D-character",
+        "at": 121000,
+        "list": "lore",
+        "entries": [
+          {
+            "index": 0,
+            "entry": {
+              "key": "",
+              "comment": "Row 0",
+              "content": "edited body",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            }
+          },
+          {
+            "index": 2,
+            "entry": {
+              "key": "",
+              "comment": "Row 1",
+              "content": "body 1",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            }
+          }
+        ]
+      }
+    ],
+    "restore": {
+      "visitId": "v1",
+      "at": 1000,
+      "fields": {
+        "lorePlus": {
+          "before": {
+            "had": false
+          },
+          "last": {
+            "had": true,
+            "value": true
+          }
+        }
+      }
+    }
+  },
+  "chat": {
+    "ownerKey": "chat:A/c1",
+    "touchedAt": 421000,
+    "done": [
+      {
+        "id": "p1:6",
+        "at": 241000,
+        "label": {
+          "kind": "obj",
+          "list": "lore",
+          "action": "edit",
+          "name": null,
+          "field": "content"
+        },
+        "ops": [
+          {
+            "op": "objSet",
+            "list": "lore",
+            "index": 0,
+            "field": "content",
+            "before": {
+              "had": true,
+              "value": "body 0"
+            },
+            "after": {
+              "had": true,
+              "value": "edited body"
+            },
+            "anchorBefore": 6337837215603635,
+            "anchorAfter": 536293494507062
+          }
+        ]
+      },
+      {
+        "id": "p1:7",
+        "at": 301000,
+        "label": {
+          "kind": "obj",
+          "list": "lore",
+          "action": "add",
+          "name": null
+        },
+        "ops": [
+          {
+            "op": "objInsert",
+            "list": "lore",
+            "index": 1,
+            "entry": {
+              "key": "",
+              "comment": "Row 9",
+              "content": "body 9",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false,
+              "loreCache": {
+                "unknown": "kept"
+              }
+            },
+            "counts": {
+              "content": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "p1:8",
+        "at": 361000,
+        "label": {
+          "kind": "obj",
+          "list": "lore",
+          "action": "delete",
+          "name": null,
+          "count": 2
+        },
+        "ops": [
+          {
+            "op": "objRemove",
+            "list": "lore",
+            "index": 2,
+            "entry": {
+              "key": "",
+              "comment": "Row 1",
+              "content": "body 1",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            },
+            "deletedId": "D-chat"
+          },
+          {
+            "op": "objRemove",
+            "list": "lore",
+            "index": 0,
+            "entry": {
+              "key": "",
+              "comment": "Row 0",
+              "content": "edited body",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            },
+            "deletedId": "D-chat"
+          }
+        ]
+      }
+    ],
+    "undone": [],
+    "deleted": [
+      {
+        "id": "D-chat",
+        "at": 361000,
+        "list": "lore",
+        "entries": [
+          {
+            "index": 0,
+            "entry": {
+              "key": "",
+              "comment": "Row 0",
+              "content": "edited body",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            }
+          },
+          {
+            "index": 2,
+            "entry": {
+              "key": "",
+              "comment": "Row 1",
+              "content": "body 1",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            }
+          }
+        ]
+      }
+    ],
+    "restore": {
+      "visitId": "v1",
+      "at": 241000,
+      "fields": {}
+    }
+  },
+  "module": {
+    "ownerKey": "module:M1",
+    "touchedAt": 601000,
+    "done": [
+      {
+        "id": "p1:9",
+        "at": 421000,
+        "label": {
+          "kind": "obj",
+          "list": "lore",
+          "action": "edit",
+          "name": null,
+          "field": "content"
+        },
+        "ops": [
+          {
+            "op": "objSet",
+            "list": "lore",
+            "index": 0,
+            "field": "content",
+            "before": {
+              "had": true,
+              "value": "body 0"
+            },
+            "after": {
+              "had": true,
+              "value": "edited body"
+            },
+            "anchorBefore": 6337837215603635,
+            "anchorAfter": 536293494507062
+          }
+        ]
+      },
+      {
+        "id": "p1:10",
+        "at": 481000,
+        "label": {
+          "kind": "obj",
+          "list": "lore",
+          "action": "add",
+          "name": null
+        },
+        "ops": [
+          {
+            "op": "objInsert",
+            "list": "lore",
+            "index": 1,
+            "entry": {
+              "key": "",
+              "comment": "Row 9",
+              "content": "body 9",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false,
+              "loreCache": {
+                "unknown": "kept"
+              }
+            },
+            "counts": {
+              "content": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "p1:11",
+        "at": 541000,
+        "label": {
+          "kind": "obj",
+          "list": "lore",
+          "action": "delete",
+          "name": null,
+          "count": 2
+        },
+        "ops": [
+          {
+            "op": "objRemove",
+            "list": "lore",
+            "index": 2,
+            "entry": {
+              "key": "",
+              "comment": "Row 1",
+              "content": "body 1",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            },
+            "deletedId": "D-module"
+          },
+          {
+            "op": "objRemove",
+            "list": "lore",
+            "index": 0,
+            "entry": {
+              "key": "",
+              "comment": "Row 0",
+              "content": "edited body",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            },
+            "deletedId": "D-module"
+          }
+        ]
+      }
+    ],
+    "undone": [],
+    "deleted": [
+      {
+        "id": "D-module",
+        "at": 541000,
+        "list": "lore",
+        "entries": [
+          {
+            "index": 0,
+            "entry": {
+              "key": "",
+              "comment": "Row 0",
+              "content": "edited body",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            }
+          },
+          {
+            "index": 2,
+            "entry": {
+              "key": "",
+              "comment": "Row 1",
+              "content": "body 1",
+              "mode": "normal",
+              "insertorder": 100,
+              "alwaysActive": false,
+              "secondkey": "",
+              "selective": false
+            },
+            "counts": {
+              "content": 1
+            }
+          }
+        ]
+      }
+    ],
+    "restore": {
+      "visitId": "v1",
+      "at": 421000,
+      "fields": {}
+    }
+  }
+}

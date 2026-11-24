@@ -30,6 +30,7 @@ import {
     fmAfterInsert,
     fmAfterRemove,
     invertOp,
+    isObjItem,
     listChangedElsewhere,
     listSideOf,
     parseOwnerRecord,
@@ -40,6 +41,7 @@ import {
     stepIdFor,
     textBeforeOf,
     type DeletedItem,
+    type GreetingDeletedItem,
     type Step,
     type FieldValue,
     type FmValue,
@@ -309,6 +311,14 @@ afterEach(() => {
 })
 
 // ---------------------------------------------------------------- stacks
+
+// These tests delete greetings only, so every listed item is a greeting item.
+function greetingItem(item: DeletedItem): GreetingDeletedItem {
+    if (isObjItem(item)) {
+        throw new Error('expected a greeting item')
+    }
+    return item
+}
 
 describe('stacks (T-H1, T-H2)', () => {
     test('T-H1 undo and redo move steps in order across three steps', () => {
@@ -823,7 +833,7 @@ describe('deleted items (T-D1)', () => {
             s.deleteGreeting(0, i * 5000)
         }
         expect(s.record.deleted).toHaveLength(MAX_DELETED)
-        expect(s.record.deleted[0].value).toBe('g3')
+        expect(greetingItem(s.record.deleted[0]).value).toBe('g3')
     })
 })
 
@@ -2305,7 +2315,7 @@ describe('deleted-item lifecycle: reverts and their undo and redo', () => {
         expect(s.undo(20000).ok).toBe(true)
         const byId = (list: readonly DeletedItem[]) => [...list].sort((x, y) => x.id.localeCompare(y.id))
         expect(byId(s.record.deleted)).toStrictEqual(byId(entries))
-        expect(s.record.deleted.map((item) => item.sideChat?.chatId).sort()).toEqual(['chatA', 'chatB'])
+        expect(s.record.deleted.map((item) => greetingItem(item).sideChat?.chatId).sort()).toEqual(['chatA', 'chatB'])
     })
 
     test('T22 a revert of a revert lists each item with its original side chat; undo consumes, redo lists', () => {
@@ -3100,7 +3110,7 @@ describe('S2b: a revert stores its net change, bounded by the state', () => {
 // ---------------------------------------------------------------- S2b: coupling, item effects, the notice count
 
 const deletedIds = (s: Session) => s.record.deleted.map((item) => item.id)
-const liveListedIds = (s: Session) => s.record.deleted.filter((item) => s.live.obj.alternateGreetings.includes(item.value)).map((item) => item.id)
+const liveListedIds = (s: Session) => s.record.deleted.filter((item) => s.live.obj.alternateGreetings.includes(greetingItem(item).value)).map((item) => item.id)
 
 // Everything a History action can change that a test compares across undo and redo.
 function stateOf(s: Session): string {
@@ -3629,7 +3639,7 @@ describe('S2b generated: without outside edits nothing is skipped (T95)', () => 
         const liveCount = new Map<string, number>()
         for (const v of s.live.obj.alternateGreetings) liveCount.set(v, (liveCount.get(v) ?? 0) + 1)
         const listedCount = new Map<string, number>()
-        for (const d of s.record.deleted) listedCount.set(d.value, (listedCount.get(d.value) ?? 0) + 1)
+        for (const d of s.record.deleted.map(greetingItem)) listedCount.set(d.value, (listedCount.get(d.value) ?? 0) + 1)
         const out = new Map<string, string>()
         for (const [v, n] of liveCount) {
             if (listedCount.has(v)) out.set(v, 'liveListed')
@@ -5249,7 +5259,8 @@ class FollowWorld {
     }
 
     sideChatOf(id: string) {
-        return this.state.record.deleted.find((item) => item.id === id)?.sideChat
+        const item = this.state.record.deleted.find((entry) => entry.id === id)
+        return item === undefined ? undefined : greetingItem(item).sideChat
     }
 }
 

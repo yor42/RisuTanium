@@ -11,8 +11,10 @@ import {
     planReplay,
     planRestoreDeleted,
     planRevert,
+    isObjItem,
     type DeletedItem,
     type FmValue,
+    type GreetingDeletedItem,
     type LiveReader,
     type ModelState,
     type Op,
@@ -58,6 +60,11 @@ interface World extends Owned {
 const shaped = (name: string): string => `{{image::${name}}}`
 const SHAPED_OPEN = '{{image::'.length
 const SHAPED_CLOSE = '}}'.length
+
+// This property world holds greetings only, so every listed item is a greeting item.
+function greetingItems(items: readonly DeletedItem[]): GreetingDeletedItem[] {
+    return items.filter((item): item is GreetingDeletedItem => !isObjItem(item))
+}
 
 function startWorld(): World {
     return {
@@ -122,6 +129,12 @@ function forwardWrites(ops: readonly Op[], w?: World): WriteOp[] {
                 return [{ op: 'listRemove', index: op.index }]
             case 'chatFm':
                 return op.chatId === null ? [] : [{ op: 'chatFm', chatId: op.chatId, value: op.after }]
+            // The world holds no object list.
+            case 'objInsert':
+            case 'objRemove':
+            case 'objSet':
+            case 'propSet':
+                return []
             default:
                 return [op]
         }
@@ -365,7 +378,7 @@ function runActions(input: Input, tally: Tally): string | null {
             seen.add(text)
         }
         const listed = new Set<string>()
-        for (const item of state.record.deleted) {
+        for (const item of greetingItems(state.record.deleted)) {
             if (listed.has(item.value)) {
                 duplicated.add(item.value)
             }
@@ -553,7 +566,7 @@ function runActions(input: Input, tally: Tally): string | null {
                 if (readable && w.greetings.length > 0) {
                     const index = act.at % w.greetings.length
                     const value = w.greetings[index]
-                    if (state.record.deleted.some((item) => item.value === value)) {
+                    if (greetingItems(state.record.deleted).some((item) => item.value === value)) {
                         break
                     }
                     const deletedId = `del${++itemCounter}`
@@ -576,7 +589,7 @@ function runActions(input: Input, tally: Tally): string | null {
             case 'restore':
                 if (readable && state.record.deleted.length > 0) {
                     const item: DeletedItem = state.record.deleted[act.at % state.record.deleted.length]
-                    if (w.greetings.includes(item.value)) {
+                    if (!isObjItem(item) && w.greetings.includes(item.value)) {
                         break
                     }
                     const plan = planRestoreDeleted(state.record, item.id, readerOf(w), { chatId: 'chatA' })

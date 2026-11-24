@@ -9,6 +9,7 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { character } from 'src/ts/storage/database.svelte'
 import { firstMessageOf } from 'src/ts/process/firstMessage'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { isObjItem } from '../historyModel'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
 import { characterOwnerKey } from '../ownerPhase'
 import { createFakeClock } from './historyTestKit.test-helpers'
@@ -85,7 +86,7 @@ async function start(character: LiveCharacter = makeCharacter()): Promise<void> 
 
 // The id of the History item that holds `value`.
 function deletedIdOf(value: string): string {
-    const item = service.view(A).deleted.find((entry) => entry.value === value)
+    const item = service.view(A).deleted.find((entry) => !isObjItem(entry) && entry.value === value)
     if (!item) {
         throw new Error(`no deleted item holding ${value}`)
     }

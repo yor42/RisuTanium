@@ -89,6 +89,11 @@ export const HISTORY_FORMAT_VERSION = 2
 // An optional, additive step field (such as a step's `listFingerprint`) keeps the version: a reader that
 // does not know it drops it when it rebuilds the step, and an absent field means the behaviour from
 // before the field existed. The field is omitted when absent, never written as undefined or null.
+// S7 (object lists): the ops `objInsert`, `objRemove`, `objSet` and `propSet`, the labels `obj` and `prop`, the obj
+// deleted item `{id, at, list, entries}` (no `value`, `index` or `sideChat`) and the registry path `lorePlus` are a
+// widening that older builds refuse whole (unknown op, unknown label, an item without a string `value` and integer
+// `index`, an unknown set path), so the version stays 2. A record naming a list, field or label field this build's
+// tables do not hold is refused whole.
 export const HEADER_PREFIX = 'h:'
 export const ASIDE_MARK_PREFIX = 'xh:'
 export const ENTRY_PREFIX = 'e:'
