@@ -12,7 +12,7 @@
 // - A dot in a path or in a `property` is reserved for nested holder properties: a dotted path names container `a`,
 //   key `b` (for example `depth_prompt.prompt`), is held by `character` only and gives no `property`. Its container
 //   is one of CONTAINER_SEEDS, whose seeds are persisted facts (an undo replays a seed reading). An absent or null
-//   container reads as its seed, so a restore point captures `''` for the three container paths of an absent
+//   container reads as its seed, so a restore point captures `''` for every container path of an absent
 //   container. A `had: true` write creates the container from a fresh copy of the seed, and a container is never
 //   deleted. A restore onto an existing container writes into it, and a restore whose live reading already equals
 //   `before` writes nothing, so it creates no container. A session owner kind that lists a dotted path owns the seed
@@ -173,8 +173,19 @@ export const FIELD_SPECS = {
     presetFallbackOtherAx: { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true },
     // The preset icon (S4d): a data URL text on the slot only, session-only like the rows above.
     presetImage: { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true },
-    // The lore plus setting (S7): a registry boolean on the character. Append-only: it must stay the last row.
+    // The lore plus setting (S7): a registry boolean on the character.
     lorePlus: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    // Studio S3a: the name and the Display form's paths. Append-only: a later row goes after these.
+    name: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    viewScreen: { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false },
+    largePortrait: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    inlayViewScreen: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    prebuiltAssetCommand: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, keepForeign: true },
+    prebuiltAssetStyle: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    'newGenData.prompt': { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    'newGenData.negative': { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    'newGenData.instructions': { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
+    'newGenData.emotionInstructions': { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -182,7 +193,8 @@ export const FIELD_SPECS = {
 export const CONTAINER_SEEDS = {
     depth_prompt: { depth: 0, prompt: '' },
     additionalData: { tag: [], creator: '', character_version: '' },
-} as const satisfies { [C in 'depth_prompt' | 'additionalData']: Required<NonNullable<character[C]>> }
+    newGenData: { prompt: '', negative: '', instructions: '', emotionInstructions: '' },
+} as const satisfies { [C in 'depth_prompt' | 'additionalData' | 'newGenData']: Required<NonNullable<character[C]>> }
 export type ContainerName = keyof typeof CONTAINER_SEEDS
 
 export type SetPath = keyof typeof FIELD_SPECS
@@ -192,7 +204,7 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     firstMessage: { labelKey: 'firstMessage', focus: 'firstMessage' },
     exampleMessage: { labelKey: 'exampleMessage', focus: 'example' },
     customModuleToggle: { labelKey: 'customPromptTemplateToggle', focus: null },
-    hideChatIcon: { labelKey: 'hideChatIcon', focus: { form: 'studio-character-form', part: 'studio-form-hide-icon' } },
+    hideChatIcon: { labelKey: 'hideChatIcon', focus: { form: 'studio-display-form', part: 'studio-display-hide-icon' } },
     risutanium_render_when_complete: { labelKey: 'studioFormRenderWhenComplete', focus: { form: 'studio-character-form', part: 'studio-form-render-when-complete' } },
     note: { labelKey: 'note', focus: { form: 'studio-chat-note-form', part: 'studio-form-note' } },
     systemPrompt: { labelKey: 'systemPrompt', focus: { form: 'studio-advanced-form', part: 'studio-form-system-prompt' } },
@@ -287,6 +299,17 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     presetFallbackOtherAx: { labelKey: 'studioPresetFallbackListOtherAx', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetFallbackOtherAx' } },
     presetImage: { labelKey: 'icon', focus: { form: 'studio-preset-advanced-form', part: 'studio-preset-presetImage' } },
     lorePlus: { labelKey: 'lorePlus', focus: { form: 'studio-lore-settings', part: 'studio-lore-plus' } },
+    // Studio S3a.
+    name: { labelKey: 'name', focus: { form: 'studio-character-form', part: 'studio-form-name' } },
+    viewScreen: { labelKey: 'viewScreen', focus: { form: 'studio-display-form', part: 'studio-display-view-screen' } },
+    largePortrait: { labelKey: 'largePortrait', focus: { form: 'studio-display-form', part: 'studio-display-large-portrait' } },
+    inlayViewScreen: { labelKey: 'inlayViewScreen', focus: { form: 'studio-display-form', part: 'studio-display-inlay' } },
+    prebuiltAssetCommand: { labelKey: 'insertAssetPrompt', focus: { form: 'studio-display-form', part: 'studio-display-prebuilt-asset-command' } },
+    prebuiltAssetStyle: { labelKey: 'assetStyle', focus: { form: 'studio-display-form', part: 'studio-display-prebuilt-asset-style' } },
+    'newGenData.prompt': { labelKey: 'imgGenPrompt', focus: { form: 'studio-display-form', part: 'studio-display-gen-prompt' } },
+    'newGenData.negative': { labelKey: 'imgGenNegatives', focus: { form: 'studio-display-form', part: 'studio-display-gen-negative' } },
+    'newGenData.instructions': { labelKey: 'imgGenInstructions', focus: { form: 'studio-display-form', part: 'studio-display-gen-instructions' } },
+    'newGenData.emotionInstructions': { labelKey: 'emotionInstructions', focus: { form: 'studio-display-form', part: 'studio-display-emotion-instructions' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed

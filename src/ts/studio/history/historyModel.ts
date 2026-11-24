@@ -163,6 +163,10 @@ export type TextFieldPath =
     | 'translatorNote'
     | 'backgroundEmbedding'
     | 'creatorNotes'
+    | 'newGenData.prompt'
+    | 'newGenData.negative'
+    | 'newGenData.instructions'
+    | 'newGenData.emotionInstructions'
 export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
     'desc',
     'firstMessage',
@@ -177,6 +181,11 @@ export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
     'translatorNote',
     'backgroundEmbedding',
     'creatorNotes',
+    // Studio S3a: the image-generation and emotion texts of the Display form.
+    'newGenData.prompt',
+    'newGenData.negative',
+    'newGenData.instructions',
+    'newGenData.emotionInstructions',
 ]
 
 // `had: false` is an absent optional key. Writing it deletes the key; it never assigns false or undefined.

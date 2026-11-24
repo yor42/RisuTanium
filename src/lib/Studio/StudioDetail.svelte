@@ -13,12 +13,12 @@
     import { clearOpenModuleId, clearWithdrawnOpenModuleId, moduleRowOf, publishOpenModuleId, withdrawnOpenModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
     import { DBState } from '../../ts/stores.svelte'
-    import StudioAssetList, { type EnabledModuleAssets } from './assets/StudioAssetList.svelte'
-    import StudioEmotionList from './assets/StudioEmotionList.svelte'
+    import type { EnabledModuleAssets } from './assets/StudioAssetList.svelte'
     import StudioModuleAssetForm from './assets/StudioModuleAssetForm.svelte'
     import StudioModuleAdvancedForm from './StudioModuleAdvancedForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
+    import StudioDisplayForm from './StudioDisplayForm.svelte'
     import StudioAdvancedForm from './StudioAdvancedForm.svelte'
     import StudioExampleForm from './StudioExampleForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
@@ -294,10 +294,9 @@
                 {#if characterFormLive}
                     <StudioCharacterForm chaId={studioScreen.chaId} />
                 {:else if assetFormLive}
-                    <!-- Keyed by the owner: a new owner builds the list again, with a new filter, selection and panels. -->
+                    <!-- Keyed by the owner: a new owner builds the form again, with its own segment, filter, selection and panels. -->
                     {#key ownerKey}
-                        <StudioAssetList chaId={characterId} enabledModules={enabledModuleAssets} />
-                        <StudioEmotionList chaId={characterId} />
+                        <StudioDisplayForm chaId={characterId} enabledModules={enabledModuleAssets} />
                     {/key}
                 {:else if exampleFormLive}
                     <StudioAdvancedForm chaId={studioScreen.chaId} section="prompts" />

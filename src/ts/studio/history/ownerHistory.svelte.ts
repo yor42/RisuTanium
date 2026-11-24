@@ -28,6 +28,7 @@ import {
     type SurvivorDeps,
 } from '../edit/assetSetters'
 import { buildGreetingAppendMany, buildGreetingMove, buildGreetingSwap } from '../edit/greetingListOps'
+import { buildScreenModeSwitch, type ScreenModeChange } from '../edit/screenModeFill'
 import {
     applyCharacterWrites,
     applyChatWrites,
@@ -309,6 +310,8 @@ export interface OwnerHistoryService {
     // or an owner kind does not carry is refused precondition; a path that is already not set changes nothing.
     clearField(owner: OwnerKey, path: SetPath): StudioResult
     greetingAdd(owner: OwnerKey): StudioResult
+    // The classic mode switch as one step: the `viewScreen` or inlay switch plus the `newGenData` keys the fill changes.
+    screenMode(owner: OwnerKey, change: ScreenModeChange): StudioResult
     greetingEdit(owner: OwnerKey, index: number, value: string): StudioResult
     greetingDelete(owner: OwnerKey, index: number): StudioResult
     // Moves entry `from` to `to` (post-removal index); the context chat keeps showing the same text.
@@ -1743,6 +1746,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         editText: (owner, path, value, mode = 'typing') =>
             applyStudioWrite(owner, { kind: 'text', path, value, coalesce: mode === 'typing' }),
         greetingAdd: (owner) => applyStudioWrite(owner, { kind: 'edit', build: (_id, live, target) => buildGreetingAdd(live, target) }),
+        screenMode: (owner, change) => applyStudioWrite(owner, { kind: 'edit', build: (_id, live) => buildScreenModeSwitch(change, live) }),
         greetingMove: (owner, from, to) =>
             applyStudioWrite(owner, { kind: 'edit', build: (_id, live, target) => buildGreetingMove(from, to, target, live) }),
         greetingSwapWithMain: (owner, index) =>

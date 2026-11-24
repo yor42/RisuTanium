@@ -113,6 +113,17 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['presetImage', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
     // The lore plus setting (S7): a registry boolean on the character.
     ['lorePlus', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    // Studio S3a: the name and the Display form's paths, then the four newGenData keys.
+    ['name', { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
+    ['viewScreen', { value: 'text', holders: ['character'], absent: 'keep', editWhenAbsent: false }],
+    ['largePortrait', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['inlayViewScreen', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['prebuiltAssetCommand', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, keepForeign: true }],
+    ['prebuiltAssetStyle', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['newGenData.prompt', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['newGenData.negative', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['newGenData.instructions', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
+    ['newGenData.emotionInstructions', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
 ]
 
 // The containers a dotted path names, with the value an absent container reads as. An undo replays a seed reading, so
@@ -120,6 +131,7 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
 const FROZEN_CONTAINER_SEEDS = {
     depth_prompt: { depth: 0, prompt: '' },
     additionalData: { tag: [], creator: '', character_version: '' },
+    newGenData: { prompt: '', negative: '', instructions: '', emotionInstructions: '' },
 }
 
 describe('T-FZ: the persisted facts of the registered paths are frozen', () => {
@@ -160,13 +172,13 @@ describe('T-FZ: the persisted facts of the registered paths are frozen', () => {
         expect(Object.keys(CONTAINER_SEEDS)).toEqual(Object.keys(FROZEN_CONTAINER_SEEDS))
     })
 
-    test('F-g: keepForeign is set on the module rows of S5 only, and only with editWhenAbsent', () => {
+    test('F-g: keepForeign is set on the module rows of S5 and on prebuiltAssetCommand only, and only with editWhenAbsent', () => {
         const specs: Record<string, FieldFacts> = FIELD_SPECS
         const foreignPaths = Object.keys(specs).filter((path) => specs[path].keepForeign === true)
-        expect(foreignPaths).toEqual(['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding'])
+        expect(foreignPaths).toEqual(['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding', 'prebuiltAssetCommand'])
         for (const path of foreignPaths) {
             expect(specs[path].editWhenAbsent, path).toBe(true)
-            expect(specs[path].holders, path).toEqual(['module'])
+            expect(specs[path].holders, path).toEqual(path === 'prebuiltAssetCommand' ? ['character'] : ['module'])
         }
     })
     test('F-e: every value type is text, bool, number, textList or biasList; a number or textList path is session-only (no builtin holder)', () => {

@@ -1,17 +1,57 @@
-# #681 stage handoff: plan (Studio S3, name, Display leftovers, portrait, real Add)
+# #681 stage handoff: S3a (Studio name and Display fields)
 
-- Stage: sizing and plan only (MC-3878 brief section 5). No app code. Plan: `Agents/stages/681/PLAN.md`, revision 2. The build lands as three PRs on #681 (MC-4130): S3a, S3b, S3c, in that order; only S3c closes the ticket.
-- Decisions: `Agents/mc/681.md`, MC-4130..4136. MC-4130 three stages; MC-4131 hide-icon switch to Display in S3a; MC-4132 mode switch fills like classic, tagged, one undo step; MC-4133 pngExif copied inside the portrait step; MC-4134 inlay switch leaves the asset list alone; MC-4135 an import lands only while its character stays selected; MC-4136 S3a Gate 2 raised to opus-reviewer (routing).
-- Sizing (investigator, Sonnet): Studio has no real file picker today (`StudioDetail.svelte` mounts `StudioAssetList` with no `picker`; `AssetPickerPort` has no implementation outside tests), hence S3c. Engine change #29 is not needed: the fill is computed by running `updateInlayScreen` on a copy.
-- Gate 1: the designer was Opus. Round 1 (opus-reviewer) returned [REJECT]: F1 the revert net-zero snapshot must include `pngExif`; F2 MC-4135 not built in (it was recorded after r1 was written); F3..F8 editorial. Revision 2 fixed them. Round 2 (a fresh opus-reviewer) returned [EDITORIAL], so the plan passed.
-- Leftovers to apply in the build briefs (accepted in round 2 as editorial, no re-review needed):
-  - E1 (S3b): move `studioImportNotAdded` into the S3b key list (15 keys, with 7 locales, since the B-T7 portrait toast posts it); S3c then has 6 new keys plus 1 reused.
-  - E2 (S3b/S3c): for an insert refused while Studio is still open (`duplicate-id`, `restricted`, gone, archived), use a neutral "{n} files were not added" with the refusal reason; keep the "because Studio closed" text for the visit-end case MC-4135 words.
-  - E3 (S3b/S3c, accepted reading): MC-4135 binds an import to its Studio visit. A close followed by reopening the same character before the store resolves does not land the files (C-T8 (c), R7); the portrait add uses the same visit rule by analogy. Lane A accepted this as the reading of MC-4135 (nothing the author had is lost; files are re-pickable and swept); reopen it with the maintainer only if a device row shows it confuses.
-  - E4 (S3a): A-T6's forward comparison reads an absent `newGenData` as the seed, or pairs the absent-container case with a filling mode (none to emotion or imggen).
-  - E5 (S3b): `holdsResultOf` for `portraitSet` includes `pngExif.after` when the pair is present; add a B-T10 (b) variant that kills a partial comparison.
-- History-core slot (lane A schedules on this): every stage waits for #685 S7-0 to merge. S3a edits `fieldRegistry.ts`, `historyModel.ts`, `ownerHistory.svelte.ts`; S3b edits `historyModel.ts`, `studioSetters.ts`, `ownerHistory.svelte.ts`; S3c edits `studioSetters.ts`. Each stage first re-reads the "S7-0 collision anchors" listed in the plan.
-- Build routing (plan section "Gate 2, coders, devices"): Sonnet coders per stage; Gate 2 opus-reviewer for S3a (MC-4136) and S3b (critical: history record, retention/GC, asset lifecycle); S3c per the plan. Mutants on the new ops (plan "Mutants to kill"); every reproducer is DESIGNED, NOT DEMONSTRATED until run red-before-green. Device rows only for the real Android picker (S3b, S3c), Note 9 with synthetic data through a lease.
-- Next stage: S3a, after S7-0 merges and lane A frees the slot and asks the maintainer to start it (MC-3621, MC-3622).
-- MC IDs: MC-4137..4139 are still unused, held for the rest of #681.
-- Scratch artifacts (briefs, dispatches, sizing, plan r1, gate verdicts): `%TEMP%\risu-b715\b61\c681\` (sizing.md, PLAN-r1.md, PLAN-r2.md, gate1.md, gate1-r2.md).
+## Completed stage: S3a
+
+- PR: "Refs #681" from `claude/681-s3a`, base main `dbe8084a8` (after #685 S7-0, PR 747). Plan: `Agents/stages/681/PLAN.md` r2, S3a sections, plus the anchor delta against S7-0 (DELTA NONE, five additive test-list amendments) and Gate 1 leftover E4.
+- What landed:
+  - Ten history registry rows (`name`, `viewScreen`, `largePortrait`, `inlayViewScreen`, `prebuiltAssetCommand` with `keepForeign`, `prebuiltAssetStyle`, four `newGenData.*`), a new persisted container seed `newGenData` (all `''`), and the four `newGenData.*` paths in `TEXT_FIELD_PATHS`. Each sits in its own commented S3a block at the tail of `FIELD_SPECS`, `FIELD_PRESENTATION` and `TEXT_FIELD_PATHS`, for the #708 SC-1 rebase.
+  - The screen-mode switch (`screenModeFill.ts`): classic's fill runs on a copy and the diff becomes one undo step; filled fields are tagged "Default" with a reset (MC-4132). The inlay switch never writes `additionalAssets` (MC-4134).
+  - The pure fill moved from `src/ts/process/inlayScreen.ts` to the new `inlayScreenFill.ts`. `inlayScreen.ts` re-exports it, so classic callers and the image-generation path are unchanged.
+  - The Display form (`StudioDisplayForm.svelte`, `StudioDisplayScreen.svelte`) with segments 사진 / 화면 / 에셋 remembered per character (`displaySegment.ts`). `hideChatIcon` moved there with its history focus (MC-4131). The emotion list shows only for `viewScreen === 'emotion'`, as in classic.
+  - The name field in Basic: an emptied name reverts on blur to its value at focus.
+  - Eight new `en.ts` keys plus the reworded `studioHistoryNone`, in all 7 locales.
+- Gate 2 (opus-reviewer, MC-4136):
+  - Round 1 [REJECT]:
+    - F1: undo of `prebuiltAssetCommand` on a card-imported character (stored `''`) did nothing, because the character writer had no foreign branch.
+    - F2: three theme-pack guards failed on non-literal or camelCase part names, and on a STUDIO_SAFE panel around the merge roots.
+    - F3..F5 editorial.
+  - Round 2 (fresh opus-reviewer) [EDITORIAL]: passed.
+  - Dispositions are recorded in MC-4137.
+- Lane A PR check (head `fe1e975d6`): [REJECT] on B1. The name field's composition gate was not registered with `registerStudioField`, so a held IME composition was not written on page hide (MC-1813).
+  - The fix registers the gate and adds lane A's probe P1 as a regression reproducer.
+  - In the same push: a history-focus reveal no longer saves the Display segment choice; a guard compares the registry focus parts with the rendered parts (H4 was no real mismatch); comment and test-label edits.
+  - A fresh Sonnet adversarial-reviewer approved the delta ([APPROVE], `s3a-rev3.md`).
+- Process deviation: the first coder ran its reproducers and mutants by swapping repository files and restoring them, against ownership.md. Both Gate 2 rounds reran the reproducers and mutants in scratch with in-memory substitution and found no residue: the tree and patch hashes matched.
+- Tests: targeted runs of `src/ts/studio`, `src/lib/Studio`, `src/ts/process`, `src/ts/themePack`, `src/App` and localeParity, all green in Gate 2 round 2. `pnpm check` has 0 errors. The full suite runs in PR CI.
+- Leftovers:
+  - E2 (optional test, not done): three of the four Display text-field port pairings are not covered by a typing test (round-2 mutant r2M1 survived). The code was read correct.
+  - E3 (optional test, not done): nothing tests the `live.name !== nameAtFocus` guard (mutant r2M3 survived). The code was read correct.
+  - F3 (known limitation, accepted): a wrong-typed `newGenData` key is overwritten by the fill as classic does, and undo deletes it instead of restoring it.
+  - Known limitations accepted by lane A (MC-4137):
+    - `largePortrait` and `inlayViewScreen` have no `keepForeign`, so undo deletes a stored non-boolean value rather than restoring it.
+    - The per-character Display segment keys in `localStorage` are never removed.
+  - Known test gaps (surviving mutants from lane A's check):
+    - `buildScreenModeSwitch` ignoring a stored `inlayViewScreen: false`;
+    - a checkbox or select not reverting after a refused write.
+  - Lane A tracks the other unregistered single-line composition gates in #752.
+
+## History-core slot
+
+S3a edited `fieldRegistry.ts`, `historyModel.ts`, `ownerHistory.svelte.ts` and `studioSetters.ts`; the foreign branch in `writeHeld` came from F1. The slot is released when this PR merges; lane A decides who gets it next (#708 SC-1 rebases onto S3a's blocks).
+
+## Next stage: S3b (portrait)
+
+- Plan: PLAN.md "S3b". Apply the Gate 1 leftovers E1, E2, E3 and E5 (below) and re-read the anchors after S3a and any later history-core merge.
+- Routing: Sonnet coder; Gate 2 by an opus-reviewer naming the history record, retention/GC and asset-lifecycle contracts; device rows for the real Android picker (Note 9, synthetic data, lease).
+- Start: only after lane A grants the history-core slot and asks the maintainer (MC-3621, MC-3622).
+
+Gate 1 leftovers still open (from the plan stage):
+- E1 (S3b): move `studioImportNotAdded` into the S3b key list (15 keys, with 7 locales); S3c then has 6 new keys plus 1 reused.
+- E2 (S3b/S3c): for an insert refused while Studio is still open, use a neutral "{n} files were not added" with the refusal reason. Keep "because Studio closed" for the visit-end case.
+- E3 (S3b/S3c, accepted reading): MC-4135 binds an import to its Studio visit. A close followed by a reopen before the store resolves does not land the files. The portrait add follows the same rule.
+- E5 (S3b): `holdsResultOf` for `portraitSet` includes `pngExif.after` when the pair is present; add a B-T10 (b) variant.
+
+## Records
+
+- Decisions: `Agents/mc/681.md`, MC-4130..4137. MC-4138..4139 are unused.
+- Scratch: `%TEMP%\risu-b715\b61\c681\` (briefs, dispatches, `s3a-delta.md`, `s3a-code.md`, `s3a-fix1.md`, `s3a-gate2.md`, `s3a-gate2-r2.md`, patches `s3a-r1.patch` and `s3a-r2.patch`).

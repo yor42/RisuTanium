@@ -68,6 +68,7 @@ vi.mock('../../lang', async () => {
 import type { SaveAck } from '../../ts/studio/edit/saveAck.svelte'
 import type { OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
+import { writeDisplaySegment } from '../../ts/studio/displaySegment'
 import { openStudio, resetStudioScreenForTests, setStudioSelection } from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
 import { ASSET_FOLDER_KEY } from '../../ts/studio/assets/assetOwnerKeys'
@@ -155,6 +156,8 @@ function heldLoad(): { settle: (value: ModuleStubLoad) => void } {
 
 beforeEach(() => {
     localStorage.clear()
+    // The asset list is in the assets segment of the Display form.
+    writeDisplaySegment('cha-1', 'assets')
     resetStudioScreenForTests()
     resetStudioModuleLoadsForTests()
     resetOpenModuleIdForTests()

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The hide-icon and render-when-complete checkboxes of the Studio character form are named through aria-label equal
- * to the visible text, and the second keeps its description link. REAL: StudioCharacterForm and the real language
+ * The render-when-complete checkbox of the Studio character form is named through aria-label equal to the visible
+ * text and keeps its description link, and the name input is named by its label (the hide-icon switch lives in the
+ * Display form). REAL: StudioCharacterForm and the real language
  * table. MOCKED: the history service (absent, so the fields are read-only), the toast helper and the two child fields
  * (long text and greeting cards), which are not part of this check.
  */
@@ -31,19 +32,18 @@ let host: HTMLElement
 afterEach(async () => { if (app) await unmount(app); app = undefined; host?.remove() })
 
 describe('StudioCharacterForm form control names', () => {
-    test('both checkboxes carry aria-label equal to their visible text and no aria-labelledby', () => {
+    test('the checkbox carries aria-label equal to its visible text and no aria-labelledby, and the name input has its label', () => {
         host = document.createElement('div')
         document.body.appendChild(host)
         app = mount(StudioCharacterForm, { target: host, props: { chaId: 'A' } })
         flushSync()
-        const hide = host.querySelector<HTMLInputElement>('[data-part="studio-form-hide-icon"]')!
+        expect(host.querySelector('[data-part="studio-form-hide-icon"]')).toBeNull()
+        const name = host.querySelector<HTMLInputElement>('[data-part="studio-form-name"]')!
+        expect(host.querySelector(`label[for="${name.id}"]`)?.textContent).toBe(language.name)
         const render = host.querySelector<HTMLInputElement>('[data-part="studio-form-render-when-complete"]')!
-        expect(hide.getAttribute('aria-label')).toBe(language.hideChatIcon)
         expect(render.getAttribute('aria-label')).toBe(language.studioFormRenderWhenComplete)
-        for (const box of [hide, render]) {
-            expect(box.hasAttribute('aria-labelledby')).toBe(false)
-            expect(controlName(box)).toBe(box.closest('label')!.textContent!.trim())
-        }
+        expect(render.hasAttribute('aria-labelledby')).toBe(false)
+        expect(controlName(render)).toBe(render.closest('label')!.textContent!.trim())
         expect(document.getElementById(render.getAttribute('aria-describedby')!)).not.toBeNull()
         expect(unnamedControls(host, { fields: true })).toEqual([])
     })
