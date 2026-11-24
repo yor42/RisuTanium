@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { CbsCheckResult, CbsProblem, CbsProblemKind } from './cbsCheck'
 import { editBetween } from './highlightSpans'
-import { fixApplies, PROBLEM_KINDS, problemRows, shiftRows, type ProblemCopy, type ProblemRow } from './problemsModel'
+import { fixApplies, PROBLEM_KINDS, problemRows, shiftRows, withExtraRows, type ExtraProblem, type ProblemCopy, type ProblemRow } from './problemsModel'
 
 const copy: ProblemCopy = {
     'unclosed-macro': () => 'unclosed-macro',
@@ -54,7 +54,7 @@ describe('C1-U2 a fix applies only to the text it was computed on', () => {
 })
 
 describe('C1-U3 shiftRows', () => {
-    const rowAt = (start: number, end: number, line: number): ProblemRow => ({ key: '', kind: 'unknown-macro', severity: 'warning', line, start, end, message: 'm', fix: null })
+    const rowAt = (start: number, end: number, line: number): ProblemRow & { kind: CbsProblemKind } => ({ key: '', kind: 'unknown-macro', severity: 'warning', line, start, end, message: 'm', fix: null })
 
     test('rows before the edit stay, rows after it move with their line recomputed, rows it touches are dropped', () => {
         const before = 'ab\n{{x}}\n{{y}}\n{{z}}'
@@ -73,5 +73,41 @@ describe('C1-U3 shiftRows', () => {
         const rows = problemRows([problem('unknown-macro', 2, 3, { line: 1 })], copy)
         const after = 'ab\ncdX'
         expect(shiftRows(rows, editBetween(before, after), after).map((r) => r.line)).toEqual([1])
+    })
+})
+
+describe('T64 withExtraRows', () => {
+    const extraAt = (start: number, end: number, message = 'x'): ExtraProblem => ({ kind: 'x-deco-unknown', severity: 'warning', start, end, message })
+
+    test('merged by start with the checker row first at an equal start, lines from the text, no fix, unique keys', () => {
+        const text = 'ab\n{{x}}\ncd\n{{y}}'
+        const rows = problemRows([problem('unknown-macro', 3, 8, { line: 2, fix: { start: 3, end: 8, text: 'f' } }), problem('unknown-macro', 13, 18, { line: 4 })], copy)
+        const merged = withExtraRows(rows, [extraAt(13, 14, 'late'), extraAt(0, 2, 'first'), extraAt(3, 8, 'same'), extraAt(3, 8, 'again')], text)
+        expect(merged.map((row) => [row.kind, row.start, row.message === 'unknown-macro' ? 'cbs' : row.message])).toEqual([
+            ['x-deco-unknown', 0, 'first'],
+            ['unknown-macro', 3, 'cbs'],
+            ['x-deco-unknown', 3, 'same'],
+            ['x-deco-unknown', 3, 'again'],
+            ['unknown-macro', 13, 'cbs'],
+            ['x-deco-unknown', 13, 'late'],
+        ])
+        expect(merged.map((row) => row.line)).toEqual([1, 2, 2, 2, 4, 4])
+        expect(merged.map((row) => row.fix !== null)).toEqual([false, true, false, false, false, false])
+        expect(new Set(merged.map((row) => row.key)).size).toBe(merged.length)
+        expect(merged.filter((row) => row.start === 3 && row.end === 8).map((row) => row.key)).toEqual(['unknown-macro:3:8', 'x-deco-unknown:3:8', 'x-deco-unknown:3:8#2'])
+    })
+
+    test('no extra problems leaves the rows as they were', () => {
+        const rows = problemRows([problem('unknown-macro', 3, 8)], copy)
+        expect(withExtraRows(rows, [], 'ab\n{{x}}')).toEqual(rows)
+    })
+
+    test('shiftRows moves and drops extra rows like checker rows', () => {
+        const before = 'ab\n{{x}}\n{{y}}'
+        const rows = withExtraRows(problemRows([problem('unknown-macro', 3, 8)], copy), [extraAt(9, 14)], before)
+        const after = 'ab\n{{x}}\nNEW\n{{y}}'
+        expect(shiftRows(rows, editBetween(before, after), after).map((row) => [row.kind, row.start, row.line])).toEqual([['unknown-macro', 3, 2], ['x-deco-unknown', 13, 4]])
+        const touched = 'ab\n{{x}}\n{{yy}}'
+        expect(shiftRows(rows, editBetween(before, touched), touched).map((row) => row.kind)).toEqual(['unknown-macro'])
     })
 })

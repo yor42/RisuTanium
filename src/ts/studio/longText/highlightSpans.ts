@@ -15,7 +15,7 @@ export type SpanKind = 'brace' | 'name' | 'sep' | 'arg' | 'block' | 'comment' | 
 export type Span = { start: number; end: number; kind: SpanKind }
 export type Mark = { start: number; end: number; severity: CbsProblem['severity'] }
 // A display-only note: the speaker prefix of an example turn, or the part of it the engine ignores.
-export type Note = { start: number; end: number; note: 'speaker' | 'notUsed' }
+export type Note = { start: number; end: number; note: 'speaker' | 'notUsed' | 'decorator' }
 export type Segment = { text: string; kind: SpanKind | null; severity: Mark['severity'] | null; note?: Note['note'] | null }
 export type Edit = { start: number; removed: number; inserted: number }
 
