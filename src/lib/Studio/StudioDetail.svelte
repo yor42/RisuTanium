@@ -5,7 +5,8 @@
     import { itemSectionsOf, type TextField } from '../../ts/studio/itemText'
     import { currentModuleAck, currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
-    import { applyStudioTarget, clearStudioSelection, followStudioPreset, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { MODULE_LIST_KEY, applyStudioTarget, clearStudioSelection, followStudioPreset, openStudioModuleList, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { moduleRowKeys } from '../Setting/Pages/Module/moduleListWindow'
     import { moduleListOf, moduleRefIdsOf } from '../../ts/process/moduleRefList'
     import { isModuleStub } from '../../ts/storage/moduleStub'
     import { isStudioModuleLoading, requestStudioModuleLoad } from '../../ts/studio/assets/moduleStubLoad.svelte'
@@ -41,6 +42,8 @@
     })
 
     const combinedKind = $derived(combinedKindOf(studioScreen.selectedOwnerKey))
+    // The module list page is a selection of its own: no owner, no kind, no history.
+    const moduleListShown = $derived(studioScreen.selectedOwnerKey === MODULE_LIST_KEY)
     const owner = $derived(model && studioScreen.selectedOwnerKey !== null ? model.ownerByKey(studioScreen.selectedOwnerKey) : undefined)
     const kindNode = $derived(owner && studioScreen.selectedKind !== null ? owner.kinds().find((node) => node.kind === studioScreen.selectedKind) : undefined)
     // A kind without a list below it (everything but lore and regex) is one item: choosing the kind shows it.
@@ -160,7 +163,7 @@
             })
             return
         }
-        if (!current || key === null || combinedKindOf(key) !== null) return
+        if (!current || key === null || key === MODULE_LIST_KEY || combinedKindOf(key) !== null) return
         if (current.ownerByKey(key)) return
         untrack(() => clearStudioSelection(key.startsWith(MODULE_KEY_PREFIX) ? language.studioRefusalModuleGone : language.studioNotFound))
     })
@@ -204,10 +207,23 @@
         if (!owner) return
         openInClassicEditor(owner.type, kindNode?.kind ?? null)
     }
+
+    // Held text of this detail is written before the page changes (the list is reached through the selection).
+    function showInModuleList(): void {
+        openStudioModuleList(moduleSlotIndex === null ? null : (moduleRowKeys(DBState.db.modules ?? [])[moduleSlotIndex] ?? null))
+    }
 </script>
 
 <div data-part="studio-detail-body" class="flex flex-col gap-3 p-4">
-    {#if combinedKind !== null}
+    {#if moduleListShown}
+        <!-- Loaded on first use: the page reaches the import, export and MCP code, which no other Studio screen needs. -->
+        {#await import('./StudioModuleList.svelte') then loaded}
+            {@const ModuleList = loaded.default}
+            <ModuleList />
+        {:catch}
+            <p role="alert" data-part="studio-module-list-load-failed" class="text-sm text-draculared">{language.error}</p>
+        {/await}
+    {:else if combinedKind !== null}
         {#if model}
             <StudioCombined {model} kind={combinedKind} />
         {/if}
@@ -322,10 +338,18 @@
             {:else if !toggleBuilderLive}
                 <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>
             {/if}
-            {#if destination && !stubLoading}
+            {#if owner.type === 'module'}
+                <div>
+                    <button type="button" data-part="studio-module-show-in-list" class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={showInModuleList}>
+                        {language.studioShowInModuleList}
+                    </button>
+                </div>
+            {/if}
+            <!-- A module that is not loaded has no classic link: its list operations are on the module list page. -->
+            {#if destination && !stubLoading && !(owner.type === 'module' && owner.stub)}
                 <div>
                     <button type="button" data-part="studio-detail-classic" class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={openClassic}>
-                        {owner.type === 'module' && owner.stub ? language.studioOpenModules : language.studioOpenClassic}
+                        {language.studioOpenClassic}
                     </button>
                 </div>
             {/if}

@@ -61,7 +61,8 @@ export interface StudioListReturn {
  * - `targetPending` is true from the open until a pane that has the model places the target.
  * - `listReturn` is the merged (Combined) list an entry was opened from, with the row that opened it. Back on a phone
  *   detail returns to that list instead of the tree; any other selection, the list and the end of the visit drop it.
- * - `revealListRow` is the row the merged list scrolls into view and focuses once it is shown again after that Back.
+ * - `revealListRow` is the row the list the detail shows (a merged list, or the module list) scrolls into view and
+ *   focuses once it is shown: after Back from an entry opened there, or after a module's "Show in module list".
  * - The selection, the expanded rows, the extra pages and "hide empty kinds" live here, not in the tree, so a
  *   phone layout that unmounts the tree keeps them for the visit.
  */
@@ -434,6 +435,48 @@ export function selectStudioNode(ownerKey: string, kind: StudioKind | null, item
 export function openStudioListRow(list: { ownerKey: string, kind: StudioKind }, ownerKey: string, itemId: string | null, revealId: string | null = itemId): void {
     selectStudioNode(ownerKey, list.kind, itemId)
     studioScreen.listReturn = revealId === null ? null : { ownerKey: list.ownerKey, kind: list.kind, rowId: revealId }
+}
+
+/**
+ * The selection key of the module list page. `list` is no owner type, so no owner model, history owner or target parser
+ * ever reads it as an owner.
+ */
+export const MODULE_LIST_KEY = 'list:modules'
+
+/**
+ * Shows the module list page. Held text of the page being left is written first (through `setStudioSelection`). With
+ * `revealKey` (a `moduleRowKeys` key) the page scrolls that row into view and focuses it once.
+ */
+export function openStudioModuleList(revealKey: string | null = null): void {
+    selectStudioNode(MODULE_LIST_KEY, null, null)
+    studioScreen.revealListRow = revealKey
+}
+
+/**
+ * Selects the owner of module row `row` at `kind`, and opens the rows that lead to it. `model` is the owner model read
+ * after any push of `row`, because the owner is looked up in it. False when `model` has no owner for the row, in which
+ * case nothing changes.
+ */
+export function openStudioModuleOwner(model: OwnerModel, row: { id: string }, kind: StudioKind): boolean {
+    // The first row holding an id keeps it; a later row with the same id gets a row-suffixed owner id (see the owner model).
+    const used = new Set<string>()
+    let ownerId: string | null = null
+    const rows = DBState.db.modules ?? []
+    for (let index = 0; index < rows.length; index++) {
+        const id = used.has(rows[index].id) ? `${rows[index].id}#${index}` : rows[index].id
+        used.add(id)
+        if (rows[index] === row) {
+            ownerId = id
+            break
+        }
+    }
+    if (ownerId === null) return false
+    const owner = model.ownerByKey(ownerKeyOf('module', ownerId))
+    if (!owner) return false
+    for (const group of groupPathOf(owner)) studioScreen.expanded[groupRowId(group)] = true
+    studioScreen.expanded[ownerRowId(owner.key)] = true
+    selectStudioNode(owner.key, kind, null)
+    return true
 }
 
 export function setStudioExpanded(rowId: string, expanded: boolean): void {

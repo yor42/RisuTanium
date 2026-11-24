@@ -5,7 +5,9 @@ import { get, writable } from 'svelte/store'
 import {
     clearStudioSelection,
     closeStudio,
+    MODULE_LIST_KEY,
     openStudio,
+    openStudioModuleList,
     pickStudioItem,
     resetStudioScreenForTests,
     selectedHistoryOwner,
@@ -397,6 +399,29 @@ describe('the history owner of the selection', () => {
         }
     })
 
+    // T9-LIST-HISTORY: compatibility guard (an unknown key has no owner before and after).
+    test('the module list page has no history owner, even while a module id is published', () => {
+        openOn('character:char')
+        publishOpenModuleId('res')
+        openStudioModuleList()
+        expect(studioScreen.selectedOwnerKey).toBe(MODULE_LIST_KEY)
+        expect(selectedHistoryOwner()).toBeNull()
+        resetOpenModuleIdForTests()
+    })
+
+    test('showing the module list selects it with no kind, moves a phone to the detail and sets the reveal row after the selection', () => {
+        openOn('character:char')
+        studioScreen.revealListRow = 'stale'
+        studioScreen.layout = 'stack'
+        openStudioModuleList('["m","a",0]')
+        expect(studioScreen.selectedOwnerKey).toBe('list:modules')
+        expect(studioScreen.selectedKind).toBeNull()
+        expect(studioScreen.selectedItemId).toBeNull()
+        expect(studioScreen.detailShown).toBe(true)
+        expect(studioScreen.revealListRow).toBe('["m","a",0]')
+        openStudioModuleList()
+        expect(studioScreen.revealListRow).toBeNull()
+    })
     test('the owner follows the selection', () => {
         openOn('character:char')
         setStudioSelection('chat:chat', null, null)

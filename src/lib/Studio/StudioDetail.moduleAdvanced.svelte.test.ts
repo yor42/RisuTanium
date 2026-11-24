@@ -40,6 +40,8 @@ vi.mock('src/ts/stores.svelte', async () => {
     }
 })
 vi.mock('src/ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
+// The list page reaches the import, export and MCP code, which this suite does not exercise; it has its own suite.
+vi.mock('./StudioModuleList.svelte', () => ({ default: () => {} }))
 vi.mock('src/ts/process/modules', () => ({ refreshModules: vi.fn() }))
 vi.mock('src/ts/process/moduleGuiBump', () => ({ bumpModuleGui: vi.fn() }))
 vi.mock('src/ts/process/moduleRefList', () => ({
@@ -212,7 +214,7 @@ describe('T5-SHARED: a shared id shows the given slot read-only', () => {
 })
 
 describe('T5-STUB: a module that is not loaded gets no form', () => {
-    test('a refused load leaves the not-loaded line and the link to the module list', async () => {
+    test('T9-STUB-LINK: a refused load leaves the not-loaded line and the link to the module list', async () => {
         loader.load.mockResolvedValue({ kind: 'refused' })
         db.db = fixtureDb([stubModule('S1')])
         makeModuleRig()
@@ -223,7 +225,8 @@ describe('T5-STUB: a module that is not loaded gets no form', () => {
         expect(part('studio-module-advanced-form')).toBeNull()
         expect(part('studio-module-html-form')).toBeNull()
         expect(part('studio-detail-notloaded')).not.toBeNull()
-        expect(part('studio-detail-classic')!.textContent?.trim()).toBe('studioOpenModules')
+        expect(part('studio-detail-classic')).toBeNull()
+        expect(part('studio-module-show-in-list')!.textContent?.trim()).toBe('studioShowInModuleList')
     })
 })
 
@@ -295,5 +298,23 @@ describe('T9-LEAVE-FLUSH and T9-HIDE-FLUSH: a deliberate leave or a page hide ke
         expect(live().namespace).toBe('draft')
         expect(rig!.service.view(M1).done).toHaveLength(1)
         expect(part('studio-module-advanced-form')).not.toBeNull()
+    })
+})
+describe('T9-SHOW-IN-LIST: a loaded module links to its row in the module list', () => {
+    // Regression reproducer: the button did not exist. The held draft is written by the selection change that opens the list.
+    test('the button writes the held namespace draft as one step before the selection becomes the list page', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        expect(part('studio-module-show-in-list')!.textContent?.trim()).toBe('studioShowInModuleList')
+        expect(part('studio-detail-classic')!.textContent?.trim()).toBe('studioOpenClassic')
+        typeInto(input('studio-module-namespace'), 'draft')
+        expect('namespace' in live()).toBe(false)
+        part('studio-module-show-in-list')!.click()
+        flushSync()
+        expect(studioScreen.selectedOwnerKey).toBe('list:modules')
+        expect(studioScreen.revealListRow).toBe(JSON.stringify(['m', 'M1', 0]))
+        await settle()
+        expect(live().namespace).toBe('draft')
+        expect(rig!.service.view(M1).done).toHaveLength(1)
+        expect(part('studio-module-advanced-form')).toBeNull()
     })
 })
