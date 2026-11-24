@@ -59,6 +59,16 @@ const VALUE_OF: Record<Exclude<SetPath, `preset${string}`>, string | boolean | B
     escapeOutput: true,
     bias: [['tok', 5]],
     lorePlus: true,
+    name: 'new name',
+    viewScreen: 'emotion',
+    largePortrait: true,
+    inlayViewScreen: true,
+    prebuiltAssetCommand: true,
+    prebuiltAssetStyle: 'dynamic',
+    'newGenData.prompt': 'new gen prompt',
+    'newGenData.negative': 'new gen negative',
+    'newGenData.instructions': 'new gen instructions',
+    'newGenData.emotionInstructions': 'new gen emotion instructions',
 }
 
 describe('T-W1: the writers of the builtin holders', () => {

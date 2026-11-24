@@ -1,0 +1,364 @@
+{
+  "ownerKey": "character:A",
+  "touchedAt": 541000,
+  "done": [
+    {
+      "id": "p1:1",
+      "at": 1000,
+      "label": {
+        "kind": "field",
+        "field": "name"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "name",
+          "before": {
+            "had": true,
+            "value": "Alice"
+          },
+          "after": {
+            "had": true,
+            "value": "Alicia"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:2",
+      "at": 61000,
+      "label": {
+        "kind": "field",
+        "field": "largePortrait"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "largePortrait",
+          "before": {
+            "had": false
+          },
+          "after": {
+            "had": true,
+            "value": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:3",
+      "at": 121000,
+      "label": {
+        "kind": "field",
+        "field": "viewScreen"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "viewScreen",
+          "before": {
+            "had": true,
+            "value": "none"
+          },
+          "after": {
+            "had": true,
+            "value": "emotion"
+          }
+        },
+        {
+          "op": "set",
+          "path": "newGenData.emotionInstructions",
+          "before": {
+            "had": true,
+            "value": ""
+          },
+          "after": {
+            "had": true,
+            "value": "You must always output the character's emotional image as a command. The command must be selected from a given list, only output the command, depending on the character's emotion. List of commands: {{slot}}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:4",
+      "at": 181000,
+      "label": {
+        "kind": "field",
+        "field": "inlayViewScreen"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "inlayViewScreen",
+          "before": {
+            "had": false
+          },
+          "after": {
+            "had": true,
+            "value": true
+          }
+        },
+        {
+          "op": "set",
+          "path": "newGenData.emotionInstructions",
+          "before": {
+            "had": true,
+            "value": "You must always output the character's emotional image as a command. The command must be selected from a given list, only output the command, depending on the character's emotion. List of commands: {{slot}}"
+          },
+          "after": {
+            "had": true,
+            "value": "You must always output the character's emotional image as a command at the end of a conversation. The command must be selected from a given list, and it's better to have variety than to repeat images used in previous chats. Use one image, depending on the character's emotion. See the list below. Form: <Emotion=\"<image command>\"> Example: <Emotion=\"Agree\"> List of commands: {{slot}}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:5",
+      "at": 241000,
+      "label": {
+        "kind": "field",
+        "field": "newGenData.emotionInstructions"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "newGenData.emotionInstructions",
+          "before": {
+            "had": true,
+            "value": "You must always output the character's emotional image as a command at the end of a conversation. The command must be selected from a given list, and it's better to have variety than to repeat images used in previous chats. Use one image, depending on the character's emotion. See the list below. Form: <Emotion=\"<image command>\"> Example: <Emotion=\"Agree\"> List of commands: {{slot}}"
+          },
+          "after": {
+            "had": true,
+            "value": "my own wording"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:6",
+      "at": 301000,
+      "label": {
+        "kind": "field",
+        "field": "viewScreen"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "viewScreen",
+          "before": {
+            "had": true,
+            "value": "emotion"
+          },
+          "after": {
+            "had": true,
+            "value": "imggen"
+          }
+        },
+        {
+          "op": "set",
+          "path": "newGenData.prompt",
+          "before": {
+            "had": true,
+            "value": ""
+          },
+          "after": {
+            "had": true,
+            "value": "best quality, {{slot}}"
+          }
+        },
+        {
+          "op": "set",
+          "path": "newGenData.negative",
+          "before": {
+            "had": true,
+            "value": ""
+          },
+          "after": {
+            "had": true,
+            "value": "worse quality"
+          }
+        },
+        {
+          "op": "set",
+          "path": "newGenData.instructions",
+          "before": {
+            "had": true,
+            "value": ""
+          },
+          "after": {
+            "had": true,
+            "value": "You must always output the character's image as a keyword-formatted prompts that can be used in stable diffusion  at the end of a conversation. Use one image, depending on character, place, situation, etc. keyword should be long enough. Form: <ImgGen=\"<keyword-formatted prompt>\">"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:7",
+      "at": 361000,
+      "label": {
+        "kind": "field",
+        "field": "newGenData.prompt"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "newGenData.prompt",
+          "before": {
+            "had": true,
+            "value": "best quality, {{slot}}"
+          },
+          "after": {
+            "had": true,
+            "value": "a prompt"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:8",
+      "at": 421000,
+      "label": {
+        "kind": "field",
+        "field": "prebuiltAssetCommand"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "prebuiltAssetCommand",
+          "before": {
+            "had": false
+          },
+          "after": {
+            "had": true,
+            "value": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:9",
+      "at": 481000,
+      "label": {
+        "kind": "field",
+        "field": "prebuiltAssetStyle"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "prebuiltAssetStyle",
+          "before": {
+            "had": false
+          },
+          "after": {
+            "had": true,
+            "value": "dynamic"
+          }
+        }
+      ]
+    }
+  ],
+  "undone": [],
+  "deleted": [],
+  "restore": {
+    "visitId": "v1",
+    "at": 1000,
+    "fields": {
+      "name": {
+        "before": {
+          "had": true,
+          "value": "Alice"
+        },
+        "last": {
+          "had": true,
+          "value": "Alicia"
+        }
+      },
+      "largePortrait": {
+        "before": {
+          "had": false
+        },
+        "last": {
+          "had": true,
+          "value": true
+        }
+      },
+      "viewScreen": {
+        "before": {
+          "had": true,
+          "value": "none"
+        },
+        "last": {
+          "had": true,
+          "value": "imggen"
+        }
+      },
+      "newGenData.emotionInstructions": {
+        "before": {
+          "had": true,
+          "value": ""
+        },
+        "last": {
+          "had": true,
+          "value": "my own wording"
+        }
+      },
+      "inlayViewScreen": {
+        "before": {
+          "had": false
+        },
+        "last": {
+          "had": true,
+          "value": true
+        }
+      },
+      "newGenData.prompt": {
+        "before": {
+          "had": true,
+          "value": ""
+        },
+        "last": {
+          "had": true,
+          "value": "a prompt"
+        }
+      },
+      "newGenData.negative": {
+        "before": {
+          "had": true,
+          "value": ""
+        },
+        "last": {
+          "had": true,
+          "value": "worse quality"
+        }
+      },
+      "newGenData.instructions": {
+        "before": {
+          "had": true,
+          "value": ""
+        },
+        "last": {
+          "had": true,
+          "value": "You must always output the character's image as a keyword-formatted prompts that can be used in stable diffusion  at the end of a conversation. Use one image, depending on character, place, situation, etc. keyword should be long enough. Form: <ImgGen=\"<keyword-formatted prompt>\">"
+        }
+      },
+      "prebuiltAssetCommand": {
+        "before": {
+          "had": false
+        },
+        "last": {
+          "had": true,
+          "value": true
+        }
+      },
+      "prebuiltAssetStyle": {
+        "before": {
+          "had": false
+        },
+        "last": {
+          "had": true,
+          "value": "dynamic"
+        }
+      }
+    }
+  }
+}

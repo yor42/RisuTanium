@@ -485,8 +485,9 @@ export function buildGreetingDelete(index: number, deletedId: string, target: Li
 // ---------------------------------------------------------------- write functions for writeLive*
 
 // The one builtin-holder write of a set path: a value of the path's type is assigned under its property; an absent
-// value deletes the key when the path's `absent` says so and leaves it otherwise. A value of the wrong type writes
-// nothing, and the key is never written as `undefined`. A nested path writes inside its container: an absent value
+// value deletes the key when the path's `absent` says so and leaves it otherwise. A foreign value (stored as a type the
+// path does not hold) is put back as a plain copy. A value of the wrong type writes nothing, and the key is never
+// written as `undefined`. A nested path writes inside its container: an absent value
 // never creates or deletes the container, and a value of the right type creates a missing or unusable container from a
 // fresh copy of its seed before assigning the key, leaving every other key of an existing container as it is.
 function writeHeld(holder: object, path: SetPath, value: FieldValue): void {
@@ -500,10 +501,14 @@ function writeHeld(holder: object, path: SetPath, value: FieldValue): void {
                 delete (fields[container] as Record<string, unknown>)[key]
             }
         }
-    } else if (valueMatchesKind(path, value.value)) {
-        // A bias list is assigned as a plain array copy: the classic editor binds its rows in place, so the stored step
-        // must never share them.
-        const written = cloneValue(value.value)
+    } else if (value.had === 'foreign' || valueMatchesKind(path, value.value)) {
+        // A foreign write puts the stored value back as a fresh plain copy, never the record's own object; a bias list
+        // is assigned as a plain array copy: the classic editor binds its rows in place, so the stored step must never
+        // share them.
+        const written = value.had === 'foreign' ? toPlainJson(value.value) : cloneValue(value.value)
+        if (written === undefined) {
+            return
+        }
         if (container === null) {
             fields[key] = written
             return

@@ -7,13 +7,14 @@
     import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import type { LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
+    import { createCompositionGate } from '../../ts/studio/toggleBuilderModel'
     import { DBState } from '../../ts/stores.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
     import GreetingCards from './GreetingCards.svelte'
     import LongTextField from './LongTextField.svelte'
     import type { PreviewSourceInput } from './LongTextPreview.svelte'
 
-    // The live edit fields of the selected character: description, hide-icon and the alternative first
+    // The live edit fields of the selected character: name, description and the alternative first
     // messages. Every edit goes through the history service, which writes the live character, marks it for
     // saving and records the step. While the owner's history is still loading (or the service is still being
     // built) the fields are read-only; after a failure they are editable with a banner that says history is not
@@ -27,6 +28,7 @@
     let { chaId, host }: Props = $props()
 
     const owner = characterOwnerKey(untrack(() => chaId))
+    const idBase = $props.id()
     const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => host) })
 
     const service = $derived(getStudioHistoryService())
@@ -101,14 +103,40 @@
         closeStep: () => service?.closeOpenStep(owner),
     }
 
-    function onHideIconChange(event: Event & { currentTarget: HTMLInputElement }): void {
+    // The single-line name writes through a composition gate: nothing is written while an IME composes, the composed
+    // value is written once. A value that is empty after trim is never written; leaving the field empty puts the name it
+    // had at focus back and says why.
+    let nameInput = $state<HTMLInputElement | undefined>()
+    let nameEmpty = $state(false)
+    let nameAtFocus = ''
+    function commitName(value: string): void {
+        if (value.trim() === '') return
+        nameEmpty = false
+        const result = service && editable ? service.editText(owner, 'name', value, 'typing') : null
+        if ((result === null || !noted(result)) && nameInput) nameInput.value = live?.name ?? ''
+    }
+    const nameGate = createCompositionGate(commitName)
+
+    function onNameInput(event: Event & { currentTarget: HTMLInputElement }): void {
+        nameGate.input(event.currentTarget.value, event instanceof InputEvent && event.isComposing)
+    }
+
+    function onNameBlur(event: FocusEvent & { currentTarget: HTMLInputElement }): void {
+        nameGate.flush()
+        service?.closeOpenStep(owner)
         const field = event.currentTarget
-        if (!service || !editable || !noted(service.editField(owner, 'hideChatIcon', field.checked))) {
-            field.checked = live?.hideChatIcon === true
-            return
+        if (field.value.trim() === '') {
+            // The name goes back to what it was when the field took focus, not to the last non-empty keystroke.
+            if (service && editable && live && nameAtFocus.trim() !== '' && live.name !== nameAtFocus) {
+                if (noted(service.editText(owner, 'name', nameAtFocus, 'single'))) service.closeOpenStep(owner)
+            }
+            field.value = live?.name ?? ''
+            nameEmpty = true
         }
-        // A toggle is one discrete action: it never joins the next one's step.
-        service.closeOpenStep(owner)
+    }
+
+    function onNameFocus(): void {
+        nameAtFocus = live?.name ?? ''
     }
 
     function onRenderWhenCompleteChange(event: Event & { currentTarget: HTMLInputElement }): void {
@@ -121,7 +149,10 @@
         service.closeOpenStep(owner)
     }
 
-    onDestroy(() => service?.closeOpenStep(owner))
+    onDestroy(() => {
+        nameGate.flush()
+        service?.closeOpenStep(owner)
+    })
 </script>
 
 {#if live && !hidden}
@@ -136,6 +167,29 @@
         {#if banner}
             <p role="status" data-part="studio-form-banner" data-banner={view?.banner} class="rounded-md border border-darkborderc p-2 text-sm text-textcolor2">{banner}</p>
         {/if}
+        <div class="flex flex-col gap-1">
+            <label id="{idBase}-name-label" for="{idBase}-name" class="font-bold">{language.name}</label>
+            <input
+                id="{idBase}-name"
+                aria-labelledby="{idBase}-name-label"
+                aria-describedby="{idBase}-name-label"
+                type="text"
+                data-part="studio-form-name"
+                class="min-h-11 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
+                readonly={!editable}
+                aria-busy={editable ? undefined : 'true'}
+                value={live.name}
+                bind:this={nameInput}
+                oninput={onNameInput}
+                oncompositionstart={() => nameGate.start()}
+                oncompositionend={(event) => { nameGate.end(event.currentTarget.value) }}
+                onfocus={onNameFocus}
+                onblur={onNameBlur}
+            />
+            {#if nameEmpty}
+                <p data-part="studio-field-note" class="text-sm text-textcolor2">{language.studioFormNameEmpty}</p>
+            {/if}
+        </div>
         <LongTextField
             port={descPort}
             part="studio-form-desc"
@@ -149,18 +203,6 @@
             fieldClass="min-h-32 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
             onresult={onFieldResult}
         />
-        <label class="flex min-h-11 items-center gap-2">
-            <input
-                type="checkbox"
-                data-part="studio-form-hide-icon"
-                aria-label={language.hideChatIcon}
-                disabled={!editable}
-                aria-busy={editable ? undefined : 'true'}
-                checked={live.hideChatIcon === true}
-                onchange={onHideIconChange}
-            />
-            <span>{language.hideChatIcon}</span>
-        </label>
         <label class="flex min-h-11 items-center gap-2">
             <input
                 type="checkbox"

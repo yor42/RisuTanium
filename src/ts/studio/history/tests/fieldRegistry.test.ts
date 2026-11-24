@@ -60,20 +60,22 @@ describe('T-P1: the derived tables equal the literal lists (compatibility guard)
         const S2A = ['creatorNotes', 'removedQuotes']
         const S2B = ['lowLevelAccess', 'utilityBot', 'escapeOutput']
         const S2C = ['bias']
-        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus'])
+        const S3A = ['name', 'viewScreen', 'largePortrait', 'inlayViewScreen', 'prebuiltAssetCommand', 'prebuiltAssetStyle', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions']
+        const S3A_TEXT = ['name', 'viewScreen', 'prebuiltAssetStyle', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions']
+        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', ...S3A])
         expect(SET_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(SET_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
         expect(CHARACTER_SET_PATHS).toEqual(SET_PATHS_BY_KIND.character)
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', 'alternateGreetings'])
+        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', ...S3A, 'alternateGreetings'])
         expect(RESTORE_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(RESTORE_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, ...S2A, ...S2B, ...S2C, ...PRESET_S4B_PATHS, ...PRESET_S4C_PATHS, ...PRESET_S4D_PATHS, 'lorePlus', 'alternateGreetings'])
-        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess', ...PRESET_FORM_BOOLEAN_PATHS, 'removedQuotes', ...S2B, 'lorePlus'])
-        expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1, 'creatorNotes'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, ...S2A, ...S2B, ...S2C, ...PRESET_S4B_PATHS, ...PRESET_S4C_PATHS, ...PRESET_S4D_PATHS, 'lorePlus', ...S3A, 'alternateGreetings'])
+        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess', ...PRESET_FORM_BOOLEAN_PATHS, 'removedQuotes', ...S2B, 'lorePlus', 'largePortrait', 'inlayViewScreen', 'prebuiltAssetCommand'])
+        expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1, 'creatorNotes', ...S3A_TEXT])
         expect(textPathsFor('chat')).toEqual(['note'])
         expect(textPathsFor('module')).toEqual(['customModuleToggle', 'moduleName', 'moduleDescription', 'moduleNamespace', 'backgroundEmbedding'])
-        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding', 'creatorNotes'])
+        expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding', 'creatorNotes', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions'])
     })
 
     test('no row combines keepForeign with a biasList value', () => {
@@ -231,6 +233,16 @@ describe('T-L1: the label key of every registered path (diagnostic)', () => {
         presetFallbackOtherAx: 'studioPresetFallbackListOtherAx',
         presetImage: 'icon',
         lorePlus: 'lorePlus',
+        name: 'name',
+        viewScreen: 'viewScreen',
+        largePortrait: 'largePortrait',
+        inlayViewScreen: 'inlayViewScreen',
+        prebuiltAssetCommand: 'insertAssetPrompt',
+        prebuiltAssetStyle: 'assetStyle',
+        'newGenData.prompt': 'imgGenPrompt',
+        'newGenData.negative': 'imgGenNegatives',
+        'newGenData.instructions': 'imgGenInstructions',
+        'newGenData.emotionInstructions': 'emotionInstructions',
     }
 
     test.each(Object.entries(EXPECTED))('%s', (path, key) => {
