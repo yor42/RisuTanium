@@ -8,7 +8,7 @@
 import { isPopupsPart } from './registries/popups'
 
 /** The areas whose stylesheets the scope rules judge. */
-export type ScopedArea = 'chat' | 'studio' | 'settings' | 'popups'
+export type ScopedArea = 'chat' | 'studio' | 'settings' | 'home' | 'popups'
 
 /** Parts the shell renders from a component under src/lib/ChatScreens/** that the legacy chat screen renders as well. */
 export const SHARED_CHAT_PARTS: readonly string[] = ['notifications-off-notice', 'reply-running-notice']
@@ -100,9 +100,29 @@ const SETTINGS_PART_NAMES: readonly string[] = [
 /** The `settings-*` parts the Settings screen renders (the SettingsShell tree and the Setting/Pages components it reaches). Every one carries the `settings-` prefix and no other screen renders one; settingsParts.test.ts recomputes the list from the markup and prints the expected constant on a mismatch. */
 export const SETTINGS_PARTS: ReadonlySet<string> = new Set<string>(SETTINGS_PART_NAMES)
 
+const HOME_PART = /^(home|library)(-[a-z0-9-]+)?$/
+
+/** The Home screen's parts as a stylesheet may name them: `home`, `library` and every `home-*` and `library-*` name. The library names are the ones the Home library renders through the shared catalog; the standalone catalog is never mounted together with Home. HOME_PARTS is the rename guard. */
+export const isHomePart = (name: string): boolean => HOME_PART.test(name)
+
+const HOME_PART_NAMES: readonly string[] = [
+    'home-badge', 'home-body', 'home-brand', 'home-columns', 'home-community', 'home-community-title', 'home-dialog', 'home-dialog-action', 'home-dialog-actions',
+    'home-dialog-body', 'home-dialog-title', 'home-drawer', 'home-drawer-close', 'home-drawer-item', 'home-drawer-layer', 'home-drawer-scrim', 'home-drawer-settings',
+    'home-empty-hero', 'home-eyebrow', 'home-greeting', 'home-head', 'home-jump', 'home-jump-link', 'home-landing', 'home-library', 'home-library-placeholder',
+    'home-menu-button', 'home-network', 'home-persona-chip', 'home-persona-chip-label', 'home-realm', 'home-realm-announcement', 'home-realm-body', 'home-row-icon',
+    'home-run-meta', 'home-run-stop', 'home-run-title', 'home-shelf', 'home-shelf-section', 'home-side', 'home-stage', 'home-story', 'home-story-archived',
+    'home-story-chat', 'home-story-name', 'home-story-rows', 'home-story-snippet', 'home-story-time', 'home-task-actions', 'home-task-list', 'home-task-row',
+    'home-tasks-button', 'home-topbar', 'home-upstream-tag', 'home-utility-text', 'home-version', 'library-all-trashed', 'library-back', 'library-head',
+    'library-no-match', 'library-row', 'library-studio', 'library-tile', 'library-trash', 'library-views',
+]
+
+/** The `home-*` and `library-*` parts the Home screen renders (the HomeShell tree). homeParts.test.ts recomputes the list from the markup and prints the expected constant on a mismatch. */
+export const HOME_PARTS: ReadonlySet<string> = new Set<string>(HOME_PART_NAMES)
+
 /** Whether a stylesheet of the area may name this part. */
 export function isAreaPart(area: ScopedArea, name: string): boolean {
     if (area === 'chat') return CHAT_PARTS.has(name)
     if (area === 'popups') return isPopupsPart(name)
+    if (area === 'home') return isHomePart(name)
     return area === 'settings' ? isSettingsPart(name) : isStudioPart(name)
 }

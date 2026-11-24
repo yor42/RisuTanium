@@ -3918,7 +3918,7 @@ export const languageGerman = {
     "themePackPacksOffSession": "Design-Pakete sind in dieser Sitzung ausgeschaltet.",
     "themePackSelectToTurnOn": "Wählen Sie dieses Paket aus, um es jetzt einzuschalten.",
     "themePackSkippedAreas": (files: string) =>
-        `Dieses Paket enthält außerdem ${files}. Diese Version gestaltet nur den neuen Chatbildschirm, Studio, den neuen Einstellungsbildschirm und Popups darüber; diese Teile werden mit dem Paket aufbewahrt.`,
+        `Dieses Paket enthält außerdem ${files}. Diese Version gestaltet nur den neuen Chatbildschirm, Studio, den neuen Einstellungsbildschirm, die Startseite und Popups darüber; diese Teile werden mit dem Paket aufbewahrt.`,
     "themePackColoursHeld": (files: string) => `Diese Version verwendet nur die Formen aus ${files}; deren Farben werden für eine spätere Version mit dem Paket aufbewahrt.`,
     "themePackInstalledWithWarnings": (sheet: string) => `Mit Warnungen installiert (${sheet}):`,
     "themePackInstalledWithNotes": (sheet: string) => `Hinweise (${sheet}):`,
@@ -3984,7 +3984,7 @@ export const languageGerman = {
         `Das Symbol ist breiter oder höher als ${limit} Pixel, dem Höchstmaß für ein Paketsymbol.`,
     "themePackRefuseIconAnimated": "Das Symbol ist animiert. Ein Paketsymbol muss ein Standbild sein.",
     "themePackRefuseIconUnreadable": "Das Symbolbild konnte nicht als PNG oder WebP gelesen werden.",
-    "themePackRefuseNoArea": "Dieses Paket hat weder chat.css noch studio.css noch settings.css, daher gibt es nichts, was diese Version anwenden kann.",
+    "themePackRefuseNoArea": "Dieses Paket hat weder chat.css noch studio.css noch settings.css noch home.css, daher gibt es nichts, was diese Version anwenden kann.",
     "themePackShowsNothing": "Dieses Paket ändert in dieser Version noch nichts.",
     "themePackCouldNotCheck": "Das Paket konnte nicht geprüft werden (die Prüfung wurde abgebrochen oder dauerte zu lange).",
     "themePackSheetRefused": (sheet: string) => `${sheet} wurde von der Stilprüfung abgelehnt:`,

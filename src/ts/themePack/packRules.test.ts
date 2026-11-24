@@ -910,13 +910,13 @@ describe('MC-2542: every other family refusal stays a refusal', () => {
         expect(judged.warnings).toEqual([])
     })
 
-    test('V-T6: a home sheet that registers a symbol name with its own face and uses it is accepted; a settings sheet, an applied area, is held to the pack- rule', () => {
-        const home = judgeAreaSheet('home', '@font-face{font-family:wingdings;src:url(f.woff2)}[data-part="home-story"]{font-family:wingdings}')
-        expect(home.result.errors).toEqual([])
-        expect(home.warnings).toEqual([])
-        const settings = judgeAreaSheet('settings', '@font-face{font-family:wingdings;src:url(f.woff2)}[data-part="settings-section-title"]{font-family:wingdings}')
-        expect(settings.result.ok).toBe(false)
-        expect(settings.result.errors.some((e) => /must start with pack-/.test(e.why)), JSON.stringify(settings.result.errors)).toBe(true)
+    test.each([
+        ['home', '[data-part="home-story"]'],
+        ['settings', '[data-part="settings-section-title"]'],
+    ] as const)('V-T6: a %s sheet, an applied area, that registers a symbol name with its own face is held to the pack- rule', (area, leaf) => {
+        const judged = judgeAreaSheet(area, `@font-face{font-family:wingdings;src:url(f.woff2)}${leaf}{font-family:wingdings}`)
+        expect(judged.result.ok).toBe(false)
+        expect(judged.result.errors.some((e) => /must start with pack-/.test(e.why)), JSON.stringify(judged.result.errors)).toBe(true)
     })
 })
 

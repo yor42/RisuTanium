@@ -17,11 +17,11 @@ import { RtbCouldNotReadError, rangeSourceFrom, type RangeSource } from '../driv
 import { readDirectory, readEntry, type BodySink, type ContainerFinding, type ZipIndex } from '../drive/rtb/zip64Reader'
 
 /** The areas whose sheet themes a whole screen; popups is applied over them and is not one. */
-export type ScreenArea = 'chat' | 'studio' | 'settings'
-export const SCREEN_AREAS: readonly ScreenArea[] = ['chat', 'studio', 'settings']
+export type ScreenArea = 'chat' | 'studio' | 'settings' | 'home'
+export const SCREEN_AREAS: readonly ScreenArea[] = ['chat', 'studio', 'settings', 'home']
 export type AppliedArea = ScreenArea | 'popups'
 /** The areas this build judges at install, in refusal order. An area joins only once every R20 tripwire row is refused there (popups passes every row, test T1-36). */
-export const APPLIED_AREAS: readonly AppliedArea[] = ['chat', 'studio', 'settings', 'popups']
+export const APPLIED_AREAS: readonly AppliedArea[] = ['chat', 'studio', 'settings', 'home', 'popups']
 
 function isAppliedArea(area: string): area is AppliedArea {
     return (APPLIED_AREAS as readonly string[]).includes(area)

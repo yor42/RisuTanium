@@ -260,3 +260,47 @@ describe('S-1: the popups overlays follow the pack (AS-12)', () => {
         expect(packElements()).toHaveLength(0)
     })
 })
+
+describe('S-H1: the home element follows the pack (AS-11)', () => {
+    const HOME = '[data-part="home-greeting"]{letter-spacing:.08rem;color:#7a1f5c}'
+
+    function activateArchive(): void {
+        const bytes = zipPack(validPackFiles({ 'home.css': HOME }))
+        const archive = `assets/tp-${createHash('sha256').update(bytes).digest('hex')}.risutheme`
+        world.files.set(archive, bytes.slice())
+        m.stores.DBState.db.themePacks?.push({
+            v: 1, id: 'rec-h', name: 'Pack H', version: '1.0.0', license: 'MIT', attribution: 'Test author', modes: ['dark'],
+            fonts: [], archive, bytes: bytes.length, installedAt: 1,
+        })
+        m.stores.DBState.db.activeThemePack = 'rec-h'
+    }
+    const homeElements = (): HTMLStyleElement[] => packElements().filter((element) => element.getAttribute('data-theme-pack') === 'home')
+
+    it('a plain launch applies one home element beside the chat element (control, reproducer)', async () => {
+        await start('')
+        activateArchive()
+        m.driver.startThemePackApply()
+        await until(() => m.driver.themePackApplyState().phase === 'applied', 'the apply')
+        expect(homeElements()).toHaveLength(1)
+    })
+
+    it('a pack-free start applies no home element and no pack element at all (guard)', async () => {
+        await start('?nothemepack')
+        activateArchive()
+        m.driver.startThemePackApply()
+        await ticks(8)
+        expect(homeElements()).toHaveLength(0)
+        expect(packElements()).toHaveLength(0)
+    })
+
+    it('entering safe mode removes the home element with the rest', async () => {
+        await start('')
+        activateArchive()
+        m.driver.startThemePackApply()
+        await until(() => m.driver.themePackApplyState().phase === 'applied', 'the apply')
+        expect(homeElements()).toHaveLength(1)
+        m.safeMode.enterPackSafeMode('boot')
+        await until(() => m.driver.themePackApplyState().phase === 'none', 'the removal')
+        expect(packElements()).toHaveLength(0)
+    })
+})

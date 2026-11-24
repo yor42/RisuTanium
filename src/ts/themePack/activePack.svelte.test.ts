@@ -160,7 +160,7 @@ function addRecord(record: Record<string, unknown>): void {
 }
 
 const PACK_A = packOf(FACE_A + leaf('1'), [FONT_A], {}, 'Pack A')
-const PACK_B = packOf(FACE_B + leaf('0'), [FONT_B], { 'home.css': 'body{color:red}' }, 'Pack B')
+const PACK_B = packOf(FACE_B + leaf('0'), [FONT_B], { 'sidebar.css': 'body{color:red}' }, 'Pack B')
 const PACK_C = packOf(leaf('0.5'), [], {}, 'Pack C')
 /** A refused sheet: `body` is outside the chat scope. */
 const PACK_REFUSED = packOf('body{color:red}', [], {}, 'Pack Refused')
@@ -653,7 +653,7 @@ describe('T3D-6 races', () => {
         expect(replay(records).filter((step) => step.type === 'add')).toEqual([])
         expect(childListRecordsOn(records, elementB)).toEqual([])
         expect(packElements()).toEqual([elementB])
-        expect(status()).toMatchObject({ phase: 'applied', activeId: 'rec-b', skippedAreas: ['home'], empty: false })
+        expect(status()).toMatchObject({ phase: 'applied', activeId: 'rec-b', skippedAreas: ['sidebar'], empty: false })
         expect(channel.spawns - spawnsBefore).toBe(1)
         expectOnlyAppliedBlobsLive()
     })

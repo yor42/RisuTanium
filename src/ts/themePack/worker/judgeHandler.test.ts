@@ -12,7 +12,8 @@ vi.mock('../index', async (importOriginal) => {
 })
 
 const STUDIO_SHEET = '[data-part="studio-asset-row"]{opacity:1}'
-const HOME_SHEET = '[data-home-part]{padding-inline:60px}'
+const HOME_SHEET = '[data-part="home-greeting"]{letter-spacing:.08rem}'
+const SIDEBAR_SHEET = '[data-sidebar-part]{padding-inline:60px}'
 
 function chatJob(label: string, text = PLAIN_CHAT_SHEET): { label: string; area: string; text: string } {
     return { label, area: 'chat', text }
@@ -42,25 +43,37 @@ describe('T3W-6 the judge worker handler', () => {
         expect(vi.mocked(judgeAreaSheet)).toHaveBeenCalledTimes(2)
     })
 
-    it('S0-C1: a job of a non-applied area is dropped and never judged; the studio and settings jobs are judged in their own areas', () => {
+    it('S0-C1: a job of a non-applied area is dropped and never judged; the studio, settings and home jobs are judged in their own areas', () => {
         vi.mocked(judgeAreaSheet).mockClear()
         const answer = handleJudgeRequest({
             id: 8,
             jobs: [
                 chatJob('chat'),
                 { label: 'studio', area: 'studio', text: STUDIO_SHEET },
-                { label: 'home', area: 'home', text: HOME_SHEET },
+                { label: 'sidebar', area: 'sidebar', text: SIDEBAR_SHEET },
                 { label: 'settings', area: 'settings', text: 'a{}' },
+                { label: 'home', area: 'home', text: HOME_SHEET },
             ],
         })
         if (answer.ok === false) throw new Error('expected an answer')
-        expect(Object.keys(answer.results)).toEqual(['chat', 'studio', 'settings'])
+        expect(Object.keys(answer.results)).toEqual(['chat', 'studio', 'settings', 'home'])
         expect(answer.results.studio).toEqual(judgeAreaSheet('studio', STUDIO_SHEET, undefined, 'studio'))
         expect(vi.mocked(judgeAreaSheet).mock.calls.slice(0, 3)).toEqual([
             ['chat', PLAIN_CHAT_SHEET, undefined, 'chat'],
             ['studio', STUDIO_SHEET, undefined, 'studio'],
             ['settings', 'a{}', undefined, 'settings'],
         ])
+    })
+
+    it('W-H1: a home job and a home#shape job are judged in the home area, under their labels', () => {
+        const answer = handleJudgeRequest({
+            id: 10,
+            jobs: [{ label: 'home', area: 'home', text: HOME_SHEET }, { label: 'home#shape', area: 'home', text: HOME_SHEET }],
+        })
+        if (answer.ok === false) throw new Error('expected an answer')
+        expect(Object.keys(answer.results)).toEqual(['home', 'home#shape'])
+        expect(answer.results.home).toEqual(judgeAreaSheet('home', HOME_SHEET, undefined, 'home'))
+        expect(answer.results.home.result.ok).toBe(true)
     })
 
     it('W-1: a popups job and a popups#shape job are judged in the popups area, under their labels', () => {
@@ -127,7 +140,7 @@ describe('T3W-6 the judge worker handler', () => {
         const fresh = await import('./judgeHandler')
         const first = fresh.handleJudgeRequest({
             id: 1,
-            jobs: [{ label: 'studio', area: 'studio', text: STUDIO_SHEET }, { label: 'studio#2', area: 'studio', text: STUDIO_SHEET }, chatJob('chat'), { label: 'home', area: 'home', text: HOME_SHEET }],
+            jobs: [{ label: 'studio', area: 'studio', text: STUDIO_SHEET }, { label: 'studio#2', area: 'studio', text: STUDIO_SHEET }, chatJob('chat'), { label: 'sidebar', area: 'sidebar', text: SIDEBAR_SHEET }],
         })
         if (first.ok === false) throw new Error('expected an answer')
         expect(Object.keys(first.results)).toEqual(['studio', 'studio#2', 'chat'])
