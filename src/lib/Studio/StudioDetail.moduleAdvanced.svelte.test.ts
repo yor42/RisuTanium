@@ -64,7 +64,7 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import { resetStudioModuleLoadsForTests } from 'src/ts/studio/assets/moduleStubLoad.svelte'
 import { resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
 import { makeCharacter, makeInput, residentModule, studioDbOf, stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
-import { openStudio, resetStudioScreenForTests, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { closeStudio, openStudio, resetStudioScreenForTests, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
 import { resetStudioHistoryAccessorForTests } from '../../ts/studio/history/studioHistoryService.svelte'
@@ -256,6 +256,32 @@ describe('T9-GONE-DELETE: a module that an outside removal takes away clears the
         expect(part('studio-module-advanced-form')).toBeNull()
     })
 
+    // Regression reproducer: the form's unmount flush used to write the held name composition over the slot that now holds M2.
+    test('T9-GONE-DELETE-NAME: a name composition that is still held is dropped, the next module keeps its slot and content, no step is recorded for M1', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        const other = db.db.modules[1]
+        const otherBefore = JSON.stringify(other)
+        const field = input('studio-module-name')
+        field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        field.value = 'Mod 하'
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }))
+        flushSync()
+        expect(live().name).toBe('Mod One')
+
+        db.db.modules.splice(0, 1)
+        db.db.modules = db.db.modules
+        await settle()
+        await settle()
+
+        expect(db.db.modules).toHaveLength(1)
+        expect(db.db.modules[0]).toBe(other)
+        expect(JSON.stringify(other)).toBe(otherBefore)
+        expect((other as { name: string }).name).toBe('Mod Two')
+        expect(rig!.service.view(M1).done).toHaveLength(0)
+        expect(studioScreen.selectedOwnerKey).toBeNull()
+        expect(studioScreen.notice).toBe('studioRefusalModuleGone')
+    })
+
     // Regression reproducer: a removal that reassigns a filtered list used to record a step into the detached array.
     test('T9-GONE-DELETE-FILTER: a removal by a filtered reassignment records no step and leaves the next module as it was', async () => {
         const rig = await mountKind(twoModules(), 'advanced')
@@ -300,6 +326,53 @@ describe('T9-LEAVE-FLUSH and T9-HIDE-FLUSH: a deliberate leave or a page hide ke
         expect(part('studio-module-advanced-form')).not.toBeNull()
     })
 })
+
+describe('T9-NAME-FLUSH: a name composition that is still held is written by the form\'s registered flush', () => {
+    // T9-NAME-HIDE is a regression reproducer (the form was not registered, so a page hide wrote nothing). T9-NAME-LEAVE and
+    // T9-NAME-CLOSE are compatibility guards that pass before and after; each fails when the registered closure no longer
+    // flushes the name gate, because no other path writes the held composition before the form is gone.
+    function holdNameComposition(text: string): void {
+        const field = input('studio-module-name')
+        field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        field.value = text
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }))
+        flushSync()
+    }
+
+    test('T9-NAME-LEAVE: choosing another owner writes the held composition as one step', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        holdNameComposition('Mod 하')
+        expect(live().name).toBe('Mod One')
+        setStudioSelection(characterOwnerKey('A'), 'toggles', null)
+        await settle()
+        await settle()
+        expect(live().name).toBe('Mod 하')
+        expect(rig!.service.view(M1).done).toHaveLength(1)
+    })
+
+    test('T9-NAME-HIDE: a page hide writes the held composition while the form stays', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        holdNameComposition('Mod 하')
+        expect(live().name).toBe('Mod One')
+        window.dispatchEvent(new Event('pagehide'))
+        flushSync()
+        expect(live().name).toBe('Mod 하')
+        expect(rig!.service.view(M1).done).toHaveLength(1)
+        expect(part('studio-module-advanced-form')).not.toBeNull()
+    })
+
+    test('T9-NAME-CLOSE: closing the Studio writes the held composition', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        holdNameComposition('Mod 하')
+        expect(live().name).toBe('Mod One')
+        closeStudio()
+        await settle()
+        await settle()
+        expect(live().name).toBe('Mod 하')
+        expect(rig!.service.view(M1).done).toHaveLength(1)
+    })
+})
+
 describe('T9-SHOW-IN-LIST: a loaded module links to its row in the module list', () => {
     // Regression reproducer: the button did not exist. The held draft is written by the selection change that opens the list.
     test('the button writes the held namespace draft as one step before the selection becomes the list page', async () => {

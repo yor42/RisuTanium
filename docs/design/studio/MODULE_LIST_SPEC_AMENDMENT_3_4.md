@@ -1,12 +1,21 @@
-STATUS: PLAN READY
+STATUS: AS BUILT (PR 750). The reviewed plan text below is unchanged; this note records what the build did differently.
+
+**As-built note.**
+- Tests: every R row was shown red on its base before the fix. T9-DEFER-STEP lives in `StudioToggleBuilder.gone.svelte.test.ts` (not `StudioToggleBuilder.svelte.test.ts`). The name-composition rows (T9-NAME-LEAVE, T9-NAME-HIDE, T9-NAME-CLOSE) were added after Gate 2: T9-NAME-HIDE is a regression reproducer, LEAVE and CLOSE are compatibility guards.
+- Coders: all stages were built by `sonnet-coder` (Sonnet), not the Opus coder named below; the controller routes code edits to Sonnet only. The Opus Gate 2 covers the contracts.
+- The toggle editor's option write (`writeOption`) also relies on the inert-derived rule (a derived read inside a destroyed branch returns its last value); T9-DEFER-STEP covers the label only. Hardening is follow-up #752.
+- The S5 form's deferred flush has no reachable landing path today: every unmount of that form is preceded by a registered flush or ends in a refusal. Its step close is the live part. A mutant that removes the deferred flush is therefore expected to survive.
+- In a release build `console.*` calls are stripped (`vite.config.ts`), so the deferred closures' error logging exists in dev and tests only.
+- Known limitations: the Y5 stale toggle carry record, and a plugin full-list write that keeps the id and changes content, stay as listed under "Not covered".
+- The preset list field and four other Studio forms write from `onDestroy` without a registered flush; this is pre-existing and filed as #752.
 
 # #709 spec amendment, revision 3 (final text): section 3.4 (a module deleted or replaced while a Studio form is open)
 
 Designer, 2026-11-24.
 
 **Inputs:**
-- `scratchpad\709\l1-report.md` (the L1 coder's finding);
-- `scratchpad\709\amend-check-r1.md` (opus check r1 of revision 1: [REJECT], with F1 and F5 SUBSTANTIVE and F2 to F4 EDITORIAL).
+- the L1 build coder's report (the finding that section 3.4 was wrong);
+- the opus check of revision 1 ([REJECT], F1 and F5 SUBSTANTIVE, F2 to F4 EDITORIAL), and a second check of revision 2 ([REJECT], G1 SUBSTANTIVE).
 
 **Source traced in:** the worktree `C:\Projects\RisuAI\.claude\worktrees\709-module-list-spec-7ec318`, on branch `claude/709-module-list-build` at HEAD 1002ead68 (= `origin/main`), with the L1 edits uncommitted.
 
@@ -68,7 +77,7 @@ Designer, 2026-11-24.
 | A derived whose parent effect is destroyed answers with its last value | `reactivity/deriveds.js:345-354` (reviewer F2) |
 
 **Execution.**
-- My own diagnostic: `pnpm exec vitest run src/lib/Studio/StudioDetail.moduleAdvanced.svelte.test.ts -t T9-GONE-DELETE` on the branch exits 1 with `expected 'module:M1' to be null` (`scratchpad\709\gone-run.txt`).
+- My own diagnostic: `pnpm exec vitest run src/lib/Studio/StudioDetail.moduleAdvanced.svelte.test.ts -t T9-GONE-DELETE` on the branch exits 1 with `expected 'module:M1' to be null` (a session-scratch vitest output, not kept).
 - The reviewer's runs, E1 to E7 in `amend-check-r1.md`, were made in a scratch copy:
   - origin/main code: a splice leaves `[M1 ns=draft]`, a filtered reassignment records one step, and a pagehide writes nothing;
   - the corrected variant passes 591 of 592 tests in 33 files, and the one failure is T5-NSCOMMIT (F5).
@@ -252,6 +261,6 @@ Owner: the L1 Opus coder (changed contract 2), with a grant for the three compon
 
 ## Artifacts
 
-- `C:\Users\yor42\AppData\Local\Temp\claude\359b2f32317abe8d\3e88c497-7325-4892-a180-a43ee4fa67ee\scratchpad\709\gone-run.txt` (my diagnostic run).
-- `scratchpad\709\d-adv.txt` and `scratchpad\709\d-detail.txt` (read-only `git diff` captures).
+- a session-scratch vitest output of that diagnostic (not kept).
+- two session-scratch `git diff` captures (not kept).
 - No repository, git index or worktree writes.

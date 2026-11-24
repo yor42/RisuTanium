@@ -300,6 +300,13 @@ describe('T9-GONE-REPLACE: a form open on a replaced module clears and drops wha
         // A namespace draft that is typed and not committed: it flushes when the form unmounts.
         typeInto(part('studio-module-namespace') as HTMLInputElement, 'ns-draft')
         expect(live().namespace).toBe('old')
+        // A name composition that is still held beside it: the same flush writes it, so it must be dropped as well.
+        const nameField = part('studio-module-name') as HTMLInputElement
+        nameField.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        nameField.value = 'Held 하'
+        nameField.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }))
+        flushSync()
+        expect(live().name).toBe('Mod One')
 
         await replaceImport(incomingFile('Mod One', 'incoming'))
         await settle()
