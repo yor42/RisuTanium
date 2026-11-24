@@ -2,6 +2,8 @@
 
 Status: **spec, revision 3 (editorial only)** (2026-11-24; Gate 1 r3 [EDITORIAL], section 10d), not built. Spec first (MC-3902), so no build starts before this file merges. The four product questions are answered (section 10). Ticket yor42/RisuTanium#709, filed from #683 (S5) under MC-3985. Written against `origin/main` 2099bea7a. Builds on [MODULE_ADVANCED_SPEC.md](MODULE_ADVANCED_SPEC.md) (S5) sections 0, 1.3, 3 and 6, and on the Studio shell of [SLICE1_SPEC.md](SLICE1_SPEC.md).
 
+**Build amendment (2026-11-24).** The L1 build found that section 3.4 was wrong about teardown writes: a Studio form must not write from `onDestroy`. [MODULE_LIST_SPEC_AMENDMENT_3_4.md](MODULE_LIST_SPEC_AMENDMENT_3_4.md) (revision 3, two incremental opus checks, then Gate 2) replaces sections 3.4 and 3.5 contract 2 and adds the rows named there. Where the two differ, the amendment wins.
+
 Decisions used: MC-058, MC-175, MC-223, MC-329, MC-350, MC-774, MC-912, MC-1639, MC-1827, MC-2576, MC-3638, MC-3896, MC-3900, MC-3902, MC-3982, MC-3984, MC-3985, MC-4030, MC-4043, MC-4044, MC-4070, MC-4120. Every ID except MC-4120 has a row in `Agents/Decision-Index.md` and an entry in `Agents/Maintainer-Context.md` (checked 2026-11-24). MC-4120 is not folded yet; it is in `Agents/mc/709.md`, as MC-3044 allows.
 
 **No product question is open (section 10 records the four answers and the accepted MCP limitation, MC-4120).** Every other choice marked **(design default)** was made here inside decided intent and can be vetoed without asking the maintainer. One design default extends MC-3896 to modules on the brief's instruction (section 3.4); section 12 names it so the orchestrator can confirm it.
