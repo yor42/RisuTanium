@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { canonicalStylesheet } from './canonical'
 import { lintPack as lintEngine } from './engine'
-import { lintAreaPack, preprocessCss, type ThemeArea } from './index'
+import { judgeAreaSheet, lintAreaPack, preprocessCss, type ThemeArea } from './index'
+import { POPUPS_SAFE } from './registries/popups'
 import { PROP_ALLOW, SHORTHAND_EFFECTS, isAllowedProperty, judgeShorthandValue, parseSelectorEntry, scopePass } from './scope'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
@@ -371,10 +372,11 @@ describe('axis D: font families (REPRO)', () => {
         refused('chat', `@font-face{font-family:"Pretendard";src:url("fonts/a.woff2")}${NAME}{font-family:"Pretendard"}`, /MC-1568|MC-1550/)
     })
 
-    it('home keeps its families, and settings, an applied area, is held to the pack- rule (S3a-3)', () => {
-        accepted('home', '@font-face{font-family:"pack serif";src:url("fonts/a.woff2")}')
-        refused('settings', '@font-face{font-family:"pack serif";src:url("fonts/a.woff2")}', /must start with pack-/)
-        accepted('settings', '@font-face{font-family:"pack-serif";src:url("fonts/a.woff2")}')
+    it('settings and home, applied areas, are held to the pack- rule (S3a-3, Home)', () => {
+        for (const area of ['settings', 'home'] as const) {
+            refused(area, '@font-face{font-family:"pack serif";src:url("fonts/a.woff2")}', /must start with pack-/)
+            accepted(area, '@font-face{font-family:"pack-serif";src:url("fonts/a.woff2")}')
+        }
     })
 })
 
@@ -392,10 +394,11 @@ describe('the acceptance sheets stay accepted (T0a-7, GUARD)', () => {
         }
     })
 
-    it('scope.ts judges settings as chat and studio, and leaves home alone', () => {
+    it('scope.ts judges settings and home as chat and studio', () => {
         expect(scopePass('settings', '[data-part="chat-send"]{font-size:11px}', ['arial'])).not.toEqual([])
-        expect(scopePass('home', '[data-part="chat-send"]{font-size:11px}', ['arial'])).toEqual([])
-        expect(scopePass('home', ':root{--color-textcolor:#111111}', [])).toEqual([])
+        expect(scopePass('home', '[data-part="chat-send"]{font-size:11px}', ['arial'])).not.toEqual([])
+        expect(scopePass('home', '[data-part="home-greeting"]{font-size:11px}', [])).toEqual([])
+        expect(scopePass('home', ':root{--color-textcolor:#111111}', [])).not.toEqual([])
     })
 })
 
@@ -411,5 +414,57 @@ describe('R20 residue closed by the part-value rule: these rows are refused in e
         refused(area, css, /must name a part by value/)
         refused('chat', css)
         refused('studio', css)
+    })
+})
+
+// Home is a scoped area: a home stylesheet may name only home-* and library-* parts, and its own tokens (MC-3007).
+describe('SC-H: Rule SCOPE judges a home stylesheet', () => {
+    const FOREIGN = ['chat-composer', 'toast', 'settings-page', 'studio-header', 'pattern-alert-body', 'sidebar-home']
+
+    it('SC-H1 (REPRO for the colour rows): a part of another screen is refused by membership as the subject and as an ancestor; home and library parts are accepted', () => {
+        for (const part of FOREIGN) {
+            refused('home', `[data-part="${part}"]{color:#7a1f5c}`, new RegExp(`the part ${part} is not a part of the home screen`))
+            refused('home', `[data-part="${part}"] [data-part="home-greeting"]{color:#7a1f5c}`, new RegExp(`the part ${part} is not a part of the home screen`))
+        }
+        accepted('home', '[data-part="home-greeting"]{color:#7a1f5c}')
+        accepted('home', '[data-part="library-row"]{color:#7a1f5c}')
+    })
+
+    it('SC-H2 (REPRO for the Settings token row; GUARD for the home and pattern-z rows):a home token is accepted; a Settings pattern token and a Settings token are refused', () => {
+        accepted('home', ':root{--home-card-radius:4px}')
+        refused('home', ':root{--pattern-z-toast:5}', /is not a pack-settable token/)
+        refused('home', ':root{--settings-dialog-padding:8px}', /not a token this stylesheet may set/)
+    })
+})
+
+// MC-4146: scroll-snap-type, and no other scroll property, joins PROP_ALLOW.
+describe('SS-1: scroll-snap-type on the property allow-list (MC-4146)', () => {
+    const SNAP = 'scroll-snap-type:y mandatory'
+    const PART: Record<'chat' | 'studio' | 'settings' | 'home' | 'popups', string> = { chat: 'chat-header-title', studio: 'studio-asset-row', settings: 'settings-row-hint', home: 'home-shelf', popups: 'toast' }
+
+    it.each(Object.keys(PART) as (keyof typeof PART)[])('SS-1(a): Rule SCOPE reports no property error for scroll-snap-type on a %s part', (area) => {
+        const errors = scopePass(area, `[data-part="${PART[area]}"]{${SNAP}}`, [])
+        expect(errors.map((e) => e.why).filter((why) => /scroll-snap-type/.test(why))).toEqual([])
+    })
+
+    it('SS-1(b): a chat safe leaf, a Studio safe part, a popups safe part and a home part are accepted end to end', () => {
+        const cases = [['chat', 'chat-header-title'], ['studio', 'studio-asset-row'], ['popups', POPUPS_SAFE[0]], ['home', 'home-shelf']] as const
+        for (const [area, part] of cases) {
+            const result = judgeAreaSheet(area, `[data-part="${part}"]{${SNAP}}`).result
+            expect(result.ok, `${area} ${part}: ${JSON.stringify(result.errors)}`).toBe(true)
+        }
+    })
+
+    it('SS-1(c): Settings stays refused by its own engine allowlist, which MC-4146 deliberately does not widen, and not by a Rule SCOPE property reason', () => {
+        const result = judgeAreaSheet('settings', `[data-part="settings-row-hint"]{${SNAP}}`).result
+        expect(result.ok).toBe(false)
+        const why = result.errors.map((e) => e.why)
+        expect(why.some((w) => /is not on the declaration allowlist for a surface that can contain or be a protected element/.test(w))).toBe(true)
+        expect(why.some((w) => /is not on the list of properties a pack may set/.test(w))).toBe(false)
+    })
+
+    it('SS-1(d): scroll-snap-type is allowed and no other scroll, snap, overscroll or touch-action property is', () => {
+        expect(isAllowedProperty('scroll-snap-type')).toBe(true)
+        for (const name of ['scroll-snap-align', 'scroll-snap-stop', 'scroll-behavior', 'scroll-margin', 'scroll-padding', 'overscroll-behavior', 'touch-action']) expect(isAllowedProperty(name), name).toBe(false)
     })
 })

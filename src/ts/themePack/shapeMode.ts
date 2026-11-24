@@ -11,7 +11,7 @@ import type { AppliedArea } from './intake'
 
 /** The properties of the judge's declaration allowlist that carry no colour, image or gradient. Everything else on that allowlist counts as paint. */
 export const SHAPE_PROPERTY: readonly RegExp[] = [
-    /^(opacity|visibility|cursor|pointer-events|user-select|-webkit-user-select|scrollbar-width|stroke-width)$/,
+    /^(opacity|visibility|cursor|pointer-events|user-select|-webkit-user-select|scrollbar-width|scroll-snap-type|stroke-width)$/,
     /^border(-(top|right|bottom|left|block|inline)(-(start|end))?)?-(width|style)$/, /^border(-(top|bottom|start|end)-(left|right|start|end))?-radius$/,
     /^(font|font-(family|size|weight|style|stretch|variant|variant-[a-z-]+|feature-settings|variation-settings|kerning|synthesis|optical-sizing))$/,
     /^(line-height|letter-spacing|word-spacing|text-align|text-align-last|text-decoration-(?!color$)[a-z-]+|text-underline-offset|text-underline-position|text-transform|text-indent|text-overflow|text-wrap(-mode|-style)?|white-space(-collapse)?|word-break|overflow-wrap|word-wrap|hyphens|tab-size|vertical-align|list-style(-type|-position)?|-webkit-line-clamp|line-clamp|-webkit-box-orient|text-rendering|-webkit-font-smoothing|-moz-osx-font-smoothing)$/,
@@ -77,6 +77,19 @@ const STUDIO_GEOMETRY_TOKEN_NAMES: readonly string[] = [
 const STUDIO_SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set([...SHAPE_TOKEN_NAMES, ...STUDIO_GEOMETRY_TOKEN_NAMES])
 
 /**
+ * Home's geometry role tokens: the pack-settable `--home-*` names that are sizes, spacing, type scale, radii or hairlines and
+ * never a colour, alpha, tint, duration or stacking value. Every reader in the source tree uses one only as a geometry value
+ * (never in a paint property), so a pack value in them cannot add a colour; shapeMode.test.ts scans the consumers, derived
+ * tokens included, and pins the set. The `--home-z-*` names stay off: the app reads none of them today, and a reader that
+ * took one as `z-index` would need the stacking refusal that Settings has for `--pattern-z-*` (MC-3422) before any joined.
+ * `--home-hairline` stays off because a `box-shadow` and a `border` shorthand read it.
+ */
+const HOME_GEOMETRY_TOKEN_NAMES: readonly string[] = [
+    '--home-avatar-lg', '--home-avatar-md', '--home-avatar-radius-lg', '--home-avatar-radius-md', '--home-avatar-radius-sq', '--home-avatar-rail', '--home-avatar-sm', '--home-avatar-xs', '--home-bar-height', '--home-bar-w', '--home-card-gap', '--home-card-pad', '--home-card-pad-lg', '--home-card-radius', '--home-center-width', '--home-center-width-narrow', '--home-char-card-min', '--home-control-gap', '--home-control-height', '--home-control-pad-x', '--home-control-radius', '--home-dialog-margin', '--home-dialog-pad', '--home-dialog-radius', '--home-dialog-width', '--home-dialog-width-wide', '--home-drawer-width', '--home-field-radius', '--home-focus-offset', '--home-focus-w', '--home-hero-pad-y', '--home-icon-size', '--home-icon-size-sm', '--home-icon-stroke', '--home-leading-body', '--home-leading-field', '--home-leading-tight', '--home-main-pad-bottom', '--home-main-pad-top', '--home-main-pad-x', '--home-mode-option-radius', '--home-mode-radius', '--home-note-basis', '--home-pill-height', '--home-portrait-height', '--home-presence-radius', '--home-quick-min', '--home-radius-1', '--home-radius-2', '--home-radius-3', '--home-radius-4', '--home-radius-5', '--home-radius-6', '--home-radius-7', '--home-rail-icon-size', '--home-rail-inset', '--home-rail-pad-x', '--home-rail-pad-y', '--home-rail-radius', '--home-rail-width-collapsed', '--home-rail-width-hybrid', '--home-rail-width-rp', '--home-rail-width-utility', '--home-realm-list-max', '--home-realm-min-height', '--home-realm-status-min', '--home-row-height', '--home-run-mark-size', '--home-search-basis', '--home-sel-size', '--home-shelf-card-min', '--home-shelf-columns', '--home-side-width', '--home-space-1', '--home-space-10', '--home-space-11', '--home-space-12', '--home-space-13', '--home-space-14', '--home-space-15', '--home-space-2', '--home-space-3', '--home-space-4', '--home-space-5', '--home-space-6', '--home-space-7', '--home-space-8', '--home-space-9', '--home-text-2xl', '--home-text-base', '--home-text-hero', '--home-text-lg', '--home-text-md', '--home-text-sm', '--home-text-xl', '--home-text-xs', '--home-tip-gap', '--home-toast-offset', '--home-topbar-gap-x', '--home-topbar-gap-y', '--home-topbar-pad-bottom', '--home-topbar-pad-top', '--home-topbar-pad-x', '--home-touch', '--home-weight-regular', '--home-weight-strong',
+]
+const HOME_SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set([...SHAPE_TOKEN_NAMES, ...HOME_GEOMETRY_TOKEN_NAMES])
+
+/**
  * Settings keeps the chat list and nothing else: no `--settings-*` name (no live reader paints or sizes from one yet) and no
  * `--pattern-*`, `--warning-*` or `--task-*` name, which the pattern dialog, the toasts and the backup chooser read (H-7a). A
  * test pins it as SHAPE_TOKEN_NAMES intersected with `allowedTokenNames('settings')`.
@@ -88,10 +101,11 @@ const NO_SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set()
 
 /**
  * The custom properties an applied area's shape variant keeps. Chat keeps its own list. Studio keeps the chat list, which its
- * allowlist also accepts, and its geometry tokens; Settings keeps the chat list. A test pins each against `allowedTokenNames(area)`.
+ * allowlist also accepts, and its geometry tokens; Home likewise with its own; Settings keeps the chat list. A test pins each against `allowedTokenNames(area)`.
  */
 export function shapeTokenNames(area: AppliedArea): ReadonlySet<string> {
     if (area === 'studio') return STUDIO_SHAPE_TOKEN_NAMES
+    if (area === 'home') return HOME_SHAPE_TOKEN_NAMES
     if (area === 'popups') return NO_SHAPE_TOKEN_NAMES
     return area === 'settings' ? SETTINGS_SHAPE_TOKEN_NAMES : SHAPE_TOKEN_NAMES
 }

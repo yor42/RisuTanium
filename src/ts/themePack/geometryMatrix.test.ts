@@ -127,10 +127,10 @@ type Placement = 'one block' | 'a block per declaration' | '@media' | 'a state' 
 const PLACEMENTS: readonly Placement[] = ['one block', 'a block per declaration', '@media', 'a state', 'a root attribute', 'a selector list', 'a selector list, own first', 'one list, two chain parts', 'last declaration in @media', 'safe context']
 const SUFFIXES = ['', '!important', ' !important', ' !IMPORTANT'] as const
 // The safe tier comes from any data-role="user"|"system" attribute in the selector. The part-value rule refuses the part-less spelling in Home and Settings, but the same residue stays reachable there through an ancestor that names a part
-// (the chat message article carries data-role), so the safe-context placement uses the named spelling in every area; `bare` is the part-less spelling, which chat and Studio judge and Home and Settings refuse with the part-value reason.
-const SAFE_ANCESTOR = { named: '[data-part="chat-message"][data-role="user"] ', bare: '[data-role="user"] ', settings: '[data-part="settings-row"][data-role="user"] ' }
+// (the chat message article carries data-role), so the safe-context placement uses the named spelling in every area, with a part of the area's own screen where Rule SCOPE names the screen's parts (Settings, Home); `bare` is the part-less spelling, which chat and Studio judge and Home and Settings refuse with the part-value reason.
+const SAFE_ANCESTOR = { named: '[data-part="chat-message"][data-role="user"] ', bare: '[data-role="user"] ', settings: '[data-part="settings-row"][data-role="user"] ', home: '[data-part="home-story"][data-role="user"] ' }
 // `second` is the family's other chain part: the placement that names both parts of a chain in one selector list puts the declarations on both.
-const place = (placement: Placement, part: string, peer: string, second: string, decls: string[]): string => {
+const place = (placement: Placement, part: string, peer: string, second: string, decls: string[], ancestor: string = SAFE_ANCESTOR.named): string => {
     const s = `[data-part="${part}"]`
     switch (placement) {
         case 'one block': return `${s}{${decls.join(';')}}`
@@ -142,7 +142,7 @@ const place = (placement: Placement, part: string, peer: string, second: string,
         case 'a selector list, own first': return `${s},[data-part="${peer}"]{${decls.join(';')}}`
         case 'one list, two chain parts': return `${s},[data-part="${second}"]{${decls.join(';')}}`
         case 'last declaration in @media': return decls.length > 1 ? `${s}{${decls.slice(0, -1).join(';')}}@media (min-width:1px){${s}{${decls[decls.length - 1]}}}` : `@media (min-width:1px){${s}{${decls.join(';')}}}`
-        case 'safe context': return `${SAFE_ANCESTOR.named}${s}{${decls.join(';')}}`
+        case 'safe context': return `${ancestor}${s}{${decls.join(';')}}`
     }
 }
 
@@ -182,7 +182,7 @@ const assemble = (family: Family, spec: Spec, vals: Vals, placement: Placement, 
     if (both) boxes.set(family.b, [...built.pieces])
     let css = ''
     const roots = built.roots
-    css += place(placement, family.a, family.peer, family.b, built.decls.map(([prop, value]) => `${prop}:${value}${suffix}`))
+    css += place(placement, family.a, family.peer, family.b, built.decls.map(([prop, value]) => `${prop}:${value}${suffix}`), family.area === 'home' ? SAFE_ANCESTOR.home : SAFE_ANCESTOR.named)
     if (target !== null) {
         const critical = [...family.engine, ...family.live].find((c) => c.parts.includes(family.b))!
         const base = chainSum(critical, boxes)
@@ -324,7 +324,7 @@ describe('T-1: what the reader cannot measure is refused, never read as 0', () =
             const family = FAMILIES[(rowIndex + placementIndex) % FAMILIES.length]
             for (const entry of UNMEASURABLE.filter((u) => u.applies(row))) {
                 checked++
-                const css = place(placement === 'last declaration in @media' ? '@media' : placement, family.a, family.peer, family.b, [`${row.prop}:${entry.value(row)}`])
+                const css = place(placement === 'last declaration in @media' ? '@media' : placement, family.a, family.peer, family.b, [`${row.prop}:${entry.value(row)}`], family.area === 'home' ? SAFE_ANCESTOR.home : SAFE_ANCESTOR.named)
                 const got = judge(family, css)
                 if (got.ok || !got.whys.some((w) => w.startsWith(`${row.prop}: `) && /cannot be measured/.test(w))) misses.push(`${family.id} | ${entry.label} | ${placement} | ${css}`)
             }
@@ -415,7 +415,7 @@ describe('T-2: a name the reach tier refuses is refused on every chain part of e
             for (const [name, value] of REACH_REFUSED) if (!lintAreaPack(area, `[data-part="${part}"]{${name}:${value}}`, 'probe').errors.some((e) => e.prop === name)) misses.push(`${area} ${part} ${name}`)
         }
         expect(misses).toEqual([])
-        expect(kept.length).toBe(40)
+        expect(kept.length).toBe(32)
     })
 
     it('every vendor alias of the family is refused as unmeasurable on a chain part, in the plain and the safe-context forms', () => {
@@ -433,17 +433,17 @@ describe('T-2: a name the reach tier refuses is refused on every chain part of e
 const SAFE_CONTEXT_CANDIDATES: [string, string][] = [['width', '120px'], ['max-width', '200px'], ['min-width', '10px'], ['min-inline-size', '10px'], ['max-inline-size', '200px'], ['flex-basis', '50px'], ['flex', '1'], ['display', 'grid'], ['display', 'inline-block'],
     ['grid-template-columns', '1fr 1fr'], ['text-indent', '4px'], ['column-count', '2'], ['box-sizing', 'border-box'], ['position', 'static'], ['font-size', '14px'], ['word-spacing', '1px'], ['letter-spacing', '1px'], ['gap', '4px'], ['column-gap', '4px'],
     ['justify-content', 'center'], ['align-items', 'center'], ['aspect-ratio', '1/1'], ['overflow', 'hidden'], ['list-style-position', 'inside'], ['white-space', 'nowrap'], ['box-shadow', '0 0 0 1px #000000'], ['text-shadow', '0 0 1px #000000'], ['height', '20px'], ['max-height', '40px'],
-    // the reader never sees the -moz- aliases (the family rule matches -webkit- only): chat, Studio and Settings refuse them through the property allow-list, and Home's safe-context form admits them (R19, R20)
+    // the reader never sees the -moz- aliases (the family rule matches -webkit- only): chat, Studio, Settings and Home refuse them through the property allow-list (R19, R20)
     ['-moz-padding-start', '48px'], ['-moz-padding-end', '48px'], ['-moz-margin-start', '48px'], ['-moz-margin-end', '48px'], ['-moz-border-start', '16px solid #000000'], ['-moz-border-end', '16px solid #000000']]
 const PAINT_CANDIDATES = ['opacity:0.5', 'fill:#000000', 'stroke:#000000', 'background-clip:padding-box']
-// refused in chat, Studio and Settings by the property allow-list, admitted in Home
+// refused in chat, Studio, Settings and Home by the property allow-list
 const MOZ_ALIASES = '-moz-padding-start -moz-padding-end -moz-margin-start -moz-margin-end -moz-border-start -moz-border-end'
 const CHAT_TRANSCRIPT = ['chat-shell', 'chat-transcript', 'chat-message', 'chat-message-stage', 'chat-message-body', 'chat-message-text']
 // per area: the candidate names refused in the safe-context form (the rest are admitted), with the chain parts that share that refusal; and the parts the area's own pass refuses even in the plain form.
 // The width names (width, max-width, min-width, min-inline-size, max-inline-size) on a protected sheet's root are a layout note since #560 PR2, so they no longer count as refused: the sheet roots join the parts that share the one remaining refusal.
 const SAFE_CONTEXT_SNAPSHOT: Record<ThemeArea, { refused: Record<string, string[]>; unjudged: string[]; paint: boolean }> = {
     chat: { refused: { [`column-count ${MOZ_ALIASES}`]: [...CHAT_TRANSCRIPT, 'chat-sheet', 'chat-sheet-body'] }, unjudged: [], paint: true },
-    home: { refused: { '': [...CHAT_TRANSCRIPT, 'chat-sheet', 'chat-sheet-body', 'home-shell', 'home-main', 'home-library', 'home-realm', 'home-dialog'] }, unjudged: [], paint: true },
+    home: { refused: { [`column-count ${MOZ_ALIASES}`]: ['home-shell', 'home-main', 'home-library', 'home-realm', 'home-dialog'] }, unjudged: [...CHAT_TRANSCRIPT, 'chat-sheet', 'chat-sheet-body'], paint: true },
     studio: {
         refused: { [`column-count ${MOZ_ALIASES}`]: ['studio-shell', 'studio-body', 'studio-main', 'studio-form-host', 'studio-form', 'studio-tgb-banners', 'studio-tgb-merged', 'studio-tgb-merged-section', 'studio-sheet-root', 'studio-toast-box'] },
         unjudged: [...CHAT_TRANSCRIPT, 'chat-sheet', 'chat-sheet-body'], paint: false,
@@ -454,9 +454,9 @@ const SAFE_CONTEXT_SNAPSHOT: Record<ThemeArea, { refused: Record<string, string[
     },
 }
 // Home and Settings carry the named-part spelling (the part-less one is refused there by the part-value rule); chat and Studio keep the part-less spelling their own rules judge.
-const safeAncestor = (area: ThemeArea): string => (area === 'settings' ? SAFE_ANCESTOR.settings : area === 'home' ? SAFE_ANCESTOR.named : SAFE_ANCESTOR.bare)
+const safeAncestor = (area: ThemeArea): string => (area === 'settings' ? SAFE_ANCESTOR.settings : area === 'home' ? SAFE_ANCESTOR.home : SAFE_ANCESTOR.bare)
 // A part the area's own pass admits for the paint probe (Settings names only its own parts since it is an applied area).
-const paintPart = (area: ThemeArea): string => (area === 'settings' ? 'settings-row' : 'chat-send')
+const paintPart = (area: ThemeArea): string => (area === 'settings' ? 'settings-row' : area === 'home' ? 'home-story' : 'chat-send')
 describe('T-2s: the safe-context admissions on chain parts are the recorded ones', () => {
     it.each(AREAS)('%s', (area) => {
         const { judged, unjudged } = partsOfArea(area)
@@ -474,7 +474,7 @@ describe('T-2s: the safe-context admissions on chain parts are the recorded ones
 // The residue tracked above is not closed by the part-value rule: the part-less spelling is refused in Home and Settings with the part-value reason, and the named-part spelling still reaches the safe tier there.
 describe('T-2s: the part-less safe-context spelling in Home and Settings (the part-value rule)', () => {
     it.each(['home', 'settings'] as const)('%s refuses the part-less spelling with the part-value reason and still admits the named-part spelling', (area) => {
-        const subject = area === 'settings' ? 'settings-row' : 'chat-message-text'
+        const subject = area === 'settings' ? 'settings-row' : 'home-story'
         const bare = lintAreaPack(area, `${SAFE_ANCESTOR.bare}[data-part="${subject}"]{width:120px}`, 'probe')
         expect(bare.ok).toBe(false)
         expect(bare.errors.some((e) => /must name a part by value/.test(e.why))).toBe(true)

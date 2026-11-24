@@ -823,14 +823,14 @@ describe('IS-3 the lines sit directly after the installed line, before every oth
         const UNBUNDLED_SHEET = '[data-part="chat-message-text"]{font-family:"pack-missing", serif}'
         world.readFile = async () => zipPack(validPackFiles({
             'chat.css': UNBUNDLED_SHEET,
-            'home.css': PLAIN_CHAT_SHEET,
+            'sidebar.css': PLAIN_CHAT_SHEET,
             'settings.css': '[data-part="settings-section-title"]{color:#ff0000;border-radius:6px}',
         }))
         const target = show()
         await installOnce(target)
         const base = outcomeTexts(target)
         expect(base[0]).toBe(INSTALLED)
-        expect(base).toContain(language.themePackSkippedAreas('home.css'))
+        expect(base).toContain(language.themePackSkippedAreas('sidebar.css'))
         expect(base).toContain(language.themePackColoursHeld('settings.css'))
         expect(base).toContain(language.themePackInstalledWithWarnings('chat.css'))
         expect(base).not.toContain(OFF_SESSION)

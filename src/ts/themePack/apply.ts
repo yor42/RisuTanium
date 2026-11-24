@@ -131,7 +131,9 @@ const SHAPE_LABEL = 'chat#shape'
 
 /** The applied areas whose element carries only the judged shape variant, with no base, in both modes (not colour-ready). */
 type ShapeOnlyArea = Exclude<ScreenArea, 'chat'>
-const SHAPE_ONLY_AREAS: readonly ShapeOnlyArea[] = ['studio', 'settings']
+const SHAPE_ONLY_AREAS: readonly ShapeOnlyArea[] = ['studio', 'settings', 'home']
+/** The shape-only areas whose judgement can switch the own colours on; Home's notes are shown but never trigger. */
+const OWN_COLOUR_SHAPE_AREAS: readonly ShapeOnlyArea[] = ['studio', 'settings']
 const shapeOnlyLabel = (area: ShapeOnlyArea): string => `${area}#shape`
 
 /**
@@ -150,7 +152,7 @@ function shapeOnlyJobText(area: ShapeOnlyArea, sheet: AreaSheetJudgement): strin
 }
 
 type ShapeOnlySheets = Readonly<Record<ShapeOnlyArea, AreaSheetJudgement | null>>
-const NO_SHAPE_ONLY_SHEETS: ShapeOnlySheets = { studio: null, settings: null }
+const NO_SHAPE_ONLY_SHEETS: ShapeOnlySheets = { studio: null, settings: null, home: null }
 
 const POPUPS_SHAPE_LABEL = 'popups#shape'
 
@@ -220,7 +222,7 @@ async function judgeVariants(modes: readonly string[], chat: AreaSheetJudgement 
         return STALE
     }
     const verdictOf = (label: string): AreaSheetJudgement | null => results !== null && Object.hasOwn(results, label) ? results[label] : null
-    return { light: verdictOf(LIGHT_LABEL), shape: verdictOf(SHAPE_LABEL), shapeOnly: { studio: verdictOf(shapeOnlyLabel('studio')), settings: verdictOf(shapeOnlyLabel('settings')) }, popupsShape: verdictOf(POPUPS_SHAPE_LABEL) }
+    return { light: verdictOf(LIGHT_LABEL), shape: verdictOf(SHAPE_LABEL), shapeOnly: { studio: verdictOf(shapeOnlyLabel('studio')), settings: verdictOf(shapeOnlyLabel('settings')), home: verdictOf(shapeOnlyLabel('home')) }, popupsShape: verdictOf(POPUPS_SHAPE_LABEL) }
 }
 
 /**
@@ -410,7 +412,7 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
 
     const pack = intake.pack
     const chat = pack.sheets.chat ?? null
-    const sheets: ShapeOnlySheets = { studio: pack.sheets.studio ?? null, settings: pack.sheets.settings ?? null }
+    const sheets: ShapeOnlySheets = { studio: pack.sheets.studio ?? null, settings: pack.sheets.settings ?? null, home: pack.sheets.home ?? null }
     const urlOfRaw = new Map<string, string>()
     // Order: the chat resources, then one request for every variant, then the resources only a shape-only area's shape variant names.
     // Minting for such an area follows its judgement, so an image only its colour declarations name is never minted.
@@ -426,7 +428,7 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
     if ('stale' in variants) {
         return variants
     }
-    const shapeJudged: Record<ShapeOnlyArea, AreaSheetJudgement | null> = { studio: null, settings: null }
+    const shapeJudged: Record<ShapeOnlyArea, AreaSheetJudgement | null> = { studio: null, settings: null, home: null }
     for (const area of SHAPE_ONLY_AREAS) {
         const sheet = sheets[area]
         if (sheet === null) {
@@ -465,7 +467,7 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
     const elements: PreparedElement[] = []
     let defaultScheme: ColorScheme | null = null
     // A shape-only sheet paints no colour, but its own judgement still counts, as Studio's always has.
-    let ownColourTrigger = SHAPE_ONLY_AREAS.some((area) => judgementTriggers(sheets[area]))
+    let ownColourTrigger = OWN_COLOUR_SHAPE_AREAS.some((area) => judgementTriggers(sheets[area]))
     if (chat !== null && chatText !== null) {
         const base = baseOf(variants.light)
         // The colours painted come from the light variant when the pack's light base applies, else from the chat sheet.
@@ -473,7 +475,7 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
         defaultScheme = packDefaultScheme(chat.canonical, base)
         elements.push({ area: 'chat', text: textOrNull(chatText), shapeText: prepareShapeText(chat, chatText, (raw) => urlOfRaw.get(raw), variants.shape), base })
     }
-    // Studio and Settings are not colour-ready: each element carries only its shape text and no base, in both modes.
+    // Studio, Settings and Home are not colour-ready: each element carries only its shape text and no base, in both modes.
     for (const area of SHAPE_ONLY_AREAS) {
         const areaText = prepareShapeOnlyText(shapeJudged[area], (raw) => urlOfRaw.get(raw))
         if (areaText !== null) {

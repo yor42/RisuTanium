@@ -470,7 +470,7 @@ describe('W the session: one worker for every request', () => {
         ['a duplicate label', [job('a', PLAIN_CHAT_SHEET), job('a', SHEET_B)]],
         ['an empty label', [job('', PLAIN_CHAT_SHEET)]],
         ['more than the cap', Array.from({ length: MAX_JUDGE_JOBS + 1 }, (_, index) => job(`j${index}`, PLAIN_CHAT_SHEET))],
-        ['an area that is not applied', [{ label: 'a', area: 'home', text: PLAIN_CHAT_SHEET } as unknown as JudgeJob]],
+        ['an area that is not applied', [{ label: 'a', area: 'sidebar', text: PLAIN_CHAT_SHEET } as unknown as JudgeJob]],
         ['text that is not a string', [{ label: 'a', area: 'chat', text: 5 } as unknown as JudgeJob]],
     ])('E7: rejects %s at once, without spawning or posting, and closes the session', async (_name, list) => {
         const { opened, workers } = session()

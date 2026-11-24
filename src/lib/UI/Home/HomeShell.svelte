@@ -24,6 +24,7 @@
     import { reducedMotionActive } from 'src/ts/chatShell/motionPrefs.svelte'
     import { ColorSchemeTypeStore } from 'src/ts/gui/surfaceTone'
     import { modalLayerOpen } from 'src/lib/Nexus/pattern/modalLayers.svelte'
+    import { declareSurface } from '../../../ts/themePack/surfaceGate.svelte'
 
     // Every creation starts at the top of the landing: a selection change, the language remount and a return
     // to Home all create a fresh shell. Covers (Settings, Studio) keep it mounted. The one exception is the
@@ -69,6 +70,9 @@
     // The sidebar's Home look holds for the shell's whole life, Realm view included. It reads nothing,
     // so it runs once before the first render and releases on destroy.
     $effect.pre(() => holdHomeChrome('landing'))
+
+    // A themed Home sheet is on only while this shell is mounted and no cover hides it.
+    $effect(() => declareSurface('home'))
 
     // The drawer goes with the phone landing: a resize out of the band and the Realm view both end it, so it
     // never comes back by itself.

@@ -574,3 +574,61 @@ describe('popups overlays (acceptance: registerThemePackOverlay is new, so a bas
         expect(shape.getAttribute('media')).toBe('not all')
     })
 })
+
+describe('Home: the lowest-precedence screen, masked like chat', () => {
+    function sheet(area: string, base: 'dark' | 'light' | null): HTMLStyleElement {
+        const element = document.createElement('style')
+        element.setAttribute('data-theme-pack', area)
+        element.setAttribute('media', 'not all')
+        document.head.appendChild(element)
+        registerThemePackElement(element, area, base)
+        return element
+    }
+
+    test('G-H1 (reproducer): a declared, unmasked home is on, sets no base attribute and no tone', () => {
+        installThemePackGate(() => false)
+        const home = sheet('home', null)
+        declareSurface('home')
+        syncThemePackMedia()
+        expect(shownScreen()).toBe('home')
+        expect(home.getAttribute('media')).toBe('all')
+        expect(document.documentElement.hasAttribute('data-theme-pack-base')).toBe(false)
+        expect(get(packBaseTone)).toBeNull()
+    })
+
+    test('G-H2 (guard, kills M5): with chat and home both declared and unmasked, chat is on and home is off', () => {
+        installThemePackGate(() => false)
+        const chat = sheet('chat', 'dark')
+        const home = sheet('home', null)
+        declareSurface('home')
+        declareSurface('chat')
+        syncThemePackMedia()
+        expect(chat.getAttribute('media')).toBe('all')
+        expect(home.getAttribute('media')).toBe('not all')
+        expect(shownScreen()).toBe('chat')
+    })
+
+    test('G-H3 (guard, kills M6): the home mask follows settingsOpen and studioOpen', () => {
+        const open = (settingsOpen: boolean, studioOpen: boolean) => ({ settingsOpen, studioOpen })
+        expect(screenMasked('home', open(false, false))).toBe(false)
+        expect(screenMasked('home', open(true, false))).toBe(true)
+        expect(screenMasked('home', open(false, true))).toBe(true)
+        installThemePackGate((area) => screenMasked(area, open(false, true)))
+        const home = sheet('home', null)
+        declareSurface('home')
+        syncThemePackMedia()
+        expect(home.getAttribute('media')).toBe('not all')
+    })
+
+    test('G-H5 (guard, passes before and after; kills M15): a reset drops the home declaration, so a registered home element with no declaration stays off', () => {
+        installThemePackGate(() => false)
+        declareSurface('home')
+        resetThemePackGateForTests()
+        installThemePackGate(() => false)
+        const home = sheet('home', null)
+        flushSync()
+        syncThemePackMedia()
+        expect(shownScreen()).toBeNull()
+        expect(home.getAttribute('media')).toBe('not all')
+    })
+})

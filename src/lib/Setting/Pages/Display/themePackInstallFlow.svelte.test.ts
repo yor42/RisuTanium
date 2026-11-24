@@ -446,9 +446,9 @@ describe('T4-16 an outcome is shown once', () => {
 describe('T4-4 a pack with another area keeps it and says so', () => {
     test('the installed line is followed by the skipped-areas line', async () => {
         attach()
-        const bytes = zipPack(validPackFiles({ 'home.css': PLAIN_CHAT_SHEET }))
+        const bytes = zipPack(validPackFiles({ 'sidebar.css': PLAIN_CHAT_SHEET }))
         await runThemePackInstall(runOf(bytes).deps)
-        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackSkippedAreas('home.css')])
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackSkippedAreas('sidebar.css')])
         expect(storedPacks()).toHaveLength(1)
     })
 })
@@ -727,11 +727,11 @@ describe('W1 warnings of an accepted sheet show under the installed line', () =>
 
     test('the warnings come after the skipped-areas line', async () => {
         attach()
-        const bytes = zipPack(validPackFiles({ 'home.css': PLAIN_CHAT_SHEET }))
+        const bytes = zipPack(validPackFiles({ 'sidebar.css': PLAIN_CHAT_SHEET }))
         await runThemePackInstall(runOf(bytes, [], { intake: warnIntake }).deps)
         expect(outcomeLines()).toEqual([
             language.themePackInstalled('Test Pack'),
-            language.themePackSkippedAreas('home.css'),
+            language.themePackSkippedAreas('sidebar.css'),
             language.themePackInstalledWithWarnings('chat.css'),
             ...warningLines,
         ])
@@ -1122,5 +1122,49 @@ describe('formatPackSize', () => {
         expect(formatPackSize(MIB - 1)).toMatch(/KiB$/)
         expect(formatPackSize(MIB)).toBe('1.0 MiB')
         expect(formatPackSize(21 * MIB)).toBe('21.0 MiB')
+    })
+})
+
+describe('Home notices: colours held back and a pack that shows nothing (MC-3121, MC-3125, MC-3127)', () => {
+    const HOME_COLOURS = '[data-part="home-greeting"]{letter-spacing:.08rem;color:#7a1f5c}'
+    const homeOnly = (sheet: string): Uint8Array => zipPack({ 'manifest.json': manifestText(), 'home.css': sheet })
+
+    test('N-H1 (1): a chat and home pack with home colours names home.css in the held line and has no skipped-areas line', async () => {
+        attach()
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'home.css': HOME_COLOURS }))).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('home.css')])
+    })
+
+    test('N-H1 (2): a home-only pack of colours only is accepted (MC-3123) and says it changes nothing yet', async () => {
+        attach()
+        await runThemePackInstall(runOf(homeOnly('[data-part="home-greeting"]{color:#7a1f5c}')).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('home.css'), language.themePackShowsNothing])
+    })
+
+    test('N-H1 (3): a shape-only home sheet adds no notice', async () => {
+        attach()
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'home.css': '[data-part="home-greeting"]{letter-spacing:.08rem}' }))).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
+    })
+
+    test('N-H1 (4): a home sheet whose only declaration beyond the old shape list is scroll-snap-type adds no held line and no shows-nothing line', async () => {
+        attach()
+        await runThemePackInstall(runOf(homeOnly('[data-part="home-shelf"]{scroll-snap-type:none}')).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
+    })
+
+    test('N-H1 (5): the DV438H device pack is accepted and its notices name home.css as holding colours', async () => {
+        attach()
+        const bytes = zipPack({
+            'manifest.json': manifestText({ modes: ['dark'] }),
+            'chat.css': ':root{--nexus-canvas:#1b1020;--nexus-surface:#2a1830;--nexus-text:#f4eef6}[data-part="chat-header"]{border-radius:2px}',
+            'home.css': '[data-part="home-greeting"]{letter-spacing:.08rem;color:#7a1f5c}:root{--home-card-radius:2px}',
+            'popups.css': '[data-part="toast"]{border-radius:2px;background:#7a1f5c}',
+        })
+        await runThemePackInstall(runOf(bytes).deps)
+        const lines = outcomeLines()
+        expect(lines?.[0]).toBe(language.themePackInstalled('Test Pack'))
+        expect(lines).toContain(language.themePackColoursHeld('home.css'))
+        expect(storedPacks()).toHaveLength(1)
     })
 })

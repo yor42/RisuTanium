@@ -149,6 +149,7 @@ describe('T5b the shape token and property partition', () => {
 
     const PROBES = [
         'color', 'opacity', 'visibility', 'cursor', 'pointer-events', 'user-select', '-webkit-user-select', 'accent-color', 'caret-color', 'scrollbar-color', 'scrollbar-width', 'color-scheme', 'fill', 'stroke', 'stroke-width', 'box-shadow', 'text-shadow',
+        'scroll-snap-type', 'scroll-snap-align', 'scroll-snap-stop', 'scroll-behavior', 'scroll-margin', 'scroll-padding', 'overscroll-behavior', 'touch-action',
         'background', 'background-color', 'background-image', 'background-position', 'background-position-x', 'background-size', 'background-repeat', 'background-clip', 'background-origin',
         'border', 'border-top', 'border-block', 'border-inline-start', 'border-width', 'border-style', 'border-color', 'border-top-width', 'border-top-style', 'border-top-color', 'border-block-start-width', 'border-inline-end-color', 'border-radius', 'border-top-left-radius', 'border-start-start-radius',
         'font', 'font-family', 'font-size', 'font-weight', 'font-style', 'font-stretch', 'font-variant', 'font-variant-caps', 'font-feature-settings', 'font-variation-settings', 'font-kerning', 'font-synthesis', 'font-optical-sizing',
@@ -166,6 +167,7 @@ describe('T5b the shape token and property partition', () => {
         expect(matched.length).toBeGreaterThan(60)
         expect(matched.filter((prop) => !isAllowedProperty(prop))).toEqual([])
         expect(matched.filter((prop) => PAINT.test(prop))).toEqual([])
+        expect(matched).toContain('scroll-snap-type')
         expect(PROP_ALLOW.length).toBeGreaterThan(0)
     })
 
@@ -356,5 +358,101 @@ describe('S1 the studio shape token list (MC-3121)', () => {
     it('R8: the chat shape variant keeps the hairline token and the radius steps, and still drops a colour token', () => {
         expect(shapeOnlySheet(':root{--ui-border-width:2px}', shapeTokenNames('chat'))).toBe(':root{--ui-border-width:2px}')
         expect(shapeOnlySheet(':root{--ui-radius:0px;--ui-radius-4xl:8px;--nexus-text:#fff}', shapeTokenNames('chat'))).toBe(':root{--ui-radius:0px;--ui-radius-4xl:8px;}')
+    })
+})
+
+describe('H1 the home shape token list and scroll-snap-type (MC-4146)', () => {
+    // A Tailwind arbitrary-value utility that sets a size, gap, inset, radius, line height or track and nothing painted; a type size or a border width is geometry only with its length: hint.
+    const GEOMETRY_UTILITY = /^(?:[@\w!\[\].-]+:)*(?:(?:w|h|min-w|min-h|max-w|max-h|size|gap|gap-x|gap-y|basis|p[xytblrse]?|m[xytblrse]?|inset|top|bottom|left|right|rounded(?:-[a-z]{1,2})?|leading|grid-cols|grid-rows)-\[|(?:text|border(?:-[xytblr])?)-\[length:)/
+    const HOME_COLOUR_ROLE = /-rgb$|-bg$|-glow$|on-accent|^--home-(track|ink|accent|danger|warm|bloom|alpha|avatar-(hue|light|sat))|-alpha-/
+
+    function sourceFiles(dir: string, into: string[] = []): string[] {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name)
+            if (entry.isDirectory()) sourceFiles(full, into)
+            else if (/\.(svelte|ts|css)$/.test(entry.name) && !/\.test\.|test-helpers|testHost|\.scenarios\.|Harness|Stub/.test(entry.name) && !/[\\/]tests[\\/]/.test(full)) into.push(full)
+        }
+        return into
+    }
+    const stripComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, '')
+    const readers = new Map<string, RegExp>()
+    const reads = (value: string, name: string): boolean => value.includes(name) && (readers.get(name) ?? readers.set(name, new RegExp(`var\\(\\s*${name}(?![\\w-])`)).get(name))!.test(value)
+
+    /** Every read of a name in `names`, or of a custom property derived from one (a fixed point), outside src/ts/themePack: the paint properties and the non-geometry markup readers, by name. */
+    function paintReads(names: ReadonlySet<string>, property: readonly RegExp[]): { outside: string[], tracked: Set<string>, seen: Set<string>, files: number } {
+        const files = sourceFiles(path.join(ROOT, 'src')).filter((file) => !/[\\/]src[\\/]ts[\\/]themePack[\\/]/.test(file))
+        const texts = files.map((file) => ({ file: path.relative(ROOT, file).replace(/\\/g, '/'), text: readFileSync(file, 'utf8') }))
+        const tracked = new Set(names)
+        const seen = new Set<string>()
+        const outside: string[] = []
+        const cssBlocks = (file: string, text: string): string[] => file.endsWith('.css') ? [stripComments(text)] : file.endsWith('.svelte') ? [...text.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => stripComments(m[1])) : []
+        for (let grew = true; grew;) {
+            grew = false
+            for (const { file, text } of texts) {
+                for (const css of cssBlocks(file, text)) {
+                    for (const declaration of css.matchAll(/(?<![\w-])(--[\w-]+|-?[a-z][\w-]*)\s*:([^;{}]*)/g)) {
+                        if (declaration[1].startsWith('--') && !tracked.has(declaration[1]) && [...tracked].some((name) => reads(declaration[2], name))) {
+                            tracked.add(declaration[1])
+                            grew = true
+                        }
+                    }
+                }
+            }
+        }
+        for (const { file, text } of texts) {
+            for (const css of cssBlocks(file, text)) {
+                for (const declaration of css.matchAll(/(?<![\w-])(--[\w-]+|-?[a-z][\w-]*)\s*:([^;{}]*)/g)) {
+                    for (const name of tracked) {
+                        if (!reads(declaration[2], name)) continue
+                        seen.add(name)
+                        if (!declaration[1].startsWith('--') && !property.some((pattern) => pattern.test(declaration[1]))) outside.push(`${file}: ${name} in ${declaration[1]}`)
+                    }
+                }
+            }
+            const markup = file.endsWith('.svelte') ? text.replace(/<style[^>]*>[\s\S]*?<\/style>/g, '') : file.endsWith('.css') ? '' : text
+            for (const name of tracked) {
+                for (const match of markup.matchAll(new RegExp(`var\\(\\s*${name}(?![\\w-])`, 'g'))) {
+                    seen.add(name)
+                    const token = markup.slice(0, match.index).split(/[\s"'`]/).pop() ?? ''
+                    if (!GEOMETRY_UTILITY.test(token)) outside.push(`${file}: ${name} in ${token}`)
+                }
+            }
+        }
+        return { outside, tracked, seen, files: texts.length }
+    }
+
+    it('SM-H1 (i): the home list is the chat list plus home geometry names, all settable, and no colour role, stacking or duration name', () => {
+        const allowed = allowedTokenNames('home')
+        const names = shapeTokenNames('home')
+        const added = [...names].filter((name) => !SHAPE_TOKEN_NAMES.has(name))
+        for (const name of SHAPE_TOKEN_NAMES) expect(names.has(name), name).toBe(true)
+        expect(names.has('--home-card-radius')).toBe(true)
+        expect(added.length).toBeGreaterThan(40)
+        expect(added.filter((name) => !name.startsWith('--home-'))).toEqual([])
+        expect([...names].filter((name) => !allowed.has(name))).toEqual([])
+        expect(added.filter((name) => HOME_COLOUR_ROLE.test(name))).toEqual([])
+        expect(added.filter((name) => /^--home-(z|dur)-|-ms$/.test(name))).toEqual([])
+    })
+
+    // N7 (SC.2): no app rule puts a listed home geometry name, or a token derived from one, into a paint property. A stylesheet
+    // declaration is judged by its property; any other reader (markup, script) must be a geometry utility or is a finding.
+    it('SM-H1 (ii): every home geometry name is read only as geometry, derived tokens included', () => {
+        const added = new Set([...shapeTokenNames('home')].filter((name) => !SHAPE_TOKEN_NAMES.has(name)))
+        const { outside, tracked, seen, files } = paintReads(added, SHAPE_PROPERTY)
+        expect(files).toBeGreaterThan(500)
+        for (const name of ['--home-card-radius', '--home-main-pad-x', '--home-space-4']) expect(seen.has(name), `the scan reaches ${name}`).toBe(true)
+        expect(tracked.size).toBeGreaterThanOrEqual(added.size)
+        expect(outside).toEqual([])
+    })
+
+    it('the scan reports a name that a paint property reads (a mutant guard)', () => {
+        const probe = new Set(['--home-card-radius', '--home-hairline'])
+        expect(paintReads(probe, SHAPE_PROPERTY).outside.some((line) => line.includes('--home-hairline'))).toBe(true)
+    })
+
+    it('SP-2: the home strip keeps scroll-snap-type and drops the colour beside it; the geometry token stays', () => {
+        const sheet = '[data-part="home-shelf"]{scroll-snap-type:none;color:#7a1f5c}:root{--home-card-radius:4px;--home-composer-bg:#fff}'
+        expect(shapeOnlySheet(sheet, shapeTokenNames('home'))).toBe('[data-part="home-shelf"]{scroll-snap-type:none;}:root{--home-card-radius:4px;}')
+        expect(shapeOnlySheet(sheet)).toBe('[data-part="home-shelf"]{scroll-snap-type:none;}:root{}')
     })
 })

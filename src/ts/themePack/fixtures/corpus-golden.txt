@@ -410,7 +410,7 @@
 "studio-hostile on Navy: S05" 24435a3ccf36ed0d chat:7d1682268f7365b5 settings:7d1682268f7365b5 studio:34a0ee82d1d90efd home:7d1682268f7365b5
 "studio-hostile: S06" fdb4bbeee9f1ff19 chat:954bb5b00569fe52 settings:954bb5b00569fe52 studio:954bb5b00569fe52 home:954bb5b00569fe52
 "studio-hostile on Navy: S06" 2719dde8ca4e5d1c chat:bee548cda6e150a6 settings:bee548cda6e150a6 studio:3893aa487fc6fab3 home:bee548cda6e150a6
-"studio-hostile: S07" a8116531e0330a3e chat:059eec2e037ff3ef settings:0ba12c80a2147024 studio:9c36ff4cd9b36baa home:9c36ff4cd9b36baa
+"studio-hostile: S07" a8116531e0330a3e chat:059eec2e037ff3ef settings:0ba12c80a2147024 studio:9c36ff4cd9b36baa home:8123ea1a176bf365
 "studio-hostile on Navy: S07" 03d83ab7a92b6eb3 chat:f50bdfb423d9c508 settings:f50bdfb423d9c508 studio:b569b0b92b9443a8 home:f50bdfb423d9c508
 "studio-hostile: S08" 247f86db62fe232c chat:142698fd5526589b settings:142698fd5526589b studio:142698fd5526589b home:142698fd5526589b
 "studio-hostile on Navy: S08" 406d204ef5383aaa chat:4bd94e205d678685 settings:4bd94e205d678685 studio:fbd1fd3d8ea42488 home:4bd94e205d678685
@@ -444,7 +444,7 @@
 "studio-hostile on Navy: P03" f6ba7db116fa4e32 chat:1e00378b46268581 settings:1e00378b46268581 studio:139b95603f8164c8 home:1e00378b46268581
 "studio-hostile: P04" 577465c9e331b172 chat:fa90a29fbee11a60 settings:fa90a29fbee11a60 studio:6833e35560abcdbd home:fa90a29fbee11a60
 "studio-hostile on Navy: P04" 3d7646b8bee288f7 chat:d2e95c560873a641 settings:d2e95c560873a641 studio:f31707f31d7490e6 home:d2e95c560873a641
-"studio-hostile: P05" 1fe609021c049e87 chat:01ffbe73f32551d2 settings:39ae0b2a59c7a8e2 studio:feaf5a350d6a753c home:feaf5a350d6a753c
+"studio-hostile: P05" 1fe609021c049e87 chat:01ffbe73f32551d2 settings:39ae0b2a59c7a8e2 studio:feaf5a350d6a753c home:cd8bf80f6d4941ca
 "studio-hostile on Navy: P05" ae6697878bc9a53c chat:4a46945a7fab5df9 settings:4a46945a7fab5df9 studio:8f9b9223f5699065 home:4a46945a7fab5df9
 "studio-hostile: P06" 0de80bb892dc29fb chat:23b4149b3806bd20 settings:23b4149b3806bd20 studio:b189dfdd738879ac home:23b4149b3806bd20
 "studio-hostile on Navy: P06" 031330dd62d80b05 chat:4744c291c55896cf settings:4744c291c55896cf studio:2bb4bfcd8f95cdfd home:4744c291c55896cf
@@ -466,9 +466,9 @@
 "studio-hostile on Navy: P14" e8a62594b7aaf1fb chat:72d254a639612c19 settings:72d254a639612c19 studio:5b9c42a5c6636474 home:72d254a639612c19
 "studio-hostile: P15" 7f28c2795df48d64 chat:385f923f51b9f76b settings:385f923f51b9f76b studio:86a04ac9330da15c home:385f923f51b9f76b
 "studio-hostile on Navy: P15" 15dc4314504cc481 chat:90be42bb1a689e05 settings:90be42bb1a689e05 studio:53fa0f3f98ef4d95 home:90be42bb1a689e05
-"studio-hostile: P16" 36ab36c9e45bb338 chat:3a2cb6d3c8c9806e settings:6f6a32e4c96dd060 studio:3163571221cf65f9 home:3163571221cf65f9
+"studio-hostile: P16" 36ab36c9e45bb338 chat:3a2cb6d3c8c9806e settings:6f6a32e4c96dd060 studio:3163571221cf65f9 home:e520362103b7bb81
 "studio-hostile on Navy: P16" 2151238d4e3b2036 chat:3ca4e68602d1ea54 settings:3ca4e68602d1ea54 studio:0ef4fa0b717eee7e home:3ca4e68602d1ea54
-"studio-hostile: P17" 38304ede73179d02 chat:bda0a4cb49004742 settings:d81a11d0d1ab0e5f studio:2eac487d5ff70ece home:2eac487d5ff70ece
+"studio-hostile: P17" 38304ede73179d02 chat:bda0a4cb49004742 settings:d81a11d0d1ab0e5f studio:2eac487d5ff70ece home:45e70d2dfdf30832
 "studio-hostile on Navy: P17" 18423d581b32d2f2 chat:7b654d85871f0815 settings:7b654d85871f0815 studio:680758445871e298 home:7b654d85871f0815
 "studio-hostile: T01" e26ee23828577113 chat:800b7eaa2613a11d settings:800b7eaa2613a11d studio:2b27d1c930dedd32 home:800b7eaa2613a11d
 "studio-hostile on Navy: T01" 89fa1acd52ec6b36 chat:3ed5b348e0cd2bf7 settings:3ed5b348e0cd2bf7 studio:786b63912ad3b548 home:3ed5b348e0cd2bf7
@@ -540,17 +540,17 @@
 "NEW_BENIGN all: the new shared tokens inside their limits" 79e2ec034b8b413d chat:71e484f9b2088b91 settings:71e484f9b2088b91 studio:71e484f9b2088b91 home:71e484f9b2088b91
 "NEW_BENIGN all: a field border at 40%" 8526e6a2da06816d chat:30d9afebff8e42ef settings:30d9afebff8e42ef studio:30d9afebff8e42ef home:30d9afebff8e42ef
 "NEW_BENIGN all: an opaque sheet and toast" 060e79dda5cc4920 chat:16bd16a6be4dc6b6 settings:16bd16a6be4dc6b6 studio:16bd16a6be4dc6b6 home:16bd16a6be4dc6b6
-"NEW_BENIGN all: a focus colour on a focus rule" 42ec539c583d59a9 chat:b92837b3eccd42ec settings:4e192e26f3749317 studio:40a4b619ab1b2187 home:b92837b3eccd42ec
-"NEW_BENIGN all: outline on any part" 119fed5a473033f9 chat:b663720ee2ee24a9 settings:d77557511c3e20ea studio:8fa9ee11e14c1eba home:b663720ee2ee24a9
-"NEW_BENIGN chat: recolour and reshape Send (reach)" fbb0cb13c22e17c1 chat:04d4fbf2f7e91584 settings:33d3c91d7191aaee studio:b36b293b00e0550f home:04d4fbf2f7e91584
-"NEW_BENIGN chat: respace the composer (reach)" e6adef0d5861858e chat:4dffe3d6b1580065 settings:d8ff3f3d896838dc studio:4882b89e05d623f6 home:4dffe3d6b1580065
-"NEW_BENIGN chat: recolour a list row (reach)" c1729683a5f9b0f1 chat:1504f5eb512da3a8 settings:ad86dd69262fe939 studio:23e190f4bc233922 home:1504f5eb512da3a8
-"NEW_BENIGN chat: a safe leaf hidden" bce13f69b99fbf6c chat:b68cdf9ca2f6e015 settings:119d563151e3cf12 studio:1551ad5a0c018b13 home:b68cdf9ca2f6e015
+"NEW_BENIGN all: a focus colour on a focus rule" 42ec539c583d59a9 chat:b92837b3eccd42ec settings:4e192e26f3749317 studio:40a4b619ab1b2187 home:823631e421d12a60
+"NEW_BENIGN all: outline on any part" 119fed5a473033f9 chat:b663720ee2ee24a9 settings:d77557511c3e20ea studio:8fa9ee11e14c1eba home:342fa4ba2da8c888
+"NEW_BENIGN chat: recolour and reshape Send (reach)" fbb0cb13c22e17c1 chat:04d4fbf2f7e91584 settings:33d3c91d7191aaee studio:b36b293b00e0550f home:1536eb543c971aa5
+"NEW_BENIGN chat: respace the composer (reach)" e6adef0d5861858e chat:4dffe3d6b1580065 settings:d8ff3f3d896838dc studio:4882b89e05d623f6 home:dff8cbfc3b60ccf2
+"NEW_BENIGN chat: recolour a list row (reach)" c1729683a5f9b0f1 chat:1504f5eb512da3a8 settings:ad86dd69262fe939 studio:23e190f4bc233922 home:fbe2e71c4afb4092
+"NEW_BENIGN chat: a safe leaf hidden" bce13f69b99fbf6c chat:b68cdf9ca2f6e015 settings:119d563151e3cf12 studio:1551ad5a0c018b13 home:bde345ff243e5586
 "NEW_BENIGN home: recolour the rail item (reach)" 390484af5c9e2330 chat:311a8ae473ec2855 settings:bef02016aaf1f37a studio:d4b1e52569cc0e83 home:02b00bd3a0eca61e
 "NEW_BENIGN home: persona chip recolour (reach)" f2ba2f73fbd0897f chat:893f0789b162c296 settings:e06fb54a1fd0aaaa studio:35d989e5284ec6c8 home:3e4a705fada09171
-"NEW_BENIGN studio: recolour Apply (reach)" 173861119e45f419 chat:856f07151329d276 settings:ef5284a38e04f7a2 studio:467d887bd4c9fc92 home:3a8158283bbdf8f8
-"NEW_BENIGN studio: recolour the save slot (reach)" f1d7c27417d57515 chat:493fa6d44c07b721 settings:dd8e8e4e07143792 studio:cf7a529f6aa0348b home:cf7a529f6aa0348b
-"NEW_BENIGN settings: recolour the index item (reach)" c521d9a0c6c9a98e chat:31a2583a90337019 settings:13078a265a9c6318 studio:afa7e61dd441a8b8 home:13078a265a9c6318
+"NEW_BENIGN studio: recolour Apply (reach)" 173861119e45f419 chat:856f07151329d276 settings:ef5284a38e04f7a2 studio:467d887bd4c9fc92 home:65a201ed0f2bbc33
+"NEW_BENIGN studio: recolour the save slot (reach)" f1d7c27417d57515 chat:493fa6d44c07b721 settings:dd8e8e4e07143792 studio:cf7a529f6aa0348b home:e0affd1343a85a16
+"NEW_BENIGN settings: recolour the index item (reach)" c521d9a0c6c9a98e chat:31a2583a90337019 settings:13078a265a9c6318 studio:afa7e61dd441a8b8 home:afbf4b64e3dfdf93
 "NEW_BENIGN settings: a safe leaf hidden" 20fc69e3e5072670 chat:c4581b9a85766a46 settings:9e1c4683ec49c4de studio:c4581b9a85766a46 home:c4581b9a85766a46
 "NEW_HOSTILE all: color-mix on text" d08b91544ef476ca chat:1592ac0374d9b8ac settings:04a5913b2397cdf4 studio:086b5269c9d18b62 home:cef9d5a7b7e1564a
 "NEW_HOSTILE all: color-mix in an unsupported space on text" 49ed645f18864644 chat:0c9dd31cfb8626e9 settings:0c9dd31cfb8626e9 studio:a18073836ce02916 home:0c9dd31cfb8626e9
@@ -585,9 +585,9 @@
 "NEW_HOSTILE all: focus ring offset 99" eda3061c0c8ecf09 chat:7bec1e8ac5d3bfb2 settings:7bec1e8ac5d3bfb2 studio:7bec1e8ac5d3bfb2 home:56d4116230e66c6c
 "NEW_HOSTILE all: touch size 10" 3099a25a3437763e chat:59a98ab1282cd55e settings:0301bcdc1d447d75 studio:59a98ab1282cd55e home:dcd935171fb96523
 "NEW_HOSTILE all: duration 60s" 48e1e5df19c843c2 chat:87d136a75d25d2b9 settings:87d136a75d25d2b9 studio:87d136a75d25d2b9 home:87d136a75d25d2b9
-"NEW_HOSTILE all: outline-color transparent" bc0c617110b3377e chat:b4c0cf64fdf95338 settings:cc9058f6f089af90 studio:b19fda523f644428 home:b4c0cf64fdf95338
-"NEW_HOSTILE all: focus shadow none" cf019b85f3548527 chat:496aef813bcf16f9 settings:1a5d254150192702 studio:55d18522efd0f66d home:496aef813bcf16f9
-"NEW_HOSTILE all: focus border transparent" a67197763227017c chat:1534cd59f957cb93 settings:8567be9a18a07629 studio:2d67df2ce07b9a69 home:1534cd59f957cb93
+"NEW_HOSTILE all: outline-color transparent" bc0c617110b3377e chat:b4c0cf64fdf95338 settings:cc9058f6f089af90 studio:b19fda523f644428 home:ba880367d64cc430
+"NEW_HOSTILE all: focus shadow none" cf019b85f3548527 chat:496aef813bcf16f9 settings:1a5d254150192702 studio:55d18522efd0f66d home:c41a443c32559aec
+"NEW_HOSTILE all: focus border transparent" a67197763227017c chat:1534cd59f957cb93 settings:8567be9a18a07629 studio:2d67df2ce07b9a69 home:6c9e8cbb10d58ec5
 "NEW_HOSTILE all: background on a kind selector" 28859fccf9c71dbf chat:a163990b083750f6 settings:74fe7b8e608e454c studio:a163990b083750f6 home:a2fb7cb5d9febc8e
 "NEW_HOSTILE chat: hide Send" e7ccaa39e1a9a9f8 chat:3c0517fa46fb9ebe settings:3c0517fa46fb9ebe studio:3c0517fa46fb9ebe home:3c0517fa46fb9ebe
 "NEW_HOSTILE chat: hide the composer field" e2d3328d742bd431 chat:50ba91224561dd8c settings:50ba91224561dd8c studio:50ba91224561dd8c home:50ba91224561dd8c
@@ -640,8 +640,8 @@
 "HOSTILE: H12 tag selector" f7e7fd00cfe72206 chat:2412bfa634b0243a settings:2412bfa634b0243a studio:2412bfa634b0243a home:2412bfa634b0243a
 "HOSTILE: H13 :not() and :has() reach" 51dd73263573d136 chat:bd81098dcf8ed02e settings:bd81098dcf8ed02e studio:bd81098dcf8ed02e home:bd81098dcf8ed02e
 "HOSTILE: H14 negative margin pulls the sheet away" ae5d725925991020 chat:844a65e67f910059 settings:844a65e67f910059 studio:844a65e67f910059 home:844a65e67f910059
-"HOSTILE: H15 a fixed width of zero on the sheet body" 48b4a6af05882de9 chat:17cf2e57663844c4 settings:d91c84cb1bd9f612 studio:8e9cfcbf29732df3 home:17cf2e57663844c4
-"HOSTILE: H16 pseudo-element" abb1c12abdecc3be chat:8fa93b405ac11f74 settings:61f0d6192aeda03f studio:46fbbe2f2cee2de2 home:8fa93b405ac11f74
+"HOSTILE: H15 a fixed width of zero on the sheet body" 48b4a6af05882de9 chat:17cf2e57663844c4 settings:d91c84cb1bd9f612 studio:8e9cfcbf29732df3 home:cfa8f8ac0538c928
+"HOSTILE: H16 pseudo-element" abb1c12abdecc3be chat:8fa93b405ac11f74 settings:61f0d6192aeda03f studio:46fbbe2f2cee2de2 home:9f4f2e51a4962399
 "HOSTILE: H17 @import of a stylesheet" cea318858f725c74 chat:0b3f9a74a0764563 settings:0b3f9a74a0764563 studio:0b3f9a74a0764563 home:5f58ecd3ce68bd0e
 "HOSTILE_2: overlay by non-ancestor part (fixed, z-index)" 35cf78491231cf9b chat:692ed061776bbed3 settings:692ed061776bbed3 studio:692ed061776bbed3 home:692ed061776bbed3
 "HOSTILE_2: overlay by header" 4f8fbadda6ab9405 chat:17f27ed7f8492f13 settings:17f27ed7f8492f13 studio:17f27ed7f8492f13 home:17f27ed7f8492f13
@@ -652,26 +652,26 @@
 "HOSTILE_2: column-reverse" e6d2188f3ce89916 chat:5df1d491fb3304c5 settings:5df1d491fb3304c5 studio:5df1d491fb3304c5 home:5df1d491fb3304c5
 "HOSTILE_2: direction rtl" f20caea649c27bdf chat:dde6030d5d7eef46 settings:dde6030d5d7eef46 studio:dde6030d5d7eef46 home:dde6030d5d7eef46
 "HOSTILE_2: order on sheet item" 73b3a579ad0a9ea1 chat:0ec0ebed2086333f settings:0ec0ebed2086333f studio:0ec0ebed2086333f home:0ec0ebed2086333f
-"HOSTILE_2: padding pushes content" 78c41758c3e5dfa8 chat:31e921f396095574 settings:797b357dddb47f37 studio:722cd76f57c446b4 home:31e921f396095574
-"HOSTILE_2: positive margin pushes sheet" bb35016f1edfd18e chat:f42f5b880266891c settings:461a771b3ad0db6f studio:b3d79cea2314bd26 home:f42f5b880266891c
+"HOSTILE_2: padding pushes content" 78c41758c3e5dfa8 chat:31e921f396095574 settings:797b357dddb47f37 studio:722cd76f57c446b4 home:ebd000520ac01878
+"HOSTILE_2: positive margin pushes sheet" bb35016f1edfd18e chat:f42f5b880266891c settings:461a771b3ad0db6f studio:b3d79cea2314bd26 home:0de2d6ecb4d6cd10
 "HOSTILE_2: min-height pushes" 7abd2362086d2ced chat:088507e231fdb1e7 settings:088507e231fdb1e7 studio:088507e231fdb1e7 home:088507e231fdb1e7
-"HOSTILE_2: font-size 1px" c8518ea58993c203 chat:eb015c67dabe5fb2 settings:4e853b5929c69d2b studio:4d6ec699e1b57b59 home:eb015c67dabe5fb2
+"HOSTILE_2: font-size 1px" c8518ea58993c203 chat:eb015c67dabe5fb2 settings:4e853b5929c69d2b studio:4d6ec699e1b57b59 home:60414b8f1a9b2238
 "HOSTILE_2: font-size calc 0" 2f3599a33333df75 chat:cec4b09de8c088e9 settings:cec4b09de8c088e9 studio:cec4b09de8c088e9 home:cec4b09de8c088e9
-"HOSTILE_2: line-height tiny" 4dba3d7adce6dc46 chat:8893e23569e1cd0e settings:a50c4fe072215ba8 studio:069d25c80f7b8bf7 home:8893e23569e1cd0e
+"HOSTILE_2: line-height tiny" 4dba3d7adce6dc46 chat:8893e23569e1cd0e settings:a50c4fe072215ba8 studio:069d25c80f7b8bf7 home:0c951f0dda93d177
 "HOSTILE_2: text-indent" 567b418b7726367a chat:aadcb45d48d77230 settings:aadcb45d48d77230 studio:aadcb45d48d77230 home:aadcb45d48d77230
-"HOSTILE_2: letter-spacing" ac636104c39c13ff chat:675a7c87a6ad4f9d settings:35bcbcb488c61c05 studio:2ce4eb04f1b43e8b home:675a7c87a6ad4f9d
-"HOSTILE_2: color rgb alpha 0%" b9cd4393a31f9b59 chat:4aec9499a7f9aee6 settings:50a41939992e37a8 studio:be77123db82eb272 home:4aec9499a7f9aee6
-"HOSTILE_2: color #0000" c9c5ecd49adfd8e6 chat:75ff06b166a3aeef settings:b87719f8faf62123 studio:37f70213b7342b54 home:75ff06b166a3aeef
-"HOSTILE_2: color hsl / 0" 82e15afdbb3ecdd3 chat:5511c9c646c59889 settings:ba0850a81daad4b7 studio:357a812474496d29 home:5511c9c646c59889
-"HOSTILE_2: color = bg token" 1a5bfa9364f21aec chat:dd4e8ac06729450c settings:4d9ef68ec92c53ef studio:50829a7bdd37653b home:dd4e8ac06729450c
+"HOSTILE_2: letter-spacing" ac636104c39c13ff chat:675a7c87a6ad4f9d settings:35bcbcb488c61c05 studio:2ce4eb04f1b43e8b home:61a26f35f723c1f9
+"HOSTILE_2: color rgb alpha 0%" b9cd4393a31f9b59 chat:4aec9499a7f9aee6 settings:50a41939992e37a8 studio:be77123db82eb272 home:96c1bd580338ac63
+"HOSTILE_2: color #0000" c9c5ecd49adfd8e6 chat:75ff06b166a3aeef settings:b87719f8faf62123 studio:37f70213b7342b54 home:39e04812d71a9c48
+"HOSTILE_2: color hsl / 0" 82e15afdbb3ecdd3 chat:5511c9c646c59889 settings:ba0850a81daad4b7 studio:357a812474496d29 home:f8fa2aba78be286b
+"HOSTILE_2: color = bg token" 1a5bfa9364f21aec chat:dd4e8ac06729450c settings:4d9ef68ec92c53ef studio:50829a7bdd37653b home:4dc07684e4152935
 "HOSTILE_2: -webkit-text-fill-color transparent" c650f151c758593b chat:071c56491c347ccc settings:071c56491c347ccc studio:071c56491c347ccc home:071c56491c347ccc
 "HOSTILE_2: text-shadow trick" e1ec472014b61188 chat:379d654cc99ce0e0 settings:379d654cc99ce0e0 studio:379d654cc99ce0e0 home:379d654cc99ce0e0
 "HOSTILE_2: float" c75c2b68095a54aa chat:4796ac634d289147 settings:4796ac634d289147 studio:4796ac634d289147 home:4796ac634d289147
 "HOSTILE_2: z-index negative + relative" ab7857b83332adbe chat:8543c21a351ae687 settings:8543c21a351ae687 studio:8543c21a351ae687 home:8543c21a351ae687
 "HOSTILE_2: position sticky off" f6d26372d0cb0218 chat:cef4767fbbeea6cb settings:cef4767fbbeea6cb studio:cef4767fbbeea6cb home:cef4767fbbeea6cb
-"HOSTILE_2: width 50% (min)" 71a827709dcc9515 chat:612cfeaf607c6840 settings:5bd3e0f35497fe19 studio:58fa022947b2e609 home:612cfeaf607c6840
+"HOSTILE_2: width 50% (min)" 71a827709dcc9515 chat:612cfeaf607c6840 settings:5bd3e0f35497fe19 studio:58fa022947b2e609 home:8a4d7254d5a8e427
 "HOSTILE_2: width calc(0px+0px)" b00deb636cd594c7 chat:7c04af94410fed45 settings:7c04af94410fed45 studio:7c04af94410fed45 home:7c04af94410fed45
-"HOSTILE_2: max-width: 1%" 8255d934f45a0e53 chat:c3c447d371813411 settings:881e3c4138a24af0 studio:49ec2d6fd412d8fb home:c3c447d371813411
+"HOSTILE_2: max-width: 1%" 8255d934f45a0e53 chat:c3c447d371813411 settings:881e3c4138a24af0 studio:49ec2d6fd412d8fb home:79e9f1966c8d025a
 "HOSTILE_2: contain size" 3337536a4d62d486 chat:c6954cfbbffea8c5 settings:c6954cfbbffea8c5 studio:c6954cfbbffea8c5 home:c6954cfbbffea8c5
 "HOSTILE_2: aspect-ratio/zero via grid" 2c04f749bd73672a chat:a826de218c36e66c settings:a826de218c36e66c studio:a826de218c36e66c home:a826de218c36e66c
 "HOSTILE_2: flex-basis 0 + overflow hidden handled" 665cd7bb246a7898 chat:9eeede791bc55388 settings:9eeede791bc55388 studio:9eeede791bc55388 home:9eeede791bc55388
@@ -680,7 +680,7 @@
 "HOSTILE_2: subject non-ancestor part inside critical: sheet-title" a95f6cf1fdc91069 chat:a673fa13231eaccf settings:a673fa13231eaccf studio:a673fa13231eaccf home:a673fa13231eaccf
 "HOSTILE_2: sheet header" 8cdabec3d2dd0e6c chat:30961b4d9188c59c settings:30961b4d9188c59c studio:30961b4d9188c59c home:30961b4d9188c59c
 "HOSTILE_2: sheet handle" ed745aa9439c7418 chat:6a57b2c437ca32a2 settings:6a57b2c437ca32a2 studio:6a57b2c437ca32a2 home:6a57b2c437ca32a2
-"HOSTILE_2: font-family icon font" 8f4719d33e864995 chat:353661f7ec26d3d4 settings:25f93cd807f1e2f5 studio:f36224c0aaa1f268 home:353661f7ec26d3d4
+"HOSTILE_2: font-family icon font" 8f4719d33e864995 chat:353661f7ec26d3d4 settings:25f93cd807f1e2f5 studio:f36224c0aaa1f268 home:3a405fa032340263
 "HOSTILE_2: appearance/ resize" f469427c31104f81 chat:2a268525b9e301b6 settings:2a268525b9e301b6 studio:2a268525b9e301b6 home:2a268525b9e301b6
 "HOSTILE_2: cursor/user-select" a40b7f445c06149e chat:cf4ac16d514e90cc settings:cf4ac16d514e90cc studio:cf4ac16d514e90cc home:cf4ac16d514e90cc
 "HOSTILE_2: visibility via collapse caught?" 0bb58764c67957e9 chat:ec3520c7416fb9b6 settings:ec3520c7416fb9b6 studio:ec3520c7416fb9b6 home:ec3520c7416fb9b6
@@ -726,57 +726,57 @@
 "HOSTILE_3: X4 token on a root attribute that makes critical text invisible" 9d509b350432e327 chat:975d6c985f9d3d19 settings:51f79091aca7bba7 studio:d28f32453adb1c65 home:f772a57a10aff9cb
 "HOSTILE_3: X5 root attribute that is not input or layout" 6cc5a556452f4361 chat:4647c9ff0ff8511a settings:0791497b1031b52d studio:4647c9ff0ff8511a home:0791497b1031b52d
 "HOSTILE_3: X6 root attribute descendant reaching a part" 8e76ce1a845d2a70 chat:e54d2664e8694c66 settings:e54d2664e8694c66 studio:e54d2664e8694c66 home:e54d2664e8694c66
-"BENIGN: B1 bubble fill" 8937e26358746dc6 chat:f6e2ba462dbfa4c7 settings:0daf8ac39699f1a0 studio:e9be3d1cb6ecd726 home:f6e2ba462dbfa4c7
+"BENIGN: B1 bubble fill" 8937e26358746dc6 chat:f6e2ba462dbfa4c7 settings:0daf8ac39699f1a0 studio:e9be3d1cb6ecd726 home:bcaa2adc60af7ec9
 "BENIGN: B2 tail corner on run starts" 31c29f703839402f chat:403463de55a990ae settings:7d62c2d4725cb156 studio:8ed2d39443120342 home:7d62c2d4725cb156
 "BENIGN: B3 failed bubble takes the column" c3875ff767248cf4 chat:ba78b7f231866eea settings:c2010f08f2f96cf1 studio:62754876ca982dc3 home:c2010f08f2f96cf1
-"BENIGN: B4 compact actions on hover" 1c262ca66f57889c chat:c161bfde1d73aab2 settings:db2e6e1a826fb7db studio:c9380e83e9fa1ba4 home:c161bfde1d73aab2
+"BENIGN: B4 compact actions on hover" 1c262ca66f57889c chat:c161bfde1d73aab2 settings:db2e6e1a826fb7db studio:c9380e83e9fa1ba4 home:9eb22b6202a7b87a
 "BENIGN: B5 token block" d33296b2763c0081 chat:425c6dfa3aa1eae6 settings:425c6dfa3aa1eae6 studio:425c6dfa3aa1eae6 home:425c6dfa3aa1eae6
 "BENIGN: B6 own actions beside the bubble" c6d3080b79191e0d chat:527c91a55b1d531b settings:1fd1d7f1b7c88c5d studio:01150e8885bc3c64 home:1fd1d7f1b7c88c5d
-"BENIGN: B7 forced colours outline" fdcffc6179c55cfa chat:ad4faf552c1514cb settings:66d9e0b4d26602a9 studio:329207844773479a home:ad4faf552c1514cb
-"BENIGN: B8 header title colour" b5ed9551fe6c46f9 chat:2da5f428484a1e0e settings:e452eb1f9cb45510 studio:2d7d2f18598e6b1e home:2da5f428484a1e0e
+"BENIGN: B7 forced colours outline" fdcffc6179c55cfa chat:ad4faf552c1514cb settings:66d9e0b4d26602a9 studio:329207844773479a home:bcb9829cf9b0cbd3
+"BENIGN: B8 header title colour" b5ed9551fe6c46f9 chat:2da5f428484a1e0e settings:e452eb1f9cb45510 studio:2d7d2f18598e6b1e home:a4a8f5176ea93ea7
 "BENIGN_2: D1 touch density" 47ebb26d1cf81f56 chat:2c00f2e70e078f4d settings:2c00f2e70e078f4d studio:2c00f2e70e078f4d home:2c00f2e70e078f4d
 "BENIGN_2: D2 wide layout" 5e41b0e81cb08c7e chat:23510dac71ee258a settings:23510dac71ee258a studio:23510dac71ee258a home:23510dac71ee258a
 "BENIGN_2: D3 both attributes" e22b4a1f8321ff89 chat:31431360da71780d settings:31431360da71780d studio:31431360da71780d home:31431360da71780d
 "BENIGN_2: D4 :root with an attribute" 4d4956e9d0fe6c3a chat:fba31aa7e53894bb settings:fba31aa7e53894bb studio:fba31aa7e53894bb home:fba31aa7e53894bb
-"values ACCEPT: card-row" 60f796f083411633 chat:1b537caa1f236e88 settings:d9cf2d363dc9bd31 studio:288b87e8fbb15875 home:d9cf2d363dc9bd31
-"values ACCEPT: shell-gap" 3929915b8aadebbc chat:d8772d27d7d4f784 settings:31751d8a5b0c2f4a studio:ea9d51188a866f15 home:31751d8a5b0c2f4a
-"values ACCEPT: header-colour" 2d5a865fb561350f chat:c65f7151fa0ddea2 settings:2ffb6011230b9c20 studio:40fc0deb4efcf852 home:1d0c7622e88550cc
+"values ACCEPT: card-row" 60f796f083411633 chat:1b537caa1f236e88 settings:d9cf2d363dc9bd31 studio:288b87e8fbb15875 home:bed83f1ec4cbf10e
+"values ACCEPT: shell-gap" 3929915b8aadebbc chat:d8772d27d7d4f784 settings:31751d8a5b0c2f4a studio:ea9d51188a866f15 home:8cdb662c9cefebc0
+"values ACCEPT: header-colour" 2d5a865fb561350f chat:c65f7151fa0ddea2 settings:2ffb6011230b9c20 studio:40fc0deb4efcf852 home:f238dcbf8f65ac26
 "values ACCEPT: safe-opacity" 43fdb258d2a38d72 chat:a4b7bd8001a52df7 settings:a4b7bd8001a52df7 studio:a4b7bd8001a52df7 home:a4b7bd8001a52df7
-"values ACCEPT: safe-width-100" 2285268b4abb3b6e chat:56fae739fc0614fd settings:8799e4236ac278e8 studio:a5f9828df6087d90 home:8799e4236ac278e8
+"values ACCEPT: safe-width-100" 2285268b4abb3b6e chat:56fae739fc0614fd settings:8799e4236ac278e8 studio:a5f9828df6087d90 home:37c950f3dfcc102f
 "values ACCEPT: safe-relative" 7802ff5c6cc361d3 chat:ea5516877e285190 settings:ea5516877e285190 studio:ea5516877e285190 home:ea5516877e285190
 "values ACCEPT: dur-300" ab6b5267a899163e chat:c280c7f275e76575 settings:c280c7f275e76575 studio:c280c7f275e76575 home:c280c7f275e76575
 "values ACCEPT: dur-zero" 3cd1986c6eabaf9d chat:9155d063b41ad9a9 settings:9155d063b41ad9a9 studio:9155d063b41ad9a9 home:9155d063b41ad9a9
-"values ACCEPT: padding-24" c419feee00c857e0 chat:3ab0562c5bc3af14 settings:ea30526e010e1358 studio:3ab0562c5bc3af14 home:ea30526e010e1358
-"values ACCEPT: width-wide" 0ed64c645f9d76ce chat:ba890955428f68ff settings:5af6039420d23eca studio:ba890955428f68ff home:5af6039420d23eca
+"values ACCEPT: padding-24" c419feee00c857e0 chat:3ab0562c5bc3af14 settings:ea30526e010e1358 studio:3ab0562c5bc3af14 home:3ab0562c5bc3af14
+"values ACCEPT: width-wide" 0ed64c645f9d76ce chat:ba890955428f68ff settings:5af6039420d23eca studio:ba890955428f68ff home:ba890955428f68ff
 "values ACCEPT: index-right" e359193835ed2220 chat:e3d5d73da4c21b04 settings:e3d5d73da4c21b04 studio:e3d5d73da4c21b04 home:e3d5d73da4c21b04
 "values ACCEPT: selection-hint" 840752bdadb463bc chat:736dbaeb21410835 settings:736dbaeb21410835 studio:736dbaeb21410835 home:736dbaeb21410835
-"values ACCEPT: part-colour-dark-on-light" d16f421fd3dc6371 chat:48cb5ebeaaa5fa0c settings:c68c6db7e82e4b2c studio:1e3d9e581f20bbc6 home:ab2bf5fef3febd5c
-"values REJECT: tok-dialog-padding-400" 72bb59566f677397 chat:4bf65d4785e80c90 settings:6160f61c213b4227 studio:4bf65d4785e80c90 home:6160f61c213b4227
-"values REJECT: tok-dialog-actions-gap" 2a8ac2f4de019f79 chat:71b5ec47898ba359 settings:0801c23b44896af9 studio:71b5ec47898ba359 home:0801c23b44896af9
-"values REJECT: tok-dialog-actions-margin" 3cc70d554f5159a0 chat:262d20d0999ad443 settings:0e204a719f14d3ca studio:262d20d0999ad443 home:0e204a719f14d3ca
+"values ACCEPT: part-colour-dark-on-light" d16f421fd3dc6371 chat:48cb5ebeaaa5fa0c settings:c68c6db7e82e4b2c studio:1e3d9e581f20bbc6 home:95428b80b4f8a33e
+"values REJECT: tok-dialog-padding-400" 72bb59566f677397 chat:4bf65d4785e80c90 settings:6160f61c213b4227 studio:4bf65d4785e80c90 home:4bf65d4785e80c90
+"values REJECT: tok-dialog-actions-gap" 2a8ac2f4de019f79 chat:71b5ec47898ba359 settings:0801c23b44896af9 studio:71b5ec47898ba359 home:71b5ec47898ba359
+"values REJECT: tok-dialog-actions-margin" 3cc70d554f5159a0 chat:262d20d0999ad443 settings:0e204a719f14d3ca studio:262d20d0999ad443 home:262d20d0999ad443
 "values REJECT: tok-dur-60s" b2264bf7df8fe204 chat:c64570c3fa668475 settings:c64570c3fa668475 studio:c64570c3fa668475 home:c64570c3fa668475
 "values REJECT: tok-dur-fast-60s" 07dbfb0e06bf769f chat:aa0c32b946e91ad6 settings:aa0c32b946e91ad6 studio:aa0c32b946e91ad6 home:aa0c32b946e91ad6
 "values REJECT: tok-dur-slow-ms" 69b4465171edba3e chat:c2a42b00b6516155 settings:c2a42b00b6516155 studio:c2a42b00b6516155 home:c2a42b00b6516155
-"values REJECT: tok-dialog-width-120" df553b6a5d474f5a chat:2cd94fbc1f362f46 settings:e43a176ef11f8022 studio:2cd94fbc1f362f46 home:e43a176ef11f8022
-"values REJECT: tok-dialog-width-5000" 5452d3edd6e9ebed chat:7d2cfcf8666d1e5c settings:5e475ed4cc092b48 studio:7d2cfcf8666d1e5c home:5e475ed4cc092b48
+"values REJECT: tok-dialog-width-120" df553b6a5d474f5a chat:2cd94fbc1f362f46 settings:e43a176ef11f8022 studio:2cd94fbc1f362f46 home:2cd94fbc1f362f46
+"values REJECT: tok-dialog-width-5000" 5452d3edd6e9ebed chat:7d2cfcf8666d1e5c settings:5e475ed4cc092b48 studio:7d2cfcf8666d1e5c home:7d2cfcf8666d1e5c
 "values REJECT: layout-dialog-width-120" c01d367f4ad135e7 chat:7537f7c51dd55554 settings:7537f7c51dd55554 studio:7537f7c51dd55554 home:7537f7c51dd55554
-"values REJECT: tok-page-max-10" 6531cce41504e90b chat:42464174c9689832 settings:c88bec0fc5f9d1f0 studio:42464174c9689832 home:c88bec0fc5f9d1f0
+"values REJECT: tok-page-max-10" 6531cce41504e90b chat:42464174c9689832 settings:c88bec0fc5f9d1f0 studio:42464174c9689832 home:42464174c9689832
 "values REJECT: tok-body-columns-5000" c831d31123b35477 chat:5404127c43ba1e68 settings:5404127c43ba1e68 studio:5404127c43ba1e68 home:5404127c43ba1e68
 "values REJECT: tok-body-columns-0" 29a6450a7777c662 chat:71aa27c1d44ceada settings:71aa27c1d44ceada studio:71aa27c1d44ceada home:71aa27c1d44ceada
 "values REJECT: tok-index-column-3" ee0ba990be0c2be7 chat:a3a82a265bdcbe6c settings:a3a82a265bdcbe6c studio:a3a82a265bdcbe6c home:a3a82a265bdcbe6c
-"values REJECT: tok-rows-gap-300" 817134cf7e01cf9b chat:29ac08702e6a9b22 settings:1a4ac9db12dadc7c studio:29ac08702e6a9b22 home:1a4ac9db12dadc7c
-"values REJECT: tok-row-min-3000" e9be5a82f40e43dd chat:90bb43eba0d42ad6 settings:49e03c1a83ec0e76 studio:90bb43eba0d42ad6 home:49e03c1a83ec0e76
-"values REJECT: tok-header-0" f37bb9d547248439 chat:b8fd300883a5bbe7 settings:282c1eac9c1f93d7 studio:b8fd300883a5bbe7 home:282c1eac9c1f93d7
-"values REJECT: tok-field-min-1" fb5b2aa72f3f791e chat:6e39f1ee2fd32875 settings:09279e6efb90a0a5 studio:6e39f1ee2fd32875 home:09279e6efb90a0a5
-"values REJECT: tok-section-title-2" 24dd19a90705555d chat:570acef564b2c0b2 settings:0c6d86781517cece studio:570acef564b2c0b2 home:0c6d86781517cece
-"values REJECT: tok-hairline-100" 6104250067d08804 chat:95913cdcd9647190 settings:01e4bc7b389829fd studio:95913cdcd9647190 home:01e4bc7b389829fd
-"values REJECT: tok-radius-900" cdfaaeea8215d5ac chat:b945e38e19be8300 settings:7fd80ed8fcd7c888 studio:b945e38e19be8300 home:7fd80ed8fcd7c888
+"values REJECT: tok-rows-gap-300" 817134cf7e01cf9b chat:29ac08702e6a9b22 settings:1a4ac9db12dadc7c studio:29ac08702e6a9b22 home:29ac08702e6a9b22
+"values REJECT: tok-row-min-3000" e9be5a82f40e43dd chat:90bb43eba0d42ad6 settings:49e03c1a83ec0e76 studio:90bb43eba0d42ad6 home:90bb43eba0d42ad6
+"values REJECT: tok-header-0" f37bb9d547248439 chat:b8fd300883a5bbe7 settings:282c1eac9c1f93d7 studio:b8fd300883a5bbe7 home:b8fd300883a5bbe7
+"values REJECT: tok-field-min-1" fb5b2aa72f3f791e chat:6e39f1ee2fd32875 settings:09279e6efb90a0a5 studio:6e39f1ee2fd32875 home:6e39f1ee2fd32875
+"values REJECT: tok-section-title-2" 24dd19a90705555d chat:570acef564b2c0b2 settings:0c6d86781517cece studio:570acef564b2c0b2 home:570acef564b2c0b2
+"values REJECT: tok-hairline-100" 6104250067d08804 chat:95913cdcd9647190 settings:01e4bc7b389829fd studio:95913cdcd9647190 home:95913cdcd9647190
+"values REJECT: tok-radius-900" cdfaaeea8215d5ac chat:b945e38e19be8300 settings:7fd80ed8fcd7c888 studio:b945e38e19be8300 home:b945e38e19be8300
 "values REJECT: tok-icon-0" 0a3d157fb5815da5 chat:8d072d7923fb050c settings:8d072d7923fb050c studio:8d072d7923fb050c home:8d072d7923fb050c
 "values REJECT: tok-field-border-transparent" b265707ef0c53493 chat:f22e0e5cd827117c settings:9c7be64d12bb9935 studio:f22e0e5cd827117c home:cdb4d79dbe8480fb
-"values REJECT: tok-accent-tint-1" 9c31c4361499fe35 chat:a71dd35e51f2d4ee settings:34c7cf946c580cbe studio:a71dd35e51f2d4ee home:34c7cf946c580cbe
+"values REJECT: tok-accent-tint-1" 9c31c4361499fe35 chat:a71dd35e51f2d4ee settings:34c7cf946c580cbe studio:a71dd35e51f2d4ee home:a71dd35e51f2d4ee
 "values REJECT: tok-ring-transparent" 4968ffac2909cca6 chat:ecb3ef72755d62bd settings:f802995bad4448e2 studio:54e3ec067d23b136 home:754c349a3c1b205c
 "values REJECT: tok-selection-hidden" 6992ac42cde2586d chat:b5d0f45c98b9352c settings:b5d0f45c98b9352c studio:b5d0f45c98b9352c home:b5d0f45c98b9352c
-"values REJECT: tok-alpha-dim-0" 97fdf98030b23442 chat:7599df936618189b settings:ae5a58ceae589820 studio:7599df936618189b home:ae5a58ceae589820
+"values REJECT: tok-alpha-dim-0" 97fdf98030b23442 chat:7599df936618189b settings:ae5a58ceae589820 studio:7599df936618189b home:7599df936618189b
 "values REJECT: tok-danger-on-canvas" caeac7ebfb5ac0fe chat:b97cf31b830de575 settings:ce4147ef0c074aeb studio:79f0b35477184d75 home:79583cee226b509c
 "values REJECT: tok-text-low" 17e1474252e3a81a chat:16ac175408a0df99 settings:48a3f3822a5091f7 studio:318d107cda90887a home:2e9a0f1c20a09085
 "values REJECT: safe-header-cover" 34ccd9d5b7b44530 chat:73e2d885f73acf16 settings:73e2d885f73acf16 studio:73e2d885f73acf16 home:73e2d885f73acf16
@@ -791,22 +791,22 @@
 "values REJECT: safe-header-width-2000" 3dcb9b6ba7f7bcff chat:5945b62e575eeca0 settings:5945b62e575eeca0 studio:5945b62e575eeca0 home:5945b62e575eeca0
 "values REJECT: color-black-cancel" 592f09cb5ba8f7c8 chat:238f860232efc833 settings:4fa2703212da5978 studio:238f860232efc833 home:200a5a01a9dd552d
 "values REJECT: color-black-dlg" cb88aca3f8e745de chat:4b6f7ec1c0b20fa0 settings:e956b7e5dd79c608 studio:4b6f7ec1c0b20fa0 home:837aa3224bc59b4d
-"values REJECT: color-black-row" 25528a373e97be60 chat:63392d0d51ebd10d settings:2914532a48ab90d4 studio:9b4a219463e9e1fd home:f7aceb59d3eac9bd
-"values REJECT: color-black-body" 3da1a471d1ce798f chat:c0921c47e32bb246 settings:8167f4f7ead09cc7 studio:53a9c2457f33384c home:d596be8224a699cc
-"values REJECT: color-black-shell" f0db070447add544 chat:b8e656cda179a44c settings:7d00799170c885d9 studio:2c5dd897f002b3c0 home:d1b566f55bc821ed
-"values REJECT: color-black-page" e2776090fa04e2b5 chat:5f52e0175d72ca3b settings:11075367eb51ae8a studio:5bfa548ba5b88698 home:3686999e2e111760
-"values REJECT: color-name-navy" 3ee31cd1328f9d30 chat:34e7d7195a00391a settings:83b52977b2c2f749 studio:c787c6807bccc3e5 home:d07f91fd3c169b48
-"values REJECT: color-hsl-black" 33f03720f944020c chat:29d7ddf081e77512 settings:66821620a38a5049 studio:c6700e9e38384deb home:a6ea841a020498e1
-"values REJECT: bg-white-row" 48b2c9adc55960e4 chat:6bf865e89c88e435 settings:7971aa3521e213a4 studio:2be7bbff95f60dbb home:b7aa947ebf609414
-"values REJECT: bg-white-name-row" 0e3d5f51b100594c chat:95fa22c002cb6998 settings:d09aff567516dc37 studio:35ca8983c2ccd5ae home:e2d9172d0a36f588
-"values REJECT: bg-gradient-row" 471e44fde3e2a1f7 chat:dea1702a8dbe8cc3 settings:b73b01551d933d3f studio:01c3efd33cf2ed7a home:ea6fe8908664def0
+"values REJECT: color-black-row" 25528a373e97be60 chat:63392d0d51ebd10d settings:2914532a48ab90d4 studio:9b4a219463e9e1fd home:5a0b998da76eee6b
+"values REJECT: color-black-body" 3da1a471d1ce798f chat:c0921c47e32bb246 settings:8167f4f7ead09cc7 studio:53a9c2457f33384c home:a1c1a6c5b581f783
+"values REJECT: color-black-shell" f0db070447add544 chat:b8e656cda179a44c settings:7d00799170c885d9 studio:2c5dd897f002b3c0 home:fe332497d607461b
+"values REJECT: color-black-page" e2776090fa04e2b5 chat:5f52e0175d72ca3b settings:11075367eb51ae8a studio:5bfa548ba5b88698 home:f930a1775776b8e1
+"values REJECT: color-name-navy" 3ee31cd1328f9d30 chat:34e7d7195a00391a settings:83b52977b2c2f749 studio:c787c6807bccc3e5 home:e7182affe75c2d74
+"values REJECT: color-hsl-black" 33f03720f944020c chat:29d7ddf081e77512 settings:66821620a38a5049 studio:c6700e9e38384deb home:b5f5973b99c09f84
+"values REJECT: bg-white-row" 48b2c9adc55960e4 chat:6bf865e89c88e435 settings:7971aa3521e213a4 studio:2be7bbff95f60dbb home:1a316ce5f3c9e164
+"values REJECT: bg-white-name-row" 0e3d5f51b100594c chat:95fa22c002cb6998 settings:d09aff567516dc37 studio:35ca8983c2ccd5ae home:e42587902421e607
+"values REJECT: bg-gradient-row" 471e44fde3e2a1f7 chat:dea1702a8dbe8cc3 settings:b73b01551d933d3f studio:01c3efd33cf2ed7a home:a041bba19683ddc9
 "values REJECT: bg-white-overlay" 3ed225e3dc31abe3 chat:ecd42c89bce6cc5e settings:d37346b45f300270 studio:ecd42c89bce6cc5e home:756f45a7839e82a5
-"values REJECT: bg-white-own-pair" 551ac728550986a8 chat:0f84f5e5a55fe8f3 settings:9cc1077f1e03d94c studio:8a95b0ae56289022 home:45a46238b5e1dd83
-"values REJECT: bg-white-shell" 02d06b01889308fa chat:10b302ee0dbff7a4 settings:0e01a6b7569e5032 studio:430ab7ff1bde48a3 home:84d0c460007c3060
+"values REJECT: bg-white-own-pair" 551ac728550986a8 chat:0f84f5e5a55fe8f3 settings:9cc1077f1e03d94c studio:8a95b0ae56289022 home:9d362881e9233f95
+"values REJECT: bg-white-shell" 02d06b01889308fa chat:10b302ee0dbff7a4 settings:0e01a6b7569e5032 studio:430ab7ff1bde48a3 home:7f6e951d45cd8971
 "values REJECT: bg-white-dialog-btn" faa1e7067402c0e1 chat:2150f148a702ab0c settings:125c6a55c136eba6 studio:2150f148a702ab0c home:1c961507bcbde8d9
-"values REJECT: name-connection-warning" 4c0ef6e8b113b35f chat:5e9de694e37ff394 settings:415f6deea8aa7925 studio:ebd554ebfdfe4c74 home:883cb92f20d7fdb5
+"values REJECT: name-connection-warning" 4c0ef6e8b113b35f chat:5e9de694e37ff394 settings:415f6deea8aa7925 studio:ebd554ebfdfe4c74 home:81a649eeddfe5574
 "values REJECT: name-card-status-hidden" 2f630d80d39b1179 chat:3410b83346f4218f settings:22bee880116d78ac studio:3410b83346f4218f home:3410b83346f4218f
-"values REJECT: name-card-status-transparent" 47cab2aec07b7d38 chat:4ecbe63abe587f57 settings:e1186bec6601cde9 studio:348c030387fb83a7 home:05d4f6c129209200
+"values REJECT: name-card-status-transparent" 47cab2aec07b7d38 chat:4ecbe63abe587f57 settings:e1186bec6601cde9 studio:348c030387fb83a7 home:6d6bb50c57928df0
 "values REJECT: name-warning-banner-hidden" b4653a308b29fe6c chat:612fc04ab1c315ec settings:8d0ea6862fb69f5e studio:612fc04ab1c315ec home:612fc04ab1c315ec
 "values REJECT: name-picker-warning" 368b7dcc446eb22a chat:3fb7d8b27544582e settings:5ae37faf512619f6 studio:3fb7d8b27544582e home:3fb7d8b27544582e
 "values REJECT: name-test-result" 89ccaf232d1772c2 chat:60f599efa25d8940 settings:78ddec80d8ae1ea3 studio:60f599efa25d8940 home:60f599efa25d8940
@@ -819,29 +819,29 @@
 "legacy settings: row-hidden" 5503f6bdc9bf0f98 chat:9fdb60ed94872588 settings:9fdb60ed94872588 studio:9fdb60ed94872588 home:9fdb60ed94872588
 "legacy settings: toast-faded" df9e55ef297b3a0d chat:b121a460035cb31f settings:b121a460035cb31f studio:b121a460035cb31f home:b121a460035cb31f
 "legacy settings: index-right" ce671290388ce83e chat:40185980d215aad5 settings:2ad15760d5aba14b studio:40185980d215aad5 home:40185980d215aad5
-"studio reach: R1 sheet-root padding+font" 41e6f658d4e49135 chat:769784af99b71b7f settings:9f5efbb8fc757935 studio:08b3458309cf58e7 home:5ff8b9258e5b6799
-"studio reach: R2 form-host padding+font" fd48fb1cefbf895f chat:d00e5c85b679bd64 settings:c65053e38b5d5f29 studio:922deacec44a61e7 home:f204f831e1553970
-"studio reach: R3 main padding" d0cda4eb345a4031 chat:28e6f95d38f09a0d settings:152c9db500152556 studio:c79ff796baf9920c home:bf8e386012797e5c
-"studio reach: R4 toast-box padding/gap/width" 9a976ed223f893fa chat:31bb7110148cfb8d settings:e9f442e26a8ebbdf studio:3850ba5e6cf2c7ed home:a99ed4f059fe93a7
-"studio reach: R5 toast-box border 16px" ee33740dd541c44f chat:4ebad73001f74f4f settings:0b23ff55ec81909e studio:87f979902f3d26ce home:87f979902f3d26ce
-"studio reach: R6 sheet-root border 16 + shadow 64" 30fe44546bdf5550 chat:2a528f589e97c774 settings:912e66e4b9d853cd studio:936234823aa506ec home:936234823aa506ec
-"studio reach: R7 shell font-size 40" d28476a59ea6a343 chat:dd7efa073eba8509 settings:3cd7d29fafcc9a25 studio:ed2fa4f302dbce75 home:ed2fa4f302dbce75
-"studio reach: R8 sheet-root letter-spacing/text-decoration/transform" 315a89546659caee chat:fa4ba651328f4b03 settings:0d8234f840906a82 studio:b9085ed846e6ce82 home:b9085ed846e6ce82
+"studio reach: R1 sheet-root padding+font" 41e6f658d4e49135 chat:769784af99b71b7f settings:9f5efbb8fc757935 studio:08b3458309cf58e7 home:205c0b776b81f51f
+"studio reach: R2 form-host padding+font" fd48fb1cefbf895f chat:d00e5c85b679bd64 settings:c65053e38b5d5f29 studio:922deacec44a61e7 home:ea321bbf159291ff
+"studio reach: R3 main padding" d0cda4eb345a4031 chat:28e6f95d38f09a0d settings:152c9db500152556 studio:c79ff796baf9920c home:6e1c38e78660d328
+"studio reach: R4 toast-box padding/gap/width" 9a976ed223f893fa chat:31bb7110148cfb8d settings:e9f442e26a8ebbdf studio:3850ba5e6cf2c7ed home:5dd1455b588eef74
+"studio reach: R5 toast-box border 16px" ee33740dd541c44f chat:4ebad73001f74f4f settings:0b23ff55ec81909e studio:87f979902f3d26ce home:b0b9280ca266f4dc
+"studio reach: R6 sheet-root border 16 + shadow 64" 30fe44546bdf5550 chat:2a528f589e97c774 settings:912e66e4b9d853cd studio:936234823aa506ec home:4ebfd2cdb33e1e52
+"studio reach: R7 shell font-size 40" d28476a59ea6a343 chat:dd7efa073eba8509 settings:3cd7d29fafcc9a25 studio:ed2fa4f302dbce75 home:77ca1dcd983b25a9
+"studio reach: R8 sheet-root letter-spacing/text-decoration/transform" 315a89546659caee chat:fa4ba651328f4b03 settings:0d8234f840906a82 studio:b9085ed846e6ce82 home:9073131dfd5003e6
 "studio reach: R9 sheet-root font-family dingbat" 539945aa418dfe84 chat:87b3d92e7d65b7f4 settings:87b3d92e7d65b7f4 studio:87b3d92e7d65b7f4 home:87b3d92e7d65b7f4
-"studio reach: R10 toast-box text-align + width 100%" ba1eadeb1e50cc57 chat:bb7636f6faf3466d settings:a4ca3c5f418706b6 studio:f4f19cd3cb3a1a5e home:f4f19cd3cb3a1a5e
+"studio reach: R10 toast-box text-align + width 100%" ba1eadeb1e50cc57 chat:bb7636f6faf3466d settings:a4ca3c5f418706b6 studio:f4f19cd3cb3a1a5e home:81931890738c57ad
 "studio reach: R11 alert via data-kind box" ede77a0381513ceb chat:e188e6194765e4ed settings:7624732d2425e184 studio:e188e6194765e4ed home:7624732d2425e184
 "studio reach: R12 data-kind=conflict padding" 983b9690cb463a5b chat:5c812330d84476d4 settings:aa27c9241fe0a4ca studio:5c812330d84476d4 home:aa27c9241fe0a4ca
-"studio reach: R13 color on ancestors" bd109318348a0310 chat:6c22374b9bfe5a64 settings:d2e05ea9169f906c studio:63e1bfed69613e7f home:63e1bfed69613e7f
+"studio reach: R13 color on ancestors" bd109318348a0310 chat:6c22374b9bfe5a64 settings:d2e05ea9169f906c studio:63e1bfed69613e7f home:b8c32f6a7aa43439
 "studio reach: R14 data-kind=restore color/background close to bg" 0a0354fe33c22c04 chat:7b8a9a30dc7c1208 settings:2d444359c893da67 studio:7b8a9a30dc7c1208 home:2d444359c893da67
 "studio reach: R15 data-state=ask outline" cfaba86a44e197c6 chat:ae4b8286d588425b settings:fefb7fe66350ae14 studio:ae4b8286d588425b home:fefb7fe66350ae14
-"studio reach: R16 font-size 11 on sheet + width 50%" dc2394be54f3e950 chat:693b082a5edabbc6 settings:78808b48dae79838 studio:6acb705bd7e937fe home:8095ecf14426239a
+"studio reach: R16 font-size 11 on sheet + width 50%" dc2394be54f3e950 chat:693b082a5edabbc6 settings:78808b48dae79838 studio:6acb705bd7e937fe home:fa2e1c1114cefeb8
 "resource forms: unquoted" 0907fbc38948bfbc chat:52c294e974b6b62d settings:6bff31724e413bc2 studio:84c2656b9c705d25 home:def31a5e3024f5b9
 "resource forms: unquoted with whitespace" 3df6189b8ff7f97d chat:6da8b17f4090944d settings:ec330b070f15a8d8 studio:24162196bd731676 home:d04e5083ee0fd4e0
 "resource forms: double quoted" 28a29f89ca3cf276 chat:0287b246f873bee0 settings:83c33ce1809e7f25 studio:c60351eadb449044 home:ba06afd36d89599c
 "resource forms: single quoted" 812c0d1053625d6c chat:823daedb9b3820b7 settings:c370814f227611c7 studio:d76f5a54a2e20820 home:27c1e60c22b34a9b
 "resource forms: quoted with whitespace" e996a34221bad575 chat:7ce41ce9f65fe27b settings:fef9674497892d7e studio:bd2e3251bd05dbb0 home:4cbfc71ebec88f5a
 "resource forms: image-set strings" 2c7dbcf3346e2ddf chat:56a74e242c73b03d settings:55eb058cede0d2b0 studio:57143e952f4ad2ba home:fcd3142a44ad4642
-"resource forms: vendor image-set" a9fb23a6f14f85b7 chat:7e39592bd1509a6f settings:9e643581f9afe89f studio:4c02b5f9001d39df home:7e39592bd1509a6f
+"resource forms: vendor image-set" a9fb23a6f14f85b7 chat:7e39592bd1509a6f settings:9e643581f9afe89f studio:4c02b5f9001d39df home:c1cf131849c055c6
 "resource forms: after a comment" 5098f795cceca215 chat:ea4f72220450276f settings:42dbe865538d5472 studio:53794bbe512ff4e5 home:666b03703b7e0fde
 "resource forms: font face sources" 0d7885809ea01656 chat:910877fdf99859bc settings:1a2c7bd10baa7a8d studio:7155281a6511324e home:97a058a72d10d91f
 "resource forms: remote and broken" bdd849c525037ce1 chat:7f6f1bc947b02561 settings:7f6f1bc947b02561 studio:7f6f1bc947b02561 home:bd0ebdaa93ffd2a9
