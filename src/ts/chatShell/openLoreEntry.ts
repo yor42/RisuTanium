@@ -5,6 +5,7 @@ import type { StudioTarget } from '../studio/studioTarget'
 export function studioTargetOfLoreEntry(target: LoreEntryTarget): StudioTarget {
     const visit: StudioTarget = { owner: { ...target.owner }, kind: 'lore', from: 'chat' }
     if (target.item !== undefined) visit.item = target.item
+    if (target.entry !== undefined) visit.entry = target.entry
     return visit
 }
 

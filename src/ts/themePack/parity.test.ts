@@ -375,8 +375,8 @@ const SCOPE_REFUSALS: readonly string[] = [
 ]
 const E2_WHY = /may reach at most 64 px past its element/
 // Measured on this change: the pairs the reference accepts, the app refuses, and no list above names (WIDENED_COUNT), with the first 16 hex digits of the SHA-256 of their sorted names joined by newlines.
-const WIDENED_COUNT = 273
-const WIDENED_DIGEST = 'b8f30c4e0f346879'
+const WIDENED_COUNT = 353
+const WIDENED_DIGEST = '4db52f4fa00f21c4'
 describe('PT1: comment placement keeps a verdict (A19)', () => {
     // A comment only stands where a space means the same to the browser, so deleting every comment outside strings keeps the
     // verdict of an accepted input. A compatibility guard over the corpus; the NF17 reproducers are in packRules.test.ts.

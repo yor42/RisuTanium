@@ -98,6 +98,14 @@ describe('A_tok: the tokens a stylesheet of the area may declare', () => {
         })
     }
 
+    it('AT-1: the home area allows the settable --home-* names and no stacking or pattern token', () => {
+        const allowed = allowedTokenNames('home')
+        expect(allowed.has('--home-card-radius')).toBe(true)
+        expect(allowed.has('--home-composer-bg')).toBe(true)
+        expect([...allowed].filter((name) => name.startsWith('--pattern-z-'))).toEqual([])
+        for (const n of allowed) expect(reservedNameReason(n), n).toBe('')
+    })
+
     it('keeps the tokens the acceptance sheets set and drops the shared font weights', () => {
         expect(allowedTokenNames('chat').has('--nexus-text')).toBe(true)
         expect(allowedTokenNames('chat').has('--radius-bubble')).toBe(true)

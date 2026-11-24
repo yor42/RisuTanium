@@ -817,14 +817,14 @@ describe('T3-13 the blob URL pattern', () => {
 })
 
 describe('T3-14 an empty chat sheet applies nothing', () => {
-    it.each([['0 bytes', ''], ['a comment only', '/* nothing */']])('%s: text null, home skipped, and a previous pack is removed with its blobs', async (_label, sheet) => {
+    it.each([['0 bytes', ''], ['a comment only', '/* nothing */']])('%s: text null, sidebar skipped, and a previous pack is removed with its blobs', async (_label, sheet) => {
         const a = accepted(await prepareArchive(packOf(TWO_FONTS_SHEET, [FONT_A, FONT_B], {}, 'Pack A')))
         commitPrepared(a)
         expect(packElements()).toHaveLength(1)
-        const empty = accepted(await prepareArchive(packOf(sheet, [], { 'home.css': PLAIN_CHAT_SHEET }, 'Pack E')))
+        const empty = accepted(await prepareArchive(packOf(sheet, [], { 'sidebar.css': PLAIN_CHAT_SHEET }, 'Pack E')))
         expect(chatElementOf(empty).text).toBeNull()
         expect(empty.blobs).toEqual([])
-        expect(empty.skippedAreas).toEqual(['home'])
+        expect(empty.skippedAreas).toEqual(['sidebar'])
         commitPrepared(empty)
         expect(packElements()).toHaveLength(0)
         expect([...blobs.revoked].sort()).toEqual([...a.blobs].sort())
@@ -835,8 +835,8 @@ describe('T3-15 only the chat sheet is applied', () => {
     it('judges the chat key only for a pack with only skipped areas besides chat, applies one element and reports the skipped areas', async () => {
         const rig = judgeRig()
         const hostile = '[data-part]{padding-inline:60px}'
-        const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [], { 'home.css': hostile, 'sidebar.css': hostile }), rig))
-        expect(prepared.skippedAreas).toEqual(['home', 'sidebar'])
+        const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [], { 'sidebar.css': hostile }), rig))
+        expect(prepared.skippedAreas).toEqual(['sidebar'])
         expect(rig.posts.map((post) => post.jobs.map((job) => job.area))).toEqual([['chat']])
         commitPrepared(prepared)
         const elements = packElements()
@@ -1681,5 +1681,100 @@ describe('S3c-B the popups overlays (MC-3009, MC-3126, MC-3247, MC-3660)', () =>
         expect(overlayOf('shape').getAttribute('media')).toBe('all')
         expect(document.documentElement.hasAttribute(BASE)).toBe(false)
         expect(get(packBaseTone)).toBeNull()
+    })
+})
+
+describe('Home stage 2 the home element (MC-3121: shape variant only, no base, in both modes; MC-3660: never triggers the own colours)', () => {
+    const BASE = 'data-theme-pack-base'
+    const HOME_X = ':root{--home-card-radius:4px}[data-part="home-greeting"]{letter-spacing:.08rem;color:#7a1f5c}[data-part="home-shelf"]{scroll-snap-type:none}'
+    const HOME_COLOURS = '[data-part="home-greeting"]{color:#7a1f5c}'
+    const STUDIO_LEAF = '[data-part="studio-asset-row"]{opacity:0.5}'
+    const POPUPS_HOME = '[data-part="toast-text"]{background-color:#7a1f5c;border-radius:6px}'
+    const pack = (extra: Readonly<Record<string, PackFile>>): Uint8Array => packOf(LEAF, [], extra)
+    const homeElement = (): HTMLStyleElement | undefined => packElements().find((element) => element.getAttribute('data-theme-pack') === 'home')
+    const overlayOf = (variant: 'colour' | 'shape'): HTMLStyleElement | undefined => packElements().find((element) => element.getAttribute('data-theme-pack') === 'popups' && element.getAttribute('data-theme-pack-variant') === variant)
+    const tagged = (label: string, rule: 'contrast' | 'readability') => (response: JudgeResponse): JudgeResponse => {
+        if (!response.ok || !Object.hasOwn(response.results, label)) {
+            return response
+        }
+        const verdict = response.results[label]
+        return { ...response, results: { ...response.results, [label]: { ...verdict, warnings: [...verdict.warnings, { selector: 's', prop: 'color', why: 'w', rule }] } } }
+    }
+
+    it('A-H1 (reproducer): the prepared elements carry a home element with no base, inserted off after chat and before #customcss', async () => {
+        const prepared = accepted(await prepareArchive(pack({ 'home.css': HOME_X })))
+        expect(prepared.elements.find((element) => element.area === 'home')).toMatchObject({ area: 'home', base: null })
+        commitAll(prepared, true)
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat', 'home'])
+        const home = homeElement()
+        expect(home?.getAttribute('media')).toBe('not all')
+        expect(home?.nextElementSibling?.id).toBe('customcss')
+    })
+
+    it('A-H2 (reproducer): the home text keeps letter-spacing, the home geometry token and scroll-snap-type, and drops color', async () => {
+        const prepared = accepted(await prepareArchive(pack({ 'home.css': HOME_X })))
+        commitAll(prepared, true)
+        const text = homeElement()?.textContent ?? ''
+        expect(text).toContain('letter-spacing')
+        expect(text).toContain('--home-card-radius')
+        expect(text).toContain('scroll-snap-type')
+        expect(text).not.toMatch(/color:|#7a1f5c/)
+    })
+
+    it('A-H3 (guard, passes before and after): a colours-only home.css creates no home element', async () => {
+        const prepared = accepted(await prepareArchive(pack({ 'home.css': HOME_COLOURS })))
+        expect(prepared.elements.map((element) => element.area)).toEqual(['chat'])
+        commitAll(prepared, true)
+        expect(homeElement()).toBeUndefined()
+    })
+
+    it('A-H4 (guard, kills M8): a contrast or readability note on the home judgement never triggers the own colours; a studio one does', async () => {
+        const bytes = pack({ 'home.css': HOME_X, 'studio.css': STUDIO_LEAF })
+        for (const rule of ['contrast', 'readability'] as const) {
+            const homeOnly = accepted(await prepareArchive(pack({ 'home.css': HOME_X }), judgeRig({ rewrite: tagged('home', rule) })))
+            expect(Object.hasOwn(homeOnly, 'ownColourTrigger')).toBe(false)
+            expect(accepted(await prepareArchive(bytes, judgeRig({ rewrite: tagged('studio', rule) }))).ownColourTrigger).toBe(true)
+        }
+    })
+
+    it('A-H5 (reproducer): setPackSheetColours switches neither the home text nor its null base, and sets no base attribute', async () => {
+        const prepared = accepted(await prepareArchive(pack({ 'home.css': HOME_X })))
+        installThemePackGate(() => false)
+        declareSurface('home')
+        flushSync()
+        commitAll(prepared, true)
+        const home = homeElement()
+        const shapeText = home?.textContent
+        expect(shapeText).toBeTruthy()
+        expect(home?.getAttribute('media')).toBe('all')
+        setPackSheetColours(false)
+        expect(home?.textContent).toBe(shapeText)
+        setPackSheetColours(true)
+        expect(home?.textContent).toBe(shapeText)
+        expect(document.documentElement.hasAttribute(BASE)).toBe(false)
+        expect(get(packBaseTone)).toBeNull()
+    })
+
+    it('G-H4 (reproducer): Home shown over a themed home element turns the popups shape overlay on and the colour overlay off; unthemed turns both off', async () => {
+        const themed = accepted(await prepareArchive(pack({ 'home.css': HOME_X, 'popups.css': POPUPS_HOME })))
+        installThemePackGate(() => false)
+        declareSurface('home')
+        flushSync()
+        expect(commitPackSheet({ elements: themed.elements, popups: themed.popups, blobs: themed.blobs, colours: true })).toEqual({ ok: true })
+        expect(homeElement()?.getAttribute('media')).toBe('all')
+        expect(overlayOf('shape')?.getAttribute('media')).toBe('all')
+        expect(overlayOf('colour')?.getAttribute('media')).toBe('not all')
+        const unthemed = accepted(await prepareArchive(pack({ 'popups.css': POPUPS_HOME })))
+        expect(commitPackSheet({ elements: unthemed.elements, popups: unthemed.popups, blobs: unthemed.blobs, colours: true })).toEqual({ ok: true })
+        expect(overlayOf('shape')?.getAttribute('media')).toBe('not all')
+        expect(overlayOf('colour')?.getAttribute('media')).toBe('not all')
+    })
+
+    it('a home sheet is judged under the home label and the home shape job is posted', async () => {
+        const rig = judgeRig()
+        accepted(await prepareArchive(pack({ 'home.css': HOME_X }), rig))
+        const labels = rig.posts.flatMap((post) => post.jobs.map((job) => job.label))
+        expect(labels).toContain('home')
+        expect(labels).toContain('home#shape')
     })
 })

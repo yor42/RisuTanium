@@ -49,6 +49,17 @@ describe('openLoreEntry', () => {
         expect(openInClassicEditor).toHaveBeenCalledWith('module', 'lore')
     })
 
+    test('regression reproducer: a target with an entry id carries it to the Studio visit', () => {
+        expect(studioTargetOfLoreEntry({ owner: { type: 'module', id: 'mod-1' }, kind: 'lore', entry: 'e-1' })).toEqual({ owner: { type: 'module', id: 'mod-1' }, kind: 'lore', entry: 'e-1', from: 'chat' })
+    })
+
+    test('compatibility guard: a target with an entry id still falls back to the classic page without Studio', async () => {
+        h.eligible = false
+        await openLoreEntry({ owner: { type: 'module', id: 'mod-1' }, kind: 'lore', entry: 'e-1' }, element)
+        expect(openStudio).not.toHaveBeenCalled()
+        expect(openInClassicEditor).toHaveBeenCalledWith('module', 'lore')
+    })
+
     test('a target without an item opens the owner list', () => {
         expect(studioTargetOfLoreEntry({ owner: { type: 'character', id: 'cha-1' }, kind: 'lore' })).toEqual({ owner: { type: 'character', id: 'cha-1' }, kind: 'lore', from: 'chat' })
     })

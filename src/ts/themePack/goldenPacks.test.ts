@@ -71,7 +71,7 @@ describe('T1-31 golden v1 packs', () => {
         })
 
         // Both frozen packs are accepted whole: the plain-paint rule that refused the Banana Cocoa studio.css is removed (MC-2370, #560 PR2), and their bytes are unchanged.
-        it(`${golden.file} is accepted with its chat, studio and settings sheets judged and home skipped`, async () => {
+        it(`${golden.file} is accepted with its chat, studio, settings and home sheets judged and none skipped`, async () => {
             const pack = acceptedPack(await intakePackBytes(bytesOf(golden.file), judge))
             expect(pack.manifest).toStrictEqual({
                 format: 1,
@@ -87,13 +87,26 @@ describe('T1-31 golden v1 packs', () => {
             expect(pack.sheets.chat?.result.ok).toBe(true)
             expect(pack.sheets.studio?.result.ok).toBe(true)
             expect(pack.sheets.settings?.result.ok).toBe(true)
+            expect(pack.sheets.home?.result.ok, JSON.stringify(pack.sheets.home?.result.errors)).toBe(true)
             // a shipped pack carries no finding at all: the notes channel is absent, not empty
             for (const sheet of [pack.sheets.chat, pack.sheets.studio, pack.sheets.settings]) expect(sheet?.result.notes, `${golden.file}`).toBeUndefined()
-            expect(pack.skippedAreas).toEqual(['home'])
+            expect(pack.skippedAreas).toEqual([])
             expect(pack.files.size).toBe(0)
             expect(pack.size.warn).toBe(false)
         })
     }
+})
+
+// The frozen Banana Cocoa home.css sets scroll-snap-type, which Rule SCOPE allows since MC-4146, so the sheet is accepted whole.
+describe('the frozen Banana Cocoa home sheet (MC-4146)', () => {
+    const homeSheet = (): string => strFromU8(unzipSync(bytesOf('banana-cocoa.risutheme'))['home.css'])
+
+    it('GP-1: names scroll-snap-type and is accepted by the home judge with no refusal', () => {
+        expect(homeSheet()).toMatch(/scroll-snap-type/)
+        const result = lintAreaPack('home', homeSheet(), 'banana-cocoa')
+        expect(result.errors, JSON.stringify(result.errors)).toEqual([])
+        expect(result.ok).toBe(true)
+    })
 })
 
 // Intake judges studio.css whole at install (MC-3121). The frozen Banana Cocoa studio.css holds plain colours and fills on reach parts; MC-2370 refused them, and since #560 PR2 the rule is removed, so the frozen bytes install whole.

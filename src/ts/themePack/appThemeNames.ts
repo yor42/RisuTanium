@@ -8,6 +8,7 @@
 // than `?raw` imports so the validator needs no Tailwind-processed stylesheet at run time or in the worker bundle.
 import { effective, packSettableTest } from './engine'
 import type { ScopedArea } from './areaParts'
+import { HOME_REGISTRY } from './registries/home'
 import { SETTINGS_LINT_REGISTRY } from './registries/settings5b'
 import { STUDIO_REGISTRY } from './registries/studio'
 import { tokenFile, type TokenFile } from './tokens'
@@ -161,7 +162,7 @@ const allowedCache = new Map<ScopedArea, ReadonlySet<string>>()
 export function allowedTokenNames(area: ScopedArea): ReadonlySet<string> {
     let names = allowedCache.get(area)
     if (!names) {
-        const registry = area === 'studio' ? STUDIO_REGISTRY : area === 'settings' ? SETTINGS_LINT_REGISTRY : undefined
+        const registry = area === 'studio' ? STUDIO_REGISTRY : area === 'settings' ? SETTINGS_LINT_REGISTRY : area === 'home' ? HOME_REGISTRY : undefined
         const bounded = effective(registry)
         const candidates = [...declaredTokenNames(area), ...Object.keys(bounded.minimums), ...Object.keys(bounded.maximums)]
         const isSettable = packSettableTest(registry)

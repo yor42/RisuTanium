@@ -1,6 +1,6 @@
 # Golden v1 theme packs
 
-`origin-navy.risutheme` and `banana-cocoa.risutheme` are the shipped themes of `docs/design` in the v1 pack layout (a ZIP archive: `manifest.json`, `chat.css`, `studio.css`, `settings.css`, `home.css`). They are frozen bytes: every later build must still read them (`goldenPacks.test.ts`), and they are never regenerated. Both are accepted whole: the plain paint on Studio parts in the frozen `studio.css` of `banana-cocoa.risutheme`, which the Studio judge once refused (MC-2370, MC-3008), is no longer a rule, and neither pack carries a finding. `.gitattributes` marks them binary.
+`origin-navy.risutheme` and `banana-cocoa.risutheme` are the shipped themes of `docs/design` in the v1 pack layout (a ZIP archive: `manifest.json`, `chat.css`, `studio.css`, `settings.css`, `home.css`). They are frozen bytes: every later build must still read them (`goldenPacks.test.ts`), and they are never regenerated. Both are accepted whole, `home.css` included (it is judged, and `banana-cocoa.risutheme`'s names `scroll-snap-type`): the plain paint on Studio parts in the frozen `studio.css` of `banana-cocoa.risutheme`, which the Studio judge once refused (MC-2370, MC-3008), is no longer a rule, and neither pack carries a finding. `.gitattributes` marks them binary.
 
 | file | size | SHA-256 |
 |---|---|---|
@@ -30,7 +30,7 @@ The sheets are `docs/design/{chat,studio,settings,home}/themes/<theme>.css` with
 These sentences are frozen with the goldens. Intake (`intake.ts`) and the validator (`index.ts`) apply them.
 
 1. A pack holds `manifest.json` and at least one of `chat.css` and `studio.css`.
-   Build rule, separate from the format: this build refuses a pack with neither `chat.css` nor `studio.css`. Only this build rule changes when another area becomes an applied area.
+   Build rule, separate from the format: this build refuses a pack with no screen sheet (`chat.css`, `studio.css`, `settings.css` or `home.css`). Only this build rule changes when another area becomes an applied area.
 2. Bytes outside every entry are allowed and never read: before the first local header, between the end of one entry's compressed data and the next local header (data descriptors live there and stay allowed), between the last entry and the central directory, and between the central directory and the end record. Bytes inside the central directory after the last record are damage. Bytes inside an entry's compressed extent after the end of its deflate stream are ignored: the reader inflates up to the end of the stream and the declared size and CRC-32 then agree (observed by the T1-40 diagnostic row: an entry with 8 bytes after its final deflate block is accepted).
 3. No ZIP64 structure a reader acts on: no ZIP64 locator before the end record, no sentinel in the end record, and no central record with a 0xFFFFFFFF size or offset, a 0xFFFF start disk or a ZIP64 extra block. The central directory governs: of a local header only the signature, the name and the two lengths are read; its method, CRC, sizes and extra blocks (a ZIP64 extra included) are ignored.
 4. An entry name is at most 255 bytes.

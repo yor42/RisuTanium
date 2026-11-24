@@ -336,8 +336,8 @@ describe('T1-16 damage', () => {
     })
 
     it('a licence text and a skipped sheet with a bad CRC are damaged', async () => {
-        const { result } = await runRaw(hostileBase([entry('fonts/OFL.txt', 'licence', { crc: 1 }), entry('home.css', 'a{}', { crc: 1 })]))
-        expect(refusalsOf(result)).toEqual([{ code: 'damaged', name: 'fonts/OFL.txt' }, { code: 'damaged', name: 'home.css' }])
+        const { result } = await runRaw(hostileBase([entry('fonts/OFL.txt', 'licence', { crc: 1 }), entry('sidebar.css', 'a{}', { crc: 1 })]))
+        expect(refusalsOf(result)).toEqual([{ code: 'damaged', name: 'fonts/OFL.txt' }, { code: 'damaged', name: 'sidebar.css' }])
     })
 
     it('a file cut short loses its end record and is not a pack', async () => {
@@ -571,19 +571,19 @@ describe('T1-30 a judge that fails', () => {
 })
 
 describe('T1-32 and T1-43 skipped and empty sheets', () => {
-    it('a hostile home sheet is skipped and never judged', async () => {
+    it('a hostile sidebar sheet is skipped and never judged', async () => {
         const hostile = '[data-part]{padding-inline:60px}'
         const spy = spyJudge()
-        const { result } = await run(zipPack(validPackFiles({ 'home.css': hostile })), spy.judge)
-        expect(packOf(result).skippedAreas).toEqual(['home'])
+        const { result } = await run(zipPack(validPackFiles({ 'sidebar.css': hostile })), spy.judge)
+        expect(packOf(result).skippedAreas).toEqual(['sidebar'])
         expect(spy.calls).toHaveLength(1)
         expect(Object.keys(spy.calls[0])).toEqual(['chat'])
     })
 
     it('an empty chat sheet and a comment-only chat sheet are valid sheets', async () => {
         const spy = spyJudge()
-        const empty = await run(zipPack(validPackFiles({ 'chat.css': '', 'home.css': 'a{}' })), spy.judge)
-        expect(packOf(empty.result).skippedAreas).toEqual(['home'])
+        const empty = await run(zipPack(validPackFiles({ 'chat.css': '', 'sidebar.css': 'a{}' })), spy.judge)
+        expect(packOf(empty.result).skippedAreas).toEqual(['sidebar'])
         expect(spy.calls[0]).toEqual({ chat: '' })
         const comment = await run(zipPack(validPackFiles({ 'chat.css': '/* nothing */' })))
         expect(comment.result.ok).toBe(true)
@@ -605,7 +605,6 @@ describe('T1-34 and I8 a pack with no sheet of an applied area (MC-3123)', () =>
     it.each([
         ['only popups.css', { 'popups.css': 'a{}' }],
         ['only sidebar.css', { 'sidebar.css': 'a{}' }],
-        ['only home.css', { 'home.css': 'a{}' }],
         ['no sheet', {}],
     ] as const)('%s is no-area, the judge is not called and no sheet is read', async (_name, sheets) => {
         const spy = spyJudge()
@@ -693,13 +692,13 @@ describe('S4a the studio sheet is an applied area (MC-3121, MC-3123, MC-3008)', 
         expect(packOf(result).files.has('images/s.png')).toBe(true)
     })
 
-    it('I4: home and sidebar sheets stay skipped, are never judged and are CRC-read; popups is judged, not skipped', async () => {
+    it('I4: a sidebar sheet stays skipped, is never judged and is CRC-read; home and popups are judged, not skipped', async () => {
         const spy = spyJudge()
         const names = ['home.css', 'popups.css', 'sidebar.css']
         const accepted = await run(zipPack(validPackFiles(Object.fromEntries(names.map((name) => [name, 'a{}'])))), spy.judge)
-        expect(packOf(accepted.result).skippedAreas).toEqual(['home', 'sidebar'])
-        expect(Object.keys(spy.calls[0])).toEqual(['chat', 'popups'])
-        const skipped = ['home.css', 'sidebar.css']
+        expect(packOf(accepted.result).skippedAreas).toEqual(['sidebar'])
+        expect(Object.keys(spy.calls[0])).toEqual(['chat', 'home', 'popups'])
+        const skipped = ['sidebar.css']
         const damaged = await runRaw(hostileBase(skipped.map((name) => entry(name, 'a{}', { crc: 1 }))))
         expect(refusalsOf(damaged.result)).toEqual(skipped.map((name) => ({ code: 'damaged', name })))
     })
@@ -801,6 +800,61 @@ describe('S3a-3 the settings sheet is an applied area (MC-3121, MC-3008)', () =>
     })
 })
 
+describe('Home the home sheet is an applied area (MC-3007, MC-3121, MC-3123)', () => {
+    const HOME_LEAF = '[data-part="home-greeting"]{letter-spacing:.08rem;color:#7a1f5c}'
+    const HOSTILE_HOME = '[data-part="chat-composer"]{color:#7a1f5c}'
+    const homeErrors = (css: string) => judgeAreaSheet('home', css, undefined, 'home').result.errors
+
+    it('I-H1: chat.css and home.css are judged in one request and home is not a skipped area', async () => {
+        const spy = spyJudge()
+        const { result } = await run(zipPack(validPackFiles({ 'home.css': HOME_LEAF })), spy.judge)
+        const pack = packOf(result)
+        expect(pack.skippedAreas).toEqual([])
+        expect(Object.keys(spy.calls[0])).toEqual(['chat', 'home'])
+        expect(pack.sheets.home?.result.ok).toBe(true)
+    })
+
+    it('I-H2: a home.css naming a chat part is refused by the membership reason, and is no longer skipped', async () => {
+        const { result } = await run(zipPack(validPackFiles({ 'home.css': HOSTILE_HOME })))
+        const errors = homeErrors(HOSTILE_HOME)
+        expect(errors.some((error) => /the part chat-composer is not a part of the home screen/.test(error.why))).toBe(true)
+        expect(refusalsOf(result)).toEqual([{ code: 'sheetRefused', sheet: 'home.css', errors }])
+    })
+
+    it('I-H3: a home-only pack is accepted (MC-3123): one judged home sheet, no chat sheet, nothing skipped', async () => {
+        const spy = spyJudge()
+        const { result } = await run(zipPack({ 'manifest.json': manifestText(), 'home.css': HOME_LEAF }), spy.judge)
+        const pack = packOf(result)
+        expect(pack.sheets.home?.result.ok).toBe(true)
+        expect(pack.sheets.chat).toBeUndefined()
+        expect(pack.skippedAreas).toEqual([])
+        expect(Object.keys(spy.calls[0])).toEqual(['home'])
+    })
+
+    it('I-H4: a home.css naming an image is refused by the home reason, and an image it names is not a way around it', async () => {
+        const css = '[data-part="home-greeting"]{background-image:url(images/a.png)}'
+        const { result } = await run(zipPack(validPackFiles({ 'home.css': css, 'images/a.png': PNG_1X1 })))
+        const errors = homeErrors(css)
+        expect(errors.length).toBeGreaterThan(0)
+        expect(refusalsOf(result)).toEqual([{ code: 'sheetRefused', sheet: 'home.css', errors }])
+    })
+
+    it('I-H5: refused chat, home and popups sheets list three refusals in one verdict, in the order chat, home, popups', async () => {
+        const { result } = await run(zipPack(validPackFiles({ 'chat.css': '[data-part]{padding-inline:60px}', 'home.css': HOSTILE_HOME, 'popups.css': '[data-part="chat-header"]{opacity:1}' })))
+        expect(refusalsOf(result).map((refusal) => (refusal.code === 'sheetRefused' ? refusal.sheet : refusal.code))).toEqual(['chat.css', 'home.css', 'popups.css'])
+    })
+
+    it('a judge that answers only chat to a chat and home request is could-not-check', async () => {
+        const spy = spyJudge(async (sheets) => {
+            const judged = await realJudge(sheets)
+            return { ok: judged.ok, areas: { chat: judged.areas.chat } }
+        })
+        const { result } = await run(zipPack(validPackFiles({ 'home.css': HOME_LEAF })), spy.judge)
+        expect(Object.keys(spy.calls[0])).toEqual(['chat', 'home'])
+        expect(refusalsOf(result)).toEqual([{ code: 'couldNotCheck' }])
+    })
+})
+
 describe('S3c-B the popups sheet is an applied area (MC-3007, MC-3123)', () => {
     const POPUPS_LEAF = '[data-part="toast"]{border-radius:4px}'
     const HOSTILE_CHAT = '[data-part]{padding-inline:60px}'
@@ -852,8 +906,8 @@ describe('T1-36 applied-area tripwire', () => {
         ['S1', '[data-part]{padding-inline:60px}'],
     ] as const
 
-    it('the applied areas are exactly chat, studio, settings and popups, and every R20 row is refused in each of them', () => {
-        expect([...APPLIED_AREAS]).toEqual(['chat', 'studio', 'settings', 'popups'])
+    it('the applied areas are exactly chat, studio, settings, home and popups, and every R20 row is refused in each of them', () => {
+        expect([...APPLIED_AREAS]).toEqual(['chat', 'studio', 'settings', 'home', 'popups'])
         for (const area of APPLIED_AREAS) {
             for (const [id, css] of ROWS) {
                 expect(judgeAreaSheet(area, css).result.ok, `${id} in ${area}`).toBe(false)

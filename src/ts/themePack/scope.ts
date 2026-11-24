@@ -16,7 +16,7 @@ import type { JudgedArea } from './index'
 
 /** The properties a stylesheet may set on a part: effects on the matched element, its descendants and its own ::before and ::after that define no document-wide name. Some paint outside the box (box-shadow, outline, outline-offset, border-image-outset), each within its own caps. */
 export const PROP_ALLOW: readonly RegExp[] = [
-    /^(color|opacity|visibility|cursor|pointer-events|user-select|-webkit-user-select|accent-color|caret-color|scrollbar-color|scrollbar-width|color-scheme|fill|stroke|stroke-width|box-shadow|text-shadow)$/,
+    /^(color|opacity|visibility|cursor|pointer-events|user-select|-webkit-user-select|accent-color|caret-color|scrollbar-color|scrollbar-width|scroll-snap-type|color-scheme|fill|stroke|stroke-width|box-shadow|text-shadow)$/,
     /^background(-color|-image|-position(-x|-y)?|-size|-repeat|-clip|-origin)?$/,
     /^border(-(top|right|bottom|left|block|inline)(-(start|end))?)?(-(width|style|color))?$/, /^border(-(top|bottom|start|end)-(left|right|start|end))?-radius$/,
     /^(font|font-(family|size|weight|style|stretch|variant|variant-[a-z-]+|feature-settings|variation-settings|kerning|synthesis|optical-sizing))$/,
@@ -195,12 +195,12 @@ const familyWhy = (family: string): string => `the @font-face family ${family} m
 const isColourSchemeChoice = (d: Decl, entry: string): boolean => d.prop === 'color-scheme' && /^(:root|html)$/.test(entry) && d.ctx.at.length === 0 && /^(light|dark)$/.test(d.value.replace(/\s*!important\s*$/, '').trim())
 
 /**
- * Judges a chat, Studio, Settings or popups stylesheet against Rule SCOPE. `css` is the stylesheet with its @font-face blocks taken out, `families`
+ * Judges a chat, Studio, Settings, Home or popups stylesheet against Rule SCOPE. `css` is the stylesheet with its @font-face blocks taken out, `families`
  * the families those blocks register. Other areas are not scoped. A popups stylesheet is on together with a screen sheet and may name only popups parts
  * (disjoint from every other area by the prefix rule in areaParts.ts and by popupsCriticalClosure.test.ts), and it declares no custom property at all.
  */
 export function scopePass(area: JudgedArea, css: string, families: readonly string[]): LintError[] {
-    if (area !== 'chat' && area !== 'studio' && area !== 'settings' && area !== 'popups') return []
+    if (area !== 'chat' && area !== 'studio' && area !== 'settings' && area !== 'home' && area !== 'popups') return []
     const errors: LintError[] = []
     const seen = new Set<string>()
     const add = (selector: string, prop: string, why: string): void => {
