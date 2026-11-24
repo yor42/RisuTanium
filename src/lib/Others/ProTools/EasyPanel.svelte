@@ -40,12 +40,12 @@
 
 </script>
 
-<div class="fixed z-50 w-dvw h-dvh top-0 left-0 pointer-events-none flex justify-stretch items-stretch">
-    <div class="m-4 p-4 bg-bgcolor/80 backdrop-blur-sm rounded-lg shadow-lg pointer-events-auto flex-1 flex flex-col overflow-y-auto">
-        <h2 class="text-lg font-bold mb-2 flex items-center">
+<div data-part="modal-easy-panel" class="fixed z-50 w-dvw h-dvh top-0 left-0 pointer-events-none flex justify-stretch items-stretch">
+    <div data-part="modal-frame" class="m-4 p-4 bg-bgcolor/80 backdrop-blur-sm rounded-lg shadow-lg pointer-events-auto flex-1 flex flex-col overflow-y-auto">
+        <h2 data-part="modal-header" class="text-lg font-bold mb-2 flex items-center">
             {language.easyPanel}
-            <div class="ml-2 bg-darkbutton text-textcolor p-1 rounded text-sm">{language.othersUi.beta}</div>
-            <button class="ml-auto p-1 rounded hover:bg-selected" aria-label={language.uiCommon.close} onclick={() => {
+            <div data-part="modal-text" class="ml-2 bg-darkbutton text-textcolor p-1 rounded text-sm">{language.othersUi.beta}</div>
+            <button data-part="modal-close" class="ml-auto p-1 rounded hover:bg-selected" aria-label={language.uiCommon.close} onclick={() => {
                 onClose()
             }}>
                 <XIcon size={28} class="ml-auto hover:bg-selected rounded" aria-hidden="true"></XIcon>
@@ -63,7 +63,7 @@
         />
 
         {#if !hasEPRequirements}
-            <div class="mt-4 p-4 bg-darkbutton text-textcolor rounded">
+            <div data-part="modal-text" class="mt-4 p-4 bg-darkbutton text-textcolor rounded">
                 {language.epRequirementsNotMet}
             </div>
 
@@ -83,30 +83,30 @@
             </Button>
 
         {:else if selectedOption === 'models'}
-             <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 justify-center items-center">
-                <div class="col-span-1">
-                    <span class="text-textcolor">{language.mainModel}</span>
+             <div data-part="modal-body" class="w-full grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 justify-center items-center">
+                <div data-part="modal-controls" class="col-span-1">
+                    <span data-part="modal-text" class="text-textcolor">{language.mainModel}</span>
                     <ModelList bind:value={DBState.db.aiModel} blankable excludesPrefix="plugin"/>
                 </div>
-                <div class="col-span-1">
-                    <span class="text-textcolor">{language.submodel}</span>
+                <div data-part="modal-controls" class="col-span-1">
+                    <span data-part="modal-text" class="text-textcolor">{language.submodel}</span>
                     <ModelList bind:value={DBState.db.subModel} blankable excludesPrefix="plugin"/>
                 </div>
-                <div class="col-span-1">
-                    <span class="text-textcolor">{language.longTermMemory}</span>
+                <div data-part="modal-controls" class="col-span-1">
+                    <span data-part="modal-text" class="text-textcolor">{language.longTermMemory}</span>
                     <ModelList bind:value={DBState.db.seperateModels.memory} blankable excludesPrefix="plugin"/>
                 </div>
-                <div class="col-span-1">
-                    <span class="text-textcolor">{language.translator}</span>
+                <div data-part="modal-controls" class="col-span-1">
+                    <span data-part="modal-text" class="text-textcolor">{language.translator}</span>
                     <ModelList bind:value={DBState.db.seperateModels.translate} blankable excludesPrefix="plugin"/>
                 </div>
-                <div class="col-span-1">
-                    <span class="text-textcolor">{language.emotionImage}</span>
+                <div data-part="modal-controls" class="col-span-1">
+                    <span data-part="modal-text" class="text-textcolor">{language.emotionImage}</span>
                     <ModelList bind:value={DBState.db.seperateModels.emotion} blankable excludesPrefix="plugin"/>
                 </div>
 
-                <div class="col-span-1">
-                    <span class="text-textcolor">{language.others}</span>
+                <div data-part="modal-controls" class="col-span-1">
+                    <span data-part="modal-text" class="text-textcolor">{language.others}</span>
                     <ModelList bind:value={DBState.db.seperateModels.otherAx} blankable excludesPrefix="plugin"/>
                 </div>
                 
@@ -136,7 +136,7 @@
                     bind:value={selectedParameterOption}
                     size="md"
                 />
-                <div class="w-full mt-4 flex flex-col">
+                <div data-part="modal-body" class="w-full mt-4 flex flex-col">
                     {#if selectedParameterOption === 'memory'}
                         <AllSeperateParameters bind:value={DBState.db.seperateParameters.memory} withImportExport paramKey="memory" />
                     {:else if selectedParameterOption === 'translate'}

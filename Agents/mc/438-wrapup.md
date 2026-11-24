@@ -54,3 +54,9 @@
 - Tag: decisions (lane A ruling, not a maintainer answer; PQ-4 was not put to the maintainer). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4164`, `MC-4165`.
 
 **What lane A ruled.** The code-block context menu built in `src/ts/observer.svelte.ts` gets chat parts (registry-only names, chat colours), because it only appears over chat messages and chat is the colour-ready area; it does not go to the popups area. Its hard-coded gray classes become theme classes (MC-4164). This is stage W3-7.
+
+### MC-4167 — #438 The two shared parameter panels get no parts; only EasyPanel's own elements do, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "No parts on them (Recommended)", PQ-W32-1 of the W3-2 plan). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4160`, `MC-4165`, `MC-3007`.
+
+**What the maintainer chose.** AllSeperateParameters and ClaudeThinkingSeparateParams get no theme parts in W3-2. They are shared with the Bot Settings page (the Settings closure reaches them through the custom component list), so a popups name there would also style that page. Only EasyPanel's own elements get parts. The two panels are deliberate skips, not omissions. Not chosen: parts on both panels with entries in the Settings census exemption list.

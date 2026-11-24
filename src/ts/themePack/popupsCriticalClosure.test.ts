@@ -18,7 +18,8 @@ const patternDir = path.join(root, 'src/lib/Nexus/pattern')
 const HARNESSES = new Set(['TaskToastHarness.svelte', 'TaskYieldHarness.svelte'])
 const OTHERS = ['AlertComp', 'ParkedReplyPrompt', 'PasswordPrompt', 'PeerConflicts', 'PresetBundlePrompt', 'SelectCharCard', 'SelectCharGrid', 'UpdateOfferPrompt']
 // Overlay components of the modal vocabulary (modal-*, memory-progress*, save-status-*); each stage that adds an overlay extends this list.
-const OVERLAY_FILES = ['src/lib/Others/PopupEditor.svelte', 'src/lib/Others/HypaV3Progress.svelte', 'src/lib/Others/SavePopupIcon.svelte', 'src/lib/Setting/listedPersona.svelte']
+const OVERLAY_FILES = ['src/lib/Others/PopupEditor.svelte', 'src/lib/Others/HypaV3Progress.svelte', 'src/lib/Others/SavePopupIcon.svelte', 'src/lib/Setting/listedPersona.svelte',
+    'src/lib/Others/BookmarkList.svelte', 'src/lib/Others/ProTools/EasyPanel.svelte', 'src/lib/Others/LoadoutModal.svelte', 'src/lib/Others/CustomSidebarConfig.svelte']
 const relative = (file: string): string => path.relative(root, file).split(path.sep).join('/')
 const files = [
     ...readdirSync(patternDir).filter((name) => name.endsWith('.svelte') && !HARNESSES.has(name)).map((name) => path.join(patternDir, name)),

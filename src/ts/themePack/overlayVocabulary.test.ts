@@ -4,6 +4,9 @@
 // protected-part row and the accepted `display:none` on a safe name (the base refuses both by membership). The W1-T5b reach-hiding row passes
 // on the base (display:none never yields the membership reason) and is acceptance on head: it kills a reach demotion. The census guards W1-T6a,
 // W1-T6b and W1-T6c pass before and after: they pin rules over names that the base does not have yet.
+// #438 W3-2 adds BookmarkList, EasyPanel, LoadoutModal and CustomSidebarConfig: the five new names (`modal-list` and the four identity roots) are
+// reach, so their W1-T4 rows and the W1-T5a rows fail by assertion on the base; their `display:none` rows pass on the base (membership refusal
+// never yields the allowlist reason) and are guards there, acceptance on head.
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -18,6 +21,7 @@ type NameClass = 'safe' | 'reach' | 'critical'
 const OVERLAY_NAMES: Readonly<Record<string, NameClass>> = {
     'modal-popup-editor': 'reach', 'modal-listed-persona': 'reach', 'modal-frame': 'reach', 'modal-header': 'reach', 'modal-title': 'safe', 'modal-controls': 'reach',
     'modal-field': 'reach', 'modal-action': 'reach', 'modal-close': 'reach', 'modal-body': 'reach', 'modal-text': 'safe', 'modal-footer': 'reach', 'modal-row': 'reach',
+    'modal-list': 'reach', 'modal-bookmark-list': 'reach', 'modal-easy-panel': 'reach', 'modal-loadout': 'reach', 'modal-custom-sidebar-config': 'reach',
     'memory-progress': 'reach', 'memory-progress-card': 'reach', 'memory-progress-text': 'safe', 'memory-progress-bar': 'safe', 'memory-progress-bar-fill': 'safe',
     'memory-progress-subtext': 'safe', 'memory-progress-pill': 'reach', 'memory-progress-mini': 'safe',
     'save-status-alert': 'critical', 'save-status-note': 'safe', 'save-status-saving': 'safe',
@@ -48,6 +52,11 @@ describe('W1-T5a a popups sheet may restyle the safe and reach overlay names', (
         '[data-part="modal-popup-editor"] [data-part="modal-title"]{letter-spacing:1px}',
         '[data-part="memory-progress-bar-fill"]{background:#7a1f5c}',
         '[data-part="save-status-note"]{padding:4px}',
+        '[data-part="modal-list"]{gap:8px}',
+        '[data-part="modal-loadout"] [data-part="modal-row"]{border-radius:8px}',
+        '[data-part="modal-easy-panel"] [data-part="modal-frame"]{background:#223344}',
+        '[data-part="modal-bookmark-list"] [data-part="modal-title"]{letter-spacing:1px}',
+        '[data-part="modal-custom-sidebar-config"] [data-part="modal-action"]{padding:6px}',
     ])('%s is accepted', (css) => {
         const { ok, why } = verdict(css)
         expect(ok, `${css} -> ${JSON.stringify(why)}`).toBe(true)
@@ -60,6 +69,13 @@ describe('W1-T5b a popups sheet can neither hide a reach overlay name nor style 
         expect(ok).toBe(false)
         expect(why.some((w) => /display: is not on the declaration allowlist for a surface that can contain or be a protected element/.test(w)), JSON.stringify(why)).toBe(true)
     })
+
+    it.each(['modal-list', 'modal-loadout', 'modal-easy-panel', 'modal-bookmark-list', 'modal-custom-sidebar-config'])(
+        'hiding the reach name %s is refused with the declaration-allowlist reason', (name) => {
+            const { ok, why } = verdict(`[data-part="${name}"]{display:none}`)
+            expect(ok).toBe(false)
+            expect(why.some((w) => /display: is not on the declaration allowlist for a surface that can contain or be a protected element/.test(w)), JSON.stringify(why)).toBe(true)
+        })
 
     it('hiding a safe name is accepted', () => {
         const { ok, why } = verdict('[data-part="modal-title"]{display:none}')
