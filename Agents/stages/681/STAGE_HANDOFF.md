@@ -17,12 +17,23 @@
     - F3..F5 editorial.
   - Round 2 (fresh opus-reviewer) [EDITORIAL]: passed.
   - Dispositions are recorded in MC-4137.
+- Lane A PR check (head `fe1e975d6`): [REJECT] on B1. The name field's composition gate was not registered with `registerStudioField`, so a held IME composition was not written on page hide (MC-1813).
+  - The fix registers the gate and adds lane A's probe P1 as a regression reproducer.
+  - In the same push: a history-focus reveal no longer saves the Display segment choice; a guard compares the registry focus parts with the rendered parts (H4 was no real mismatch); comment and test-label edits.
+  - A fresh Sonnet adversarial-reviewer approved the delta ([APPROVE], `s3a-rev3.md`).
 - Process deviation: the first coder ran its reproducers and mutants by swapping repository files and restoring them, against ownership.md. Both Gate 2 rounds reran the reproducers and mutants in scratch with in-memory substitution and found no residue: the tree and patch hashes matched.
 - Tests: targeted runs of `src/ts/studio`, `src/lib/Studio`, `src/ts/process`, `src/ts/themePack`, `src/App` and localeParity, all green in Gate 2 round 2. `pnpm check` has 0 errors. The full suite runs in PR CI.
 - Leftovers:
   - E2 (optional test, not done): three of the four Display text-field port pairings are not covered by a typing test (round-2 mutant r2M1 survived). The code was read correct.
   - E3 (optional test, not done): nothing tests the `live.name !== nameAtFocus` guard (mutant r2M3 survived). The code was read correct.
   - F3 (known limitation, accepted): a wrong-typed `newGenData` key is overwritten by the fill as classic does, and undo deletes it instead of restoring it.
+  - Known limitations accepted by lane A (MC-4137):
+    - `largePortrait` and `inlayViewScreen` have no `keepForeign`, so undo deletes a stored non-boolean value rather than restoring it.
+    - The per-character Display segment keys in `localStorage` are never removed.
+  - Known test gaps (surviving mutants from lane A's check):
+    - `buildScreenModeSwitch` ignoring a stored `inlayViewScreen: false`;
+    - a checkbox or select not reverting after a refused write.
+  - Lane A tracks the other unregistered single-line composition gates in #752.
 
 ## History-core slot
 

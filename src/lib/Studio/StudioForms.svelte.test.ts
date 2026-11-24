@@ -685,6 +685,24 @@ describe('the character form edits through the history service', () => {
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
     })
 
+    test('regression reproducer: a name composition still held at page hide is written (MC-1813)', async () => {
+        db.db.characters = [makeCharacter({ name: 'Alice' })]
+        makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        const field = nameField()
+        const before = live().name
+        expect(before).toBe('Alice')
+        field.dispatchEvent(new CompositionEvent('compositionstart'))
+        field.value = before + 'X'
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }))
+        flushSync()
+        expect(live().name).toBe(before)
+        window.dispatchEvent(new Event('pagehide'))
+        flushSync()
+        expect(live().name).toBe(before + 'X')
+    })
+
     test('typing lands in the character, marks it, records a step and moves the chip through pending to saved (T-UI2)', async () => {
         const rig = makeRig()
         mountInto(StudioCharacterForm, { chaId: 'A' })

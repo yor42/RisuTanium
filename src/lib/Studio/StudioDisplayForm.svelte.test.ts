@@ -61,6 +61,7 @@ import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, se
 import { createFakeClock, drainMicrotasks } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
 import { readDisplaySegment, writeDisplaySegment, type DisplaySegment } from '../../ts/studio/displaySegment'
+import { FIELD_PRESENTATION } from '../../ts/studio/history/fieldRegistry'
 import { modeDefaultOf } from '../../ts/studio/edit/screenModeFill'
 import { openStudio, resetStudioScreenForTests } from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
@@ -221,6 +222,19 @@ describe('A-T5: the screen panel gates what each mode shows', () => {
         if (mode === 'none') {
             const shown = Array.from(document.querySelectorAll('[data-part="studio-display-screen"] [data-part]')).map((element) => element.getAttribute('data-part'))
             expect(shown).toEqual(['studio-display-view-screen'])
+        }
+    })
+
+    // Compatibility guard: the part each text path's history focus names is the part its field renders.
+    test('the history focus part of every Display text field is the part the screen renders', async () => {
+        await show({ viewScreen: 'imggen', newGenData: { prompt: 'p', negative: 'n', instructions: 'i', emotionInstructions: 'e' } })
+        for (const path of ['newGenData.prompt', 'newGenData.negative', 'newGenData.instructions']) {
+            expect(text(path), path).not.toBeNull()
+        }
+        await show({ viewScreen: 'emotion', inlayViewScreen: true, newGenData: { prompt: 'p', negative: 'n', instructions: 'i', emotionInstructions: 'e' }, emotionImages: emotions })
+        expect(text('newGenData.emotionInstructions')).not.toBeNull()
+        for (const path of Object.keys(TEXT_PARTS) as ('newGenData.prompt' | 'newGenData.negative' | 'newGenData.instructions' | 'newGenData.emotionInstructions')[]) {
+            expect(FIELD_PRESENTATION[path].focus, path).toEqual({ form: 'studio-display-form', part: TEXT_PARTS[path] })
         }
     })
 

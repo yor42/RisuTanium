@@ -80,11 +80,12 @@
                 return null
         }
     }
-    // A history focus on a path of a segment that is not shown selects that segment, so its field is mounted.
+    // A history focus on a path of a segment that is not shown shows that segment, so its field is mounted. The reveal
+    // is transient: the remembered segment changes only when the user picks one.
     $effect(() => registerFieldReveal(async (path) => {
         const target = segmentOf(path)
         if (target === null || target === segment) return
-        choose(target)
+        segment = target
         await afterFlush()
     }))
 

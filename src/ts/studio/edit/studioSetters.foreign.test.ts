@@ -48,7 +48,8 @@ function setup(stored: unknown) {
     return { key, clock, service, value }
 }
 
-test('undo of an edit on a card-import-shaped prebuiltAssetCommand restores the stored empty string, redo writes true', async () => {
+// Regression reproducer: undo must restore a foreign stored value (not a coerced boolean) byte-for-byte.
+test('regression reproducer: undo of an edit on a card-import-shaped prebuiltAssetCommand restores the stored empty string, redo writes true', async () => {
     const { key, clock, service, value } = setup('')
     await service.whenReady(key)
     expect(value()).toBe('')
@@ -65,7 +66,8 @@ test('undo of an edit on a card-import-shaped prebuiltAssetCommand restores the 
     expect(value()).toBe(true)
 })
 
-test('undo on a character whose stored value is a genuine boolean still restores the boolean', async () => {
+// Compatibility guard: passes before and after; a genuine boolean keeps round-tripping as a boolean.
+test('compatibility guard: undo on a character whose stored value is a genuine boolean still restores the boolean', async () => {
     const { key, clock, service, value } = setup(false)
     await service.whenReady(key)
     expect(service.editField(key, 'prebuiltAssetCommand', true)).toMatchObject({ ok: true })

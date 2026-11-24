@@ -12,7 +12,7 @@
 // - A dot in a path or in a `property` is reserved for nested holder properties: a dotted path names container `a`,
 //   key `b` (for example `depth_prompt.prompt`), is held by `character` only and gives no `property`. Its container
 //   is one of CONTAINER_SEEDS, whose seeds are persisted facts (an undo replays a seed reading). An absent or null
-//   container reads as its seed, so a restore point captures `''` for the three container paths of an absent
+//   container reads as its seed, so a restore point captures `''` for every container path of an absent
 //   container. A `had: true` write creates the container from a fresh copy of the seed, and a container is never
 //   deleted. A restore onto an existing container writes into it, and a restore whose live reading already equals
 //   `before` writes nothing, so it creates no container. A session owner kind that lists a dotted path owns the seed

@@ -57,7 +57,7 @@ import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { ReloadGUIPointer } from 'src/ts/stores.svelte'
 import { resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
 import { allRowsGeometry, setWindowGeometryForTests } from 'src/ts/windowing/windowHost.svelte'
-import { writeDisplaySegment } from '../../ts/studio/displaySegment'
+import { readDisplaySegment, writeDisplaySegment } from '../../ts/studio/displaySegment'
 import { FIELD_PRESENTATION } from '../../ts/studio/history/fieldRegistry'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey, chatOwnerKey, moduleOwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -413,6 +413,8 @@ describe('F: focus lands on the first message an Undo, Redo or Restore put back 
         expect(box).not.toBeNull()
         expect(document.activeElement).toBe(box)
         expect(document.querySelector('[data-part="studio-segment"][data-seg="photo"]')?.getAttribute('aria-selected')).toBe('true')
+        // The reveal is transient: the remembered segment is still the one the user picked.
+        expect(readDisplaySegment('A')).toBe('assets')
         window.localStorage.clear()
     })
 

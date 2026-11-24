@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { onDestroy, untrack } from 'svelte'
+    import { onDestroy, onMount, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
+    import { registerStudioField } from '../../ts/studio/fieldFlush'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -116,6 +117,8 @@
         if ((result === null || !noted(result)) && nameInput) nameInput.value = live?.name ?? ''
     }
     const nameGate = createCompositionGate(commitName)
+    // A page hide writes a composition still held in the name field, as the long-text fields do.
+    onMount(() => registerStudioField(() => nameGate.flush()))
 
     function onNameInput(event: Event & { currentTarget: HTMLInputElement }): void {
         nameGate.input(event.currentTarget.value, event instanceof InputEvent && event.isComposing)
