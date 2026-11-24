@@ -40,6 +40,8 @@ vi.mock('src/ts/stores.svelte', async () => {
     }
 })
 vi.mock('src/ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
+// The list page reaches the import, export and MCP code, which this suite does not exercise; it has its own suite.
+vi.mock('./StudioModuleList.svelte', () => ({ default: () => {} }))
 vi.mock('src/ts/process/modules', () => ({ refreshModules: vi.fn() }))
 vi.mock('src/ts/process/moduleGuiBump', () => ({ bumpModuleGui: vi.fn() }))
 vi.mock('src/ts/process/moduleRefList', () => ({
@@ -62,11 +64,11 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import { resetStudioModuleLoadsForTests } from 'src/ts/studio/assets/moduleStubLoad.svelte'
 import { resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
 import { makeCharacter, makeInput, residentModule, studioDbOf, stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
-import { openStudio, resetStudioScreenForTests } from 'src/ts/studio/studioScreen.svelte'
+import { closeStudio, openStudio, resetStudioScreenForTests, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
 import { resetStudioHistoryAccessorForTests } from '../../ts/studio/history/studioHistoryService.svelte'
-import { moduleOwnerKey } from '../../ts/studio/history/ownerPhase'
+import { characterOwnerKey, moduleOwnerKey } from '../../ts/studio/history/ownerPhase'
 import { setSessionAssetSizeJobForTests } from './assets/StudioAssetList.svelte'
 import type { AssetSizeJob, StoredSize } from '../../ts/studio/assets/assetSizes'
 import { makeModuleRig, mountInto, part, ResizeObserverStub, settle, unmountAll, type ModuleRig } from './moduleFormRig.test-helpers'
@@ -101,6 +103,7 @@ function typeInto(element: HTMLTextAreaElement | HTMLInputElement, text: string)
     flushSync()
 }
 
+const input = (name: string) => part(name) as HTMLInputElement
 const text = () => document.body.textContent ?? ''
 const detailText = () => part('studio-detail-body')?.textContent ?? ''
 
@@ -211,7 +214,7 @@ describe('T5-SHARED: a shared id shows the given slot read-only', () => {
 })
 
 describe('T5-STUB: a module that is not loaded gets no form', () => {
-    test('a refused load leaves the not-loaded line and the link to the module list', async () => {
+    test('T9-STUB-LINK: a refused load leaves the not-loaded line and the link to the module list', async () => {
         loader.load.mockResolvedValue({ kind: 'refused' })
         db.db = fixtureDb([stubModule('S1')])
         makeModuleRig()
@@ -222,6 +225,169 @@ describe('T5-STUB: a module that is not loaded gets no form', () => {
         expect(part('studio-module-advanced-form')).toBeNull()
         expect(part('studio-module-html-form')).toBeNull()
         expect(part('studio-detail-notloaded')).not.toBeNull()
-        expect(part('studio-detail-classic')!.textContent?.trim()).toBe('studioOpenModules')
+        expect(part('studio-detail-classic')).toBeNull()
+        expect(part('studio-module-show-in-list')!.textContent?.trim()).toBe('studioShowInModuleList')
+    })
+})
+
+const twoModules = () => [residentModule('M1', { name: 'Mod One' }), residentModule('M2', { name: 'Mod Two' })]
+
+describe('T9-GONE-DELETE: a module that an outside removal takes away clears the form and drops what it held', () => {
+    // Regression reproducer: the form's unmount flush used to write M1 plus the draft over the slot that now holds M2.
+    test('a namespace draft that was typed and not committed is dropped, no other module changes, the notice says the module is gone', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        const other = db.db.modules[1]
+        const otherBefore = JSON.stringify(other)
+        typeInto(input('studio-module-namespace'), 'draft')
+        expect('namespace' in live()).toBe(false)
+
+        // The removal an import Undo makes: the row leaves the list and the list is reassigned.
+        db.db.modules.splice(0, 1)
+        db.db.modules = db.db.modules
+        await settle()
+        await settle()
+
+        expect(db.db.modules).toHaveLength(1)
+        expect(db.db.modules[0]).toBe(other)
+        expect(JSON.stringify(other)).toBe(otherBefore)
+        expect(rig!.service.view(M1).done).toHaveLength(0)
+        expect(studioScreen.selectedOwnerKey).toBeNull()
+        expect(studioScreen.notice).toBe('studioRefusalModuleGone')
+        expect(part('studio-module-advanced-form')).toBeNull()
+    })
+
+    // Regression reproducer: the form's unmount flush used to write the held name composition over the slot that now holds M2.
+    test('T9-GONE-DELETE-NAME: a name composition that is still held is dropped, the next module keeps its slot and content, no step is recorded for M1', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        const other = db.db.modules[1]
+        const otherBefore = JSON.stringify(other)
+        const field = input('studio-module-name')
+        field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        field.value = 'Mod 하'
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }))
+        flushSync()
+        expect(live().name).toBe('Mod One')
+
+        db.db.modules.splice(0, 1)
+        db.db.modules = db.db.modules
+        await settle()
+        await settle()
+
+        expect(db.db.modules).toHaveLength(1)
+        expect(db.db.modules[0]).toBe(other)
+        expect(JSON.stringify(other)).toBe(otherBefore)
+        expect((other as { name: string }).name).toBe('Mod Two')
+        expect(rig!.service.view(M1).done).toHaveLength(0)
+        expect(studioScreen.selectedOwnerKey).toBeNull()
+        expect(studioScreen.notice).toBe('studioRefusalModuleGone')
+    })
+
+    // Regression reproducer: a removal that reassigns a filtered list used to record a step into the detached array.
+    test('T9-GONE-DELETE-FILTER: a removal by a filtered reassignment records no step and leaves the next module as it was', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        const other = db.db.modules[1]
+        const otherBefore = JSON.stringify(other)
+        typeInto(input('studio-module-namespace'), 'draft')
+
+        db.db.modules = db.db.modules.filter((row) => row.id !== 'M1')
+        await settle()
+        await settle()
+
+        expect(rig!.service.view(M1).done).toHaveLength(0)
+        expect(db.db.modules).toHaveLength(1)
+        expect(db.db.modules[0]).toBe(other)
+        expect(JSON.stringify(other)).toBe(otherBefore)
+        expect(studioScreen.notice).toBe('studioRefusalModuleGone')
+    })
+})
+
+describe('T9-LEAVE-FLUSH and T9-HIDE-FLUSH: a deliberate leave or a page hide keeps the held namespace', () => {
+    // Compatibility guard (passes before and after): the final state only. It is one of the two guards of the form's registration.
+    test('T9-LEAVE-FLUSH: choosing another owner leaves the draft on M1 as one step', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        typeInto(input('studio-module-namespace'), 'draft')
+        expect('namespace' in live()).toBe(false)
+        setStudioSelection(characterOwnerKey('A'), 'toggles', null)
+        await settle()
+        await settle()
+        expect(live().namespace).toBe('draft')
+        expect(rig!.service.view(M1).done).toHaveLength(1)
+    })
+
+    // Regression reproducer: the form was not registered, so a page hide wrote nothing.
+    test('T9-HIDE-FLUSH: a page hide writes the draft as one step while the form stays', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        typeInto(input('studio-module-namespace'), 'draft')
+        expect('namespace' in live()).toBe(false)
+        window.dispatchEvent(new Event('pagehide'))
+        flushSync()
+        expect(live().namespace).toBe('draft')
+        expect(rig!.service.view(M1).done).toHaveLength(1)
+        expect(part('studio-module-advanced-form')).not.toBeNull()
+    })
+})
+
+describe('T9-NAME-FLUSH: a name composition that is still held is written by the form\'s registered flush', () => {
+    // T9-NAME-HIDE is a regression reproducer (the form was not registered, so a page hide wrote nothing). T9-NAME-LEAVE and
+    // T9-NAME-CLOSE are compatibility guards that pass before and after; each fails when the registered closure no longer
+    // flushes the name gate, because no other path writes the held composition before the form is gone.
+    function holdNameComposition(text: string): void {
+        const field = input('studio-module-name')
+        field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        field.value = text
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }))
+        flushSync()
+    }
+
+    test('T9-NAME-LEAVE: choosing another owner writes the held composition as one step', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        holdNameComposition('Mod 하')
+        expect(live().name).toBe('Mod One')
+        setStudioSelection(characterOwnerKey('A'), 'toggles', null)
+        await settle()
+        await settle()
+        expect(live().name).toBe('Mod 하')
+        expect(rig!.service.view(M1).done).toHaveLength(1)
+    })
+
+    test('T9-NAME-HIDE: a page hide writes the held composition while the form stays', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        holdNameComposition('Mod 하')
+        expect(live().name).toBe('Mod One')
+        window.dispatchEvent(new Event('pagehide'))
+        flushSync()
+        expect(live().name).toBe('Mod 하')
+        expect(rig!.service.view(M1).done).toHaveLength(1)
+        expect(part('studio-module-advanced-form')).not.toBeNull()
+    })
+
+    test('T9-NAME-CLOSE: closing the Studio writes the held composition', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        holdNameComposition('Mod 하')
+        expect(live().name).toBe('Mod One')
+        closeStudio()
+        await settle()
+        await settle()
+        expect(live().name).toBe('Mod 하')
+        expect(rig!.service.view(M1).done).toHaveLength(1)
+    })
+})
+
+describe('T9-SHOW-IN-LIST: a loaded module links to its row in the module list', () => {
+    // Regression reproducer: the button did not exist. The held draft is written by the selection change that opens the list.
+    test('the button writes the held namespace draft as one step before the selection becomes the list page', async () => {
+        const rig = await mountKind(twoModules(), 'advanced')
+        expect(part('studio-module-show-in-list')!.textContent?.trim()).toBe('studioShowInModuleList')
+        expect(part('studio-detail-classic')!.textContent?.trim()).toBe('studioOpenClassic')
+        typeInto(input('studio-module-namespace'), 'draft')
+        expect('namespace' in live()).toBe(false)
+        part('studio-module-show-in-list')!.click()
+        flushSync()
+        expect(studioScreen.selectedOwnerKey).toBe('list:modules')
+        expect(studioScreen.revealListRow).toBe(JSON.stringify(['m', 'M1', 0]))
+        await settle()
+        expect(live().namespace).toBe('draft')
+        expect(rig!.service.view(M1).done).toHaveLength(1)
+        expect(part('studio-module-advanced-form')).toBeNull()
     })
 })

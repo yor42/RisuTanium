@@ -350,13 +350,14 @@ describe('a module that is not loaded', () => {
         expect(rawRows()).toBeLessThanOrEqual(20)
     })
 
-    test('a refused load goes back to the stub note and the link to the Modules screen, after one request', async () => {
+    test('a refused load goes back to the stub note and the link to the module list, after one request', async () => {
         stubWorld()
         loader.load.mockResolvedValue({ kind: 'refused' })
         await show(S1)
         expect(loadingLine()).toBeNull()
         expect(part('studio-detail-notloaded')).not.toBeNull()
-        expect(part('studio-detail-classic')?.textContent?.trim()).toBe('studioOpenModules')
+        expect(part('studio-detail-classic')).toBeNull()
+        expect(part('studio-module-show-in-list')?.textContent?.trim()).toBe('studioShowInModuleList')
         expect(loader.load).toHaveBeenCalledTimes(1)
         expect(part('studio-module-asset-form')).toBeNull()
     })
@@ -381,7 +382,7 @@ describe('a module that is not loaded', () => {
         await show(S1)
         expect(loadingLine()).toBeNull()
         expect(part('studio-detail-notloaded')).not.toBeNull()
-        expect(part('studio-detail-classic')).not.toBeNull()
+        expect(part('studio-module-show-in-list')).not.toBeNull()
         vi.restoreAllMocks()
     })
 

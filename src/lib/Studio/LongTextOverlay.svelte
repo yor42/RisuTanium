@@ -40,6 +40,7 @@
     const NOTE_CLASS: Record<Note['note'], string> = {
         speaker: 'underline',
         notUsed: 'line-through',
+        decorator: 'text-[var(--studio-syn-decorator)]',
     }
 
     function segmentClass(segment: Segment): string {

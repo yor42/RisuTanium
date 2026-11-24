@@ -96,6 +96,7 @@ vi.mock('src/lib/Setting/Pages/Module/ModuleMenu.svelte', () => ({ default: () =
 //#endregion
 
 import { colorSchemeList, colorSchemePresets, updateColorScheme } from 'src/ts/gui/colorscheme'
+import { language } from 'src/lang'
 import { DBState } from 'src/ts/stores.svelte'
 import ModuleSettings from './ModuleSettings.svelte'
 
@@ -237,5 +238,27 @@ describe('G-2 and G-3: the amber globe hover', () => {
     test.each(colorSchemeList)('%s: without hover media a sticky :hover keeps the role colour', (name) => {
         applyScheme(name)
         expect(hexOf(painted(globe, { hovered: globe, hoverMedia: false }))).toBe(hexOf(painted(globe)))
+    })
+})
+
+// Regression reproducer (T9-GLOBAL-CLASSIC): the engine selects a module by its id or its namespace in the
+// integration string, and the page showed the amber state for a namespace only. Last in the file: it replaces
+// the database the mounted fixtures above read.
+describe('T9-GLOBAL-CLASSIC: a module listed in Module Integration by its id shows the amber state', () => {
+    test('the id alone turns the globe amber and gives it the integration description', () => {
+        DBState.db = {
+            modules: [makeModule('C'), makeModule('D')],
+            enabledModules: [],
+            moduleIntergration: 'id-C',
+        } as unknown as Database
+        const target = mountModules()
+        const listed = rowButtons(target, 'C')[0]
+        expect(listed.className).toContain('risu-state-amber')
+        const describedBy = listed.getAttribute('aria-describedby')
+        expect(describedBy).not.toBeNull()
+        expect(target.querySelector(`[id="${describedBy}"]`)?.textContent).toBe(language.moduleOnByIntegration)
+        const unlisted = rowButtons(target, 'D')[0]
+        expect(unlisted.className).not.toContain('risu-state-amber')
+        expect(unlisted.getAttribute('aria-describedby')).toBeNull()
     })
 })

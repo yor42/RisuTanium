@@ -48,6 +48,8 @@ vi.mock('../../ts/stores.svelte', () => ({
     get QuickSettings() { return QuickSettings },
 }))
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
+// The list page reaches the import, export and MCP code, which this suite does not exercise; it has its own suite.
+vi.mock('./StudioModuleList.svelte', () => ({ default: () => {} }))
 vi.mock('../../ts/process/moduleRefList', () => ({
     moduleListOf: (ids: string[]) => listerOver(db.db.modules)(ids),
     moduleRefIdsOf: () => db.db.modules.map((row) => row.id),
@@ -472,7 +474,8 @@ describe('4e link-outs from the detail', () => {
         expect(get(botMakerMode)).toBe(true)
     })
 
-    test('an unloaded module shows the stub fields only and links to Modules settings', async () => {
+    // T9-STUB-LINK
+    test('an unloaded module shows the stub fields only and links to the module list, not to Modules settings', async () => {
         setDb({}, true)
         openStudio({ owner: { type: 'module', id: 'stub' }, from: 'chat' }, null)
         show()
@@ -481,12 +484,26 @@ describe('4e link-outs from the detail', () => {
         flushSync()
         expect(part('studio-detail-title')?.textContent).toBe('Module stub')
         expect(part('studio-detail-text')).toBeNull()
-        expect(part('studio-detail-classic')?.textContent?.trim()).toBe('studioOpenModules')
-        part('studio-detail-classic')?.click()
+        expect(part('studio-detail-classic')).toBeNull()
+        expect(part('studio-module-show-in-list')?.textContent?.trim()).toBe('studioShowInModuleList')
+        part('studio-module-show-in-list')?.click()
         flushSync()
-        expect(get(SettingsMenuIndex)).toBe(14)
-        expect(get(settingsOpen)).toBe(true)
-        expect(get(studioOpen)).toBe(false)
+        expect(studioScreen.selectedOwnerKey).toBe('list:modules')
+        expect(studioScreen.revealListRow).toBe(JSON.stringify(['m', 'stub', 0]))
+        expect(get(settingsOpen)).toBe(false)
+        expect(get(SettingsMenuIndex)).toBe(-1)
+        expect(get(studioOpen)).toBe(true)
+    })
+
+    // T9-CLASSIC-KEEP: compatibility guard, passes before and after.
+    test('a loaded module keeps the classic link as the interim route', async () => {
+        setDb({}, true)
+        openStudio({ owner: { type: 'module', id: 'res' }, from: 'chat' }, null)
+        show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
+        expect(part('studio-detail-classic')?.textContent?.trim()).toBe('studioOpenClassic')
     })
 })
 
@@ -658,6 +675,17 @@ describe('a selected owner that leaves the model', () => {
         expect(part('studio-detail-title')).toBeNull()
     })
 
+    // Compatibility guard (T9-GONE-NOTFOUND): only a module owner gets the module-gone notice.
+    test('T9-GONE-NOTFOUND: a chat owner that vanishes still clears with studioNotFound, never the module notice', () => {
+        setDb({ chats: [makeChat({ id: 'chat-1', name: 'First chat' }), makeChat({ id: 'chat-2', name: 'Second chat' })] })
+        openStudio({ owner: { type: 'chat', id: 'chat-1' }, from: 'chat' }, null)
+        show()
+        db.db.characters[0].chatPage = 1
+        flushSync()
+        expect(studioScreen.selectedOwnerKey).toBeNull()
+        expect(studioScreen.notice).toBe('studioNotFound')
+        expect(studioScreen.notice).not.toBe('studioRefusalModuleGone')
+    })
     test('a selection that is still in the model is kept and raises no notice', () => {
         setDb({ chats: [makeChat({ id: 'chat-1', name: 'First chat' }), makeChat({ id: 'chat-2', name: 'Second chat' })] })
         openStudio({ owner: { type: 'character', id: 'cha-1' }, from: 'chat' }, null)

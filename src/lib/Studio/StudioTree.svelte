@@ -19,6 +19,7 @@
     import type { KindNode, OwnerModel, OwnerNode, StudioKind } from '../../ts/studio/ownerModel'
     import { ownerSourceFor } from '../../ts/studio/ownerSource.svelte'
     import {
+        MODULE_LIST_KEY,
         TREE_PAGE_SIZE,
         applyStudioTarget,
         groupRowId,
@@ -53,6 +54,8 @@
 
     const source = ownerSourceFor(() => studioScreen.chaId)
     const model = $derived(source.current.model)
+
+    const MODULE_LIST_ROW_ID = 'l:modules'
 
     // Only lorebooks and regex lists have rows below the kind; every other kind is one leaf.
     const LISTED_KINDS: readonly StudioKind[] = ['lore', 'regex']
@@ -149,6 +152,7 @@
         }
 
         const topCount = 1 + (current.chat ? 1 : 0)
+            + 1
             + (current.modules.length > 0 ? 1 : 0)
             + (current.otherModules.length > 0 ? 1 : 0)
             + (current.presets.length + current.otherPresets.length > 0 ? 1 : 0)
@@ -157,6 +161,11 @@
         let position = 0
         pushOwner(current.character, 1, null, topCount, ++position)
         if (current.chat) pushOwner(current.chat, 1, null, topCount, ++position)
+        // Always present, even with no module: the module groups are hidden when empty, and create and import must stay reachable.
+        const listRow = base(MODULE_LIST_ROW_ID, 'group', 1, null, topCount, ++position, language.studioModuleList)
+        listRow.ownerKey = MODULE_LIST_KEY
+        listRow.selected = studioScreen.selectedOwnerKey === MODULE_LIST_KEY
+        rows.push(listRow)
         if (current.modules.length > 0) {
             pushGroup('modules', language.studioOwnerModules, 1, null, topCount, ++position, (id) => pushOwnerPage(current.modules, id, 2))
         }
