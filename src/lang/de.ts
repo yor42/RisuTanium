@@ -2614,6 +2614,7 @@ export const languageGerman = {
     "studioNotFound": "Nicht gefunden",
     "studioDeepKindFallback": (owner: string) => `Diese Art gibt es in ${owner} nicht. Die oberste Ebene von ${owner} wurde geöffnet`,
     "studioDeepItemMissing": (kind: string) => `Dieses Element wurde nicht gefunden. ${kind} wurde geöffnet`,
+    "studioLoreEntryGone": "Dieser Eintrag ist nicht mehr in diesem Lore-Buch vorhanden. Die Liste wird angezeigt.",
     "studioNoticeDismiss": "Schließen",
     "studioFormLoading": "Verlauf wird geladen…",
     "studioGreetingsEmpty": "Noch keine alternativen ersten Nachrichten",

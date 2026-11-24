@@ -2749,6 +2749,7 @@ export const languageJapanese = {
     studioNotFound: "見つかりません",
     studioDeepKindFallback: (owner: string) => `その種類は${owner}にありません。${owner}のルートを開きました`,
     studioDeepItemMissing: (kind: string) => `その項目は見つかりません。${kind}を開きました`,
+    studioLoreEntryGone: "そのエントリはこのロアブックにはもうありません。一覧を表示します。",
     studioNoticeDismiss: "閉じる",
     studioFormLoading: "履歴を読み込み中…",
     studioGreetingsEmpty: "代替の最初のメッセージはまだありません",

@@ -2612,6 +2612,7 @@ export const languageKorean = {
     "studioNotFound": "찾을 수 없음",
     "studioDeepKindFallback": (owner: string) => `${owner}에 해당 종류가 없습니다. ${owner}의 최상위를 열었습니다`,
     "studioDeepItemMissing": (kind: string) => `해당 항목을 찾을 수 없습니다. ${kind}을(를) 열었습니다`,
+    "studioLoreEntryGone": "해당 항목이 이 로어북에 더 이상 없습니다. 목록을 표시합니다.",
     "studioNoticeDismiss": "닫기",
     "studioFormLoading": "기록을 불러오는 중…",
     "studioGreetingsEmpty": "추가 첫 메시지가 아직 없습니다",

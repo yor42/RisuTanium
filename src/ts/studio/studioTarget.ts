@@ -1,4 +1,4 @@
-// Target grammar of a Studio visit: `owner=<type>:<id>[&kind=<kind>][&item=<id>][&from=<origin>]`.
+// Target grammar of a Studio visit: `owner=<type>:<id>[&kind=<kind>][&item=<id>][&entry=<id>][&from=<origin>]`.
 // Pure: no store, no DOM. Whether the owner, kind and item exist is decided against the owner model.
 
 export type StudioOwnerType = 'character' | 'chat' | 'preset' | 'module' | 'plugin'
@@ -14,6 +14,8 @@ export interface StudioTarget {
     /** Alias-normalised kind name. A name no owner supports stays as written; resolving it is the owner model's job. */
     kind?: string
     item?: string
+    /** A lorebook entry's own id; kept only with an owner and the `lore` kind. Wins over `item` when both are given. */
+    entry?: string
     from?: StudioFrom
 }
 
@@ -52,9 +54,9 @@ function decode(value: string): string | null {
 
 /**
  * Parses a target query (a leading `?` is allowed). Unknown keys and an unknown `from` are ignored, the
- * first occurrence of a key wins, and `kind` or `item` without an `owner` are dropped. A broken escape, an
- * `owner` that is not `<known type>:<non-empty id>` (the id keeps any further colons) or an empty `kind`
- * or `item` value is malformed.
+ * first occurrence of a key wins, and `kind` or `item` without an `owner` are dropped, as is `entry` without an
+ * `owner` and the `lore` kind. A broken escape, an `owner` that is not `<known type>:<non-empty id>` (the id
+ * keeps any further colons) or an empty `kind`, `item` or `entry` value is malformed.
  */
 export function parseStudioTarget(input: string): StudioTarget | StudioTargetError {
     const query = input.startsWith('?') ? input.slice(1) : input
@@ -91,6 +93,11 @@ export function parseStudioTarget(input: string): StudioTarget | StudioTargetErr
     if (item !== undefined) {
         if (item === '') return { error: 'malformed' }
         target.item = item
+    }
+    const entry = params.get('entry')
+    if (entry !== undefined) {
+        if (entry === '') return { error: 'malformed' }
+        if (target.kind === 'lore') target.entry = entry
     }
     return target
 }
