@@ -233,6 +233,45 @@ describe('the six body getters skip a stub', () => {
     })
 })
 
+describe('the lorebook owners and starts', () => {
+    const withLorebook = (id: string, lorebook: unknown): Plain => ({ ...residentModule(id), lorebook })
+
+    test('R lorebook-owners-and-starts-count-the-joined-elements-of-an-object-lorebook', () => {
+        installDb([
+            withLorebook('m1', [lorebookEntry, lorebookEntry]),
+            withLorebook('m2', { ...lorebookEntry, comment: 'single' }),
+            withLorebook('m3', [lorebookEntry]),
+        ])
+        const owners: string[] = []
+        const starts: number[] = []
+        expect(modulesApi.getModuleLorebooks(undefined, owners, starts)).toHaveLength(4)
+        expect(owners).toEqual(['m1', 'm1', 'm2', 'm3'])
+        expect(starts).toEqual([0, 0, 2, 3])
+    })
+
+    test('R lorebook-owners-and-starts-count-a-string-lorebook-as-one-element', () => {
+        installDb([
+            withLorebook('m1', [lorebookEntry]),
+            withLorebook('m2', 'not a list'),
+            withLorebook('m3', [lorebookEntry, lorebookEntry]),
+        ])
+        const owners: string[] = []
+        const starts: number[] = []
+        expect(modulesApi.getModuleLorebooks(undefined, owners, starts)).toHaveLength(4)
+        expect(owners).toEqual(['m1', 'm2', 'm3', 'm3'])
+        expect(starts).toEqual([0, 1, 2, 2])
+    })
+
+    test('G lorebook-owners-skip-a-stub-and-a-module-without-a-lorebook', () => {
+        installDb([wellFormedStub('s1'), withLorebook('m1', undefined), withLorebook('m2', [lorebookEntry])])
+        const owners: string[] = []
+        const starts: number[] = []
+        expect(modulesApi.getModuleLorebooks(undefined, owners, starts)).toHaveLength(1)
+        expect(owners).toEqual(['m2'])
+        expect(starts).toEqual([0])
+    })
+})
+
 describe('the module list memo', () => {
     test('G memo-still-hits-on-repeated-call', () => {
         installDb([residentModule('m1')])

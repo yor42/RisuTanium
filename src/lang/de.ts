@@ -2614,6 +2614,7 @@ export const languageGerman = {
     "studioNotFound": "Nicht gefunden",
     "studioDeepKindFallback": (owner: string) => `Diese Art gibt es in ${owner} nicht. Die oberste Ebene von ${owner} wurde geöffnet`,
     "studioDeepItemMissing": (kind: string) => `Dieses Element wurde nicht gefunden. ${kind} wurde geöffnet`,
+    "studioLoreEntryGone": "Dieser Eintrag ist nicht mehr in diesem Lore-Buch vorhanden. Die Liste wird angezeigt.",
     "studioNoticeDismiss": "Schließen",
     "studioFormLoading": "Verlauf wird geladen…",
     "studioGreetingsEmpty": "Noch keine alternativen ersten Nachrichten",
@@ -3895,7 +3896,7 @@ export const languageGerman = {
     },
     "themePackRowTitle": "Design-Paket",
     "themePackRowHelp": (toggle: string, classicPage: string, newPage: string, newSection: string) =>
-        `Installieren Sie eine .risutheme-Datei, um den neuen Chatbildschirm neu zu gestalten. Sie wird nur angezeigt, wenn „${toggle}“ eingeschaltet ist (unter ${classicPage} im klassischen Einstellungsbildschirm oder unter ${newPage} > ${newSection} im neuen) und das Standard-Chat-Design verwendet wird. Andere Bildschirme, der klassische Chatbildschirm, Gruppenchats und der Playground behalten das integrierte Aussehen. Eigenes CSS wird weiterhin zusätzlich angewendet.`,
+        `Installieren Sie eine .risutheme-Datei, um die neuen Bildschirme neu zu gestalten: Chat, Studio, Einstellungen und Startseite sowie die Popups darüber. Chat, Studio und Einstellungen zeigen ein Paket nur an, solange ihr eigener Vorschau-Schalter eingeschaltet ist; für den Chat ist das „${toggle}“ (unter ${classicPage} im klassischen Einstellungsbildschirm oder unter ${newPage} > ${newSection} im neuen) zusammen mit dem Standard-Chat-Design. Die Startseite braucht keinen Schalter. Farben gelten nur im Chatbildschirm; die anderen Bildschirme übernehmen nur die Formen eines Pakets. Die klassischen Bildschirme, Gruppenchats und der Playground behalten das integrierte Aussehen. Eigenes CSS wird weiterhin zusätzlich angewendet.`,
     "themePackRowLoadFailed": "Die Einstellungen des Design-Pakets konnten nicht geladen werden. Schließen Sie die Einstellungen und öffnen Sie sie erneut.",
     "themePackActiveLegend": "Aktives Design-Paket",
     "themePackNone": "Keines",

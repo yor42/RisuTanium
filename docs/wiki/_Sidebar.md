@@ -50,6 +50,7 @@
   - [[Settings Persona]]
   - [[Settings Other Bots]]
   - [[Settings Display]]
+  - [[Theme Packs]]
   - [[Settings Language]]
   - [[Settings Accessibility]]
   - [[Settings Plugins]]

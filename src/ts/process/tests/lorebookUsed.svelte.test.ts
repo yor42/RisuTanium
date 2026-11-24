@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
     },
     moduleLore: [] as unknown[],
     moduleOwners: [] as string[],
+    moduleStarts: [] as number[],
 }))
 
 vi.mock('../../stores.svelte', async () => {
@@ -46,8 +47,9 @@ vi.mock('../../util', () => ({
 vi.mock('../../parser/parser.svelte', () => ({ risuChatParser: vi.fn((text: string) => text) }))
 vi.mock('../../tokenizer', () => ({ tokenize: async (text: string) => text.length }))
 vi.mock('../modules', () => ({
-    getModuleLorebooks: vi.fn((_subject: unknown, owners?: string[]) => {
+    getModuleLorebooks: vi.fn((_subject: unknown, owners?: string[], starts?: number[]) => {
         owners?.push(...h.moduleOwners)
+        starts?.push(...h.moduleStarts)
         return h.moduleLore
     }),
 }))
@@ -102,12 +104,14 @@ const byPlace = (a: { source: string, index: number }, b: { source: string, inde
 beforeEach(() => {
     h.moduleLore = []
     h.moduleOwners = []
+    h.moduleStarts = []
 })
 
 describe('used entries', () => {
     test('regression reproducer: names each sent entry by source, owner and index within its own list', async () => {
         h.moduleLore = [entry('nothing', 'module miss'), entry('dragon', 'module hit', { comment: 'Module dragon' })]
         h.moduleOwners = ['mod-a', 'mod-b']
+        h.moduleStarts = [0, 1]
         const subject = scene(
             [entry('unmatched', 'char miss'), entry('castle', 'char hit', { comment: '' })],
             [entry('dragon', 'chat hit', { comment: 'Chat dragon' })],
@@ -116,7 +120,7 @@ describe('used entries', () => {
         expect([...result.used].sort(byPlace)).toEqual([
             { source: 'character', ownerId: 'cha-1', index: 1, name: 'castle' },
             { source: 'chat', ownerId: 'chat-1', index: 0, name: 'Chat dragon' },
-            { source: 'module', ownerId: 'mod-b', index: 1, name: 'Module dragon' },
+            { source: 'module', ownerId: 'mod-b', index: 0, name: 'Module dragon' },
         ])
         expect(result.actives).toHaveLength(3)
     })
@@ -149,5 +153,53 @@ describe('used entries', () => {
         const subject = scene([], [])
         const result = await loadLoreBookV3Prompt(subject)
         expect(result.used).toEqual([{ source: 'module', ownerId: '', index: 0, name: 'Module dragon' }])
+    })
+
+    test('regression reproducer: a module entry is named by its position inside its own module, not the joined list', async () => {
+        h.moduleLore = [
+            entry('nothing', 'a miss'),
+            entry('castle', 'a hit', { comment: 'A castle' }),
+            entry('nothing', 'b miss'),
+            entry('dragon', 'b hit', { comment: 'B dragon' }),
+        ]
+        h.moduleOwners = ['mod-a', 'mod-a', 'mod-b', 'mod-b']
+        h.moduleStarts = [0, 0, 2, 2]
+        const result = await loadLoreBookV3Prompt(scene([], []))
+        expect([...result.used].sort((a, b) => a.ownerId.localeCompare(b.ownerId))).toEqual([
+            { source: 'module', ownerId: 'mod-a', index: 1, name: 'A castle' },
+            { source: 'module', ownerId: 'mod-b', index: 1, name: 'B dragon' },
+        ])
+    })
+})
+
+describe('used entry ids', () => {
+    // Producer-shaped entries: addLorebook gives none, an import or Studio write gives a string id.
+    test('an entry with a non-empty string id carries it, on every source', async () => {
+        h.moduleLore = [entry('dragon', 'module hit', { id: 'm-id' })]
+        h.moduleOwners = ['mod-a']
+        h.moduleStarts = [0]
+        const subject = scene(
+            [entry('castle', 'char hit', { id: 'c-id' })],
+            [entry('dragon', 'chat hit', { id: 'k-id' })],
+        )
+        const result = await loadLoreBookV3Prompt(subject)
+        expect([...result.used].sort(byPlace)).toEqual([
+            { source: 'character', ownerId: 'cha-1', index: 0, name: 'castle', entryId: 'c-id' },
+            { source: 'chat', ownerId: 'chat-1', index: 0, name: 'dragon', entryId: 'k-id' },
+            { source: 'module', ownerId: 'mod-a', index: 0, name: 'dragon', entryId: 'm-id' },
+        ])
+    })
+
+    test('an empty, numeric or missing id leaves the key off', async () => {
+        h.moduleLore = [entry('dragon', 'module hit', { id: 7 })]
+        h.moduleOwners = ['mod-a']
+        h.moduleStarts = [0]
+        const subject = scene(
+            [entry('castle', 'char hit', { id: '' })],
+            [entry('dragon', 'chat hit')],
+        )
+        const result = await loadLoreBookV3Prompt(subject)
+        for (const used of result.used) expect(Object.keys(used), used.source).not.toContain('entryId')
+        expect(result.used).toHaveLength(3)
     })
 })

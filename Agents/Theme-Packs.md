@@ -1,6 +1,15 @@
 # Theme packs: reference for the UI overhaul's theming contract
 
-Working reference, 2026-10-27, lane A. The decisions are the original entries in [Maintainer-Context](Maintainer-Context.md); this file holds the data they point to (the idea list, the capability matrix, the font tables). If this file and an `MC-` entry disagree, the entry wins. Nothing here authorizes application code, a commit or a push.
+Working reference, 2026-10-27, lane A; status section added 2026-11-24 (#438 wrap-up, MC-4162). The decisions are the original entries in [Maintainer-Context](Maintainer-Context.md); this file holds the data they point to (the idea list, the capability matrix, the font tables). If this file and an `MC-` entry disagree, the entry wins. Nothing here authorizes application code, a commit or a push.
+
+## Status 2026-11-24
+
+What the build does today, read from `src/ts/themePack` on this date. The user-facing detail is in [THEMING.md](../docs/design/THEMING.md) ("What a pack covers today") and the wiki page Theme-Packs.
+
+- **Five areas.** A pack has up to five area sheets that are judged and applied: `chat.css`, `studio.css`, `settings.css`, `home.css` and `popups.css`. Other `<name>.css` files (for example `sidebar.css`) are kept with the pack, not judged and not applied (MC-4161 supersedes the MC-3124 refusal, which was never built). A pack needs at least one of chat, studio, settings or home; `popups.css` alone is refused (MC-3123).
+- **Held colours.** Only the chat screen applies a pack's colours. Studio, Settings, Home and popups apply the shape part only; their colours are kept with the pack and the install says so (MC-3121, MC-3125).
+- **Not built.** Pack effects (transitions, transforms, animations and `@keyframes`, filters and blur, layering) are planned as #751 before the effect-based packs of #654 (MC-4149). The reduced-effects fallback of MC-3010 has no mechanism yet. Overlays without theme parts (11 App-level overlays plus those found below App level, the code-block menu and SavePopupIcon; PopupList exempt) are planned (MC-4160, MC-4164, MC-4165, MC-4166), as are the chat sidebar's missing parts (MC-4161). The four built-in packs are chat-only; #654 rebuilds them (MC-3871).
+- **Acceptance wording.** #438 reads "when the new screens are on" (MC-4162).
 
 ## Purpose
 
@@ -52,9 +61,9 @@ Counts: 5 acceptance (1, 5, 7, 13, 14), 10 gallery (2, 3, 6, 8, 9, 10, 12, 15, 1
 
 ## Capability matrix
 
-Lane A, 2026-10-27. Marks: ● strong, ○ light, - not used. Text after a mark qualifies it. Row numbers match the idea list above.
+Lane A, 2026-10-27; this is the design target, not what the build supports (see Status 2026-11-24). Marks: ● strong, ○ light, - not used. Text after a mark qualifies it. Row numbers match the idea list above.
 
-| # | Pack | Colour | Font | Corners | Density | Blur / transparency | Motion | Part layout | Decoration | Texture image |
+| # | Pack | Colour | Font | Corners | Density | Blur / transparency (not available yet, #751) | Motion (not available yet, #751) | Part layout | Decoration | Texture image |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 | Banana Cocoa | ● | ○ | ● | ○ | - | - | ● messenger | ○ | - |
 | 2 | Coordinated Blue | ● | ○ | ○ | ● | - | - | ○ sidebars | - | - |
@@ -93,7 +102,7 @@ The maintainer's eight answers are quoted verbatim in `MC-695`; the rules below 
 3. **Free packs:** packs bundled with the app must be free. Packs distributed separately are not restricted by this rule.
 4. **Size:** there is no size cap. Importing an exceptionally large pack shows a warning first. The threshold for "exceptionally large" is not decided: TODO(evidence).
 5. **Images:** packs may carry image assets, such as textures.
-6. **Blur:** every pack that uses blur or transparency effects ships a reduced-effects fallback.
+6. **Blur:** every pack that uses blur or transparency effects ships a reduced-effects fallback. As of 2026-11-24 no fallback mechanism exists: packs cannot use blur at all yet, and the mechanism is planned with the effects in #751 (MC-4149, MC-3010).
 7. **Light and dark:** a pack may be light-only or dark-only. The theme picker shows which modes a pack supports.
 8. **Game fonts:** licence-check the fonts fans believe each game uses, and pick from the compatible guesses. Use a generic fallback only when none is compatible.
 

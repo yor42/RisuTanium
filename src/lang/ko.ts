@@ -2612,6 +2612,7 @@ export const languageKorean = {
     "studioNotFound": "찾을 수 없음",
     "studioDeepKindFallback": (owner: string) => `${owner}에 해당 종류가 없습니다. ${owner}의 최상위를 열었습니다`,
     "studioDeepItemMissing": (kind: string) => `해당 항목을 찾을 수 없습니다. ${kind}을(를) 열었습니다`,
+    "studioLoreEntryGone": "해당 항목이 이 로어북에 더 이상 없습니다. 목록을 표시합니다.",
     "studioNoticeDismiss": "닫기",
     "studioFormLoading": "기록을 불러오는 중…",
     "studioGreetingsEmpty": "추가 첫 메시지가 아직 없습니다",
@@ -3892,7 +3893,7 @@ export const languageKorean = {
     },
     "themePackRowTitle": "테마 팩",
     "themePackRowHelp": (toggle: string, classicPage: string, newPage: string, newSection: string) =>
-        `.risutheme 파일을 설치해 새 채팅 화면의 스타일을 바꿀 수 있어요. "${toggle}"을(를) 켠 상태(클래식 설정 화면에서는 ${classicPage}, 새 설정 화면에서는 ${newPage} > ${newSection})이고 표준 채팅 테마를 쓸 때만 표시돼요. 다른 화면, 클래식 채팅 화면, 그룹 채팅, 플레이그라운드는 기본 모양을 그대로 유지해요. 커스텀 CSS는 그 위에 계속 적용돼요.`,
+        `.risutheme 파일을 설치해 새 화면(채팅, 스튜디오, 설정, 홈, 그 위에 뜨는 팝업)의 스타일을 바꿀 수 있어요. 채팅, 스튜디오, 설정은 각자의 미리 보기 스위치가 켜져 있을 때만 팩이 표시돼요. 채팅의 경우 "${toggle}"(클래식 설정 화면에서는 ${classicPage}, 새 설정 화면에서는 ${newPage} > ${newSection})을(를) 켜고 표준 채팅 테마를 함께 써야 해요. 홈은 스위치가 필요 없어요. 색상은 채팅 화면에만 적용되고, 다른 화면은 팩의 모양만 따라가요. 클래식 화면, 그룹 채팅, 플레이그라운드는 기본 모양을 그대로 유지해요. 커스텀 CSS는 그 위에 계속 적용돼요.`,
     "themePackRowLoadFailed": "테마 팩 설정을 불러올 수 없어요. 설정을 닫았다가 다시 열어 주세요.",
     "themePackActiveLegend": "사용 중인 테마 팩",
     "themePackNone": "없음",

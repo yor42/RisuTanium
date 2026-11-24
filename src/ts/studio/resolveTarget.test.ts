@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'vitest'
+import type { loreBook } from '../storage/database.svelte'
 import { buildOwnerModel } from './ownerModel'
 import { resolveStudioTarget } from './resolveTarget'
 import { parseStudioTarget } from './studioTarget'
-import { loreEntries, makeCharacter, makeInput, makePlugin, makePreset, regexEntries, residentModule, stubModule } from './studioFixtures.test-helpers'
+import { liveLoreListOf } from './loreEntryLookup'
+import type { StudioOwnerType } from './studioTarget'
+import { loreEntries, makeCharacter, makeChat, makeInput, makePlugin, makePreset, regexEntries, residentModule, stubModule } from './studioFixtures.test-helpers'
 
 const model = buildOwnerModel(makeInput({
     character: makeCharacter({ globalLore: loreEntries(3), customscript: regexEntries(1) }),
@@ -78,5 +81,51 @@ describe('3k target resolution and notices', () => {
 
     test('an item of another kind is not accepted under the named kind', () => {
         expect(resolve('owner=character:cha-1&kind=regex&item=cha-1/lore:0').notice).toMatchObject({ key: 'studioDeepItemMissing', kind: 'regex' })
+    })
+})
+
+describe('3k lorebook entry by id', () => {
+    const named = (id: string, comment: string): loreBook => ({ id, comment, key: `${comment}-key`, secondkey: '', insertorder: 100, content: '', mode: 'normal', alwaysActive: false, selective: false })
+    const character = makeCharacter({
+        globalLore: [named('g1', 'Castle'), named('shared', 'Twin A'), named('shared', 'Twin B')],
+        chats: [makeChat({ id: 'chat-1', name: 'First chat', localLore: [named('shared', 'Chat twin'), named('only-chat', 'Chat only')] })],
+    })
+    const modules = [residentModule('m1', { lorebook: [named('x', 'Mod A'), named('y', 'Mod B')] })]
+    const idModel = buildOwnerModel(makeInput({ character, modules, enabledModules: ['m1'] }))
+    const loreOf = (owner: { type: StudioOwnerType, id: string }) => liveLoreListOf(owner, character, modules)
+    const resolveId = (query: string, reader: ((owner: { type: StudioOwnerType, id: string }) => unknown) | null = loreOf) =>
+        resolveStudioTarget(idModel, parseStudioTarget(query), reader ?? undefined)
+    const gone = (key: string) => ({ ownerKey: key, kind: 'lore', itemId: null, notice: { key: 'studioLoreEntryGone' } })
+
+    test('regression reproducer: the entry opens at its present index, after a reorder or a rename', () => {
+        expect(resolveId('owner=character:cha-1&kind=lore&entry=g1')).toMatchObject({ kind: 'lore', itemId: 'cha-1/lore:0', notice: null })
+        const moved = makeCharacter({ globalLore: [named('a', 'New first'), named('shared', 'Twin A'), named('g1', 'Renamed castle')] })
+        const movedModel = buildOwnerModel(makeInput({ character: moved }))
+        const result = resolveStudioTarget(movedModel, parseStudioTarget('owner=character:cha-1&kind=lore&entry=g1'), (owner) => liveLoreListOf(owner, moved, []))
+        expect(result).toMatchObject({ kind: 'lore', itemId: 'cha-1/lore:2', notice: null })
+    })
+
+    test('the entry is looked up in the owner list the target names, a chat or a module', () => {
+        expect(resolveId('owner=chat:chat-1&kind=lore&entry=only-chat')).toMatchObject({ itemId: 'chat-1/lore:1', notice: null })
+        expect(resolveId('owner=module:m1&kind=lore&entry=y')).toMatchObject({ itemId: 'm1/lore:1', notice: null })
+    })
+
+    test('regression reproducer: the entry id wins over a stale item index', () => {
+        expect(resolveId('owner=character:cha-1&kind=lore&item=cha-1/lore:2&entry=g1')).toMatchObject({ itemId: 'cha-1/lore:0', notice: null })
+    })
+
+    test('regression reproducer: a gone, shared or foreign id opens the list with the entry-gone notice', () => {
+        expect(resolveId('owner=character:cha-1&kind=lore&entry=vanished')).toEqual(gone('character:cha-1'))
+        expect(resolveId('owner=character:cha-1&kind=lore&entry=shared')).toEqual(gone('character:cha-1'))
+        expect(resolveId('owner=character:cha-1&kind=lore&entry=only-chat')).toEqual(gone('character:cha-1'))
+        expect(resolveId('owner=module:m1&kind=lore&entry=g1')).toEqual(gone('module:m1'))
+    })
+
+    test('the same id in a character entry and in its chat link does not collide', () => {
+        expect(resolveId('owner=chat:chat-1&kind=lore&entry=shared')).toMatchObject({ itemId: 'chat-1/lore:0', notice: null })
+    })
+
+    test('regression reproducer: with no reader the entry cannot be found and the list opens with the notice', () => {
+        expect(resolveId('owner=character:cha-1&kind=lore&entry=g1', null)).toEqual(gone('character:cha-1'))
     })
 })

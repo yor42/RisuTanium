@@ -956,7 +956,12 @@ export function getModules(subject?: RunSubject){
 // malformed stub): a stub's body is never read until the loader has replaced the slot. getModules itself still
 // returns stubs, because callers read their id, namespace and icon flags.
 /** With `owners`, one module id is pushed per returned entry, in the same order. */
-export function getModuleLorebooks(subject?: RunSubject, owners?: string[]) {
+/**
+ * `owners` and `starts` are filled per element of the returned list: the id of the module that element came from, and
+ * the list position where that module's elements begin (so `index - starts[index]` is the position inside its module).
+ * A lorebook that is not an array joins as one element whatever its shape.
+ */
+export function getModuleLorebooks(subject?: RunSubject, owners?: string[], starts?: number[]) {
     const modules = getModules(subject)
     let lorebooks: loreBook[] = []
     for (const module of modules) {
@@ -964,11 +969,12 @@ export function getModuleLorebooks(subject?: RunSubject, owners?: string[]) {
             continue
         }
         if (module.lorebook) {
+            const before = lorebooks.length
             lorebooks = lorebooks.concat(module.lorebook)
-            if(owners){
-                for(let i = 0; i < module.lorebook.length; i++){
-                    owners.push(module.id)
-                }
+            const added = lorebooks.length - before
+            for(let i = 0; i < added; i++){
+                owners?.push(module.id)
+                starts?.push(before)
             }
         }
     }

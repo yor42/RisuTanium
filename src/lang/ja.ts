@@ -2749,6 +2749,7 @@ export const languageJapanese = {
     studioNotFound: "見つかりません",
     studioDeepKindFallback: (owner: string) => `その種類は${owner}にありません。${owner}のルートを開きました`,
     studioDeepItemMissing: (kind: string) => `その項目は見つかりません。${kind}を開きました`,
+    studioLoreEntryGone: "そのエントリはこのロアブックにはもうありません。一覧を表示します。",
     studioNoticeDismiss: "閉じる",
     studioFormLoading: "履歴を読み込み中…",
     studioGreetingsEmpty: "代替の最初のメッセージはまだありません",
@@ -4035,7 +4036,7 @@ export const languageJapanese = {
     },
     themePackRowTitle: "テーマパック",
     themePackRowHelp: (toggle: string, classicPage: string, newPage: string, newSection: string) =>
-        `.risutheme ファイルをインストールして、新しいチャット画面の見た目を変更します。「${toggle}」をオンにし（従来の設定画面では${classicPage}、新しい設定画面では${newPage} > ${newSection}）、標準のチャットテーマを使用している場合にのみ表示されます。その他の画面、従来のチャット画面、グループチャット、プレイグラウンドは組み込みの外観のままです。カスタムCSSは引き続きその上に適用されます。`,
+        `.risutheme ファイルをインストールして、新しい画面（チャット、スタジオ、設定、ホーム、およびその上のポップアップ）の見た目を変更します。チャット、スタジオ、設定は、それぞれのプレビュースイッチがオンの間だけパックが表示されます。チャットの場合は「${toggle}」（従来の設定画面では${classicPage}、新しい設定画面では${newPage} > ${newSection}）で、標準のチャットテーマとあわせて必要です。ホームにはスイッチは不要です。色はチャット画面にのみ適用され、その他の画面ではパックの形状だけが反映されます。従来の画面、グループチャット、プレイグラウンドは組み込みの外観のままです。カスタムCSSは引き続きその上に適用されます。`,
     themePackRowLoadFailed: "テーマパックの設定を読み込めませんでした。設定を閉じて、もう一度開いてください。",
     themePackActiveLegend: "使用中のテーマパック",
     themePackNone: "なし",
