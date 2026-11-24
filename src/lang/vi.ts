@@ -2755,6 +2755,7 @@ export const languageVietnamese = {
     "studioModAdvNamespaceIntegrationOff": (before: string, after: string) => `Tích hợp mô-đun liệt kê "${before}". Với "${after}", mô-đun này sẽ không còn được bật qua đó.`,
     "studioModAdvNamespaceIntegrationOn": (after: string) => `Tích hợp mô-đun liệt kê "${after}". Giờ đây mô-đun này được bật qua đó.`,
     "studioModAdvBackgroundHint": "Hiển thị phía sau cuộc trò chuyện ở nơi mô-đun này được bật. Nền của gói chủ đề sẽ bị tắt khi mục này có nội dung.",
+    "studioCharHtmlHint": "Hiển thị phía sau các cuộc trò chuyện của nhân vật này.",
     "studioModAdvValueForeign": (stored: string) => `Được lưu dưới dạng ${stored}, không phải loại giá trị mà trường này dùng. Thay đổi ở đây sẽ thay thế nó, và hoàn tác sẽ khôi phục lại.`,
     "studioAssetRefusalNoUndo": "Hiện không thể giữ lại khả năng hoàn tác",
     "studioAssetRefusalOtherTabCharacter": "Hãy mở nhân vật này trong một thẻ duy nhất để xóa tài nguyên",

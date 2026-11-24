@@ -2755,6 +2755,7 @@ export const languageKorean = {
     "studioModAdvNamespaceIntegrationOff": (before: string, after: string) => `모듈 통합에 "${before}"이(가) 등록되어 있습니다. "${after}"(으)로 바꾸면 이 모듈은 더 이상 그것으로 켜지지 않습니다.`,
     "studioModAdvNamespaceIntegrationOn": (after: string) => `모듈 통합에 "${after}"이(가) 등록되어 있습니다. 이제 이 모듈은 그것으로 켜집니다.`,
     "studioModAdvBackgroundHint": "이 모듈이 켜진 곳에서 채팅 뒤에 표시됩니다. 내용이 있는 동안에는 테마 팩의 배경이 꺼집니다.",
+    "studioCharHtmlHint": "이 캐릭터의 채팅 뒤에 표시됩니다.",
     "studioModAdvValueForeign": (stored: string) => `${stored}(으)로 저장되어 있으며, 이 필드가 사용하는 값의 종류가 아닙니다. 여기서 바꾸면 대체되고, 실행 취소하면 되돌아갑니다.`,
     "studioAssetRefusalNoUndo": "지금은 실행 취소를 보관할 수 없어요",
     "studioAssetRefusalOtherTabCharacter": "에셋을 삭제하려면 이 캐릭터를 한 탭에서만 열어 주세요",

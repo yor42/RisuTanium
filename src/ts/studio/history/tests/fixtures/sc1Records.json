@@ -1,0 +1,105 @@
+{
+  "ownerKey": "character:A",
+  "touchedAt": 181000,
+  "done": [
+    {
+      "id": "p1:1",
+      "at": 1000,
+      "label": {
+        "kind": "field",
+        "field": "backgroundHTML"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "backgroundHTML",
+          "before": {
+            "had": "foreign",
+            "value": 7
+          },
+          "after": {
+            "had": true,
+            "value": "h1 {{bg::grin}}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:2",
+      "at": 61000,
+      "label": {
+        "kind": "field",
+        "field": "virtualscript"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": "virtualscript",
+          "before": {
+            "had": false
+          },
+          "after": {
+            "had": true,
+            "value": "code"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:3",
+      "at": 121000,
+      "label": {
+        "kind": "assetMerge",
+        "from": "grin",
+        "to": "smile"
+      },
+      "ops": [
+        {
+          "op": "assetRowRemove",
+          "array": "additionalAssets",
+          "index": 2,
+          "tuple": [
+            "grin",
+            "assets/smile.png",
+            "png"
+          ],
+          "count": 1
+        },
+        {
+          "op": "textEdit",
+          "target": "backgroundHTML",
+          "offset": 9,
+          "from": "grin",
+          "to": "smile"
+        }
+      ]
+    }
+  ],
+  "undone": [],
+  "deleted": [],
+  "restore": {
+    "visitId": "v1",
+    "at": 1000,
+    "fields": {
+      "backgroundHTML": {
+        "before": {
+          "had": "foreign",
+          "value": 7
+        },
+        "last": {
+          "had": true,
+          "value": "h1 {{bg::smile}}"
+        }
+      },
+      "virtualscript": {
+        "before": {
+          "had": false
+        },
+        "last": {
+          "had": true,
+          "value": "code"
+        }
+      }
+    }
+  }
+}

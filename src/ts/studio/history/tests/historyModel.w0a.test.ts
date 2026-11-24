@@ -35,19 +35,21 @@ const S2C_PATHS: readonly SetPath[] = ['bias']
 // Studio S3a: the name, the Display form's paths and the four newGenData keys.
 const S3A_PATHS: readonly SetPath[] = ['name', 'viewScreen', 'largePortrait', 'inlayViewScreen', 'prebuiltAssetCommand', 'prebuiltAssetStyle', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions']
 const S3A_BOOLEAN_PATHS: readonly SetPath[] = ['largePortrait', 'inlayViewScreen', 'prebuiltAssetCommand']
+// Studio SC-1: the character's background HTML and CharacterJS.
+const SC1_PATHS: readonly SetPath[] = ['backgroundHTML', 'virtualscript']
 
 const S5_PATHS: readonly SetPath[] = ['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding']
 
-const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S5_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS]
+const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S5_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS]
 
 const EXPECTED_SET: Record<OwnerKind, readonly SetPath[]> = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS],
     chat: ['note'],
     module: ['customModuleToggle', ...S5_PATHS],
 }
 
 const EXPECTED_RESTORE: Record<OwnerKind, readonly RestorePath[]> = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS, 'alternateGreetings'],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS, 'alternateGreetings'],
     chat: ['note'],
     module: ['customModuleToggle', ...S5_PATHS],
 }
@@ -113,7 +115,7 @@ describe('A2: the set-path table is the only list of what each owner kind accept
 
 describe('A8 (model half): the restore order lists every restore key once, the toggle before hideChatIcon', () => {
     test('RESTORE_PATH_ORDER is the literal order', () => {
-        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S5_PATHS, ...PRESET_FORM_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, ...PRESET_S4B_PATHS, ...PRESET_S4C_PATHS, ...PRESET_S4D_PATHS, 'lorePlus', ...S3A_PATHS, 'alternateGreetings'])
+        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S5_PATHS, ...PRESET_FORM_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, ...PRESET_S4B_PATHS, ...PRESET_S4C_PATHS, ...PRESET_S4D_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS, 'alternateGreetings'])
     })
 
     test('every restore key of every owner kind has a place in the order', () => {
@@ -161,7 +163,7 @@ describe('rule K: isOpAllowedFor is the acceptance the parser applies', () => {
     })
 
     test('the text paths of a kind are its row without the boolean field', () => {
-        expect([...textPathsFor('character')]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1_PATHS, 'creatorNotes', 'name', 'viewScreen', 'prebuiltAssetStyle', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions'])
+        expect([...textPathsFor('character')]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1_PATHS, 'creatorNotes', 'name', 'viewScreen', 'prebuiltAssetStyle', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions', ...SC1_PATHS])
         expect([...textPathsFor('chat')]).toEqual(['note'])
         expect([...textPathsFor('module')]).toEqual(['customModuleToggle', 'moduleName', 'moduleDescription', 'moduleNamespace', 'backgroundEmbedding'])
     })

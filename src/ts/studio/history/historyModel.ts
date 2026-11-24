@@ -146,9 +146,8 @@ export const BOOLEAN_SET_PATHS: readonly SetPath[] = REGISTRY_PATHS.filter((path
 export function isBooleanSetPath(path: SetPath): boolean {
     return factsOf(path).value === 'bool'
 }
-// The owner text fields (the character's and the module's `backgroundEmbedding`) whose whole value a set op carries:
-// the merge-recording rule (an explicit list, not derived from the registry). A target addresses a nested field with
-// `/` where its path has a `.`.
+// The owner text fields that a registry target addresses, whose whole value a set op carries: the merge-recording rule
+// (an explicit list, not derived from the registry). A target addresses a nested field with `/` where its path has a `.`.
 export type TextFieldPath =
     | 'desc'
     | 'firstMessage'
@@ -167,6 +166,7 @@ export type TextFieldPath =
     | 'newGenData.negative'
     | 'newGenData.instructions'
     | 'newGenData.emotionInstructions'
+    | 'backgroundHTML'
 export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
     'desc',
     'firstMessage',
@@ -186,6 +186,8 @@ export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = [
     'newGenData.negative',
     'newGenData.instructions',
     'newGenData.emotionInstructions',
+    // Studio SC-1: the character's background HTML.
+    'backgroundHTML',
 ]
 
 // `had: false` is an absent optional key. Writing it deletes the key; it never assigns false or undefined.
