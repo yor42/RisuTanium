@@ -3925,7 +3925,7 @@ export const languageGerman = {
     "themePackPacksOffSession": "Design-Pakete sind in dieser Sitzung ausgeschaltet.",
     "themePackSelectToTurnOn": "Wählen Sie dieses Paket aus, um es jetzt einzuschalten.",
     "themePackSkippedAreas": (files: string) =>
-        `Dieses Paket enthält außerdem ${files}. Diese Version gestaltet nur den neuen Chatbildschirm, Studio und den neuen Einstellungsbildschirm; diese Teile werden mit dem Paket aufbewahrt.`,
+        `Dieses Paket enthält außerdem ${files}. Diese Version gestaltet nur den neuen Chatbildschirm, Studio, den neuen Einstellungsbildschirm und Popups darüber; diese Teile werden mit dem Paket aufbewahrt.`,
     "themePackColoursHeld": (files: string) => `Diese Version verwendet nur die Formen aus ${files}; deren Farben werden für eine spätere Version mit dem Paket aufbewahrt.`,
     "themePackInstalledWithWarnings": (sheet: string) => `Mit Warnungen installiert (${sheet}):`,
     "themePackInstalledWithNotes": (sheet: string) => `Hinweise (${sheet}):`,

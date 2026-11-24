@@ -7,6 +7,7 @@ import { DBState, selIdState } from 'src/ts/stores.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { closeStudio, resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { isObjItem, type DeletedItem, type GreetingDeletedItem } from '../historyModel'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
 import {
     characterOwnerKey,
@@ -71,6 +72,14 @@ function live(chaId = 'A'): LiveCharacter {
 }
 
 const A = characterOwnerKey('A')
+
+// These tests delete greetings only, so every listed item is a greeting item.
+function greetingItem(item: DeletedItem): GreetingDeletedItem {
+    if (isObjItem(item)) {
+        throw new Error('expected a greeting item')
+    }
+    return item
+}
 const B = characterOwnerKey('B')
 const E = characterOwnerKey('E')
 const chatA: OwnerKey = chatOwnerKey('A', 'c1')
@@ -193,7 +202,7 @@ describe('L1 / L2: no edit before ready, one load per owner and page', () => {
         reloaded.visit.id = 'v3'
         reloaded.service.useOwner(A)
         await reloaded.service.whenReady(A)
-        const item = reloaded.service.view(A).deleted[0]
+        const item = greetingItem(reloaded.service.view(A).deleted[0])
         expect(item.value).toBe('g1')
         expect(reloaded.service.restoreDeleted(A, item.id).ok).toBe(true)
         expect(reloaded.store.counts.load).toBe(1)

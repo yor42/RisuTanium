@@ -6,12 +6,16 @@
  * the validator behind a fake worker channel, the surface gate, `colorscheme.ts` and the install flow. FAKED: the page store, the
  * object URL functions and `DBState`, which is a real `$state` object. Same recipe as activePack.svelte.test.ts.
  */
+import { createHash } from 'node:crypto'
 import { flushSync } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Database } from '../storage/database.svelte'
+import { validPackFiles, zipPack } from './fixtures/packBuilder'
 
-vi.mock('../storage/store/appStore', () => ({ getAppStore: async () => ({ read: async () => ({ bytes: null, version: null }) }) }))
+const world = vi.hoisted(() => ({ files: new Map<string, Uint8Array>() }))
+
+vi.mock('../storage/store/appStore', () => ({ getAppStore: async () => ({ read: async (key: string) => ({ bytes: world.files.get(key) ?? null, version: null }) }) }))
 vi.mock('../globalApi.svelte', () => ({ getFileSrc: vi.fn(), downloadFile: vi.fn(), requestSaveNow: vi.fn(), saveAsset: vi.fn(async () => '') }))
 vi.mock('../storage/database.svelte', async () => {
     const { DBState } = await import('../stores.svelte')
@@ -209,5 +213,50 @@ describe('TA-18: picking a pack in safe mode', () => {
         await ticks(4)
         expect(packElements()).toHaveLength(0)
         expect(m.stores.DBState.db.activeThemePack).toBe('builtin:banana-cocoa')
+    })
+})
+
+describe('S-1: the popups overlays follow the pack (AS-12)', () => {
+    const POPUPS = '[data-part="toast-text"]{background-color:#7a1f5c;border-radius:6px}'
+
+    /** An installed archive with chat.css and popups.css, active in the database; returns nothing, the driver reads the record. */
+    function activateArchive(): void {
+        const bytes = zipPack(validPackFiles({ 'popups.css': POPUPS }))
+        const archive = `assets/tp-${createHash('sha256').update(bytes).digest('hex')}.risutheme`
+        world.files.set(archive, bytes.slice())
+        m.stores.DBState.db.themePacks?.push({
+            v: 1, id: 'rec-p', name: 'Pack P', version: '1.0.0', license: 'MIT', attribution: 'Test author', modes: ['dark'],
+            fonts: [], archive, bytes: bytes.length, installedAt: 1,
+        })
+        m.stores.DBState.db.activeThemePack = 'rec-p'
+    }
+    const popupsElements = (): HTMLStyleElement[] => packElements().filter((element) => element.getAttribute('data-theme-pack') === 'popups')
+
+    it('a plain launch applies the popups overlays beside the chat element', async () => {
+        await start('')
+        activateArchive()
+        m.driver.startThemePackApply()
+        await until(() => m.driver.themePackApplyState().phase === 'applied', 'the apply')
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat', 'popups', 'popups'])
+    })
+
+    it('a pack-free start applies no popups element', async () => {
+        await start('?nothemepack')
+        activateArchive()
+        m.driver.startThemePackApply()
+        await ticks(8)
+        expect(popupsElements()).toHaveLength(0)
+        expect(packElements()).toHaveLength(0)
+    })
+
+    it('leaving the pack removes the overlays with the screen element', async () => {
+        await start('')
+        activateArchive()
+        m.driver.startThemePackApply()
+        await until(() => m.driver.themePackApplyState().phase === 'applied', 'the apply')
+        expect(popupsElements()).toHaveLength(2)
+        m.safeMode.enterPackSafeMode('boot')
+        await until(() => m.driver.themePackApplyState().phase === 'none', 'the removal')
+        expect(packElements()).toHaveLength(0)
     })
 })

@@ -16,15 +16,16 @@ import type { SchemeTone } from '../gui/surfaceTone'
 import type { BuiltinPack } from './builtins'
 import type { ResourceSpan } from './canonical'
 import { COLOUR_READY_AREAS } from './colourReady'
+import { decls } from './csslit'
 import type { AreaSheetJudgement } from './index'
-import { intakePack, readVerifiedFile, type AppliedArea, type IntakeRefusal, type VerifiedPack } from './intake'
+import { intakePack, readVerifiedFile, type IntakeRefusal, type ScreenArea, type VerifiedPack } from './intake'
 import { readJudgement, type JudgeJob, type JudgeResults, type JudgeSession } from './judgeClient'
 import { LIGHT_BASE_JUDGE_PREFIX, wantsLightBase } from './lightBase'
 import { triggersOwnColours } from './ownColours.svelte'
 import { packDefaultScheme } from './packColours'
 import { PACK_ARCHIVE_KEY } from './packRefs'
 import { hasNoDeclarations, shapeOnlySheet, shapeTokenNames } from './shapeMode'
-import { registerThemePackElement, setThemePackElementBase, syncThemePackMedia } from './surfaceGate.svelte'
+import { registerThemePackElement, registerThemePackOverlay, setThemePackElementBase, syncThemePackMedia } from './surfaceGate.svelte'
 
 /** What a minted object URL must look like before it is written into a sheet: no quote, backslash, paren or space. */
 export const BLOB_URL_PATTERN = /^blob:[A-Za-z0-9:/._\-\[\]]+$/
@@ -36,17 +37,26 @@ export type ApplySource = { kind: 'builtin'; pack: BuiltinPack } | { kind: 'arch
  * `base` is null); `shapeText` is the shape variant. A null `text` and `shapeText` is an element that is never created.
  */
 export interface PreparedElement {
-    readonly area: AppliedArea
+    readonly area: ScreenArea
     readonly text: string | null
     readonly shapeText: string | null
     readonly base: SchemeTone | null
 }
 /**
+ * The popups sheet's two applied texts. `colourText` exists only when the chat element has text (the one colour-ready screen);
+ * `shapeText` is the judged shape variant. Each is on only over a screen that applies something in the matching variant.
+ */
+export interface PreparedPopups {
+    readonly colourText: string | null
+    readonly shapeText: string | null
+}
+/**
  * `elements` holds every screen's applied text; `defaultScheme` comes from the chat sheet alone. `ownColourTrigger` is
- * present, and true, only when a judged sheet carries a contrast or readability warning; absent means no trigger.
+ * present, and true, only when a judged sheet carries a contrast or readability warning; absent means no trigger. `popups`
+ * never sets it and never makes a pack show anything on its own.
  */
 export type Prepared =
-    | { ok: true; blobs: readonly string[]; skippedAreas: readonly string[]; defaultScheme: ColorScheme | null; elements: readonly PreparedElement[]; ownColourTrigger?: true }
+    | { ok: true; blobs: readonly string[]; skippedAreas: readonly string[]; defaultScheme: ColorScheme | null; elements: readonly PreparedElement[]; popups: PreparedPopups | null; ownColourTrigger?: true }
     | { ok: false; reason: BrokenReason; refusals?: readonly IntakeRefusal[] }
 type Stale = { ok: false; stale: true }
 
@@ -57,14 +67,21 @@ const ARCHIVE_SUFFIX_LENGTH = '.risutheme'.length
 
 interface CurrentElement {
     readonly el: HTMLStyleElement
-    readonly area: AppliedArea
+    readonly area: ScreenArea
     readonly unregister: () => void
     readonly text: string
     readonly shapeText: string | null
     readonly base: SchemeTone | null
 }
 
+interface CurrentOverlay {
+    readonly el: HTMLStyleElement
+    readonly unregister: () => void
+}
+
 let current: readonly CurrentElement[] = []
+// The popups overlay elements of the current commit; removed with `current` by the next commit.
+let currentOverlays: readonly CurrentOverlay[] = []
 // The blob URLs the current elements hold; revoked once, when the next commit replaces them.
 let currentBlobs: readonly string[] = []
 
@@ -113,7 +130,7 @@ const LIGHT_LABEL = 'chat#light'
 const SHAPE_LABEL = 'chat#shape'
 
 /** The applied areas whose element carries only the judged shape variant, with no base, in both modes (not colour-ready). */
-type ShapeOnlyArea = Exclude<AppliedArea, 'chat'>
+type ShapeOnlyArea = Exclude<ScreenArea, 'chat'>
 const SHAPE_ONLY_AREAS: readonly ShapeOnlyArea[] = ['studio', 'settings']
 const shapeOnlyLabel = (area: ShapeOnlyArea): string => `${area}#shape`
 
@@ -135,11 +152,30 @@ function shapeOnlyJobText(area: ShapeOnlyArea, sheet: AreaSheetJudgement): strin
 type ShapeOnlySheets = Readonly<Record<ShapeOnlyArea, AreaSheetJudgement | null>>
 const NO_SHAPE_ONLY_SHEETS: ShapeOnlySheets = { studio: null, settings: null }
 
+const POPUPS_SHAPE_LABEL = 'popups#shape'
+
+/** The text the popups shape variant would judge, or null when it is not judged: left whole, or left empty, by the allowlist. */
+function popupsShapeJobText(sheet: AreaSheetJudgement): string | null {
+    const shapeSource = shapeOnlySheet(sheet.canonical, shapeTokenNames('popups'))
+    return shapeSource === sheet.canonical || /^\s*$/.test(shapeSource) ? null : shapeSource
+}
+
+/** True when the written text carries a declaration other than an `@font-face` descriptor, so it visibly themes its screen. */
+function isThemedText(text: string): boolean {
+    try {
+        return decls(text).some((decl) => !decl.ctx.at.some((prelude) => /^@font-face\b/i.test(prelude)))
+    } catch {
+        return false
+    }
+}
+
 interface Variants {
     light: AreaSheetJudgement | null
     shape: AreaSheetJudgement | null
     /** The shape judgement of each shape-only area whose allowlisted subset differs from its canonical text. */
     shapeOnly: ShapeOnlySheets
+    /** The shape judgement of the popups sheet, when its allowlisted subset differs from its canonical text. */
+    popupsShape: AreaSheetJudgement | null
 }
 
 /**
@@ -147,7 +183,7 @@ interface Variants {
  * chat shape subset, and the shape subset of each shape-only area, each when there is one to judge. A rejected request, like a missing or
  * refused verdict, is fail-closed: the dark base and no shape text. `null` verdicts are what the callers read as that.
  */
-async function judgeVariants(modes: readonly string[], chat: AreaSheetJudgement | null, sheets: ShapeOnlySheets, session: JudgeSession, isCurrent: () => boolean): Promise<Variants | Stale> {
+async function judgeVariants(modes: readonly string[], chat: AreaSheetJudgement | null, sheets: ShapeOnlySheets, popups: AreaSheetJudgement | null, session: JudgeSession, isCurrent: () => boolean): Promise<Variants | Stale> {
     const jobs: JudgeJob[] = []
     if (chat !== null) {
         if (wantsLightBase(modes)) {
@@ -165,8 +201,12 @@ async function judgeVariants(modes: readonly string[], chat: AreaSheetJudgement 
             jobs.push({ label: shapeOnlyLabel(area), area, text: source })
         }
     }
+    const popupsSource = popups === null ? null : popupsShapeJobText(popups)
+    if (popupsSource !== null) {
+        jobs.push({ label: POPUPS_SHAPE_LABEL, area: 'popups', text: popupsSource })
+    }
     if (jobs.length === 0) {
-        return { light: null, shape: null, shapeOnly: NO_SHAPE_ONLY_SHEETS }
+        return { light: null, shape: null, shapeOnly: NO_SHAPE_ONLY_SHEETS, popupsShape: null }
     }
     let results: JudgeResults | null = null
     try {
@@ -180,7 +220,7 @@ async function judgeVariants(modes: readonly string[], chat: AreaSheetJudgement 
         return STALE
     }
     const verdictOf = (label: string): AreaSheetJudgement | null => results !== null && Object.hasOwn(results, label) ? results[label] : null
-    return { light: verdictOf(LIGHT_LABEL), shape: verdictOf(SHAPE_LABEL), shapeOnly: { studio: verdictOf(shapeOnlyLabel('studio')), settings: verdictOf(shapeOnlyLabel('settings')) } }
+    return { light: verdictOf(LIGHT_LABEL), shape: verdictOf(SHAPE_LABEL), shapeOnly: { studio: verdictOf(shapeOnlyLabel('studio')), settings: verdictOf(shapeOnlyLabel('settings')) }, popupsShape: verdictOf(POPUPS_SHAPE_LABEL) }
 }
 
 /**
@@ -286,7 +326,7 @@ async function prepareBuiltin(pack: BuiltinPack, session: JudgeSession, isCurren
         return failure('refused')
     }
     const text = buildAppliedText(chat, () => '')
-    const variants = await judgeVariants(pack.modes, chat, NO_SHAPE_ONLY_SHEETS, session, isCurrent)
+    const variants = await judgeVariants(pack.modes, chat, NO_SHAPE_ONLY_SHEETS, null, session, isCurrent)
     if ('stale' in variants) {
         return variants
     }
@@ -295,7 +335,7 @@ async function prepareBuiltin(pack: BuiltinPack, session: JudgeSession, isCurren
     const chatText = textOrNull(text)
     return {
         ok: true, blobs: [], skippedAreas: [], defaultScheme: packDefaultScheme(chat.canonical, base),
-        elements: [{ area: 'chat', text: chatText, shapeText, base }],
+        elements: [{ area: 'chat', text: chatText, shapeText, base }], popups: null,
         ...(judgementTriggers(chat) ? { ownColourTrigger: true as const } : {}),
     }
 }
@@ -381,7 +421,8 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
         }
     }
     const chatText = chat === null ? null : buildAppliedText(chat, (raw) => urlOfRaw.get(raw) ?? '')
-    const variants = await judgeVariants(pack.manifest.modes, chat, sheets, session, isCurrent)
+    const popupsSheet = pack.sheets.popups ?? null
+    const variants = await judgeVariants(pack.manifest.modes, chat, sheets, popupsSheet, session, isCurrent)
     if ('stale' in variants) {
         return variants
     }
@@ -403,6 +444,24 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
             }
         }
     }
+    // Popups colours can paint only over a chat element that has text; its shape variant follows its own judgement. Minting
+    // follows the texts that will exist, so an image only a withheld variant names is never minted.
+    let popupsShapeJudged: AreaSheetJudgement | null = null
+    let popupsColourJudged: AreaSheetJudgement | null = null
+    if (popupsSheet !== null) {
+        popupsShapeJudged = popupsShapeJobText(popupsSheet) === null
+            ? (/^\s*$/.test(shapeOnlySheet(popupsSheet.canonical, shapeTokenNames('popups'))) ? null : popupsSheet)
+            : variants.popupsShape
+        popupsColourJudged = chatText !== null && textOrNull(chatText) !== null ? popupsSheet : null
+        for (const judged of [popupsColourJudged, popupsShapeJudged]) {
+            if (judged?.result?.ok === true) {
+                const outcome = await mintMissing(source, pack, judged.resources, urlOfRaw, minted, isCurrent)
+                if (outcome !== null) {
+                    return outcome
+                }
+            }
+        }
+    }
     const elements: PreparedElement[] = []
     let defaultScheme: ColorScheme | null = null
     // A shape-only sheet paints no colour, but its own judgement still counts, as Studio's always has.
@@ -421,7 +480,10 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
             elements.push({ area, text: areaText, shapeText: areaText, base: null })
         }
     }
-    return { ok: true, blobs: [...minted], skippedAreas: pack.skippedAreas, defaultScheme, elements, ...(ownColourTrigger ? { ownColourTrigger: true as const } : {}) }
+    const colourText = prepareShapeOnlyText(popupsColourJudged, (raw) => urlOfRaw.get(raw))
+    const popupsShapeText = prepareShapeOnlyText(popupsShapeJudged, (raw) => urlOfRaw.get(raw))
+    const popups: PreparedPopups | null = colourText === null && popupsShapeText === null ? null : { colourText, shapeText: popupsShapeText }
+    return { ok: true, blobs: [...minted], skippedAreas: pack.skippedAreas, defaultScheme, elements, popups, ...(ownColourTrigger ? { ownColourTrigger: true as const } : {}) }
 }
 
 /**
@@ -451,6 +513,7 @@ export async function preparePackSheet(source: ApplySource, session: JudgeSessio
 /** What `commitPackSheet` takes: every prepared screen element, the blobs they hold, and whether the pack is in colour mode (default on). */
 export interface CommitInput {
     elements: readonly PreparedElement[]
+    popups?: PreparedPopups | null
     blobs: readonly string[]
     colours?: boolean
 }
@@ -459,12 +522,16 @@ export interface CommitInput {
  * The synchronous DOM step, in the gate's order: insert each new element (off) before `#customcss`, in the order given, and
  * register it with its area and, for a colour-ready area in colour mode only, its base; remove and unregister every previous
  * element and revoke its blobs once; then sync the gate. An element with no text and no shape text is never created. A missing
- * `#customcss` inserts nothing and leaves the previous elements for the caller to remove.
+ * `#customcss` inserts nothing and leaves the previous elements for the caller to remove. The popups overlays are created off,
+ * after the screen elements and only when at least one screen element is created; they are unregistered and removed with the
+ * previous elements.
  */
 export function commitPackSheet(next: CommitInput | null): { ok: true } | { ok: false; reason: 'couldNotCheck' } {
     const previous = current
     const previousBlobs = currentBlobs
+    const previousOverlays = currentOverlays
     const created: CurrentElement[] = []
+    const createdOverlays: CurrentOverlay[] = []
     if (next !== null) {
         const wanted = next.elements.filter((element) => element.text !== null || element.shapeText !== null)
         if (wanted.length > 0) {
@@ -482,7 +549,21 @@ export function commitPackSheet(next: CommitInput | null): { ok: true } | { ok: 
                 el.setAttribute('data-theme-pack', element.area)
                 el.textContent = text
                 anchor.before(el)
-                created.push({ el, area: element.area, unregister: registerThemePackElement(el, element.area, ready ? element.base : null), text: element.text ?? '', shapeText: element.shapeText, base: element.base })
+                created.push({ el, area: element.area, unregister: registerThemePackElement(el, element.area, ready ? element.base : null, isThemedText(text)), text: element.text ?? '', shapeText: element.shapeText, base: element.base })
+            }
+            // The popups sheets exist only beside a screen element, which alone can make them visible.
+            const popups = next.popups ?? null
+            for (const [variant, overlayText] of [['colour', popups?.colourText ?? null], ['shape', popups?.shapeText ?? null]] as const) {
+                if (overlayText === null) {
+                    continue
+                }
+                const el = document.createElement('style')
+                el.setAttribute('media', 'not all')
+                el.setAttribute('data-theme-pack', 'popups')
+                el.setAttribute('data-theme-pack-variant', variant)
+                el.textContent = overlayText
+                anchor.before(el)
+                createdOverlays.push({ el, unregister: registerThemePackOverlay(el, variant) })
             }
         } else {
             revokeAll(next.blobs)
@@ -492,8 +573,13 @@ export function commitPackSheet(next: CommitInput | null): { ok: true } | { ok: 
         element.unregister()
         element.el.remove()
     }
+    for (const overlay of previousOverlays) {
+        overlay.unregister()
+        overlay.el.remove()
+    }
     revokeAll(previousBlobs)
     current = created
+    currentOverlays = createdOverlays
     currentBlobs = created.length > 0 && next !== null ? next.blobs : []
     syncThemePackMedia()
     return { ok: true }
@@ -515,7 +601,7 @@ export function setPackSheetColours(on: boolean): void {
         if (element.el.textContent !== text) {
             element.el.textContent = text
         }
-        setThemePackElementBase(element.el, ready ? element.base : null)
+        setThemePackElementBase(element.el, ready ? element.base : null, isThemedText(text))
     }
     syncThemePackMedia()
 }
@@ -525,6 +611,11 @@ export function resetPackSheetForTests(): void {
         element.unregister()
         element.el.remove()
     }
+    for (const overlay of currentOverlays) {
+        overlay.unregister()
+        overlay.el.remove()
+    }
     current = []
+    currentOverlays = []
     currentBlobs = []
 }

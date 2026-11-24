@@ -233,6 +233,8 @@ describe('runDismissingConsumed ends the toast of every deleted item an action c
             undone: [],
             deleted: ids.map((id, index) => ({ id, at: index, index, value: id, sideChat: null })),
             restore: null,
+            restoreLines: [],
+            restoreNotes: [],
         }
     }
 

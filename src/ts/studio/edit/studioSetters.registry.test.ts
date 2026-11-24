@@ -58,6 +58,7 @@ const VALUE_OF: Record<Exclude<SetPath, `preset${string}`>, string | boolean | B
     utilityBot: true,
     escapeOutput: true,
     bias: [['tok', 5]],
+    lorePlus: true,
 }
 
 describe('T-W1: the writers of the builtin holders', () => {

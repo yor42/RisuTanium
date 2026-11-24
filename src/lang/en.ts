@@ -4062,7 +4062,7 @@ export const languageEnglish = {
     themePackInstalled: (name: string) => `Installed "${name}".`,
     themePackPacksOffSession: 'Theme packs are off for this session.',
     themePackSelectToTurnOn: 'Select this pack to turn it on now.',
-    themePackSkippedAreas: (files: string) => `This pack also has ${files}. This version themes only the new chat screen, Studio and the new Settings screen; those parts are kept with the pack.`,
+    themePackSkippedAreas: (files: string) => `This pack also has ${files}. This version themes only the new chat screen, Studio, the new Settings screen and popups over them; those parts are kept with the pack.`,
     themePackColoursHeld: (files: string) => `This version uses only the shapes from ${files}; their colours are kept with the pack for a later version.`,
     themePackInstalledWithWarnings: (sheet: string) => `Installed with warnings (${sheet}):`,
     themePackInstalledWithNotes: (sheet: string) => `Notes (${sheet}):`,

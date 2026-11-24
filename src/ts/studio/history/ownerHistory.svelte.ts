@@ -66,10 +66,15 @@ import {
     deriveRestoreWrites,
     emptyRecord,
     invertOp,
+    holdsObjList,
     isOpAllowedFor,
+    objItemAllowedFor,
+    objRefusalOf,
+    parseLabel,
     planReplay,
     planRestoreDeleted,
     planRestorePoint,
+    planRestoreWithLines,
     planRevert,
     SET_PATHS_BY_KIND,
     stepIdFor,
@@ -81,7 +86,9 @@ import {
     type ListSkipReason,
     type LiveReader,
     type ModelState,
+    type ObjRefusal,
     type OpenStep,
+    type OwnerKind,
     type OwnerRecord,
     type RestorePath,
     type RestorePlan,
@@ -108,6 +115,21 @@ import {
     type StoredOwnerKey,
 } from './ownerPhase'
 import type { SetValue } from './fieldAccess'
+import { OBJ_LIST_FIELDS, type ObjListName } from './objectLists'
+import {
+    completeObjOps,
+    journalAppend,
+    journalListOf,
+    parseObjItem,
+    parseObjOp,
+    planObjStep,
+    type ObjDraft,
+    type ObjEffect,
+    type ObjFamilyOp,
+    type ObjJournalEntry,
+    type ObjLabel,
+    type PropLabel,
+} from './objectListOps'
 import { nameOfPathIn, stepNamesAssetPath, stepsOf } from './retainedPaths'
 import type {
     ClaimResult,
@@ -169,6 +191,9 @@ export interface StudioWriteNotes {
     // (`firstMessage`, `desc`, `exampleMessage`, `alternateGreetings/<i>`, `lore/<i>/content`, ...), unique and in the
     // step's order. Absent for every other step and when nothing was left. In memory only: never stored or posted.
     notRestored?: string[]
+    // Restore point with lines only: the lists whose line was refused because its list changed elsewhere; the others
+    // applied. In memory only: never stored or posted.
+    linesRefused?: ObjListName[]
 }
 
 // `name` is the row a refusal is about (`asset-file-unchecked`). `targetChanged` says the steps the replay was asked for
@@ -178,7 +203,7 @@ export interface StudioWriteNotes {
 // pinned to (absent for an edit and a restore point).
 export type StudioResult =
     | ({ ok: true } & StudioWriteNotes)
-    | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true; folderRefusal?: FolderRefusal; listReason?: ListSkipReason; paths?: SetPath[]; pin?: RiskyPin }
+    | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true; folderRefusal?: FolderRefusal; listReason?: ListSkipReason; paths?: SetPath[]; pin?: RiskyPin; obj?: ObjRefusal; linesRefused?: ObjListName[] }
 
 // What a replay is asked to do. `expectTop` makes an undo or a redo apply only while that step is still the one it
 // would replay; `expectIds` does the same for a revert (the step and every step above it). `confirmed` names the risky
@@ -195,6 +220,12 @@ export interface EditFieldOptions {
     // Adds the id of the step the edit landed as to the result (`stepId`), for a caller that posts an Undo for it.
     reportStep?: boolean
 }
+
+// What an object-list builder returns: the label, the drafts the service completes against the live lists, and the key
+// that joins typing into one step (null: a step of its own).
+export type ObjBuildResult =
+    | { ok: true; label: ObjLabel | PropLabel; drafts: ObjDraft[]; coalesceKey: string | null }
+    | { ok: false; reason: 'precondition' | 'unchanged' }
 
 // Wraps the replay's synchronous apply. It must call `apply` exactly once, synchronously, and return its result.
 export type ReplayAround = (apply: () => StudioResult) => StudioResult
@@ -217,6 +248,11 @@ export interface OwnerView {
     undone: readonly Step[]
     deleted: readonly DeletedItem[]
     restore: RestorePoint | null
+    // The lists this visit changed in this owner (entries counted after the visit's tail merges), each of which the
+    // restore line can revert. Empty outside the visit that made the changes.
+    restoreLines: readonly { list: ObjListName; n: number }[]
+    // The lists an earlier visit's restore point may not cover: the sheet says its field restore leaves them as they are.
+    restoreNotes: readonly ObjListName[]
 }
 
 export interface OwnerHistoryDeps {
@@ -291,7 +327,11 @@ export interface OwnerHistoryService {
     // target is read when the job starts and checked again after the answers, and the apply (inside `around`, if given)
     // is one synchronous segment. A job that throws rejects its own promise only; the next job still runs.
     replay(owner: OwnerKey, desc: ReplayDesc, around?: ReplayAround): Promise<StudioResult>
-    restore(owner: OwnerKey, keep: ReadonlySet<RestorePath>, options?: { confirmed?: readonly SetPath[] }): StudioResult
+    // lines names the object lists whose visit journal is reverted with the restore point; it needs this visit's point.
+    restore(owner: OwnerKey, keep: ReadonlySet<RestorePath>, options?: { confirmed?: readonly SetPath[]; lines?: readonly ObjListName[] }): StudioResult
+    // An object-list edit: the builder's drafts are completed against the live lists, planned all or nothing, written and
+    // recorded as one step. A refusal writes, marks and records nothing.
+    objEdit(owner: OwnerKey, build: (id: string, live: LiveReader) => ObjBuildResult, options?: { reportStep?: boolean }): StudioResult
     restoreDeleted(owner: OwnerKey, deletedId: string): StudioResult
     // The asset intents of a character or module owner. Each is one step, one owner write and one save request; a
     // removal-type one is refused when history cannot persist, and a refusal changes nothing.
@@ -306,6 +346,8 @@ export interface OwnerHistoryService {
     closeOpenStep(owner: OwnerKey): void
     // Test seam; no production reader: how many asset steps this owner holds as unsettled retention roots.
     unsettledStepCountForTests(owner: OwnerKey): number
+    // Test seam; no production reader: this owner's visit journal per list, entries oldest first.
+    journalForTests(owner: OwnerKey): ReadonlyMap<ObjListName, readonly ObjJournalEntry[]>
     // Input in Studio that is not a history write: the pending warm-up ends, as at a write, and nothing
     // restarts it.
     cancelWarm(): void
@@ -361,6 +403,9 @@ class OwnerSlot {
     jobWaiting = false
     tail: Promise<void> = Promise.resolve()
     waiters: (() => void)[] = []
+    // The object-list changes this visit made, per list; plain, because every change lands together with a record
+    // assignment. Released at the first use after the visit ends.
+    journal: { visitId: string; lists: Map<ObjListName, ObjJournalEntry[]> } | null = null
 
     // `chaId` is null for a module owner and for a session owner. `stored` is the part that reaches the store
     // and the claim port, and a session owner has none: the store and claim calls take their key and subject
@@ -422,9 +467,10 @@ type Intent =
     | { kind: 'clear'; path: SetPath }
     | { kind: 'replay'; direction: 'undo' | 'redo'; confirmed?: readonly SetPath[] }
     | { kind: 'revert'; stepId: string; confirmed?: readonly SetPath[] }
-    | { kind: 'restore'; keep: ReadonlySet<RestorePath>; confirmed?: readonly SetPath[] }
+    | { kind: 'restore'; keep: ReadonlySet<RestorePath>; confirmed?: readonly SetPath[]; lines?: readonly ObjListName[] }
     | { kind: 'restoreDeleted'; deletedId: string }
     | { kind: 'asset'; build: (live: LiveReader) => AssetBuildResult }
+    | { kind: 'obj'; build: (id: string, live: LiveReader) => ObjBuildResult; reportStep?: boolean }
 
 export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryService {
     const { store, claim, clock } = deps
@@ -824,6 +870,10 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         pageFm: number | null
         // The plan changes no live value: the owner is neither written nor marked.
         noWrite?: true
+        // The object-list ops as applied, for the visit journal; absent when nothing was written.
+        objExecuted?: readonly ObjFamilyOp[]
+        // The lists whose restore line applied: their journal starts again.
+        linesApplied?: readonly ObjListName[]
         // A step that only moves because its change is already in place: its forward ops still get the removal
         // check, conservatively, so a removal-type step is not moved where it could not be written.
         forwardOps?: readonly Op[]
@@ -885,6 +935,15 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         return null
     }
 
+    // Rule K for the deleted items a plan would list: each must be an item the owner's own record parses back, so a
+    // landed item is never one the next load refuses whole.
+    function objEffectParses(ownerKind: OwnerKind, effect: ObjEffect | undefined, at: number): boolean {
+        return (effect?.list ?? []).every((item) => {
+            const parsed = parseObjItem({ ...item, at })
+            return parsed !== null && objItemAllowedFor(ownerKind, parsed)
+        })
+    }
+
     function planFor(slot: OwnerSlot, intent: Intent, live: LiveReader, target: LiveTarget | null, at: number, goneRows?: ReadonlySet<string>): Planned | StudioResult {
         const visitId = getVisitId()
         const record = slot.record
@@ -936,6 +995,52 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                         restoreWrites,
                         coalesceKey: null,
                         replacesRestore: false,
+                    }, hashFor),
+            }
+        }
+        if (intent.kind === 'obj') {
+            const objOwnerKind = parseOwnerKey(slot.key)?.kind
+            if (objOwnerKind === undefined) {
+                return refused('unknown')
+            }
+            const id = stepIdFor(pageSession, ++counter)
+            const built = intent.build(id, live)
+            if (built.ok === false) {
+                return built.reason === 'unchanged' ? { ok: true, unchanged: true } : refused('precondition')
+            }
+            // Completion checks the live preconditions, including the kind of a stored field value (MC-4090).
+            const completed = completeObjOps(built.drafts, live)
+            if (completed.ok === false) {
+                return completed.reason === 'unchanged' ? { ok: true, unchanged: true } : refused('precondition')
+            }
+            // Rule K: a label or an op the owner's own record would refuse on reading is never written, marked or recorded.
+            if (parseLabel(built.label, objOwnerKind) === null || !completed.ops.every((op) => parseObjOp(op) !== null && isOpAllowedFor(objOwnerKind, op))) {
+                return refused('precondition')
+            }
+            const objPlan = planObjStep(completed.ops, live, new Set(record.deleted.map((item) => item.id)), true)
+            if (objPlan.ok === false) {
+                return { ok: false, reason: 'precondition', obj: objRefusalOf(objPlan.failure, completed.ops, objPlan.failure.kind === 'count' ? 'idTaken' : 'changed') }
+            }
+            // Rule K, produced items: the plan's listed items must parse back for this owner.
+            if (!objEffectParses(objOwnerKind, objPlan.effect, at)) {
+                return refused('precondition')
+            }
+            return {
+                writes: objPlan.writes,
+                pageFm: null,
+                notes: {},
+                objExecuted: objPlan.executed,
+                land: (state) =>
+                    commitStep(state, {
+                        id,
+                        at,
+                        visitId,
+                        label: built.label,
+                        ops: completed.ops,
+                        restoreWrites: [],
+                        coalesceKey: built.coalesceKey,
+                        replacesRestore: true,
+                        objEffect: objPlan.effect,
                     }, hashFor),
             }
         }
@@ -1009,11 +1114,17 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             const plan = planReplay(record, intent.direction, live, hashFor, goneRows)
             if (plan.ok === false) {
                 const refusal = refused(plan.reason === 'empty' || plan.reason === 'pairSplit' ? plan.reason : 'precondition')
-                return plan.reason === 'precondition' && plan.listReason !== undefined ? { ...refusal, listReason: plan.listReason } : refusal
+                const withObj = plan.reason === 'precondition' && plan.obj !== undefined ? { ...refusal, obj: plan.obj } : refusal
+                return plan.reason === 'precondition' && plan.listReason !== undefined ? { ...withObj, listReason: plan.listReason } : withObj
+            }
+            const replayKind = parseOwnerKey(slot.key)?.kind
+            if (replayKind === undefined || !objEffectParses(replayKind, plan.objEffect, at)) {
+                return refused(replayKind === undefined ? 'unknown' : 'precondition')
             }
             return {
                 writes: plan.writes,
                 pageFm: null,
+                ...(plan.already === undefined && !plan.dropStep && plan.objExecuted !== undefined ? { objExecuted: plan.objExecuted } : {}),
                 ...(plan.already !== undefined || plan.dropStep ? { noWrite: true as const } : {}),
                 ...(plan.already !== undefined ? { forwardOps: intent.direction === 'undo' ? plan.ops.map(invertOp) : plan.ops } : {}),
                 notes: replayNotes(plan, goneNameOf(slot, intent, plan.goneRows)),
@@ -1024,7 +1135,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             intent.kind === 'revert'
                 ? planRevert(record, intent.stepId, live, undefined, hashFor, goneRows)
                 : intent.kind === 'restore'
-                  ? planRestorePoint(record.restore, live, intent.keep)
+                  ? restorePlanOf(slot, intent, live)
                   : planRestoreDeleted(record, intent.deletedId, live, target === null ? null : restoreContextOf(target))
         if (plan.ok === false) {
             // A net-nothing revert lands nothing: no write, mark, step or save. It may still tell the
@@ -1042,16 +1153,27 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     ...(goneName === undefined ? {} : { goneName }),
                 }
             }
-            return refused(plan.reason)
+            const refusal = refused(plan.reason)
+            const withObj = plan.obj === undefined ? refusal : { ...refusal, obj: plan.obj }
+            return plan.linesRefused === undefined ? withObj : { ...withObj, linesRefused: plan.linesRefused }
+        }
+        const genericKind = parseOwnerKey(slot.key)?.kind
+        if (genericKind === undefined || !objEffectParses(genericKind, plan.objEffect, at)) {
+            return refused(genericKind === undefined ? 'unknown' : 'precondition')
         }
         const id = stepIdFor(pageSession, ++counter)
         const notes = replayNotes(plan, goneNameOf(slot, intent, plan.goneRows))
         if (isRestorePlan(plan)) {
             notes.changedElsewhere = plan.changedElsewhere
         }
+        if (plan.linesRefused !== undefined) {
+            notes.linesRefused = plan.linesRefused
+        }
         return {
             writes: plan.writes,
             pageFm: plan.pageFm ?? null,
+            ...(plan.objExecuted === undefined ? {} : { objExecuted: plan.objExecuted }),
+            ...(plan.linesApplied === undefined ? {} : { linesApplied: plan.linesApplied }),
             notes,
             land: (state) =>
                 commitStep(state, {
@@ -1066,8 +1188,25 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     deletedRemove: plan.deletedRemove,
                     liveListHash: plan.liveListHash,
                     afterListHash: plan.afterListHash,
+                    objEffect: plan.objEffect,
                 }, hashFor),
         }
+    }
+
+    // The restore point's plan: today's field plan, or, when lines are asked for, the field plan together with each
+    // requested list's journal reverted newest first. Lines need this visit's point (an earlier visit's journal is gone).
+    function restorePlanOf(slot: OwnerSlot, intent: Extract<Intent, { kind: 'restore' }>, live: LiveReader): ReturnType<typeof planRestorePoint> {
+        const record = slot.record
+        if (intent.lines === undefined || intent.lines.length === 0) {
+            return planRestorePoint(record.restore, live, intent.keep)
+        }
+        const visitId = getVisitId()
+        if (record.restore?.visitId !== visitId || slot.journal?.visitId !== visitId) {
+            return { ok: false, reason: 'precondition' }
+        }
+        const journal = slot.journal.lists
+        const lines = intent.lines.map((list) => ({ list, entries: journal.get(list) ?? [] }))
+        return planRestoreWithLines(record.restore, live, intent.keep, lines, new Set(record.deleted.map((item) => item.id)))
     }
 
     function replayNotes(plan: StepPlan, goneName: string | undefined): StudioWriteNotes {
@@ -1114,6 +1253,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     // notification runs inside the live write, so a notification that throws never leaves a landed step without its save.
     function applyStudioWrite(owner: OwnerKey, intent: Intent): StudioResult {
         cancelWarm()
+        releaseStaleJournals()
         // A module or session owner that is not selected, shares its id, is a stub or is gone is refused before its
         // lifecycle starts, so no slot, claim, load or save is made for it.
         const storedKey = parseStoredOwnerKey(owner)
@@ -1252,6 +1392,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         slot.record = next.record
         slot.open = next.open
+        noteJournal(slot, planned)
         if (phase.kind === 'ready') {
             // A removal-type write saves at once; any other waits for the debounce.
             if (assetWrite && removal) {
@@ -1273,7 +1414,50 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             moduleAcks.get(moduleIdOf(slot))?.noteEdit(moduleIdOf(slot), before)
         }
         landedNotice(owner, slot)
-        return { ok: true, ...planned.notes, ...(intent.kind === 'asset' || (intent.kind === 'field' && intent.reportStep === true) ? { stepId: slot.record.done.at(-1)?.id } : {}) }
+        return { ok: true, ...planned.notes, ...(intent.kind === 'asset' || ((intent.kind === 'field' || intent.kind === 'obj') && intent.reportStep === true) ? { stepId: slot.record.done.at(-1)?.id } : {}) }
+    }
+
+    // A journal of an earlier visit is dropped at the first use after the visit changed. It writes no reactive state, so
+    // it is safe inside a derived view.
+    function releaseStaleJournals(): void {
+        const visitId = getVisitId()
+        for (const slot of slots.values()) {
+            if (slot.journal !== null && slot.journal.visitId !== visitId) {
+                slot.journal = null
+            }
+        }
+    }
+
+    // The ops a landed write applied join the visit's journal of their list: one entry per plan and list, tail-merged by
+    // journalAppend. A restore line that applied starts its list's journal again. Called together with the record
+    // assignment, so a view that reads the record sees the journal that goes with it.
+    function noteJournal(slot: OwnerSlot, planned: Planned): void {
+        const executed = planned.objExecuted ?? []
+        if (executed.length === 0 && (planned.linesApplied ?? []).length === 0) {
+            return
+        }
+        const visitId = getVisitId()
+        if (slot.journal === null || slot.journal.visitId !== visitId) {
+            slot.journal = { visitId, lists: new Map() }
+        }
+        const groups = new Map<ObjListName, ObjFamilyOp[]>()
+        for (const op of executed) {
+            const list = journalListOf(op)
+            const group = groups.get(list)
+            if (group) {
+                group.push(op)
+            } else {
+                groups.set(list, [op])
+            }
+        }
+        for (const [list, ops] of groups) {
+            const entries = slot.journal.lists.get(list) ?? []
+            journalAppend(entries, ops)
+            slot.journal.lists.set(list, entries)
+        }
+        for (const list of planned.linesApplied ?? []) {
+            slot.journal.lists.set(list, [])
+        }
     }
 
     // The flags this one call confirmed: only the intent's own list, never state kept from an earlier call.
@@ -1322,6 +1506,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         const next = planned.land({ record: slot.record, open: slot.open })
         slot.record = next.record
         slot.open = next.open
+        noteJournal(slot, planned)
         adapter.noteEdit?.(target.id, before)
         landedNotice(owner, slot)
         return { ok: true, ...planned.notes }
@@ -1468,6 +1653,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
 
     function view(owner: OwnerKey): OwnerView {
         void slotCount
+        releaseStaleJournals()
         const slot = slots.get(owner)
         // Only a stored character or chat key can be restricted: a session key has no character.
         const parsed = parseStoredOwnerKey(owner)
@@ -1476,6 +1662,21 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         const kind = phase ? phase.kind : 'unused'
         const shown = slot !== undefined && !restricted
         const record = slot?.record ?? emptyRecord(owner, 0)
+        // The restore section: this visit's point shows when it holds a field or this visit changed a list; an earlier
+        // visit's point shows only when it holds a field, and then names the lists its field restore does not cover.
+        const stored = record.restore
+        const visitId = getVisitId()
+        const thisVisit = stored !== null && stored.visitId === visitId
+        const hasFields = stored !== null && Object.keys(stored.fields).length > 0
+        const lines =
+            thisVisit && slot?.journal?.visitId === visitId
+                ? [...slot.journal.lists].filter(([, entries]) => entries.length > 0).map(([list, entries]) => ({ list, n: entries.length }))
+                : []
+        const ownerKind = parseOwnerKey(owner)?.kind
+        const notes =
+            stored !== null && !thisVisit && hasFields && ownerKind !== undefined
+                ? (Object.keys(OBJ_LIST_FIELDS) as ObjListName[]).filter((list) => holdsObjList(ownerKind, list))
+                : []
         return {
             ownerKey: owner,
             phase: kind,
@@ -1486,7 +1687,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             done: shown ? record.done : [],
             undone: shown ? record.undone : [],
             deleted: shown ? record.deleted : [],
-            restore: shown ? record.restore : null,
+            restore: shown && stored !== null && (hasFields || lines.length > 0) ? stored : null,
+            restoreLines: shown ? lines : [],
+            restoreNotes: shown ? notes : [],
         }
     }
 
@@ -1557,7 +1760,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         redo: (owner) => applyStudioWrite(owner, { kind: 'replay', direction: 'redo' }),
         revertTo: (owner, stepId) => applyStudioWrite(owner, { kind: 'revert', stepId }),
         replay,
-        restore: (owner, keep, options) => applyStudioWrite(owner, { kind: 'restore', keep, confirmed: options?.confirmed }),
+        restore: (owner, keep, options) => applyStudioWrite(owner, { kind: 'restore', keep, confirmed: options?.confirmed, lines: options?.lines }),
+        objEdit: (owner, build, options) => applyStudioWrite(owner, { kind: 'obj', build, reportStep: options?.reportStep }),
         restoreDeleted: (owner, deletedId) => applyStudioWrite(owner, { kind: 'restoreDeleted', deletedId }),
         assetDelete: (owner, array, indexes) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildAssetDelete(array, indexes, live) }),
         assetRemoveExtras: (owner, array, name, indexes, survivors) =>
@@ -1573,6 +1777,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             }
         },
         unsettledStepCountForTests: (owner) => slots.get(owner)?.unsettled.size ?? 0,
+        journalForTests: (owner) => slots.get(owner)?.journal?.lists ?? new Map(),
         cancelWarm,
     }
 }

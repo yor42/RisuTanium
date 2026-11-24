@@ -10,7 +10,7 @@ import { rewritableTextAt, type TargetOwner } from 'src/ts/studio/assets/referen
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
 import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, SAVE_DEBOUNCE_MS, type OwnerKey } from '../ownerPhase'
-import { COALESCE_MS, emptyRecord, type Step } from '../historyModel'
+import { COALESCE_MS, emptyRecord, isObjItem, type DeletedItem, type GreetingDeletedItem, type Step } from '../historyModel'
 import { listFingerprintOf } from '../listFingerprint'
 import { createFakeClock, type FakeClock } from './historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, seedOwner, storedRecord, type ClaimDouble, type MemoryStudioStore } from './studioStoreDoubles'
@@ -84,6 +84,14 @@ function live(chaId = 'A'): LiveCharacter {
 }
 
 const A = characterOwnerKey('A')
+
+// These tests delete greetings only, so every listed item is a greeting item.
+function greetingItem(item: DeletedItem): GreetingDeletedItem {
+    if (isObjItem(item)) {
+        throw new Error('expected a greeting item')
+    }
+    return item
+}
 const chatA = (chatId: string): OwnerKey => chatOwnerKey('A', chatId)
 
 interface Harness {
@@ -486,7 +494,7 @@ describe('deleted items', () => {
         harness.service.greetingEdit(A, 0, 'later')
         harness.service.editField(A, 'desc', 'later too')
         harness.service.greetingAdd(A)
-        const item = harness.service.view(A).deleted[0]
+        const item = greetingItem(harness.service.view(A).deleted[0])
         expect(item.value).toBe('g1')
         expect(harness.service.restoreDeleted(A, item.id).ok).toBe(true)
         expect(live().alternateGreetings).toEqual(['later', 'g1', 'g2', ''])
@@ -512,11 +520,11 @@ describe('deleted items', () => {
         harness.service.greetingDelete(A, 2)
         // Closing Studio ends the visit's open step; the deleted list and the stored record are not part of it.
         harness.service.closeOpenStep(A)
-        expect(harness.service.view(A).deleted.map((entry) => entry.value)).toEqual(['g2'])
+        expect(harness.service.view(A).deleted.map((entry) => greetingItem(entry).value)).toEqual(['g2'])
         await harness.clock.advance(SAVE_DEBOUNCE_MS)
         const reloaded = build(harness.store.shared)
         await reloaded.service.whenReady(A)
-        const item = reloaded.service.view(A).deleted[0]
+        const item = greetingItem(reloaded.service.view(A).deleted[0])
         expect(item.value).toBe('g2')
         live().alternateGreetings = ['g0', 'g1']
         expect(reloaded.service.restoreDeleted(A, item.id).ok).toBe(true)

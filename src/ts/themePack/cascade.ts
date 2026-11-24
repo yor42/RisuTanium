@@ -34,7 +34,7 @@ import { inlinePrivate, parseConcrete } from './failclosed'
 import { layerStacks, MAX_BLUR_PX, MAX_THICKNESS_EM, MAX_THICKNESS_PX, OPAQUE_FROM, shadowLayers, stackCount, thicknessProblems, type LayerStack, type ShadowLayer } from './paintOver'
 import { parseSelectorEntry } from './scope'
 import { STUDIO_REGISTRY } from './registries/studio'
-import type { ThemeArea } from './index'
+import type { JudgedArea } from './index'
 
 const PACK_PAIR = 4.5
 const FALLBACK_PAIR = 3
@@ -429,7 +429,7 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
  * Judges the reach parts of a chat or Studio stylesheet by superset (Rule S). `css` is the stylesheet with its @font-face
  * blocks taken out. Every value a private `--pack-*` variable can take is judged, as the engine judges them.
  */
-export function cascadePass(area: ThemeArea, css: string): LintError[] {
+export function cascadePass(area: JudgedArea, css: string): LintError[] {
     if (area !== 'chat' && area !== 'studio') return []
     const text = normalise(css)
     const errors: LintError[] = []

@@ -4063,7 +4063,7 @@ export const languageJapanese = {
     themePackInstalled: (name: string) => `「${name}」をインストールしました。`,
     themePackPacksOffSession: "このセッションではテーマパックはオフです。",
     themePackSelectToTurnOn: "このパックを選ぶと、今すぐオンになります。",
-    themePackSkippedAreas: (files: string) => `このパックには${files}も含まれています。このバージョンでは新しいチャット画面、Studio、新しい設定画面のみがテーマの対象となり、それ以外の部分はパックとともに保持されます。`,
+    themePackSkippedAreas: (files: string) => `このパックには${files}も含まれています。このバージョンでは新しいチャット画面、Studio、新しい設定画面、およびそれらの上に表示されるポップアップのみがテーマの対象となり、それ以外の部分はパックとともに保持されます。`,
     themePackColoursHeld: (files: string) => `このバージョンでは${files}の形状のみを使用します。色は今後のバージョン用にパックとともに保持されます。`,
     themePackInstalledWithWarnings: (sheet: string) => `警告付きでインストールしました（${sheet}）:`,
     themePackInstalledWithNotes: (sheet: string) => `メモ（${sheet}）:`,

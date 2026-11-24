@@ -111,6 +111,8 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['presetFallbackOtherAx', { value: 'textList', holders: [], absent: 'keep', editWhenAbsent: true }],
     // The preset icon (S4d): session-only, no builtin holder.
     ['presetImage', { value: 'text', holders: [], absent: 'keep', editWhenAbsent: true }],
+    // The lore plus setting (S7): a registry boolean on the character.
+    ['lorePlus', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
 ]
 
 // The containers a dotted path names, with the value an absent container reads as. An undo replays a seed reading, so
