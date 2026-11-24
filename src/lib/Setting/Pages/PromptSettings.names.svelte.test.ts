@@ -64,6 +64,7 @@ vi.mock('src/ts/hotkey', () => ({
     hotkeyMatches: vi.fn(() => false),
 }))
 
+vi.mock('src/lib/Studio/StudioToggleLink.svelte', () => ({ default: () => {} }))
 vi.mock('src/lib/UI/ModelList.svelte', () => ({ default: () => {} }))
 vi.mock('src/lib/UI/PromptDataItem.svelte', () => ({ default: () => {} }))
 vi.mock('src/lib/Setting/Pages/Model/AuxModelSelectors.svelte', () => ({ default: () => {} }))

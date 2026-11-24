@@ -5,6 +5,7 @@ import type { Message, character, Chat, groupChat } from '../storage/database.sv
 import { sendChat } from './index.svelte'
 import { chatKeyOf, sendRefusalIn, starterRefusalIn } from './sendAdmission'
 import { hasChimedFor, hasFailedFor, hasSilencedFor, replySoundFor } from './replyNotice'
+import { replyChatLabel } from './replyErrorLabel'
 import type { SendChatOriginHint } from './index.svelte'
 import { sleep } from '../util'
 import { language } from '../../lang'
@@ -833,7 +834,7 @@ export async function sendChatMain(target: GenerationTarget, continued: boolean 
     } catch (error) {
         threw = true
         console.error(error)
-        alertError(error)
+        alertError(error, { reply: { chat: replyChatLabel(target.origin, target.originHint) } })
     }
     // A reply that finished off screen already sounded once in `announceReply`, whichever channel carried the sound. A stopped
     // reply plays nothing; a failed one plays only the error cue; the chime and the receive cue never both play for one reply.

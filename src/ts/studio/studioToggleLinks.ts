@@ -5,10 +5,11 @@ import { openStudio, selectedStudioCharacterId, type StudioOpener } from './stud
 import { studioEligible } from './studioSwitch.svelte'
 import type { StudioTarget } from './studioTarget'
 
-/** The classic toggle-definition field a link sits beside. A preset has no link until Studio can edit its toggles. */
+/** The classic toggle-definition field a link sits beside. A preset link leads to the active preset, the only one classic edits. */
 export type ToggleLinkOwner =
     | { readonly type: 'character' }
     | { readonly type: 'module', readonly moduleId: string }
+    | { readonly type: 'preset' }
 
 /**
  * Where "Edit in Studio" leads, or null when Studio cannot open on that owner now. A module links only while exactly
@@ -20,6 +21,11 @@ export function toggleLinkTarget(owner: ToggleLinkOwner): StudioTarget | null {
     const chaId = selectedStudioCharacterId()
     if (chaId === null) return null
     if (owner.type === 'character') return { owner: { type: 'character', id: chaId }, kind: 'toggles', from: 'chat' }
+    if (owner.type === 'preset') {
+        const active = DBState.db.botPresetsId
+        if (!Number.isInteger(active) || DBState.db.botPresets?.[active] === undefined) return null
+        return { owner: { type: 'preset', id: String(active) }, kind: 'toggles', from: 'settings' }
+    }
     const rows = (DBState.db.modules ?? []).filter((row) => row.id === owner.moduleId)
     if (rows.length !== 1 || isModuleStub(rows[0])) return null
     return { owner: { type: 'module', id: owner.moduleId }, kind: 'toggles', from: 'settings' }

@@ -130,6 +130,7 @@ export function recordReplyOutcome(call: ReplyCall, facts: ReplyFacts, isOnScree
         } catch (error) {
             console.error('The reply mark could not be written', error)
         }
+        // A queued error dialog counts as raised: it is shown once the person closes the alerts ahead of it.
         const dialogRaised = outcome === 'failed' && (facts.modulesFailed || alertedUnits.has(facts.signal))
         return dialogRaised ? { origin: call.origin, outcome, dialogRaised } : { origin: call.origin, outcome }
     } catch (error) {

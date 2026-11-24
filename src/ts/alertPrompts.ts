@@ -15,8 +15,9 @@ import { taskShown } from './alertTask.svelte'
  * Nothing here touches `alertStore` at import: it is read or watched only when
  * a prompt is asked for or a caller asks about, or subscribes to, prompt state.
  *
- * The module also keeps the boot notices (`queueNotice`): informational alerts
- * shown one at a time, each staying current until the person closes it.
+ * The module also keeps the notice lane (`queueNotice`, `queueErrorNotice`): entries shown one at a
+ * time, each staying current until the person closes it. An entry is a boot `normal` notice or a
+ * reply `error`; both close with OK, Escape or Back, and code never closes either.
  */
 
 /** How long an answer is discarded after a prompt appears on screen, however it got there: asked fresh, back from under a cover, or its turn arrived. */
@@ -48,12 +49,12 @@ let queue: WaitingPrompt[] = []
 let previous: alertData | null = null
 let watching = false
 let stopWatching: (() => void) | undefined
-/** Boot notices not yet shown, in the order they were queued. */
-let notices: string[] = []
+/** Notice-lane entries (boot notices and reply errors) not yet shown, in the order they were queued. */
+let notices: alertData[] = []
 /** The object last written to the store for the notice that is current; a notice is always written as a fresh object. */
 let noticeCurrent: alertData | null = null
-/** The text of the current notice (shown, or covered by another alert); null when none is current. */
-let noticeText: string | null = null
+/** The template of the current notice (shown, or covered by another alert); null when none is current. */
+let noticeEntry: alertData | null = null
 let drainWaiters: Array<() => void> = []
 
 const idleStore = writable(true)
@@ -74,18 +75,18 @@ export const alertIdle: Readable<boolean> = {
 }
 
 function publishIdle(): void {
-    idleStore.set(previous?.type === 'none' && current === null && queue.length === 0 && noticeText === null && notices.length === 0)
+    idleStore.set(previous?.type === 'none' && current === null && queue.length === 0 && noticeEntry === null && notices.length === 0)
 }
 
-/** Puts the notice on screen as a fresh object, so that every show restarts the answer pause that keys check. */
-function showNotice(text: string): void {
-    noticeText = text
-    noticeCurrent = { type: 'normal', msg: text }
+/** Puts the notice on screen as a fresh copy of its entry, so that every show restarts the answer pause that keys check. */
+function showNotice(entry: alertData): void {
+    noticeEntry = entry
+    noticeCurrent = { ...entry }
     alertStore.set(noticeCurrent)
 }
 
 function settleDrainWaiters(): void {
-    if (noticeText !== null || notices.length > 0) {
+    if (noticeEntry !== null || notices.length > 0) {
         return
     }
     const waiters = drainWaiters
@@ -138,13 +139,13 @@ function onValue(value: alertData): void {
         }
         // Only the person's close can write this `none` for the current notice: the code paths
         // refuse to close a notice that is on screen.
-        if (noticeText !== null && before === noticeCurrent) {
-            noticeText = null
+        if (noticeEntry !== null && before === noticeCurrent) {
+            noticeEntry = null
             noticeCurrent = null
         }
         // The raw store is read because the prompt branch above may have put a prompt back.
         if (current === null && queue.length === 0 && get(alertStore).type === 'none') {
-            const next = noticeText ?? notices.shift()
+            const next = noticeEntry ?? notices.shift()
             if (next !== undefined) {
                 showNotice(next)
             }
@@ -240,20 +241,33 @@ export function askPrompt(data: alertData, options?: AskPromptOptions): Promise<
  * nothing, or over a cover the person cannot close.
  */
 export function queueNotice(msg: string): void {
+    enqueueEntry({ type: 'normal', msg })
+}
+
+/**
+ * Queues a reply's error as an entry of the notice lane: it waits behind any alert the person can close and any
+ * prompt, is shown again as a fresh copy after a cover closes, and only the person's close ends it. It keeps its
+ * `submsg`, `stackTrace` and `link`.
+ */
+export function queueErrorNotice(data: alertData & { type: 'error' }): void {
+    enqueueEntry(data)
+}
+
+function enqueueEntry(entry: alertData): void {
     ensureWatching()
     const shown = get(alertStore)
-    if (noticeText === null && notices.length === 0 && current === null && queue.length === 0
+    if (noticeEntry === null && notices.length === 0 && current === null && queue.length === 0
         && (shown.type === 'none' || isCloseless(shown))) {
-        showNotice(msg)
+        showNotice(entry)
     } else {
-        notices.push(msg)
+        notices.push(entry)
     }
     publishIdle()
 }
 
 /** Resolves once no notice is current or queued: the person has closed every one queued so far. */
 export function noticesSettled(): Promise<void> {
-    if (noticeText === null && notices.length === 0) {
+    if (noticeEntry === null && notices.length === 0) {
         return Promise.resolve()
     }
     return new Promise<void>((resolve) => {
@@ -316,7 +330,7 @@ export function resetAlertPromptsForTests(): void {
     previous = null
     notices = []
     noticeCurrent = null
-    noticeText = null
+    noticeEntry = null
     drainWaiters = []
     idleStore.set(true)
 }

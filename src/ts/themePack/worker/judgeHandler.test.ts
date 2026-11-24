@@ -51,7 +51,6 @@ describe('T3W-6 the judge worker handler', () => {
                 { label: 'studio', area: 'studio', text: STUDIO_SHEET },
                 { label: 'home', area: 'home', text: HOME_SHEET },
                 { label: 'settings', area: 'settings', text: 'a{}' },
-                { label: 'popups', area: 'popups', text: 'a{}' },
             ],
         })
         if (answer.ok === false) throw new Error('expected an answer')
@@ -62,6 +61,18 @@ describe('T3W-6 the judge worker handler', () => {
             ['studio', STUDIO_SHEET, undefined, 'studio'],
             ['settings', 'a{}', undefined, 'settings'],
         ])
+    })
+
+    it('W-1: a popups job and a popups#shape job are judged in the popups area, under their labels', () => {
+        const sheet = '[data-part="toast"]{border-radius:4px}'
+        const answer = handleJudgeRequest({
+            id: 9,
+            jobs: [{ label: 'popups', area: 'popups', text: sheet }, { label: 'popups#shape', area: 'popups', text: sheet }],
+        })
+        if (answer.ok === false) throw new Error('expected an answer')
+        expect(Object.keys(answer.results)).toEqual(['popups', 'popups#shape'])
+        expect(answer.results.popups).toEqual(judgeAreaSheet('popups', sheet, undefined, 'popups'))
+        expect(answer.results.popups.result.ok).toBe(true)
     })
 
     it('S0-C1: an empty job list is a valid request with no results', () => {

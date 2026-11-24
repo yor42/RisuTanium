@@ -83,12 +83,16 @@ const STUDIO_SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set([...SHAPE_TOKEN_NA
  */
 const SETTINGS_SHAPE_TOKEN_NAMES: ReadonlySet<string> = SHAPE_TOKEN_NAMES
 
+/** Popups declares no custom property (Rule SCOPE), so its shape variant keeps no token name. */
+const NO_SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set()
+
 /**
  * The custom properties an applied area's shape variant keeps. Chat keeps its own list. Studio keeps the chat list, which its
  * allowlist also accepts, and its geometry tokens; Settings keeps the chat list. A test pins each against `allowedTokenNames(area)`.
  */
 export function shapeTokenNames(area: AppliedArea): ReadonlySet<string> {
     if (area === 'studio') return STUDIO_SHAPE_TOKEN_NAMES
+    if (area === 'popups') return NO_SHAPE_TOKEN_NAMES
     return area === 'settings' ? SETTINGS_SHAPE_TOKEN_NAMES : SHAPE_TOKEN_NAMES
 }
 

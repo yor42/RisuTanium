@@ -346,18 +346,26 @@ class NativeReplyNoticePolicyTest {
     assertEquals(NoticeAction.SKIP_STOPPED, pollEffect(tokens, 1, 1, display).action)
   }
 
-  // d6: only the tapped chat's tokens are marked; a null target marks a null target and not a chat.
+  private fun speaking(target: NoticeTarget? = a): KeepAliveDisplay {
+    val display = KeepAliveDisplay(foreground = false)
+    display.pageNotice(card(state = NoticeState.SPEAKING, target = target))
+    return display
+  }
+
+  // d6 (N2): native cancels every chat stream under a Generating card, so an entered Stop marks every held
+  // token, the named card's chat, another chat and an unnamed one alike.
   @Test
-  fun aStopMarksOnlyTheTokensOfItsChat() {
+  fun aStopOnAGeneratingCardMarksEveryHeldToken() {
     val tokens = NoticeTokens()
     tokens.add(1, armFor(a))
     tokens.add(2, armFor(b))
     tokens.add(3, armFor(null))
     val display = generating(a)
     assertEquals(StopTap.ENTERED, onStopTap(display, tokens))
+    assertTrue(display.nativeCancelWanted())
     assertEquals(NoticeAction.SKIP_STOPPED, pollEffect(tokens, 1, 1, display).action)
-    assertEquals(NoticeAction.POST_DONE, pollEffect(tokens, 2, 1, display).action)
-    assertEquals(NoticeAction.POST_DONE, pollEffect(tokens, 3, 1, display).action)
+    assertEquals(NoticeAction.SKIP_STOPPED, pollEffect(tokens, 2, 1, display).action)
+    assertEquals(NoticeAction.SKIP_STOPPED, pollEffect(tokens, 3, 1, display).action)
 
     val nullTokens = NoticeTokens()
     nullTokens.add(1, armFor(null))
@@ -365,7 +373,40 @@ class NativeReplyNoticePolicyTest {
     val nullCard = generating(null)
     assertEquals(StopTap.ENTERED, onStopTap(nullCard, nullTokens))
     assertEquals(NoticeAction.SKIP_STOPPED, pollEffect(nullTokens, 1, 1, nullCard).action)
-    assertEquals(NoticeAction.POST_DONE, pollEffect(nullTokens, 2, 1, nullCard).action)
+    assertEquals(NoticeAction.SKIP_STOPPED, pollEffect(nullTokens, 2, 1, nullCard).action)
+  }
+
+  // N1: the count card (no target) over two chats; a notification Stop leaves no "Replied" for either.
+  @Test
+  fun aStopOnTheCountCardSkipsEveryChatsDoneNotice() {
+    val tokens = NoticeTokens()
+    tokens.add(1, armFor(a))
+    tokens.add(2, armFor(b))
+    val display = generating(null)
+    assertEquals(StopTap.ENTERED, onStopTap(display, tokens))
+    assertEquals(NoticeAction.SKIP_STOPPED, pollEffect(tokens, 1, 1, display).action)
+    assertEquals(NoticeAction.SKIP_STOPPED, pollEffect(tokens, 2, 1, display).action)
+  }
+
+  // N4: native cancels nothing under a Speaking card, so only the card's own chat is marked and another
+  // chat's reply that nothing stopped still announces itself; a null-target Speaking card marks no chat.
+  @Test
+  fun aStopOnASpeakingCardMarksOnlyItsOwnChat() {
+    val tokens = NoticeTokens()
+    tokens.add(1, armFor(a))
+    tokens.add(2, armFor(b))
+    val display = speaking(a)
+    assertEquals(StopTap.ENTERED, onStopTap(display, tokens))
+    assertFalse(display.nativeCancelWanted())
+    assertEquals(NoticeAction.SKIP_STOPPED, pollEffect(tokens, 1, 1, display).action)
+    assertEquals(NoticeAction.POST_DONE, pollEffect(tokens, 2, 1, display).action)
+
+    val nullTokens = NoticeTokens()
+    nullTokens.add(1, armFor(b))
+    val nullCard = speaking(null)
+    assertEquals(StopTap.ENTERED, onStopTap(nullCard, nullTokens))
+    assertFalse(nullCard.nativeCancelWanted())
+    assertEquals(NoticeAction.POST_DONE, pollEffect(nullTokens, 1, 1, nullCard).action)
   }
 
   // d7: a stale tap and a tap on a card with no stoppable work are no Stop for any chat.

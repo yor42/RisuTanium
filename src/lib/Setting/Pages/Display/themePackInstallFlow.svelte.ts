@@ -209,6 +209,17 @@ function applyNoticesOf(pack: VerifiedPack): string[] {
         if (judgement === undefined) {
             continue
         }
+        if (area === 'popups') {
+            // Its colours paint over a chat element that has text; without one only its shape variant can apply. It never
+            // makes a pack show anything by itself.
+            const chat = pack.sheets.chat
+            if (chat === undefined || /^\s*$/.test(chat.canonical)) {
+                if (shapeOnlySheet(judgement.canonical, shapeTokenNames(area)) !== judgement.canonical) {
+                    held.push(`${area}.css`)
+                }
+            }
+            continue
+        }
         if (COLOUR_READY_AREAS.has(area)) {
             shows = shows || !/^\s*$/.test(judgement.canonical)
             continue

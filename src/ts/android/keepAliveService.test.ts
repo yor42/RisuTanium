@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
 import {
-    beginInFlight, inFlightChatTarget, inFlightKinds, inFlightSince, resetInFlightForTest, subscribeInFlight, takeRunOutcome,
+    beginInFlight, inFlightChatCount, inFlightChatTarget, inFlightKinds, inFlightSince, resetInFlightForTest, subscribeInFlight, takeRunOutcome,
 } from '../process/inFlightWork'
 import {
     createKeepAliveConsumer, KEEP_ALIVE_LINGER_MS, onKeepAliveHost, startKeepAliveService,
@@ -76,6 +76,9 @@ const V2_LABELS: KeepAliveStateLabels = {
     failed: 'Reply failed',
     failedHint: 'Open the app to see why.',
     stopped: 'Stopped',
+    repliesWriting: '{count} replies writing',
+    repliesFailed: '{count} replies failed',
+    repliesStopped: '{count} replies stopped',
     characters: '{count} characters',
 }
 
@@ -1088,7 +1091,8 @@ describe('contract v2: the closing notice and the run outcome', () => {
         expect(sentNotices(host).at(-1)?.payload.state).toBe('finishing')
     })
 
-    test('a failure that ended while speech was live does not show after translation ends', () => {
+    // A failure is kept for the run: other kinds beginning and ending while it is live never erase it.
+    test('a failure that ended while speech was live still shows after translation ends', () => {
         const host = fakeHostV2()
         attach(host)
         const endChat = beginInFlight('chat', { target: CHAT_TARGET })
@@ -1099,7 +1103,7 @@ describe('contract v2: the closing notice and the run outcome', () => {
         endTts()
         endTranslate()
 
-        expect(sentNotices(host).at(-1)?.payload.state).toBe('finishing')
+        expect(sentNotices(host).at(-1)?.payload).toEqual(expect.objectContaining({ state: 'failed', target: CHAT_TARGET }))
     })
 
     // P3d: the outcome is taken before the running check, so one that ends after the system's time limit is discarded.
@@ -1830,6 +1834,170 @@ describe('contract v2: the count pushed by stream notes while the page is hidden
             noteStreamText('r1', 'abc')
             vi.advanceTimersByTime(1000)
             expect(lastCountText(fake)).toBe('3 characters')
+        })
+    })
+})
+
+describe('contract v2: the count card for two or more chats writing', () => {
+    const OTHER_TARGET = { chaId: 'g2', chatId: 'c2' }
+    const subjectFor = (target: { chaId: string }): KeepAliveSubject => (target.chaId === CHAT_TARGET.chaId ? ALICE_SUBJECT : BOB_SUBJECT)
+
+    // The count line is available (a `characters` source and its label), so an empty `text` is a real assertion.
+    function attachCounting(host: FakeHostV2, extra: Partial<KeepAliveV2Deps> = {}): void {
+        attach(host, { chatCount: inFlightChatCount, subjectOf: subjectFor, characters: () => 42, ...extra })
+    }
+
+    test('two chats show one title with no name, avatar, target or count line', () => {
+        const host = fakeHostV2()
+        const avatar = fakeAvatar({ [ALICE_SUBJECT.image]: ALICE_AVATAR, [BOB_SUBJECT.image]: BOB_AVATAR })
+        attachCounting(host, { avatar })
+        vi.setSystemTime(1000)
+        beginInFlight('chat', { target: CHAT_TARGET })
+        vi.setSystemTime(4000)
+        beginInFlight('chat', { target: OTHER_TARGET })
+
+        const notice = liveNotice(host)
+        expect(notice).toEqual(expect.objectContaining({
+            state: 'generating', title: '2 replies writing', publicTitle: '2 replies writing',
+            identity: null, target: null, avatar: null, text: '', startedAt: 1000, stopLabel: 'Stop',
+        }))
+        expect(avatarsSent(host).filter((sent) => sent === BOB_AVATAR)).toEqual([])
+    })
+
+    test('two chats of one character count as two replies writing', () => {
+        const host = fakeHostV2()
+        attachCounting(host)
+        beginInFlight('chat', { target: CHAT_TARGET })
+        beginInFlight('chat', { target: { chaId: CHAT_TARGET.chaId, chatId: `${CHAT_TARGET.chatId}-other` } })
+
+        expect(liveNotice(host)).toEqual(expect.objectContaining({
+            title: '2 replies writing', identity: null, target: null,
+        }))
+    })
+
+    test('back to one chat the card names the remaining chat again', () => {
+        const host = fakeHostV2()
+        attachCounting(host)
+        beginInFlight('chat', { target: CHAT_TARGET })
+        const endOther = beginInFlight('chat', { target: OTHER_TARGET })
+        expect(liveNotice(host).title).toBe('2 replies writing')
+
+        endOther('reply')
+
+        expect(liveNotice(host)).toEqual(expect.objectContaining({
+            title: LABELS.generating, identity: ALICE_SUBJECT.identity, target: CHAT_TARGET, text: '42 characters',
+        }))
+    })
+
+    test('one chat shows today\'s named card even when a chat count is wired', () => {
+        const host = fakeHostV2()
+        attachCounting(host)
+        beginInFlight('chat', { target: CHAT_TARGET })
+
+        expect(liveNotice(host)).toEqual(expect.objectContaining({
+            title: LABELS.generating, identity: ALICE_SUBJECT.identity, target: CHAT_TARGET, text: '42 characters',
+        }))
+    })
+
+    test('two chats stopped close as one count title with no chat', () => {
+        const host = fakeHostV2()
+        attachCounting(host)
+        const endA = beginInFlight('chat', { target: CHAT_TARGET })
+        const endB = beginInFlight('chat', { target: OTHER_TARGET })
+
+        endA('stopped')
+        endB('stopped')
+
+        expect(sentNotices(host).at(-1)?.payload).toEqual(expect.objectContaining({
+            state: 'stopped', title: '2 replies stopped', publicTitle: '2 replies stopped', text: '', identity: null, target: null, avatar: null,
+        }))
+    })
+
+    test('two chats failed close as a count title with the hint and no chat', () => {
+        const host = fakeHostV2()
+        attachCounting(host)
+        const endA = beginInFlight('chat', { target: CHAT_TARGET })
+        const endB = beginInFlight('chat', { target: OTHER_TARGET })
+
+        endA('failed')
+        endB('failed')
+
+        expect(sentNotices(host).at(-1)?.payload).toEqual(expect.objectContaining({
+            state: 'failed', title: '2 replies failed', publicTitle: '2 replies failed', text: V2_LABELS.failedHint, identity: null, target: null,
+        }))
+    })
+
+    test('one failed and one replied closes as the failed chat\'s named Failed card', () => {
+        const host = fakeHostV2()
+        attachCounting(host)
+        const endA = beginInFlight('chat', { target: CHAT_TARGET })
+        const endB = beginInFlight('chat', { target: OTHER_TARGET })
+
+        endA('failed')
+        endB('reply')
+
+        expect(sentNotices(host).at(-1)?.payload).toEqual(expect.objectContaining({
+            state: 'failed', title: V2_LABELS.failed, text: V2_LABELS.failedHint, identity: ALICE_SUBJECT.identity, target: CHAT_TARGET,
+        }))
+    })
+
+    test('one failed and one stopped, the stopped one ending last, closes as the failed chat\'s named Failed card', () => {
+        const host = fakeHostV2()
+        attachCounting(host)
+        const endA = beginInFlight('chat', { target: CHAT_TARGET })
+        const endB = beginInFlight('chat', { target: OTHER_TARGET })
+
+        endA('failed')
+        endB('stopped')
+
+        expect(sentNotices(host).at(-1)?.payload).toEqual(expect.objectContaining({
+            state: 'failed', title: V2_LABELS.failed, text: V2_LABELS.failedHint, identity: ALICE_SUBJECT.identity, target: CHAT_TARGET,
+        }))
+    })
+
+    // The count is not shown, so a hidden page's stream note has nothing to push.
+    test('a count note sends nothing while the count card shows', () => {
+        const host = fakeHostV2()
+        const listeners = new Set<(change: StreamChange) => void>()
+        attachCounting(host, {
+            subscribeChanges: (listener) => {
+                listeners.add(listener)
+                return () => { listeners.delete(listener) }
+            },
+            pageHidden: () => true,
+        })
+        beginInFlight('chat', { target: CHAT_TARGET })
+        beginInFlight('chat', { target: OTHER_TARGET })
+        host.updateState.mockClear()
+
+        vi.setSystemTime(Date.now() + 5000)
+        for (const listener of listeners) {
+            listener('count')
+        }
+
+        expect(host.updateState).not.toHaveBeenCalled()
+    })
+
+    describe('startKeepAliveService wiring', () => {
+        afterEach(() => {
+            delete window.__risuTaniumHost
+        })
+
+        test('two chats give the count title and the closing count titles through the production deps', () => {
+            const fake = createHostChannelFake()
+            window.__risuTaniumHost = fake.channel
+            consumer = startKeepAliveService()
+            const endA = beginInFlight('chat', { target: CHAT_TARGET })
+            const endB = beginInFlight('chat', { target: OTHER_TARGET })
+            const messages = [...fake.postedTo('keepAlive', 'startState'), ...fake.postedTo('keepAlive', 'updateState')]
+            const live = JSON.parse((messages.at(-1)?.args as [string])[0]) as KeepAlivePayload
+            expect(live.title).toBe('2 replies writing')
+
+            endA('failed')
+            endB('failed')
+
+            const closing = fake.postedTo('keepAlive', 'stopAfterWithOutcome').at(-1)
+            expect((JSON.parse((closing?.args as [number, string])[1]) as KeepAlivePayload).title).toBe('2 replies failed')
         })
     })
 })

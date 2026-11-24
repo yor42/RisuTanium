@@ -4,7 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
-    beginInFlight, inFlightChatTarget, inFlightKinds, inFlightSince, resetInFlightForTest, subscribeInFlight,
+    beginInFlight, inFlightChatCount, inFlightChatTarget, inFlightKinds, inFlightSince, resetInFlightForTest, subscribeInFlight,
     takeRunOutcome, withInFlight,
 } from './inFlightWork'
 import {
@@ -63,10 +63,10 @@ describe('start times, the chat target and the run outcome', () => {
     test('a chat ended stopped or failed leaves a run outcome that is taken once', () => {
         const target = { chaId: 'a', chatId: '1' }
         beginInFlight('chat', { target })('stopped')
-        expect(takeRunOutcome()).toEqual({ outcome: 'stopped', target })
+        expect(takeRunOutcome()).toEqual({ outcome: 'stopped', target, count: 1 })
         expect(takeRunOutcome()).toBeNull()
         beginInFlight('chat', { target })('failed')
-        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target })
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target, count: 1 })
     })
 
     test('a chat ended with any other outcome, or none, clears the run outcome', () => {
@@ -86,19 +86,147 @@ describe('start times, the chat target and the run outcome', () => {
         expect(Object.keys(outcome?.target ?? {})).toEqual(['chaId', 'chatId'])
     })
 
-    test('the last of two live chats to end describes the run', () => {
+    test('a failed chat is not erased by the other chat ending with a reply, in either order', () => {
+        const a = { chaId: 'a', chatId: '1' }
+        const b = { chaId: 'b', chatId: '2' }
+        const endA = beginInFlight('chat', { target: a })
+        const endB = beginInFlight('chat', { target: b })
+        endA('failed')
+        endB('reply')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: a, count: 1 })
+
+        const endC = beginInFlight('chat', { target: a })
+        const endD = beginInFlight('chat', { target: b })
+        endC('reply')
+        endD('failed')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: b, count: 1 })
+        expect(takeRunOutcome()).toBeNull()
+    })
+
+    test('two chats that both reply leave no outcome', () => {
+        const endA = beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })
+        const endB = beginInFlight('chat', { target: { chaId: 'b', chatId: '2' } })
+        endA('reply')
+        endB('none')
+        expect(takeRunOutcome()).toBeNull()
+    })
+
+    test('two stopped chats give a count and no target', () => {
+        const endA = beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })
+        const endB = beginInFlight('chat', { target: { chaId: 'b', chatId: '2' } })
+        endA('stopped')
+        endB('stopped')
+        expect(takeRunOutcome()).toEqual({ outcome: 'stopped', target: null, count: 2 })
+    })
+
+    test('two failed chats and a stopped one count only the failed ones', () => {
+        const ends = ['a', 'b', 'c'].map((id) => beginInFlight('chat', { target: { chaId: id, chatId: '1' } }))
+        ends[0]('failed')
+        ends[1]('failed')
+        ends[2]('stopped')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: null, count: 2 })
+    })
+
+    test('one failed chat is named whatever stopped, in either order of ending', () => {
+        const a = { chaId: 'a', chatId: '1' }
+        const b = { chaId: 'b', chatId: '2' }
+        const c = { chaId: 'c', chatId: '3' }
+        const endA = beginInFlight('chat', { target: a })
+        const endB = beginInFlight('chat', { target: b })
+        endA('failed')
+        endB('stopped')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: a, count: 1 })
+
+        const endC = beginInFlight('chat', { target: a })
+        const endD = beginInFlight('chat', { target: b })
+        endD('stopped')
+        endC('failed')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: a, count: 1 })
+
+        const ends = [a, b, c].map((target) => beginInFlight('chat', { target }))
+        ends[0]('failed')
+        ends[1]('stopped')
+        ends[2]('stopped')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: a, count: 1 })
+    })
+
+    test('a failed chat without a target still counts as one failure with no target', () => {
+        const endA = beginInFlight('chat')
+        const endB = beginInFlight('chat', { target: { chaId: 'b', chatId: '2' } })
+        endA('failed')
+        endB('stopped')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: null, count: 1 })
+    })
+
+    test('a failure survives another kind beginning and ending while a chat is live', () => {
         const target = { chaId: 'a', chatId: '1' }
-        const endFirst = beginInFlight('chat', { target })
-        const endSecond = beginInFlight('chat', { target: { chaId: 'b', chatId: '2' } })
-        endFirst('failed')
-        endSecond('reply')
+        const endTts = beginInFlight('tts')
+        beginInFlight('chat', { target })('failed')
+        beginInFlight('translate')()
+        endTts()
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target, count: 1 })
+    })
+
+    test('a chat that begins again replaces only its own outcome', () => {
+        const a = { chaId: 'a', chatId: '1' }
+        const b = { chaId: 'b', chatId: '2' }
+        const endA = beginInFlight('chat', { target: a })
+        const endB = beginInFlight('chat', { target: b })
+        endA('failed')
+        beginInFlight('chat', { target: a })('reply')
+        endB('reply')
         expect(takeRunOutcome()).toBeNull()
 
-        const endThird = beginInFlight('chat', { target })
-        const endFourth = beginInFlight('chat', { target: { chaId: 'b', chatId: '2' } })
-        endThird('reply')
-        endFourth('failed')
-        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: { chaId: 'b', chatId: '2' } })
+        const endC = beginInFlight('chat', { target: a })
+        const endD = beginInFlight('chat', { target: b })
+        endC('failed')
+        const endE = beginInFlight('chat', { target: b })
+        endD('reply')
+        endE('reply')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: a, count: 1 })
+    })
+
+    test('a begin with nothing live clears a leftover outcome nobody took', () => {
+        beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })('stopped')
+        beginInFlight('image')
+        expect(takeRunOutcome()).toBeNull()
+    })
+
+    test('inFlightChatCount counts distinct targets and a token without one once', () => {
+        expect(inFlightChatCount()).toBe(0)
+        const first = beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })
+        expect(inFlightChatCount()).toBe(1)
+        const again = beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })
+        expect(inFlightChatCount()).toBe(1)
+        const second = beginInFlight('chat', { target: { chaId: 'b', chatId: '2' } })
+        expect(inFlightChatCount()).toBe(2)
+        beginInFlight('tts')
+        expect(inFlightChatCount()).toBe(2)
+        const bare = beginInFlight('chat')
+        expect(inFlightChatCount()).toBe(3)
+        bare()
+        second()
+        again()
+        expect(inFlightChatCount()).toBe(1)
+        first()
+        expect(inFlightChatCount()).toBe(0)
+    })
+
+    test('two chats of one character are two chats: counted twice and each outcome kept apart', () => {
+        const one = { chaId: 'a', chatId: '1' }
+        const two = { chaId: 'a', chatId: '2' }
+        const endOne = beginInFlight('chat', { target: one })
+        const endTwo = beginInFlight('chat', { target: two })
+        expect(inFlightChatCount()).toBe(2)
+        endOne('failed')
+        endTwo('stopped')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: one, count: 1 })
+
+        const endThree = beginInFlight('chat', { target: one })
+        const endFour = beginInFlight('chat', { target: two })
+        endThree('failed')
+        endFour('failed')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: null, count: 2 })
     })
 
     test('only a chat sets the run outcome', () => {
@@ -110,7 +238,7 @@ describe('start times, the chat target and the run outcome', () => {
     test('the outcome survives a save and is reset by every other begin', () => {
         beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })('stopped')
         beginInFlight('save')()
-        expect(takeRunOutcome()).toEqual({ outcome: 'stopped', target: { chaId: 'a', chatId: '1' } })
+        expect(takeRunOutcome()).toEqual({ outcome: 'stopped', target: { chaId: 'a', chatId: '1' }, count: 1 })
         beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })('failed')
         beginInFlight('translate')
         expect(takeRunOutcome()).toBeNull()
@@ -120,7 +248,7 @@ describe('start times, the chat target and the run outcome', () => {
         const end = beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })
         end('stopped')
         end('reply')
-        expect(takeRunOutcome()).toEqual({ outcome: 'stopped', target: { chaId: 'a', chatId: '1' } })
+        expect(takeRunOutcome()).toEqual({ outcome: 'stopped', target: { chaId: 'a', chatId: '1' }, count: 1 })
     })
 
     test('the outcome is already set when the subscribers hear of the end', () => {

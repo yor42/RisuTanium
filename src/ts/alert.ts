@@ -4,7 +4,7 @@ import { language } from "../lang"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { getDatabase, type MessageGenerationInfo } from "./storage/database.svelte"
 import { alertStore as alertStoreImported } from "./stores.svelte"
-import { askPrompt, noticeShowing, promptShowing, promptWaiting } from "./alertPrompts"
+import { askPrompt, noticeShowing, promptShowing, promptWaiting, queueErrorNotice } from "./alertPrompts"
 import type { PromptCancel } from "./alertCancel"
 import { taskActionSettled, taskResultRead, taskResultShowing, taskShown } from "./alertTask.svelte"
 import { postToast, toastHost } from "./toast/toastHost.svelte"
@@ -100,7 +100,18 @@ export const alertStore = {
     }
 }
 
-export function alertError(msg: string | Error, opts?: { link?: alertData['link'], ownScheme?: alertData['ownScheme'] }) {
+export interface AlertErrorOptions {
+    link?: alertData['link']
+    ownScheme?: alertData['ownScheme']
+    /**
+     * Marks the error as a reply's: it queues behind alerts the person can close instead of replacing them, and
+     * only the person's close ends it. `chat` is the "Character: chat" label, or null when the chat cannot be named
+     * (the message then shows alone).
+     */
+    reply?: { chat: string | null }
+}
+
+export function alertError(msg: string | Error, opts?: AlertErrorOptions) {
     console.error(msg)
     const db = getDatabase()
 
@@ -134,6 +145,18 @@ export function alertError(msg: string | Error, opts?: { link?: alertData['link'
     //check if it's a known error
     if(msg.includes('Failed to fetch') || msg.includes("NetworkError when attempting to fetch resource.")){
         submsg =    (!isTauri && !isNodeServer) ? language.errors.networkFetchWeb : language.errors.networkFetch
+    }
+
+    if(opts?.reply){
+        queueErrorNotice({
+            'type': 'error',
+            'msg': opts.reply.chat === null ? msg : opts.reply.chat + '\n' + msg,
+            'submsg': submsg,
+            'stackTrace': stackTrace,
+            ...(opts.link ? { 'link': opts.link } : {}),
+            ...(opts.ownScheme ? { 'ownScheme': opts.ownScheme } : {})
+        })
+        return
     }
 
     alertStoreImported.set({
