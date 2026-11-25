@@ -309,13 +309,22 @@ function resetDocument(): void {
     document.body.appendChild(custom)
 }
 
-async function until(done: () => boolean, what: string): Promise<void> {
-    for (let attempt = 0; attempt < 400; attempt++) {
+/** Polls `done` across event-loop turns with a wall-clock deadline so fast `setImmediate` ticks cannot spin out under load. */
+async function until(done: () => boolean, what: string, timeoutMs = 5000): Promise<void> {
+    const deadline = performance.now() + timeoutMs
+    for (let attempt = 0; ; attempt++) {
         flushSync()
         if (done()) {
             return
         }
-        await macrotask()
+        if (performance.now() >= deadline) {
+            break
+        }
+        if (attempt < 50) {
+            await macrotask()
+        } else {
+            await new Promise<void>((resolve) => setTimeout(resolve, 10))
+        }
     }
     throw new Error(`timed out waiting for ${what}`)
 }
