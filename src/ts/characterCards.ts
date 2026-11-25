@@ -17,6 +17,7 @@ import { ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "./
 import { createExportTask, type ExportTask } from "./exportTask"
 import { compressImage, getImageType } from "./media"
 import { DBState, SettingsMenuIndex, ShowRealmFrameStore, selectedCharID, settingsOpen } from "./stores.svelte"
+import { studioOpen } from "./studio/studioOpen"
 import { hasher } from "./parser/parser.svelte"
 import { type CharacterCardV3, type LorebookEntry } from '@risuai/ccardlib'
 import { reencodeImage } from "./process/files/inlays"
@@ -213,8 +214,11 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource, p
         DBState.db.modules.push(md)
         progress.committed({kind: 'module', slot: DBState.db.modules[DBState.db.modules.length - 1]})
         progress.notice(language.successImport)
-        SettingsMenuIndex.set(14)
-        settingsOpen.set(true)
+        // A module imported while Studio is open stays in Studio instead of opening Settings over it.
+        if(!get(studioOpen)){
+            SettingsMenuIndex.set(14)
+            settingsOpen.set(true)
+        }
         return {kind: 'imported', index: null}
     } catch (error) {
         if(error instanceof ModuleImportStopped){
@@ -1250,8 +1254,10 @@ export async function characterURLImport() {
                 markBootWrite()
                 DBState.db.modules.push(importData)
                 alertNormal(language.successImport)
-                SettingsMenuIndex.set(14)
-                settingsOpen.set(true)
+                if(!get(studioOpen)){
+                    SettingsMenuIndex.set(14)
+                    settingsOpen.set(true)
+                }
             }
         } catch (error) {
             alertError(importErrorMessage(error))
