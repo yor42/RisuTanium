@@ -41,6 +41,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 
 import { createRealmPreview, type RealmPreview } from './realmPreview.svelte'
 import { DBState } from 'src/ts/stores.svelte'
+import { realmBlockListKey } from 'src/ts/realmBlocking'
 
 function makeChara(name: string): hubType {
     return {
@@ -61,7 +62,10 @@ function makeChara(name: string): hubType {
 }
 
 function populated(name: string, additionalHTML = ''): RisuHubResult {
-    return { ok: true, cards: [makeChara(name)], additionalHTML }
+    return {
+        ok: true, cards: [makeChara(name)], additionalHTML,
+        blockedCreatorsKey: realmBlockListKey(DBState.db.blockedRealmCreators ?? []),
+    }
 }
 
 async function settle() {
@@ -77,7 +81,7 @@ let dispose: (() => void) | null = null
 
 function create() {
     dispose = $effect.root(() => {
-        preview = createRealmPreview(() => accepted)
+        preview = createRealmPreview(() => accepted, () => accepted)
     })
     flushSync()
 }
@@ -253,6 +257,28 @@ describe('createRealmPreview', () => {
         hubMock.pending[2]({ ok: true, cards: [], additionalHTML: '' } satisfies RisuHubResult)
         await settle()
         expect(preview.getInitialList()).toBeNull()
+    })
+
+    test('does not cache cards filtered while the request-start block list was temporarily changed', async () => {
+        const blocked = [{ id: 'creator-a', name: 'A' }]
+        DBState.db.blockedRealmCreators = blocked
+        try {
+            create()
+            DBState.db.blockedRealmCreators = []
+            hubMock.pending[0]({
+                ok: true,
+                cards: [{ ...makeChara('A'), creator: 'creator-a' }],
+                additionalHTML: '',
+                blockedCreatorsKey: '[]',
+            })
+            await settle()
+            DBState.db.blockedRealmCreators = blocked
+
+            expect(preview.getInitialList()).toBeNull()
+            expect(preview.cards).toEqual([])
+        } finally {
+            DBState.db.blockedRealmCreators = []
+        }
     })
 
     test('getInitialList invalidates when blockedRealmCreators changes or after 5 minutes', async () => {

@@ -1,6 +1,7 @@
 import { untrack } from 'svelte';
 import { DBState } from 'src/ts/stores.svelte';
 import { getRisuHub, type RisuHubResult, type hubType } from 'src/ts/characterCards';
+import { filterBlockedRealmCards, realmBlockListKey } from 'src/ts/realmBlocking';
 
 // Five-state model replacing the old `{#await}` -- offline/pending/
 // failed/empty/populated, the card list, the announcement string, and a
@@ -34,10 +35,11 @@ const REALM_LIST_MAX_AGE_MS = 5 * 60 * 1000;
  * owner. `accepted` is read inside both effects, so it must read reactive
  * state for them to follow acceptance.
  */
-export function createRealmPreview(accepted: () => boolean): RealmPreview {
+export function createRealmPreview(accepted: () => boolean, verifyAccepted: () => boolean): RealmPreview {
     let hubStatus: HubPreviewStatus = $state('pending');
     let hubCards: hubType[] = $state([]);
     let hubAnnouncement = $state('');
+    const visibleCards = $derived(filterBlockedRealmCards(hubCards, DBState.db.blockedRealmCreators ?? []));
 
     // Monotonic generation counter: guards every state write below (offline,
     // pending, success and failure alike) so a superseded request's late
@@ -47,9 +49,11 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
     let initialEntry: { key: string; time: number; promise: Promise<RisuHubResult> } | null = null;
     // Untracked so loadHubPreview() called inside the acceptance/hideRealm $effect
     // does not subscribe that effect to wholesale DBState.db reassignments.
-    const blockedCreatorsKey = () => untrack(() => JSON.stringify(DBState.db.blockedRealmCreators ?? []));
+    const blockedCreatorsKey = () => untrack(() => realmBlockListKey(DBState.db.blockedRealmCreators ?? []));
 
     async function loadHubPreview() {
+      if (!verifyAccepted()) return;
+
       // Captured, then written before the request-issuing await below:
       // nothing else can run between the increment and this write (both
       // happen synchronously), so it is always the newest generation at
@@ -72,12 +76,11 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
       initialEntry = entry;
 
       const result = await promise;
-      if ((!result.ok || result.cards.length === 0) && initialEntry === entry) {
-        initialEntry = null;
-      }
-
-      if (generation !== hubGeneration) {
+      if (generation !== hubGeneration || !verifyAccepted()) {
         return;
+      }
+      if (initialEntry === entry && (!result.ok || result.cards.length === 0 || result.blockedCreatorsKey !== entry.key)) {
+        initialEntry = null;
       }
 
       if (result.ok !== true) {
@@ -119,7 +122,13 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
     // `$derived`) both skip notifying on a write that reconfirms their current value, so a rerun
     // here always corresponds to a genuine transition.
     $effect(() => {
-      if (!realmHidden && accepted()) {
+      if (!accepted()) {
+        hubGeneration++;
+        initialEntry = null;
+        hubCards = [];
+        hubAnnouncement = '';
+        hubStatus = 'pending';
+      } else if (!realmHidden) {
         loadHubPreview();
       }
     });
@@ -147,7 +156,7 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
     });
 
     function getInitialList(): Promise<RisuHubResult> | null {
-      if (!initialEntry) {
+      if (!accepted() || !initialEntry) {
         return null;
       }
       if (initialEntry.key !== blockedCreatorsKey() || Date.now() - initialEntry.time > REALM_LIST_MAX_AGE_MS) {
@@ -158,8 +167,8 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
     }
 
     return {
-      get status() { return hubStatus; },
-      get cards() { return hubCards; },
+      get status() { return hubStatus === 'populated' && visibleCards.length === 0 ? 'empty' : hubStatus; },
+      get cards() { return visibleCards; },
       get announcement() { return hubAnnouncement; },
       get hidden() { return realmHidden; },
       load: loadHubPreview,

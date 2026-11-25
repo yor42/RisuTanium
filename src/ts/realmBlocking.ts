@@ -1,5 +1,9 @@
 import type { BlockedRealmCreator } from "./storage/database.svelte"
 
+export function realmBlockListKey(blockedCreators: BlockedRealmCreator[]): string {
+    return JSON.stringify(blockedCreators.map(({ id }) => id).sort())
+}
+
 type RealmCreatorData = {
     creator?: string
 }

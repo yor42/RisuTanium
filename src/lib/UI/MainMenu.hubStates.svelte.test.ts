@@ -83,6 +83,22 @@ vi.mock('./Realm/RealmMain.svelte', () => ({
 import MainMenu from './MainMenu.svelte'
 import { DBState, OpenRealmStore, RealmInitialOpenChar } from 'src/ts/stores.svelte'
 
+test('a pending Home preview cannot publish cards or its banner after same-tab agreement removal', async () => {
+    const pending = deferred<RisuHubResult>()
+    hubMock.setPending(() => pending.promise)
+    const target = mountMainMenu()
+    localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
+    pending.resolve({
+        ok: true, cards: [makeChara('withdrawn card')], additionalHTML: '<p>withdrawn banner</p>',
+        blockedCreatorsKey: '[]',
+    })
+    await flushHub()
+
+    expect(target.querySelector('[data-testid="upstream-consent-placeholder"]')).not.toBeNull()
+    expect(target.textContent).not.toContain('withdrawn card')
+    expect(target.textContent).not.toContain('withdrawn banner')
+})
+
 const mountedTargets: HTMLElement[] = []
 const mountedInstances: unknown[] = []
 

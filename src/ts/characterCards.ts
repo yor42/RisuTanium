@@ -39,7 +39,7 @@ import { refuseImportWhileRestoring } from "./drive/backupWorkGuard"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
 import { DOWNLOAD_IMPORT_STEPS, IMPORT_STEPS, ImportCancelled, NO_IMPORT_PROGRESS, responseBlobWithProgress, sourceWithProgress, type ImportProgress } from "./importProgress"
 import { markBootWrite } from "./bootWindow"
-import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
+import { filterBlockedRealmCards, isRealmCreatorBlocked, realmBlockListKey } from "./realmBlocking"
 import { normalizeOnboarding } from "./onboardingData"
 import { splitLoreKeys } from "./process/loreKeys"
 import { placeDisabledMarker } from "./process/lorebookImportDecorators"
@@ -2809,7 +2809,7 @@ export type hubType = {
  * - `network` — anything else thrown (e.g. the request never reached a server at all).
  */
 export type RisuHubResult =
-    | { ok: true; cards: hubType[]; additionalHTML: string }
+    | { ok: true; cards: hubType[]; additionalHTML: string; blockedCreatorsKey?: string }
     | { ok: false; reason: 'http' | 'network' | 'timeout' | 'malformed' | 'offline' | 'consent'; status?: number }
 
 // A manual AbortController + setTimeout, not AbortSignal.timeout: distinguishing `timeout` from
@@ -2867,11 +2867,12 @@ export async function getRisuHub(arg:{
         try {
             const jso = await da.json()
             const blocked = DBState.db.blockedRealmCreators ?? []
+            const blockedCreatorsKey = realmBlockListKey(blocked)
             if(Array.isArray(jso)){
-                return { ok: true, cards: filterBlockedRealmCards(jso, blocked), additionalHTML: '' }
+                return { ok: true, cards: filterBlockedRealmCards(jso, blocked), additionalHTML: '', blockedCreatorsKey }
             }
             if(jso && Array.isArray(jso.cards)){
-                return { ok: true, cards: filterBlockedRealmCards(jso.cards, blocked), additionalHTML: jso.additionalHTML || '' }
+                return { ok: true, cards: filterBlockedRealmCards(jso.cards, blocked), additionalHTML: jso.additionalHTML || '', blockedCreatorsKey }
             }
             return { ok: false, reason: 'malformed' }
         } catch {
