@@ -226,17 +226,25 @@ describe('the Tasks button', () => {
         expect(tasks.classList.contains('min-w-11')).toBe(true)
         expect(tasks.classList.contains('min-h-11')).toBe(true)
 
-        for (const band of ['mid', 'wide'] as const) {
-            const root = mountBar(band)
-            const tasksButton = buttonOf(root)!
-            const chipButton = root.querySelector('[data-part="home-persona-chip"]')!
-            expect(chipButton.parentElement!.contains(tasksButton), band).toBe(true)
-            expect([
-                before(root.querySelector('[data-part="home-brand"]')!, root.querySelector('fieldset')!),
-                before(root.querySelector('fieldset')!, tasksButton),
-                before(tasksButton, chipButton),
-            ], band).toEqual([true, true, true])
-        }
+        const mid = mountBar('mid')
+        const midTasks = buttonOf(mid)!
+        const midChip = mid.querySelector('[data-part="home-persona-chip"]')!
+        expect(midChip.parentElement!.contains(midTasks), 'mid').toBe(true)
+        expect([
+            before(mid.querySelector('[data-part="home-brand"]')!, midTasks),
+            before(midTasks, midChip),
+            before(midChip, mid.querySelector('fieldset')!),
+        ], 'mid').toEqual([true, true, true])
+
+        const wide = mountBar('wide')
+        const wideTasks = buttonOf(wide)!
+        const wideChip = wide.querySelector('[data-part="home-persona-chip"]')!
+        expect(wideChip.parentElement!.contains(wideTasks), 'wide').toBe(true)
+        expect([
+            before(wide.querySelector('[data-part="home-brand"]')!, wide.querySelector('fieldset')!),
+            before(wide.querySelector('fieldset')!, wideTasks),
+            before(wideTasks, wideChip),
+        ], 'wide').toEqual([true, true, true])
     })
 })
 

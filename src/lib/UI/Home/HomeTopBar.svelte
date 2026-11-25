@@ -55,6 +55,9 @@
     // button or the open dialog.
     const layout: HomeBand = $derived(band === 'wide' && barWidth > 0 && barWidth < WIDE_BAR_MIN ? 'mid' : band)
 
+    // The chip wrapper's layout: outside the phone band the layout is always mid or wide.
+    const chipLayout: 'mid' | 'wide' = $derived(layout === 'mid' ? 'mid' : 'wide')
+
     $effect(() => {
         if (band !== 'wide' || !header) {
             return
@@ -74,8 +77,10 @@
     })
 
     // The phone order is menu button, brand, Tasks, icon chip (one row), then the switcher row when it has entries,
-    // equal to its visual order; mid and wide keep brand, switcher, then the chip cluster (Tasks and the chip), with
-    // only the grid placement changing.
+    // equal to its visual order. Mid (including a narrow wide bar) puts brand, the chip cluster (Tasks and the chip),
+    // then the switcher row when it has entries; wide puts brand, switcher, then the chip cluster. Every layout's DOM
+    // order matches its visual order, and the chip cluster node stays in place across a mid/wide layout switch so an
+    // open Tasks dialog and its focused control are never recreated or moved.
     // The start inset keeps the brand clear of the sidebar arrow that sits at the top-left corner; the phone has
     // no arrow (the menu button replaces it), so it needs only the edge gap.
     // The switcher and the chip carry their own top margin, which the wrappers cancel.
@@ -113,8 +118,8 @@
         mid: 'col-span-2 row-start-2 -ml-10 flex justify-center *:justify-center *:mt-0!',
         wide: 'flex justify-center *:justify-center *:mt-0!',
     }
-    const chipClass: Record<HomeBand, string> = {
-        phone: 'max-w-full *:mt-0!',
+    // The chip wrapper renders only outside the phone band, so it has no phone entry.
+    const chipClass: Record<Exclude<HomeBand, 'phone'>, string> = {
         mid: 'col-start-2 row-start-1 flex items-center gap-2 justify-end *:min-w-11 *:mt-0!',
         wide: 'flex min-w-0 items-center gap-2 justify-end -mr-10 *:min-w-11 *:mt-0!',
     }
@@ -131,10 +136,11 @@
     // While a seasonal occasion shows (the host's data-seasonal-active), the cell adds 22 px of end padding: a scene's
     // final pose may reach 22 px right of the word and the focus ring sits past it, and the clip edge is the padding
     // box, so both stay visible without the cell drawing into the next track; the phone band takes this padding too.
+    // The phone cell's 4 px of end padding keeps the last letter of the wordmark inside the clip edge (the padding box).
     // The phone band has no container and no sliver rule (MC-1415); its wordmark leaves the layout under 350 px of
     // viewport (a viewport variant, since there is no container), visually hidden so the brand keeps its text.
     const brandClass: Record<HomeBand, string> = {
-        phone: 'flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] data-seasonal-active:pe-[22px] text-textcolor',
+        phone: 'flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip pe-1 [overflow-clip-margin:6px] data-seasonal-active:pe-[22px] text-textcolor',
         mid: '@container flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] data-seasonal-active:pe-[22px] text-textcolor',
         wide: '@container flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] data-seasonal-active:pe-[22px] text-textcolor',
     }
@@ -191,19 +197,28 @@
             <HomeTasks bind:open={tasksOpen} class="ms-auto" />
             <HomePersonaChip compact />
         </div>
+        {#if hasSwitcher}
+            <div class={switcherClass.phone}>
+                <HomeModeSwitcher />
+            </div>
+        {/if}
     {:else}
         {@render brand()}
-    {/if}
-    {#if band !== 'phone' || hasSwitcher}
-        <div class={switcherClass[layout]}>
-            <HomeModeSwitcher />
-        </div>
-    {/if}
-    {#if band !== 'phone'}
+        {#if layout === 'wide'}
+            <div class={switcherClass.wide}>
+                <HomeModeSwitcher />
+            </div>
+        {/if}
         <!-- Roleplay content: while Roleplay is the only built mode (BUILT_HOME_MODES) the landing is Roleplay. -->
-        <div class={chipClass[layout]}>
+        <div class={chipClass[chipLayout]}>
             <HomeTasks bind:open={tasksOpen} />
             <HomePersonaChip />
         </div>
+        {#if layout === 'mid' && hasSwitcher}
+            <!-- Omitted when empty so the mid grid never adds an empty row gap. -->
+            <div class={switcherClass.mid}>
+                <HomeModeSwitcher />
+            </div>
+        {/if}
     {/if}
 </header>
