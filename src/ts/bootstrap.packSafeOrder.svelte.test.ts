@@ -444,6 +444,14 @@ function targetsOf(call: WireCall): string[] {
 let cleanups: Array<() => void> = []
 let memoryFiles: Map<string, Uint8Array> | null = null
 let memoryReads: string[] | null = null
+// Captured once before any spy wraps `document.documentElement.style.setProperty`, so a spy can never recurse into an earlier spy.
+const nativeSetProperty = CSSStyleDeclaration.prototype.setProperty
+
+function runCleanups(): void {
+    for (const clean of cleanups.splice(0)) {
+        clean()
+    }
+}
 
 function plantFile(wire: TauriWire, key: string, bytes: Uint8Array): void {
     if (memoryFiles !== null) {
@@ -454,6 +462,8 @@ function plantFile(wire: TauriWire, key: string, bytes: Uint8Array): void {
 }
 
 async function startCase(options: CaseOptions = {}): Promise<Run> {
+    // Tear down any prior run in the same test (e.g., `rebootAfter` or multi-iteration cases) before installing fresh spies and observers.
+    runCleanups()
     const platform = options.platform ?? 'android'
     const route = options.route ?? 'store2'
     localStorage.clear()
@@ -506,11 +516,11 @@ async function startCase(options: CaseOptions = {}): Promise<Run> {
     flushSync()
 
     const setProperties: Array<[string, string]> = []
-    const original = document.documentElement.style.setProperty.bind(document.documentElement.style)
     const spy = vi.spyOn(document.documentElement.style, 'setProperty').mockImplementation((property: string, value: string | null, priority?: string) => {
         setProperties.push([property, String(value)])
-        original(property, value, priority)
+        nativeSetProperty.call(document.documentElement.style, property, value, priority)
     })
+    cleanups.push(() => spy.mockRestore())
     const added: Element[] = []
     const observer = new MutationObserver((records) => {
         for (const record of records) {
@@ -522,6 +532,7 @@ async function startCase(options: CaseOptions = {}): Promise<Run> {
         }
     })
     observer.observe(document, { childList: true, subtree: true })
+    cleanups.push(() => observer.disconnect())
 
     let asks = 0
     const answer: Answer = (reply) => { window.__risuTaniumLaunchOptions?.(reply) }
@@ -574,8 +585,6 @@ async function startCase(options: CaseOptions = {}): Promise<Run> {
     const { loadData } = await import('src/ts/bootstrap')
 
     cleanups.push(() => {
-        observer.disconnect()
-        spy.mockRestore()
         shell()
         apply.resetThemePackApplyForTests()
         restoreUrlFake()
@@ -677,9 +686,7 @@ beforeAll(async () => {
 
 afterEach(async () => {
     vi.useRealTimers()
-    for (const clean of cleanups.splice(0)) {
-        clean()
-    }
+    runCleanups()
     Reflect.deleteProperty(window, '__risuTaniumHost')
     Reflect.deleteProperty(window, '__risuTaniumKeepAlive')
     Reflect.deleteProperty(window, '__risuTaniumLaunchOptions')
@@ -988,13 +995,21 @@ describe('a saved profile that left safe mode boots pack-free', () => {
         first.answer({ packSafeMode: true, touchExploration: false })
         await leave(first)
         await drain()
-        const saved = Object.fromEntries(Object.entries(packFields(first.g.getDatabase())).filter(([, value]) => value !== undefined))
         const original = fixture.profile
-        fixture.profile = { ...original, ...saved }
+        const nextProfile: Plain = { ...original }
+        for (const [key, value] of Object.entries(packFields(first.g.getDatabase()))) {
+            if (value === undefined) {
+                delete nextProfile[key]
+            } else {
+                nextProfile[key] = value
+            }
+        }
+        fixture.profile = nextProfile
         try {
             const second = await startCase({ host: 'listener', onAsk: (_n, answer) => answer({ packSafeMode: false, touchExploration: false }) })
             await bootAndDrain(second)
             await drain()
+            expect(loaded(second), 'the rebooted page finished loading').toBe(true)
             expectClean(second)
             expect(document.documentElement.hasAttribute('data-theme-pack-base'), 'no pack attribute on the root').toBe(false)
             expect(document.querySelectorAll('style[data-theme-pack]').length, 'no pack sheet in the document').toBe(0)
