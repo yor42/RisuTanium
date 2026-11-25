@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock('src/ts/stores.svelte', () => ({
     hypaV3ProgressStore: writable({ open: false, miniMsg: '', msg: '', subMsg: '' }),
+    savingStoppedReason: writable(''),
+    frozenSaveKeysStore: writable([]),
 }))
 
 import { hypaV3ProgressStore } from 'src/ts/stores.svelte'
