@@ -459,7 +459,7 @@ export async function exportChat(page:number){
         }
         const date = new Date().toJSON();
         const htmlChatParse = async (v:string) => {
-            v = parseMarkdownSafe(v)
+            v = parseMarkdownSafe(v, { forTranslation: doTranslate })
 
             if(doTranslate){
                 // Translator, LLM and display-script output is not trusted markup:

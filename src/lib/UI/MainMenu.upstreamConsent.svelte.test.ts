@@ -307,10 +307,8 @@ describe('MainMenu.svelte: the online listener must respect withdrawn acceptance
  * across the removal while a fresh read already disagrees. The subscription that keeps the
  * store's cached value alive across the `removeItem` is released only once the mounted
  * component's own subscription is in place to keep it alive in turn, so the mounted component
- * still observes the stale `true` and, per the acceptance effect, issues one `getRisuHub` call.
- * That call's own `'consent'` branch publishes the fresh read via `publishUpstreamAccepted()`
- * (`src/ts/upstreamAgreement.ts`), correcting the store to `false` before this function returns --
- * the placeholder shows because the store now agrees with storage, not because it disagrees. */
+ * still observes the stale `true`. The preview's fresh check corrects the store and
+ * shows the placeholder before attempting a Realm list load. */
 async function setupKeyRemovedThenConsentLoad(): Promise<HTMLElement> {
     localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
     resetUpstreamAgreementForTests()
@@ -320,7 +318,7 @@ async function setupKeyRemovedThenConsentLoad(): Promise<HTMLElement> {
     hold()
     await settle()
     expect(get(upstreamAccepted)).toBe(false)
-    expect(hubMock.getRisuHub).toHaveBeenCalledTimes(1)
+    expect(hubMock.getRisuHub).not.toHaveBeenCalled()
     expect(placeholder(target)).toBeTruthy()
     hubMock.getRisuHub.mockClear()
     return target

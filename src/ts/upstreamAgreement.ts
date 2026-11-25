@@ -56,8 +56,8 @@ const upstreamAcceptedStore = writable<boolean>(readAccepted(), (set) => {
 /**
  * Reflects acceptance for templates and effects. Only `askUpstreamAgreement()`,
  * this store's own `storage` listener, its start function (on the first
- * subscriber), `publishUpstreamAccepted()` and `resetUpstreamAgreementForTests()`
- * ever write to it -- never read it to decide "already accepted", since a
+ * subscriber), `publishUpstreamAccepted()`, `verifyUpstreamAccepted()` and
+ * `resetUpstreamAgreementForTests()` ever write to it -- never read it to decide "already accepted", since a
  * store already subscribed elsewhere would otherwise hand back a stale
  * cached value instead of re-reading storage (use `isUpstreamAccepted()` for
  * that decision). A write that leaves the store's value unchanged raises no
@@ -91,6 +91,13 @@ export function isUpstreamAccepted(): boolean {
  */
 export function publishUpstreamAccepted(): void {
     upstreamAcceptedStore.set(readAccepted())
+}
+
+/** Checks storage at the point of use. Call from a handler, effect or async continuation because this can publish a refusal. */
+export function verifyUpstreamAccepted(): boolean {
+    const accepted = isUpstreamAccepted()
+    if (!accepted) upstreamAcceptedStore.set(false)
+    return accepted
 }
 
 let pending: Promise<boolean> | null = null

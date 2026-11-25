@@ -45,6 +45,8 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 
 import { installBackGuard, resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { DBState } from 'src/ts/stores.svelte'
+import { alertInput } from 'src/ts/alert'
+import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
 import RealmPopUp from './RealmPopUp.svelte'
 
 const mounted: Array<ReturnType<typeof mount>> = []
@@ -109,6 +111,34 @@ afterEach(() => {
     }
     document.body.replaceChildren()
     resetBackHandlersForTests()
+})
+
+test('a pending report cannot send traffic after agreement is withdrawn and the card is cleared', async () => {
+    const fetchReport = vi.fn()
+    vi.stubGlobal('fetch', fetchReport)
+    localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
+    resetUpstreamAgreementForTests()
+    try {
+        let finishReport!: (value: string) => void
+        vi.mocked(alertInput).mockImplementationOnce(() => new Promise((resolve) => { finishReport = resolve }))
+        const { target, props } = mountPopUp()
+        target.querySelector('summary')!.click()
+        byText(target, 'button', language.realmReport).click()
+        await vi.waitFor(() => expect(finishReport).toBeTypeOf('function'))
+
+        localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
+        props.openedData = null
+        flushSync()
+        finishReport('synthetic report')
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(fetchReport).not.toHaveBeenCalled()
+    } finally {
+        vi.unstubAllGlobals()
+        localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
+        resetUpstreamAgreementForTests()
+    }
 })
 
 const partOf = (el: Element | null): string | null => el?.getAttribute('data-part') ?? null

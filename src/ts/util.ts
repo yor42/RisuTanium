@@ -728,9 +728,7 @@ export function getNodetextToSentence(node: Node): string {
     let result = '';
     for (const child of node.childNodes) {
         if (child.nodeType === Node.TEXT_NODE) {
-            // markdown-it writes a newline after each <br>, which the <br> already added
-            const text = child.textContent ?? '';
-            result += child.previousSibling?.nodeName === 'BR' ? text.replace(/^\n/, '') : text;
+            result += child.textContent ?? '';
         } else if (child.nodeType === Node.ELEMENT_NODE) {
             if (child.nodeName === 'BR') {
                 result += '\n';

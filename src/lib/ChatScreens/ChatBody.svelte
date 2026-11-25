@@ -206,7 +206,7 @@
                             return
                         }
                     }
-                    const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition(), scriptCache)
+                    const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition(), scriptCache, { forTranslation: true })
                     translating = true
                     const translated = await translateHTML(marked, false, charArg, chatID, retranslate)
                     translating = false

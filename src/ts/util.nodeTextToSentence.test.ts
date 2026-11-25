@@ -31,19 +31,14 @@ function parseHtml(html: string): HTMLDivElement {
 }
 
 describe('getNodetextToSentence', () => {
-    test('reproducer: drops the single newline markdown-it emits after <br>', () => {
-        const div = parseHtml('Line 1<br>\nLine 2')
-        expect(getNodetextToSentence(div)).toBe('Line 1\nLine 2')
+    test('keeps an authored newline after a line-break element', () => {
+        const div = parseHtml('Line 1<br>&#10;Line 2')
+        expect(getNodetextToSentence(div)).toBe('Line 1\n\nLine 2')
     })
 
-    test('reproducer: handles multiple consecutive <br>\\n soft breaks without doubling', () => {
-        const div = parseHtml('First<br>\nSecond<br>\nThird')
-        expect(getNodetextToSentence(div)).toBe('First\nSecond\nThird')
-    })
-
-    test('reproducer: strips only the first newline after <br>, preserving an intentional blank line', () => {
-        const div = parseHtml('First<br>\n\nSecond')
-        expect(getNodetextToSentence(div)).toBe('First\n\nSecond')
+    test('handles consecutive line-break elements', () => {
+        const div = parseHtml('First<br><br>Second<br>Third')
+        expect(getNodetextToSentence(div)).toBe('First\n\nSecond\nThird')
     })
 
     test('guard: preserves <br> without trailing newline and inline markdown formatting', () => {

@@ -18,19 +18,16 @@
  *
  * `src/ts/characterCards` is mocked so `getRisuHub`'s resolved
  * `RisuHubResult` can be driven and sequenced per test, and so no network
- * fetch ever fires. `src/ts/alert` is mocked following the sink test's own
- * precedent. `./RealmHubIcon.svelte` and `./RealmPopUp.svelte` are stubbed
- * to trivial components, also following that precedent: this file is not
- * about the populated grid's own markup, only about which result the card
- * ends up reflecting.
+ * fetch ever fires. The real grid cards exercise the click path and the
+ * popup is stubbed so an attempt to mount it can be observed directly.
  */
 
 import { flushSync, mount, unmount } from 'svelte'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
 import type { RisuHubResult, hubType } from 'src/ts/characterCards'
-import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
+import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests, upstreamAccepted } from 'src/ts/upstreamAgreement'
 
 //#region module mocks
 
@@ -83,27 +80,26 @@ vi.mock(import('src/ts/stores.svelte'), () => {
     } as unknown as typeof import('src/ts/stores.svelte')
 })
 
-// Stubbed out entirely, following the sink test's precedent -- neither is
-// itself under test here.
-vi.mock('./RealmHubIcon.svelte', () => ({
-    default: (_target: unknown) => ({ destroy: () => {} }),
-}))
-vi.mock('./RealmPopUp.svelte', () => ({
-    default: (_target: unknown) => ({ destroy: () => {} }),
-}))
+// The popup's real markup is covered by RealmPopUp.parts.svelte.test.ts.
+const popupMock = vi.hoisted(() => vi.fn(() => ({ destroy: () => {} })))
+vi.mock('./RealmPopUp.svelte', () => ({ default: popupMock }))
 
 //#endregion
 
 import RealmMain from './RealmMain.svelte'
+import { RealmInitialOpenChar } from 'src/ts/stores.svelte'
 
 const mountedTargets: HTMLElement[] = []
 const mountedInstances: unknown[] = []
 
-function mountRealmMain(props: { initialList?: Promise<RisuHubResult> | null } = {}) {
+function mountRealmMain({ initialList, getInitialList = () => initialList ?? null }: {
+    initialList?: Promise<RisuHubResult>,
+    getInitialList?: () => Promise<RisuHubResult> | null,
+} = {}) {
     const target = document.createElement('div')
     document.body.appendChild(target)
     mountedTargets.push(target)
-    const instance = mount(RealmMain, { target, props })
+    const instance = mount(RealmMain, { target, props: { getInitialList } })
     mountedInstances.push(instance)
     flushSync()
     return target
@@ -188,6 +184,124 @@ afterEach(async () => {
     vi.clearAllMocks()
 })
 
+describe('RealmMain.svelte: shared Realm request context', () => {
+    test('a cached list cannot revive a withdrawn agreement on mount', async () => {
+        const keepStore = upstreamAccepted.subscribe(() => {})
+        try {
+            localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
+            expect(get(upstreamAccepted)).toBe(true)
+            const target = mountRealmMain({ initialList: Promise.resolve({
+                ok: true, cards: [makeChara('cached')], additionalHTML: '<p>cached banner</p>', blockedCreatorsKey: '[]',
+            }) })
+            await flushHub()
+
+            expect(get(upstreamAccepted)).toBe(false)
+            expect(target.querySelector('[data-testid="upstream-consent-placeholder"]')).not.toBeNull()
+            expect(bannerText(target)).toBe('')
+            expect(hubMock.getRisuHub).not.toHaveBeenCalled()
+        } finally {
+            keepStore()
+        }
+    })
+
+    test('a visible grid card cannot open after the saved agreement is cleared', async () => {
+        hubMock.setImpl(() => ({ ok: true, cards: [makeChara('grid card')], additionalHTML: '' }))
+        const target = mountRealmMain()
+        await flushHub()
+        const card = Array.from(target.querySelectorAll('button')).find((button) => button.textContent?.includes('grid card'))
+        expect(card).toBeTruthy()
+
+        localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
+        card!.click()
+        await flushHub()
+
+        expect(popupMock).not.toHaveBeenCalled()
+        expect(target.querySelector('[data-testid="upstream-consent-placeholder"]')).not.toBeNull()
+    })
+
+    test('a direct-open handoff cannot open after the saved agreement is cleared', async () => {
+        const target = mountRealmMain()
+        await flushHub()
+        localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
+        RealmInitialOpenChar.set(makeChara('direct card'))
+        await flushHub()
+
+        expect(get(RealmInitialOpenChar)).toBeNull()
+        expect(popupMock).not.toHaveBeenCalled()
+        expect(target.querySelector('[data-testid="upstream-consent-placeholder"]')).not.toBeNull()
+    })
+
+    test('a cached response cannot render after agreement is withdrawn during the wait', async () => {
+        const shared = deferred<RisuHubResult>()
+        const target = mountRealmMain({ initialList: shared.promise })
+        localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
+        shared.resolve({ ok: true, cards: [makeChara('late')], additionalHTML: '<p>late banner</p>', blockedCreatorsKey: '[]' })
+        await flushHub()
+
+        expect(target.querySelector('[data-testid="upstream-consent-placeholder"]')).not.toBeNull()
+        expect(bannerText(target)).toBe('')
+        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
+    })
+
+    test('an in-flight preview must still be valid when it resolves', async () => {
+        const shared = deferred<RisuHubResult>()
+        let initial: Promise<RisuHubResult> | null = shared.promise
+        const target = mountRealmMain({ getInitialList: () => initial })
+        initial = null
+        shared.resolve({ ok: true, cards: [makeChara('expired')], additionalHTML: '<p>expired banner</p>', blockedCreatorsKey: '[]' })
+        await flushHub()
+
+        expect(hubMock.getRisuHub).toHaveBeenCalledExactlyOnceWith({ search: '', page: 0, nsfw: false, sort: 'recommended' })
+        expect(bannerText(target)).toBe('')
+    })
+
+    test('a shared response for a different block list triggers a fresh load', async () => {
+        const shared = deferred<RisuHubResult>()
+        const target = mountRealmMain({ initialList: shared.promise })
+        shared.resolve({ ok: true, cards: [makeChara('mismatch')], additionalHTML: '<p>mismatch banner</p>', blockedCreatorsKey: '["previous"]' })
+        await flushHub()
+
+        expect(hubMock.getRisuHub).toHaveBeenCalledTimes(1)
+        expect(bannerText(target)).toBe('')
+    })
+
+    test('fallback ignores an unsubmitted search draft, which Search still submits', async () => {
+        const shared = deferred<RisuHubResult>()
+        const target = mountRealmMain({ initialList: shared.promise })
+        const input = target.querySelector<HTMLInputElement>('input')!
+        input.value = 'unsubmitted draft'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
+
+        shared.resolve({ ok: false, reason: 'network' })
+        await flushHub()
+        expect(hubMock.getRisuHub).toHaveBeenCalledTimes(1)
+        expect(hubMock.getRisuHub).toHaveBeenLastCalledWith({ search: '', page: 0, nsfw: false, sort: 'recommended' })
+
+        target.querySelector<HTMLButtonElement>(`[aria-label="${language.search}"]`)!.click()
+        await flushHub()
+        expect(hubMock.getRisuHub).toHaveBeenLastCalledWith({ search: 'unsubmitted draft', page: 0, nsfw: false, sort: '' })
+    })
+
+    test('accepting with Trending selected loads Trending instead of a cached recommended list', async () => {
+        localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
+        resetUpstreamAgreementForTests()
+        const target = mountRealmMain({ initialList: Promise.resolve({
+            ok: true, cards: [makeChara('recommended')], additionalHTML: '<p>recommended banner</p>', blockedCreatorsKey: '[]',
+        }) })
+        clickTrending(target)
+        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
+
+        localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
+        resetUpstreamAgreementForTests()
+        await flushHub()
+
+        expect(hubMock.getRisuHub).toHaveBeenCalledExactlyOnceWith({ search: '', page: 0, nsfw: false, sort: 'trending' })
+        expect(bannerText(target)).toBe('')
+    })
+})
+
 describe('RealmMain.svelte: banner reactivity and the generation guard', () => {
     test('the banner updates on a second getHub() call, not just the one at mount', async () => {
         hubMock.setImpl(() => ({ ok: true, cards: [], additionalHTML: '<p>first banner</p>' } satisfies RisuHubResult))
@@ -262,7 +376,7 @@ describe('RealmMain.svelte: banner reactivity and the generation guard', () => {
         const target = mountRealmMain({ initialList: shared.promise })
         expect(hubMock.getRisuHub).not.toHaveBeenCalled()
 
-        shared.resolve({ ok: true, cards: [makeChara('from-preview')], additionalHTML: '<p>shared banner</p>' })
+        shared.resolve({ ok: true, cards: [makeChara('from-preview')], additionalHTML: '<p>shared banner</p>', blockedCreatorsKey: '[]' })
         await flushHub()
 
         expect(hubMock.getRisuHub).not.toHaveBeenCalled()
