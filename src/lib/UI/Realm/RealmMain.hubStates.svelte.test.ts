@@ -99,11 +99,11 @@ import RealmMain from './RealmMain.svelte'
 const mountedTargets: HTMLElement[] = []
 const mountedInstances: unknown[] = []
 
-function mountRealmMain() {
+function mountRealmMain(props: { initialList?: Promise<RisuHubResult> | null } = {}) {
     const target = document.createElement('div')
     document.body.appendChild(target)
     mountedTargets.push(target)
-    const instance = mount(RealmMain, { target, props: {} })
+    const instance = mount(RealmMain, { target, props })
     mountedInstances.push(instance)
     flushSync()
     return target
@@ -255,5 +255,48 @@ describe('RealmMain.svelte: banner reactivity and the generation guard', () => {
         await flushHub()
 
         expect(statusMarker(target)).toBeNull()
+    })
+
+    test('reuses a populated initialList without calling getRisuHub again', async () => {
+        const shared = deferred<RisuHubResult>()
+        const target = mountRealmMain({ initialList: shared.promise })
+        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
+
+        shared.resolve({ ok: true, cards: [makeChara('from-preview')], additionalHTML: '<p>shared banner</p>' })
+        await flushHub()
+
+        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
+        expect(statusMarker(target)).toBeNull()
+        expect(bannerText(target)).toBe('shared banner')
+    })
+
+    test('falls back to getRisuHub when initialList resolves empty or failed', async () => {
+        hubMock.setImpl(() => ({ ok: true, cards: [makeChara('retried')], additionalHTML: '<p>retry banner</p>' } satisfies RisuHubResult))
+        const target = mountRealmMain({
+            initialList: Promise.resolve({ ok: false, reason: 'network' } satisfies RisuHubResult),
+        })
+        await flushHub()
+
+        expect(hubMock.getRisuHub).toHaveBeenCalledTimes(1)
+        expect(statusMarker(target)).toBeNull()
+        expect(bannerText(target)).toBe('retry banner')
+    })
+
+    test('drops a superseded initialList when the user changes sort before it resolves', async () => {
+        const shared = deferred<RisuHubResult>()
+        const trendingLoad = deferred<RisuHubResult>()
+        hubMock.setPending(() => trendingLoad.promise)
+
+        const target = mountRealmMain({ initialList: shared.promise })
+        clickTrending(target)
+        expect(hubMock.getRisuHub).toHaveBeenCalledTimes(1)
+
+        trendingLoad.resolve({ ok: true, cards: [makeChara('trending')], additionalHTML: '<p>trending</p>' })
+        await flushHub()
+        expect(bannerText(target)).toBe('trending')
+
+        shared.resolve({ ok: true, cards: [makeChara('stale')], additionalHTML: '<p>stale</p>' })
+        await flushHub()
+        expect(bannerText(target)).toBe('trending')
     })
 })
