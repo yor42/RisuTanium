@@ -58,6 +58,44 @@
     // The chip wrapper's layout: outside the phone band the layout is always mid or wide.
     const chipLayout: 'mid' | 'wide' = $derived(layout === 'mid' ? 'mid' : 'wide')
 
+    // The switcher remounts when its place in the DOM changes. Remember the focused radio
+    // until it blurs in place or the new row can restore focus to the same mode.
+    let switcher: HTMLDivElement | undefined = $state()
+    let focusedRadio: HTMLInputElement | undefined
+    function rememberSwitcherFocus(event: FocusEvent) {
+        const target = event.target
+        if (target instanceof HTMLInputElement && target.name === 'home-mode') {
+            focusedRadio = target
+        }
+    }
+
+    function forgetSwitcherFocus(event: FocusEvent) {
+        const radio = focusedRadio
+        if (event.target === radio && radio) {
+            if (event.relatedTarget) {
+                focusedRadio = undefined
+                return
+            }
+            queueMicrotask(() => {
+                if (focusedRadio === radio && radio.isConnected) focusedRadio = undefined
+            })
+        }
+    }
+
+    $effect(() => {
+        const row = switcher
+        const radio = focusedRadio
+        if (!radio || radio.isConnected) return
+
+        focusedRadio = undefined
+        if (!row) return
+        const doc = row.ownerDocument
+        if (doc.activeElement === doc.body) {
+            Array.from(row.querySelectorAll<HTMLInputElement>('input[name="home-mode"]:enabled'))
+                .find((input) => input.value === radio.value)?.focus({ preventScroll: true })
+        }
+    })
+
     $effect(() => {
         if (band !== 'wide' || !header) {
             return
@@ -171,6 +209,12 @@
     </div>
 {/snippet}
 
+{#snippet switcherRow(row: HomeBand)}
+    <div class={switcherClass[row]} bind:this={switcher} onfocusin={rememberSwitcherFocus} onfocusout={forgetSwitcherFocus}>
+        <HomeModeSwitcher />
+    </div>
+{/snippet}
+
 <header
     data-part="home-topbar"
     data-layout={layout}
@@ -198,16 +242,12 @@
             <HomePersonaChip compact />
         </div>
         {#if hasSwitcher}
-            <div class={switcherClass.phone}>
-                <HomeModeSwitcher />
-            </div>
+            {@render switcherRow('phone')}
         {/if}
     {:else}
         {@render brand()}
         {#if layout === 'wide'}
-            <div class={switcherClass.wide}>
-                <HomeModeSwitcher />
-            </div>
+            {@render switcherRow('wide')}
         {/if}
         <!-- Roleplay content: while Roleplay is the only built mode (BUILT_HOME_MODES) the landing is Roleplay. -->
         <div class={chipClass[chipLayout]}>
@@ -216,9 +256,7 @@
         </div>
         {#if layout === 'mid' && hasSwitcher}
             <!-- Omitted when empty so the mid grid never adds an empty row gap. -->
-            <div class={switcherClass.mid}>
-                <HomeModeSwitcher />
-            </div>
+            {@render switcherRow('mid')}
         {/if}
     {/if}
 </header>
