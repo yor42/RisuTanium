@@ -539,3 +539,36 @@ No persisted shape, `.bin`, save or plugin data changes (`MC-175`). Inlays creat
 
 - None.
 - **Next merge:** `git log --no-merges 996a5535f..upstream/main`. Move the suffix in `appSubVer` and `version.json` only when upstream bumps.
+
+## 2026-11-25 — merge of upstream/main `979bb8d27`
+
+Merge commit: the commit that adds this entry. Parents: `92e9d22a0` (fork branch after porting upstream #1721 and #1738) and `979bb8d27`. Like the 2026-11-21 and 2026-11-23 merges this is `git merge -s ours`: the tree is the fork's (`git diff --cached HEAD` was empty before this entry was added), and the merge records upstream as merged. After this merge, `git rev-list --count HEAD..upstream/main` is 0.
+
+**Upstream range:** `996a5535f..979bb8d27`, 15 commits: 11 non-merge and 4 PR merges (`979bb8d27` = #1721, `1a0658f0f` = #1724, `65a5fa78d` = #1738, `4118da155` = #1754). Upstream did not bump its version, so the suffix stays `up2026.10.295` (`MC-440`). Toggle grammar check (#467): `upstream/main:src/ts/util.ts` `parseToggleSyntax` still uses `const [key, value, type, option] = line.split('=')`. **Last upstream commit merged: `979bb8d27`.**
+
+**Why.** On 2026-11-25 the maintainer asked to triage the 15 new upstream commits, port the applicable features on a separate worktree/branch, and follow with a `-s ours` merge to track upstream. Maintainer confirmed scope for #1738 (port `RealmHubIcon` perf + shared initial list, keep fork's spinner/5-state UI in `RealmMain`) and #1754 (skip Aurora theme and `hideRelatedLinks`, which conflict with UI-S and Theme Packs).
+
+### Disposition
+
+| Upstream commit(s) | Disposition | Reason / where |
+|---|---|---|
+| `b89cbbad1` (#1721, merged as `979bb8d27`) fix: stop combine translation from doubling line breaks | TAKEN | `9017361cb`: `getNodetextToSentence` in `src/ts/util.ts` strips the single leading `\n` emitted by markdown-it after `<br>`. Added jsdom regression reproducers and guards in `src/ts/util.nodeTextToSentence.test.ts` (3 reproducers failed on pre-fix base, 5/5 pass after). |
+| `8a9cf7d7b` fix: stop charx import from hanging on the module's low level access confirm | ALREADY COVERED | In the fork, `readModule` (`src/ts/process/modules.ts`) uses an opt-in `opts.beforeAssets` callback and never prompts directly; `characterCards.ts` calls `readModule` without `beforeAssets` on the charx path, so it already skips the module confirm and asks once from the card. |
+| `1f9367cae` (#1724, merged as `1a0658f0f`) fix: retry Google Drive requests and explain expired logins | NOT APPLICABLE | Touches only `src/ts/drive/drive.ts`, `drive.test.ts`, and Drive-specific locale keys. Google Drive was removed in CHORE-33. |
+| `63f289db3`, `290af9fc2`, `91addc82b` (#1738, merged as `65a5fa78d`) perf: fixed-size Realm preview with skeleton loading | TAKEN-ADAPTED (partial) | `92e9d22a0`: UI-S Home already had a fixed-height `RealmPanel` and monotonic `hubGeneration` guards. Ported: `loading="lazy" decoding="async"` on `RealmHubIcon.svelte` and `RealmPreviewRow.svelte`, `$derived.by` memoization of `parseMultilangString(chara.desc)` in `RealmHubIcon.svelte`, and shared initial Realm list (`getInitialList()` with 5-minute TTL, untracked `blockedRealmCreators` invalidation, and non-caching of failed/empty loads) passed from `MainMenu.svelte` to `RealmMain.svelte`. Kept the fork's 5-state spinner UI, consent gating, and generation guard in `RealmMain.svelte`. |
+| `85678918f`, `9420bbb97`, `844325278`, `930c63fcd`, `bfde64e49` (#1754, merged as `4118da155`) feat: add the Aurora theme | SKIPPED | Maintainer decision (2026-11-25): Aurora layout theme and `hideRelatedLinks` target upstream's classic DOM and conflict with the fork's UI-S and Theme Packs. |
+
+### Persistence
+
+No persisted shape, `.bin`, save or plugin data changes (`MC-175`).
+
+### Review & Checks
+
+- Independent Gate 2 review: `[APPROVE]` (no `blocks-merge` or `fix-in-this-PR` findings).
+- Targeted tests: `pnpm vitest run src/lib/UI/MainMenu.hubStates.svelte.test.ts src/lib/UI/Realm/realmPreview.svelte.test.ts src/lib/UI/Realm/RealmMain.hubStates.svelte.test.ts src/ts/util.nodeTextToSentence.test.ts` — 4/4 files, 42/42 tests passed (plus 26/27 earlier Realm/MainMenu files before the `untrack` fix).
+- `pnpm check` (`NODE_OPTIONS=--max-old-space-size=8192`): 0 errors (0 warnings in touched files).
+
+### Follow-ups
+
+- None.
+- **Next merge:** `git log --no-merges 979bb8d27..upstream/main`. Move the suffix in `appSubVer` and `version.json` only when upstream bumps.
