@@ -123,6 +123,6 @@
       </div>
     </div>
   {:else}
-    <div class="w-full flex p-4 flex-col text-textcolor max-w-4xl"><Hub /></div>
+    <div class="w-full flex p-4 flex-col text-textcolor max-w-4xl"><Hub initialList={preview.getInitialList()} /></div>
   {/if}
 </div>

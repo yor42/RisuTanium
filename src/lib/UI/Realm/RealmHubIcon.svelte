@@ -12,6 +12,11 @@
 
     let { onClick = () => {}, chara }: Props = $props();
 
+    const description = $derived.by(() => {
+        const parsed = parseMultilangString(chara.desc);
+        return parsed[DBState.db.language] ?? parsed.en ?? parsed.xx;
+    });
+
 </script>
 
 
@@ -21,14 +26,15 @@
             <span class="text-4xl">?</span>
         </div>
     {:else}
-        <img class="aspect-video w-full sm:aspect-[4/3] object-cover object-top" alt="" src={`${hubURL}/resource/` + chara.img}>
+        <!-- Realm lists hold dozens of full-size card images; only fetch and decode the ones near the viewport -->
+        <img class="aspect-video w-full sm:aspect-[4/3] object-cover object-top" alt="" loading="lazy" decoding="async" src={`${hubURL}/resource/` + chara.img}>
     {/if}
     <div class="flex w-full min-w-0 grow flex-col gap-1 p-3">
         <span class="line-clamp-2 text-lg wrap-anywhere">{chara.name}</span>
         {#if chara.creatorName ?? chara.authorname}
             <span class="truncate text-xs text-textcolor2">{chara.creatorName ?? chara.authorname}</span>
         {/if}
-        <span class="line-clamp-2 text-xs text-textcolor2 wrap-anywhere">{parseMultilangString(chara.desc)[DBState.db.language] ?? parseMultilangString(chara.desc).en ?? parseMultilangString(chara.desc).xx}</span>
+        <span class="line-clamp-2 text-xs text-textcolor2 wrap-anywhere">{description}</span>
         <div class="flex flex-wrap gap-1">
             {#each chara.tags as tag, i}
                 {#if i < 4}

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { tick, untrack } from "svelte";
-    import { downloadRisuHub, getRisuHub, type hubType } from "src/ts/characterCards";
+    import { downloadRisuHub, getRisuHub, type RisuHubResult, type hubType } from "src/ts/characterCards";
     import { handleHubHtmlClick, sanitizeHubHtml } from "src/ts/hubHtml";
     import { ArrowLeft, ArrowRight, SearchIcon } from "@lucide/svelte";
     import { alertInput } from "src/ts/alert";
@@ -11,6 +11,14 @@
     import RealmPopUp from "./RealmPopUp.svelte";
     import RealmBlockedCreators from "./RealmBlockedCreators.svelte";
     import { askUpstreamAgreement, upstreamAccepted } from "src/ts/upstreamAgreement";
+
+    interface Props {
+        // The default list (recommended, first page, no search), when the caller already asked for it.
+        initialList?: Promise<RisuHubResult> | null;
+    }
+
+    let { initialList }: Props = $props();
+    let pendingInitialList = untrack(() => initialList ?? null);
 
     // Whether the upstream-services agreement still needs confirming is read
     // directly from `$upstreamAccepted` in the template below, not tracked
@@ -60,7 +68,7 @@
     // reaches `getRisuHub` through this path until acceptance, in any tab. The acceptance effect
     // further down calls this too, since its own `$upstreamAccepted` check already decides when a
     // call is warranted.
-    async function getHub(){
+    async function getHub(known?: Promise<RisuHubResult> | null){
         if(!$upstreamAccepted){
             return
         }
@@ -68,15 +76,26 @@
         const generation = ++hubGeneration
         hubStatus = 'pending'
 
-        const result = await getRisuHub({
-            search: search,
-            page: page,
-            nsfw: nsfw,
-            sort: sort
-        })
+        let result = known ? await known : null
 
         if(generation !== hubGeneration){
             return
+        }
+
+        if(!result || !result.ok || result.cards.length === 0){
+            if(!$upstreamAccepted){
+                return
+            }
+            result = await getRisuHub({
+                search: search,
+                page: page,
+                nsfw: nsfw,
+                sort: sort
+            })
+
+            if(generation !== hubGeneration){
+                return
+            }
         }
 
         if(result.ok !== true){
@@ -145,7 +164,11 @@
     // value), so this never becomes a second, redundant call alongside one `getHub()` already made.
     $effect(() => {
         if($upstreamAccepted){
-            untrack(() => { acceptanceLoad = getHub() })
+            untrack(() => {
+                const known = pendingInitialList
+                pendingInitialList = null
+                acceptanceLoad = getHub(known)
+            })
         }
     })
 
@@ -279,7 +302,7 @@
         {:else if hubStatus === 'failed'}
             <div role="status" aria-live="polite" class="flex w-full flex-wrap items-center justify-center gap-3 px-4 text-textcolor2">
                 <span>{language.hubLoadFailed}</span>
-                <button type="button" class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50" onclick={getHub}>{language.hubRetry}</button>
+                <button type="button" class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50" onclick={() => getHub()}>{language.hubRetry}</button>
             </div>
         {:else if hubStatus === 'empty'}
             <div role="status" aria-live="polite" class="flex w-full justify-center px-4 text-textcolor2">{language.hubEmpty}</div>
@@ -347,5 +370,5 @@
 {#if blockedCreatorsOpen}
     <RealmBlockedCreators onClose={() => {
         blockedCreatorsOpen = false
-    }} onUnblock={getHub} />
+    }} onUnblock={() => getHub()} />
 {/if}

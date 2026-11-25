@@ -1,5 +1,6 @@
+import { untrack } from 'svelte';
 import { DBState } from 'src/ts/stores.svelte';
-import { getRisuHub, type hubType } from 'src/ts/characterCards';
+import { getRisuHub, type RisuHubResult, type hubType } from 'src/ts/characterCards';
 
 // Five-state model replacing the old `{#await}` -- offline/pending/
 // failed/empty/populated, the card list, the announcement string, and a
@@ -16,7 +17,16 @@ export interface RealmPreview {
   readonly announcement: string;
   readonly hidden: boolean;
   load(): Promise<void>;
+  /**
+   * Returns the in-flight or recent default-page request so RealmMain can reuse
+   * it instead of issuing a duplicate recommended/page-0 fetch. Returns null
+   * when no load is cached, the cache is older than 5 minutes, or the blocked
+   * creators list changed since the request started.
+   */
+  getInitialList(): Promise<RisuHubResult> | null;
 }
+
+const REALM_LIST_MAX_AGE_MS = 5 * 60 * 1000;
 
 /**
  * Contains effects; call it while a component (or an effect root) is being
@@ -34,6 +44,11 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
     // resolution can never stomp a newer request's result.
     let hubGeneration = 0;
 
+    let initialEntry: { key: string; time: number; promise: Promise<RisuHubResult> } | null = null;
+    // Untracked so loadHubPreview() called inside the acceptance/hideRealm $effect
+    // does not subscribe that effect to wholesale DBState.db reassignments.
+    const blockedCreatorsKey = () => untrack(() => JSON.stringify(DBState.db.blockedRealmCreators ?? []));
+
     async function loadHubPreview() {
       // Captured, then written before the request-issuing await below:
       // nothing else can run between the increment and this write (both
@@ -44,14 +59,22 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
       const generation = ++hubGeneration;
       hubStatus = 'pending';
 
+      const key = blockedCreatorsKey();
       // `getRisuHub` itself classifies "offline" (checked before any fetch
       // is issued) alongside every other failure reason.
-      const result = await getRisuHub({
+      const promise = getRisuHub({
         search: '',
         page: 0,
         nsfw: false,
         sort: 'recommended'
       });
+      const entry = { key, time: Date.now(), promise };
+      initialEntry = entry;
+
+      const result = await promise;
+      if ((!result.ok || result.cards.length === 0) && initialEntry === entry) {
+        initialEntry = null;
+      }
 
       if (generation !== hubGeneration) {
         return;
@@ -123,11 +146,23 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
       return () => window.removeEventListener('online', handleOnline);
     });
 
+    function getInitialList(): Promise<RisuHubResult> | null {
+      if (!initialEntry) {
+        return null;
+      }
+      if (initialEntry.key !== blockedCreatorsKey() || Date.now() - initialEntry.time > REALM_LIST_MAX_AGE_MS) {
+        initialEntry = null;
+        return null;
+      }
+      return initialEntry.promise;
+    }
+
     return {
       get status() { return hubStatus; },
       get cards() { return hubCards; },
       get announcement() { return hubAnnouncement; },
       get hidden() { return realmHidden; },
       load: loadHubPreview,
+      getInitialList,
     };
 }

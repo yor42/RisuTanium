@@ -24,7 +24,7 @@
             <span class="text-xs">?</span>
         </div>
     {:else}
-        <img class="h-8 w-8 min-w-8 rounded-md object-cover object-top" alt={chara.name} src={`${hubURL}/resource/` + chara.img}>
+        <img class="h-8 w-8 min-w-8 rounded-md object-cover object-top" alt={chara.name} loading="lazy" decoding="async" src={`${hubURL}/resource/` + chara.img}>
     {/if}
     <span class="min-w-0 grow truncate text-start text-textcolor">{chara.name}</span>
 </button>
