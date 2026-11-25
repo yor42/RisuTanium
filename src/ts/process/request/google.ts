@@ -530,7 +530,11 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
         }
     }
     else if(arg.modelInfo.format === LLMFormat.VertexAIGemini){
-        if(db.vertexAccessTokenExpires < Date.now()){
+        // A request preview never acquires or renews a credential and never writes the database.
+        if(arg.previewBody){
+            headers['Authorization'] = "Bearer " + (db.vertexAccessToken || '')
+        }
+        else if(db.vertexAccessTokenExpires < Date.now()){
             if (!db.vertexClientEmail || !vertexPrivateKey) {
                 return { type: 'fail', result: language.errors.vertexAuthIncomplete };
             }
