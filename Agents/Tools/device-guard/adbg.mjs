@@ -306,6 +306,18 @@ const statePath = opt('--state')
 const ownPorts = (opt('--own-ports') ?? '').split(',').filter((p) => /^\d{2,5}$/.test(p))
 const logLine = (text) => { if (log) appendFileSync(log, `${now()} ${text}\n`) }
 const die = (code, msg) => { logLine(`REFUSED/ERROR exit=${code}: ${JSON.stringify(msg)}`); console.error(`adbg: ${msg}`); process.exit(code) }
+// Guard-only options belong before `--`. Logcat also uses --pid, --file and --id.
+const GUARD_ONLY_FLAGS = new Set([
+  '--serial', '--log', '--state', '--out', '--own-package', '--own-ports', '--kit', '--scope-file', '--myfiles',
+  '--name', '--x', '--y', '--dx', '--dy', '--to-x', '--to-y', '--delay-ms', '--duration-ms', '--max-age',
+  '--png', '--label', '--box', '--port', '--selector', '--text', '--url-contains', '--timeout-s', '--expect-sha256',
+])
+if (sub === 'adb') {
+  const misplaced = rest.map((arg) => arg.split('=', 1)[0]).find((flag) => GUARD_ONLY_FLAGS.has(flag))
+  if (misplaced !== undefined) {
+    die(2, `${misplaced} is an adbg option and goes before --; use it with its documented adbg verb`)
+  }
+}
 if (!log) { console.error('adbg: --log is required'); process.exit(2) }
 // r21: --kit (before `--` only) marks a plain adb call built by the device kit. It can only refuse: the serial check sits in the plain adb path,
 // and every other verb rejects the flag here, before the locate-lock exit hook below is registered.
@@ -317,14 +329,7 @@ const rawOwnPorts = (opt('--own-ports') ?? '')
 if (sub === 'adb' && rawOwnPorts !== '' && rawOwnPorts.split(',').some((p) => !/^\d{2,5}$/.test(p))) {
   die(2, `--own-ports takes a comma list of ports such as 9465,9466,6271, not a range or another form (got ${JSON.stringify(rawOwnPorts)})`)
 }
-// Options of the guard itself go before `--`; everything after it is sent to adb. A guard-only flag there would be judged as an adb
-// argument (or ignored), so it is refused with the placement named, before anything is sent.
-const GUARD_ONLY_FLAGS = ['--serial', '--log', '--state', '--out', '--own-package', '--own-ports', '--kit', '--scope-file']
 if (sub === 'adb') {
-  const misplaced = rest.find((x) => GUARD_ONLY_FLAGS.some((f) => x === f || x.startsWith(`${f}=`)))
-  if (misplaced !== undefined) {
-    die(2, `${misplaced.split('=')[0]} is an adbg option and goes before --, as in: node adbg.mjs --serial <serial> --log <log> ${misplaced.split('=')[0]} <value> -- <adb args>; everything after -- is sent to adb`)
-  }
   // adb forwards and reverses are removed one port per call: there is no range form, and the own-ports list is comma-separated.
   if ((rest[0] === 'forward' || rest[0] === 'reverse') && rest.slice(1).some((x) => /^tcp:\d+[-,]\d+/.test(x))) {
     die(2, `${rest[0]} takes one tcp:<port> per call; a range or list such as ${rest.slice(1).find((x) => /^tcp:\d+[-,]\d+/.test(x))} is not accepted. Remove each own port with its own call (--remove tcp:<port>); --own-ports is the comma list 9465,9466,...`)

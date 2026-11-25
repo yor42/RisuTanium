@@ -14,6 +14,7 @@ import { appendFileSync } from 'node:fs'
 const a = process.argv.slice(2)
 appendFileSync(process.env.FAKE_CALLS, JSON.stringify(a) + '\n')
 const cmd = a[3] ?? ''
+if (a[2] === 'exec-out') process.stdout.write(Buffer.from('89504e470d0a1a0a01', 'hex'))
 if (cmd.startsWith('pm path')) process.stdout.write(process.env.FAKE_PM_OUT ?? '')
 if (cmd.startsWith('sha256sum')) process.stdout.write((process.env.FAKE_HASH ?? '') + '  ' + cmd.slice(10) + '\n')
 process.exit(0)
@@ -45,16 +46,27 @@ function Write-Result([string]$label, [bool]$ok, [string]$detail) {
 
 # AF-1: every guard-only flag after -- is refused with exit 2, names `before --`, and nothing is sent; on a full-access, Note 9 and restricted serial.
 foreach ($serial in @($emu, $note9, $restrictedSerial)) {
-    foreach ($flag in @('--out', '--state', '--log', '--own-package', '--own-ports', '--kit', '--serial', '--scope-file')) {
+    foreach ($flag in @('--out', '--state', '--log', '--own-package', '--own-ports', '--kit', '--serial', '--scope-file', '--myfiles', '--expect-sha256', '--selector')) {
         $r = Invoke-Guard @('--serial', $serial, '--log', $log, '--', 'get-state', $flag, 'x')
         Write-Result 'AF-1 guard flag after --' (($r.Rc -eq '2') -and ($r.Calls.Count -eq 0) -and $r.Out.Contains("$flag is an adbg option and goes before --")) "[$serial] $flag -> $($r.Rc) sent=$($r.Calls.Count) (want 2 sent=0)"
     }
     $r = Invoke-Guard @('--serial', $serial, '--log', $log, '--', 'get-state', '--own-ports=9465')
     Write-Result 'AF-1 --flag=value after --' (($r.Rc -eq '2') -and ($r.Calls.Count -eq 0) -and $r.Out.Contains('--own-ports is an adbg option')) "[$serial] -> $($r.Rc) sent=$($r.Calls.Count)"
 }
+$r = Invoke-Guard @('--serial', $note9, '--', 'logcat', '-d', '--log', $log)
+Write-Result 'AF-1 misplaced required log' (($r.Rc -eq '2') -and ($r.Calls.Count -eq 0) -and $r.Out.Contains('--log is an adbg option and goes before --')) "-> $($r.Rc) sent=$($r.Calls.Count)"
+
 # AF-1b: the same flags before -- still work: the exec-out capture takes --out before --, and a plain call with --own-ports is judged as before.
 $r = Invoke-Guard @('--serial', $emu, '--log', $log, '--own-ports', '9465,9466', '--', 'forward', 'tcp:9465', 'localabstract:webview_devtools_remote_1')
 Write-Result 'AF-1b own-ports before --' (($r.Rc -eq '0') -and ($r.Calls.Count -eq 1)) "-> $($r.Rc) sent=$($r.Calls.Count) (want 0 sent=1)"
+
+$png = Join-Path $testDir 'shot.png'
+$r = Invoke-Guard @('--serial', $note9, '--log', $log, '--', 'exec-out', 'screencap', '-p', '--out', $png)
+Write-Result 'AF-1b misplaced screencap out' (($r.Rc -eq '2') -and ($r.Calls.Count -eq 0) -and -not (Test-Path $png)) "-> $($r.Rc) sent=$($r.Calls.Count)"
+$r = Invoke-Guard @('--serial', $note9, '--log', $log, '--out', $png, '--', 'exec-out', 'screencap', '-p')
+Write-Result 'AF-1b screencap out before --' (($r.Rc -eq '0') -and ($r.Calls.Count -eq 1) -and (Test-Path $png)) "-> $($r.Rc) sent=$($r.Calls.Count)"
+$r = Invoke-Guard @('--serial', $note9, '--log', $log, '--', 'logcat', '--pid', '123', '-d', '--id=synthetic')
+Write-Result 'AF-1b shared logcat flags' (($r.Rc -eq '0') -and ($r.Calls.Count -eq 1)) "-> $($r.Rc) sent=$($r.Calls.Count)"
 
 # AF-2: the range and list forms of forward/reverse --remove are refused with exit 2 naming one port per call and the comma list; the single form passes.
 foreach ($verb in @('forward', 'reverse')) {
