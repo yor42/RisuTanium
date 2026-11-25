@@ -7,7 +7,7 @@ Placeholders:
 | Placeholder | Meaning |
 |---|---|
 | `<serial>` | the leased phone's serial, from the grant (`serial`) |
-| `<ports>` | the run's own ports as a comma-separated list (for example `6271,6272`; never a `min-max` range, which `adbg.mjs` drops from `--own-ports` so port calls fail with exit 97), chosen from the grant's `ports.min`..`ports.max` |
+| `<ports>` | the run's own ports as a comma-separated list (for example `6271,6272`; `--own-ports` accepts individual ports only), chosen from the grant's `ports.min`..`ports.max` |
 | `<run>` | the run folder under `%TEMP%` (absolute) |
 | `<request>` | the lease request id |
 | `<token>` | the lease token; it is in the brief only |
