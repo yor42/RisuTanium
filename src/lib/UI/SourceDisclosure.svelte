@@ -192,13 +192,13 @@
 -->
 <div bind:this={cardEl} onfocusout={handleFocusOut}>
     <button
-        class="risu-focus-ring flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--home-radius-3)] px-2 text-left text-textcolor hover:bg-darkbutton"
+        class="risu-focus-ring flex min-h-11 w-full flex-wrap items-start gap-x-3 gap-y-1 rounded-[var(--home-radius-3)] px-2 py-2.5 text-left text-textcolor hover:bg-darkbutton"
         aria-expanded={open}
         aria-controls={listId}
         bind:this={triggerEl}
         onclick={toggle}
     >
-        <span aria-hidden="true" data-part="home-row-icon" class="shrink-0 text-[color:var(--home-ink-2)]">
+        <span aria-hidden="true" data-part="home-row-icon" class="mt-1 shrink-0 text-[color:var(--home-ink-2)]">
             <Icon class="h-4 w-4" strokeWidth={1.5} />
         </span>
         <span data-part="home-community-title" class="max-w-full flex-1 text-[length:var(--home-text-md)] [overflow-wrap:break-word]">{title}</span>
@@ -209,7 +209,7 @@
         -->
         <span
             aria-hidden="true"
-            class={"shrink-0 text-[color:var(--home-ink-2)] transition-transform duration-300" + (open ? " rotate-180" : "")}
+            class={"mt-1 shrink-0 text-[color:var(--home-ink-2)] transition-transform duration-300" + (open ? " rotate-180" : "")}
         >
             <ChevronDownIcon class="h-4 w-4" strokeWidth={1.5} />
         </span>

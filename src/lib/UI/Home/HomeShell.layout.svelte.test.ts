@@ -219,17 +219,22 @@ describe('HomeShell layout', () => {
         expect(bar!.contains(chipOf(root))).toBe(true)
     })
 
-    test('T-A2c: mid and wide keep one DOM order: brand, switcher, chip; the phone order is in T-S6-40', () => {
-        for (const width of [900, 1400]) {
-            const root = mountShellAt(width)
-            const bar = topBarOf(root)
-            expect(bar).not.toBeNull()
-            const brand = bar!.querySelector('[data-part="home-brand"]')!
-            const switcher = bar!.querySelector('fieldset')!
-            const chip = chipOf(root)!
-            expect(brand.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-            expect(switcher.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-        }
+    test('T-A2c: mid puts brand, chip, switcher and wide puts brand, switcher, chip, matching visual order; the phone order is in T-S6-40', () => {
+        const mid = mountShellAt(900)
+        const midBar = topBarOf(mid)!
+        const midBrand = midBar.querySelector('[data-part="home-brand"]')!
+        const midChip = chipOf(mid)!
+        const midSwitcher = midBar.querySelector('fieldset')!
+        expect(midBrand.compareDocumentPosition(midChip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(midChip.compareDocumentPosition(midSwitcher) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+        const wide = mountShellAt(1400)
+        const wideBar = topBarOf(wide)!
+        const wideBrand = wideBar.querySelector('[data-part="home-brand"]')!
+        const wideSwitcher = wideBar.querySelector('fieldset')!
+        const wideChip = chipOf(wide)!
+        expect(wideBrand.compareDocumentPosition(wideSwitcher) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(wideSwitcher.compareDocumentPosition(wideChip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
 
     test.each([
@@ -611,7 +616,9 @@ describe('HomeShell wide bar fallback', () => {
         const root = mountShellAt(viewport)
         expect(layoutOf(root)).toBe('mid')
         expectMidClasses(root)
-        expect(topBarOf(root)!.querySelector('[data-part="home-tasks-button"]')).not.toBeNull()
+        const tasksButton = topBarOf(root)!.querySelector('[data-part="home-tasks-button"]')!
+        expect(tasksButton).not.toBeNull()
+        expect(chipOf(root)!.compareDocumentPosition(topBarOf(root)!.querySelector('fieldset')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
         const watching = parentObservers(root)
         expect(watching.length).toBeGreaterThanOrEqual(1)
@@ -620,9 +627,13 @@ describe('HomeShell wide bar fallback', () => {
         deliver(root, 1275)
         expect(layoutOf(root)).toBe('wide')
         expectWideClasses(root)
+        expect(topBarOf(root)!.querySelector('[data-part="home-tasks-button"]')).toBe(tasksButton)
+        expect(topBarOf(root)!.querySelector('fieldset')!.compareDocumentPosition(chipOf(root)!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
         deliver(root, 811)
         expect(layoutOf(root)).toBe('mid')
         expectMidClasses(root)
+        expect(topBarOf(root)!.querySelector('[data-part="home-tasks-button"]')).toBe(tasksButton)
+        expect(chipOf(root)!.compareDocumentPosition(topBarOf(root)!.querySelector('fieldset')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
 
     // Reproducer: entering the wide band reads the bar width synchronously, so the switch is in the same flush as the
@@ -1016,11 +1027,29 @@ describe('HomeShell phone top bar', () => {
         expect(topBarOf(several)!.querySelector('fieldset')).not.toBeNull()
     })
 
-    // Compatibility guard (passes before and after): mid and wide keep the switcher wrapper at one mode.
-    test.each([900, 1280])('T-S6-41b: at %i the switcher wrapper stays when only one mode shows', (width) => {
+    // Reproducer: an empty mid switcher wrapper would still add a row gap, so mid omits it while wide keeps its centring track.
+    test('T-S6-41b: with one mode shown mid omits the switcher wrapper and wide keeps its centring track', () => {
         setModes(['rp'], true)
-        const root = mountShellAt(width)
-        expect(topBarOf(root)!.children.length).toBe(3)
+        const mid = mountShellAt(900)
+        expect(topBarOf(mid)!.children.length).toBe(2)
+        expect(topBarOf(mid)!.querySelector('fieldset')).toBeNull()
+        resizeTo(1280)
+        expect(topBarOf(mid)!.children.length).toBe(3)
+        const wideWrapper = topBarOf(mid)!.children[1]
+        expect(wideWrapper.querySelector('fieldset')).toBeNull()
+        expect(classesOf(wideWrapper)).toContain('justify-center')
+    })
+
+    test('T-S6-41d: with modes listed the mid switcher wrapper keeps its second row', () => {
+        const root = mountShellAt(900)
+        const wrapper = topBarOf(root)!.querySelector('fieldset')!.parentElement
+        expect(classesOf(wrapper)).toContain('row-start-2')
+    })
+
+    // Class guard: the phone brand cell pads its end by 4 px so the wordmark's last letter is not clipped at 360 px.
+    test('T-S6-41e: the phone brand cell carries 4 px of end padding; mid and wide do not', () => {
+        expect(classesOf(brandOf(mountShellAt(360)))).toContain('pe-1')
+        expect(classesOf(brandOf(mountShellAt(900)))).not.toContain('pe-1')
     })
 
     test('T-S6-41c: the switcher row follows a live change of the shown modes', () => {
