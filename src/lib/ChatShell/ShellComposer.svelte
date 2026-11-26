@@ -254,7 +254,9 @@
 </div>
 
 <style>
-    [data-part="chat-composer"] { position: relative; margin-block-start: var(--size-touch); flex: none; padding: var(--space-3) var(--space-7) max(var(--space-7), env(safe-area-inset-bottom)); background: var(--nexus-canvas); color: var(--nexus-text); border-top: 1px solid var(--nexus-edge); }
+    [data-part="chat-composer"] { position: relative; flex: none; padding: var(--space-3) var(--space-7) max(var(--space-7), env(safe-area-inset-bottom)); background: var(--nexus-canvas); color: var(--nexus-text); border-top: 1px solid var(--nexus-edge); }
+    /* Reserve the tab strip height only when a notice precedes the composer so the tab never overlaps a notice. */
+    [data-part="chat-composer"]:not(:first-child) { margin-block-start: var(--size-touch); }
     [data-part="chat-composer-row"] { display: flex; align-items: end; gap: var(--space-3); }
     [data-part="chat-composer-row"] > button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-3); min-width: var(--size-touch); min-height: var(--size-touch); color: inherit; }
     [data-part="chat-composer-row"] > button :global(svg) { flex: none; width: calc(var(--icon-size-lg) * var(--icon-scale)); height: calc(var(--icon-size-lg) * var(--icon-scale)); stroke-width: var(--icon-stroke); }

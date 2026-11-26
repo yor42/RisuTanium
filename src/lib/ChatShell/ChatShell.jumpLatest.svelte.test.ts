@@ -117,6 +117,35 @@ afterEach(async () => {
 })
 
 describe('the jump-to-latest button', () => {
+    test('keeps the floating controls above a composer that grows or shrinks', async () => {
+        const observers = new Map<Element, () => void>()
+        const disconnect = vi.fn()
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(private readonly measure: () => void) {}
+            observe(element: Element): void { observers.set(element, this.measure) }
+            disconnect = disconnect
+        })
+        try {
+            await mountShell()
+            const jumpHost = target.querySelector<HTMLElement>('.jump-host')!
+            const composerHost = target.querySelector<HTMLElement>('[data-part="chat-composer-host"]')!
+            const measure = observers.get(composerHost)
+            expect(measure).toBeDefined()
+
+            let height = 133
+            Object.defineProperty(composerHost, 'offsetHeight', { get: () => height })
+            measure!()
+            flushSync()
+            expect(jumpHost.style.getPropertyValue('--chat-composer-height')).toBe('133px')
+
+            height = 84
+            measure!()
+            flushSync()
+            expect(jumpHost.style.getPropertyValue('--chat-composer-height')).toBe('84px')
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
     test('A1-19: it shows away from the bottom for distance, an unread reply or a count, and never at the bottom', async () => {
         await mountShell()
         expect(captured.buttons!.visible).toBe(false)
