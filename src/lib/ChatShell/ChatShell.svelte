@@ -1165,10 +1165,10 @@
     [data-part="chat-shell"] { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: transparent; color: var(--nexus-text); }
     /* Under a theme pack the shell is the pack canvas and nothing behind it shows. A translucent canvas is drawn over the pack-immutable black base, the backdrop the install judge flattens it onto; the screenshot export draws the same two layers. */
     :global(:root:where([data-theme-pack-base])) [data-part="chat-shell"] { background-color: var(--surface-pack-backdrop); background-image: linear-gradient(var(--nexus-canvas), var(--nexus-canvas)); }
-    [data-part="chat-composer-host"] { flex: none; }
+    [data-part="chat-composer-host"] { position: relative; z-index: 2; flex: none; }
     .jump-host { display: contents; }
-    [data-part="chat-header-host"] { position: absolute; inset: 0 0 auto 0; z-index: 1; pointer-events: none; }
-    [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; padding-top: var(--header-height); scroll-padding-top: var(--header-height); }
+    [data-part="chat-header-host"] { position: absolute; inset: 0 0 auto 0; z-index: 2; pointer-events: none; }
+    [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; padding-top: var(--header-height); scroll-padding-top: var(--header-height); padding-bottom: var(--size-touch); scroll-padding-bottom: var(--size-touch); }
     [data-part="chat-shell"][data-header-concealed] [data-part="chat-transcript"] { scroll-padding-top: 0; }
     /* While the bar is open both of its rows are reserved: nothing under it is covered, and typing or stepping never moves the view. */
     [data-part="chat-shell"][data-find-open] [data-part="chat-transcript"] { padding-top: calc(var(--header-height) + var(--size-17)); scroll-padding-top: calc(var(--header-height) + var(--size-17)); }
