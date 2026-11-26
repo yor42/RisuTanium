@@ -2648,7 +2648,7 @@ export const languageGerman = {
     "studioRiskyTurnOn": "Einschalten",
     "studioRiskyAnnounce": (name: string) => `${name} an`,
     "studioRefusalRiskyConfirm": "Zum Einschalten ist deine Bestätigung nötig.",
-    "studioRiskyUnreadable": "Diese Einstellung ist in einer Form gespeichert, die Studio nicht ändern kann. Ändere sie im klassischen Editor.",
+    "studioRiskyUnreadable": "Diese Einstellung ist in einer ungewöhnlichen Form gespeichert. Ein Druck auf den Schalter ersetzt sie durch einen echten Ein- oder Aus-Wert; Rückgängig stellt das Original wieder her.",
     "studioFieldBias": "Token-Bias",
     "studioBiasToken": "Token",
     "studioBiasValue": "Wert (-100 bis 100)",

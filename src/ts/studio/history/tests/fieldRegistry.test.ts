@@ -63,16 +63,17 @@ describe('T-P1: the derived tables equal the literal lists (compatibility guard)
         const S3A = ['name', 'viewScreen', 'largePortrait', 'inlayViewScreen', 'prebuiltAssetCommand', 'prebuiltAssetStyle', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions']
         const S3A_TEXT = ['name', 'viewScreen', 'prebuiltAssetStyle', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions']
         const SC1 = ['backgroundHTML', 'virtualscript']
-        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', ...S3A, ...SC1])
+        const RISKY_FIX = ['lowLevelAccessFix', 'utilityBotFix', 'escapeOutputFix']
+        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', ...S3A, ...SC1, ...RISKY_FIX])
         expect(SET_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(SET_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
         expect(CHARACTER_SET_PATHS).toEqual(SET_PATHS_BY_KIND.character)
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', ...S3A, ...SC1, 'alternateGreetings'])
+        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', ...S3A, ...SC1, ...RISKY_FIX, 'alternateGreetings'])
         expect(RESTORE_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(RESTORE_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, ...S2A, ...S2B, ...S2C, ...PRESET_S4B_PATHS, ...PRESET_S4C_PATHS, ...PRESET_S4D_PATHS, 'lorePlus', ...S3A, ...SC1, 'alternateGreetings'])
-        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess', ...PRESET_FORM_BOOLEAN_PATHS, 'removedQuotes', ...S2B, 'lorePlus', 'largePortrait', 'inlayViewScreen', 'prebuiltAssetCommand'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, ...S2A, ...S2B, ...S2C, ...PRESET_S4B_PATHS, ...PRESET_S4C_PATHS, ...PRESET_S4D_PATHS, 'lorePlus', ...S3A, ...SC1, ...RISKY_FIX, 'alternateGreetings'])
+        expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess', ...PRESET_FORM_BOOLEAN_PATHS, 'removedQuotes', ...S2B, 'lorePlus', 'largePortrait', 'inlayViewScreen', 'prebuiltAssetCommand', ...RISKY_FIX])
         expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1, 'creatorNotes', ...S3A_TEXT, ...SC1])
         expect(textPathsFor('chat')).toEqual(['note'])
         expect(textPathsFor('module')).toEqual(['customModuleToggle', 'moduleName', 'moduleDescription', 'moduleNamespace', 'backgroundEmbedding'])
@@ -246,6 +247,9 @@ describe('T-L1: the label key of every registered path (diagnostic)', () => {
         'newGenData.emotionInstructions': 'emotionInstructions',
         backgroundHTML: 'backgroundHTML',
         virtualscript: 'charjs',
+        lowLevelAccessFix: 'lowLevelAccess',
+        utilityBotFix: 'utilityBot',
+        escapeOutputFix: 'escapeOutput',
     }
 
     test.each(Object.entries(EXPECTED))('%s', (path, key) => {

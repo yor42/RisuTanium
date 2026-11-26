@@ -2646,7 +2646,7 @@ export const languageVietnamese = {
     "studioRiskyTurnOn": "Bật",
     "studioRiskyAnnounce": (name: string) => `${name} đã bật`,
     "studioRefusalRiskyConfirm": "Bật cài đặt này cần bạn xác nhận.",
-    "studioRiskyUnreadable": "Cài đặt này được lưu ở dạng mà Studio không thể thay đổi. Hãy thay đổi trong trình chỉnh sửa cổ điển.",
+    "studioRiskyUnreadable": "Cài đặt này được lưu ở dạng không bình thường. Nhấn công tắc sẽ thay nó bằng giá trị bật hoặc tắt thực sự; hoàn tác sẽ khôi phục giá trị ban đầu.",
     "studioFieldBias": "Thiên lệch token",
     "studioBiasToken": "Token",
     "studioBiasValue": "Giá trị (-100 đến 100)",

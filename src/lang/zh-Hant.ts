@@ -2691,7 +2691,7 @@ export const languageChineseTraditional = {
     "studioRiskyTurnOn": "開啟",
     "studioRiskyAnnounce": (name: string) => `${name} 已開啟`,
     "studioRefusalRiskyConfirm": "開啟此設定需要你的確認。",
-    "studioRiskyUnreadable": "此設定的儲存形式 Studio 無法修改。請在經典編輯器中修改。",
+    "studioRiskyUnreadable": "此設定以非常規形式儲存。按下開關會將其取代為真正的開或關值；復原可還原原值。",
     "studioFieldBias": "Token 偏置",
     "studioBiasToken": "Token",
     "studioBiasValue": "值 (-100 到 100)",

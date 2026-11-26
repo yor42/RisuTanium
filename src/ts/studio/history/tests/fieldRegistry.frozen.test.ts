@@ -126,6 +126,10 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['newGenData.emotionInstructions', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true }],
     ['backgroundHTML', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true, keepForeign: true }],
     ['virtualscript', { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true, keepForeign: true }],
+    // The risky flags stored as a non-boolean: a foreign-keeping row over the flag's own holder property.
+    ['lowLevelAccessFix', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'lowLevelAccess', keepForeign: true }],
+    ['utilityBotFix', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'utilityBot', keepForeign: true }],
+    ['escapeOutputFix', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'escapeOutput', keepForeign: true }],
 ]
 
 // The containers a dotted path names, with the value an absent container reads as. An undo replays a seed reading, so
@@ -174,11 +178,11 @@ describe('T-FZ: the persisted facts of the registered paths are frozen', () => {
         expect(Object.keys(CONTAINER_SEEDS)).toEqual(Object.keys(FROZEN_CONTAINER_SEEDS))
     })
 
-    test('F-g: keepForeign is set on the module rows of S5 and on the character rows prebuiltAssetCommand, backgroundHTML and virtualscript, and only with editWhenAbsent', () => {
+    test('F-g: keepForeign is set on the module rows of S5 and on the character rows prebuiltAssetCommand, backgroundHTML, virtualscript, lowLevelAccessFix, utilityBotFix and escapeOutputFix, and only with editWhenAbsent', () => {
         const specs: Record<string, FieldFacts> = FIELD_SPECS
         const foreignPaths = Object.keys(specs).filter((path) => specs[path].keepForeign === true)
-        expect(foreignPaths).toEqual(['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding', 'prebuiltAssetCommand', 'backgroundHTML', 'virtualscript'])
-        const characterForeign = new Set(['prebuiltAssetCommand', 'backgroundHTML', 'virtualscript'])
+        expect(foreignPaths).toEqual(['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding', 'prebuiltAssetCommand', 'backgroundHTML', 'virtualscript', 'lowLevelAccessFix', 'utilityBotFix', 'escapeOutputFix'])
+        const characterForeign = new Set(['prebuiltAssetCommand', 'backgroundHTML', 'virtualscript', 'lowLevelAccessFix', 'utilityBotFix', 'escapeOutputFix'])
         for (const path of foreignPaths) {
             expect(specs[path].editWhenAbsent, path).toBe(true)
             expect(specs[path].holders, path).toEqual(characterForeign.has(path) ? ['character'] : ['module'])

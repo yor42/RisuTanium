@@ -2783,7 +2783,7 @@ export const languageJapanese = {
     studioRiskyTurnOn: "オンにする",
     studioRiskyAnnounce: (name: string) => `${name} をオンにしました`,
     studioRefusalRiskyConfirm: "オンにするには確認が必要です。",
-    studioRiskyUnreadable: "この設定は Studio では変更できない形式で保存されています。クラシックエディターで変更してください。",
+    studioRiskyUnreadable: "この設定は通常とは異なる形式で保存されています。スイッチを押すと、正しいオンまたはオフの値に置き換えられます。元に戻すと元の値が復元されます。",
     studioFieldBias: "トークンバイアス",
     studioBiasToken: "トークン",
     studioBiasValue: "値 (-100〜100)",

@@ -2646,7 +2646,7 @@ export const languageKorean = {
     "studioRiskyTurnOn": "켜기",
     "studioRiskyAnnounce": (name: string) => `${name} 켜짐`,
     "studioRefusalRiskyConfirm": "이 설정을 켜려면 확인이 필요해요.",
-    "studioRiskyUnreadable": "이 설정은 Studio에서 바꿀 수 없는 형태로 저장돼 있어요. 클래식 편집기에서 바꿔 주세요.",
+    "studioRiskyUnreadable": "이 설정은 일반적이지 않은 형태로 저장돼 있어요. 스위치를 누르면 실제 켜짐 또는 꺼짐 값으로 바뀌고, 되돌리면 원래 값이 복원돼요.",
     "studioFieldBias": "토큰 편향",
     "studioBiasToken": "토큰",
     "studioBiasValue": "값 (-100~100)",

@@ -599,30 +599,103 @@ describe('T2-RF-UI-4: a pending question makes the history inert (AS-B9)', () =>
 
 // ---------------------------------------------------------------- T2-RF-UI-5
 
-describe('T2-RF-UI-5: a flag stored as a non-boolean shows the engine reading and cannot be changed (AS-B11)', () => {
-    test('1 and a string read on, disabled, with the unreadable line; false reads off and stays enabled; nothing is written', async () => {
-        const service = await openScreen({ lowLevelAccess: 1, utilityBot: 'yes', escapeOutput: false })
+describe('T2-RF-UI-5: a flag stored as a non-boolean shows the engine reading and is set to a real boolean as a step (AS-B11, #730)', () => {
+    test('1 and a string read on with the unreadable line; false reads off and has no line', async () => {
+        await openScreen({ lowLevelAccess: 1, utilityBot: 'yes', escapeOutput: false })
         for (const path of ['lowLevelAccess', 'utilityBot']) {
             const element = flagSwitch(path)
             expect(element.getAttribute('aria-checked'), path).toBe('true')
-            expect(element.disabled, path).toBe(true)
+            expect(element.disabled, path).toBe(false)
             expect(element.closest('[data-part="studio-risky-flag"]')!.querySelector('[role="note"]')!.textContent, path).toBe('studioRiskyUnreadable')
         }
         expect(flagSwitch('escapeOutput').getAttribute('aria-checked')).toBe('false')
         expect(flagSwitch('escapeOutput').disabled).toBe(false)
         expect(flagSwitch('escapeOutput').closest('[data-part="studio-risky-flag"]')!.querySelector('[role="note"]')).toBeNull()
+    })
+
+    test('regression reproducer: pressing a truthy non-boolean writes a real false without a question, and undo restores it', async () => {
+        const service = await openScreen({ lowLevelAccess: 1, utilityBot: 'yes' })
         await press(flagSwitch('lowLevelAccess'))
         expect(dialog()).toBeNull()
-        expect(live().lowLevelAccess).toBe(1)
+        expect(live().lowLevelAccess).toBe(false)
         expect(live().utilityBot).toBe('yes')
-        expect(h.marks).toBe(0)
+        expect(stepsOf(service)).toHaveLength(1)
+        expect(flagSwitch('lowLevelAccess').getAttribute('aria-checked')).toBe('false')
+        expect(flagSwitch('lowLevelAccess').closest('[data-part="studio-risky-flag"]')!.querySelector('[role="note"]')).toBeNull()
+        await expect(service.replay(A, { kind: 'undo', confirmed: ['lowLevelAccessFix'] })).resolves.toMatchObject({ ok: true })
+        flushSync()
+        expect(live().lowLevelAccess).toBe(1)
+    })
+
+    test('regression reproducer: pressing a falsy non-boolean asks first, and writes a real true only on the confirmation', async () => {
+        const service = await openScreen({ utilityBot: 0 })
+        expect(flagSwitch('utilityBot').getAttribute('aria-checked')).toBe('false')
+        await press(flagSwitch('utilityBot'))
+        expect(dialog()).not.toBeNull()
+        expect(live().utilityBot).toBe(0)
+        expect(stepsOf(service)).toHaveLength(0)
+        await press(part('studio-risky-confirm-ok'))
+        expect(live().utilityBot).toBe(true)
+        expect(stepsOf(service)).toHaveLength(1)
+    })
+
+    test('a cancelled question leaves the non-boolean as it was', async () => {
+        const service = await openScreen({ utilityBot: null })
+        await press(flagSwitch('utilityBot'))
+        await press(part('studio-risky-confirm-cancel'))
+        expect(live().utilityBot).toBeNull()
         expect(stepsOf(service)).toHaveLength(0)
     })
 
-    test('a non-boolean escapeOutput reads mixed: the two engine paths disagree about it', async () => {
-        await openScreen({ escapeOutput: 1 })
+    test('a non-boolean escapeOutput reads mixed, and pressing it writes a real false', async () => {
+        const service = await openScreen({ escapeOutput: 1 })
         expect(flagSwitch('escapeOutput').getAttribute('aria-checked')).toBe('mixed')
-        expect(flagSwitch('escapeOutput').disabled).toBe(true)
+        expect(flagSwitch('escapeOutput').disabled).toBe(false)
+        await press(flagSwitch('escapeOutput'))
+        expect(live().escapeOutput).toBe(false)
+        expect(stepsOf(service)).toHaveLength(1)
+    })
+
+    test('a read-only section stays disabled for a non-boolean', async () => {
+        db.db = fixtureDb({ lowLevelAccess: 1 })
+        const service = makeRig()
+        studioScreen.chaId = 'A'
+        studioScreen.visitId = 'v1'
+        studioScreen.open = true
+        await service.whenReady(A)
+        const host = document.createElement('div')
+        document.body.appendChild(host)
+        const app = mount(StudioRiskySection, { target: host, props: { chaId: 'A', owner: A, service, editable: false } })
+        flushSync()
+        expect(host.querySelector<HTMLButtonElement>('[data-path="lowLevelAccess"]')!.disabled).toBe(true)
+        await unmount(app)
+        host.remove()
+    })
+
+    test('fixing a non-boolean and toggling again in the same visit keeps one restore entry and restores the original value', async () => {
+        const service = await openScreen({ lowLevelAccess: 1 })
+        await press(flagSwitch('lowLevelAccess'))
+        expect(live().lowLevelAccess).toBe(false)
+        await press(flagSwitch('lowLevelAccess'))
+        expect(dialog()).not.toBeNull()
+        await press(part('studio-risky-confirm-ok'))
+        expect(live().lowLevelAccess).toBe(true)
+        const restoreFields = service.view(A).restore?.fields
+        expect(restoreFields?.lowLevelAccessFix).toBeDefined()
+        expect(restoreFields?.lowLevelAccess).toBeUndefined()
+        expect(service.restore(A, new Set(), { confirmed: ['lowLevelAccessFix'] })).toMatchObject({ ok: true })
+        flushSync()
+        expect(live().lowLevelAccess).toBe(1)
+    })
+
+    test('confirming lowLevelAccess stored as a falsy non-boolean shows studioRiskyLowConsequence', async () => {
+        const service = await openScreen({ lowLevelAccess: 0 })
+        await press(flagSwitch('lowLevelAccess'))
+        expect(dialog()).not.toBeNull()
+        expect(part('studio-risky-confirm-body')!.textContent).toContain('studioRiskyLowConsequence')
+        await press(part('studio-risky-confirm-ok'))
+        expect(live().lowLevelAccess).toBe(true)
+        expect(stepsOf(service)).toHaveLength(1)
     })
 })
 

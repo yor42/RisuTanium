@@ -2648,7 +2648,7 @@ export const languageSpanish = {
     "studioRiskyTurnOn": "Activar",
     "studioRiskyAnnounce": (name: string) => `${name} activado`,
     "studioRefusalRiskyConfirm": "Activar esto requiere tu confirmación.",
-    "studioRiskyUnreadable": "Este ajuste está guardado en una forma que Studio no puede cambiar. Cámbialo en el editor clásico.",
+    "studioRiskyUnreadable": "Este ajuste está guardado en una forma inusual. Al pulsar el interruptor se sustituye por un valor real de activado o desactivado; deshacer restaura el original.",
     "studioFieldBias": "Sesgo de tokens",
     "studioBiasToken": "Token",
     "studioBiasValue": "Valor (-100 a 100)",

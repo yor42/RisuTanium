@@ -2782,7 +2782,7 @@ export const languageEnglish = {
     studioRiskyTurnOn: "Turn on",
     studioRiskyAnnounce: (name: string) => `${name} on`,
     studioRefusalRiskyConfirm: "Turning this on needs your confirmation.",
-    studioRiskyUnreadable: "This setting is stored in a form Studio can't change. Change it in the classic editor.",
+    studioRiskyUnreadable: "This setting is stored in an unusual form. Pressing the switch replaces it with a real on or off value; undo puts the original back.",
     studioFieldBias: "Token bias",
     studioBiasToken: "Token",
     studioBiasValue: "Value (-100 to 100)",

@@ -3,7 +3,7 @@
     import { TriangleAlert } from '@lucide/svelte'
     import { language } from '../../lang'
     import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
-    import { CHARACTER_RISKY_FLAG_PATHS, type CharacterRiskyFlagPath } from '../../ts/studio/edit/riskyFlags'
+    import { CHARACTER_RISKY_FIX_PATHS, CHARACTER_RISKY_FLAG_PATHS, type CharacterRiskyFlagPath, type RiskyFlagPath } from '../../ts/studio/edit/riskyFlags'
     import { riskyExplainOf, riskyNameOf } from '../../ts/studio/edit/riskyText'
     import { refusalText } from '../../ts/studio/edit/studioToasts'
     import type { OwnerHistoryService, StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
@@ -13,7 +13,8 @@
     // The risky flags of the character. The section is never folded and always shows its warning. Pressing an off switch
     // opens the question sheet and writes nothing; only the sheet's confirmation writes, as a step of its own. Turning a
     // flag off never asks. A flag stored as something other than a boolean shows the value the engine reads from it (on
-    // when truthy) on a disabled switch: Studio cannot put such a value back, so it writes nothing there.
+    // when truthy). Pressing its switch replaces it with a real boolean as a history step, flipping what the engine reads,
+    // and an undo puts the stored value back.
     interface Props {
         chaId: string
         owner: OwnerKey
@@ -29,7 +30,7 @@
         return found && found.type !== 'group' ? (found as unknown as Record<string, unknown>)[path] : undefined
     }
 
-    // Present and not a boolean: the engine reads its truthiness, Studio cannot change it.
+    // Present and not a boolean: the engine reads its truthiness; pressing replaces it with a real boolean.
     function unreadable(path: CharacterRiskyFlagPath): boolean {
         const raw = rawOf(path)
         return raw !== undefined && typeof raw !== 'boolean'
@@ -59,20 +60,25 @@
     }
 
     async function press(path: CharacterRiskyFlagPath): Promise<void> {
-        if (!service || !editable || unreadable(path)) return
+        if (!service || !editable) return
         announcement = ''
-        if (rawOf(path) === true) {
-            noted(service.editField(owner, path, false, { coalesceKey: null }))
+        // A flag stored as a non-boolean is replaced by a real boolean through its fix path, whose undo puts the stored
+        // value back: it flips what the engine reads (truthy is on). Once fixed in this visit, keep using the fix path
+        // so the restore point tracks one entry for the property rather than both the fix path and the base path.
+        const fixPath = CHARACTER_RISKY_FIX_PATHS[path]
+        const target: RiskyFlagPath = unreadable(path) || service.view(owner).restore?.fields[fixPath] !== undefined ? fixPath : path
+        if (unreadable(path) ? Boolean(rawOf(path)) : rawOf(path) === true) {
+            noted(service.editField(owner, target, false, { coalesceKey: null }))
             return
         }
-        const ask = askRiskyTurnOn(owner, [path])
+        const ask = askRiskyTurnOn(owner, [target])
         asks.add(ask)
         const answer = await ask.answer
         asks.delete(ask)
         if (destroyed) return
         refusal = null
         if (answer === 'yes') {
-            if (service && noted(service.editField(owner, path, true, { confirmed: [path], coalesceKey: null }))) {
+            if (service && noted(service.editField(owner, target, true, { confirmed: [target], coalesceKey: null }))) {
                 announcement = language.studioRiskyAnnounce(riskyNameOf(path))
             }
         } else if (answer === 'blocked') {
@@ -104,8 +110,9 @@
                 aria-describedby="{idBase}-{path}-explain{unreadable(path) ? ` ${idBase}-${path}-unreadable` : ''} {idBase}-warning"
                 data-part="studio-risky-switch"
                 data-path={path}
+                data-fix-path={CHARACTER_RISKY_FIX_PATHS[path]}
                 class="flex min-h-11 items-center gap-2 rounded-md border border-darkborderc bg-darkbg px-3 text-start text-textcolor disabled:cursor-default disabled:opacity-50 {checkedOf(path) === true ? 'border-draculared' : ''}"
-                disabled={!editable || !service || unreadable(path)}
+                disabled={!editable || !service}
                 use:track={path}
                 onclick={() => void press(path)}
             >
