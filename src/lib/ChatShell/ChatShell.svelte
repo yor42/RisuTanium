@@ -391,6 +391,17 @@
         onChange: () => { chipState = chip.state },
     })
     let jumpHost = $state<HTMLElement>()
+    let composerHeight = $state(0)
+    $effect(() => {
+        const host = composer
+        if (!host) return
+        const measure = () => { composerHeight = host.offsetHeight }
+        measure()
+        if (typeof ResizeObserver === 'undefined') return
+        const observer = new ResizeObserver(measure)
+        observer.observe(host)
+        return () => observer.disconnect()
+    })
     let jumpOpen = $state(false)
     let jumpOpener = $state<HTMLElement | null>(null)
     // The chat the sheet was opened for; the sheet closes as soon as the shown chat is another one.
@@ -1124,7 +1135,7 @@
 
 </script>
 
-<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-find-open={findOpen ? '' : undefined} data-header-concealed={headerConcealed && !findOpen ? '' : undefined} data-user-background={userBackground ? '' : undefined} style={customStyle}>
+<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-find-open={findOpen ? '' : undefined} data-header-concealed={headerConcealed && !findOpen ? '' : undefined} data-user-background={userBackground ? '' : undefined} style={customStyle} style:--chat-composer-height={`${composerHeight}px`}>
     <div bind:this={header} data-part="chat-header-host">
         {#if findOpen && FindBar && findState}<FindBar bind:this={findBar} query={findState.query} count={findState.hits.length} current={findState.current} complete={findState.complete} filters={findState.filters} characterName={character?.name ?? ''} onquery={onFindQuery} oncomposing={(on) => findCtx?.session.setComposing(on)} onstep={(direction) => findCtx?.session.step(direction)} onclose={() => void closeFind('user')} onclearfilters={onFindClearFilters} onfilters={openFindFilters} onseeall={openFindResults} />
         {:else if ShellHeader}<ShellHeader name={headerName} chatName={headerChatName} hidden={headerHiddenNow} {hardwareKeyboardSeen} onthischat={openThisChat} onconcealed={(concealed) => headerConcealed = concealed} />{/if}
@@ -1166,7 +1177,7 @@
     /* Under a theme pack the shell is the pack canvas and nothing behind it shows. A translucent canvas is drawn over the pack-immutable black base, the backdrop the install judge flattens it onto; the screenshot export draws the same two layers. */
     :global(:root:where([data-theme-pack-base])) [data-part="chat-shell"] { background-color: var(--surface-pack-backdrop); background-image: linear-gradient(var(--nexus-canvas), var(--nexus-canvas)); }
     [data-part="chat-composer-host"] { position: relative; z-index: 2; flex: none; }
-    .jump-host { display: contents; }
+    .jump-host { display: contents; --chat-jump-bottom: max(calc(var(--size-34) + env(safe-area-inset-bottom)), calc(var(--chat-composer-height) + var(--space-7))); }
     [data-part="chat-header-host"] { position: absolute; inset: 0 0 auto 0; z-index: 2; pointer-events: none; }
     [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; padding-top: var(--header-height); scroll-padding-top: var(--header-height); padding-bottom: var(--size-touch); scroll-padding-bottom: var(--size-touch); }
     [data-part="chat-shell"][data-header-concealed] [data-part="chat-transcript"] { scroll-padding-top: 0; }

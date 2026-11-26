@@ -59,10 +59,16 @@ describe('ChatShell persona tab clearance and floating control alignment', () =>
         expect(composerHost['z-index']).toEqual(['2'])
     })
 
-    test('right-side floating controls shift down with --size-34 while centered/start chips stay at --size-37', () => {
+    test('jump and scrubber share an offset that clears the measured composer', () => {
+        const shellPath = 'src/lib/ChatShell/ChatShell.svelte'
+        const jumpHost = declsMatching(compiledCss(shellPath), (sel) => sel.includes('.jump-host'))
+        expect(jumpHost['--chat-jump-bottom']).toEqual([
+            'max(calc(var(--size-34) + env(safe-area-inset-bottom)), calc(var(--chat-composer-height) + var(--space-7)))',
+        ])
+
         const floatingCss = compiledCss('src/lib/ChatShell/ShellFloatingButtons.svelte')
         const jumpButton = declsMatching(floatingCss, (sel) => sel.includes('[data-part="chat-new-message"]') && !sel.includes('.badge'))
-        expect(jumpButton['bottom']).toEqual(['calc(var(--size-34) + env(safe-area-inset-bottom))'])
+        expect(jumpButton['bottom']).toEqual(['var(--chat-jump-bottom)'])
         expect(jumpButton['inset-inline-end']).toEqual(['var(--space-12)'])
 
         const scrubberCss = compiledCss('src/lib/ChatShell/Scrubber.svelte')
@@ -70,7 +76,7 @@ describe('ChatShell persona tab clearance and floating control alignment', () =>
             scrubberCss,
             (sel) => sel.includes('[data-part="chat-scrubber"]') && !sel.includes('[data-hidden]') && !sel.includes('[data-find-open]'),
         )
-        expect(scrubber['bottom']).toEqual(['calc(var(--size-34) + var(--size-touch-lg) + var(--space-7) + env(safe-area-inset-bottom))'])
+        expect(scrubber['bottom']).toEqual(['calc(var(--chat-jump-bottom) + var(--size-touch-lg) + var(--space-7))'])
 
         const hintCss = compiledCss('src/lib/ChatShell/LongChatHint.svelte')
         const hint = declsMatching(hintCss, (sel) => sel.includes('[data-part="chat-long-hint"]'))

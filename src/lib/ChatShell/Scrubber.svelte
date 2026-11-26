@@ -264,7 +264,7 @@
 </div>
 
 <style>
-    [data-part="chat-scrubber"] { position: absolute; z-index: calc(var(--pattern-z-layer) - 1); right: calc(var(--space-17) + env(safe-area-inset-right)); top: calc(var(--header-height) + var(--space-7)); bottom: calc(var(--size-34) + var(--size-touch-lg) + var(--space-7) + env(safe-area-inset-bottom)); width: var(--size-touch); pointer-events: none; opacity: 1; transition: opacity var(--chat-dur-fast) var(--chat-ease-out); }
+    [data-part="chat-scrubber"] { position: absolute; z-index: calc(var(--pattern-z-layer) - 1); right: calc(var(--space-17) + env(safe-area-inset-right)); top: calc(var(--header-height) + var(--space-7)); bottom: calc(var(--chat-jump-bottom) + var(--size-touch-lg) + var(--space-7)); width: var(--size-touch); pointer-events: none; opacity: 1; transition: opacity var(--chat-dur-fast) var(--chat-ease-out); }
     :global([data-part="chat-shell"][data-find-open]) [data-part="chat-scrubber"] { top: calc(var(--header-height) + var(--size-17) + var(--space-7)); }
     [data-part="chat-scrubber"][data-hidden] { opacity: 0; }
     [data-part="chat-scrubber-track"] { position: absolute; top: 0; bottom: 0; left: 0; right: 0; pointer-events: none; }
