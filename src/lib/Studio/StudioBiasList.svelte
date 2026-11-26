@@ -1,9 +1,10 @@
 <script lang="ts">
-    import { onDestroy, untrack } from 'svelte'
+    import { onDestroy, onMount, untrack } from 'svelte'
     import { language } from '../../lang'
     import { afterFlush } from '../../ts/afterFlush'
     import { addRow, clampBias, deleteRow, duplicateIndexes, editToken, editValue, focusAfterDelete, type BiasNote } from '../../ts/studio/edit/biasRows'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
+    import { registerStudioField } from '../../ts/studio/fieldFlush'
     import { isBiasList } from '../../ts/studio/history/fieldAccess'
     import type { BiasRow } from '../../ts/studio/history/fieldRegistry'
     import type { OwnerHistoryService, StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
@@ -31,10 +32,15 @@
 
     const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => host) })
 
-    const stored = $derived.by((): unknown => {
+    function currentStored(): unknown {
         const found = DBState.db.characters?.find((candidate) => candidate?.chaId === chaId)
         return found && found.type !== 'group' ? (found as unknown as { bias?: unknown }).bias : undefined
-    })
+    }
+    function currentRows(): BiasRow[] | null {
+        const raw = currentStored()
+        return isBiasList(raw) ? raw.map((row) => [row[0], row[1]]) : null
+    }
+    const stored = $derived.by(currentStored)
     // The rows as the strict reader reads them (a fresh copy), or null when the list is not readable.
     const rows = $derived<BiasRow[] | null>(isBiasList(stored) ? stored.map((row) => [row[0], row[1]]) : null)
 
@@ -75,9 +81,9 @@
 
     // Token typing goes through a composition gate per row: nothing is written while an IME composes.
     function commitToken(index: number, value: string, element: HTMLInputElement | null): void {
-        const current = rows
+        const current = currentRows()
         const result = service && editable && current ? service.editField(owner, 'bias', editToken(current, index, value), { coalesceKey: `bias:${index}:token` }) : null
-        if ((result === null || !noted(result)) && element) element.value = rows?.[index]?.[0] ?? ''
+        if ((result === null || !noted(result)) && element) element.value = current?.[index]?.[0] ?? ''
     }
     const gates = new Map<number, ReturnType<typeof createCompositionGate>>()
     const gateElements = new Map<number, HTMLInputElement>()
@@ -88,6 +94,9 @@
             gates.set(index, gate)
         }
         return gate
+    }
+    function flushGates(): void {
+        for (const gate of gates.values()) gate.flush()
     }
     function onTokenInput(index: number, event: Event & { currentTarget: HTMLInputElement }): void {
         gateElements.set(index, event.currentTarget)
@@ -128,9 +137,17 @@
         element?.focus()
     }
 
+    onMount(() => registerStudioField(flushGates))
     onDestroy(() => {
-        for (const gate of gates.values()) gate.flush()
-        service?.closeOpenStep(owner)
+        const closing = service
+        queueMicrotask(() => {
+            try {
+                flushGates()
+                closing?.closeOpenStep(owner)
+            } catch (error) {
+                console.error('Studio bias list flush failed', error)
+            }
+        })
     })
 
     const layout = $derived(studioScreen.layout === 'stack' ? 'card' : 'row')

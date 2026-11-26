@@ -1,6 +1,6 @@
 <script lang="ts">
     import { ChevronDownIcon, ChevronRightIcon, CircleQuestionMarkIcon } from '@lucide/svelte'
-    import { onDestroy, untrack } from 'svelte'
+    import { onDestroy, onMount, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { defaultAutoSuggestPrompt } from '../../ts/storage/defaultPrompts'
@@ -17,6 +17,7 @@
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import { registerFieldReveal } from '../../ts/studio/historyFocus'
+    import { registerStudioField } from '../../ts/studio/fieldFlush'
     import type { LongTextMode, LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
     import { readCollapsedSections, writeCollapsedSections } from '../../ts/studio/presetSections'
     import { setStudioSelection, studioScreen } from '../../ts/studio/studioScreen.svelte'
@@ -365,7 +366,9 @@
     }
     function commitLine(path: PresetPath, value: string): void {
         const element = inputs[path]
-        const result = service && editable && presetValueAllowed(path, value) ? service.editText(owner, path, value, 'typing') : null
+        const activeService = getStudioHistoryService()
+        const canEdit = activeService?.view(owner)?.editable === true
+        const result = activeService && canEdit && presetValueAllowed(path, value) ? activeService.editText(owner, path, value, 'typing') : null
         if ((result === null || !noted(result)) && element) element.value = textOf(path)
     }
     const gates = new Map<PresetPath, ReturnType<typeof createCompositionGate>>()
@@ -377,6 +380,9 @@
         }
         return gate
     }
+    function flushGates(): void {
+        for (const gate of gates.values()) gate.flush()
+    }
     function onLineInput(path: PresetPath, event: Event & { currentTarget: HTMLInputElement }): void {
         gateOf(path).input(event.currentTarget.value, event instanceof InputEvent && event.isComposing)
     }
@@ -384,9 +390,17 @@
         gateOf(path).flush()
         service?.closeOpenStep(owner)
     }
+    onMount(() => registerStudioField(flushGates))
     onDestroy(() => {
-        for (const gate of gates.values()) gate.flush()
-        service?.closeOpenStep(owner)
+        const closing = getStudioHistoryService()
+        queueMicrotask(() => {
+            try {
+                flushGates()
+                closing?.closeOpenStep(owner)
+            } catch (error) {
+                console.error('Studio preset form flush failed', error)
+            }
+        })
     })
 
     // ------------------------------------------------------------ help
