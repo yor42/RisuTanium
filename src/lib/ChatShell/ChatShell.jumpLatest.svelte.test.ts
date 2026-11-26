@@ -127,7 +127,7 @@ describe('the jump-to-latest button', () => {
         })
         try {
             await mountShell()
-            const shell = target.querySelector<HTMLElement>('[data-part="chat-shell"]')!
+            const jumpHost = target.querySelector<HTMLElement>('.jump-host')!
             const composerHost = target.querySelector<HTMLElement>('[data-part="chat-composer-host"]')!
             const measure = observers.get(composerHost)
             expect(measure).toBeDefined()
@@ -136,12 +136,12 @@ describe('the jump-to-latest button', () => {
             Object.defineProperty(composerHost, 'offsetHeight', { get: () => height })
             measure!()
             flushSync()
-            expect(shell.style.getPropertyValue('--chat-composer-height')).toBe('133px')
+            expect(jumpHost.style.getPropertyValue('--chat-composer-height')).toBe('133px')
 
             height = 84
             measure!()
             flushSync()
-            expect(shell.style.getPropertyValue('--chat-composer-height')).toBe('84px')
+            expect(jumpHost.style.getPropertyValue('--chat-composer-height')).toBe('84px')
         } finally {
             vi.unstubAllGlobals()
         }

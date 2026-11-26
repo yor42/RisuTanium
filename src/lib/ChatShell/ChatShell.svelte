@@ -1135,7 +1135,7 @@
 
 </script>
 
-<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-find-open={findOpen ? '' : undefined} data-header-concealed={headerConcealed && !findOpen ? '' : undefined} data-user-background={userBackground ? '' : undefined} style={customStyle} style:--chat-composer-height={`${composerHeight}px`}>
+<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-find-open={findOpen ? '' : undefined} data-header-concealed={headerConcealed && !findOpen ? '' : undefined} data-user-background={userBackground ? '' : undefined} style={customStyle}>
     <div bind:this={header} data-part="chat-header-host">
         {#if findOpen && FindBar && findState}<FindBar bind:this={findBar} query={findState.query} count={findState.hits.length} current={findState.current} complete={findState.complete} filters={findState.filters} characterName={character?.name ?? ''} onquery={onFindQuery} oncomposing={(on) => findCtx?.session.setComposing(on)} onstep={(direction) => findCtx?.session.step(direction)} onclose={() => void closeFind('user')} onclearfilters={onFindClearFilters} onfilters={openFindFilters} onseeall={openFindResults} />
         {:else if ShellHeader}<ShellHeader name={headerName} chatName={headerChatName} hidden={headerHiddenNow} {hardwareKeyboardSeen} onthischat={openThisChat} onconcealed={(concealed) => headerConcealed = concealed} />{/if}
@@ -1147,7 +1147,7 @@
     </main>
     {#if SwitchFrame}<SwitchFrame transcript={list} />{/if}
     <div data-part="chat-announcer" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
-    <div bind:this={jumpHost} class="jump-host">
+    <div bind:this={jumpHost} class="jump-host" style:--chat-composer-height={`${composerHeight}px`}>
         {#if Scrubber}{#key chatKeyNow()}<Scrubber count={shownChat?.message.length ?? 0} fraction={scrubFraction} visible={scrubVisible} trackInteractive={scrubInteractive} formatter={scrubFormatter} label={scrubLabel} timeAt={(index) => shownChat?.message[index]?.time} onrelease={(index) => void jumpAndOffer(index, { focus: false })} onpage={scrubPage} onhover={setScrubHover} ondrag={scrubDrag} onwheel={scrubWheel} />{/key}{/if}
         {#if ReturnChip && chipState.origin}<ReturnChip onreturn={() => void returnFromChip()} onhold={(kind, on) => chip.hold(kind, on)} />{/if}
         {#if hintState.count !== null}<LongChatHint line={hintLine(hintState.count)} />{/if}
