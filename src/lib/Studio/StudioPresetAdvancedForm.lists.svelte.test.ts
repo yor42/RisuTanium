@@ -71,6 +71,8 @@ import { presetNamed, seedPresetDb } from 'src/ts/studio/edit/tests/presetFixtur
 import { createMacroIndex } from 'src/ts/studio/longText/macroIndex'
 import { setMacroIndexForTests } from 'src/ts/studio/longText/macroIndexService'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { flushStudioFields } from 'src/ts/studio/fieldFlush'
+import { studioOpen } from 'src/ts/studio/studioOpen'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
@@ -427,5 +429,64 @@ describe('S4c: the bias list', () => {
         await settle()
         expect(service.view(owner(1)).done).toHaveLength(0)
         expect(within('presetBias', 'studio-preset-bias-import-invalid')).toHaveLength(0)
+    })
+})
+
+describe('held composition flush on leave, close, and pagehide for preset bias and stop list fields', () => {
+    function holdComposition(input: HTMLInputElement, text: string): void {
+        input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        input.value = text
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, inputType: 'insertCompositionText' }))
+        flushSync()
+    }
+
+    test('reproducer (StudioPresetBiasField): pagehide, leave, and studioOpen close each write a held bias token composition', async () => {
+        slotBag(1).bias = [['a', 1]]
+        await mountPreset(1)
+        const tokenInput = () => within('presetBias', 'studio-preset-bias-token')[0] as HTMLInputElement
+
+        holdComposition(tokenInput(), '바이어스1')
+        expect(slotBag(1).bias).toEqual([['a', 1]])
+        window.dispatchEvent(new Event('pagehide'))
+        flushSync()
+        expect(slotBag(1).bias).toEqual([['바이어스1', 1]])
+
+        holdComposition(tokenInput(), '바이어스2')
+        expect(slotBag(1).bias).toEqual([['바이어스1', 1]])
+        flushStudioFields('leave')
+        flushSync()
+        expect(slotBag(1).bias).toEqual([['바이어스2', 1]])
+
+        studioOpen.set(true)
+        holdComposition(tokenInput(), '바이어스3')
+        expect(slotBag(1).bias).toEqual([['바이어스2', 1]])
+        studioOpen.set(false)
+        flushSync()
+        expect(slotBag(1).bias).toEqual([['바이어스3', 1]])
+    })
+
+    test('reproducer (StudioPresetListField): pagehide, leave, and studioOpen close each write a held stop-string composition', async () => {
+        slotBag(2).localStopStrings = ['old-stop']
+        await mountPreset(2)
+        const stopInput = () => within('presetLocalStopStrings', 'studio-preset-stop-entry')[0] as HTMLInputElement
+
+        holdComposition(stopInput(), '스톱1')
+        expect(slotBag(2).localStopStrings).toEqual(['old-stop'])
+        window.dispatchEvent(new Event('pagehide'))
+        flushSync()
+        expect(slotBag(2).localStopStrings).toEqual(['스톱1'])
+
+        holdComposition(stopInput(), '스톱2')
+        expect(slotBag(2).localStopStrings).toEqual(['스톱1'])
+        flushStudioFields('leave')
+        flushSync()
+        expect(slotBag(2).localStopStrings).toEqual(['스톱2'])
+
+        studioOpen.set(true)
+        holdComposition(stopInput(), '스톱3')
+        expect(slotBag(2).localStopStrings).toEqual(['스톱2'])
+        studioOpen.set(false)
+        flushSync()
+        expect(slotBag(2).localStopStrings).toEqual(['스톱3'])
     })
 })

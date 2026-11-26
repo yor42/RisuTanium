@@ -23,6 +23,7 @@ import { language } from 'src/lang'
 import type { ToggleTextPort } from 'src/ts/studio/edit/toggleTextPort'
 import { characterOwnerKey } from 'src/ts/studio/history/ownerPhase'
 import { createToggleBuilder } from 'src/ts/studio/toggleBuilder.svelte'
+import { drainMicrotasks } from 'src/ts/studio/history/tests/historyTestKit.test-helpers'
 import StudioToggleEditor from './StudioToggleEditor.svelte'
 
 let mounted: Array<{ app: ReturnType<typeof mount>, host: HTMLElement }> = []
@@ -120,5 +121,43 @@ describe('T5.3 the rewrite-loss banner', () => {
 
     test('new-behaviour guard: a select default that is not an option shows the banner', () => {
         expect(part(show('m=M=select=a,b=z\n').host, 'studio-toggle-rewrite-loss')).not.toBeNull()
+    })
+})
+
+describe('StudioToggleEditor writeOption live read', () => {
+    test('reproducer: teardown flush after unmount reads live select options instead of inert derived options', async () => {
+        let text = 'm=M=select=a,b'
+        const port: ToggleTextPort = {
+            owner: characterOwnerKey('A'),
+            begin() {},
+            read: () => text,
+            view: () => ({ editable: true, banner: null, restricted: false }),
+            write: (next) => { text = next; return { ok: true } },
+            closeOpenStep() {},
+        }
+        const builder = createToggleBuilder(port, { keyEditsLive: true, stem: 'x', appKeys: new Set<string>() })
+        const host = document.createElement('div')
+        document.body.appendChild(host)
+        const id = builder.def.lines[0].id
+        const app = mount(StudioToggleEditor, {
+            target: host,
+            props: { builder, editable: true, id, actions: { changeKind() {}, remove() {}, closeStep() {} } },
+        })
+        flushSync()
+
+        const firstOption = host.querySelectorAll<HTMLInputElement>('[data-part="studio-toggle-option"]')[0]
+        firstOption.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        firstOption.value = 'a_edited'
+        firstOption.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, inputType: 'insertCompositionText' }))
+        flushSync()
+
+        const destroying = unmount(app)
+        // Update option 1 after destroy began so any inert `$derived` options snapshot still holds `'b'`.
+        expect(builder.setOptions(id, ['a', 'b_updated'])).toEqual({ ok: true })
+        await destroying
+        await drainMicrotasks()
+        host.remove()
+
+        expect(text).toBe('m=M=select=a_edited,b_updated')
     })
 })

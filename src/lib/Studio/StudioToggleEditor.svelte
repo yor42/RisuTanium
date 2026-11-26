@@ -155,7 +155,12 @@
     }
 
     function writeOption(index: number, value: string): EditOutcome {
-        return id === null ? { ok: true } : builder.setOptions(id, options.map((option, at) => (at === index ? value : option)))
+        if (id === null) return { ok: true }
+        // Read live options from builder.def rather than the `$derived` `options`, which is inert during teardown.
+        const currentLine = lineById(builder.def, id)?.line
+        const currentDraft = currentLine ? draftOf(currentLine) : null
+        if (currentDraft === null || currentDraft.kind !== 'select') return { ok: true }
+        return builder.setOptions(id, currentDraft.options.map((option, at) => (at === index ? value : option)))
     }
 
     function writeDefault(rowId: LineId, index: number): void {

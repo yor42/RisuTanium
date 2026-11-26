@@ -34,6 +34,8 @@ import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/t
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { resetStudioToastsForTests, retireAssetToasts } from 'src/ts/studio/edit/studioToasts'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { flushStudioFields } from 'src/ts/studio/fieldFlush'
+import { studioOpen } from 'src/ts/studio/studioOpen'
 import { createToastHost, resetToastHostForTests, type ToastClock, type ToastHost } from 'src/ts/toast/toastHost.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -316,5 +318,46 @@ describe('T2-BI-UI-6 (AS-C6): an unreadable list is shown read-only and nothing 
         expect(bytes()).toBe(before)
         expect(h.marks).toBe(0)
         expect(service.view(A).done).toHaveLength(0)
+    })
+})
+
+describe('held composition flush on leave, close, and pagehide', () => {
+    function holdTokenComposition(index: number, text: string): void {
+        const field = tokens()[index]
+        field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        field.value = text
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, inputType: 'insertCompositionText' }))
+        flushSync()
+    }
+
+    test('reproducer: pagehide writes a held token composition while the form stays mounted', async () => {
+        const { service } = await open([['a', 1]])
+        holdTokenComposition(0, '토큰')
+        expect(live().bias).toEqual([['a', 1]])
+        window.dispatchEvent(new Event('pagehide'))
+        flushSync()
+        expect(live().bias).toEqual([['토큰', 1]])
+        expect(service.view(A).done).toHaveLength(1)
+    })
+
+    test('reproducer: leave flush writes a held token composition', async () => {
+        const { service } = await open([['a', 1]])
+        holdTokenComposition(0, '토큰')
+        expect(live().bias).toEqual([['a', 1]])
+        flushStudioFields('leave')
+        flushSync()
+        expect(live().bias).toEqual([['토큰', 1]])
+        expect(service.view(A).done).toHaveLength(1)
+    })
+
+    test('reproducer: closing Studio via studioOpen writes a held token composition', async () => {
+        const { service } = await open([['a', 1]])
+        studioOpen.set(true)
+        holdTokenComposition(0, '토큰')
+        expect(live().bias).toEqual([['a', 1]])
+        studioOpen.set(false)
+        flushSync()
+        expect(live().bias).toEqual([['토큰', 1]])
+        expect(service.view(A).done).toHaveLength(1)
     })
 })
