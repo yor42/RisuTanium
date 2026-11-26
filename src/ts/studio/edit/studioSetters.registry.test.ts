@@ -71,6 +71,7 @@ const VALUE_OF: Record<Exclude<SetPath, `preset${string}`>, string | boolean | B
     'newGenData.emotionInstructions': 'new gen emotion instructions',
     backgroundHTML: 'new html',
     virtualscript: 'new charjs',
+    biasFix: [['tok', 5]],
 }
 
 describe('T-W1: the writers of the builtin holders', () => {

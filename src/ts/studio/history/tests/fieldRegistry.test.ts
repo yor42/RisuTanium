@@ -63,15 +63,16 @@ describe('T-P1: the derived tables equal the literal lists (compatibility guard)
         const S3A = ['name', 'viewScreen', 'largePortrait', 'inlayViewScreen', 'prebuiltAssetCommand', 'prebuiltAssetStyle', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions']
         const S3A_TEXT = ['name', 'viewScreen', 'prebuiltAssetStyle', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions']
         const SC1 = ['backgroundHTML', 'virtualscript']
-        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', ...S3A, ...SC1])
+        const BIAS_FIX = ['biasFix']
+        expect(SET_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', ...S3A, ...SC1, ...BIAS_FIX])
         expect(SET_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(SET_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
         expect(CHARACTER_SET_PATHS).toEqual(SET_PATHS_BY_KIND.character)
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', ...S3A, ...SC1, 'alternateGreetings'])
+        expect(RESTORE_PATHS_BY_KIND.character).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1, ...S2A, ...S2B, ...S2C, 'lorePlus', ...S3A, ...SC1, ...BIAS_FIX, 'alternateGreetings'])
         expect(RESTORE_PATHS_BY_KIND.chat).toEqual(['note'])
         expect(RESTORE_PATHS_BY_KIND.module).toEqual(['customModuleToggle', ...S5])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, ...S2A, ...S2B, ...S2C, ...PRESET_S4B_PATHS, ...PRESET_S4C_PATHS, ...PRESET_S4D_PATHS, 'lorePlus', ...S3A, ...SC1, 'alternateGreetings'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1, ...S5, ...PRESET_FORM_PATHS, ...S2A, ...S2B, ...S2C, ...PRESET_S4B_PATHS, ...PRESET_S4C_PATHS, ...PRESET_S4D_PATHS, 'lorePlus', ...S3A, ...SC1, ...BIAS_FIX, 'alternateGreetings'])
         expect(BOOLEAN_SET_PATHS).toEqual(['hideChatIcon', 'risutanium_render_when_complete', 'moduleHideIcon', 'moduleLowLevelAccess', ...PRESET_FORM_BOOLEAN_PATHS, 'removedQuotes', ...S2B, 'lorePlus', 'largePortrait', 'inlayViewScreen', 'prebuiltAssetCommand'])
         expect(textPathsFor('character')).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', ...S1, 'creatorNotes', ...S3A_TEXT, ...SC1])
         expect(textPathsFor('chat')).toEqual(['note'])
@@ -79,8 +80,9 @@ describe('T-P1: the derived tables equal the literal lists (compatibility guard)
         expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario', 'depth_prompt.prompt', 'defaultVariables', 'translatorNote', 'backgroundEmbedding', 'creatorNotes', 'newGenData.prompt', 'newGenData.negative', 'newGenData.instructions', 'newGenData.emotionInstructions', 'backgroundHTML'])
     })
 
-    test('no row combines keepForeign with a biasList value', () => {
+    test('base bias and presetBias rows do not combine keepForeign with a biasList value', () => {
         for (const [path, facts] of Object.entries(FIELD_SPECS)) {
+            if (path === 'biasFix') continue
             expect(facts.value === 'biasList' && 'keepForeign' in facts, path).toBe(false)
         }
     })
@@ -246,6 +248,7 @@ describe('T-L1: the label key of every registered path (diagnostic)', () => {
         'newGenData.emotionInstructions': 'emotionInstructions',
         backgroundHTML: 'backgroundHTML',
         virtualscript: 'charjs',
+        biasFix: 'studioFieldBias',
     }
 
     test.each(Object.entries(EXPECTED))('%s', (path, key) => {

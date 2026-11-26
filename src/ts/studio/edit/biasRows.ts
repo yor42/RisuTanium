@@ -78,3 +78,32 @@ export function focusAfterDelete(index: number, remaining: number): number | nul
     }
     return remaining > 0 ? remaining - 1 : null
 }
+
+// Normalizes an unreadable stored bias value into a valid `BiasRow[]`. Non-arrays become `[]`, non-array entries are
+// skipped, tokens take strings or finite numbers (else `''`), and values take finite numbers or trimmed numeric strings
+// (else `0`, normalizing `-0` to `0`). Preserves finite numbers outside `-100..100` to match `isBiasList`.
+export function normalizeBiasRows(stored: unknown): BiasRow[] {
+    if (!Array.isArray(stored)) {
+        return []
+    }
+    const out: BiasRow[] = []
+    for (const row of stored) {
+        if (!Array.isArray(row)) {
+            continue
+        }
+        const rawToken = row[0]
+        const token = typeof rawToken === 'string' ? rawToken : typeof rawToken === 'number' && Number.isFinite(rawToken) ? String(rawToken) : ''
+        const rawValue = row[1]
+        let value = 0
+        if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+            value = rawValue === 0 ? 0 : rawValue
+        } else if (typeof rawValue === 'string' && rawValue.trim() !== '') {
+            const parsed = Number(rawValue)
+            if (Number.isFinite(parsed)) {
+                value = parsed === 0 ? 0 : parsed
+            }
+        }
+        out.push([token, value])
+    }
+    return out
+}

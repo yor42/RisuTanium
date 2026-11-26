@@ -94,6 +94,7 @@ const values = (): HTMLInputElement[] => [...document.querySelectorAll<HTMLInput
 const rowsEls = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[data-part="studio-bias-row"]')]
 const deletes = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>('[data-bias-delete]')]
 const addButton = (): HTMLButtonElement => document.querySelector<HTMLButtonElement>('[data-bias-add]')!
+const repairButton = (): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>('[data-bias-repair]')
 const notes = (): string[] => [...document.querySelectorAll('[role="note"]')].map((element) => element.textContent ?? '')
 
 function type(field: HTMLInputElement, value: string): void {
@@ -318,6 +319,37 @@ describe('T2-BI-UI-6 (AS-C6): an unreadable list is shown read-only and nothing 
         expect(bytes()).toBe(before)
         expect(h.marks).toBe(0)
         expect(service.view(A).done).toHaveLength(0)
+        expect(repairButton()!.disabled).toBe(false)
+    })
+
+    test('repair normalizes malformed rows as one undoable step, moves focus, and same-visit edits keep one restore entry', async () => {
+        const { service } = await open([['tok', null], ['x', '2.5']])
+        repairButton()!.click()
+        await settle()
+        expect(live().bias).toEqual([['tok', 0], ['x', 2.5]])
+        expect(repairButton()).toBeNull()
+        expect(addButton().disabled).toBe(false)
+        expect(document.activeElement).toBe(tokens()[0])
+        expect(service.view(A).done).toHaveLength(1)
+
+        // Subsequent same-visit edit uses `biasFix` so `restore.fields` has no duplicate `bias` key.
+        commitValue(values()[0], '5')
+        expect(live().bias).toEqual([['tok', 5], ['x', 2.5]])
+        const restoreFields = service.view(A).restore?.fields
+        expect(restoreFields?.biasFix).toBeDefined()
+        expect(restoreFields?.bias).toBeUndefined()
+
+        // Undo both steps restores the exact malformed list.
+        expect((await service.replay(A, { kind: 'undo' })).ok).toBe(true)
+        expect((await service.replay(A, { kind: 'undo' })).ok).toBe(true)
+        await settle()
+        expect(live().bias).toStrictEqual([['tok', null], ['x', '2.5']])
+        expect(repairButton()).not.toBeNull()
+    })
+
+    test('repair button is disabled when the form is read-only', async () => {
+        await open([['tok', null]], { editable: false })
+        expect(repairButton()!.disabled).toBe(true)
     })
 })
 

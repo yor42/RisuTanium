@@ -9,7 +9,7 @@ import { scanReferences } from '../assets/referenceScan'
 import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
 import type { JsonValue } from '../../storage/blockFrame'
 import { sameJsonValue, toPlainJson } from '../../storage/store2/codec/normalize'
-import { cloneValue, factsOf, isHeldBy, registryPaths, typeofKind, valueMatchesKind, valuesEqual } from './fieldAccess'
+import { cloneValue, factsOf, isHeldBy, registryPaths, valueMatchesKind, valuesEqual } from './fieldAccess'
 import { FIELD_SPECS, type BiasRow, type SetPath } from './fieldRegistry'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
 import {
@@ -376,8 +376,7 @@ function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
         // A foreign reading exists only on a `keepForeign` path, holds a present value that is not of the path's type
         // (a value of that type is malformed here), and is never `undefined`. It is read as plain JSON, a fresh copy.
         const plain = facts.keepForeign === true ? toPlainJson(value.value) : undefined
-        const own = typeofKind(path)
-        return plain !== undefined && own !== null && typeof plain !== own ? { had: 'foreign', value: plain } : null
+        return plain !== undefined && !valueMatchesKind(path, plain) ? { had: 'foreign', value: plain } : null
     }
     if (value.had !== true) {
         return null
