@@ -30,7 +30,7 @@ Lane A stays on Opus. The designer does not follow that default: it is Opus, or 
 | Ticket orchestrator (a new session) | the default, in any tier | a trigger above; lane A |
 | `designer` (Tier 2 only) | a clear ticket | anything else, and every revision after a substantive Gate 1 reject |
 
-- Lane A names the model and a one-line reason in the question that asks to start the session, then passes it as `model` to the start. Without a model a new session inherits lane A's.
+- Lane A names the model and a one-line reason in the ticket's staging prompt (MC-4187); the maintainer starts the session on that model.
 - A Sonnet designer registers with `"model": "sonnet"` and its Agent call passes `model: "sonnet"`. The controller refuses that choice with `changedContracts` or an escalation, and refuses the call without the model. With no choice the designer runs on Opus.
 - A Sonnet session that finds an Opus trigger in its ticket does not switch itself (derived): it writes its handoff and tells lane A, which asks the maintainer about a successor.
 - Reviews do not change: critical contracts still get `opus-reviewer`. Running sessions keep their model.
@@ -137,7 +137,7 @@ Write boundaries and checkout concurrency follow [ownership](ownership.md). Item
 
 ## Parallel options for the maintainer (MC-1069)
 
-At the start of a task, at each completion and whenever a code, device or records track is free, list the open tickets that could run in parallel with the current work (disjoint files and resources, already authorized or ready to size; the Roadmap and Live-State name them) and offer them to the maintainer as options with the AskUserQuestion tool (multiSelect), each with its blocker or decision need in one line. Do not start an unapproved ticket on the strength of being parallel-safe. Lane A asks before it starts any new session (MC-3622, MC-3764; derived: this replaces the no-ask start of MC-1676 item 3) and names the model in that ask (derived from MC-3643); other sessions offer rather than leave a free track idle. Every maintainer decision, approval and confirmation goes through AskUserQuestion, never a prose question.
+At the start of a task, at each completion and whenever a code, device or records track is free, list the open tickets that could run in parallel with the current work (disjoint files and resources, already authorized or ready to size; the Roadmap and Live-State name them) and offer them to the maintainer as options with the AskUserQuestion tool (multiSelect), each with its blocker or decision need in one line. Do not start an unapproved ticket on the strength of being parallel-safe. Lane A recommends tickets with this ask and writes a staging prompt for each one chosen, naming the model (MC-4187; naming the model is derived from MC-3643); the maintainer starts the session. Other sessions offer rather than leave a free track idle. Every maintainer decision, approval and confirmation goes through AskUserQuestion, never a prose question.
 
 ## Completion notification for external runners (MC-1069)
 

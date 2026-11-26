@@ -191,12 +191,13 @@ Rows marked MC-2744 restate it. Rows marked "derived" are this document's readin
 | Red CI the session cannot clear | maintainer | Yes | MC-2744, MC-2015 |
 | Product, scope, persisted-format or security choice | maintainer | Yes | MC-2744 |
 | Personal devices: the Fold 7 is never touched; a Tab S9 run is asked. Note 9 runs with synthetic data need no ask (MC-1666) | maintainer | Yes | MC-2744 as amended by MC-2776 |
-| Destructive cleanup | maintainer | Yes | MC-2744; a session's own clean, merged worktree is removed under MC-1918 |
+| Destructive cleanup | maintainer | Yes | MC-2744; a clean, merged ticket worktree is removed by lane A under MC-4189 (or by its own running session under MC-1918) |
 | Protected paths (`docs/branding/**`, ToS, Privacy, `Legal.svelte`, signing material) | maintainer | Yes | MC-2744 |
 | Close an issue through the merged PR's own closing keyword | ticket session | No | MC-2775 |
 | Closing an issue by hand (any close other than the merged PR's own keyword) | maintainer | Yes | MC-2744, MC-2775 |
 | Archive a finished session (deliverable merged or handed off, closeout clean, nothing running) | lane A | No | MC-3764; the test in parentheses is derived |
-| Start a new session, naming its model ([routing](routing.md#session-and-designer-model-mc-3643-mc-3765)) | maintainer | Yes | MC-3622, MC-3764; naming the model is derived from MC-3643 |
+| Start a ticket session from lane A's staging prompt, which names its model ([routing](routing.md#session-and-designer-model-mc-3643-mc-3765)) | maintainer, in `claude -rc` | Yes: lane A recommends tickets through AskUserQuestion | MC-4187 (lane A no longer starts sessions; amends MC-3622 and MC-3764); naming the model is derived from MC-3643 |
+| Remove a merged ticket's worktree and branch | lane A, right after the merge | No | MC-4189 |
 | Push directly to `main` | nobody | Retired: `main` changes only through merged PRs | MC-2778 (supersedes MC-222 item 4 and the MC-1677 main-push clause) |
 
 **Before an unasked merge** (derived from lane A practice): Gate 2 is APPROVE or EDITORIAL; every gating device row is PASS or waived; `git merge-tree` against `origin/main` is clean; merge with `gh pr merge <n> --repo yor42/RisuTanium --merge --match-head-commit <sha>`; hold while a wait the maintainer asked for is open.
