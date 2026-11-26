@@ -65,7 +65,6 @@ RisuTanium is an Android-first product fork of RisuAI: an MVP on the maintainer'
 | Web development / build | `pnpm dev` / `pnpm build` |
 | Desktop development / build | `pnpm tauri dev` / `pnpm tauri build` |
 | Tests / type checks | `pnpm test` / `pnpm check` |
-| Hono build | `pnpm hono:build` |
 | Workflow validation / decision index | [docs/workflow/README.md](docs/workflow/README.md) |
 | Measurement procedures | [Agents/Tools/README.md](Agents/Tools/README.md) |
 
