@@ -1082,7 +1082,7 @@
                 aria-label={char.name}
                 aria-expanded={char.type === 'folder' ? isOpen : undefined}
                 aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-                class="outline-none focus-visible:ring-2 focus-visible:ring-textcolor2 {IconRounded ? 'rounded-full' : 'rounded-md'}"
+                class="outline-none risu-focus-ring {IconRounded ? 'rounded-full' : 'rounded-md'}"
                 use:tooltipRail={char.name}
                 oncontextmenu={char.type === 'folder' ? (e) => folderMenu(e, char.ref, char.id, char.name) : undefined}
               >
@@ -1133,7 +1133,7 @@
                 data-rail-entry={member.key}
                 aria-label={member.name}
                 aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-                class="outline-none focus-visible:ring-2 focus-visible:ring-textcolor2 {IconRounded ? 'rounded-full' : 'rounded-md'}"
+                class="outline-none risu-focus-ring {IconRounded ? 'rounded-full' : 'rounded-md'}"
                 use:tooltipRail={member.name}
               >
               <SidebarAvatar

@@ -175,8 +175,7 @@ describe('T12 the index', () => {
         // Class check only: jsdom paints no CSS, so the visible ring is confirmed in a real browser.
         const heading = target.querySelector('[data-part="settings-page-heading"]')!
         expect(heading.getAttribute('tabindex')).toBe('-1')
-        expect(heading.classList.contains('focus-visible:ring-2')).toBe(true)
-        expect(heading.classList.contains('focus-visible:ring-textcolor2')).toBe(true)
+        expect(heading.classList.contains('risu-focus-ring')).toBe(true)
 
         target.querySelector<HTMLButtonElement>('[data-part="settings-back"]')!.click()
         await settle()

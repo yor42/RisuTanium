@@ -125,7 +125,7 @@
         {@const writing = replyLookup?.(c.chaId).writing ?? false}
         <!-- The row button; with a Studio control beside it the divider line moves to the wrapper, so it runs under both. -->
         {#snippet rowButton(divided: boolean)}
-            <button class="flex p-2 border-t-darkborderc gap-2 w-full rounded-md transition-colors duration-150 hover:bg-darkbutton/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" class:border-t={divided} data-part="library-row" aria-busy={busy ? 'true' : undefined} onclick={() => {
+            <button class="flex p-2 border-t-darkborderc gap-2 w-full rounded-md transition-colors duration-150 hover:bg-darkbutton/40 focus-visible:outline-hidden risu-focus-ring" class:border-t={divided} data-part="library-row" aria-busy={busy ? 'true' : undefined} onclick={() => {
                 if (onpick) {
                     onpick(index)
                     return
@@ -152,7 +152,7 @@
                 <CharacterReplyStop chaId={c.chaId} name={entry.name} class="shrink-0 p-2" />
                 {#if studio && studioShown}
                     <button
-                        class="shrink-0 p-2 rounded-md text-textcolor2 hover:text-textcolor hover:bg-darkbutton/40 transition-colors duration-150 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected"
+                        class="shrink-0 p-2 rounded-md text-textcolor2 hover:text-textcolor hover:bg-darkbutton/40 transition-colors duration-150 focus-visible:outline-hidden risu-focus-ring"
                         data-part="library-studio"
                         data-cha-id={c.chaId}
                         aria-label={language.studioOpenInNamed(entry.name)}

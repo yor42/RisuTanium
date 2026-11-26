@@ -36,7 +36,7 @@
 <select
     aria-labelledby="{uid}-preset"
     aria-describedby="{uid}-preset"
-    class={"risu-select border border-darkborderc focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus:ring-borderc focus:ring-2 focus:outline-hidden transition-colors duration-200 text-md px-4 py-2 mb-1"}
+    class={"risu-select border border-darkborderc focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus:outline-hidden risu-focus-ring transition-colors duration-200 text-md px-4 py-2 mb-1"}
     bind:value={() => DBState.db.translatorPresetId, (value) => {
         DBState.db.translatorPresetId = Number(value);
         syncCurrentTranslatorPreset();

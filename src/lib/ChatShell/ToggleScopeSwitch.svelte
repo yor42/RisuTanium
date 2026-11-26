@@ -113,7 +113,7 @@
             onchange={flip}
         />
         <span
-            class="relative w-9 h-5 min-w-9 rounded-full border-2 border-darkborderc transition-colors duration-200 peer-focus-visible:ring-2 peer-focus-visible:ring-textcolor2 {scoped ? 'bg-darkborderc' : 'bg-darkbutton'}"
+            class="relative w-9 h-5 min-w-9 rounded-full border-2 border-darkborderc transition-colors duration-200 risu-focus-ring-peer {scoped ? 'bg-darkborderc' : 'bg-darkbutton'}"
             aria-hidden="true"
         >
             <span class="absolute top-0 w-4 h-4 rounded-full bg-textcolor transition-all duration-200 {scoped ? 'left-4' : 'left-0'}"></span>

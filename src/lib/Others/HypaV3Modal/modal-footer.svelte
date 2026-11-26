@@ -65,7 +65,7 @@
       </div>
 
       <textarea
-        class="w-full p-2 overflow-y-auto transition-colors border rounded-sm resize-none sm:p-4 min-h-40 sm:min-h-56 border-darkborderc focus:outline-hidden text-textcolor bg-darkbg"
+        class="w-full p-2 overflow-y-auto transition-colors border rounded-sm resize-none sm:p-4 min-h-40 sm:min-h-56 border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
         aria-labelledby="{uid}-next-target"
         aria-describedby="{uid}-next-target"
         readonly

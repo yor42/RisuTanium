@@ -31,7 +31,7 @@
                     checked={motionPrefs.reducedMotion === choice.mode}
                     onchange={() => setReducedMotion(choice.mode)}
                 />
-                <span class="rounded-sm peer-focus-visible:ring-2 peer-focus-visible:ring-textcolor2">{choice.label()}</span>
+                <span class="rounded-sm risu-focus-ring-peer">{choice.label()}</span>
             </label>
         {/each}
     </div>

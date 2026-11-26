@@ -69,7 +69,7 @@
     {#each DISPLAY_SHELL_SECTIONS as section (section.id)}
         {@const open = !section.collapsed || opened[section.id] === true}
         <section data-part="settings-section" data-section={section.id} aria-labelledby="{uid}-{section.id}">
-            <h3 id="{uid}-{section.id}" class="text-lg font-semibold text-textcolor outline-none rounded-sm focus-visible:ring-2 focus-visible:ring-textcolor2" tabindex="-1" data-part="settings-section-heading">
+            <h3 id="{uid}-{section.id}" class="text-lg font-semibold text-textcolor outline-none rounded-sm risu-focus-ring" tabindex="-1" data-part="settings-section-heading">
                 {#if section.collapsed}
                     <button
                         type="button"
