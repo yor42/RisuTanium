@@ -415,7 +415,7 @@
   }
 </script>
 
-<div
+<div data-part="modal-row"
   class="flex flex-col p-2 border rounded-lg sm:p-4 border-darkborderc bg-bgcolor/50 {isSelected() ? 'ring-2 ring-borderc' : ''}"
 >
   <!-- Original Summary Header -->
@@ -424,7 +424,7 @@
     <div class="flex items-center gap-2">
       <!-- Bulk Edit Checkbox -->
       {#if bulkEditState?.isEnabled}
-        <input
+        <input data-part="modal-field"
           type="checkbox"
           class="w-4 h-4 accent-borderc bg-darkbg border-darkborderc rounded-sm risu-focus-ring"
           aria-label={numberLabel}
@@ -433,10 +433,10 @@
         />
       {/if}
 
-      <span id="{uid}-number" class="text-sm text-textcolor2">{numberLabel}</span>
+      <span data-part="modal-text" id="{uid}-number" class="text-sm text-textcolor2">{numberLabel}</span>
 
       <!-- Category Tag -->
-      <span class="px-2 py-1 text-xs rounded-full bg-darkbutton text-textcolor">
+      <span data-part="modal-text" class="px-2 py-1 text-xs rounded-full bg-darkbutton text-textcolor">
         <TagIcon class="w-3 h-3 inline mr-1" aria-hidden="true" />
         {getCategoryName(summary.categoryId, categories)}
       </span>
@@ -444,7 +444,7 @@
       <!-- Individual Tags -->
       {#if summary.tags && summary.tags.length > 0}
         {#each summary.tags as tag}
-          <button
+          <button data-part="modal-action"
             class="px-2 py-1 text-xs rounded-full bg-selected text-textcolor ring-1 ring-borderc hover:ring-2 hover:ring-textcolor2 transition-colors"
             onclick={() => onOpenTagManager?.(summaryIndex)}
           >
@@ -454,7 +454,7 @@
       {/if}
 
       <!-- Add Tag Button -->
-      <button
+      <button data-part="modal-action"
         class="px-2 py-1 text-xs rounded-full bg-selected hover:bg-borderc text-textcolor transition-colors"
         onclick={() => onOpenTagManager?.(summaryIndex)}
         title={language.hypaV3Modal.tagManager}
@@ -465,28 +465,28 @@
       {#if filterSelected && hypaV3Data.metrics}
         <div class="flex flex-wrap gap-1">
           {#if hypaV3Data.metrics.lastImportantSummaries.includes(summaryIndex)}
-            <span
+            <span data-part="modal-text"
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-purple-200 bg-purple-900/70"
             >
               {language.hypaV3Modal.importantBadge}
             </span>
           {/if}
           {#if hypaV3Data.metrics.lastRecentSummaries.includes(summaryIndex)}
-            <span
+            <span data-part="modal-text"
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-blue-200 bg-blue-900/70"
             >
               {language.recent}
             </span>
           {/if}
           {#if hypaV3Data.metrics.lastSimilarSummaries.includes(summaryIndex)}
-            <span
+            <span data-part="modal-text"
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-green-200 bg-green-900/70"
             >
               {language.hypaV3Modal.similarBadge}
             </span>
           {/if}
           {#if hypaV3Data.metrics.lastRandomSummaries.includes(summaryIndex)}
-            <span
+            <span data-part="modal-text"
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-yellow-200 bg-yellow-900/70"
             >
               {language.random}
@@ -497,9 +497,9 @@
     </div>
 
     <!-- Buttons Container -->
-    <div class="flex items-center gap-2">
+    <div data-part="modal-controls" class="flex items-center gap-2">
       <!-- Translate Button -->
-      <button
+      <button data-part="modal-action"
         class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
         tabindex="-1"
         aria-label={language.translate}
@@ -512,7 +512,7 @@
       </button>
 
       <!-- Important Button -->
-      <button
+      <button data-part="modal-action"
         class="p-2 transition-colors {summary.isImportant
           ? 'rounded-sm bg-selected text-textcolor ring-1 ring-borderc'
           : 'text-textcolor2 hover:text-textcolor'}"
@@ -525,7 +525,7 @@
       </button>
 
       <!-- Reroll Button -->
-      <button
+      <button data-part="modal-action"
         class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
         tabindex="-1"
         aria-label={language.reroll}
@@ -536,7 +536,7 @@
       </button>
 
       <!-- Delete This Button -->
-      <button
+      <button data-part="modal-action"
         class="p-2 transition-colors text-textcolor2 hover:text-draculared"
         tabindex="-1"
         aria-label={language.uiCommon.delete}
@@ -546,7 +546,7 @@
       </button>
 
       <!-- Delete After Button -->
-      <button
+      <button data-part="modal-action"
         class="p-2 transition-colors text-textcolor2 hover:text-draculared"
         tabindex="-1"
         aria-label={language.hypaV3DeleteAfter}
@@ -559,7 +559,7 @@
 
   <!-- Original Summary -->
   <div class="mt-2 sm:mt-4">
-    <textarea
+    <textarea data-part="modal-field"
       class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
       aria-labelledby="{uid}-number"
       aria-describedby="{uid}-number"
@@ -577,11 +577,11 @@
   <!-- Original Summary Translation -->
   {#if translation}
     <div class="mt-2 sm:mt-4">
-      <div id="{uid}-translation" class="mb-2 text-sm sm:mb-4 text-textcolor2">
+      <div data-part="modal-text" id="{uid}-translation" class="mb-2 text-sm sm:mb-4 text-textcolor2">
         {language.hypaV3Modal.translationLabel}
       </div>
 
-      <textarea
+      <textarea data-part="modal-field"
         class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
         aria-labelledby="{uid}-translation"
         aria-describedby="{uid}-translation"
@@ -597,12 +597,12 @@
     <!-- Rerolled Summary Header -->
     <div class="mt-2 sm:mt-4">
       <div class="flex items-center justify-between">
-        <span id="{uid}-rerolled" class="text-sm text-textcolor2"
+        <span data-part="modal-text" id="{uid}-rerolled" class="text-sm text-textcolor2"
           >{language.hypaV3Modal.rerolledSummaryLabel}</span
         >
-        <div class="flex items-center gap-2">
+        <div data-part="modal-controls" class="flex items-center gap-2">
           <!-- Translate Rerolled Button -->
-          <button
+          <button data-part="modal-action"
             class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
             tabindex="-1"
             aria-label={language.translate}
@@ -615,7 +615,7 @@
           </button>
 
           <!-- Cancel Button -->
-          <button
+          <button data-part="modal-action"
             class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
             tabindex="-1"
             aria-label={language.cancel}
@@ -625,7 +625,7 @@
           </button>
 
           <!-- Apply Button -->
-          <button
+          <button data-part="modal-action"
             class="p-2 transition-colors text-textcolor2 hover:text-draculared disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-textcolor2"
             tabindex="-1"
             aria-label={language.apply}
@@ -640,7 +640,7 @@
 
     <!-- Rerolled Summary -->
     <div class="mt-2 sm:mt-4">
-      <textarea
+      <textarea data-part="modal-field"
         class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
         aria-labelledby="{uid}-rerolled"
         aria-describedby="{uid}-rerolled"
@@ -656,11 +656,11 @@
     <!-- Rerolled Summary Translation -->
     {#if rerolledTranslation}
       <div class="mt-2 sm:mt-4">
-        <div id="{uid}-rerolled-translation" class="mb-2 text-sm sm:mb-4 text-textcolor2">
+        <div data-part="modal-text" id="{uid}-rerolled-translation" class="mb-2 text-sm sm:mb-4 text-textcolor2">
           {language.hypaV3Modal.rerolledTranslationLabel}
         </div>
 
-        <textarea
+        <textarea data-part="modal-field"
           class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
           aria-labelledby="{uid}-rerolled-translation"
           aria-describedby="{uid}-rerolled-translation"
@@ -676,7 +676,7 @@
   <!-- Connected Messages Header -->
   <div class="mt-2 sm:mt-4">
     <div class="flex items-center justify-between">
-      <button
+      <button data-part="modal-action"
         class="flex items-center gap-2 text-sm text-textcolor2 hover:text-textcolor transition-colors"
         tabindex="-1"
         onclick={toggleSummaryCollapse}
@@ -694,7 +694,7 @@
 
       <div class="flex items-center gap-2">
         <!-- Translate Message Button -->
-        <button
+        <button data-part="modal-action"
           class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
           tabindex="-1"
           aria-label={language.translate}
@@ -711,10 +711,10 @@
 
   {#if !isCollapsed()}
     <!-- Connected Message IDs -->
-    <div class="flex flex-wrap gap-2 mt-2 sm:mt-4">
+    <div data-part="modal-list" class="flex flex-wrap gap-2 mt-2 sm:mt-4">
       {#key summary.chatMemos.length}
         {#each summary.chatMemos as chatMemo, memoIndex (chatMemo)}
-          <button
+          <button data-part="modal-action"
             class="px-3 py-2 rounded-full text-xs text-textcolor hover:bg-selected transition-colors bg-darkbg {isMessageExpanded(
               chatMemo
             )
@@ -738,7 +738,7 @@
         {#await getMessageFromChatMemo(expandedMessageState.selectedChatMemo) then expandedMessage}
           {#if expandedMessage}
             <!-- Role -->
-            <div id="{uid}-message-role" class="mb-2 text-sm sm:mb-4 text-textcolor2">
+            <div data-part="modal-text" id="{uid}-message-role" class="mb-2 text-sm sm:mb-4 text-textcolor2">
               {language.hypaV3Modal.connectedMessageRoleLabel.replace(
                 "{0}",
                 expandedMessage.role
@@ -746,7 +746,7 @@
             </div>
 
             <!-- Content -->
-            <textarea
+            <textarea data-part="modal-field"
               class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
               aria-labelledby="{uid}-message-role"
               aria-describedby="{uid}-message-role"
@@ -755,12 +755,12 @@
               value={expandedMessage.data}
             ></textarea>
           {:else}
-            <span class="text-sm text-draculared"
+            <span data-part="modal-text" class="text-sm text-draculared"
               >{language.hypaV3Modal.connectedMessageNotFoundLabel}</span
             >
           {/if}
         {:catch error}
-          <span class="text-sm text-draculared"
+          <span data-part="modal-text" class="text-sm text-draculared"
             >{language.hypaV3Modal.connectedMessageLoadingError.replace(
               "{0}",
               error.message
@@ -772,11 +772,11 @@
       <!-- Expanded Message Translation -->
       {#if expandedMessageState.translation}
         <div class="mt-2 sm:mt-4">
-          <div id="{uid}-message-translation" class="mb-2 text-sm sm:mb-4 text-textcolor2">
+          <div data-part="modal-text" id="{uid}-message-translation" class="mb-2 text-sm sm:mb-4 text-textcolor2">
             {language.hypaV3Modal.connectedMessageTranslationLabel}
           </div>
 
-          <textarea
+          <textarea data-part="modal-field"
             class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
             aria-labelledby="{uid}-message-translation"
             aria-describedby="{uid}-message-translation"

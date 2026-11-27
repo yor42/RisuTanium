@@ -11,13 +11,16 @@ import { lintPack, type LintResult, type RegistryInput } from '../engine'
 export const POPUPS_NAMED_CRITICAL: string[] = ['pattern-layer', 'pattern-scrim', 'pattern-dialog', 'pattern-dialog-announce', 'toast-live-polite', 'toast-live-assertive']
 // The files: every component under src/lib/Nexus/pattern except the two test harnesses, the alert prompt components of src/lib/Others, and the overlay
 // components named in OVERLAY_FILES of the census (PopupEditor, HypaV3Progress, SavePopupIcon, listedPersona, BookmarkList, EasyPanel, LoadoutModal,
-// CustomSidebarConfig, RealmPopUp, RealmFrame, RealmBlockedCreators, botpreset, IrisModal, PromptDiffModal, ModelList, OpenrouterProviderList). PromptDiffModal carries parts on its frame,
+// CustomSidebarConfig, RealmPopUp, RealmFrame, RealmBlockedCreators, botpreset, IrisModal, PromptDiffModal, ModelList, OpenrouterProviderList, HypaV3Modal and its header,
+// summary item and footer). HypaV3Modal carries parts on its frame, header, search bar, summary cards and footer; the bulk bars, the bulk result and the category and tag managers
+// carry none until W3-6b. PromptDiffModal carries parts on its frame,
 // header and close button only, never on its diff view or option controls. ModelList and OpenrouterProviderList carry parts on the overlay only, never on the inline
 // trigger or notes; the overlay renders inside its host screen.
 export const POPUPS_FILES: string[] = ['src/lib/Nexus/pattern/PatternDialog.svelte', 'src/lib/Nexus/pattern/PatternPrompt.svelte', 'src/lib/Nexus/pattern/PatternTask.svelte',
     'src/lib/Nexus/pattern/PatternWarnMark.svelte', 'src/lib/Nexus/pattern/PatternWarning.svelte', 'src/lib/Nexus/pattern/QuitPill.svelte',
     'src/lib/Nexus/pattern/TaskHost.svelte', 'src/lib/Nexus/pattern/ToastHost.svelte', 'src/lib/Others/AlertComp.svelte',
-    'src/lib/Others/BookmarkList.svelte', 'src/lib/Others/CustomSidebarConfig.svelte', 'src/lib/Others/HypaV3Progress.svelte',
+    'src/lib/Others/BookmarkList.svelte', 'src/lib/Others/CustomSidebarConfig.svelte', 'src/lib/Others/HypaV3Modal.svelte',
+    'src/lib/Others/HypaV3Modal/modal-footer.svelte', 'src/lib/Others/HypaV3Modal/modal-header.svelte', 'src/lib/Others/HypaV3Modal/modal-summary-item.svelte', 'src/lib/Others/HypaV3Progress.svelte',
     'src/lib/Others/IrisModal.svelte', 'src/lib/Others/LoadoutModal.svelte', 'src/lib/Others/ParkedReplyPrompt.svelte', 'src/lib/Others/PasswordPrompt.svelte',
     'src/lib/Others/PeerConflicts.svelte', 'src/lib/Others/PopupEditor.svelte', 'src/lib/Others/PresetBundlePrompt.svelte',
     'src/lib/Others/ProTools/EasyPanel.svelte', 'src/lib/Others/PromptDiffModal.svelte', 'src/lib/Others/SavePopupIcon.svelte', 'src/lib/Others/SelectCharCard.svelte', 'src/lib/Others/SelectCharGrid.svelte',
@@ -27,7 +30,7 @@ export const POPUPS_FILES: string[] = ['src/lib/Nexus/pattern/PatternDialog.svel
 // Every literal data-part of those files; a dynamic name is not counted.
 export const POPUPS_PARTS: string[] = ['memory-progress', 'memory-progress-bar', 'memory-progress-bar-fill', 'memory-progress-card', 'memory-progress-mini', 'memory-progress-pill',
     'memory-progress-subtext', 'memory-progress-text', 'modal-action', 'modal-body', 'modal-bookmark-list', 'modal-botpreset', 'modal-close', 'modal-controls',
-    'modal-custom-sidebar-config', 'modal-easy-panel', 'modal-field', 'modal-footer', 'modal-frame', 'modal-header', 'modal-iris', 'modal-list', 'modal-listed-persona',
+    'modal-custom-sidebar-config', 'modal-easy-panel', 'modal-field', 'modal-footer', 'modal-frame', 'modal-header', 'modal-hypa-v3', 'modal-iris', 'modal-list', 'modal-listed-persona',
     'modal-loadout', 'modal-model-list', 'modal-openrouter-provider-list', 'modal-popup-editor', 'modal-prompt-diff', 'modal-realm-blocked-creators', 'modal-realm-frame', 'modal-realm-popup', 'modal-row', 'modal-text', 'modal-title',
     'password-prompt-actions',
     'password-prompt-cancel', 'password-prompt-field', 'password-prompt-field-label', 'password-prompt-heading', 'password-prompt-ok',
@@ -78,7 +81,7 @@ export const POPUPS_CRITICAL_CLOSURE: string[] = ['password-prompt-actions', 'pa
 export const POPUPS_HOLDERS: string[] = ['task-toasts', 'toast-host']
 // Holders, plus every non-critical part that is or holds an interactive element (button, input, select, textarea, a, label, any on* handler, tabindex, an interactive role, bind: or a component) and the alert close button: a pack may restyle them but never hide or disable them.
 export const POPUPS_REACH: string[] = ['memory-progress', 'memory-progress-card', 'memory-progress-pill', 'modal-action', 'modal-body', 'modal-bookmark-list', 'modal-botpreset', 'modal-close', 'modal-controls',
-    'modal-custom-sidebar-config', 'modal-easy-panel', 'modal-field', 'modal-footer', 'modal-frame', 'modal-header', 'modal-iris', 'modal-list', 'modal-listed-persona',
+    'modal-custom-sidebar-config', 'modal-easy-panel', 'modal-field', 'modal-footer', 'modal-frame', 'modal-header', 'modal-hypa-v3', 'modal-iris', 'modal-list', 'modal-listed-persona',
     'modal-loadout', 'modal-model-list', 'modal-openrouter-provider-list', 'modal-popup-editor', 'modal-prompt-diff', 'modal-realm-blocked-creators', 'modal-realm-frame', 'modal-realm-popup', 'modal-row', 'pattern-alert-char', 'pattern-alert-chars',
     'pattern-alert-chunk', 'pattern-alert-close', 'pattern-alert-code-block', 'pattern-alert-code-head', 'pattern-alert-copy', 'pattern-alert-log',
     'pattern-alert-log-detail', 'pattern-alert-log-summary', 'pattern-alert-logs', 'pattern-alert-panel', 'pattern-alert-row', 'pattern-alert-rows',
