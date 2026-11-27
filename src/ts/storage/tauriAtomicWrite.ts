@@ -167,15 +167,23 @@ export async function sweepAtomicWriteTemps(directory: string, options: { recurs
 }
 
 /**
- * Every AppData directory a store write can put a temp file into, each swept
- * below recursively because keys under it may nest: `database/` (the main
- * file, numbered backups, the backup fingerprint, pre-conversion copies),
- * `remotes/`, `coldstorage/`, `blocks/` (pre-store2 block-format data, generations nest), `assets/` and
- * `modeldata/` (the cached model data files). A key without a slash lands in the AppData root itself, which is swept
- * without descending: the other directories are listed here, and nothing else
- * under the root holds store keys. The app pages send this list to the native sweep.
+ * Every AppData directory a store write can put a temp file into, matching
+ * `store_keys::STORE_DIRECTORIES`, each swept below recursively because keys
+ * under it may nest: `database/` (the main file, numbered backups, the backup
+ * fingerprint, pre-conversion copies), `remotes/`, `coldstorage/`, `blocks/`
+ * (pre-store2 block-format data, generations nest), `assets/`, `modeldata/`
+ * (the cached model data files), `store2/` (durable unit writes whose temps
+ * store2 GC skips and `store2_gate::ungated_remove_refusal` leaves removable
+ * while refusing non-temp `store2/` keys and gated top-level keys), `inlays/`
+ * (atomic/chunked metadata and bodies), and `consent/` (atomic/chunked JSON
+ * consent records). A key without a slash lands in the AppData root itself,
+ * which is swept without descending. `native-reply/` lies outside the store
+ * set and sweeps its own temps (`reply_store.rs`), so it stays omitted. The app
+ * pages send this list to the native sweep.
  */
-export const WRITE_TEMP_DIRECTORIES: readonly string[] = ['database', 'remotes', 'coldstorage', 'blocks', 'assets', 'modeldata']
+export const WRITE_TEMP_DIRECTORIES: readonly string[] = [
+    'database', 'remotes', 'coldstorage', 'blocks', 'assets', 'modeldata', 'store2', 'inlays', 'consent',
+]
 
 /** The app command that walks and sweeps the AppData root and `WRITE_TEMP_DIRECTORIES` natively (through `app_fs::StartupSweep::take_or_walk`). */
 export const APP_FS_SWEEP_WRITE_TEMPS_COMMAND = 'app_fs_sweep_write_temps'
