@@ -27,6 +27,8 @@ export const PROP_ALLOW: readonly RegExp[] = [
     /^(border-collapse|border-spacing|table-layout|caption-side|empty-cells)$/,
     /^outline(-(color|style|width|offset))?$/,
     /^(clip-path|content|(-webkit-)?mask(-[a-z-]+)?|border-image(-(source|slice|width|outset|repeat))?)$/,
+    // Inert: the effect properties and the longhands the transition and animation shorthands set are refused by the area lint before this rule runs, and a declaration the effects pass claims is taken out of the text first, so no declaration of these names ever reaches the check below.
+    /^(transition(-(property|duration|timing-function|delay))?|animation(-(name|duration|timing-function|delay|iteration-count|direction|fill-mode|play-state))?|transform|translate|scale|rotate|transform-origin)$/,
 ]
 export const isAllowedProperty = (prop: string): boolean => PROP_ALLOW.some((pattern) => pattern.test(prop))
 
@@ -101,6 +103,8 @@ export const SHORTHAND_EFFECTS: Readonly<Record<string, ShorthandEffect>> = {
     'place-items': { sets: ['align-items', 'justify-items'], resets: [] },
     'place-self': { sets: ['align-self', 'justify-self'], resets: [] },
     grid: { sets: ['grid-template-rows', 'grid-template-columns', 'grid-template-areas', 'grid-auto-rows', 'grid-auto-columns', 'grid-auto-flow'], resets: [] },
+    transition: { sets: ['transition-property', 'transition-duration', 'transition-timing-function', 'transition-delay'], resets: ['transition-behavior'] },
+    animation: { sets: ['animation-name', 'animation-duration', 'animation-timing-function', 'animation-delay', 'animation-iteration-count', 'animation-direction', 'animation-fill-mode', 'animation-play-state'], resets: ['animation-timeline', 'animation-range-start', 'animation-range-end', 'animation-composition'] },
 }
 
 const SHORTHAND_BACKGROUND_ATTACHMENT = /(^|[\s,/])(fixed|local)(?=$|[\s,)/])/
