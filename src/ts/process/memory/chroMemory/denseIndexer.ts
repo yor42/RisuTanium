@@ -3,12 +3,16 @@ import {
     DENSE_BATCH,
     DENSE_BATCH_TIMEOUT_MS,
     DENSE_IDLE_MS,
+    DENSE_READY_WAIT_MS,
     DenseTimeoutError,
+    PERSIST_EVERY_BATCHES,
     currentDensePause,
     pauseDenseAfter,
+    settleWithin,
     type DenseJob,
 } from './dense'
 import type { IndexedUnit } from './chatIndex'
+import { requestPersist } from './vectorPersist'
 
 /** Requests whose result the indexer gave up on and that have not settled yet; a run starts only below this. */
 const UNSETTLED_CAP = 2
@@ -148,7 +152,11 @@ async function run(): Promise<void> {
     const mine = generation
     running = true
     let endToken: (() => void) | null = null
+    let batches = 0
+    const started = job
     try {
+        // The persisted vectors come first so loaded units are not embedded again; a read that never settles is given up on.
+        if (started && !started.store.loaded) await settleWithin(started.store.ready, DENSE_READY_WAIT_MS)
         for (;;) {
             if (mine !== generation) return
             const j = job
@@ -185,6 +193,7 @@ async function run(): Promise<void> {
             }
             if (!store.disposed && store.modelKey === embedder.modelKey) {
                 batch.forEach((u, i) => store.set(u, outcome.vectors[i]))
+                if (++batches % PERSIST_EVERY_BATCHES === 0) requestPersist(store)
             }
             // A macrotask between batches lets a chat or a visibility change land before the next check.
             await new Promise<void>((resolve) => setTimeout(resolve, 0))
@@ -193,6 +202,8 @@ async function run(): Promise<void> {
         if (mine === generation) pauseDenseAfter(e)
     } finally {
         endToken?.()
+        // Every exit (end, pause, timeout, a chat leaving) persists what was embedded; a hidden page runs it on visible.
+        if (mine === generation && started && !started.store.disposed && started.store.hasUnpersisted()) requestPersist(started.store)
         if (mine === generation) {
             running = false
             if (job) {

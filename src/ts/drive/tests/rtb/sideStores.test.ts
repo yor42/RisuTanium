@@ -1,4 +1,16 @@
-import { describe, test, expect } from 'vitest'
+import { describe, test, expect, vi } from 'vitest'
+
+// The vectors clear holds the persist queue and falls back to the page store through dynamic imports; the real modules
+// would load the whole database module chain (and its effects) into this pure-codec file. No page store here: the
+// vectors clear finds no folder.
+vi.mock('src/ts/process/memory/chroMemory/vectorPersist', () => ({
+    holdVectorPersist: async () => () => {},
+}))
+vi.mock('src/ts/storage/store/appStore', () => ({
+    getAppStore: async () => {
+        throw new Error('no page store in this test')
+    },
+}))
 import { SIDE_SECTION_IDS, type SideSectionId } from 'src/ts/drive/rtb/entryNames'
 import { getPluginPermissionKey } from 'src/ts/plugins/apiV3/pluginPermissionCache'
 import { parseManifest } from 'src/ts/drive/rtb/manifest'

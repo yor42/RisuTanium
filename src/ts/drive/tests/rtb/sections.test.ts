@@ -164,8 +164,10 @@ describe('T40 / T-resprefix reserved ids', () => {
 })
 
 describe('T39 side prefixes and optional rows under u/ a/ i/', () => {
-    test('there are nine v1 side sections, each with its own s/<name>/ prefix', () => {
-        expect(SIDE_SECTION_IDS.length).toBe(9)
+    test('there are ten v1 side sections, each with its own s/<name>/ prefix', () => {
+        expect(SIDE_SECTION_IDS.length).toBe(10)
+        expect(SIDE_SECTION_IDS.at(-1)).toBe('side.chromemory-vectors')
+        expect(sidePrefix('side.chromemory-vectors')).toBe('s/chromemory-vectors/')
         expect(sidePrefix('side.iris')).toBe('s/iris/')
         expect(sidePrefix('side.plugin-safe-ls')).toBe('s/plugin-safe-ls/')
         expect(sidePrefix('side.unknown')).toBeNull()

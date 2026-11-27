@@ -10,7 +10,8 @@
     "database",
     "blocks",
     "coldstorage",
-    "remotes"
+    "remotes",
+    "derived"
   ],
   "rootFiles": [
     "store2-commit",
@@ -27,7 +28,8 @@
     "app_webview",
     "Assets",
     "native-reply",
-    "Native-Reply"
+    "Native-Reply",
+    "Derived"
   ],
   "androidFsCommands": {
     "read_dir": "path-only",
@@ -71,7 +73,9 @@
       "coldstorage/0123456789abcdef",
       "coldstorage/0123456789abcdef.json",
       "remotes/main.0123456789abcdef.bin",
-      "remotes/main.local.bin"
+      "remotes/main.local.bin",
+      "derived/chromemory-vectors/0123456789abcdef/head",
+      "derived/chromemory-vectors/0123456789abcdef/c1"
     ],
     "baseline": [
       "assets/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.png",
@@ -105,12 +109,14 @@
       "coldstorage/0123456789abcdef",
       "coldstorage/0123456789abcdef.json",
       "remotes/main.0123456789abcdef.bin",
-      "remotes/main.local.bin"
+      "remotes/main.local.bin",
+      "derived/chromemory-vectors/0123456789abcdef/head"
     ],
     "temps": [
       "risu-write-0123456789abcdef.tmp",
       "assets/risu-write-0123456789abcdef.tmp",
-      "store2/risu-write-0123456789abcdef.tmp"
+      "store2/risu-write-0123456789abcdef.tmp",
+      "derived/risu-write-0123456789abcdef.tmp"
     ]
   }
 }

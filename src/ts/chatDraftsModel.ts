@@ -149,9 +149,10 @@ export interface ChatDraftSlot {
  * The entries that still belong to a chat of the profile. An entry stays when its `cha` names a cold stub (the real chat
  * ids are not loaded), or when its chat id is among the chat ids of every slot sharing that `chaId` taken together, so
  * two slots with one id never judge each other's chats missing. A trashed slot is still a slot, so its entries stay until
- * it is deleted for good (MC-3591). Returns the input array itself when nothing is dropped.
+ * it is deleted for good (MC-3591). Returns the input array itself when nothing is dropped. Generic over any entry keyed by
+ * `{cha, chat}`, so the search-vector sweep applies the same rule to its folders.
  */
-export function reconcileChatDrafts(entries: readonly ChatDraftEntry[], slots: readonly ChatDraftSlot[]): readonly ChatDraftEntry[] {
+export function reconcileChatDrafts<T extends { cha: string, chat: string }>(entries: readonly T[], slots: readonly ChatDraftSlot[]): readonly T[] {
     const known = new Map<string, { stub: boolean, chats: Set<string> }>()
     for (const slot of slots) {
         if (typeof slot?.chaId !== 'string') {

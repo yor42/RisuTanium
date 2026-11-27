@@ -73,6 +73,7 @@ import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
 import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
 import { binLeaveOutSummary, type BinLeaveOutEntry } from "./binLeaveOut";
 import { chroMemoryOn } from "../process/memory/memoryEngine";
+import { vectorsPresent } from "../process/memory/chroMemory/vectorPersist";
 import { countChatDrafts } from "../chatDraftsModel";
 import { flushPersistedDrafts } from "../draftContentOrphanGate";
 
@@ -891,11 +892,12 @@ async function confirmOmitConnectionKeys(session: ExportSession, snapshot: Expor
 }
 
 /**
- * Whether the export leaves ChroMemory out visibly: only while the engine is selected. Settings kept while another engine is
- * selected are left out silently, like the statistics retention period.
+ * Whether the export leaves ChroMemory out visibly: while the engine is selected, or while saved search vectors exist (they
+ * are left out whatever the engine is, a newer version's folder included). Settings kept while another engine is selected
+ * are left out silently, like the statistics retention period.
  */
-function chroMemoryLeftOut(db: Database): boolean {
-    return chroMemoryOn(db)
+function chroMemoryLeftOut(db: Database, vectors: boolean): boolean {
+    return chroMemoryOn(db) || vectors
 }
 
 /**
@@ -935,19 +937,21 @@ async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupEx
     } catch (error) {
         console.error(error)
     }
+    // Probed once, so both the per-kind prompt and the summary judge the same store.
+    const vectors = await vectorsPresent()
     const perKind = async (): Promise<boolean> => await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))
         && await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))
         && await confirmOmitTaskPresets(session, taskPresetLabels(db))
         && await confirmOmitWorkspaces(session, workspaceLabels(db))
         && await confirmOmitThemePacks(session, themePackLabels(db))
         && await confirmOmitUsageStats(session, hasUsageData(db))
-        && await confirmOmitChroMemory(session, chroMemoryLeftOut(db))
+        && await confirmOmitChroMemory(session, chroMemoryLeftOut(db, vectors))
         && await confirmOmitChatDrafts(session, chatDraftsLeftOut(db))
     const ask = options.askLeaveOut
     if (ask === undefined) {
         return await perKind()
     }
-    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), workspaces: workspaceLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db), chatDrafts: chatDraftsLeftOut(db) })
+    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), workspaces: workspaceLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db, vectors), chatDrafts: chatDraftsLeftOut(db) })
     if (summary.length === 0) {
         return true
     }

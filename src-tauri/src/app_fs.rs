@@ -72,8 +72,8 @@ pub struct SweepReport {
 /// The directories the process-start sweep walks: the same set as the page's
 /// `WRITE_TEMP_DIRECTORIES`, which `writeTempDirectories.json` keeps equal, and
 /// matching `store_keys::STORE_DIRECTORIES` (`native-reply` sweeps its own temps).
-pub const STARTUP_SWEEP_DIRECTORIES: [&str; 9] =
-    ["database", "remotes", "coldstorage", "blocks", "assets", "modeldata", "store2", "inlays", "consent"];
+pub const STARTUP_SWEEP_DIRECTORIES: [&str; 10] =
+    ["database", "remotes", "coldstorage", "blocks", "assets", "modeldata", "store2", "inlays", "consent", "derived"];
 
 /// How far before its trigger a walk's cutoff lies. File times come from a
 /// tick-coarse clock that can read slightly earlier than a precise `now`, so a

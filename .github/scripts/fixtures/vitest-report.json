@@ -1,0 +1,119 @@
+{
+ "numTotalTestSuites": 4,
+ "numPassedTestSuites": 1,
+ "numFailedTestSuites": 3,
+ "numPendingTestSuites": 0,
+ "numTotalTests": 5,
+ "numPassedTests": 2,
+ "numFailedTests": 2,
+ "numPendingTests": 1,
+ "numTodoTests": 0,
+ "snapshot": {
+  "added": 0,
+  "failure": false,
+  "filesAdded": 0,
+  "filesRemoved": 0,
+  "filesRemovedList": [],
+  "filesUnmatched": 0,
+  "filesUpdated": 0,
+  "matched": 0,
+  "total": 0,
+  "unchecked": 0,
+  "uncheckedKeysByFile": [],
+  "unmatched": 0,
+  "updated": 0,
+  "didUpdate": false
+ },
+ "startTime": 1700000000000,
+ "success": false,
+ "testResults": [
+  {
+   "assertionResults": [],
+   "startTime": 1700000000000,
+   "endTime": 1700000000100,
+   "status": "failed",
+   "message": "file level failure",
+   "name": "/home/runner/work/RisuTanium/RisuTanium/src/loadfail.test.js"
+  },
+  {
+   "assertionResults": [
+    {
+     "ancestorTitles": [],
+     "fullName": "ok",
+     "status": "passed",
+     "title": "ok",
+     "duration": 1,
+     "failureMessages": [],
+     "meta": {},
+     "tags": []
+    }
+   ],
+   "startTime": 1700000000000,
+   "endTime": 1700000000100,
+   "status": "passed",
+   "message": "",
+   "name": "/home/runner/work/RisuTanium/RisuTanium/src/ok.test.js"
+  },
+  {
+   "assertionResults": [
+    {
+     "ancestorTitles": [
+      "suite A"
+     ],
+     "fullName": "suite A passes",
+     "status": "passed",
+     "title": "passes",
+     "duration": 1,
+     "failureMessages": [],
+     "meta": {},
+     "tags": []
+    },
+    {
+     "ancestorTitles": [
+      "suite A"
+     ],
+     "fullName": "suite A fails with a diff",
+     "status": "failed",
+     "title": "fails with a diff",
+     "duration": 1,
+     "failureMessages": [
+      "AssertionError: expected { a: 1, b: [ 1, 2 ] } to deeply equal { a: 1, b: [ 1, 3 ] }\n    at /home/runner/work/RisuTanium/RisuTanium/src/sample.test.js:3:65\n    at file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:2956:64"
+     ],
+     "meta": {},
+     "tags": []
+    },
+    {
+     "ancestorTitles": [
+      "suite A"
+     ],
+     "fullName": "suite A fails with a throw",
+     "status": "failed",
+     "title": "fails with a throw",
+     "duration": 1,
+     "failureMessages": [
+      "Error: boom `tick` ```fence```\n    at /home/runner/work/RisuTanium/RisuTanium/src/sample.test.js:4:44\n    at file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file:////home/runner/work/RisuTanium/RisuTanium/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:2956:64"
+     ],
+     "meta": {},
+     "tags": []
+    },
+    {
+     "ancestorTitles": [
+      "suite A"
+     ],
+     "fullName": "suite A skipped",
+     "status": "skipped",
+     "title": "skipped",
+     "failureMessages": [],
+     "meta": {},
+     "tags": [],
+     "duration": 1
+    }
+   ],
+   "startTime": 1700000000000,
+   "endTime": 1700000000100,
+   "status": "failed",
+   "message": "",
+   "name": "/home/runner/work/RisuTanium/RisuTanium/src/sample.test.js"
+  }
+ ]
+}

@@ -181,6 +181,20 @@ describe('reconcileChatDrafts', () => {
         const keep = [entries[0]]
         expect(reconcileChatDrafts(keep, [{ chaId: 'live', chats: [{ id: 'c1' }] }])).toBe(keep)
     })
+
+    test('a plain {cha, chat} entry type is judged by the same rule and returned with its own members (search-vector sweep)', () => {
+        const folders = [
+            { cha: 'live', chat: 'c1', seg: 'a' },
+            { cha: 'live', chat: 'gone', seg: 'b' },
+            { cha: 'stub', chat: 'any', seg: 'c' },
+            { cha: 'absent', chat: 'c1', seg: 'd' },
+        ]
+        const kept = reconcileChatDrafts(folders, [
+            { chaId: 'live', chats: [{ id: 'c1' }] },
+            { chaId: 'stub', coldstorage: 'uuid', chats: [] },
+        ])
+        expect(kept.map((entry) => entry.seg)).toEqual(['a', 'c'])
+    })
 })
 describe('persistTargetOf', () => {
     test('T3.11: both ids must be non-empty strings, else the edit stays memory-only', () => {
