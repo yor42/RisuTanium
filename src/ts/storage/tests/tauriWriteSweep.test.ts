@@ -62,6 +62,10 @@ describe('sweepAllWriteTemps', () => {
             `blocks/gen/c/${TEMP}`,
             `assets/${TEMP}`,
             `assets/nested/deeper/${TEMP}`,
+            `modeldata/${TEMP}`,
+            `store2/${TEMP}`,
+            `inlays/${TEMP}`,
+            `consent/${TEMP}`,
         ]
         for (const key of planted) {
             h.fs.plant(key, BYTES)
@@ -80,6 +84,42 @@ describe('sweepAllWriteTemps', () => {
 
         expect(temps()).toEqual([])
         expect(h.fs.files.has('modeldata/openrouter.json')).toBe(true)
+    })
+
+    test('removes leftover temps in store2, inlays and consent while keeping live files and native-reply temps', async () => {
+        const keep = [
+            'store2/m-0123456789abcdef',
+            'store2/u-0123456789abcdef',
+            'store2-commit',
+            'store2-fence',
+            'store2/risu-write-0123456789ABCDEF.tmp',
+            'inlays/m-0123456789abcdef',
+            'inlays/b-0123456789abcdef.0123456789abcdef',
+            'consent/mcp-stdio-approvals.json',
+            'consent/workspace-tool-grants.json',
+            'consent/native-private-network.json',
+            `native-reply/r/${TEMP}`,
+        ]
+        for (const noOsPlugin of [false, true]) {
+            h.fs.reset()
+            h.desktop.reset()
+            h.switches.noOsPlugin = noOsPlugin
+            for (const key of keep) {
+                h.fs.plant(key, BYTES)
+            }
+            h.fs.plant(`store2/${TEMP}`, BYTES)
+            h.fs.plant(`inlays/${TEMP}`, BYTES)
+            h.fs.plant(`consent/${TEMP}`, BYTES)
+
+            await sweepAllWriteTemps()
+
+            expect(h.fs.files.has(`store2/${TEMP}`), `store2 temp (noOsPlugin=${noOsPlugin})`).toBe(false)
+            expect(h.fs.files.has(`inlays/${TEMP}`), `inlays temp (noOsPlugin=${noOsPlugin})`).toBe(false)
+            expect(h.fs.files.has(`consent/${TEMP}`), `consent temp (noOsPlugin=${noOsPlugin})`).toBe(false)
+            for (const key of keep) {
+                expect(h.fs.files.has(key), `${key} (noOsPlugin=${noOsPlugin})`).toBe(true)
+            }
+        }
     })
 
     test('names the directories the native startup sweep walks, in its order: the shared fixture', () => {
@@ -122,7 +162,7 @@ describe('sweepAllWriteTemps', () => {
         expect(h.desktop.count('app_fs_sweep_write_temps')).toBe(1)
     })
 
-    test('an app-command page lists nothing through the plugin and sends one sweep command naming the six directories', async () => {
+    test('an app-command page lists nothing through the plugin and sends one sweep command naming the nine directories', async () => {
         const writer = createChunkedWriter('assets/nested/old.bin', { durable: true, chunkBytes: 4 })
         await writer.write(new Uint8Array(12))
         const blocks = createChunkedWriter('blocks/gen/c/6162', { durable: true, chunkBytes: 4 })
@@ -218,5 +258,34 @@ describe('the temp of an abandoned chunked write', () => {
         await sweepAllWriteTemps()
 
         expect(temps()).toEqual([])
+    })
+
+    test('the temps of abandoned chunked writes under store2, inlays and consent are removed at boot without touching existing targets', async () => {
+        const sentinel = Uint8Array.from([9, 9])
+        const targets = [
+            'store2/m-0123456789abcdef',
+            'inlays/m-0123456789abcdef',
+            'consent/workspace-tool-grants.json',
+        ]
+        for (const key of targets) {
+            h.fs.plant(key, sentinel)
+        }
+        const store2 = createChunkedWriter('store2/u-0123456789abcdef', { durable: true, chunkBytes: 4 })
+        await store2.write(new Uint8Array(12))
+        const inlay = createChunkedWriter('inlays/b-0123456789abcdef.0123456789abcdef', { durable: false, chunkBytes: 4 })
+        await inlay.write(new Uint8Array(12))
+        const consent = createChunkedWriter('consent/workspace-tool-grants.json', { durable: false, chunkBytes: 4 })
+        await consent.write(new Uint8Array(12))
+        expect(temps()).toHaveLength(3)
+        expect(temps().some((key) => key.startsWith('store2/'))).toBe(true)
+        expect(temps().some((key) => key.startsWith('inlays/'))).toBe(true)
+        expect(temps().some((key) => key.startsWith('consent/'))).toBe(true)
+
+        await sweepAllWriteTemps()
+
+        expect(temps()).toEqual([])
+        for (const key of targets) {
+            expect(Array.from(h.fs.files.get(key) ?? []), key).toEqual([9, 9])
+        }
     })
 })
