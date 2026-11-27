@@ -21,7 +21,7 @@ import { beginBusy } from "./memory/busyActions";
 import { openOutsideBusy } from "../drive/exportDialogBusy";
 import { splitLoreKeys } from "./loreKeys";
 import { externalEntryDecorators, externalInsertOrder, placeDisabledMarker } from "./lorebookImportDecorators";
-import { NoLorebookInPng, readLorebookFileJson } from "./lorebookFile";
+import { NoLorebookInPng, lorebookExportBytes, readLorebookFileJson } from "./lorebookFile";
 import { firstMessageIndexOf } from "./firstMessage";
 import { ASCII_WORD, createWordStartIncludes, defaultWordBoundaries, fullWordIncludes, UNICODE_WORD } from "./lorebookWordMatch";
 import { loreEntryName, type LoreUsedEntry } from "./loreUse";
@@ -1144,16 +1144,8 @@ export async function importLoreBook(mode:'global'|'local'){
 
 
     try {
-        const importedlore = readLorebookFileJson(lorebook) as ImportedLorebookFile
-        if(importedlore.type === 'risu' && importedlore.data){
-            const datas:loreBook[] = importedlore.data
-            for(const data of datas){
-                lore.push(data)
-            }
-        }
-        else if(importedlore.entries){
-            const entries:{[key:string]:CCLorebook} = importedlore.entries
-            lore.push(...convertExternalLorebook(entries))
+        for(const data of parseLorebookImport(lorebook)){
+            lore.push(data as loreBook)
         }
         if(mode === 'global'){
             DBState.db.characters[selectedID].globalLore = lore
@@ -1164,6 +1156,28 @@ export async function importLoreBook(mode:'global'|'local'){
     } catch (error) {
         alertError(error instanceof NoLorebookInPng ? language.errors.noData : error)
     }
+}
+
+/**
+ * The entries of one picked lorebook file, exactly as the classic import reads
+ * them: RisuAI's own export gives its `data` verbatim (elements are not
+ * checked), an external book with `entries` is converted, any other JSON gives
+ * none. NoLorebookInPng and the JSON parser's errors propagate.
+ */
+export function parseLorebookImport(data:Uint8Array):unknown[]{
+    const importedlore = readLorebookFileJson(data) as ImportedLorebookFile
+    if(importedlore.type === 'risu' && importedlore.data){
+        const datas:unknown[] = []
+        for(const entry of importedlore.data){
+            datas.push(entry)
+        }
+        return datas
+    }
+    if(importedlore.entries){
+        const entries:{[key:string]:CCLorebook} = importedlore.entries
+        return convertExternalLorebook(entries)
+    }
+    return []
 }
 
 /** The top-level shapes of a picked lorebook file: RisuAI's own export, or an external book with `entries`. */
@@ -1242,11 +1256,7 @@ export async function exportLoreBook(mode:'global'|'local'){
         const lore = 
             mode === 'global' ? DBState.db.characters[selectedID].globalLore : 
             DBState.db.characters[selectedID].chats[page].localLore        
-        const stringl = Buffer.from(JSON.stringify({
-            type: 'risu',
-            ver: 1,
-            data: lore
-        }), 'utf-8')
+        const stringl = lorebookExportBytes(lore)
 
         const saved = await downloadFile(`lorebook_export.json`, stringl, { aroundPicker: (open) => openOutsideBusy(busy, open) })
         if(!saved){
