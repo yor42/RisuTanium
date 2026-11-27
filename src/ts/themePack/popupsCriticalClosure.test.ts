@@ -21,7 +21,8 @@ const OTHERS = ['AlertComp', 'ParkedReplyPrompt', 'PasswordPrompt', 'PeerConflic
 const OVERLAY_FILES = ['src/lib/Others/PopupEditor.svelte', 'src/lib/Others/HypaV3Progress.svelte', 'src/lib/Others/SavePopupIcon.svelte', 'src/lib/Setting/listedPersona.svelte',
     'src/lib/Others/BookmarkList.svelte', 'src/lib/Others/ProTools/EasyPanel.svelte', 'src/lib/Others/LoadoutModal.svelte', 'src/lib/Others/CustomSidebarConfig.svelte',
     'src/lib/UI/Realm/RealmPopUp.svelte', 'src/lib/UI/Realm/RealmFrame.svelte', 'src/lib/UI/Realm/RealmBlockedCreators.svelte',
-    'src/lib/Setting/botpreset.svelte', 'src/lib/Others/IrisModal.svelte', 'src/lib/Others/PromptDiffModal.svelte', 'src/lib/UI/ModelList.svelte', 'src/lib/UI/OpenrouterProviderList.svelte']
+    'src/lib/Setting/botpreset.svelte', 'src/lib/Others/IrisModal.svelte', 'src/lib/Others/PromptDiffModal.svelte', 'src/lib/UI/ModelList.svelte', 'src/lib/UI/OpenrouterProviderList.svelte',
+    'src/lib/Others/HypaV3Modal.svelte', 'src/lib/Others/HypaV3Modal/modal-header.svelte', 'src/lib/Others/HypaV3Modal/modal-summary-item.svelte', 'src/lib/Others/HypaV3Modal/modal-footer.svelte']
 const relative = (file: string): string => path.relative(root, file).split(path.sep).join('/')
 const files = [
     ...readdirSync(patternDir).filter((name) => name.endsWith('.svelte') && !HARNESSES.has(name)).map((name) => path.join(patternDir, name)),

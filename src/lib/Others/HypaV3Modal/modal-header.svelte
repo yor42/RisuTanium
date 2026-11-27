@@ -130,16 +130,16 @@
   }
 </script>
 
-<div class="flex items-center justify-between mb-2 sm:mb-4">
+<div data-part="modal-header" class="flex items-center justify-between mb-2 sm:mb-4">
   <!-- Modal Title -->
-  <h1 class="text-lg font-semibold sm:text-2xl text-textcolor">
+  <h1 data-part="modal-title" class="text-lg font-semibold sm:text-2xl text-textcolor">
     {language.hypaV3Modal.titleLabel}
   </h1>
 
   <!-- Buttons Container -->
-  <div class="flex items-center gap-2">
+  <div data-part="modal-controls" class="flex items-center gap-2">
     <!-- Open Search Button -->
-    <button
+    <button data-part="modal-action"
       class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
       tabindex="-1"
       aria-label={language.search}
@@ -149,7 +149,7 @@
     </button>
 
     <!-- Filter Important Summary Button -->
-    <button
+    <button data-part="modal-action"
       class="p-2 transition-colors {filterState?.showImportantOnly
         ? 'rounded-sm bg-selected text-textcolor ring-1 ring-borderc'
         : 'text-textcolor2 hover:text-textcolor'}"
@@ -163,7 +163,7 @@
 
     <!-- Bulk Edit Mode Button -->
     {#if bulkEditState}
-      <button
+      <button data-part="modal-action"
         class="p-2 transition-colors {bulkEditState.isEnabled
           ? 'rounded-sm bg-selected text-textcolor ring-1 ring-borderc'
           : 'text-textcolor2 hover:text-textcolor'}"
@@ -178,7 +178,7 @@
 
     <!-- Category Manager Button -->
     {#if categoryManagerState}
-      <button
+      <button data-part="modal-action"
         class="p-2 text-textcolor2 hover:text-textcolor transition-colors"
         tabindex="-1"
         aria-label={language.hypaV3Modal.categoryManager}
@@ -189,7 +189,7 @@
     {/if}
 
     <!-- Open Global Settings Button -->
-    <button
+    <button data-part="modal-action"
       class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
       tabindex="-1"
       aria-label={language.settings}
@@ -200,7 +200,7 @@
 
     <!-- Open Dropdown Button -->
     <div class="relative">
-      <button
+      <button data-part="modal-action"
         class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
         tabindex="-1"
         aria-label={language.chatShellMoreActions}
@@ -210,13 +210,13 @@
       </button>
 
       {#if dropdownOpen}
-        <div
+        <div data-part="modal-list"
           class="absolute right-0 z-10 p-2 mt-1 border rounded-md shadow-lg border-darkborderc bg-bgcolor"
         >
           <!-- Buttons Container -->
           <div class="flex items-center gap-2">
             <!-- Filter Selected Summary Button -->
-            <button
+            <button data-part="modal-action"
               class="p-2 transition-colors {filterSelected
                 ? 'rounded-sm bg-selected text-textcolor ring-1 ring-borderc'
                 : 'text-textcolor2 hover:text-textcolor'}"
@@ -230,7 +230,7 @@
 
             <!-- Export Summaries To Chat Lorebook Button -->
             {#if onExportToLorebook}
-              <button
+              <button data-part="modal-action"
                 class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
                 tabindex="-1"
                 title={language.hypaV3Modal.exportToLorebookLabel}
@@ -243,7 +243,7 @@
 
             <!-- Import Chat Lorebook Entries As Summaries Button -->
             {#if onImportFromLorebook}
-              <button
+              <button data-part="modal-action"
                 class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
                 tabindex="-1"
                 title={language.hypaV3Modal.importFromLorebookLabel}
@@ -255,7 +255,7 @@
             {/if}
 
             <!-- Reset Data Button -->
-            <button
+            <button data-part="modal-action"
               class="p-2 transition-colors text-textcolor2 hover:text-draculared"
               tabindex="-1"
               aria-label={language.reset}
@@ -269,7 +269,7 @@
     </div>
 
     <!-- Close Modal Button -->
-    <button
+    <button data-part="modal-close"
       class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
       tabindex="-1"
       aria-label={language.uiCommon.close}

@@ -51,7 +51,7 @@
 </script>
 
 <!-- Next Summarization Target -->
-<div class="mt-2 sm:mt-4">
+<div data-part="modal-footer" class="mt-2 sm:mt-4">
   {#await getNextSummarizationTarget() then nextMessage}
     {#if nextMessage}
       {@const chatId =
@@ -60,11 +60,11 @@
           : nextMessage.chatId == null
             ? language.hypaV3Modal.nextSummarizationNoMessageIdLabel
             : nextMessage.chatId}
-      <div id="{uid}-next-target" class="mb-2 text-sm sm:mb-4 text-textcolor2">
+      <div data-part="modal-text" id="{uid}-next-target" class="mb-2 text-sm sm:mb-4 text-textcolor2">
         {language.hypaV3Modal.nextSummarizationLabel.replace("{0}", chatId)}
       </div>
 
-      <textarea
+      <textarea data-part="modal-field"
         class="w-full p-2 overflow-y-auto transition-colors border rounded-sm resize-none sm:p-4 min-h-40 sm:min-h-56 border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
         aria-labelledby="{uid}-next-target"
         aria-describedby="{uid}-next-target"
@@ -72,12 +72,12 @@
         value={nextMessage.data}
       ></textarea>
     {:else}
-      <span class="text-sm text-draculared"
+      <span data-part="modal-text" class="text-sm text-draculared"
         >{language.hypaV3Modal.nextSummarizationNoMessagesFoundLabel}</span
       >
     {/if}
   {:catch error}
-    <span class="text-sm text-draculared"
+    <span data-part="modal-text" class="text-sm text-draculared"
       >{language.hypaV3Modal.nextSummarizationLoadingError.replace(
         "{0}",
         error.message
@@ -86,14 +86,14 @@
   {/await}
 </div>
 
-<div class="mt-2 sm:mt-4">
-  <div class="mb-2 text-sm sm:mb-4 text-textcolor2">
+<div data-part="modal-footer" class="mt-2 sm:mt-4">
+  <div data-part="modal-text" class="mb-2 text-sm sm:mb-4 text-textcolor2">
     {language.hypaV3Modal.summarizationConditionLabel}
   </div>
 
   <!-- No First Message -->
   {#if !getFirstMessage()}
-    <span class="text-sm text-draculared"
+    <span data-part="modal-text" class="text-sm text-draculared"
       >{language.hypaV3Modal.emptySelectedFirstMessageLabel}</span
     >
   {/if}
