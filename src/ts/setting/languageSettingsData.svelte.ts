@@ -16,6 +16,7 @@ import { ALERT_SELECT_CANCEL } from '../alertCancel';
 import { downloadFile } from '../globalApi.svelte';
 import { selectFileByDom } from '../util';
 import { exportLLMCacheAsJSON, importLLMCacheFromJSON, clearLLMCache } from '../translator/translator';
+import { serviceEditorValue, setServiceKey } from '../connections/serviceKeys';
 
 export const langState = $state({ changed: false });
 
@@ -168,8 +169,17 @@ export const languageSettingsItems: SettingItem[] = [
         id: 'lang.deeplKey',
         type: 'text',
         labelKey: 'deeplKey',
-        bindPath: 'deeplOptions.key',
+        getValue: (db) => serviceEditorValue(db, 'deeplOptions.key'),
+        setValue: (db, value) => { void setServiceKey(db, 'deeplOptions.key', value) },
         classes: 'mt-4',
+        condition: (ctx) => !!ctx.db.translator && ctx.db.translatorType === 'deepl',
+    },
+
+    {
+        id: 'lang.deeplConnection',
+        type: 'custom',
+        componentId: 'ServiceConnectionRow',
+        componentProps: { service: 'deeplOptions.key' },
         condition: (ctx) => !!ctx.db.translator && ctx.db.translatorType === 'deepl',
     },
 
@@ -195,8 +205,17 @@ export const languageSettingsItems: SettingItem[] = [
         id: 'lang.deeplXToken',
         type: 'text',
         labelKey: 'deeplXToken',
-        bindPath: 'deeplXOptions.token',
+        getValue: (db) => serviceEditorValue(db, 'deeplXOptions.token'),
+        setValue: (db, value) => { void setServiceKey(db, 'deeplXOptions.token', value) },
         classes: 'mt-4',
+        condition: (ctx) => !!ctx.db.translator && ctx.db.translatorType === 'deeplX',
+    },
+
+    {
+        id: 'lang.deeplXConnection',
+        type: 'custom',
+        componentId: 'ServiceConnectionRow',
+        componentProps: { service: 'deeplXOptions.token' },
         condition: (ctx) => !!ctx.db.translator && ctx.db.translatorType === 'deeplX',
     },
 

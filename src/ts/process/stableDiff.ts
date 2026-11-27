@@ -12,7 +12,8 @@ import { language } from "src/lang"
 import { fillLang } from "src/lang/fill"
 import random from "lodash/random"
 import { resolveSecret } from "../secretRef"
-import { currentKey } from "./request/secretKey"
+import { currentKey, currentServiceKey } from "./request/secretKey"
+import type { ServiceSlot } from "../connections/serviceKeys"
 
 /**
  * The credential to send for an image provider, or null after telling the user why it cannot be
@@ -22,6 +23,19 @@ import { currentKey } from "./request/secretKey"
 async function resolveImageKey(value: string | Promise<string>): Promise<string|null> {
     try {
         return await resolveSecret(await value)
+    } catch (error) {
+        alertError(error instanceof Error ? error.message : `${error}`)
+        return null
+    }
+}
+
+/**
+ * The stored value of an image service key, or null after telling the user why it cannot be read. A
+ * rejected read is never turned into an empty key: the caller stops, so no unauthenticated request goes out.
+ */
+async function readStoredImageKey(slot: ServiceSlot): Promise<string|null> {
+    try {
+        return await currentServiceKey(slot)
     } catch (error) {
         alertError(error instanceof Error ? error.message : `${error}`)
         return null
@@ -230,7 +244,7 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
                 }
             },
             headers:{
-                "Authorization": "Bearer " + db.NAIApiKey
+                "Authorization": "Bearer "
             },
             rawResponse: true
         }
@@ -387,7 +401,7 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
             if(reqlist.headers){
                 reqlist.headers = {
                     ...reqlist.headers,
-                    "Authorization": "Bearer " + await resolveSecret(db.NAIApiKey)
+                    "Authorization": "Bearer " + await resolveSecret(await currentServiceKey('NAIApiKey', db))
                 }
             }
             const da = await globalFetch(db.NAIImgUrl, reqlist)
@@ -469,7 +483,7 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
         return returnSdData
     }
     if(db.sdProvider === 'stability'){
-        const stabilityKey = await resolveImageKey(db.stabilityKey)
+        const stabilityKey = await resolveImageKey(currentServiceKey('stabilityKey', db))
         if(stabilityKey === null){
             return returnSdData === 'inlay' ? '' : false
         }
@@ -626,7 +640,7 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
     }
     if(db.sdProvider === 'fal'){
         const model = db.falModel
-        const token = await resolveImageKey(db.falToken)
+        const token = await resolveImageKey(currentServiceKey('falToken', db))
         if(token === null){
             return returnSdData === 'inlay' ? '' : false
         }
@@ -762,8 +776,12 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
             "Content-Type": "application/json"
         }
 
-        if(config.key){
-            const compatKey = await resolveImageKey(config.key)
+        const storedCompatKey = await readStoredImageKey('openaiCompatImage.key')
+        if(storedCompatKey === null){
+            return returnSdData === 'inlay' ? '' : false
+        }
+        if(storedCompatKey){
+            const compatKey = await resolveImageKey(storedCompatKey)
             if(compatKey === null){
                 return returnSdData === 'inlay' ? '' : false
             }
@@ -804,11 +822,15 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
     }
     if(db.sdProvider === 'wavespeed'){
         const config = db.wavespeedImage
-        if (!config.key) {
+        const storedWavespeedKey = await readStoredImageKey('wavespeedImage.key')
+        if(storedWavespeedKey === null){
+            return returnSdData === 'inlay' ? '' : false
+        }
+        if (!storedWavespeedKey) {
             alertError(language.errors.wavespeedEnterKey)
             return false
         }
-        const wavespeedKey = await resolveImageKey(config.key)
+        const wavespeedKey = await resolveImageKey(storedWavespeedKey)
         if(wavespeedKey === null){
             return returnSdData === 'inlay' ? '' : false
         }

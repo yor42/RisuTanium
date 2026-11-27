@@ -523,3 +523,43 @@ describe('T19 rename notice (A7); falsified by M17', () => {
         expect(maybePart('settings-connection-notice')).toBeNull()
     })
 })
+
+describe('services group (Stage C)', () => {
+    test('the add flow offers the 13 services under a Services heading with a masked single-line key field', async () => {
+        seed()
+        mountPage()
+        part('settings-connection-add-open').click()
+        await settle()
+        const section = document.querySelector<HTMLElement>(`section[aria-label="${language.connectionsGroupServices}"]`)
+        expect(section).not.toBeNull()
+        expect(section!.querySelectorAll('[data-connection-provider]').length).toBe(13)
+        section!.querySelector<HTMLButtonElement>('[data-connection-provider="deepl"]')!.click()
+        await settle()
+        // A rotation list would add a second control; a single secret is one masked input.
+        const input = keyInput()
+        expect(input.type).toBe('password')
+        expect(part('settings-connection-key-input').querySelectorAll('textarea').length).toBe(0)
+    })
+
+    test('a service connection card shows the Plug-keyed hint chip and deleting it names the service consequence', async () => {
+        seed({ connections: [{ id: 'conn-1', name: 'DeepL', provider: 'deepl', key: 'SYN-deepl-key-1234' }] })
+        mountPage()
+        const card = document.querySelector<HTMLElement>('[data-part="settings-connection-card"]')!
+        expect(card.textContent).toContain('••••')
+        expect(card.textContent).not.toContain('1234')
+        await openDetail('conn-1')
+        part('settings-connection-delete').click()
+        await settle()
+        const dialog = part('pattern-warn-root').textContent ?? ''
+        expect(dialog).toContain(language.connectionsServiceGlobalEffect.replace('{provider}', 'DeepL'))
+        expect(dialog).not.toContain(language.connectionsGlobalEffect.replace('{provider}', 'DeepL'))
+    })
+
+    test('a chat provider keeps the models consequence line', async () => {
+        mountPage()
+        await openDetail('conn-1')
+        part('settings-connection-delete').click()
+        await settle()
+        expect(part('pattern-warn-root').textContent).toContain(language.connectionsGlobalEffect.replace('{provider}', 'OpenAI'))
+    })
+})

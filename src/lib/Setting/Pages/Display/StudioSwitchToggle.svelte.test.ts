@@ -30,6 +30,7 @@ vi.mock('src/lib/Setting/Pages/Display/NullableTextColorToggle.svelte', otherCus
 vi.mock('src/lib/Setting/Pages/Display/NotificationToggle.svelte', otherCustomComponent)
 vi.mock('src/lib/Setting/Pages/Display/ChatShellPreviewToggle.svelte', otherCustomComponent)
 vi.mock('src/lib/Setting/Pages/Display/SettingsShellPreviewToggle.svelte', otherCustomComponent)
+vi.mock('src/lib/SettingsShell/connections/ServiceConnectionRow.svelte', otherCustomComponent)
 vi.mock('src/ts/studio/studioSwitch.svelte', () => ({
     studioSwitch: state,
     setStudioEnabled: writes,

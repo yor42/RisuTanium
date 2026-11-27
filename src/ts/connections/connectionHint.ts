@@ -1,6 +1,7 @@
 import { isSecretRef } from 'src/ts/secretRefPattern'
 import { splitKeys } from 'src/ts/process/request/keyRing'
 import type { Connection, ConnectionProvider } from './connections'
+import { catalogEntry } from './providerCatalog'
 import { connectionKeyForUi, connectionKeyTemporarilyUnavailable, connectionNeedsReentry } from './keyAccess'
 
 /**
@@ -23,8 +24,8 @@ export function maskKeyHint(plain: string, provider: ConnectionProvider): KeyHin
     if (plain.trim() === '') {
         return { kind: 'none' }
     }
-    // A PEM is one key spread over lines, not a rotation list.
-    if (provider === 'vertex') {
+    // A single-secret provider (a PEM, or a service key) is one whole value, not a rotation list.
+    if (catalogEntry(provider)?.singleKey === true) {
         return { kind: 'masked', tail: '', count: 1 }
     }
     const lines = splitKeys(plain).filter((line) => line !== '')

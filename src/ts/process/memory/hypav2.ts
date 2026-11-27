@@ -14,7 +14,9 @@ import { requestChatData } from "../request/request";
 import { HypaProcesser } from "./hypamemory";
 import { globalFetch } from "src/ts/globalApi.svelte";
 import { runSummarizer } from "../transformers";
-import { resolveSecret, SecretRefError } from "src/ts/secretRef";
+import { resolveSecret } from "src/ts/secretRef";
+import { currentServiceKey } from "../request/secretKey";
+import { isKeyReadStop } from "src/ts/connections/serviceKeys";
 import { language } from "src/lang";
 
 export interface HypaV2Data {
@@ -83,9 +85,9 @@ async function summary(
 
         let supaKey: string;
         try {
-            supaKey = await resolveSecret(db.supaMemoryKey);
+            supaKey = await resolveSecret(await currentServiceKey("supaMemoryKey", db));
         } catch (error) {
-            if (error instanceof SecretRefError) {
+            if (isKeyReadStop(error)) {
                 return { success: false, data: "SupaMemory: " + error.message, retryable: false };
             }
             throw error;
@@ -663,7 +665,6 @@ export async function hypaMemoryV2(
 
     // Fetch additional memory from chunks
     const processor = new HypaProcesser(db.hypaModel);
-    processor.oaikey = db.supaMemoryKey;
 
     // Add chunks to processor for similarity search; the processor adds the model's own document prefix.
     await processor.addText(

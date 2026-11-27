@@ -1,5 +1,5 @@
 import type { StoredDatabase } from 'src/ts/storage/database.svelte'
-import { GLOBAL_SLOT_PROVIDERS, str, type ConnectionProvider, type GlobalSlot } from './connections'
+import { GLOBAL_SLOT_PROVIDERS, isRecord, str, type ConnectionProvider, type GlobalSlot } from './connections'
 
 /** The SECRET_FIELDS entry that covers a slot's stored key, matched on scope, field and sub. */
 export type SecretEntryRef = { scope: 'database', field: keyof StoredDatabase, sub?: string }
@@ -37,7 +37,33 @@ function flat(slot: GlobalSlot & keyof StoredDatabase): GlobalSlotRow {
     }
 }
 
-/** The 13 global rows, in migration walk order. */
+/**
+ * A slot stored under a nested container. The write builds a new container: a record keeps its
+ * other fields, and anything else (missing, a string, an array) becomes `{ [sub]: value }`, so a
+ * non-record is never spread into the result and the live container is never assigned into.
+ */
+function nestedRow(slot: GlobalSlot, rootProp: keyof StoredDatabase, sub: string): GlobalSlotRow {
+    return {
+        kind: 'global',
+        slot,
+        provider: GLOBAL_SLOT_PROVIDERS[slot],
+        rootProp,
+        legacyGet: (db) => {
+            const container: unknown = db[rootProp]
+            return isRecord(container) ? str(container[sub]) : ''
+        },
+        legacySet: (target, value) => {
+            const container: unknown = target[rootProp]
+            Object.assign(target, { [rootProp]: isRecord(container) ? { ...container, [sub]: value } : { [sub]: value } })
+        },
+        secretEntry: { scope: 'database', field: rootProp, sub: `.${sub}` },
+    }
+}
+
+/**
+ * The global rows, in migration walk order. The service rows come after `vertexPrivateKey` and are
+ * never inserted earlier: the walk order fixes the ids a fresh import gets.
+ */
 export const GLOBAL_ROWS: readonly GlobalSlotRow[] = [
     flat('openAIKey'),
     flat('claudeAPIKey'),
@@ -48,34 +74,23 @@ export const GLOBAL_ROWS: readonly GlobalSlotRow[] = [
     flat('ollamaApiKey'),
     flat('novellistAPI'),
     flat('mancerHeader'),
-    {
-        kind: 'global',
-        slot: 'novelai.token',
-        provider: GLOBAL_SLOT_PROVIDERS['novelai.token'],
-        rootProp: 'novelai',
-        legacyGet: (db) => str(db.novelai?.token),
-        legacySet: (target, value) => { target.novelai = { ...target.novelai, token: value } },
-        secretEntry: { scope: 'database', field: 'novelai', sub: '.token' },
-    },
-    {
-        kind: 'global',
-        slot: 'hordeConfig.apiKey',
-        provider: GLOBAL_SLOT_PROVIDERS['hordeConfig.apiKey'],
-        rootProp: 'hordeConfig',
-        legacyGet: (db) => str(db.hordeConfig?.apiKey),
-        legacySet: (target, value) => { target.hordeConfig = { ...target.hordeConfig, apiKey: value } },
-        secretEntry: { scope: 'database', field: 'hordeConfig', sub: '.apiKey' },
-    },
-    {
-        kind: 'global',
-        slot: 'google.accessToken',
-        provider: GLOBAL_SLOT_PROVIDERS['google.accessToken'],
-        rootProp: 'google',
-        legacyGet: (db) => str(db.google?.accessToken),
-        legacySet: (target, value) => { target.google = { ...target.google, accessToken: value } },
-        secretEntry: { scope: 'database', field: 'google', sub: '.accessToken' },
-    },
+    nestedRow('novelai.token', 'novelai', 'token'),
+    nestedRow('hordeConfig.apiKey', 'hordeConfig', 'apiKey'),
+    nestedRow('google.accessToken', 'google', 'accessToken'),
     flat('vertexPrivateKey'),
+    flat('elevenLabKey'),
+    flat('huggingfaceKey'),
+    flat('fishSpeechKey'),
+    flat('NAIApiKey'),
+    flat('stabilityKey'),
+    flat('falToken'),
+    nestedRow('openaiCompatImage.key', 'openaiCompatImage', 'key'),
+    nestedRow('wavespeedImage.key', 'wavespeedImage', 'key'),
+    nestedRow('deeplOptions.key', 'deeplOptions', 'key'),
+    nestedRow('deeplXOptions.token', 'deeplXOptions', 'token'),
+    flat('supaMemoryKey'),
+    flat('voyageApiKey'),
+    nestedRow('hypaCustomSettings.key', 'hypaCustomSettings', 'key'),
 ]
 
 /** `oaicomp`, `custom` (key and url) and `reverse_proxy` (root pair and preset pairs). */

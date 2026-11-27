@@ -7,11 +7,15 @@ import type { KeyFieldId } from 'src/ts/process/request/secretKey'
 export type ConnectionProvider =
     | 'openai' | 'reverse_proxy' | 'anthropic' | 'openrouter' | 'nanogpt' | 'mistral' | 'cohere'
     | 'ollama' | 'novellist' | 'mancer' | 'novelai' | 'horde' | 'google' | 'vertex' | 'custom'
+    | 'elevenlabs' | 'huggingface' | 'fishspeech' | 'novelai_media' | 'stability' | 'fal' | 'openai_image'
+    | 'wavespeed' | 'deepl' | 'deeplx' | 'memory_openai' | 'voyage' | 'embedding_custom'
     | `oaicomp:${string}`
 
 /**
  * One stored credential. `key` stays a plain string: multi-line rotation lists and `${NAME}`
- * references pass through verbatim. `url` is used only by `reverse_proxy` and `custom`.
+ * references pass through verbatim. `url` is used only by `reverse_proxy` and `custom`; a service
+ * connection (speech, image, translation, memory, embedding) holds only a key, and its URL stays
+ * in the feature's own settings, so that key is not bound to the URL it was typed beside.
  * `options` is reserved and never written. `keyWrapped` is an opaque Keystore envelope of the key,
  * present only with `key === ''` (a both-set connection is a transient state whose plain `key` wins);
  * it is read and written only through keyAccess.
@@ -26,14 +30,30 @@ export type Connection = {
     options?: { [k: string]: string | number | boolean }
 }
 
+/**
+ * The key slots of the non-chat services (speech, image, translation, memory and embedding). Each is
+ * its own slot with its own provider, so two features never share a stored key by accident.
+ */
+export const SERVICE_SLOTS = [
+    'elevenLabKey', 'huggingfaceKey', 'fishSpeechKey', 'NAIApiKey', 'stabilityKey', 'falToken',
+    'openaiCompatImage.key', 'wavespeedImage.key', 'deeplOptions.key', 'deeplXOptions.token',
+    'supaMemoryKey', 'voyageApiKey', 'hypaCustomSettings.key',
+] as const
+
+export type ServiceSlot = typeof SERVICE_SLOTS[number]
+
 /** The global provider slots: one connection each, the first of its provider. */
 export type GlobalSlot =
     | 'openAIKey' | 'claudeAPIKey' | 'openrouterKey' | 'nanogptKey' | 'mistralKey' | 'cohereAPIKey'
     | 'ollamaApiKey' | 'novellistAPI' | 'mancerHeader' | 'novelai.token' | 'hordeConfig.apiKey'
     | 'google.accessToken' | 'vertexPrivateKey'
+    | ServiceSlot
 
-/** `vertexPrivateKey` is a slot but not a `KeyFieldId`, so a PEM never reaches the line picker. */
-export type ConnectionSlot = KeyFieldId | 'vertexPrivateKey'
+/**
+ * `vertexPrivateKey` and the service slots are slots but not `KeyFieldId`s, so a PEM or a whole-value
+ * service key never reaches the line picker or the rotation.
+ */
+export type ConnectionSlot = KeyFieldId | 'vertexPrivateKey' | ServiceSlot
 
 export const GLOBAL_SLOT_PROVIDERS: Record<GlobalSlot, ConnectionProvider> = {
     'openAIKey': 'openai',
@@ -49,6 +69,19 @@ export const GLOBAL_SLOT_PROVIDERS: Record<GlobalSlot, ConnectionProvider> = {
     'hordeConfig.apiKey': 'horde',
     'google.accessToken': 'google',
     'vertexPrivateKey': 'vertex',
+    'elevenLabKey': 'elevenlabs',
+    'huggingfaceKey': 'huggingface',
+    'fishSpeechKey': 'fishspeech',
+    'NAIApiKey': 'novelai_media',
+    'stabilityKey': 'stability',
+    'falToken': 'fal',
+    'openaiCompatImage.key': 'openai_image',
+    'wavespeedImage.key': 'wavespeed',
+    'deeplOptions.key': 'deepl',
+    'deeplXOptions.token': 'deeplx',
+    'supaMemoryKey': 'memory_openai',
+    'voyageApiKey': 'voyage',
+    'hypaCustomSettings.key': 'embedding_custom',
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -67,6 +100,19 @@ const PROVIDER_LABELS: Record<string, string> = {
     google: 'Google Gemini',
     vertex: 'Vertex AI',
     custom: 'Custom model',
+    elevenlabs: 'ElevenLabs',
+    huggingface: 'Hugging Face',
+    fishspeech: 'Fish Audio',
+    novelai_media: 'NovelAI image and voice',
+    stability: 'Stability AI',
+    fal: 'fal.ai',
+    openai_image: 'OpenAI-compatible image',
+    wavespeed: 'WaveSpeed',
+    deepl: 'DeepL',
+    deeplx: 'DeepLX',
+    memory_openai: 'Memory (OpenAI)',
+    voyage: 'Voyage AI',
+    embedding_custom: 'Custom embedding',
 }
 
 /** The default display name of a provider; an OaiComp provider is named by its kid. */
@@ -205,7 +251,8 @@ export function customModelIndex(db: ConnectionHolder, id: string): number {
 /**
  * The one rule that decides which connection a request uses, which one a `.bin` translation reads
  * and which one a setter edits. Sync, never reads `key`. A missing, dangling or other-provider
- * reference resolves to none, so a key never goes to a URL it was not stored with.
+ * reference resolves to none. A chat key never goes to a URL it was not stored with; the keys of
+ * `openai_image`, `deeplx` and `embedding_custom` are stored apart from the URL their feature uses.
  */
 export function ownedConnection(db: ConnectionHolder, owner: ConnectionOwner): Connection | undefined {
     const connections = storedConnections(db)

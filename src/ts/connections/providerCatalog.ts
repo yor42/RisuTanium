@@ -1,7 +1,7 @@
 import { providerLabel, proxyName, storedConnections, uniqueName, type ConnectionHolder, type ConnectionProvider } from './connections'
 
-export type ProviderGroup = 'cloud' | 'router' | 'local' | 'compatible'
-export type ProviderIcon = 'cloud' | 'route' | 'house' | 'server'
+export type ProviderGroup = 'cloud' | 'router' | 'local' | 'compatible' | 'services'
+export type ProviderIcon = 'cloud' | 'route' | 'house' | 'server' | 'plug'
 
 export type ProviderEntry = {
     provider: ConnectionProvider
@@ -10,8 +10,8 @@ export type ProviderEntry = {
     label: string
     /** Only a reverse proxy carries a URL. */
     takesUrl: boolean
-    /** A PEM spans lines and is a single secret: it uses the legacy masked single-line field. Every other key is a rotation list (KeyListInput). */
-    multilineKey: boolean
+    /** The key is one secret that is sent whole (a PEM, or a service key): it uses the masked single-line field and is never a rotation list. Every other key is a rotation list (KeyListInput). */
+    singleKey: boolean
 }
 
 const GROUP_ICONS: Record<ProviderGroup, ProviderIcon> = {
@@ -19,7 +19,14 @@ const GROUP_ICONS: Record<ProviderGroup, ProviderIcon> = {
     router: 'route',
     local: 'house',
     compatible: 'server',
+    services: 'plug',
 }
+
+/** The non-chat services, in the order the add flow lists them. Their keys are sent whole by their readers. */
+const SERVICE_PROVIDERS: readonly ConnectionProvider[] = [
+    'elevenlabs', 'huggingface', 'fishspeech', 'novelai_media', 'stability', 'fal', 'openai_image',
+    'wavespeed', 'deepl', 'deeplx', 'memory_openai', 'voyage', 'embedding_custom',
+]
 
 const GROUPS: Record<ProviderGroup, readonly ConnectionProvider[]> = {
     cloud: [
@@ -29,6 +36,7 @@ const GROUPS: Record<ProviderGroup, readonly ConnectionProvider[]> = {
     router: ['openrouter', 'nanogpt', 'horde'],
     local: ['ollama'],
     compatible: ['reverse_proxy'],
+    services: SERVICE_PROVIDERS,
 }
 
 /** The OaiComp key identifiers the add flow offers; a test keeps them equal to the model list's. */
@@ -42,7 +50,7 @@ export const PROVIDER_CATALOG: readonly ProviderEntry[] = (Object.keys(GROUPS) a
         icon: GROUP_ICONS[group],
         label: providerLabel(provider),
         takesUrl: provider === 'reverse_proxy',
-        multilineKey: provider === 'vertex',
+        singleKey: provider === 'vertex' || group === 'services',
     })),
 )
 

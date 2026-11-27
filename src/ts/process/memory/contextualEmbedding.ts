@@ -2,6 +2,7 @@ import { globalFetch } from "src/ts/globalApi.svelte";
 import { getDatabase } from "src/ts/storage/database.svelte";
 import { contextHash, type VectorArray } from "./hypamemory";
 import { resolveSecret } from "src/ts/secretRef";
+import { currentServiceKey } from "../request/secretKey";
 
 export interface ContextualEmbeddingProvider {
   readonly modelId: string;
@@ -33,7 +34,7 @@ class VoyageContext3Provider implements ContextualEmbeddingProvider {
 
   private async getApiKey(): Promise<string> {
     const db = getDatabase();
-    const apiKey = db.voyageApiKey?.trim();
+    const apiKey = (await currentServiceKey('voyageApiKey', db)).trim();
     if (!apiKey) {
       throw new Error('Voyage Context 3 requires a Voyage API Key');
     }

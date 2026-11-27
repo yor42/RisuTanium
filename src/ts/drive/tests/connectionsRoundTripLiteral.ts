@@ -29,6 +29,20 @@ export const LEGACY_ROOT_KEYS = {
     hordeConfig: { apiKey: 'sk-horde' },
     google: { accessToken: 'sk-google', projectId: 'proj' },
     OaiCompAPIKeys: { deepinfra: 'sk-di', deepseek: 'sk-ds' },
+    // The non-chat service keys, in the upstream shape with the siblings their containers carry.
+    elevenLabKey: 'SYN-elevenlabs',
+    huggingfaceKey: 'SYN-huggingface',
+    fishSpeechKey: 'SYN-fishspeech',
+    NAIApiKey: 'SYN-novelai-media',
+    stabilityKey: 'SYN-stability',
+    falToken: '${SYN_FAL}',
+    openaiCompatImage: { url: 'https://img.invalid/v1', key: 'SYN-openai-image', model: 'img-model', size: '1024x1024', quality: 'hd' },
+    wavespeedImage: { key: 'SYN-wavespeed', model: 'ws-model', reference_image: 'ref.png', loras: [{ id: 'l1', weight: 0.5 }] },
+    deeplOptions: { key: 'SYN-deepl', freeApi: true },
+    deeplXOptions: { url: 'http://dx.invalid:1188', token: 'SYN-deeplx' },
+    supaMemoryKey: 'SYN-memory\nSYN-memory-b',
+    voyageApiKey: 'SYN-voyage',
+    hypaCustomSettings: { url: 'https://emb.invalid/v1', key: 'SYN-embedding', model: 'emb-model' },
 } as const
 
 /**
