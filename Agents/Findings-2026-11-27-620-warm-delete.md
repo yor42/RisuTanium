@@ -4,7 +4,7 @@ Branch `claude/620-warm-delete`, base `origin/main` ad45e394a (merge of #795). T
 
 ## Verdict
 
-**The PC does not reproduce the slowdown, and no stage that grows with session age was found.** On the Node-server store2 page, in a measurement production build, a delete after four full imports takes 0.6 to 0.9 s (all of it save-loop debounce plus a 13 to 16 ms commit), and the first save after a fresh boot is the slower one (1.6 s), the opposite of the Note 9 observation. That matches the earlier source reading (`dv-inv-result.md`, Q3: warm path cheaper than cold). What the PC cannot show is Android storage speed, and that is where the data points: the Note 9 import commits took 6 to 11 s against 0.4 to 0.5 s here (about 15x to 25x). The leading hypothesis is candidate A below, unconfirmed.
+**The PC does not reproduce the slowdown, and no stage that grows with session age was found.** On the Node-server store2 page, in a measurement production build, a delete after four full imports takes 0.6 to 0.9 s (all of it save-loop debounce plus a 13 to 16 ms commit), and the first save after a fresh boot is the slower one (1.6 s), the opposite of the Note 9 observation. That matches the earlier source reading (`dv-inv-result.md`, Q3: warm path cheaper than cold). What the PC cannot show is Android storage speed, and that is where the data points: the Note 9 import commits took 6 to 11 s against 0.4 to 0.5 s here (about 15x to 25x). The Note 9 leg (below) did not reproduce it either: every delete took 0.8 to 3.1 s, and one tapped while an import commit was in flight waited only for that commit (0.6 s). Candidate A holds as a mechanism, not as the size of the D-1 wait.
 
 ## What was run (evidence)
 
@@ -29,7 +29,26 @@ Reading:
 - **The cold first save is the expensive one**, as the source reading predicted: the workspace memo is empty after a boot, so that pass frames and digests all 91 MiB (890 ms on this PC; `encode`, `block`, `keys` in the profile).
 - **Refuted on the PC, together with the source reading:** per-save re-hashing of workspace text (warm is the cheap path), unpruned memo growth, string-representation effects (the text came through `TextDecoder` like the zip path), debug-build proxy overhead (this is a production build), a GC or sweep walk (the collector runs once per page load from the maintenance step, `gc/autoGc.ts`, never per delete), and the delete itself (`deleteWorkspace` is a synchronous array filter plus an async grant removal).
 
-## Where the 15 to 17 s can come from (not measured)
+## Note 9 results (rows DV-620-1..3, run 2026-11-27)
+
+- Device: Note 9 phone 1 (SM-N960N, Android 10), `note9` lease `r620-dev`, `android-build` lease released earlier. Build: debug-signature measurement APK of HEAD `6672cb755` plus the scratch probe wrapper (read-only globals, never committed), sha256 `6a96d1fd249c76bc810bd123008182858d1a73ab29c0a6243cdd73ae3d957dfa`. Wi-Fi off at start and end, no reverses, end census equals the start census, lease released clean. Raw logs: `%TEMP%\risu-b715\620-dev\run\phone\phone620.jsonl` (rows 1 and 2) and `...\run\phone3\phone620.jsonl` (row 3), with CPU profiles beside them; the report of the runner is `...\run\d620-result.md`.
+- Superseded: the runner's first attempt (the driver did not start the app, `phone620-attempt1.jsonl`) and the row-3 part of the second attempt (list read before the data loaded, `ws:0`); row 3 was rerun alone with a driver that waits for the list.
+- Data: three imports of 26 files of about 900 KiB (25.7 MB each), synthetic; the same shape as the PC run.
+
+| Row | Observed on the Note 9 |
+|---|---|
+| DV-620-1 import 1 / 2 / 3 | commit 2.5 / 3.1 / 2.7 s (28 units, 25.7 MB); tap to first commit 4.1 / 4.8 / 4.5 s |
+| DV-620-2a delete while the import commit is in flight | delete called 1.79 s after the import; the import commit landed at 3.28 s (1.5 s commit); the delete's own commit landed at 3.88 s (66 ms, 2 units): 2.1 s after the call, 0.6 s after the import commit finished |
+| DV-620-2b delete a file after 60 s quiet | 1.30 s to commit (123 ms commit) |
+| DV-620-2b delete a workspace after 60 s quiet | 0.80 s (119 ms commit) |
+| DV-620-3 delete a file right after a fresh boot | 3.08 s (69 ms commit; one 1.9 s main-thread block, the cold pass framing and digesting all text); data listed 6.7 s after launch |
+| DV-620-3 delete a workspace after the fresh boot | 1.28 s (133 ms commit) |
+
+Reading: no delete took more than 3.1 s, and the slowest one is the first save after a fresh boot, as on the PC. A delete tapped while an import commit is in flight waited for it (about 0.6 s of the 2.1 s) and then took its own 66 ms commit. The warm delete is not slower than the fresh-boot one, so **the 15 to 17 s of D-1 did not reproduce**, and candidate A is confirmed only as a mechanism (a delete does queue behind an in-flight commit), not as the size of the D-1 wait: here the import commit was 1.5 to 3.1 s, against 6 to 11 s in D-1.
+
+What differs from D-1 and is not tested here: the real library (a much larger database, so each save pass and commit does more), a release build, real zip imports and the app's other work (LTM, thumbnails) running in the same session. A commit of 6 to 11 s behind a delete would explain 15 to 17 s, but that is an inference from D-1's own numbers, not a measurement.
+
+## Where the 15 to 17 s can come from (phase 1 reading; the phone confirms the queueing mechanism only)
 
 The D-1 number was measured as tap to the first change of `store2-commit`. In that session each import commit took 6 to 11 s. A delete tapped while an earlier import's commit (about 25 MB of fsynced unit writes on the Tauri backend, under `underMutex`) was still running, or while a second pass queued behind it, waits for the remainder before its own 15 ms commit can start. A fresh boot has no such backlog, which also explains the 2.4 s (debounce plus the cold pass seen here, slower storage). This is **candidate A** of `dv-inv-result.md`. It needs the Note 9 to confirm; the PC cannot, because its commits finish in under half a second so the backlog never exists. Nothing here shows a defect in the delete path itself.
 
