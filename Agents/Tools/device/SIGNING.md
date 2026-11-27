@@ -137,6 +137,7 @@ All commands below are typed by you in a normal PowerShell 7 terminal.
 Release mode of `android-build.yml` signs in the environment `android-release`: branch rule `main` only, administrator bypass off, the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, and the variable `ANDROID_RELEASE_CERT_SHA256` (64 lower-case hex digits, no colons; public, shown in logs; never a secret). Keep no repository-level copy of any of them. Agents run no `gh secret` command.
 After changing a variable or secret, confirm that no repository-level copy exists before "Re-run failed jobs", or use "Re-run all jobs", because a partial re-run does not repeat guard.
 The environment rule checks the ref a run starts from, not code that the run checks out later.
+`release-desktop.yml` with `includeAndroid` is the second route to the same signing job: it calls the same reusable workflow with `abi: all`, keeps the signed artifact 3 days, and its `publish` job attaches the APK and `latest-android.json` to the commit's draft release; its header holds the publish checklist.
 
 Before the first dispatch:
 
