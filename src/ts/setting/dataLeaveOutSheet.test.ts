@@ -96,8 +96,8 @@ describe('leaveOutSheetDef', () => {
 
     test('B2 reproducer: ChroMemory is named on the app-data line and labelled in the result line', () => {
         const lines = leaveOutSheetDef([CHRO]).consequences ?? []
-        expect(lines).toEqual(["This app's own data: ChroMemory settings"])
-        expect(leftOutKindLabels([CHRO])).toEqual(['ChroMemory settings'])
+        expect(lines).toEqual(["This app's own data: ChroMemory settings and search data"])
+        expect(leftOutKindLabels([CHRO])).toEqual(['ChroMemory settings and search data'])
     })
 
     test('T2.3 reproducer: the unsent edits are one app item, named by their counts, and add no consequence line', () => {
