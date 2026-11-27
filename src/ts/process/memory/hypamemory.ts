@@ -5,6 +5,7 @@ import { runEmbedding } from "../transformers";
 import { appendLastPath } from "src/ts/util";
 import { getDatabase } from "src/ts/storage/database.svelte";
 import { resolveSecret } from "src/ts/secretRef";
+import { currentServiceKey } from "../request/secretKey";
 import { isContextModel, getContextProvider } from "./contextualEmbedding";
 import { withInFlight } from "../inFlightWork";
 import { isMobile } from "src/ts/platform";
@@ -120,7 +121,7 @@ export class HypaProcesser{
             const replaceUrl = customEmbeddingUrl.endsWith('/embeddings')?customEmbeddingUrl:appendLastPath(customEmbeddingUrl,'embeddings')
 
             const db = getDatabase()
-            const customKey = db.hypaCustomSettings?.key?.trim()
+            const customKey = (await currentServiceKey('hypaCustomSettings.key', db)).trim()
             const resolvedCustomKey = customKey ? await resolveSecret(customKey) : ''
             const fetchArgs = {
                 headers: {
@@ -142,7 +143,7 @@ export class HypaProcesser{
                 'openai3large':'text-embedding-3-large'
             }
 
-            const chosenKey = this.oaikey?.trim() || db.supaMemoryKey?.trim()
+            const chosenKey = this.oaikey?.trim() || (await currentServiceKey('supaMemoryKey', db)).trim()
             const resolvedKey = chosenKey ? await resolveSecret(chosenKey) : chosenKey
 
             gf = await globalFetch("https://api.openai.com/v1/embeddings", {

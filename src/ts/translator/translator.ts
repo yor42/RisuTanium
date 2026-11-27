@@ -9,7 +9,9 @@ import {
 import { globalFetch } from "../globalApi.svelte"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { alertError } from "../alert"
-import { resolveSecret, SecretRefError } from "../secretRef"
+import { resolveSecret } from "../secretRef"
+import { currentServiceKey } from "../process/request/secretKey"
+import { isKeyReadStop } from "../connections/serviceKeys"
 import { language } from "../../lang"
 import { withInFlight } from "../process/inFlightWork"
 import { requestChatData } from "../process/request/request"
@@ -205,9 +207,9 @@ async function translateMain(text:string, arg:{from:string, to:string, host:stri
         let url = db.deeplOptions.freeApi ? "https://api-free.deepl.com/v2/translate" : "https://api.deepl.com/v2/translate"
         let deeplKey: string
         try {
-            deeplKey = await resolveSecret(db.deeplOptions.key)
+            deeplKey = await resolveSecret(await currentServiceKey('deeplOptions.key', db))
         } catch (error) {
-            if(error instanceof SecretRefError){
+            if(isKeyReadStop(error)){
                 return 'ERR::' + error.message
             }
             throw error
@@ -250,15 +252,16 @@ async function translateMain(text:string, arg:{from:string, to:string, host:stri
         const body = {text: text, target_lang: arg.to.toLocaleUpperCase(), source_lang: arg.from.toLocaleUpperCase()}
 
     
-        if(db.deeplXOptions.token.trim() !== '') {
-            try {
-                headers["Authorization"] = "Bearer " + await resolveSecret(db.deeplXOptions.token)
-            } catch (error) {
-                if(error instanceof SecretRefError){
-                    return 'ERR::' + error.message
-                }
-                throw error
+        try {
+            const storedToken = await currentServiceKey('deeplXOptions.token', db)
+            if(storedToken.trim() !== '') {
+                headers["Authorization"] = "Bearer " + await resolveSecret(storedToken)
             }
+        } catch (error) {
+            if(isKeyReadStop(error)){
+                return 'ERR::' + error.message
+            }
+            throw error
         }
         
         //Since the DeepLX API is non-CORS restricted, we can use the plain fetch function

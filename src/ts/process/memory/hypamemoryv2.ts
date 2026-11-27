@@ -10,6 +10,7 @@ import { getDatabase } from "src/ts/storage/database.svelte";
 import { appendLastPath } from "src/ts/util";
 import { isMobile } from "src/ts/platform";
 import { resolveSecret } from "src/ts/secretRef";
+import { currentServiceKey } from "../request/secretKey";
 import { withInFlight } from "../inFlightWork";
 import { yieldByMessage } from "src/ts/storage/saveYield";
 import { embeddingBatchSize } from "./embeddingBatch";
@@ -50,7 +51,7 @@ export class HypaProcessorV2<TMetadata> {
     this.options = {
       model: db.hypaModel || DEFAULT_HYPA_MODEL,
       customEmbeddingUrl: db.hypaCustomSettings?.url?.trim() || "",
-      oaiKey: db.supaMemoryKey?.trim() || "",
+      oaiKey: "",
       rateLimiter: new TaskRateLimiter(),
       ...options,
     };
@@ -460,7 +461,7 @@ export class HypaProcessorV2<TMetadata> {
         ? this.options.customEmbeddingUrl
         : appendLastPath(this.options.customEmbeddingUrl, "embeddings");
 
-      const customKey = db.hypaCustomSettings?.key?.trim();
+      const customKey = (await currentServiceKey("hypaCustomSettings.key", db)).trim();
       const resolvedCustomKey = customKey ? await resolveSecret(customKey) : "";
       const fetchArgs = {
         headers: {
@@ -486,7 +487,7 @@ export class HypaProcessorV2<TMetadata> {
         openai3large: "text-embedding-3-large",
       };
 
-      const chosenKey = this.options.oaiKey?.trim() || db.supaMemoryKey?.trim();
+      const chosenKey = this.options.oaiKey?.trim() || (await currentServiceKey("supaMemoryKey", db)).trim();
       const resolvedKey = chosenKey ? await resolveSecret(chosenKey) : chosenKey;
       const fetchArgs = {
         headers: {

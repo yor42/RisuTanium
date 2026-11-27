@@ -1,6 +1,7 @@
 import { resolveSecret } from 'src/ts/secretRef'
 import { slotConnection, type ConnectionHolder, type ConnectionSlot } from 'src/ts/connections/connections'
 import { connectionHasKey, connectionKey, connectionKeyForUi } from 'src/ts/connections/keyAccess'
+import { serviceKey, serviceKeyForUi, type ServiceSlot } from 'src/ts/connections/serviceKeys'
 import { getDatabase, type Database } from 'src/ts/storage/database.svelte'
 import { isKeyLimitStatus, pickLine, type KeyRotation } from './keyRing'
 
@@ -63,6 +64,19 @@ export async function currentKey(field: KeyFieldId, db: Database = getDatabase()
 export function currentKeyForUi(field: KeyFieldId, db: Database = getDatabase()): string {
     const conn = slotConnection(db, field)
     return pickLine(undefined, field, conn === undefined ? '' : connectionKeyForUi(conn))
+}
+
+/**
+ * The whole stored key of a service slot (speech, image, translation, memory, embedding), unresolved
+ * and never split into lines. It rejects with `VaultKeyUnavailableError` when a wrapped key cannot be read yet.
+ */
+export async function currentServiceKey(slot: ServiceSlot, db: Database = getDatabase()): Promise<string> {
+    return await serviceKey(slot, db)
+}
+
+/** The sync form of `currentServiceKey` for editors and templates, which cannot await. */
+export function currentServiceKeyForUi(slot: ServiceSlot, db: Database = getDatabase()): string {
+    return serviceKeyForUi(slot, db)
 }
 
 /**

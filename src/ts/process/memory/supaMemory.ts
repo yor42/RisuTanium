@@ -9,7 +9,9 @@ import { runSummarizer } from "../transformers";
 import { parseChatML } from "src/ts/parser/chatML";
 import { getUserName } from "src/ts/util";
 import type { RunSubject } from "../chatOrigin";
-import { resolveSecret, SecretRefError } from "src/ts/secretRef";
+import { resolveSecret } from "src/ts/secretRef";
+import { currentServiceKey } from "../request/secretKey";
+import { isKeyReadStop } from "src/ts/connections/serviceKeys";
 
 export async function supaMemory(
         chats:OpenAIChat[],
@@ -173,7 +175,6 @@ export async function supaMemory(
 
         if(arg.asHyper){
             const hypa = new HypaProcesser(db.hypaModel)
-            hypa.oaikey = db.supaMemoryKey
             hypa.vectors = []
             hypaChunks = hypaChunks.filter((value) => value.length > 1)
             if(hypaChunks.length > 0){
@@ -243,9 +244,9 @@ export async function supaMemory(
 
                 let supaKey: string
                 try {
-                    supaKey = await resolveSecret(db.supaMemoryKey)
+                    supaKey = await resolveSecret(await currentServiceKey('supaMemoryKey', db))
                 } catch (error) {
-                    if(error instanceof SecretRefError){
+                    if(isKeyReadStop(error)){
                         return {
                             currentTokens: currentTokens,
                             chats: chats,
