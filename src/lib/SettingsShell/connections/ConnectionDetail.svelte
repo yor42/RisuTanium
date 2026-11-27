@@ -57,7 +57,7 @@
 
     const chip = $derived(hintChipText(hint))
     const usedLine = $derived(usedByText(conn, users))
-    const multiline = $derived(catalogEntry(conn.provider)?.singleKey ?? false)
+    const singleKey = $derived(catalogEntry(conn.provider)?.singleKey ?? false)
     const userList = $derived<ConnectionUser[]>(users.kind === 'presets' ? users.presets : users.kind === 'models' ? users.models : [])
     const listed = $derived(userList.slice(0, LISTED_USERS))
     const hidden = $derived(userList.length - listed.length)
@@ -189,7 +189,7 @@
         {#if replacing}
             <span class="text-sm text-textcolor2" id="{uid}-key">{language.connectionsChangeKey}</span>
             <div data-part="settings-connection-key-input" bind:this={keyField}>
-                {#if multiline}
+                {#if singleKey}
                     <TextInput labelId="{uid}-key" size="sm" hideText bind:value={newKey} />
                 {:else}
                     <KeyListInput labelId="{uid}-key" size="sm" hideText bind:value={newKey} />

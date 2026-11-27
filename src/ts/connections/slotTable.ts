@@ -92,6 +92,7 @@ export const GLOBAL_ROWS: readonly GlobalSlotRow[] = [
     flat('voyageApiKey'),
     nestedRow('hypaCustomSettings.key', 'hypaCustomSettings', 'key'),
 ]
+
 /** `oaicomp`, `custom` (key and url) and `reverse_proxy` (root pair and preset pairs). */
 export const FAMILY_ROWS: readonly FamilySlotRow[] = [
     { kind: 'oaicomp', secretEntry: { scope: 'database', field: 'OaiCompAPIKeys', sub: '[*]' } },

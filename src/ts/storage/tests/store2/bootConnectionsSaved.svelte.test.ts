@@ -180,7 +180,7 @@ describe('the boot connections migration, over the real save loop on a store2 se
         expect(saved.deeplXOptions).toEqual({ ...containers.deeplXOptions, token: '' })
         expect(saved.hypaCustomSettings).toEqual({ ...containers.hypaCustomSettings, key: '' })
 
-        // The second boot of the saved store has nothing to absorb and writes nothing.
+        // After a quiet period nothing more is written, and the migration run on the saved store finds nothing to move (`none`).
         const mark = page.k.memory.snapshot()
         await sleepReal(300)
         await settled(page.w)
