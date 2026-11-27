@@ -2363,7 +2363,6 @@ export const languageEnglish = {
     homeSideLabel: "Discover and community",
     homeStoriesHeading: "Continue your story",
     homeStoryJustNow: "just now",
-    homeStoryArchived: "Archived",
     homeLibraryHeading: "Characters",
     homeLibraryAllTrashed: "All characters are in the Trash.",
     homeJumpLabel: "Jump to",

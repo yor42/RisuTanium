@@ -2200,7 +2200,6 @@ export const languageSpanish = {
     "homeSideLabel": "Descubrir y comunidad",
     "homeStoriesHeading": "Continúa tu historia",
     "homeStoryJustNow": "ahora mismo",
-    "homeStoryArchived": "Archivado",
     "homeLibraryHeading": "Personajes",
     "homeLibraryAllTrashed": "Todos los personajes están en la Papelera.",
     "homeJumpLabel": "Ir a",

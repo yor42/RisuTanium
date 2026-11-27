@@ -2245,7 +2245,6 @@ export const languageChineseTraditional = {
     "homeSideLabel": "探索與社群",
     "homeStoriesHeading": "繼續你的故事",
     "homeStoryJustNow": "剛剛",
-    "homeStoryArchived": "已封存",
     "homeLibraryHeading": "角色",
     "homeLibraryAllTrashed": "所有角色都在垃圾桶中。",
     "homeJumpLabel": "跳至",

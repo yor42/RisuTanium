@@ -2200,7 +2200,6 @@ export const languageKorean = {
     "homeSideLabel": "디스커버리와 커뮤니티",
     "homeStoriesHeading": "이야기 이어가기",
     "homeStoryJustNow": "방금",
-    "homeStoryArchived": "보관됨",
     "homeLibraryHeading": "캐릭터",
     "homeLibraryAllTrashed": "모든 캐릭터가 휴지통에 있습니다.",
     "homeJumpLabel": "바로 가기",
