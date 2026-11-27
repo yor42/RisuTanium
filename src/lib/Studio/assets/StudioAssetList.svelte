@@ -152,6 +152,7 @@
     import StudioAssetFolderHeader from './StudioAssetFolderHeader.svelte'
     import StudioAssetMergePreview from './StudioAssetMergePreview.svelte'
     import StudioAssetRow, { type MoveChoice } from './StudioAssetRow.svelte'
+    import StudioImportEntries from './StudioImportEntries.svelte'
 
     // The additional assets of one character, read by id: rows with their thumbnail or type tile, the name field that
     // renames, and a menu with delete, preview and the exclude toggle. Every row change goes through the history
@@ -930,7 +931,8 @@
     // Places imported rows, which have landed already, in the folder that was open when Add was pressed. A name that has
     // other rows keeps the folder those rows have; a folder entry of a name that has no other row is stale and is not read.
     function landImported(names: readonly string[], openFolder: string | null): { landed: boolean, notes: string[], refusal: string | null } {
-        if (!service) return { landed: false, notes: [], refusal: null }
+        // A list that is gone places nothing: its rows stay in "No folder".
+        if (!service || unmounted) return { landed: false, notes: [], refusal: null }
         const imported = new Map<string, number>()
         for (const name of names) imported.set(assetPoolKey(name), (imported.get(assetPoolKey(name)) ?? 0) + 1)
         const notes: string[] = []
@@ -1110,6 +1112,7 @@
                 <button type="button" data-part="studio-asset-add" class="min-h-11 shrink-0 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={openPicker}>{language.add}</button>
             {/if}
         </div>
+        <StudioImportEntries {owner} array="additionalAssets" />
         {#if emotionCount > 0}
             <p data-part="studio-asset-emotions" class="text-sm text-textcolor2">{language.studioAssetEmotionsElsewhere(emotionCount)}</p>
         {/if}

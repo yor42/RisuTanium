@@ -10,6 +10,10 @@ import { readPickedFileBytes, selectMultipleFileObjects, selectSingleFileObject 
 // The bytes of a picked file, read the way the classic pickers read them.
 export { readPickedFileBytes }
 
+// The notice of the refused types lives with the other Studio toasts, so a flow that only reports a pick does not load the
+// chooser's store layer; it is re-exported here for the callers that hold the chooser.
+export { badTypeNotice, emotionNameOf } from '../edit/studioToasts'
+
 export type PickKind = 'portrait' | 'emotion' | 'asset'
 
 // What each pick accepts, as the classic panel lists it: the character picture, the emotion images and the additional assets.

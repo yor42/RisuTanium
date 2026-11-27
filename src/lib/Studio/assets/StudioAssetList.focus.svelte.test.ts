@@ -349,7 +349,7 @@ describe('focus after an undo or redo of an asset step', () => {
         expectNoRootFocus(rootFocus)
     })
 
-    test('Ctrl+Y of the only row\'s delete focuses the list, never the screen root', async () => {
+    test('Ctrl+Y of the only row\'s delete focuses Add, never the screen root', async () => {
         install([assetRow('a', 'assets/a.png')])
         await service.whenReady(A)
         await withUndoneDelete('a', 0)
@@ -357,7 +357,7 @@ describe('focus after an undo or redo of an asset step', () => {
         moreOf('a').focus()
         await ctrl({ key: 'y' })
         expect(rowNames()).toEqual([])
-        expect(document.activeElement).toBe(part('studio-asset-list'))
+        expect(document.activeElement).toBe(part('studio-asset-add'))
         expectNoRootFocus(rootFocus)
     })
 
@@ -440,7 +440,7 @@ describe('focus after an undo or redo of an asset step', () => {
         expect(document.activeElement).toBe(part('studio-form-desc'))
     })
 
-    test('the History panel\'s Redo of the only row\'s delete focuses the list, and its Redo of the last row\'s focuses the previous', async () => {
+    test('the History panel\'s Redo of the only row\'s delete focuses Add, and its Redo of the last row\'s focuses the previous', async () => {
         install([assetRow('a', 'assets/a.png'), assetRow('b', 'assets/b.png')])
         await service.whenReady(A)
         await showScreen({ panel: true })
@@ -458,7 +458,7 @@ describe('focus after an undo or redo of an asset step', () => {
         moreOf('a').focus()
         await press('studio-history-redo')
         expect(rowNames()).toEqual([])
-        expect(document.activeElement).toBe(part('studio-asset-list'))
+        expect(document.activeElement).toBe(part('studio-asset-add'))
         expectNoRootFocus(rootFocus)
     })
 })

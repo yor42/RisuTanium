@@ -566,6 +566,21 @@ describe('an import', () => {
         expect(entriesOf().hat).toBe('Props')
     })
 
+    test('C-T8 (c): a landing asked after the list unmounted places nothing and writes no folder step', async () => {
+        await show({ picker })
+        ;(rowOf('smile').querySelector('[data-part="studio-asset-row-more"]') as HTMLElement).focus()
+        const given = await pressAdd()
+        importRows(assetRow('newpic', 'assets/newpic.png'))
+        const steps = service.view(A).done.length
+        for (const entry of mounted.splice(0)) {
+            await unmount(entry.app)
+            entry.host.remove()
+        }
+        expect(given.land(['newpic'])).toEqual({ landed: false, notes: [], refusal: null })
+        expect(service.view(A).done).toHaveLength(steps)
+        expect(entriesOf().newpic).toBeUndefined()
+    })
+
     test('a stored entry for a name with no other row is stale and is not followed', async () => {
         db.db.characters = [makeCharacter(baseRows(), folderDoc(['Poses', 'Props'], [['smile', 'Poses'], ['ghost', 'Props']]))]
         await show({ picker })

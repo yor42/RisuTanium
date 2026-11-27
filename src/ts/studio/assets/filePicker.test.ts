@@ -8,7 +8,8 @@ vi.mock('../../util', () => ({ readPickedFileBytes: vi.fn(), selectMultipleFileO
 vi.mock('../../storage/pickedAssetLimit', () => ({ reportRefusedAssets: vi.fn(), splitByAssetLimit: (files: { size: number }[], limit: number) => ({ within: files.filter((f) => f.size <= limit), refused: files.filter((f) => f.size > limit) }) }))
 
 import { busyKinds, resetBusyActionsForTest } from '../../process/memory/busyActions'
-import { beginPickBusy, extensionOfName, pickExtensions, pickFiles, type PickDeps } from './filePicker'
+import { language } from '../../../lang'
+import { badTypeNotice, beginPickBusy, emotionNameOf, extensionOfName, pickExtensions, pickFiles, type PickDeps } from './filePicker'
 
 const file = (name: string, size = 10): File => ({ name, size }) as unknown as File
 
@@ -79,6 +80,25 @@ describe('pickFiles', () => {
         const result = await pickFiles('portrait', d)
         expect(result).toMatchObject({ kind: 'picked', files: [], tooLarge: [] })
         expect(d.reported).toEqual([])
+    })
+})
+
+describe('F-T1: the notice of refused types and the emotion name', () => {
+    test('no refused file gives no notice', () => {
+        expect(badTypeNotice([])).toBeNull()
+    })
+
+    test('the reason lists each extension once in pick order, and a file with no extension shows its name', () => {
+        const notice = badTypeNotice([file('a.BMP'), file('b.tiff'), file('c.bmp'), file('noext')])
+        expect(notice).toEqual({ kind: 'warning', text: language.studioImportRefused(4), sub: language.studioPickBadType('.bmp, .tiff, noext') })
+        expect(badTypeNotice([file('a.bmp')])).toEqual({ kind: 'warning', text: language.studioImportRefused(1), sub: language.studioPickBadType('.bmp') })
+    })
+
+    test('the emotion name drops the last extension only when the last dot is not the first character', () => {
+        expect(emotionNameOf('photo.gif')).toBe('photo')
+        expect(emotionNameOf('a.b.webp')).toBe('a.b')
+        expect(emotionNameOf('.png')).toBe('.png')
+        expect(emotionNameOf('noext')).toBe('noext')
     })
 })
 

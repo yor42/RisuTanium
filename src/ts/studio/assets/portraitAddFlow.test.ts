@@ -44,7 +44,7 @@ const picked = (name = 'a.png'): PickOutcome => ({ kind: 'picked', files: [{ nam
 
 interface Rig {
     deps: PortraitAddDeps
-    posts: { kind?: string; text: string }[]
+    posts: { kind?: string; text: string; sub?: string }[]
     calls: string[]
     landed: number[]
     busy: { began: number; ended: number }
@@ -69,7 +69,7 @@ function rig(over: Partial<PortraitAddDeps> = {}, add: (path: string) => StudioR
                 return add(path)
             },
         },
-        toastHost: { post: (init) => { posts.push({ kind: init.kind, text: init.text }); return 1 } },
+        toastHost: { post: (init) => { posts.push({ kind: init.kind, text: init.text, ...(init.sub === undefined ? {} : { sub: init.sub }) }); return 1 } },
         onLanded: (n) => { landed.push(n) },
         beginBusy: () => {
             busy.began += 1
@@ -147,10 +147,10 @@ describe('B-T7 (ii): Studio closes while the picture is stored', () => {
 })
 
 describe('B-T7 (iii) and (iv): a refusal while the visit is open states its own cause', () => {
-    test.each<StudioRefusal>(['duplicate-id', 'restricted', 'gone'])('%s: one plain notice with that refusal text and never the closed-Studio wording', async (reason) => {
+    test.each<StudioRefusal>(['duplicate-id', 'restricted', 'gone'])('P-T2 %s: one neutral notice with the refusal text as its reason and never the closed-Studio wording', async (reason) => {
         const r = rig({}, () => ({ ok: false, reason }))
         expect(await runPortraitAdd(A, r.deps)).toBe('refused')
-        expect(r.posts).toEqual([{ kind: 'warning', text: refusalText(reason) }])
+        expect(r.posts).toEqual([{ kind: 'warning', text: 'studioImportRefused(1)', sub: refusalText(reason) }])
         expect(r.posts.some((post) => post.text.startsWith('studioImportNotAdded'))).toBe(false)
         expect(r.landed).toEqual([])
     })
@@ -211,8 +211,25 @@ describe('the picks that add nothing', () => {
         expect(r.busy.began).toBe(0)
     })
 
-    test('a picked file that was refused for its type or size stores nothing and posts nothing (the size notice was the picker\'s)', async () => {
+    test('P-T1: a picked file refused for its type stores nothing and posts exactly the bad-type notice', async () => {
         const r = rig({ pickFiles: async () => ({ kind: 'picked', files: [], badType: [{ name: 'a.bmp' } as File], tooLarge: [] }) })
+        expect(await runPortraitAdd(A, r.deps)).toBe('bad-file')
+        expect(r.calls).toEqual([])
+        expect(r.posts).toEqual([{ kind: 'warning', text: 'studioImportRefused(1)', sub: 'studioPickBadType(.bmp)' }])
+    })
+
+    test('P-T1: the bad-type notice is posted also when the visit ended during the chooser', async () => {
+        const chooser = gate<PickOutcome>()
+        const r = rig({ pickFiles: () => chooser.promise })
+        const running = runPortraitAdd(A, r.deps)
+        studioScreen.open = false
+        chooser.open({ kind: 'picked', files: [], badType: [{ name: 'a.bmp' } as File], tooLarge: [] })
+        expect(await running).toBe('bad-file')
+        expect(r.posts).toEqual([{ kind: 'warning', text: 'studioImportRefused(1)', sub: 'studioPickBadType(.bmp)' }])
+    })
+
+    test('a picked file refused for its size alone stores nothing and posts nothing (the size notice was the picker\'s)', async () => {
+        const r = rig({ pickFiles: async () => ({ kind: 'picked', files: [], badType: [], tooLarge: [{ name: 'big.png' } as File] }) })
         expect(await runPortraitAdd(A, r.deps)).toBe('bad-file')
         expect(r.calls).toEqual([])
         expect(r.posts).toEqual([])

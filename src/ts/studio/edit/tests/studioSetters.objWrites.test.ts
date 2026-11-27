@@ -140,6 +140,19 @@ describe('character writes', () => {
         expect(JSON.parse(JSON.stringify(live)).globalLore.map((row: Entry) => row.id)).toEqual(['a', 'b'])
     })
 
+    test('C-T1p: two asset rows inserted in one call into an absent additionalAssets both read through a reactive proxy', () => {
+        const live = proxy(liveCharacter()) as character
+        const rowA = ['a', 'assets/a.png', 'png']
+        const rowB = ['b', 'assets/b.png', 'png']
+        applyCharacterWrites(live, [
+            { op: 'assetRowInsert', array: 'additionalAssets', index: 0, tuple: rowA },
+            { op: 'assetRowInsert', array: 'additionalAssets', index: 1, tuple: rowB },
+        ] as WriteOp[], null)
+        const held = (live as unknown as Entry).additionalAssets as string[][]
+        expect(held.length).toBe(2)
+        expect(JSON.parse(JSON.stringify(live)).additionalAssets).toEqual([rowA, rowB])
+    })
+
     test('a stored non-list is never replaced by an insert', () => {
         const live = liveCharacter({ globalLore: { not: 'a list' } })
         applyCharacterWrites(live, [insert(0, lore('a'))], null)
