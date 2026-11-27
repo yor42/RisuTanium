@@ -36,11 +36,16 @@ function allowedCall(args) {
   return false;
 }
 
-export function guardRunner(root) {
-  const adbg = path.resolve(root, 'Agents/Tools/device-guard/adbg.mjs');
+// The guard is launched from the checkout this script itself runs from, never from the lease root: the lease root is the
+// shared main checkout, whose guard may be older than the helper (#864). A missing file or verb fails here, naming both.
+const OWN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+export function guardRunner(guardRoot = OWN_ROOT, { verbs = [], spawn = spawnSync } = {}) {
+  const adbg = path.resolve(guardRoot, 'Agents/Tools/device-guard/adbg.mjs');
+  if (!fs.existsSync(adbg)) throw Error(`Device guard not found at ${adbg}; the helper never falls back to raw adb`);
+  const source = fs.readFileSync(adbg, 'utf8');
+  for (const verb of verbs) if (!source.includes(`'${verb}'`)) throw Error(`Device guard at ${adbg} has no '${verb}' verb; update that checkout before running the helper`);
   return argv => {
-    if (!fs.existsSync(adbg)) throw Error('Device guard not found; the helper never falls back to raw adb');
-    const r = spawnSync(process.execPath, [adbg, ...argv], { encoding: 'utf8', windowsHide: true, timeout: 600000 });
+    const r = spawn(process.execPath, [adbg, ...argv], { encoding: 'utf8', windowsHide: true, timeout: 600000 });
     return { code: r.status ?? 1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
 }
@@ -110,7 +115,7 @@ function removeHelpers(ctx, names) {
   return { removed };
 }
 
-export function resetStart({ root = defaultRoot, request, token, run, stranded, apk, apkSha256, guard = guardRunner(root) }) {
+export function resetStart({ root = defaultRoot, request, token, run, stranded, apk, apkSha256, spawn, guard = guardRunner(OWN_ROOT, { verbs: apk !== undefined ? ['apk-readback'] : [], spawn }) }) {
   const ctx = makeContext({ root, request, token, run, guard });
   const { grant } = ctx;
   const strandedArg = strandedNames(grant, stranded);
@@ -160,7 +165,7 @@ export function resetStart({ root = defaultRoot, request, token, run, stranded, 
   return { status: 'ok', phase: 'start', serial: ctx.serial, resetDone, census: startCensus, evidence, removedHelpers: gone.removed, stranded: strandedArg };
 }
 
-export function resetEnd({ root = defaultRoot, request, token, run, guard = guardRunner(root) }) {
+export function resetEnd({ root = defaultRoot, request, token, run, spawn, guard = guardRunner(OWN_ROOT, { spawn }) }) {
   const ctx = makeContext({ root, request, token, run, guard });
   const { grant } = ctx;
   const finish = (reasons, rows = []) => {

@@ -4,8 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { resetStart, resetEnd, NOTE9 } from './workflow-device-reset.mjs';
+import { resetStart, resetEnd, guardRunner, NOTE9 } from './workflow-device-reset.mjs';
 import { main, registerDispatch, validateDispatch, mutateState, loadState, selectRoute } from './workflow-control.mjs';
 // The committed state snapshot is not the live state and may lag a policy revision; fixtures take the revision from the policy.
 const policyRevision = () => JSON.parse(fs.readFileSync(new URL('../workflow-policy.json', import.meta.url), 'utf8')).revision;
@@ -504,4 +505,39 @@ test('H12 a run folder outside %TEMP% is refused before any guard call', async t
   const d = phone([...STANDING]); const outside = path.join(path.dirname(path.resolve(os.tmpdir())), 'risu-846-outside');
   assert.throws(() => resetStart(hOpts(root, 'rs1', d, { run: outside })), /under %TEMP%/); assert.throws(() => resetEnd(hOpts(root, 'rs1', d, { run: outside })), /under %TEMP%/);
   assert.deepEqual(d.argv, []); assert.ok(!fs.existsSync(outside));
+});
+
+// #864: the lease root is the shared main checkout; its guard may be older than this helper. The helper launches the guard of
+// the checkout it runs from, and a stale or missing guard fails early naming the path and the verb.
+const OWN_ADBG = path.resolve(fileURLToPath(new URL('../../Agents/Tools/device-guard/adbg.mjs', import.meta.url)));
+const staleGuard = root => { const file = path.join(root, 'Agents/Tools/device-guard/adbg.mjs'); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, ['// stale guard without the newer verbs', 'process.exit(1);', ''].join(os.EOL)); return file; };
+function spawnRecorder() {
+  const d = phone([...STANDING]); const launched = [];
+  const spawn = (exe, argv) => { launched.push(argv[0]); const r = d.guard(argv.slice(1)); return { status: r.code, stdout: r.stdout, stderr: r.stderr }; };
+  return { d, launched, spawn };
+}
+test('R1 start from a worktree-shaped layout launches the guard of the running checkout, not the older one of the lease root', async t => {
+  const { root } = fixture(t); await resetGrant(root);
+  const stale = staleGuard(root); assert.notEqual(path.resolve(stale), OWN_ADBG);
+  const apk = path.join(root, 'app.apk'); fs.writeFileSync(apk, 'synthetic apk');
+  const sha = crypto.createHash('sha256').update(fs.readFileSync(apk)).digest('hex');
+  const { d, launched, spawn } = spawnRecorder();
+  const out = resetStart({ root, request: 'rs1', token: tok('rs1'), run: path.join(root, 'run'), apk, apkSha256: sha, spawn });
+  assert.equal(out.status, 'ok');
+  assert.ok(launched.length > 0 && launched.every(a => path.resolve(a) === OWN_ADBG), launched.join());
+  assert.ok(guardCalls(d).includes('apk-readback') || d.argv.some(a => a[0] === 'apk-readback'));
+});
+test('R2 end from a worktree-shaped layout launches the guard of the running checkout too', async t => {
+  const { root } = fixture(t); await resetGrant(root); staleGuard(root);
+  const { launched, spawn } = spawnRecorder(); const o = { root, request: 'rs1', token: tok('rs1'), run: path.join(root, 'run'), spawn };
+  assert.equal(resetStart(o).status, 'ok'); launched.length = 0;
+  assert.equal(resetEnd(o).status, 'ok');
+  assert.ok(launched.length > 0 && launched.every(a => path.resolve(a) === OWN_ADBG), launched.join());
+});
+test('R3 a guard without the needed verb, or a missing guard, fails early naming the path and the verb', t => {
+  const { root } = fixture(t);
+  assert.throws(() => guardRunner(root), err => err.message.includes(path.join(root, 'Agents/Tools/device-guard/adbg.mjs')) && /not found/.test(err.message));
+  const stale = staleGuard(root);
+  assert.throws(() => guardRunner(root, { verbs: ['apk-readback'] }), err => err.message.includes(path.resolve(stale)) && err.message.includes("'apk-readback'"));
+  assert.doesNotThrow(() => guardRunner(undefined, { verbs: ['apk-readback'] }));
 });
