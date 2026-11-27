@@ -4,6 +4,8 @@
 # Run: bash .github/scripts/vitest-summary.test.sh
 
 set -u
+# On a runner these are set, which would send the script output to the real job summary instead of stdout.
+unset GITHUB_STEP_SUMMARY GITHUB_WORKSPACE
 # Git Bash on Windows would rewrite the path-looking GITHUB_WORKSPACE value; Linux CI needs neither line.
 export MSYS2_ENV_CONV_EXCL=GITHUB_WORKSPACE
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
