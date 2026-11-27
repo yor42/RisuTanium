@@ -403,13 +403,16 @@ describe('what a restore accepts (G11)', () => {
     })
 
     test('a record at the bound and a folder of head plus chunks are written verbatim after the old keys are cleared', async () => {
-        const big = new Uint8Array(VECTORS_MAX_RECORD_BYTES).fill(7)
+        const big = Uint8Array.from({ length: VECTORS_MAX_RECORD_BYTES }, (_, i) => (i * 31 + (i >> 8)) & 255)
         const text = (await lineOf('s/c1', big)) + (await lineOf('s/head', Uint8Array.of(1, 2))) + (await lineOf('t/head', Uint8Array.of(3)))
         const target = seeded()
         const result = await restoreText(text, target)
         expect(result).toMatchObject({ status: 'ok', written: 3 })
         expect([...vectorFiles(target).keys()]).toEqual([`${PREFIX}s/c1`, `${PREFIX}s/head`, `${PREFIX}t/head`])
-        expect(target.files.get(`${PREFIX}s/c1`)).toEqual(big)
+        // toEqual on a bound-sized array walks it element by element for seconds; the bytes are compared in one pass instead.
+        const stored = target.files.get(`${PREFIX}s/c1`)
+        expect(stored?.length).toBe(VECTORS_MAX_RECORD_BYTES)
+        expect(stored !== undefined && Buffer.compare(stored, big) === 0).toBe(true)
         expect(target.files.has(`${PREFIX}keep/head`)).toBe(false)
     })
 })
