@@ -473,7 +473,7 @@ describe('PR3 effects parity', { timeout: 120_000 }, () => {
     const PARTS: Record<ThemeArea, { S: string, R: string }> = {
         chat: { S: 'chat-message-avatar', R: 'chat-send' },
         studio: { S: 'studio-asset-row', R: 'studio-item-apply' },
-        settings: { S: 'settings-section-title', R: 'settings-header' },
+        settings: { S: 'settings-section-heading', R: 'settings-header' },
         home: { S: 'home-brand', R: 'home-run-card' },
     }
     const sel = (area: ThemeArea, kind: 'S' | 'R', suffix = ''): string => `[data-part="${PARTS[area][kind]}"]${suffix}`

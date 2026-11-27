@@ -194,7 +194,7 @@ describe('Ts-2: a resource span indexes the canonical text exactly', () => {
 })
 
 describe('Ts-3: judgePackSheets judges each sheet with its own font families', () => {
-    const SETTINGS_SHEET = '[data-part="settings-section-title"]{font-family:pack-f}'
+    const SETTINGS_SHEET = '[data-part="settings-section-heading"]{font-family:pack-f}'
     const FACE_SHEET = '@font-face{font-family:pack-f;src:url(f.woff2)}'
 
     it('a family registered only in another sheet warns for the sheet that uses it (MC-1609, MC-2542)', () => {
@@ -225,7 +225,7 @@ describe('Ts-3: judgePackSheets judges each sheet with its own font families', (
     })
 
     it('a sheet that registers and uses its own family is accepted', () => {
-        const own = `${FACE_SHEET}[data-part="settings-section-title"]{font-family:pack-f}`
+        const own = `${FACE_SHEET}[data-part="settings-section-heading"]{font-family:pack-f}`
         const judged = judgePackSheets({ settings: own })
         expect(judged.ok).toBe(true)
         expect(judged.areas.settings?.fontFaceBlocks).toHaveLength(1)

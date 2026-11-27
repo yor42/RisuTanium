@@ -824,7 +824,7 @@ describe('IS-3 the lines sit directly after the installed line, before every oth
         world.readFile = async () => zipPack(validPackFiles({
             'chat.css': UNBUNDLED_SHEET,
             'sidebar.css': PLAIN_CHAT_SHEET,
-            'settings.css': '[data-part="settings-section-title"]{color:#ff0000;border-radius:6px}',
+            'settings.css': '[data-part="settings-section-heading"]{color:#ff0000;border-radius:6px}',
         }))
         const target = show()
         await installOnce(target)

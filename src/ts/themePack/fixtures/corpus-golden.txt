@@ -551,7 +551,7 @@
 "NEW_BENIGN studio: recolour Apply (reach)" 173861119e45f419 chat:856f07151329d276 settings:ef5284a38e04f7a2 studio:467d887bd4c9fc92 home:65a201ed0f2bbc33
 "NEW_BENIGN studio: recolour the save slot (reach)" f1d7c27417d57515 chat:493fa6d44c07b721 settings:dd8e8e4e07143792 studio:cf7a529f6aa0348b home:e0affd1343a85a16
 "NEW_BENIGN settings: recolour the index item (reach)" c521d9a0c6c9a98e chat:31a2583a90337019 settings:13078a265a9c6318 studio:afa7e61dd441a8b8 home:afbf4b64e3dfdf93
-"NEW_BENIGN settings: a safe leaf hidden" 20fc69e3e5072670 chat:c4581b9a85766a46 settings:9e1c4683ec49c4de studio:c4581b9a85766a46 home:c4581b9a85766a46
+"NEW_BENIGN settings: a safe leaf hidden" 68bc807a2f45f794 chat:862108ffbdd3bc30 settings:9e1c4683ec49c4de studio:862108ffbdd3bc30 home:862108ffbdd3bc30
 "NEW_HOSTILE all: color-mix on text" d08b91544ef476ca chat:1592ac0374d9b8ac settings:04a5913b2397cdf4 studio:086b5269c9d18b62 home:cef9d5a7b7e1564a
 "NEW_HOSTILE all: color-mix in an unsupported space on text" 49ed645f18864644 chat:0c9dd31cfb8626e9 settings:0c9dd31cfb8626e9 studio:a18073836ce02916 home:0c9dd31cfb8626e9
 "NEW_HOSTILE all: oklch on danger" adde0b134f1c944d chat:d18cae2a7004c406 settings:d18cae2a7004c406 studio:0a562992f50e361c home:d18cae2a7004c406

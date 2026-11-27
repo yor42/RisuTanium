@@ -521,11 +521,11 @@ describe('S4a notices: colours held back and a pack that shows nothing (MC-3125,
 
     test('C9: a settings sheet with colours adds the held-colours notice naming settings.css; a shape-only settings sheet adds none', async () => {
         attach()
-        const colours = '[data-part="settings-section-title"]{color:#ff0000;border-radius:6px}'
+        const colours = '[data-part="settings-section-heading"]{color:#ff0000;border-radius:6px}'
         await runThemePackInstall(runOf(zipPack(validPackFiles({ 'settings.css': colours }))).deps)
         expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('settings.css')])
         attach()
-        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'settings.css': '[data-part="settings-section-title"]{border-radius:6px}' }))).deps)
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'settings.css': '[data-part="settings-section-heading"]{border-radius:6px}' }))).deps)
         expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
     })
 

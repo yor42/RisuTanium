@@ -29,7 +29,7 @@ const HEADER = '[data-part="chat-header"]'
 const SHEET = '[data-part="chat-sheet"]'
 const K = '@keyframes pack-chat-pulse{from{opacity:.6}to{opacity:1}}'
 const ANIM = 'animation:pack-chat-pulse 1.2s infinite alternate'
-const SAFE_PART: Record<JudgedArea, string> = { chat: 'chat-message-avatar', studio: 'studio-asset-row', settings: 'settings-section-title', home: 'home-brand', popups: POPUPS_SAFE[0] }
+const SAFE_PART: Record<JudgedArea, string> = { chat: 'chat-message-avatar', studio: 'studio-asset-row', settings: 'settings-section-heading', home: 'home-brand', popups: POPUPS_SAFE[0] }
 const safe = (area: JudgedArea, suffix = ''): string => `[data-part="${SAFE_PART[area]}"]${suffix}`
 const EFFECT_PROPS = new Set(['transition', 'animation', 'transform', 'translate', 'scale', 'rotate', 'transform-origin', 'filter', 'backdrop-filter'])
 

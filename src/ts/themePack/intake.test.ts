@@ -741,12 +741,12 @@ describe('S4a the studio sheet is an applied area (MC-3121, MC-3123, MC-3008)', 
 })
 
 describe('S3a-3 the settings sheet is an applied area (MC-3121, MC-3008)', () => {
-    const SETTINGS_LEAF = '[data-part="settings-section-title"]{opacity:1}'
+    const SETTINGS_LEAF = '[data-part="settings-section-heading"]{opacity:1}'
     const settingsErrors = (css: string) => judgeAreaSheet('settings', css, undefined, 'settings').result.errors
     const HOSTILE_SETTINGS: readonly [string, string][] = [
         ['a chat part', '[data-part="chat-header"]{opacity:1}'],
         ['a part-less selector', '[data-page="display"]{opacity:1}'],
-        ['a refused property', '[data-part="settings-section-title"]{content:"x"}'],
+        ['a refused property', '[data-part="settings-section-heading"]{content:"x"}'],
         ['a token outside allowedTokenNames', ':root{--color-textcolor:#ffffff}'],
         ['--pattern-z-layer', ':root{--pattern-z-layer:-1}'],
         ['--pattern-z-toast', ':root{--pattern-z-toast:-1}'],
@@ -794,7 +794,7 @@ describe('S3a-3 the settings sheet is an applied area (MC-3121, MC-3008)', () =>
     })
 
     it('a resource settings.css names is checked, and the refusal names settings.css', async () => {
-        const css = '[data-part="settings-section-title"]{background-image:url(images/missing.png)}'
+        const css = '[data-part="settings-section-heading"]{background-image:url(images/missing.png)}'
         const { result } = await run(zipPack(validPackFiles({ 'settings.css': css })))
         expect(refusalsOf(result)).toEqual([{ code: 'target', sheet: 'settings.css', target: 'images/missing.png' }])
     })

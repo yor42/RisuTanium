@@ -180,7 +180,7 @@ const CEIL_PACKS: [ThemeArea, string, string, RegExp][] = [
     ['chat', 'touch size 300px', ':root{--size-touch:300px}', /critical maximum/], ['chat', 'bubble padding 500px', ':root{--bubble-pad-start:500px}', /critical maximum/],
     ['studio', 'tab height 900px', ':root{--studio-tab-height:900px}', /critical maximum/], ['studio', 'tree row height 900px', ':root{--studio-tree-row-height:900px}', /critical maximum/], ['studio', 'splitter 900px', ':root{--studio-splitter-width:900px}', /critical maximum/],
     ['studio', 'padding 4000px on an ordinary toast (P04)', '[data-part="studio-toast"]{padding:4000px}', /larger than 64 px/],
-    ['home', 'padding 500px on a safe card', '[data-part="home-story"]{padding:500px}', /larger than 64 px/], ['settings', 'padding 500px on a safe leaf', '[data-part="settings-section-title"]{padding:500px}', /larger than 64 px/],
+    ['home', 'padding 500px on a safe card', '[data-part="home-story"]{padding:500px}', /larger than 64 px/], ['settings', 'padding 500px on a safe leaf', '[data-part="settings-section-heading"]{padding:500px}', /larger than 64 px/],
     ['studio', 'M3 main + body padding 64px (ancestor chain 256 px)', '[data-part="studio-main"]{padding:64px}[data-part="studio-body"]{padding:64px}', /ancestor padding along/],
     ['studio', 'M3 main + body + form host (each 40px a side, 240 px)', '[data-part="studio-main"]{padding:0 40px}[data-part="studio-body"]{padding:0 40px}[data-part="studio-form-host"]{padding:0 40px}', /ancestor padding along/],
     ['studio', 'M3 sheet root alone 64px', '[data-part="studio-sheet-root"]{padding:64px}', /ancestor padding along/],

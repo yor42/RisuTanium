@@ -818,13 +818,13 @@ describe('MC-1550 and the font rules', () => {
     ])('FF3 refuses %s as a CSS identifier error', (_name, css) => { expectRefused('chat', css, /a font family word must be a CSS identifier/, RE_1550) })
 
     test('PW guard: an own family registered in one sheet is known to the others in validateThemePack', () => {
-        const settingsSheet = '[data-part="settings-section-title"]{font-family:pack}'
+        const settingsSheet = '[data-part="settings-section-heading"]{font-family:pack}'
         const verdict = validateThemePack({ files: { chat: '@font-face{font-family:pack;src:url(f.woff2)}', settings: settingsSheet }, totalBytes: 1 })
         expect(verdict.areas.settings?.errors.filter((e) => RE_1550.test(e.why))).toEqual([])
     })
 
     test('PW reproducer: a sheet judged on its own warns about a family only another sheet registers', () => {
-        const judged = judgeAreaSheet('settings', '[data-part="settings-section-title"]{font-family:pack}')
+        const judged = judgeAreaSheet('settings', '[data-part="settings-section-heading"]{font-family:pack}')
         expect(judged.result.ok).toBe(true)
         expect(judged.result.errors).toEqual([])
         expect(judged.warnings.map((w) => w.why)).toEqual([UNBUNDLED('pack')])
@@ -912,7 +912,7 @@ describe('MC-2542: every other family refusal stays a refusal', () => {
 
     test.each([
         ['home', '[data-part="home-story"]'],
-        ['settings', '[data-part="settings-section-title"]'],
+        ['settings', '[data-part="settings-section-heading"]'],
     ] as const)('V-T6: a %s sheet, an applied area, that registers a symbol name with its own face is held to the pack- rule', (area, leaf) => {
         const judged = judgeAreaSheet(area, `@font-face{font-family:wingdings;src:url(f.woff2)}${leaf}{font-family:wingdings}`)
         expect(judged.result.ok).toBe(false)
