@@ -267,6 +267,40 @@ describe('A-T5: the screen panel gates what each mode shows', () => {
     })
 })
 
+// DT-1, a compatibility guard (it passes before and after S3b): each text field writes only its own path. The textarea
+// is found by its part, is inside the wrapper of its own path (a swap of two bodies breaks that), and typing into it
+// changes only that key (a swap of two ports breaks that), as one step naming exactly that path.
+describe('DT-1: each Display text field writes only its own path', () => {
+    const GEN = { prompt: 'p0', negative: 'n0', instructions: 'i0', emotionInstructions: 'e0' }
+    const CASES = [
+        { path: 'newGenData.prompt', mode: 'imggen', inlay: false },
+        { path: 'newGenData.negative', mode: 'imggen', inlay: false },
+        { path: 'newGenData.instructions', mode: 'imggen', inlay: false },
+        { path: 'newGenData.emotionInstructions', mode: 'emotion', inlay: true },
+    ] as const
+
+    test.each(CASES)('$path', async ({ path, mode, inlay }) => {
+        await show({ viewScreen: mode, inlayViewScreen: inlay, newGenData: { ...GEN }, emotionImages: emotions })
+        const area = text(path)
+        expect(area, 'the textarea of the path').not.toBeNull()
+        expect(field(path)?.contains(area), 'inside the wrapper of its own path').toBe(true)
+        expect(area!.value).toBe(GEN[path.split('.')[1] as keyof typeof GEN])
+        const before = JSON.parse(JSON.stringify(live().newGenData)) as Record<string, string>
+        expect(before).toEqual(GEN)
+        const typed = `typed into ${path}`
+        type(area!, typed)
+        const key = path.split('.')[1] as keyof typeof GEN
+        const now = live().newGenData as Record<string, string>
+        expect(now[key]).toBe(typed)
+        for (const other of Object.keys(GEN) as (keyof typeof GEN)[]) {
+            if (other !== key) expect(now[other], `${other} stays`).toBe(before[other])
+        }
+        const done = service.view(OWNER).done
+        expect(done).toHaveLength(1)
+        expect(done[0].ops.map((op) => (op.op === 'set' ? op.path : op.op))).toEqual([path])
+    })
+})
+
 describe('A-T7: the fill tag and reset', () => {
     test('a switch to image generation tags the keys it filled, not the key that already held the default, and shows the note', async () => {
         await show({ viewScreen: 'none', newGenData: { prompt: 'best quality, {{slot}}', negative: '', instructions: '', emotionInstructions: '' } })

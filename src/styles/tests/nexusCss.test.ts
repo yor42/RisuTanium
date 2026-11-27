@@ -20,7 +20,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, test } from 'vitest'
 
-const BASE_STYLES_BLOB = '7b4b961f87b4c9658209b62cf11d72c8d1a54103'
+const BASE_STYLES_BLOB = '1cc4baee4c023a1f146ac060f9ac40441cff494a'
 
 // Files and folders UI-S0 adds that Tailwind scans. The pre side negates them so it
 // approximates the scan set before UI-S0; the post side scans everything.

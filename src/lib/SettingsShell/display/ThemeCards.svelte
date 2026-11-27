@@ -41,7 +41,7 @@
                     checked={selected}
                     onchange={() => { ctx.db.theme = theme.value }}
                 />
-                <span class="relative flex h-16 w-full overflow-hidden rounded-sm bg-darkbg peer-focus-visible:ring-2 peer-focus-visible:ring-textcolor2" aria-hidden="true" data-theme-thumb={theme.key}>
+                <span class="relative flex h-16 w-full overflow-hidden rounded-sm bg-darkbg risu-focus-ring-peer" aria-hidden="true" data-theme-thumb={theme.key}>
                     {#if theme.key === 'standard'}
                         <span class="m-2 flex w-full flex-col gap-1">
                             <span class="h-2 w-3/5 rounded-sm bg-darkbutton"></span>

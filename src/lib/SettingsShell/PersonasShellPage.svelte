@@ -407,7 +407,7 @@
         {#if searchable}
             <input
                 type="search"
-                class="grow min-w-0 min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden"
+                class="grow min-w-0 min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden risu-focus-ring"
                 data-part="settings-persona-search"
                 aria-label={language.settingsShellPersonaSearch}
                 placeholder={language.settingsShellPersonaSearch}
@@ -508,13 +508,13 @@
                         </button>
                         <div class="flex flex-col grow min-w-0 gap-1">
                             <label class="text-sm text-textcolor2" for="{uid}-name">{language.settingsShellPersonaName}</label>
-                            <input id="{uid}-name" type="text" autocomplete="off" class="min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden" value={shown.name} oninput={(event) => edit('name', event.currentTarget.value)} />
+                            <input id="{uid}-name" type="text" autocomplete="off" class="min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden risu-focus-ring" value={shown.name} oninput={(event) => edit('name', event.currentTarget.value)} />
                             <label class="text-sm text-textcolor2" for="{uid}-note">{language.settingsShellPersonaNote}</label>
-                            <input id="{uid}-note" type="text" autocomplete="off" class="min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden" value={shown.note ?? ''} oninput={(event) => edit('note', event.currentTarget.value)} />
+                            <input id="{uid}-note" type="text" autocomplete="off" class="min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden risu-focus-ring" value={shown.note ?? ''} oninput={(event) => edit('note', event.currentTarget.value)} />
                         </div>
                     </div>
                     <label class="text-sm text-textcolor2" for="{uid}-desc">{language.settingsShellPersonaDesc}</label>
-                    <textarea id="{uid}-desc" autocomplete="off" class="w-full min-h-40 px-3 py-2 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden" value={shown.personaPrompt ?? ''} oninput={(event) => edit('personaPrompt', event.currentTarget.value)}></textarea>
+                    <textarea id="{uid}-desc" autocomplete="off" class="w-full min-h-40 px-3 py-2 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden risu-focus-ring" value={shown.personaPrompt ?? ''} oninput={(event) => edit('personaPrompt', event.currentTarget.value)}></textarea>
                     <span class="text-xs text-textcolor2">{language.settingsShellPersonaDescCount((shown.personaPrompt ?? '').length)}</span>
                     <!-- Function binding: binding an absent flag directly would write `false` into the persona on mount. -->
                     <Check className="min-h-11" label={language.settingsShellPersonaLarge} bind:check={() => shown.largePortrait ?? false, (value) => setLarge(value)}>{language.settingsShellPersonaLarge}</Check>

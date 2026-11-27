@@ -28,6 +28,7 @@ import {
     type SurvivorDeps,
 } from '../edit/assetSetters'
 import { buildGreetingAppendMany, buildGreetingMove, buildGreetingSwap } from '../edit/greetingListOps'
+import { buildPortraitAdd, buildPortraitMakeMain, buildPortraitRemove } from '../edit/portraitSetters'
 import { buildScreenModeSwitch, type ScreenModeChange } from '../edit/screenModeFill'
 import {
     applyCharacterWrites,
@@ -62,6 +63,7 @@ import {
     assetPathsReplayMayInsert,
     assetStepWrites,
     isStoredAssetPath,
+    portraitPathsPutBack,
     commitStep,
     createPageSession,
     deriveRestoreWrites,
@@ -174,6 +176,10 @@ export interface StudioWriteNotes {
     // The name the first of `goneRows` went by in the replayed steps, for the line shown to the user. Set with `goneRows`,
     // also on an `unchanged` revert.
     goneName?: string
+    // Set with `goneRows` when the file that is gone belonged to the portrait: the notice then names no row.
+    goneKind?: 'portrait'
+    // A landed portrait add only: how many PNG text notes of the picture were copied into the character, inside the step.
+    pngChunks?: number
     // Revert only: list ops that were not undone because their step's list no longer fit. Also set on
     // an `unchanged` revert, which lands nothing.
     listSkipped?: number
@@ -345,6 +351,13 @@ export interface OwnerHistoryService {
     // The step is always labelled as an addition with its row count.
     assetInsert(owner: OwnerKey, array: AssetArrayName, tuples: readonly (readonly string[])[]): StudioResult
     assetFolder(owner: OwnerKey, intent: FolderIntent): StudioResult
+    // The portrait intents of a character owner, each one step labelled for what it did. An add makes `path` the main
+    // photo, moves the old main to the alternates and copies `chunks` (the picture's allowed PNG text notes) into the exif
+    // map inside the same step; a landed add reports how many notes it copied as `pngChunks`. Make-main swaps the alternate
+    // at `index` with the main. Remove takes out the main (promoting the first alternate) or the alternate at the index.
+    portraitAdd(owner: OwnerKey, path: string, chunks: Readonly<Record<string, string>>): StudioResult
+    portraitMakeMain(owner: OwnerKey, index: number): StudioResult
+    portraitRemove(owner: OwnerKey, target: 'main' | number): StudioResult
     // Blur or a visit close: the next write starts a new step.
     closeOpenStep(owner: OwnerKey): void
     // Test seam; no production reader: how many asset steps this owner holds as unsettled retention roots.
@@ -928,6 +941,10 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 paths.add(typeof write.tuple[1] === 'string' ? write.tuple[1] : '')
             } else if (write.op === 'assetRowSet' && write.after[1] !== write.before[1]) {
                 paths.add(typeof write.after[1] === 'string' ? write.after[1] : '')
+            } else if (write.op === 'portraitSet') {
+                for (const path of portraitPathsPutBack(write)) {
+                    paths.add(path)
+                }
             }
         }
         for (const path of [...paths].sort()) {
@@ -1154,6 +1171,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     ...(plan.fmNotRestored ? { fmNotRestored: true } : {}),
                     ...(plan.goneRows === undefined ? {} : { goneRows: plan.goneRows }),
                     ...(goneName === undefined ? {} : { goneName }),
+                    ...(plan.gonePortrait === true ? { goneKind: 'portrait' as const } : {}),
                 }
             }
             const refusal = refused(plan.reason)
@@ -1240,6 +1258,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         if (goneName !== undefined) {
             notes.goneName = goneName
+        }
+        if (plan.gonePortrait === true) {
+            notes.goneKind = 'portrait'
         }
         // The plan names skipped texts only for a step that holds a `textEdit`, or rows together with a text op, whatever
         // its label: the notice that lists them belongs to a merge's replay, to the replay of a revert that crossed one,
@@ -1774,6 +1795,20 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         assetRename: (owner, array, index, newName) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildAssetRename(array, index, newName, live) }),
         assetInsert: (owner, array, tuples) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildAssetInsert(array, tuples, live) }),
         assetFolder: (owner, intent) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildFolderIntent(intent, live) }),
+        portraitAdd(owner, path, chunks) {
+            let copied = 0
+            const result = applyStudioWrite(owner, {
+                kind: 'asset',
+                build: (live) => {
+                    const built = buildPortraitAdd(path, chunks, live)
+                    copied = built.ok ? built.chunkCount : 0
+                    return built
+                },
+            })
+            return result.ok && copied > 0 ? { ...result, pngChunks: copied } : result
+        },
+        portraitMakeMain: (owner, index) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildPortraitMakeMain(index, live) }),
+        portraitRemove: (owner, target) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildPortraitRemove(target, live) }),
         closeOpenStep(owner) {
             const slot = slots.get(owner)
             if (slot) {

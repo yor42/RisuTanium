@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { emptyRecord, type Op, type OwnerRecord, type Step } from '../historyModel'
 import { characterOwnerKey } from '../ownerPhase'
-import { createRetainedPaths, nameOfPathIn, retainedPathsOf, stepNamesAssetPath, stepsOf } from '../retainedPaths'
+import { createRetainedPaths, nameOfPathIn, retainedPathsOf, stepNamesAssetPath, stepPathPairs, stepsOf } from '../retainedPaths'
 
 function step(id: string, ops: Op[]): Step {
     return { id, at: 0, label: { kind: 'assetDelete', count: 1, name: null }, ops }
@@ -30,6 +30,24 @@ describe('retainedPathsOf', () => {
         expect(stepNamesAssetPath(step('a', [remove('p1')]))).toBe(true)
         expect(stepNamesAssetPath(step('b', [{ op: 'assetFolderOrder', before: [], after: ['F'] }]))).toBe(false)
         expect(stepNamesAssetPath(step('c', [{ op: 'listInsert', index: 0, value: 'p1' }]))).toBe(false)
+    })
+
+    test('B-T11: a portrait step names the stored files it adds or removes, with the alternate\'s name, and never a file that stays or a non-store path', () => {
+        const row = (uri: string, name: string) => ({ type: 'icon', name, uri, ext: 'png' })
+        const stored = (letter: string): string => `assets/${letter.repeat(64)}.png`
+        const portrait = (image: string, rows: ReturnType<typeof row>[]): Extract<Op, { op: 'portraitSet' }>['before'] => ({ image: { had: true, value: image }, alternates: { had: true, rows } })
+        // Add: M moves to the alternates (stays), N is new; the old alternate P stays.
+        const add = step('a', [{ op: 'portraitSet', before: portrait(stored('m'), [row(stored('p'), 'second')]), after: portrait(stored('n'), [row(stored('p'), 'second'), row(stored('m'), 'iconx')]) }])
+        expect(stepPathPairs(add)).toEqual([['', stored('n')]])
+        // Remove an alternate: the alternate's name comes with its path.
+        const removeAlt = step('b', [{ op: 'portraitSet', before: portrait(stored('n'), [row(stored('p'), 'second')]), after: portrait(stored('n'), []) }])
+        expect(stepPathPairs(removeAlt)).toEqual([['second', stored('p')]])
+        // A swap keeps every file: it names none. A path outside the store is never named.
+        const swap = step('c', [{ op: 'portraitSet', before: portrait(stored('n'), [row(stored('p'), 'second')]), after: portrait(stored('p'), [row(stored('n'), 'iconx')]) }])
+        expect(stepNamesAssetPath(swap)).toBe(false)
+        const foreign = step('d', [{ op: 'portraitSet', before: portrait('https://x.test/a.png', []), after: portrait(stored('n'), []) }])
+        expect(retainedPathsOf(new Set([foreign]))).toEqual([stored('n')])
+        expect(retainedPathsOf(new Set([add, removeAlt, swap]))).toEqual([stored('n'), stored('p')].sort())
     })
 
     test('stepsOf holds a step shared by two records once', () => {
