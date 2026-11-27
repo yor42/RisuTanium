@@ -518,3 +518,30 @@ describe('B-T10: the whole-value precondition and the already-in-place move, on 
         expect(plain().ccAssets).toEqual([])
     })
 })
+
+
+
+describe('B-T11: a foreign alternates value is refused whole and never rewritten', () => {
+    test('a ccAssets row with a key beyond the four refuses every portrait intent and keeps the row whole', async () => {
+        const foreign = { ...ROW_P, extra: 'kept' }
+        DBState.db.characters = [makeCharacter({ ccAssets: [foreign as unknown as typeof ROW_P, { ...ROW_Q }] })] as unknown as typeof DBState.db.characters
+        await ready()
+        const before = plain()
+        expect(session.service.portraitAdd(A, N, {})).toEqual({ ok: false, reason: 'precondition' })
+        expect(session.service.portraitRemove(A, 'main')).toEqual({ ok: false, reason: 'precondition' })
+        expect(session.service.portraitRemove(A, 1)).toEqual({ ok: false, reason: 'precondition' })
+        expect(session.service.portraitMakeMain(A, 1)).toEqual({ ok: false, reason: 'precondition' })
+        expect(plain()).toEqual(before)
+        expect(done()).toHaveLength(0)
+    })
+
+    test('a ccAssets value that is not an array refuses the add and stays as it is', async () => {
+        DBState.db.characters = [makeCharacter({ ccAssets: { not: 'a list' } as unknown as LiveCharacter['ccAssets'] })] as unknown as typeof DBState.db.characters
+        await ready()
+        const before = plain()
+        expect(session.service.portraitAdd(A, N, {})).toEqual({ ok: false, reason: 'precondition' })
+        expect(session.service.portraitRemove(A, 'main')).toEqual({ ok: false, reason: 'precondition' })
+        expect(plain()).toEqual(before)
+        expect(done()).toHaveLength(0)
+    })
+})
