@@ -310,6 +310,7 @@ import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
 import { resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
+import { language } from 'src/lang'
 
 //#region helpers
 
@@ -491,6 +492,75 @@ describe.each([
         const outcome = await run()
 
         expect(outcome).toMatchObject({ status: 'saved' })
+        expect(chroPrompts()).toEqual([])
+    }, 120_000)
+})
+
+describe('R2 the warning names the saved search data', () => {
+    test('reproducer: the .bin confirm and the leave-out kind label both name search data', () => {
+        expect(language.backupChroMemoryConfirm).toMatch(/search data/)
+        expect(language.settingsShellDataKindChroMemory).toMatch(/search data/)
+    })
+})
+
+describe.each([
+    ['SaveLocalBackup', SaveLocalBackup as Runner],
+    ['SavePartialLocalBackup', SavePartialLocalBackup as Runner],
+])('%s of a page holding saved search vectors', (_name, run) => {
+    const MARKER = 'vector-bytes-marker-0123456789'
+
+    async function seedVectors(headBody: string): Promise<void> {
+        const store = createTauriFilesStore({ platform: 'posix' })
+        await store.write('derived/chromemory-vectors/seg1/head', new TextEncoder().encode(headBody), 'unconditional')
+        await store.write('derived/chromemory-vectors/seg1/c1', new TextEncoder().encode(MARKER), 'unconditional')
+    }
+
+    const validHead = JSON.stringify({ f: 'chromemory-vectors', v: 1, g: 1, w: 'x', owner: 'o', chat: 'c', model: 'm', label: 'l', dim: 3, chunks: [1], at: 1 })
+    const foreignHead = JSON.stringify({ f: 'chromemory-vectors', v: 2 })
+
+    test('R3 reproducer: engine off with a saved folder still shows the ChroMemory prompt, and the file holds no vector bytes (G14)', async () => {
+        page({ ltmEngine: false, ltmSettings: SETTINGS })
+        await seedVectors(validHead)
+
+        const outcome = await run()
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        expect(chroPrompts()).toHaveLength(1)
+        expect(chroPrompts()[0]).toMatch(/search data/)
+        const entries = exportedEntries()
+        expect(entries.length).toBeGreaterThan(0)
+        for (const entry of entries) {
+            expect(entry.name).not.toContain('chromemory-vectors')
+            expect(new TextDecoder().decode(entry.data)).not.toContain(MARKER)
+        }
+    }, 120_000)
+
+    test('R3b: a newer version\'s folder counts as present, so the prompt shows', async () => {
+        page({ ltmEngine: false })
+        await seedVectors(foreignHead)
+
+        const outcome = await run()
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        expect(chroPrompts()).toHaveLength(1)
+    }, 120_000)
+
+    test('R3c: declining the prompt writes nothing', async () => {
+        page({ ltmEngine: false })
+        await seedVectors(validHead)
+        alertConfirmMock.mockImplementation(async (message: string) => !message.includes(CHRO_PROMPT))
+
+        const outcome = await run()
+
+        expect(outcome).toEqual({ status: 'declined', cause: 'incomplete-data-declined' })
+        expect(backupSink.writes).toEqual([])
+    }, 120_000)
+
+    test('R3d guard: no vectors and the engine off asks nothing', async () => {
+        page({ ltmEngine: false })
+
+        await run()
+
         expect(chroPrompts()).toEqual([])
     }, 120_000)
 })

@@ -33,6 +33,9 @@ vi.mock(import('src/ts/platform'), () => ({
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
+// The vector-persist hold is the one part of the cache engine the restore hold touches; the spy counts its grants and releases.
+const vectorHold = vi.hoisted(() => ({ holds: 0, releases: 0, reject: false }))
+
 const worlds = createWorldKit({
     parked: h.parked,
     getDb: () => h.db,
@@ -61,6 +64,24 @@ beforeEach(() => {
     h.channels.length = 0
     platformBox.isTauri = false
     vi.doUnmock('src/ts/storage/dbChangeEffects.svelte')
+    vectorHold.holds = 0
+    vectorHold.releases = 0
+    vectorHold.reject = false
+    vi.doMock('src/ts/process/memory/chroMemory/vectorPersist', () => ({
+        holdVectorPersist: async () => {
+            if (vectorHold.reject) {
+                throw new Error('the vector hold could not be taken')
+            }
+            vectorHold.holds++
+            let released = false
+            return () => {
+                if (!released) {
+                    released = true
+                    vectorHold.releases++
+                }
+            }
+        },
+    }))
     vi.doMock('src/ts/stores.svelte', async () => {
         const { proxy } = await import('svelte/internal/client')
         const { writable } = await import('svelte/store')
@@ -200,6 +221,51 @@ describe('acquireRestoreHold', () => {
         const busy = page.busy.beginBusy('backupLoad')
         await expect(page.hold.acquireRestoreHold(busy, { onGranted: () => { throw new Error('callback failed') } })).rejects.toThrow('callback failed')
         expect(await writeLockIsFree(page)).toBe(true)
+        busy.end()
+    })
+
+    test('the vector cache is held once the lock is granted: release(false) frees it, release(true) keeps it until the reload, and a second release changes nothing (guard)', async () => {
+        const page = await openPage()
+        const busy = page.busy.beginBusy('backupLoad')
+        const granted = vi.fn(() => { expect(vectorHold.holds).toBe(1) })
+        const result = await page.hold.acquireRestoreHold(busy, { onGranted: granted })
+        if (result.kind !== 'held') {
+            throw new Error('expected a hold')
+        }
+        expect(vectorHold).toMatchObject({ holds: 1, releases: 0 })
+        await result.hold.release(false)
+        await result.hold.release(false)
+        expect(vectorHold).toMatchObject({ holds: 1, releases: 1 })
+        busy.end()
+        worlds.parkAll()
+
+        const landed = await openPage()
+        const second = landed.busy.beginBusy('backupLoad')
+        const kept = await landed.hold.acquireRestoreHold(second)
+        if (kept.kind !== 'held') {
+            throw new Error('expected a hold')
+        }
+        await kept.hold.release(true)
+        expect(vectorHold).toMatchObject({ holds: 2, releases: 1 })
+        second.end()
+    })
+
+    test('a refused, declined or failed acquire leaves no vector hold, and a vector hold that rejects leaves no lock taken (guard)', async () => {
+        const page = await openPage()
+        const other = makeSimulatedTab(page.locks, 'other')
+        await other.locks.tabPresenceLockAcquired
+        const busy = page.busy.beginBusy('backupLoad')
+        expect((await page.hold.acquireRestoreHold(busy)).kind).toBe('refused')
+        expect(vectorHold.holds).toBe(0)
+        other.close()
+        worlds.parkAll()
+
+        const failing = await openPage()
+        vectorHold.reject = true
+        const second = failing.busy.beginBusy('backupLoad')
+        await expect(failing.hold.acquireRestoreHold(second)).rejects.toThrow('the vector hold could not be taken')
+        expect(await writeLockIsFree(failing)).toBe(true)
+        second.end()
         busy.end()
     })
 

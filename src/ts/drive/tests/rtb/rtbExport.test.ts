@@ -32,10 +32,10 @@ import { rtbExportRefusal, runRtbExportGuarded, type RtbExportDeps, type RtbExpo
 import { rangeSourceOfBytes } from './sparseSource'
 import { buildSmall, type Obj } from 'src/ts/storage/tests/store2/codecFixtures'
 import {
-    assembleStore, commitRestore, CURRENT_AT, damagedFrame, FakeLocalWriter, framesOfRtbFile, moveCurrent, readRtbFile, rtbDeps,
-    RTB_TEST_CLOCK, rtbManifestOf, rtbWorld, type RtbWorld,
+    assembleStore, commitRestore, CURRENT_AT, damagedFrame, FakeLocalWriter, framesOfRtbFile, moveCurrent, readRtbFile, rtbDeps as baseRtbDeps,
+    RTB_TEST_CLOCK, rtbManifestOf, rtbWorld, type RtbDepsOptions, type RtbWorld,
 } from 'src/ts/storage/tests/store2/rtbFixtures'
-
+import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 const layout = vi.hoisted(() => ({ MODULE_INDEX_LAYOUT: 1 }))
 vi.mock('src/ts/storage/store2/codec/moduleIndexParams', () => ({ MODULE_INDEX_PARAMS: layout }))
 
@@ -72,6 +72,38 @@ vi.mock('src/ts/storage/store/appStore', () => ({
     getAppStoreKind: async () => 'tauri',
     pageStoreIsOpfsTransitional: async () => false,
 }))
+
+// The vector-persist hold is the only part of the cache engine the export touches; the spy records the order of its
+// grant and release against the export's other effects, and everything else of the module stays real.
+const holdLog = vi.hoisted(() => ({ events: [] as string[], holds: 0, releases: 0, reject: false }))
+vi.mock('src/ts/process/memory/chroMemory/vectorPersist', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('src/ts/process/memory/chroMemory/vectorPersist')>()
+    return {
+        ...actual,
+        holdVectorPersist: async () => {
+            if (holdLog.reject) {
+                throw new Error('the hold could not be taken')
+            }
+            holdLog.holds++
+            holdLog.events.push('hold')
+            return () => {
+                holdLog.releases++
+                holdLog.events.push('release')
+            }
+        },
+    }
+})
+
+/** The byte store the export reads the vector folders from; the page store of these tests is unavailable. */
+let vectorStore: MemoryByteStore = createMemoryByteStore()
+
+/** `rtbDeps` with an in-memory vector store, which a test's own `over.sideBackends` keeps unless it names one. */
+function rtbDeps(options: RtbDepsOptions): ReturnType<typeof baseRtbDeps> {
+    const built = baseRtbDeps(options)
+    const backends = built.deps.sideBackends
+    built.deps.sideBackends = { ...backends, vectors: backends.vectors ?? (async () => vectorStore) }
+    return built
+}
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -136,6 +168,11 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
+    vectorStore = createMemoryByteStore()
+    holdLog.events.length = 0
+    holdLog.holds = 0
+    holdLog.releases = 0
+    holdLog.reject = false
     resetBusyActionsForTest()
     resetPageStorageModeForTests()
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -839,6 +876,102 @@ describe('progress (T-S8-10)', () => {
         expect(events.find((event) => event.phase === 'assets')).toMatchObject({ total: 2 })
         const unitCounts = events.filter((event): event is { phase: 'units', units: number } => event.phase === 'units').map((event) => event.units)
         expect(unitCounts).toEqual([...unitCounts].sort((a, b) => a - b))
+    })
+})
+
+describe('the vector section and the persist hold (G10, G10c, G22, G22b)', () => {
+    const VP = 'derived/chromemory-vectors/'
+    const seed = (key: string, bytes: Uint8Array = Uint8Array.of(1, 2, 3)): void => { vectorStore.files.set(`${VP}${key}`, bytes) }
+
+    async function vectorKeys(bytes: Uint8Array): Promise<string[] | null> {
+        const data = (await readRtbFile(bytes)).get('s/chromemory-vectors/data.jsonl')
+        if (data === undefined) {
+            return null
+        }
+        const decoded = decodeSideLines(data, RTB_SIDE_TAGS)
+        return decoded.kind === 'ok' ? decoded.values.map((entry) => entry.key) : null
+    }
+
+    test('G10: the hold is taken before the first vector read and released after the last, and the folders are carried', async () => {
+        seed('seg1/c1')
+        seed('seg1/head')
+        vectorStore.failRead = () => { holdLog.events.push('read'); return null }
+        const { result, writer } = await exportFrom(world)
+        saved(result)
+        expect(holdLog.events).toEqual(['hold', 'read', 'read', 'release'])
+        expect(await vectorKeys(writer.bytes())).toEqual(['seg1/c1', 'seg1/head'])
+    })
+
+    test('G10c: a cancel after the hold, a rejected store and a failing walk each leave no hold behind', async () => {
+        for (const how of ['cancel', 'store', 'walk'] as const) {
+            holdLog.holds = 0
+            holdLog.releases = 0
+            const backend = await world.open()
+            let cancel: ExportCancelToken | null = null
+            const writer = new FakeLocalWriter()
+            const { deps } = rtbDeps({
+                backend, env: world.env, files: FILES, writer,
+                over: {
+                    openWriter: async (session) => {
+                        cancel = session.cancel
+                        writer.cancel = session.cancel
+                        session.writer = writer as never
+                        return writer as never
+                    },
+                    saveFirst: async () => { if (how === 'cancel') { cancel?.cancel() } },
+                    store: async () => { if (how === 'store') { throw new Error('the store is gone') } return vectorStore },
+                    afterUnitBatch: async () => { if (how === 'walk') { throw new Error('the walk failed') } },
+                },
+            })
+            const result = await runRtbExportGuarded(deps, { fileName: 'test.rtb' })
+            expect(result.status === 'ended' && result.outcome.status, how).toBe(how === 'cancel' ? 'declined' : 'failed')
+            expect(holdLog.holds, how).toBe(1)
+            expect(holdLog.releases, how).toBe(1)
+        }
+    })
+
+    test('G10c: a hold that rejects holds nothing and the export fails', async () => {
+        holdLog.reject = true
+        const { result } = await exportFrom(world)
+        expect(result.status === 'ended' && result.outcome.status).toBe('failed')
+        expect(holdLog.holds).toBe(0)
+        expect(holdLog.releases).toBe(0)
+    })
+
+    test('G22: a read that rejects skips the rest of that folder only, the export is saved and the warning is a console one', async () => {
+        for (const key of ['seg1/c1', 'seg1/c2', 'seg1/head', 'seg2/c1', 'seg2/head']) {
+            seed(key)
+        }
+        vectorStore.failRead = (key) => (key === `${VP}seg1/c2` ? new Error('unreadable record') : null)
+        const { result, writer } = await exportFrom(world)
+        const { report } = saved(result)
+        expect(await vectorKeys(writer.bytes())).toEqual(['seg1/c1', 'seg2/c1', 'seg2/head'])
+        expect(report.omitted.filter((entry) => entry.kind === 'side')).toEqual([])
+        expect(console.warn).toHaveBeenCalled()
+    })
+
+    test('G22b: a record over the bound is skipped, its siblings stay and the export is saved', async () => {
+        seed('seg1/c1')
+        seed('seg1/head')
+        seed('seg1/x1', new Uint8Array(4_194_304 + 1))
+        const { result, writer } = await exportFrom(world)
+        saved(result)
+        expect(await vectorKeys(writer.bytes())).toEqual(['seg1/c1', 'seg1/head'])
+    })
+
+    test('a vector list that fails leaves the row out and names it unreadable', async () => {
+        seed('seg1/head')
+        vectorStore.list = async () => { throw new Error('the listing failed') }
+        const { result, writer } = await exportFrom(world)
+        saved(result)
+        expect(await vectorKeys(writer.bytes())).toBeNull()
+        expect(rtbManifestOf(await readRtbFile(writer.bytes())).omitted).toContainEqual({ kind: 'side', name: 'side.chromemory-vectors', reason: 'unreadable' })
+    })
+
+    test('with no vector folder the row is absent', async () => {
+        const { result, writer } = await exportFrom(world)
+        saved(result)
+        expect(await vectorKeys(writer.bytes())).toBeNull()
     })
 })
 

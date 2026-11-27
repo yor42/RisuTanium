@@ -379,7 +379,7 @@ export const languageChinese = {
     "settingsShellDataKindTaskPresets": "任务预设",
     "settingsShellDataKindWorkspaces": "工具工作区",
     "settingsShellDataKindThemePacks": "主题包",
-    "settingsShellDataKindChroMemory": "ChroMemory 设置",
+    "settingsShellDataKindChroMemory": "ChroMemory 设置和检索数据",
     "settingsShellDataKindChatDrafts": "未发送的消息修改和长聊天提示",
     "settingsShellDataKindUsage": "使用统计和模型价格",
     "settingsShellDataLeaveOutRtb": "改为创建 .rtb",
@@ -4002,7 +4002,7 @@ export const languageChinese = {
         `有 ${count} 个工具工作区仅保存在此设备和 .rtb 备份中，而 .bin 备份文件中没有存放它们的位置，因此它们将不会包含在此备份中。它们仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `有 ${count} 个主题包仅保存在此设备上，而备份文件中没有存放它们及其文件的位置，因此它们将不会包含在此备份中。它们仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
-    "backupChroMemoryConfirm": ".bin 备份中没有存放 ChroMemory 选项及其设置的位置，因此此备份不会包含它们。它们仍保留在此设备上，.rtb 备份则会包含它们。是否创建不含它们的备份？",
+    "backupChroMemoryConfirm": ".bin 备份中没有存放 ChroMemory 选项、其设置及其已保存检索数据的位置，因此此备份不会包含它们。它们仍保留在此设备上，.rtb 备份则会包含它们。是否创建不含它们的备份？",
     "backupChatDraftsConfirm": (drafts: number, hintChats: number) => `.bin 备份中没有存放未发送的消息修改或已显示的长聊天提示的位置（${drafts} 条未发送的修改，${hintChats} 个已显示提示的聊天），因此此备份不会包含它们。它们仍保留在此设备上，.rtb 备份则会包含它们。是否创建不含它们的备份？`,
     "backupUsageStatsConfirm": ".bin 备份中没有存放使用统计或您输入的模型价格的位置，因此此备份不会包含它们。它们仍保留在此设备上，.rtb 备份则会包含它们。是否创建不含它们的备份？",
     "backupSaveWait": "正在保存本地备份...",
@@ -4613,7 +4613,7 @@ export const languageChinese = {
     "rtbRestoreLineOmittedEntries": (names: string[]) => `- 创建备份时未包含的数据：${names.join(', ')}`,
     "rtbRestoreLineSideNotRestored": (names: string[]) => `- 保留在此设备上、未被恢复的数据：${names.join(', ')}`,
     "rtbRestoreLineSideFailed": (names: string[]) => `- 保留在此设备上、未能完整写入的数据：${names.join(', ')}`,
-    "rtbRestoreSideNames": { iris: "Iris 对话", googleSearch: "Google 搜索密钥", hypaVector: "记忆检索数据", pluginSafe: "插件数据", pluginSafeLs: "插件设置", pluginPermissions: "插件权限", mcpToolCalls: "MCP 工具调用", uiPrefs: "界面偏好设置", connectionKeys: "连接密钥" },
+    "rtbRestoreSideNames": { iris: "Iris 对话", googleSearch: "Google 搜索密钥", hypaVector: "记忆检索数据", pluginSafe: "插件数据", pluginSafeLs: "插件设置", pluginPermissions: "插件权限", mcpToolCalls: "MCP 工具调用", uiPrefs: "界面偏好设置", connectionKeys: "连接密钥", chroMemoryVectors: "ChroMemory 检索数据" },
     "rtbRestoreSettingsConfirm": (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `要还原此备份中的设置吗？${fields} 项设置、${presets} 个机器人预设、${memoryPresets} 个记忆预设和 ${translatorPresets} 个新的翻译器预设将合并到此设备。备份中没有的设置保持不变。角色、聊天、密钥和连接不会被改动。${dropped > 0 ? ` 备份中有 ${dropped} 个值无法使用，将被跳过。` : ''} 完成后应用会重新加载。`,
     "rtbRestoreSettingsDone": "设置已还原。应用现在将重新加载。",

@@ -379,7 +379,7 @@ export const languageSpanish = {
     settingsShellDataKindTaskPresets: "Preajustes de tareas",
     settingsShellDataKindWorkspaces: "Espacios de trabajo de utilidad",
     settingsShellDataKindThemePacks: "Paquetes de temas",
-    settingsShellDataKindChroMemory: "Ajustes de ChroMemory",
+    settingsShellDataKindChroMemory: "Ajustes y datos de búsqueda de ChroMemory",
     settingsShellDataKindChatDrafts: "Ediciones de mensajes sin enviar y avisos de chat largo",
     settingsShellDataKindUsage: "Estadísticas de uso y precios de modelos",
     settingsShellDataLeaveOutRtb: "Crear un .rtb en su lugar",
@@ -4004,7 +4004,7 @@ export const languageSpanish = {
         `${count} espacio(s) de trabajo de utilidad se guardan solo en este dispositivo y en las copias .rtb, y un archivo de copia de seguridad .bin no tiene lugar para ellos, así que se omitirían de esta copia. Permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `${count} paquete(s) de tema se guardan solo en este dispositivo, y un archivo de copia de seguridad no tiene lugar para ellos ni para sus archivos, así que se omitirían de esta copia. Permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
-    "backupChroMemoryConfirm": "Una copia de seguridad .bin no tiene dónde guardar la opción de ChroMemory ni sus ajustes, así que esta copia los deja fuera. Este dispositivo los conserva, y las copias .rtb los incluyen. ¿Crear la copia sin ellos?",
+    "backupChroMemoryConfirm": "Una copia de seguridad .bin no tiene dónde guardar la opción de ChroMemory, sus ajustes ni sus datos de búsqueda guardados, así que esta copia los deja fuera. Este dispositivo los conserva, y las copias .rtb los incluyen. ¿Crear la copia sin ellos?",
     "backupChatDraftsConfirm": (drafts: number, hintChats: number) => `Una copia de seguridad .bin no tiene dónde guardar tus ediciones de mensajes sin enviar ni los avisos de chat largo ya mostrados (${drafts} ediciones sin enviar, ${hintChats} chats con aviso mostrado), así que esta copia los deja fuera. Este dispositivo los conserva, y las copias .rtb los incluyen. ¿Crear la copia sin ellos?`,
     "backupUsageStatsConfirm": "Una copia de seguridad .bin no tiene dónde guardar tus estadísticas de uso ni los precios de modelo que introdujiste, así que esta copia los deja fuera. Este dispositivo los conserva, y las copias .rtb los incluyen. ¿Crear la copia sin ellos?",
     "backupSaveWait": "Guardando la copia de seguridad local...",
@@ -4615,7 +4615,7 @@ export const languageSpanish = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- Datos sin los que se creó el respaldo: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Datos guardados en este dispositivo que no se restauraron: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Datos guardados en este dispositivo que no se pudieron escribir por completo: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "conversaciones de Iris", googleSearch: "clave de búsqueda de Google", hypaVector: "datos de búsqueda de memoria", pluginSafe: "datos de plugins", pluginSafeLs: "ajustes de plugins", pluginPermissions: "permisos de plugins", mcpToolCalls: "llamadas a herramientas MCP", uiPrefs: "preferencias de la interfaz", connectionKeys: "claves de conexión" },
+    rtbRestoreSideNames: { iris: "conversaciones de Iris", googleSearch: "clave de búsqueda de Google", hypaVector: "datos de búsqueda de memoria", pluginSafe: "datos de plugins", pluginSafeLs: "ajustes de plugins", pluginPermissions: "permisos de plugins", mcpToolCalls: "llamadas a herramientas MCP", uiPrefs: "preferencias de la interfaz", connectionKeys: "claves de conexión", chroMemoryVectors: "datos de búsqueda de ChroMemory" },
     rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `¿Restaurar los ajustes de este respaldo? Se combinarán en este dispositivo ${fields} ajuste(s), ${presets} preajuste(s) de bots, ${memoryPresets} preajuste(s) de memoria y ${translatorPresets} preajuste(s) nuevo(s) de traductor. Un ajuste que falte en el respaldo se queda como está. No se tocan personajes, chats, claves ni conexiones.${dropped > 0 ? ` ${dropped} valor(es) del respaldo no se pueden usar y se omiten.` : ''} Después la aplicación se recarga.`,
     rtbRestoreSettingsDone: "Los ajustes se restauraron. La aplicación se recarga ahora.",

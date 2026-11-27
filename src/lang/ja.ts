@@ -379,7 +379,7 @@ export const languageJapanese = {
     settingsShellDataKindTaskPresets: "タスクプリセット",
     settingsShellDataKindWorkspaces: "ユーティリティのワークスペース",
     settingsShellDataKindThemePacks: "テーマパック",
-    settingsShellDataKindChroMemory: "ChroMemory 設定",
+    settingsShellDataKindChroMemory: "ChroMemory 設定と検索データ",
     settingsShellDataKindChatDrafts: "未送信のメッセージ編集と長いチャットのヒント",
     settingsShellDataKindUsage: "使用統計とモデル価格",
     settingsShellDataLeaveOutRtb: "代わりに .rtb を作成",
@@ -4144,7 +4144,7 @@ export const languageJapanese = {
         `${count}件のユーティリティのワークスペースはこのデバイスと .rtb バックアップにのみ保存されており、.bin バックアップファイルには保存できる場所がないため、このバックアップから除外されます。ワークスペースはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
     backupThemePacksConfirm: (count: number, names: string[]) =>
         `${count}件のテーマパックはこのデバイスにのみ保存されており、バックアップファイルにはそれらとそのファイルを保存できる場所がないため、このバックアップから除外されます。テーマパックはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
-    backupChroMemoryConfirm: ".bin バックアップには ChroMemory の選択とその設定を保存する場所がないため、このバックアップではそれらが除外されます。この端末には残り、.rtb バックアップには含まれます。それらを含めずにバックアップを作成しますか？",
+    backupChroMemoryConfirm: ".bin バックアップには ChroMemory の選択、その設定、保存済みの検索データを保存する場所がないため、このバックアップではそれらが除外されます。この端末には残り、.rtb バックアップには含まれます。それらを含めずにバックアップを作成しますか？",
     backupChatDraftsConfirm: (drafts: number, hintChats: number) => `.bin バックアップには未送信のメッセージ編集や表示済みの長いチャットのヒントを保存する場所がないため（未送信の編集 ${drafts} 件、ヒント表示済みのチャット ${hintChats} 件）、このバックアップではそれらが除外されます。この端末には残り、.rtb バックアップには含まれます。それらを含めずにバックアップを作成しますか？`,
     backupUsageStatsConfirm: ".bin バックアップには使用統計や入力したモデル価格を保存する場所がないため、このバックアップではそれらが除外されます。この端末には残り、.rtb バックアップには含まれます。それらを含めずにバックアップを作成しますか？",
     backupSaveWait: "ローカルバックアップを保存中…",
@@ -4759,7 +4759,7 @@ export const languageJapanese = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- バックアップの作成時に含まれなかったデータ：${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- この端末に保持され、復元されなかったデータ：${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- この端末に保持され、完全には書き込めなかったデータ：${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "Irisの会話", googleSearch: "Google検索キー", hypaVector: "メモリ検索データ", pluginSafe: "プラグインデータ", pluginSafeLs: "プラグイン設定", pluginPermissions: "プラグイン権限", mcpToolCalls: "MCPツール呼び出し", uiPrefs: "インターフェース設定", connectionKeys: "接続キー" },
+    rtbRestoreSideNames: { iris: "Irisの会話", googleSearch: "Google検索キー", hypaVector: "メモリ検索データ", pluginSafe: "プラグインデータ", pluginSafeLs: "プラグイン設定", pluginPermissions: "プラグイン権限", mcpToolCalls: "MCPツール呼び出し", uiPrefs: "インターフェース設定", connectionKeys: "接続キー", chroMemoryVectors: "ChroMemory 検索データ" },
     rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `このバックアップの設定を復元しますか？設定 ${fields} 件、ボットプリセット ${presets} 件、メモリプリセット ${memoryPresets} 件、新しい翻訳プリセット ${translatorPresets} 件がこの端末にマージされます。バックアップにない設定はそのまま残ります。キャラクター、チャット、キー、接続には触れません。${dropped > 0 ? ` バックアップ内の ${dropped} 件の値は使用できないためスキップされます。` : ''} その後、アプリが再読み込みされます。`,
     rtbRestoreSettingsDone: "設定を復元しました。アプリを再読み込みします。",

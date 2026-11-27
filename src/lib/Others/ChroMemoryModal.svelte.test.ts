@@ -47,8 +47,14 @@ vi.mock('src/ts/process/memory/chroMemory/shadow', async (importOriginal) => {
     return { ...actual, discardChroMemoryIndex: vi.fn(actual.discardChroMemoryIndex) }
 })
 
+vi.mock('src/ts/process/memory/chroMemory/vectorPersist', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('src/ts/process/memory/chroMemory/vectorPersist')>()
+    return { ...actual, dropVectorsUnlessWanted: vi.fn(async () => { }) }
+})
+
 //#endregion
 
+import { dropVectorsUnlessWanted } from 'src/ts/process/memory/chroMemory/vectorPersist'
 import { DBState, hypaV3ModalOpen, selectedCharID } from 'src/ts/stores.svelte'
 import { installBackGuard, resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { chroLoreTrace, chroMemoryDiscarded, chroMemoryTrace } from 'src/ts/process/memory/chroMemory/traceStore'
@@ -471,6 +477,26 @@ describe('Hybrid retrieval (#688 S3)', () => {
         hybrid.click()
         flushSync()
         expect(DBState.db.ltmSettings).toEqual({ budgetTokens: 900, future: { x: 1 }, retrieval: 'lexical' })
+    })
+
+    test('G15 (R): switching the hybrid check asks the vector drop after the write, with the new setting already stored; mounting asks nothing', () => {
+        vi.mocked(dropVectorsUnlessWanted).mockClear()
+        const seen: unknown[] = []
+        vi.mocked(dropVectorsUnlessWanted).mockImplementation(async () => {
+            seen.push(JSON.stringify(DBState.db.ltmSettings))
+        })
+        const target = openIndexTab()
+        expect(dropVectorsUnlessWanted).not.toHaveBeenCalled()
+        const hybrid = target.querySelectorAll<HTMLInputElement>('input[type=checkbox]')[2]
+        hybrid.click()
+        flushSync()
+        hybrid.click()
+        flushSync()
+        expect(dropVectorsUnlessWanted).toHaveBeenCalledTimes(2)
+        expect(seen).toEqual([
+            JSON.stringify({ budgetTokens: 900, future: { x: 1 }, retrieval: 'hybrid' }),
+            JSON.stringify({ budgetTokens: 900, future: { x: 1 }, retrieval: 'lexical' }),
+        ])
     })
 
     test('G-ui+ (G): the English-only warning shows for bgeSmallEn with hybrid on in an all-English chat, and not for a multilingual model or with hybrid off', () => {

@@ -379,7 +379,7 @@ export const languageVietnamese = {
     settingsShellDataKindTaskPresets: "Bộ cài đặt sẵn cho tác vụ",
     settingsShellDataKindWorkspaces: "Không gian làm việc tiện ích",
     settingsShellDataKindThemePacks: "Gói giao diện",
-    settingsShellDataKindChroMemory: "Cài đặt ChroMemory",
+    settingsShellDataKindChroMemory: "Cài đặt và dữ liệu tìm kiếm ChroMemory",
     settingsShellDataKindChatDrafts: "Chỉnh sửa tin nhắn chưa gửi và gợi ý cuộc trò chuyện dài",
     settingsShellDataKindUsage: "Thống kê sử dụng và giá mô hình",
     settingsShellDataLeaveOutRtb: "Tạo .rtb thay thế",
@@ -4002,7 +4002,7 @@ export const languageVietnamese = {
         `${count} không gian làm việc tiện ích chỉ được lưu trên thiết bị này và trong bản sao lưu .rtb, và tệp sao lưu .bin không có chỗ chứa chúng, nên chúng sẽ bị bỏ qua khỏi bản sao lưu này. Chúng vẫn ở trong ứng dụng này; chỉ bản sao lưu không có chúng. Bạn có muốn tạo bản sao lưu không có chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `${count} gói chủ đề chỉ được lưu trên thiết bị này, và tệp sao lưu không có chỗ chứa chúng cùng các tệp của chúng, nên chúng sẽ bị bỏ qua khỏi bản sao lưu này. Chúng vẫn ở trong ứng dụng này; chỉ bản sao lưu không có chúng. Bạn có muốn tạo bản sao lưu không có chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
-    "backupChroMemoryConfirm": "Bản sao lưu .bin không có chỗ chứa lựa chọn ChroMemory hay các cài đặt của nó, nên bản sao lưu này sẽ bỏ chúng ra. Thiết bị này vẫn giữ chúng, và các bản sao lưu .rtb có bao gồm chúng. Tạo bản sao lưu không có chúng?",
+    "backupChroMemoryConfirm": "Bản sao lưu .bin không có chỗ chứa lựa chọn ChroMemory, các cài đặt của nó hay dữ liệu tìm kiếm đã lưu của nó, nên bản sao lưu này sẽ bỏ chúng ra. Thiết bị này vẫn giữ chúng, và các bản sao lưu .rtb có bao gồm chúng. Tạo bản sao lưu không có chúng?",
     "backupChatDraftsConfirm": (drafts: number, hintChats: number) => `Bản sao lưu .bin không có chỗ chứa các chỉnh sửa tin nhắn chưa gửi hoặc các gợi ý cuộc trò chuyện dài đã hiển thị (${drafts} chỉnh sửa chưa gửi, ${hintChats} cuộc trò chuyện đã hiển thị gợi ý), nên bản sao lưu này sẽ bỏ chúng ra. Thiết bị này vẫn giữ chúng, và các bản sao lưu .rtb có bao gồm chúng. Tạo bản sao lưu không có chúng?`,
     "backupUsageStatsConfirm": "Bản sao lưu .bin không có chỗ chứa thống kê sử dụng hoặc giá mô hình bạn đã nhập, nên bản sao lưu này sẽ bỏ chúng ra. Thiết bị này vẫn giữ chúng, và các bản sao lưu .rtb có bao gồm chúng. Tạo bản sao lưu không có chúng?",
     "backupSaveWait": "Đang lưu bản sao lưu cục bộ...",
@@ -4612,7 +4612,7 @@ export const languageVietnamese = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- Dữ liệu mà bản sao lưu đã được tạo mà không có: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng chưa được khôi phục: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng không thể ghi đầy đủ: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "cuộc trò chuyện Iris", googleSearch: "khóa tìm kiếm Google", hypaVector: "dữ liệu tìm kiếm bộ nhớ", pluginSafe: "dữ liệu plugin", pluginSafeLs: "cài đặt plugin", pluginPermissions: "quyền của plugin", mcpToolCalls: "lệnh gọi công cụ MCP", uiPrefs: "tùy chọn giao diện", connectionKeys: "khóa kết nối" },
+    rtbRestoreSideNames: { iris: "cuộc trò chuyện Iris", googleSearch: "khóa tìm kiếm Google", hypaVector: "dữ liệu tìm kiếm bộ nhớ", pluginSafe: "dữ liệu plugin", pluginSafeLs: "cài đặt plugin", pluginPermissions: "quyền của plugin", mcpToolCalls: "lệnh gọi công cụ MCP", uiPrefs: "tùy chọn giao diện", connectionKeys: "khóa kết nối", chroMemoryVectors: "dữ liệu tìm kiếm ChroMemory" },
     rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `Khôi phục cài đặt trong bản sao lưu này? ${fields} cài đặt, ${presets} bộ cài đặt sẵn của bot, ${memoryPresets} bộ cài đặt sẵn của bộ nhớ và ${translatorPresets} bộ cài đặt sẵn của trình dịch mới sẽ được gộp vào thiết bị này. Cài đặt mà bản sao lưu không có sẽ được giữ nguyên. Nhân vật, cuộc trò chuyện, khóa và kết nối không bị động đến.${dropped > 0 ? ` ${dropped} giá trị trong bản sao lưu không thể dùng và bị bỏ qua.` : ''} Sau đó ứng dụng sẽ tải lại.`,
     rtbRestoreSettingsDone: "Đã khôi phục cài đặt. Ứng dụng sẽ tải lại ngay bây giờ.",

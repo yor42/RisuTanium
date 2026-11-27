@@ -7,8 +7,8 @@
 use crate::durable_write::is_temp_name;
 
 /// The directories under the data directory that the page's stores use.
-pub const STORE_DIRECTORIES: [&str; 9] =
-    ["assets", "inlays", "store2", "consent", "modeldata", "database", "blocks", "coldstorage", "remotes"];
+pub const STORE_DIRECTORIES: [&str; 10] =
+    ["assets", "inlays", "store2", "consent", "modeldata", "database", "blocks", "coldstorage", "remotes", "derived"];
 
 /// The store2 files that live directly under the data directory.
 pub const ROOT_FILES: [&str; 5] = ["store2-commit", "store2-sweep", "store2-fence", "store2-owner", "store2-gc-age"];
