@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { resetStart, resetEnd, NOTE9 } from './workflow-device-reset.mjs';
 import { main, registerDispatch, validateDispatch, mutateState, loadState, selectRoute } from './workflow-control.mjs';
 // The committed state snapshot is not the live state and may lag a policy revision; fixtures take the revision from the policy.
 const policyRevision = () => JSON.parse(fs.readFileSync(new URL('../workflow-policy.json', import.meta.url), 'utf8')).revision;
@@ -224,7 +225,8 @@ test('T15 release without a census marks the phone for reset; stranded and helpe
   const next = await acquire(root, 'r6'); assert.deepEqual([next.member, next.resetRequired, next.strandedPackages], [PHONE1, false, ['com.example.left']]);
   // A release that still owes its reset keeps the obligation even when it names a census file.
   await release(root, 'r4'); const dirty = await acquire(root, 'r7'); assert.equal(dirty.resetRequired, true);
-  await release(root, 'r7', census); assert.equal(leases(root).members[PHONE2].needsReset, true);
+  await assert.rejects(release(root, 'r7', census), /workflow-device-reset/);
+  await release(root, 'r7'); assert.equal(leases(root).members[PHONE2].needsReset, true);
 });
 test('T16 lock order is keyed on the ticket: a ticket holding a phone cannot take the build slot', async t => {
   const { root } = fixture(t);
@@ -257,6 +259,16 @@ test('T24 an expired lease cannot register a dispatch, count a device row, reset
   const rel = await release(root, 'l1', evidence('census2.txt'));
   assert.deepEqual([rel.status, rel.needsReset], ['expired', true]);
   assert.equal(leases(root).members[PHONE1].needsReset, true);
+});
+test('T29 release --clean while the reset is still owed is refused, names the helper, and leaves the lease granted', async t => {
+  const { root, evidence } = fixture(t);
+  await acquire(root, 'r1'); await acquire(root, 'r2'); expire(root, 'r1');
+  const g = await acquire(root, 'r3'); assert.equal(g.resetRequired, true);
+  const census = evidence('census.txt');
+  await assert.rejects(release(root, 'r3', census), /workflow-device-reset/);
+  assert.equal(leases(root).requests.r3.status, 'granted'); assert.equal(leases(root).members[PHONE1].needsReset, true);
+  await resetDone(root, 'r3', census);
+  assert.equal((await release(root, 'r3', census)).needsReset, false);
 });
 test('T25 release --clean needs an existing absolute file; a missing path leaves the phone marked for reset', async t => {
   const { root } = fixture(t);
@@ -338,4 +350,158 @@ test("T17 the committed standing list keeps the phone apps, has no duplicates an
   assert.deepEqual(s.filter(x => helper.test(x)), []);
   assert.deepEqual(pol.keepHelpers.map(k => k.package), ["dev.risu.dv603"]);
   assert.ok(pol.keepHelpers.every(k => helper.test(k.package) && k.note.length > 0));
+});
+
+// ---- #846: the one-step reset helper. The guard is a fake phone; no adb runs.
+const POLICY_DP = JSON.parse(fs.readFileSync(new URL('../workflow-policy.json', import.meta.url), 'utf8')).devicePool;
+const STANDING = POLICY_DP.standingPackages; const KEEP = POLICY_DP.keepHelpers[0].package;
+function phone(pkgs, { failOn = [], readbackCode = 0 } = {}) {
+  const d = { pkgs: new Set(pkgs), argv: [], mutations: [] };
+  d.guard = argv => {
+    d.argv.push(argv);
+    if (argv[0] === 'apk-readback') return { code: readbackCode, stdout: '', stderr: '' };
+    const args = argv.slice(argv.indexOf('--') + 1); const j = args.join(' ');
+    if (failOn.includes(j)) return { code: 1, stdout: '', stderr: '' };
+    if (j === 'shell pm list packages -3') return { code: 0, stdout: [...d.pkgs].map(n => `package:${n}\r\n`).join(''), stderr: '' };
+    d.mutations.push(j);
+    if (args[0] === 'uninstall') d.pkgs.delete(args[1]);
+    return { code: 0, stdout: 'Success', stderr: '' };
+  };
+  return d;
+}
+const guardCalls = d => d.argv.map(a => a.slice(a.indexOf('--') + 1).join(' '));
+const resetGrant = async (root, id = 'rs1') => { await acquire(root, 'old'); await acquire(root, 'hold'); await release(root, 'old'); const g = await acquire(root, id); assert.deepEqual([g.member, g.resetRequired], [PHONE1, true]); return g; };
+const hOpts = (root, id, d, extra = {}) => ({ root, request: id, token: tok(id), run: path.join(root, 'run'), guard: d.guard, ...extra });
+
+test('H1 start after a lapse: clear, remove only the helper, mark the vendor preinstall, census, reset-done; rows may count', async t => {
+  const { root } = fixture(t); await resetGrant(root);
+  const d = phone([...STANDING, 'dev.risu.old', KEEP, 'com.samsung.android.stranded']);
+  const out = resetStart(hOpts(root, 'rs1', d, { stranded: 'com.samsung.android.stranded' }));
+  assert.equal(out.status, 'ok'); assert.equal(out.resetDone, true);
+  assert.deepEqual(d.mutations, ['shell pm clear io.github.yor42.risutanium', 'uninstall dev.risu.old']);
+  assert.ok(d.pkgs.has(KEEP) && d.pkgs.has('com.samsung.android.stranded'));
+  for (const f of [out.census, out.evidence]) assert.ok(path.isAbsolute(f) && fs.existsSync(f) && f.startsWith(os.tmpdir()));
+  assert.ok(!fs.readFileSync(out.census, 'utf8').includes('dev.risu.old'));
+  assert.ok(!fs.readdirSync(path.join(root, 'run')).some(f => fs.readFileSync(path.join(root, 'run', f), 'utf8').includes(tok('rs1'))));
+  assert.equal(leases(root).members[PHONE1].needsReset, false); assert.deepEqual(leases(root).members[PHONE1].stranded, ['com.samsung.android.stranded']);
+  const claim = () => main(['device', '--root', root, '--claim', 'row-1', '--result', 'pass', '--evidence', 'x', '--lease', 'rs1', '--token', tok('rs1')]);
+  assert.equal((await claim()).closed, true);
+});
+test('H2 an unclassed package stops the start with nothing changed and the reset still owed', async t => {
+  const { root } = fixture(t); await resetGrant(root);
+  const d = phone([...STANDING, 'dev.risu.old', 'com.example.mystery']);
+  const out = resetStart(hOpts(root, 'rs1', d));
+  assert.equal(out.status, 'stop'); assert.match(out.reasons.join(), /com\.example\.mystery/);
+  assert.deepEqual(d.mutations, []); assert.ok(d.pkgs.has('dev.risu.old'));
+  assert.equal(leases(root).requests.rs1.resetRequired, true); assert.equal(leases(root).members[PHONE1].needsReset, true);
+  assert.ok(fs.existsSync(out.evidence));
+});
+test('H3 --stranded refuses helpers, standing apps, our own namespace and names the census does not hold, before any change', async t => {
+  const { root } = fixture(t); await resetGrant(root);
+  for (const bad of ['dev.risu.x', STANDING[0], 'io.github.yor42.other', 'not a package']) {
+    const d = phone([...STANDING]);
+    assert.throws(() => resetStart(hOpts(root, 'rs1', d, { stranded: bad })), /Cannot mark/, bad); assert.deepEqual(d.argv, []);
+  }
+  const d = phone([...STANDING]);
+  const out = resetStart(hOpts(root, 'rs1', d, { stranded: 'com.samsung.absent' }));
+  assert.equal(out.status, 'stop'); assert.deepEqual(d.mutations, []);
+});
+test('H4 a lapsed lease, a wrong token and a serial outside the two Note 9s are refused before any guard call', async t => {
+  const { root } = fixture(t); await resetGrant(root);
+  const d = phone([...STANDING]);
+  assert.throws(() => resetStart({ ...hOpts(root, 'rs1', d), token: tok('other') }), /another holder/);
+  for (const member of ['device:abcdef0123456789', 'device:emulator-5580', 'build:cargo']) {
+    mutateState(root, null, s => { s.deviceLeases.requests.rs1.member = member; });
+    assert.throws(() => resetStart(hOpts(root, 'rs1', d)), /Note 9 playground phone/, member);
+    assert.throws(() => resetEnd(hOpts(root, 'rs1', d)), /Note 9 playground phone/, member);
+  }
+  mutateState(root, null, s => { s.deviceLeases.requests.rs1.member = PHONE1; });
+  expire(root, 'rs1');
+  assert.throws(() => resetStart(hOpts(root, 'rs1', d)), /not live/); assert.throws(() => resetEnd(hOpts(root, 'rs1', d)), /not live/);
+  assert.deepEqual(d.argv, []);
+});
+test('H5 the helper drives the two Note 9 serials only, with guard calls from its fixed list only', async t => {
+  const { root } = fixture(t); await resetGrant(root);
+  const d = phone([...STANDING, 'dev.risu.old']);
+  resetStart(hOpts(root, 'rs1', d)); resetEnd(hOpts(root, 'rs1', d));
+  assert.ok(d.argv.length >= 4);
+  for (const argv of d.argv) assert.ok(NOTE9.includes(argv[argv.indexOf('--serial') + 1]));
+  const ok = [/^shell pm list packages -3$/, /^shell pm clear io\.github\.yor42\.risutanium$/, /^uninstall dev\.risu\.[a-z0-9_.]+$/, /^install -r \S+$/];
+  for (const c of guardCalls(d)) assert.ok(ok.some(r => r.test(c)), c);
+  const guardSrc = fs.readFileSync(new URL('../../Agents/Tools/device-guard/adbg.mjs', import.meta.url), 'utf8');
+  const guardSerials = [...guardSrc.matchAll(/PLAYGROUND_SERIALS\s*=\s*new Set\(\[([^\]]*)\]/g)].flatMap(m => [...m[1].matchAll(/'([0-9a-f]+)'/g)].map(x => x[1])).sort();
+  assert.deepEqual(guardSerials, [...NOTE9].sort());
+  assert.deepEqual(POLICY_DP.pools.note9.members.map(m => m.resource.replace('device:', '')).sort(), [...NOTE9].sort());
+});
+test('H6 a failed reset call or an unreadable census stops the start and marks nothing done', async t => {
+  for (const failOn of [['shell pm clear io.github.yor42.risutanium'], ['uninstall dev.risu.old']]) {
+    const { root } = fixture(t); await resetGrant(root);
+    const d = phone([...STANDING, 'dev.risu.old'], { failOn });
+    const out = resetStart(hOpts(root, 'rs1', d)); assert.equal(out.status, 'stop');
+    assert.equal(leases(root).requests.rs1.resetRequired, true);
+  }
+  const { root } = fixture(t); await resetGrant(root);
+  const d = phone([...STANDING]); const g = d.guard; d.guard = a => { const r = g(a); return a.includes('list') ? { ...r, stdout: 'package:ok.app\nWarning: odd line\n' } : r; };
+  assert.equal(resetStart(hOpts(root, 'rs1', d)).status, 'stop'); assert.deepEqual(d.mutations, []);
+});
+test('H7 --apk needs its hash, then installs and reads the hash back; a failed read-back stops', async t => {
+  const { root } = fixture(t); await resetGrant(root);
+  const apk = path.join(root, 'app.apk'); fs.writeFileSync(apk, 'synthetic apk'); const sha = crypto.createHash('sha256').update('synthetic apk').digest('hex');
+  assert.throws(() => resetStart(hOpts(root, 'rs1', phone([...STANDING]), { apk, apkSha256: 'a'.repeat(64) })), /does not match/);
+  assert.throws(() => resetStart(hOpts(root, 'rs1', phone([...STANDING]), { apk })), /go together/);
+  const bad = phone([...STANDING], { readbackCode: 1 });
+  assert.equal(resetStart(hOpts(root, 'rs1', bad, { apk, apkSha256: sha })).status, 'stop');
+  const d = phone([...STANDING]);
+  assert.equal(resetStart(hOpts(root, 'rs1', d, { apk, apkSha256: sha })).status, 'ok');
+  assert.deepEqual(d.mutations, ['shell pm clear io.github.yor42.risutanium', `install -r ${apk}`]);
+  assert.ok(d.argv.some(a => a[0] === 'apk-readback' && a.includes(sha)));
+});
+test('H8 a full run: start, a run-installed helper appears, end removes it and releases clean only on an equal census', async t => {
+  const { root } = fixture(t); await resetGrant(root);
+  const d = phone([...STANDING, KEEP, 'dev.risu.old']);
+  resetStart(hOpts(root, 'rs1', d)); d.pkgs.add('dev.risu.run1');
+  const out = resetEnd(hOpts(root, 'rs1', d));
+  assert.deepEqual([out.status, out.released, out.needsReset], ['ok', 'released', false]); assert.deepEqual(out.removedHelpers, ['dev.risu.run1']);
+  assert.equal(leases(root).requests.rs1.releaseCensus, out.census); assert.equal(leases(root).members[PHONE1].needsReset, false);
+  assert.equal((await acquire(root, 'next')).resetRequired, false);
+});
+test('H9 end refuses the clean release when the census differs, a package is unclassed, the baseline is absent or the reset was never done', async t => {
+  const cases = {
+    extra: d => d.pkgs.add('com.samsung.newthing'), unknown: d => d.pkgs.add('com.example.mystery'),
+    missing: d => d.pkgs.delete(STANDING[0]), failedUninstall: d => { d.pkgs.add('dev.risu.run1'); d.guardFail = true; },
+  };
+  for (const [name, mutate] of Object.entries(cases)) {
+    const { root } = fixture(t); await resetGrant(root);
+    const d = phone([...STANDING]); resetStart(hOpts(root, 'rs1', d)); mutate(d);
+    if (d.guardFail) { const g = d.guard; d.guard = a => a.includes('uninstall') ? { code: 1, stdout: '', stderr: '' } : g(a); }
+    const out = resetEnd(hOpts(root, 'rs1', d));
+    assert.deepEqual([out.status, out.needsReset], ['stop', true], name); assert.equal(leases(root).requests.rs1.releaseCensus, null, name);
+    assert.equal((await acquire(root, 'next')).resetRequired, true, name);
+  }
+  const { root } = fixture(t); await resetGrant(root);
+  const noStart = resetEnd(hOpts(root, 'rs1', phone([...STANDING])));
+  assert.deepEqual([noStart.status, noStart.needsReset], ['stop', true]); assert.match(noStart.reasons.join(), /still owes its reset/);
+  const { root: r2 } = fixture(t); await acquire(r2, 'plain');
+  const noBase = resetEnd(hOpts(r2, 'plain', phone([...STANDING]))); assert.match(noBase.reasons.join(), /no start baseline/); assert.equal(noBase.needsReset, true);
+});
+test('H10 the 2026-11-27 failure: a clean release straight after a lapse is refused and the helper path leaves the phone clean', async t => {
+  const { root, evidence } = fixture(t); await resetGrant(root);
+  await assert.rejects(release(root, 'rs1', evidence('end.txt')), /workflow-device-reset/);
+  const d = phone([...STANDING]); resetStart(hOpts(root, 'rs1', d));
+  assert.equal(resetEnd(hOpts(root, 'rs1', d)).needsReset, false);
+  assert.equal(leases(root).members[PHONE1].needsReset, false);
+});
+test('H11 an end run refuses a baseline that belongs to another request or phone', async t => {
+  for (const patch of [{ request: 'someone-else' }, { serial: NOTE9[1] }]) {
+    const { root } = fixture(t); await resetGrant(root);
+    const d = phone([...STANDING]); resetStart(hOpts(root, 'rs1', d));
+    const file = path.join(root, 'run', 'reset-state.json'); fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), ...patch }));
+    const out = resetEnd(hOpts(root, 'rs1', d)); assert.match(out.reasons.join(), /no start baseline/); assert.equal(out.needsReset, true);
+  }
+});
+test('H12 a run folder outside %TEMP% is refused before any guard call', async t => {
+  const { root } = fixture(t); await resetGrant(root);
+  const d = phone([...STANDING]); const outside = path.join(path.dirname(path.resolve(os.tmpdir())), 'risu-846-outside');
+  assert.throws(() => resetStart(hOpts(root, 'rs1', d, { run: outside })), /under %TEMP%/); assert.throws(() => resetEnd(hOpts(root, 'rs1', d, { run: outside })), /under %TEMP%/);
+  assert.deepEqual(d.argv, []); assert.ok(!fs.existsSync(outside));
 });
