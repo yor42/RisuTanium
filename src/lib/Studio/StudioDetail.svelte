@@ -136,6 +136,8 @@
     const moduleHtmlShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'html')
     const moduleFormMounted = $derived(moduleAdvancedFormLive || moduleHtmlFormLive || moduleAdvancedShared || moduleHtmlShared)
     const moduleAssetFormLive = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub && kindNode?.kind === 'display' && moduleRawId !== null && moduleSlotIndex !== null)
+    // The lorebook pane of a loaded owner's lore kind: the list while no entry is selected, the entry's form otherwise.
+    const lorePaneLive = $derived(owner !== undefined && !owner.restricted && !owner.stub && kindNode?.kind === 'lore' && (owner.type !== 'module' || openableModuleId !== null))
 
     const MODULE_KEY_PREFIX = ownerKeyOf('module', '')
 
@@ -256,16 +258,16 @@
             {/if}
             {#if kindNode}
                 <p data-part="studio-detail-kind" class="font-bold">{kindLabelOf(kindNode.kind)}</p>
-                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive && !toggleBuilderLive && !moduleFormMounted && !charHtmlFormLive}
+                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive && !toggleBuilderLive && !moduleFormMounted && !lorePaneLive && !charHtmlFormLive}
                     <p class="text-textcolor2">{language.studioEmptyKind}</p>
-                {:else if kindNode.kind === 'lore' || kindNode.kind === 'regex'}
+                {:else if (kindNode.kind === 'lore' && !lorePaneLive) || kindNode.kind === 'regex'}
                     <p class="text-textcolor2">{language.studioItemCount(kindNode.count)}</p>
                 {/if}
             {/if}
-            {#if item}
+            {#if item && !lorePaneLive}
                 <p data-part="studio-detail-item" class="break-words font-bold">{itemLabelOf(item)}</p>
             {/if}
-            {#if itemText && !toggleBuilderLive && !moduleFormMounted && !presetAdvancedFormLive && !charHtmlFormLive}
+            {#if itemText && !toggleBuilderLive && !moduleFormMounted && !presetAdvancedFormLive && !lorePaneLive && !charHtmlFormLive}
                 <pre data-part="studio-detail-text" class="whitespace-pre-wrap break-words rounded-md border border-darkborderc bg-darkbg p-3 font-sans">{itemText.shown}</pre>
                 {#if itemText.cut}
                     <p data-part="studio-detail-truncated" class="text-sm text-textcolor2">{language.studioTruncated(DETAIL_TEXT_LIMIT)}</p>
@@ -339,6 +341,16 @@
                         <PresetForm presetId={studioScreen.selectedPresetId} />
                     {:catch}
                         <p role="alert" data-part="studio-preset-form-load-failed" class="text-sm text-draculared">{language.error}</p>
+                    {/await}
+                {/key}
+            {:else if lorePaneLive && (owner.type === 'character' || owner.type === 'chat' || owner.type === 'module')}
+                <!-- Keyed by the owner: another owner builds the pane again, with its own views, tokens and folder state. Loaded on first use: the pane reaches the alert and help layers, which no other detail form needs. -->
+                {#key ownerKey}
+                    {#await import('./StudioLorePane.svelte') then loaded}
+                        {@const LorePane = loaded.default}
+                        <LorePane ownerType={owner.type} ownerId={owner.id} chaId={studioScreen.chaId} moduleId={moduleRawId} {moduleSlotIndex} moduleShared={moduleIdShared} itemId={studioScreen.selectedItemId} />
+                    {:catch}
+                        <p role="alert" data-part="studio-lore-pane-load-failed" class="text-sm text-draculared">{language.error}</p>
                     {/await}
                 {/key}
             {:else if !toggleBuilderLive}

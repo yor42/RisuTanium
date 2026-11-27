@@ -154,6 +154,15 @@ describe('T-UI5 the Undo action', () => {
         expect(host.visible.map((toast) => [toast.kind, toast.text, toast.actionLabel])).toEqual([['success', 'studioToastRestored', undefined]])
     })
 
+    test('a post with its own success text shows that text after Undo, and a post without one keeps the greeting text', async () => {
+        const { service } = serviceReturning({ ok: true })
+        const toasts = createStudioToasts({ service: () => service, host })
+        await host.activate(toasts.postDeleted(A, 'd1', 'lore deleted', 'lore restored'))
+        expect(host.visible.map((toast) => [toast.kind, toast.text])).toEqual([['success', 'lore restored']])
+        await host.activate(toasts.postDeleted(A, 'd2'))
+        expect(host.visible.map((toast) => toast.text)).toContain('studioToastRestored')
+    })
+
     test('a restored greeting on a chat without an id says the default first message shows again', async () => {
         const { service } = serviceReturning({ ok: true, fmNotRestored: true })
         const toasts = createStudioToasts({ service: () => service, host })

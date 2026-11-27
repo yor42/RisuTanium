@@ -55,6 +55,8 @@ vi.mock('../../ts/process/moduleRefList', () => ({
     moduleRefIdsOf: () => db.db.modules.map((row) => row.id),
 }))
 vi.mock('../../ts/process/moduleLoader', () => ({ loadModuleStubsOf: async () => ({ kind: 'refused' }), loadModule: async () => null }))
+vi.mock('../../ts/process/moduleLorebookRepair', () => ({ lorebookRepairNeed: () => 'none' }))
+vi.mock('../../ts/alert', () => ({ alertMd: vi.fn() }))
 vi.mock('../../lang', async () => {
     const helpers = await import('../../ts/studio/studioFixtures.test-helpers')
     const base = helpers.studioLanguageMock()
@@ -103,6 +105,9 @@ function show(): void {
 const part = (name: string) => document.querySelector<HTMLElement>(`[data-part="${name}"]`)
 const loreItem = (index: number) => `cha-1/lore:${index}`
 const loreTarget = (index: number) => ({ owner: { type: 'character', id: 'cha-1' }, kind: 'lore', item: loreItem(index), from: 'chat' }) as const
+// The scripts kind reads as its Lua code and still shows the plain read-only text view, so it carries the tests of that view.
+const scriptsTarget = { owner: { type: 'character', id: 'cha-1' }, kind: 'scripts', item: 'cha-1/scripts:0', from: 'chat' } as const
+const luaOf = (code: string) => [{ effect: [{ type: 'triggerlua', code }] }]
 
 // The history service and the visit's ack are stand-ins here: this suite is about what the detail mounts, and the
 // forms have their own suite over the real service.
@@ -155,8 +160,8 @@ afterEach(async () => {
 
 describe('4d item text is plain text', () => {
     test('markup in an item name renders as characters, never as elements', () => {
-        setDb({ globalLore: [loreBody('Castle', MARKUP)] })
-        openStudio(loreTarget(0), null)
+        setDb({ triggerscript: luaOf(MARKUP) })
+        openStudio(scriptsTarget, null)
         show()
         const text = part('studio-detail-text')
         expect(text?.textContent).toBe(MARKUP)
@@ -167,24 +172,24 @@ describe('4d item text is plain text', () => {
     })
 
     test('text longer than 2000 characters is cut with a notice', () => {
-        setDb({ globalLore: [loreBody('Castle', 'x'.repeat(2500))] })
-        openStudio(loreTarget(0), null)
+        setDb({ triggerscript: luaOf('x'.repeat(2500)) })
+        openStudio(scriptsTarget, null)
         show()
         expect(part('studio-detail-text')?.textContent?.length).toBe(2000)
         expect(part('studio-detail-truncated')?.textContent).toBe('studioTruncated(2000)')
     })
 
     test('text of exactly 2000 characters is shown whole', () => {
-        setDb({ globalLore: [loreBody('Castle', 'y'.repeat(2000))] })
-        openStudio(loreTarget(0), null)
+        setDb({ triggerscript: luaOf('y'.repeat(2000)) })
+        openStudio(scriptsTarget, null)
         show()
         expect(part('studio-detail-text')?.textContent?.length).toBe(2000)
         expect(part('studio-detail-truncated')).toBeNull()
     })
 
     test('the cut does not split a surrogate pair', () => {
-        setDb({ globalLore: [loreBody('Castle', `${'a'.repeat(1999)}\u{1F600}${'b'.repeat(10)}`)] })
-        openStudio(loreTarget(0), null)
+        setDb({ triggerscript: luaOf(`${'a'.repeat(1999)}\u{1F600}${'b'.repeat(10)}`) })
+        openStudio(scriptsTarget, null)
         show()
         const shown = part('studio-detail-text')?.textContent ?? ''
         expect(shown).toBe('a'.repeat(1999))
@@ -219,7 +224,6 @@ describe('4d text of each kind of the bound character', () => {
     })
 
     const cases: [string, string, string[]][] = [
-        ['lore', 'cha-1/lore:0', ['LORE-BODY']],
         ['regex', 'cha-1/regex:0', ['IN-PATTERN', 'OUT-TEXT']],
         ['scripts', 'cha-1/scripts:0', ['print("lua-body")']],
         ['html', 'cha-1/html:0', ['<div>BACKGROUND</div>']],
@@ -246,6 +250,20 @@ describe('4d text of each kind of the bound character', () => {
         expect(part('studio-detail-classic')).not.toBeNull()
     })
 
+    // A lore item is no longer read-only text: it opens its form (loaded on first use), which carries the content.
+    test('lore opens its form with its content, not the text view', async () => {
+        setFull(makeInput({ character: character() }))
+        openStudio(ownerItem('character', 'cha-1', 'lore', 'cha-1/lore:0'), null)
+        show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
+        expect(part('studio-lore-form')).not.toBeNull()
+        expect(part('studio-detail-text')).toBeNull()
+        expect(part('studio-detail-readonly')).toBeNull()
+        expect(Array.from(document.querySelectorAll('textarea')).map((field) => field.value)).toContain('LORE-BODY')
+    })
+
     test('a trigger list that is not Lua shows its definition as text', () => {
         setFull(makeInput({ character: makeCharacter({ triggerscript: v2Scripts, chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }) }))
         openStudio(ownerItem('character', 'cha-1', 'scripts', 'cha-1/scripts:0'), null)
@@ -266,26 +284,33 @@ describe('4d text of each kind of the bound character', () => {
     test('reading the text writes nothing', () => {
         setFull(makeInput({ character: character() }))
         const before = JSON.stringify(db.db)
-        openStudio(ownerItem('character', 'cha-1', 'lore', 'cha-1/lore:0'), null)
+        openStudio(ownerItem('character', 'cha-1', 'regex', 'cha-1/regex:0'), null)
         show()
         expect(JSON.stringify(db.db)).toBe(before)
     })
 })
 
 describe('4d text of the chat, a resident module and a preset', () => {
-    test('the chat lore shows its content', () => {
+    // A chat has only the lore kind, and a lore item opens its form (loaded on first use), which carries the content.
+    test('the chat lore opens its form with its content', async () => {
         setFull(makeInput({
             character: makeCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat', localLore: [chatLore('CHAT-LORE-BODY')] })] }),
         }))
         openStudio(ownerItem('chat', 'chat-1', 'lore', 'chat-1/lore:0'), null)
         show()
-        expect(part('studio-detail-text')?.textContent).toContain('CHAT-LORE-BODY')
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
+        expect(part('studio-lore-form')).not.toBeNull()
+        expect(part('studio-detail-text')).toBeNull()
+        expect(Array.from(document.querySelectorAll('textarea')).map((field) => field.value)).toContain('CHAT-LORE-BODY')
     })
 
     const moduleCases: [string, string, string][] = [
-        ['lore', 'res/lore:0', 'MODULE-LORE'],
         ['regex', 'res/regex:0', 'MODULE-IN'],
         ['scripts', 'res/scripts:0', 'module-lua'],
+        // The replacement half of the same regex entry.
+        ['regex', 'res/regex:0', 'MODULE-OUT'],
     ]
 
     test.each(moduleCases)('a resident module %s shows its text', (kind, itemId, expected) => {
@@ -533,8 +558,8 @@ describe('the live forms and the save chip in the detail', () => {
     })
 
     test('other kinds of the character and the bare character keep the read-only note and have no form', () => {
-        setDb({ globalLore: [loreBody('Castle', 'LORE-BODY')] })
-        openStudio(loreTarget(0), null)
+        setDb({ customscript: [regexBody('Fix', 'IN-PATTERN', 'OUT-TEXT')] })
+        openStudio(ownerItem('character', 'cha-1', 'regex', 'cha-1/regex:0'), null)
         show()
         flushSync()
         expect(part('studio-character-form')).toBeNull()
@@ -559,10 +584,13 @@ describe('the live forms and the save chip in the detail', () => {
         host?.remove()
         openStudio(ownerItem('chat', 'chat-1', 'lore', 'chat-1/lore:0'), null)
         show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
         flushSync()
+        // The chat's lore item opens the lore form in its own pane: no note form and no read-only note.
+        expect(part('studio-lore-form')).not.toBeNull()
         expect(part('studio-chat-note-form')).toBeNull()
-        expect(part('studio-chip')).toBeNull()
-        expect(part('studio-detail-readonly')).not.toBeNull()
+        expect(part('studio-detail-readonly')).toBeNull()
     })
 
     test('a private character gets no form, no chip and no history owner', () => {
