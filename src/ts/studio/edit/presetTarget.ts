@@ -5,13 +5,14 @@
 // reorder, a switch or a delete between two calls cannot send a value to the wrong copy. The table that names the
 // properties and the absent rules is presetFields.ts.
 // The history of this owner is memory-only, so nothing here marks a save beyond what the database write hook
-// already reports for the assignments below.
+// already reports for the assignments below. A landed edit is forwarded to the preset's save chip by `noteEdit`.
 
 import { DBState } from '../../stores.svelte'
 import type { botPreset } from '../../storage/database.svelte'
 import type { FieldValue, LiveReader, WriteOp } from '../history/historyModel'
 import { sessionOwnerKey } from '../history/ownerPhase'
 import { cloneValue, valueMatchesKind, valuesEqual } from '../history/fieldAccess'
+import { notePresetEdit } from './presetAck.svelte'
 import { freshPresetContainerSeed, isPresetContainerName, isPresetPath, PRESET_FIELDS, type PresetFieldSpec, type PresetPath } from './presetFields'
 import type { SessionOwnerAdapter } from './sessionAdapters'
 
@@ -265,4 +266,5 @@ export const presetAdapter: SessionOwnerAdapter = {
         }
         return true
     },
+    noteEdit: notePresetEdit,
 }
