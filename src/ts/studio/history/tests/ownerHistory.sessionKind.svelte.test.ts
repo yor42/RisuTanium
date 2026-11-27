@@ -198,7 +198,7 @@ describe('T-K1: Rule K for a session kind', () => {
         const set = (path: string) => ({ op: 'set', path, before: { had: false }, after: { had: false } }) as never
         expect(isOpAllowedFor('probe' as never, set('customModuleToggle'))).toBe(true)
         expect(isOpAllowedFor('probe' as never, set('desc'))).toBe(false)
-        for (const op of ['listSet', 'listInsert', 'listRemove', 'chatFm', 'assetRowRemove', 'assetRowInsert', 'assetRowSet', 'assetFolderSet', 'assetFolderOrder', 'textEdit']) {
+        for (const op of ['listSet', 'listInsert', 'listRemove', 'chatFm', 'assetRowRemove', 'assetRowInsert', 'assetRowSet', 'assetFolderSet', 'assetFolderOrder', 'textEdit', 'portraitSet']) {
             expect(isOpAllowedFor('probe' as never, { op } as never), op).toBe(false)
         }
     })

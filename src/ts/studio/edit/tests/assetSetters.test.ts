@@ -188,6 +188,39 @@ describe('the removal check and the survivor rule', () => {
         expect(touchesAssets([{ op: 'textEdit', target: 'desc', offset: 0, from: 'a', to: 'b' }])).toBe(false)
     })
 
+    // B-T11 (portrait part): only a portrait op that takes a stored file out of the portrait is removal-type, and every
+    // portrait op touches the assets so the retained field follows it.
+    describe('a portraitSet op', () => {
+        const stored = (letter: string): string => `assets/${letter.repeat(64)}.png`
+        const value = (image: string, rows: string[]): Extract<Op, { op: 'portraitSet' }>['before'] => ({
+            image: { had: true, value: image },
+            alternates: { had: true, rows: rows.map((uri) => ({ type: 'icon', name: 'iconx', uri, ext: 'png' })) },
+        })
+        const add: Op = { op: 'portraitSet', before: value(stored('m'), []), after: value(stored('n'), [stored('m')]) }
+        const removeMain: Op = { op: 'portraitSet', before: value(stored('n'), [stored('m')]), after: value(stored('m'), []) }
+        const swap: Op = { op: 'portraitSet', before: value(stored('n'), [stored('m')]), after: value(stored('m'), [stored('n')]) }
+        const foreign: Op = { op: 'portraitSet', before: value('https://x.test/a.png', []), after: value('', []) }
+
+        test('is removal-type only when a stored file leaves the portrait', () => {
+            expect(removesAssetRow([removeMain])).toBe(true)
+            expect(removesAssetRow([add])).toBe(false)
+            expect(removesAssetRow([swap])).toBe(false)
+            expect(removesAssetRow([foreign])).toBe(false)
+            expect(removesAssetRow([invertOp(add)])).toBe(true)
+        })
+
+        test('always touches the assets, and is ranked with the rows before the folder entries and the rest', () => {
+            for (const op of [add, removeMain, swap, foreign]) {
+                expect(touchesAssets([op]), op.op).toBe(true)
+            }
+            const text: WriteOp = { op: 'textSet', target: 'lore/0/content', value: 'b' }
+            const folderSet: WriteOp = { op: 'assetFolderSet', name: 'a', before: { had: false }, after: { had: true, value: 'F' } }
+            const row: WriteOp = { op: 'assetRowInsert', array: 'additionalAssets', index: 0, tuple: SMILE, count: 0 }
+            const portrait = add as WriteOp
+            expect(orderAssetWrites([text, folderSet, portrait, row])).toEqual([portrait, row, folderSet, text])
+        })
+    })
+
     test('a row needs a survivor with an equal path or an equal cached hash', () => {
         const none = { hashOf: () => undefined }
         expect(everyRemovalHasSurvivor([SMILE], [[...SMILE_TWIN]], none)).toBe(true)

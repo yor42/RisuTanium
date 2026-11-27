@@ -1,0 +1,326 @@
+{
+  "ownerKey": "character:A",
+  "touchedAt": 301000,
+  "done": [
+    {
+      "id": "p1:1",
+      "at": 1000,
+      "label": {
+        "kind": "portraitAdd"
+      },
+      "ops": [
+        {
+          "op": "portraitSet",
+          "before": {
+            "image": {
+              "had": true,
+              "value": "assets/mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm.png"
+            },
+            "alternates": {
+              "had": true,
+              "rows": [
+                {
+                  "type": "icon",
+                  "uri": "assets/pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp.png",
+                  "name": "iconx",
+                  "ext": "png"
+                }
+              ]
+            }
+          },
+          "after": {
+            "image": {
+              "had": true,
+              "value": "assets/nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn.png"
+            },
+            "alternates": {
+              "had": true,
+              "rows": [
+                {
+                  "type": "icon",
+                  "uri": "assets/pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "name": "iconx",
+                  "uri": "assets/mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm.png",
+                  "ext": "png"
+                }
+              ]
+            }
+          },
+          "pngExif": {
+            "before": {
+              "had": true,
+              "value": {
+                "Title": "old"
+              }
+            },
+            "after": {
+              "had": true,
+              "value": {
+                "Title": "new",
+                "Comment": "c"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:2",
+      "at": 61000,
+      "label": {
+        "kind": "portraitAdd"
+      },
+      "ops": [
+        {
+          "op": "portraitSet",
+          "before": {
+            "image": {
+              "had": true,
+              "value": "assets/nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn.png"
+            },
+            "alternates": {
+              "had": true,
+              "rows": [
+                {
+                  "type": "icon",
+                  "uri": "assets/pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "uri": "assets/mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm.png",
+                  "name": "iconx",
+                  "ext": "png"
+                }
+              ]
+            }
+          },
+          "after": {
+            "image": {
+              "had": true,
+              "value": "assets/qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq.png"
+            },
+            "alternates": {
+              "had": true,
+              "rows": [
+                {
+                  "type": "icon",
+                  "uri": "assets/pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "uri": "assets/mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "name": "iconx",
+                  "uri": "assets/nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn.png",
+                  "ext": "png"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:3",
+      "at": 121000,
+      "label": {
+        "kind": "portraitMain"
+      },
+      "ops": [
+        {
+          "op": "portraitSet",
+          "before": {
+            "image": {
+              "had": true,
+              "value": "assets/qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq.png"
+            },
+            "alternates": {
+              "had": true,
+              "rows": [
+                {
+                  "type": "icon",
+                  "uri": "assets/pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "uri": "assets/mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "uri": "assets/nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn.png",
+                  "name": "iconx",
+                  "ext": "png"
+                }
+              ]
+            }
+          },
+          "after": {
+            "image": {
+              "had": true,
+              "value": "assets/pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp.png"
+            },
+            "alternates": {
+              "had": true,
+              "rows": [
+                {
+                  "type": "icon",
+                  "uri": "assets/mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "uri": "assets/nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "name": "iconx",
+                  "uri": "assets/qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq.png",
+                  "ext": "png"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:4",
+      "at": 181000,
+      "label": {
+        "kind": "portraitRemove"
+      },
+      "ops": [
+        {
+          "op": "portraitSet",
+          "before": {
+            "image": {
+              "had": true,
+              "value": "assets/pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp.png"
+            },
+            "alternates": {
+              "had": true,
+              "rows": [
+                {
+                  "type": "icon",
+                  "uri": "assets/mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "uri": "assets/nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "uri": "assets/qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq.png",
+                  "name": "iconx",
+                  "ext": "png"
+                }
+              ]
+            }
+          },
+          "after": {
+            "image": {
+              "had": true,
+              "value": "assets/pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp.png"
+            },
+            "alternates": {
+              "had": true,
+              "rows": [
+                {
+                  "type": "icon",
+                  "uri": "assets/mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "uri": "assets/qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq.png",
+                  "name": "iconx",
+                  "ext": "png"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1:5",
+      "at": 241000,
+      "label": {
+        "kind": "portraitRemove"
+      },
+      "ops": [
+        {
+          "op": "portraitSet",
+          "before": {
+            "image": {
+              "had": true,
+              "value": "assets/pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp.png"
+            },
+            "alternates": {
+              "had": true,
+              "rows": [
+                {
+                  "type": "icon",
+                  "uri": "assets/mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm.png",
+                  "name": "iconx",
+                  "ext": "png"
+                },
+                {
+                  "type": "icon",
+                  "uri": "assets/qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq.png",
+                  "name": "iconx",
+                  "ext": "png"
+                }
+              ]
+            }
+          },
+          "after": {
+            "image": {
+              "had": true,
+              "value": "assets/mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm.png"
+            },
+            "alternates": {
+              "had": true,
+              "rows": [
+                {
+                  "type": "icon",
+                  "uri": "assets/qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq.png",
+                  "name": "iconx",
+                  "ext": "png"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "undone": [],
+  "deleted": [],
+  "restore": null
+}

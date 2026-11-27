@@ -182,7 +182,7 @@ describe('T2: edits land in the live copy', () => {
         const set = (path: string) => ({ op: 'set', path, before: { had: false }, after: { had: false } }) as never
         expect(isOpAllowedFor('preset', set(PATH))).toBe(true)
         expect(isOpAllowedFor('preset', set('desc'))).toBe(false)
-        for (const op of ['listSet', 'listInsert', 'listRemove', 'chatFm', 'assetRowRemove', 'assetRowInsert', 'assetRowSet', 'assetFolderSet', 'assetFolderOrder', 'textEdit']) {
+        for (const op of ['listSet', 'listInsert', 'listRemove', 'chatFm', 'assetRowRemove', 'assetRowInsert', 'assetRowSet', 'assetFolderSet', 'assetFolderOrder', 'textEdit', 'portraitSet']) {
             expect(isOpAllowedFor('preset', { op } as never), op).toBe(false)
         }
     })

@@ -8,7 +8,7 @@ import type { HashCache } from '../assets/assetHashJob'
 import type { AssetArrayName, MergePreview } from '../assets/mergePreview'
 import { spliceTextEdits, type TextEdit } from '../assets/referenceRewrite'
 import { parseTargetPath } from '../assets/referenceTargets'
-import type { LiveReader, Op, Step, StepLabel, WriteOp } from '../history/historyModel'
+import { portraitPathsRemoved, type LiveReader, type Op, type Step, type StepLabel, type WriteOp } from '../history/historyModel'
 import { stepPathPairs } from '../history/retainedPaths'
 
 export type AssetBuildResult =
@@ -340,20 +340,23 @@ export function buildFolderReorder(order: readonly string[], live: LiveReader): 
 // True when the forward ops remove a row from the list or move a row to another file: the writes after which a
 // file may be left unreferenced, and so the ones that need a working undo.
 export function removesAssetRow(forwardOps: readonly (Op | WriteOp)[]): boolean {
-    return forwardOps.some((op) => op.op === 'assetRowRemove' || (op.op === 'assetRowSet' && op.before[1] !== op.after[1]))
+    return forwardOps.some(
+        (op) => op.op === 'assetRowRemove' || (op.op === 'assetRowSet' && op.before[1] !== op.after[1]) || (op.op === 'portraitSet' && portraitPathsRemoved(op).length > 0),
+    )
 }
 
 // Whether the write changes any asset list or folder document, so the retained paths follow it.
 export function touchesAssets(forwardOps: readonly (Op | WriteOp)[]): boolean {
     return forwardOps.some(
-        (op) => op.op === 'assetRowRemove' || op.op === 'assetRowInsert' || op.op === 'assetRowSet' || op.op === 'assetFolderSet' || op.op === 'assetFolderOrder',
+        (op) => op.op === 'assetRowRemove' || op.op === 'assetRowInsert' || op.op === 'assetRowSet' || op.op === 'assetFolderSet' || op.op === 'assetFolderOrder' || op.op === 'portraitSet',
     )
 }
 
-// Rows first, then folder entries, then the rest (text, fields, lists), each group in the plan's order.
+// Rows first (a portrait write is one of them), then folder entries, then the rest (text, fields, lists), each group in the
+// plan's order.
 export function orderAssetWrites(writes: readonly WriteOp[]): WriteOp[] {
     const rank = (write: WriteOp): number =>
-        write.op === 'assetRowRemove' || write.op === 'assetRowInsert' || write.op === 'assetRowSet' ? 0 : write.op === 'assetFolderSet' || write.op === 'assetFolderOrder' ? 1 : 2
+        write.op === 'assetRowRemove' || write.op === 'assetRowInsert' || write.op === 'assetRowSet' || write.op === 'portraitSet' ? 0 : write.op === 'assetFolderSet' || write.op === 'assetFolderOrder' ? 1 : 2
     return [0, 1, 2].flatMap((group) => writes.filter((write) => rank(write) === group))
 }
 

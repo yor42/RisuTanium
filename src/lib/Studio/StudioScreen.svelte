@@ -9,7 +9,7 @@
     import { studioLayoutOf } from '../../ts/studio/studioLayout'
     import { askRiskyTurnOn, cancelRiskyQuestion, cancelRiskyQuestionIfMoved, riskyQuestion } from '../../ts/studio/edit/riskyConfirm.svelte'
     import { pinnedDesc, withRiskyConfirm } from '../../ts/studio/edit/riskyReplay'
-    import { createStudioToasts, refusalTextOf, runDismissingConsumed, withListReason } from '../../ts/studio/edit/studioToasts'
+    import { createStudioToasts, goneFileText, refusalTextOf, runDismissingConsumed, withListReason } from '../../ts/studio/edit/studioToasts'
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import type { OwnerKey } from '../../ts/studio/history/ownerPhase'
     import { getStudioHistoryService, noteStudioInput } from '../../ts/studio/history/studioHistoryService.svelte'
@@ -188,9 +188,10 @@
         // dropped without a write. A gone file comes first, because it is the reason a step was dropped; the places a merge
         // undo left follow it, and only an undo says them (a redo of a merge shows nothing of its own). A queued replay
         // that finds nothing left to replay says nothing: the key was already taken.
+        const goneText = result.ok ? goneFileText(result) : null
         if (result.ok === false) {
             if (result.reason !== 'empty') setStudioNotice(refusalTextOf(result))
-        } else if (result.goneRows !== undefined && result.goneRows.length > 0) setStudioNotice(language.studioAssetFileGone(result.goneName ?? result.goneRows[0]))
+        } else if (goneText !== null) setStudioNotice(goneText)
         else if (direction === 'undo' && result.notRestored !== undefined && result.notRestored.length > 0) setStudioNotRestoredNotice(owner, language.studioAssetNotRestored(result.notRestored.length), result.notRestored)
         else if (result.already === 'undo') setStudioNotice(withListReason(language.studioHistoryAlreadyUndone, result.listReason))
         else if (result.already === 'redo') setStudioNotice(withListReason(language.studioHistoryAlreadyRedone, result.listReason))

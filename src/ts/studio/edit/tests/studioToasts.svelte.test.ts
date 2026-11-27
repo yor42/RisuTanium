@@ -13,7 +13,7 @@ import { createOwnerHistoryService, REPLAY_BUDGET_MS, type OwnerHistoryService, 
 import { characterOwnerKey, moduleOwnerKey, SAVE_DEBOUNCE_MS } from '../../history/ownerPhase'
 import { createFakeClock, drainMicrotasks } from '../../history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../history/tests/studioStoreDoubles'
-import { createStudioToasts, listReasonText, refusalText, refusalTextOf, resetStudioToastsForTests, retireAssetToasts, runDismissingConsumed, withListReason, type StudioToasts } from '../studioToasts'
+import { createStudioToasts, goneFileText, listReasonText, refusalText, refusalTextOf, resetStudioToastsForTests, retireAssetToasts, runDismissingConsumed, withListReason, type StudioToasts } from '../studioToasts'
 
 const h = vi.hoisted(() => ({ marks: 0 }))
 
@@ -558,6 +558,22 @@ describe('the asset Undo toast runs through the replay queue', () => {
         expect(fixture.service.view(A).done).toHaveLength(0)
     })
 
+    // B-T14 (toast site): a removed main photo whose file is gone says the portrait sentence, with no row name and no path.
+    test('Undo of a removed main photo whose file is gone says the portrait file is gone, leaves the portrait as it is and drops the step', async () => {
+        const main = 'assets/' + 'm'.repeat(64) + '.png'
+        Object.assign(DBState.db.characters[0], { image: main, ccAssets: [] })
+        const fixture = await setup()
+        const result = fixture.service.portraitRemove(A, 'main')
+        if (result.ok === false || result.stepId === undefined) {
+            throw new Error('the removal did not land')
+        }
+        fixture.toasts.postAssetAction(A, result.stepId, 'Removed the photo')
+        fixture.files.gone.add(main)
+        expect(await fixture.run()).toEqual({ ok: true, text: 'studioPortraitFileGone' })
+        expect((DBState.db.characters[0] as unknown as { image: string }).image).toBe('')
+        expect(fixture.service.view(A).done).toHaveLength(0)
+    })
+
     test('Undo with a file that could not be checked says so, names the row and changes nothing', async () => {
         const fixture = await setup()
         deleteGrinWithToast(fixture)
@@ -646,6 +662,23 @@ describe('T-RT refusalTextOf names a module only for a module owner', () => {
         expect(refusalText('not-selected')).toBe('studioRefusalNotSelected')
         expect(refusalText('gone')).toBe('studioRefusalGone')
         expect(refusalText('duplicate-module-id')).toBe('studioAssetModuleSharedId')
+    })
+})
+
+describe('goneFileText: the one line a gone file is said in, for every place that says it', () => {
+    test('a row names itself, by the replayed name first and its path otherwise', () => {
+        expect(goneFileText({ goneRows: ['assets/a.png'], goneName: 'grin' })).toBe('studioAssetFileGone(grin)')
+        expect(goneFileText({ goneRows: ['assets/a.png'] })).toBe('studioAssetFileGone(assets/a.png)')
+    })
+
+    test('a portrait file says its own sentence, which names neither a row nor a path', () => {
+        expect(goneFileText({ goneRows: ['assets/a.png'], goneName: 'assets/a.png', goneKind: 'portrait' })).toBe('studioPortraitFileGone')
+    })
+
+    test('nothing gone says nothing', () => {
+        expect(goneFileText({})).toBeNull()
+        expect(goneFileText({ goneRows: [] })).toBeNull()
+        expect(goneFileText({ goneKind: 'portrait' })).toBeNull()
     })
 })
 

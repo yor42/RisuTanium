@@ -3,7 +3,7 @@
 // step object) and an owner's set is kept up to date by diffing the step set by identity, so a call after
 // one new step costs that step, not the whole history.
 
-import type { OwnerRecord, Step } from './historyModel'
+import { portraitPathNames, type OwnerRecord, type Step } from './historyModel'
 
 // A step's named paths, each with the name of the first op that names it: `[name, path]`, in first-named order.
 export type PathPair = readonly [string, string]
@@ -15,8 +15,9 @@ interface StepPaths {
 
 const pathsOfStep = new WeakMap<Step, StepPaths>()
 
-// The path of a row is its second element. Every asset op names at least one; nothing else names one. This is the one
-// walk of "the paths a step names": the unsettled filter, the retained recompute and the toast's row name all read it.
+// The path of a row is its second element. Every asset op names at least one, and a portrait op names the stored files it
+// adds or removes; nothing else names one. This is the one walk of
+// "the paths a step names": the unsettled filter, the retained recompute and the toast's row name all read it.
 function stepPathsOf(step: Step): StepPaths {
     const known = pathsOfStep.get(step)
     if (known) {
@@ -34,6 +35,14 @@ function stepPathsOf(step: Step): StepPaths {
         } else if (op.op === 'assetRowSet') {
             note(op.before)
             note(op.after)
+        } else if (op.op === 'portraitSet') {
+            // Only the stored files a portrait step adds or removes: a path that stays in the portrait is not at risk, and
+            // a non-store string is never copied into the retained field.
+            for (const [path, name] of portraitPathNames(op)) {
+                if (!found.has(path)) {
+                    found.set(path, name)
+                }
+            }
         }
     }
     const paths = [...found.keys()]

@@ -12,6 +12,7 @@
     import { DBState } from '../../ts/stores.svelte'
     import StudioAssetList, { type EnabledModuleAssets } from './assets/StudioAssetList.svelte'
     import StudioDisplayScreen, { type ScreenFill } from './StudioDisplayScreen.svelte'
+    import StudioPortraitSection from './StudioPortraitSection.svelte'
 
     // The Display form of the selected character: three segments (portrait, screen, assets) over one history service.
     // Every edit goes through the service, which writes the live character, marks it for saving and records the step.
@@ -185,6 +186,7 @@
 
         <div role="tabpanel" data-part="studio-display-panel" data-seg="photo" hidden={segment !== 'photo'} class="flex flex-col gap-3">
             {#if segment === 'photo'}
+                <StudioPortraitSection {owner} {service} {live} {editable} {noted} />
                 {@render flagRow(language.hideChatIcon, hideIconControl)}
                 {#if hasMainImage}
                     {@render flagRow(language.largePortrait, largePortraitControl)}
