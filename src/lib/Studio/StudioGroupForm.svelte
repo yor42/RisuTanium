@@ -5,6 +5,7 @@
     import { language } from '../../lang'
     import { buildAddMember, buildRemoveMember, buildSetActive, buildSetTalk, memberRowModel, talkIsLevel, talkOfLevel, type MemberRowModel } from '../../ts/studio/edit/groupMembers'
     import { membersReadable } from '../../ts/studio/edit/groupTarget'
+    import { memberRecord } from '../../ts/process/groupMembers'
     import { refusalText } from '../../ts/studio/edit/studioToasts'
     import { registerStudioField } from '../../ts/studio/fieldFlush'
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
@@ -113,8 +114,11 @@
     // ---------------------------------------------------------------- members
 
     function displayName(row: MemberRowModel): string {
-        // A missing member has no name to show: its id stands in, and the tag says it is missing.
-        return row.name === null || row.name === '' ? row.chaId : row.name
+        if (row.name !== null) return row.name === '' ? row.chaId : row.name
+        // A missing member shows the name it was stored with at join time, the id beside it; with no stored record the
+        // id stands in. The tag says it is missing either way.
+        const stored = live ? memberRecord(live, row.chaId) : null
+        return stored && stored.name !== '' ? `${stored.name} (${row.chaId})` : row.chaId
     }
 
     function tagText(row: MemberRowModel): string | null {
