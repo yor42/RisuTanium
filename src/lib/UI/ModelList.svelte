@@ -76,15 +76,15 @@
 
 {#if openOptions}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="fixed top-0 w-full h-full left-0 bg-black/50 z-50 flex justify-center items-center" role="button" tabindex="0" onclick={() => {
+    <div data-part="modal-model-list" class="fixed top-0 w-full h-full left-0 bg-black/50 z-50 flex justify-center items-center" role="button" tabindex="0" onclick={() => {
         openOptions = false
     }}>
-        <div class="w-96 max-w-full max-h-full overflow-y-auto overflow-x-hidden bg-bgcolor p-4 flex flex-col" role="button" tabindex="0" onclick={(e)=>{
+        <div data-part="modal-frame" class="w-96 max-w-full max-h-full overflow-y-auto overflow-x-hidden bg-bgcolor p-4 flex flex-col" role="button" tabindex="0" onclick={(e)=>{
             e.stopPropagation()
             onclick?.(e)
         }}>
-            <div class="flex items-center gap-3 mb-4">
-                <button aria-label={language.settingsPage.back} 
+            <div data-part="modal-header" class="flex items-center gap-3 mb-4">
+                <button data-part="modal-close" aria-label={language.settingsPage.back} 
                     class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0"
                     onclick={() => {
                         openOptions = false
@@ -93,19 +93,19 @@
                 >
                     <ArrowLeft size={20} aria-hidden="true" />
                 </button>
-                <h1 class="font-bold text-xl flex-1">{language.model}</h1>
+                <h1 data-part="modal-title" class="font-bold text-xl flex-1">{language.model}</h1>
             </div>
             <div class="border-t-1 border-y-selected mb-2"></div>
 
             {#each providers as provider}
                 {#if provider.providerName === '@as-is'}
                     {#each provider.models as model}
-                        <button class={["hover:bg-selected px-6 py-2 text-lg", isGray(model.id) && "text-textcolor2"]} onclick={() => {changeModel(model.id)}}>{rowLabel(model)}</button>
+                        <button data-part="modal-row" class={["hover:bg-selected px-6 py-2 text-lg", isGray(model.id) && "text-textcolor2"]} onclick={() => {changeModel(model.id)}}>{rowLabel(model)}</button>
                     {/each}
                 {:else}
                     <Accordion name={provider.providerName}>
                         {#each provider.models.filter(m => !excludesPrefix || !m.id.startsWith(excludesPrefix)) as model}
-                            <button class={["hover:bg-selected px-6 py-2 text-lg", isGray(model.id) && "text-textcolor2"]} onclick={() => {changeModel(model.id)}}>{rowLabel(model)}</button>
+                            <button data-part="modal-row" class={["hover:bg-selected px-6 py-2 text-lg", isGray(model.id) && "text-textcolor2"]} onclick={() => {changeModel(model.id)}}>{rowLabel(model)}</button>
                         {/each}
                     </Accordion>
                 {/if}
@@ -114,14 +114,14 @@
                 {#await getHordeModels()}
                     <button class="p-2">{language.loadingEllipsis}</button>
                 {:then models}
-                    <button onclick={() => {changeModel("horde:::" + 'auto')}} class="p-2 hover:text-textcolor2">
+                    <button data-part="modal-row" onclick={() => {changeModel("horde:::" + 'auto')}} class="p-2 hover:text-textcolor2">
                         {language.uiCommon.autoModel}
-                        <br><span class="text-textcolor2 text-sm">{language.uiCommon.performanceAuto}</span>
+                        <br><span data-part="modal-text" class="text-textcolor2 text-sm">{language.uiCommon.performanceAuto}</span>
                     </button>
                     {#each models as model}
-                        <button onclick={() => {changeModel("horde:::" + model.name)}} class="p-2 hover:text-textcolor2">
+                        <button data-part="modal-row" onclick={() => {changeModel("horde:::" + model.name)}} class="p-2 hover:text-textcolor2">
                             {model.name.trim()}
-                            <br><span class="text-textcolor2 text-sm">{fillLang(language.uiCommon.performance, { value: model.performance.toFixed(1) })}</span>
+                            <br><span data-part="modal-text" class="text-textcolor2 text-sm">{fillLang(language.uiCommon.performance, { value: model.performance.toFixed(1) })}</span>
                         </button>
                     {/each}
                 {/await}
@@ -130,7 +130,7 @@
             {#if DBState?.db.customModels?.length > 0}
                 <Accordion name={language.customModels}>
                     {#each DBState.db.customModels as model}
-                        <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{model.name ?? language.settingsPage.unnamed}</button>
+                        <button data-part="modal-row" class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{model.name ?? language.settingsPage.unnamed}</button>
                     {/each}
                 </Accordion>
 
@@ -139,9 +139,9 @@
             
 
             {#if blankable}
-                <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel('')}}>{language.none}</button>
+                <button data-part="modal-row" class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel('')}}>{language.none}</button>
             {/if}
-            <div class="text-textcolor2 text-xs">
+            <div data-part="modal-footer" class="text-textcolor2 text-xs">
                 <CheckInput name={language.showUnrecommended}  grayText bind:check={showUnrec}/>
             </div>
         </div>

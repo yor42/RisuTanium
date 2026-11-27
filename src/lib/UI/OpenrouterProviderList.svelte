@@ -26,15 +26,15 @@
 
 {#if openOptions}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="fixed top-0 w-full h-full left-0 bg-black/50 z-50 flex justify-center items-center" role="button" tabindex="0" onclick={() => {
+    <div data-part="modal-openrouter-provider-list" class="fixed top-0 w-full h-full left-0 bg-black/50 z-50 flex justify-center items-center" role="button" tabindex="0" onclick={() => {
         openOptions = false
     }}>
-        <div class="w-96 max-w-full max-h-full overflow-y-auto overflow-x-hidden bg-bgcolor p-4 flex flex-col" role="button" tabindex="0" onclick={(e)=>{
+        <div data-part="modal-frame" class="w-96 max-w-full max-h-full overflow-y-auto overflow-x-hidden bg-bgcolor p-4 flex flex-col" role="button" tabindex="0" onclick={(e)=>{
             e.stopPropagation()
             onclick?.(e)
         }}>
-            <div class="flex items-center gap-3 mb-4">
-                <button aria-label={language.settingsPage.back} 
+            <div data-part="modal-header" class="flex items-center gap-3 mb-4">
+                <button data-part="modal-close" aria-label={language.settingsPage.back} 
                     class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0"
                     onclick={() => {
                         openOptions = false
@@ -43,14 +43,14 @@
                 >
                     <ArrowLeft size={20} aria-hidden="true" />
                 </button>
-                <h1 class="font-bold text-xl flex-1">{language.provider}</h1>
+                <h1 data-part="modal-title" class="font-bold text-xl flex-1">{language.provider}</h1>
             </div>
             <div class="border-t-1 border-y-selected mb-2"></div>
 
             <TextInput label={language.provider} bind:value={custom} onchange={() => {changeModel(custom)}}/>
 
             {#each providers as provider}
-                <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(provider.slug)}}>{provider.name} ({provider.slug})</button>
+                <button data-part="modal-row" class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(provider.slug)}}>{provider.name} ({provider.slug})</button>
             {/each}
         </div>
     </div>
