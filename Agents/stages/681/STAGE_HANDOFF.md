@@ -1,4 +1,22 @@
-# #681 stage handoff: S3b (Studio character portrait), then S3a
+# #681 stage handoff: S3c (real Add), then S3b, then S3a
+
+## Completed stage: S3c (closes #681)
+
+- PR: "Closes #681" from `claude/681-s3c`, base main `ad45e394a`. Decisions: `Agents/mc/681-s3c.md` (MC-4420..4425). Plan: PLAN.md r2 S3c plus the designer delta (Gate 1 rounds 1 and 2 [REJECT], round 3 [EDITORIAL]; Gate 2 round 1 [REJECT] on two untested job branches, re-check [APPROVE]).
+- What landed:
+  - Real Add for the character asset list and the emotion list (`studioImport.svelte.ts`, `StudioImportEntries.svelte`): one `assetAdd` step per batch, per-file results, Retry / Remove for a failed store, busy entries, names without the real extension for emotions.
+  - U4: an insert into an absent `additionalAssets` creates it (`studioSetters.ts`, the only history-core file S3c touches).
+  - MC-4135: `alive()` (Studio open and the same visit id) is the single decision after every await; one not-added toast with the count of files that did not land, removed entries excluded.
+  - Neutral `studioImportRefused(n)` for refusals while Studio is open (reason as `sub`); a refused file type is reported for portrait, emotion and asset picks (closes S3b F2).
+  - 6 new `en.ts` keys plus the reworded `studioEmotionEmptyHint`, all 7 locales; localeParity passes.
+- Name and Display: nothing left unbuilt after S3a (checked against classic).
+- Known limitations: MC-4425 (visit binding, Retry wording, orphans until the boot sweep, too-large-only pick after a closed visit).
+- Device rows DV-C1 (real chooser multi-pick with a `.bmp`, for emotions and assets; asset Add on a blank character) and DV-C2 (Back during a large emotion import) are listed in the PR body; status there.
+- The history-core slot is released when this PR merges.
+- Scratch: `%TEMP%\risu-b715\b61\c681s3c\` (plan `s3c-delta.md`, `gate1.md`, `gate1r.md`, `gate2.md`, `gate2r.md`, `s3c-code.md`).
+
+---
+# Earlier stage: S3b (Studio character portrait), then S3a
 
 ## Completed stage: S3b
 

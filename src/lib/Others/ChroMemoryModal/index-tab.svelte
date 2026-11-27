@@ -7,6 +7,7 @@
   import type { ChroLoreTrace } from "src/ts/process/memory/chroMemory/loreRecall";
   import { readLtmSettings, writeLtmSettings } from "src/ts/process/memory/chroMemory/settings";
   import { isEnglishOnlyHypaModel } from "src/ts/process/memory/chroMemory/dense";
+  import { dropVectorsUnlessWanted } from "src/ts/process/memory/chroMemory/vectorPersist";
   import { DEFAULT_HYPA_MODEL } from "src/ts/process/memory/embeddingModels";
 
   interface Props {
@@ -91,7 +92,11 @@
 </div>
 
 <div data-part="modal-controls" class="flex flex-col gap-1">
-  <Check check={hybrid} name={language.chroMemoryHybrid} onChange={(v) => writeLtmSettings(DBState.db, { retrieval: v ? "hybrid" : "lexical" })} />
+  <Check check={hybrid} name={language.chroMemoryHybrid} onChange={(v) => {
+    writeLtmSettings(DBState.db, { retrieval: v ? "hybrid" : "lexical" });
+    // Switching hybrid off deletes the saved search vectors at once.
+    void dropVectorsUnlessWanted();
+  }} />
   <span data-part="modal-text" class="text-sm text-textcolor2">{language.chroMemoryHybridDesc}</span>
   {#if englishOnlyModel}
     <span data-part="modal-text" class="text-sm text-draculared" role="status">{language.chroMemoryHybridEnglishOnly}</span>

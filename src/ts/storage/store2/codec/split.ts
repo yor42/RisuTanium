@@ -20,6 +20,7 @@ import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, sameJsonVa
 import { payloadPrint, type StoredPayloadPrint } from './payloadPrint'
 import { bucketOfKey, groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
+import { runSteps, runStepsYielding, type Steps, type StepWaits } from './steps'
 import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, noteShardDigest, refTuple, shardCountFor, shardDigestOf } from './shard'
 import { assertChatNotPointer, assertNotStub } from './stub'
 import {
@@ -363,11 +364,56 @@ export function encodeCharacter(slot: Slot, position: number, encoder: Encoder):
 }
 
 /**
+ * The entry fields that come from the live slot rather than from the plain tree: the `type` (read once), the member
+ * list of a group, and the tags and creator of anything else. A caller that yields between its read of the slot and
+ * the emit takes them in the same synchronous stretch as the read (`entryLiveFieldsOf`), so the entry is the one the
+ * character had when it was read. The arrays are fresh copies.
+ */
+export interface EntryLiveFields {
+    readonly type: unknown
+    readonly characters?: string[]
+    readonly tags?: string[]
+    readonly creator?: string
+}
+
+export function entryLiveFieldsOf(slot: Slot): EntryLiveFields {
+    const type: unknown = slot.type
+    if (type === 'group') {
+        const members = (slot as groupChat).characters
+        return { type, characters: Array.isArray(members) ? members.filter((member): member is string => typeof member === 'string') : [] }
+    }
+    return { type, tags: stubTags(slot), creator: characterCreator(slot) }
+}
+
+/**
  * The part of `encodeCharacter` that writes: it claims the entity id and stores the units. A fault here is an
- * internal inconsistency, never a property of the user's data, so it is not skippable.
+ * internal inconsistency, never a property of the user's data, so it is not skippable. The live entry fields are
+ * read at the start, so the emit reads nothing from the slot afterwards.
  */
 export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder): ShardEntry {
-    const { slot, chaId, owner, chatObjects, split, listOwner } = normalized
+    return runSteps(characterSteps(normalized, encoder, entryLiveFieldsOf(normalized.slot)))
+}
+
+/**
+ * `emitCharacter` with `pause` awaited between the stages (see `characterSteps`); without a pause it runs as one
+ * synchronous stretch. `live` is what `entryLiveFieldsOf` read in the same stretch as the character's read.
+ */
+export async function emitCharacterYielding(
+    normalized: NormalizedCharacter, encoder: Encoder, live: EntryLiveFields, pause: (() => Promise<void>) | undefined, waits?: StepWaits,
+): Promise<ShardEntry> {
+    const steps = characterSteps(normalized, encoder, live)
+    return pause === undefined ? runSteps(steps) : runStepsYielding(steps, pause, waits)
+}
+
+/**
+ * The emit as stages: it yields before each stage after the first (the core, the lore, the scripts, the asset list's
+ * derive and its put, the inlay list's derive and its put, and each chat), so a driver can hand control back between
+ * them; none after the last. The statements and their order are the synchronous emit's, so a driver that resumes
+ * straight through makes the same calls on the encoder. After the first step nothing reads the live slot: the entry
+ * fields come from `live`.
+ */
+export function* characterSteps(normalized: NormalizedCharacter, encoder: Encoder, live: EntryLiveFields): Steps<ShardEntry> {
+    const { chaId, owner, chatObjects, split, listOwner } = normalized
     const u = encoder.mintU(chaId)
     const { rest, moved, absent } = splitMovedFields(characterCoreFields(owner))
     const coreBody: CharacterCoreBody = { v: 1, f: rest }
@@ -376,16 +422,30 @@ export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder)
     }
     const core = encoder.put(`${IDENTITY.char}${u}:core`, UNIT_TYPE.characterCore, coreBody)
     const loreFields = pickFields(owner, LORE_FIELDS)
-    const lore = Object.keys(loreFields).length === 0 ? null
-        : encoder.put(`${IDENTITY.char}${u}:lore`, UNIT_TYPE.lore, { v: 1, f: loreFields } satisfies FieldBagBody)
+    let lore: EncodedUnit | null = null
+    if (Object.keys(loreFields).length > 0) {
+        yield
+        lore = encoder.put(`${IDENTITY.char}${u}:lore`, UNIT_TYPE.lore, { v: 1, f: loreFields } satisfies FieldBagBody)
+    }
     const scriptFields = pickFields(owner, SCRIPT_FIELDS)
-    const scripts = Object.keys(scriptFields).length === 0 ? null
-        : encoder.put(`${IDENTITY.char}${u}:scripts`, UNIT_TYPE.scripts, { v: 1, f: scriptFields } satisfies FieldBagBody)
+    let scripts: EncodedUnit | null = null
+    if (Object.keys(scriptFields).length > 0) {
+        yield
+        scripts = encoder.put(`${IDENTITY.char}${u}:scripts`, UNIT_TYPE.scripts, { v: 1, f: scriptFields } satisfies FieldBagBody)
+    }
 
     const lists: ListDerivation = encoder.options.lists
-    const al = encoder.putAssetList(`${IDENTITY.alChar}${u}`, lists.characterAssets(listOwner))
+    yield
+    const assets = lists.characterAssets(listOwner)
+    yield
+    const al = encoder.putAssetList(`${IDENTITY.alChar}${u}`, assets)
+    yield
     const inlays = lists.characterInlays(listOwner)
-    const il = inlays === null ? null : encoder.putInlayList(`${IDENTITY.ilChar}${u}`, inlays)
+    let il: ListRef | null = null
+    if (inlays !== null) {
+        yield
+        il = encoder.putInlayList(`${IDENTITY.ilChar}${u}`, inlays)
+    }
 
     const used = new Set<string>()
     const idCounts = new Map<string, number>()
@@ -396,7 +456,10 @@ export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder)
     }
     const stableCids = new Set<string>()
     encoder.stableChats.set(u, stableCids)
-    const chats: ChatEntry[] = split.map((one, index) => {
+    const chats: ChatEntry[] = []
+    for (let index = 0; index < split.length; index++) {
+        yield
+        const one = split[index]
         const { cid, stable } = chatHandle(chatObjects[index], index, used, idCounts)
         if (stable) {
             stableCids.add(cid)
@@ -418,12 +481,12 @@ export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder)
                 return chunkRefTuple(unit.ref, unitBody.recs.length)
             })
         }
-        return entry
-    })
+        chats.push(entry)
+    }
 
     const entry: ShardEntry = {
         u,
-        type: slot.type === 'group' ? 'group' : 'character',
+        type: live.type === 'group' ? 'group' : 'character',
         name: stringOr(owner.name, ''),
         chaId,
         creatorNotes: stubDescription(owner.creatorNotes),
@@ -448,11 +511,11 @@ export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder)
     if (typeof moved.trashTime === 'number') {
         entry.trashTime = moved.trashTime
     }
-    if (slot.type === 'group') {
-        entry.characters = Array.isArray(slot.characters) ? slot.characters.filter((member): member is string => typeof member === 'string') : []
+    if (live.type === 'group') {
+        entry.characters = live.characters ?? []
     } else {
-        entry.tags = stubTags(slot)
-        entry.creator = characterCreator(slot)
+        entry.tags = live.tags ?? []
+        entry.creator = live.creator ?? ''
     }
     return entry
 }

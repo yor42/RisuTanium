@@ -36,7 +36,7 @@ import { armNativeReplyNotice } from "./android/replyNotifications.svelte";
 import { createPumpProbe, isOrphanReplyEvent, parseReplyStamp, resolveOwnedFetch, type PumpProbe } from "./nativeReply/ownedBody";
 import { noteInvoked, noteUnowned, requestReconcile } from "./nativeReply/pageState";
 import { createReplyStore } from "./nativeReply/store";
-import type { SkippedItem } from "./storage/store2/codec";
+import type { SkippedItem, SkippedItemScope } from "./storage/store2/codec";
 import { activeStreamOwners } from "./process/activeStreams";
 import { interceptorsSuppressed } from "./process/request/interceptorSuppression";
 import { runBodyInterceptors } from "./process/request/bodyInterceptors";
@@ -756,6 +756,17 @@ let unsavableCharacterCount = 0
 let unsavableCharacterIds: ReadonlySet<string> = new Set()
 /** How many modules, preset lists, loadouts, statics, character order, settings fields and plugin-data keys the store2 loop's passes cannot encode now; 0 on a page without a store2 loop. */
 let unsavableItemCount = 0
+/** The `<scope>:<key>` of each of those items, replaced whole at each report; empty on a page without a store2 loop. */
+let unsavableItemKeys: ReadonlySet<string> = new Set()
+
+/**
+ * True while the store2 loop's latest report lists the item as one its passes cannot encode and keeps its saved copy of;
+ * always false on a page without a store2 loop. Like `moduleCommitVerdict`, inside a next-commit callback it speaks for
+ * the commit that fired it.
+ */
+export function isItemUnsavable(scope: SkippedItemScope, key: string): boolean {
+    return unsavableItemKeys.has(`${scope}:${key}`)
+}
 
 /** True while the store2 loop reports the character as unsavable; always false on a page without a store2 loop. */
 export function isCharacterUnsavable(chaId: string): boolean {
@@ -1410,6 +1421,9 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         },
         unsavableItems(current, newly) {
             unsavableItemCount = current.length
+            // First, before any notice can throw: the loop calls this port again only when the item set changes, so a set
+            // left stale here would read "saved" for every later commit.
+            unsavableItemKeys = new Set(current.map((item) => `${item.scope}:${item.key}`))
             for (const item of newly) {
                 console.error(item.cause)
                 alertToast(unsavableItemNotice(item))

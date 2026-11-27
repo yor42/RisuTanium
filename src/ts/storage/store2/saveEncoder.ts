@@ -2,10 +2,10 @@ import type { JsonObject, JsonValue } from '../blockFrame'
 import type { Database, character, groupChat } from '../database.svelte'
 import type { CommitRequest } from './commit'
 import {
-    acknowledgedBytesOf, builtCommitOf, characterContentMatches, characterMatchesAcknowledged, characterMatchesAcknowledgedPlain, CodecInputError, IDENTITY, isColdStub,
-    movable, overlayLeavesEntry, overlayStub, planScopedEncode, plainObject, previousEntriesOf, previousFrom, sameJsonValue, verdictBaseOf,
+    acknowledgedBytesOf, acknowledgedPlainSteps, builtCommitOf, characterContentMatches, characterMatchesAcknowledged, CodecInputError, entryLiveFieldsOf, IDENTITY, isColdStub,
+    movable, overlayLeavesEntry, overlayStub, planScopedEncode, plainObject, previousEntriesOf, previousFrom, runSteps, runStepsYielding, sameJsonValue, verdictBaseOf,
     type AcknowledgedVerdict, type ChatDraftsMemo, type EncodedTree, type OverlaidFields, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
-    type ScopedPlan, type SkippedCharacter, type VerdictBase,
+    type ScopedPlan, type SkippedCharacter, type Steps, type StepWaits, type VerdictBase,
 } from './codec'
 import { ChunkMemo, WORKSPACE_MEMO_BUCKET_CAP, WORKSPACE_MEMO_TOTAL_BUDGET } from './codec/chunkMemo'
 import { isModuleStub } from '../moduleStub'
@@ -175,6 +175,15 @@ export interface SaveEncoder {
      * every pending attempt drops all shadows.
      */
     verdictOf(slot: character | groupChat): AcknowledgedVerdict
+    /**
+     * `verdictOf` for a caller that shares the main thread: it awaits `pause` between the stages of the emit of a
+     * shadow miss (a shadow hit has no stage to wait in), so the verdict is not one long task. It answers for the
+     * character as it was read in the first stretch, before any wait, and admits the same shadow `verdictOf` would. The
+     * caller must not change the acknowledged encoding or set an attempt pending while it waits (the save loop is
+     * suspended); if that happens the answer is `unknown` and the character's shadow is dropped. A `pause` that
+     * rejects rejects the verdict, with no shadow admitted or dropped.
+     */
+    verdictOfYielding(slot: character | groupChat, pause: () => Promise<void>): Promise<AcknowledgedVerdict>
     /**
      * `verdictOf` for the content of a resident character: the entry's `chatPage` and the `lastInteraction` entry field
      * are view state and are left out, so a character that differs only in them is `clean`. Every other difference,
@@ -537,6 +546,91 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
         }
     }
 
+    /**
+     * The verdict of `SaveEncoder.verdictOf` as stages. The live slot is read in the first stretch, up to the first
+     * yield: the plain tree and the live entry fields. A driver that waits between the stages answers for that instant,
+     * and an admitted shadow is that read's tree. `movedFieldsMatch` runs after the last stage and reads the slot as it
+     * is then, as it does for every verdict, shadow hits included. `waits` (measurement builds) is the time the driver
+     * spent waiting, which `primitiveMs` leaves out.
+     */
+    function* verdictSteps(slot: character | groupChat, waits?: StepWaits): Steps<AcknowledgedVerdict> {
+        if (pending !== null) {
+            if (MEASURE) {
+                noteNetShadow('none')
+            }
+            return 'unknown'
+        }
+        try {
+            const primitiveStartedAt = MEASURE ? performance.now() : 0
+            const verdictOptions = { env, lists: options.lists, previous }
+            let verdict: AcknowledgedVerdict = 'unknown'
+            let tag: NetShadowTag = 'none' // measurement builds only; folded out of a normal build
+            const base = verdictBaseOf(slot, previous)
+            if (base === null) {
+                dropShadow(shadowKeyOf(slot))
+            } else {
+                // A fault of the read answers `unknown` silently, as the primitive does for the same fault.
+                let plain: JsonObject | null = null
+                try {
+                    plain = plainObject(slot, 'characters[0]')
+                } catch {
+                    dropShadow(base.chaId)
+                }
+                if (plain !== null) {
+                    // The live entry fields are taken with the plain tree, before any yield. The `type` is the one input
+                    // of the entry that is not in the plain tree's compare: a boxed or `toJSON` value can leave the tree
+                    // equal while the entry reads it differently.
+                    const live = entryLiveFieldsOf(slot)
+                    const liveType = live.type
+                    const held = shadowOf === previous ? shadows.get(base.chaId) : undefined
+                    if (held !== undefined && Object.is(held.type, liveType) && sameJsonValue(plain, held.plain)) {
+                        verdict = 'clean'
+                        if (MEASURE) {
+                            tag = 'hit'
+                        }
+                    } else {
+                        if (MEASURE) {
+                            tag = 'miss'
+                        }
+                        verdict = yield* acknowledgedPlainSteps(slot, plain, base, verdictOptions, live)
+                        if (verdict === 'clean') {
+                            admitShadow(base, plain, liveType)
+                        } else {
+                            dropShadow(base.chaId)
+                        }
+                    }
+                }
+            }
+            if (MEASURE) {
+                noteNetSlotPart('primitiveMs', performance.now() - primitiveStartedAt - (waits?.ms ?? 0))
+                // Every eighth hit is judged again by the full primitive on the live slot, which re-reads everything.
+                if (noteNetShadow(tag) && tag === 'hit' && base !== null) {
+                    const tripwireStartedAt = performance.now()
+                    const full = characterMatchesAcknowledged(slot, verdictOptions)
+                    noteNetShadowTripwire(performance.now() - tripwireStartedAt)
+                    if (full !== 'clean') {
+                        noteNetShadowEvent('disagreed')
+                        dropShadow(base.chaId)
+                        verdict = full
+                    }
+                }
+            }
+            if (verdict !== 'clean' || base === null) {
+                return verdict
+            }
+            const movedStartedAt = MEASURE ? performance.now() : 0
+            const movedMatch = movedFieldsMatch(slot, base.acknowledged)
+            if (MEASURE) {
+                noteNetSlotPart('movedMs', performance.now() - movedStartedAt)
+            }
+            return movedMatch ? 'clean' : 'dirty'
+        } catch (error) {
+            dropShadow(shadowKeyOf(slot))
+            console.error('The verdict of a resident character could not be read; a full pass will decide.', error)
+            return 'unknown'
+        }
+    }
+
     return {
         async plan(db, request) {
             const base = previous
@@ -637,80 +731,18 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
         acknowledged: () => previous,
         hasStubs: db => (Array.isArray(db.characters) && db.characters.some(slot => typeof slot === 'object' && slot !== null && isColdStub(slot)))
             || (Array.isArray(db.modules) && db.modules.some(slot => isModuleStub(slot))),
-        verdictOf(slot) {
-            if (pending !== null) {
-                if (MEASURE) {
-                    noteNetShadow('none')
-                }
-                return 'unknown'
-            }
-            try {
-                const primitiveStartedAt = MEASURE ? performance.now() : 0
-                const verdictOptions = { env, lists: options.lists, previous }
-                let verdict: AcknowledgedVerdict = 'unknown'
-                let tag: NetShadowTag = 'none' // measurement builds only; folded out of a normal build
-                const base = verdictBaseOf(slot, previous)
-                if (base === null) {
-                    dropShadow(shadowKeyOf(slot))
-                } else {
-                    // A fault of the read answers `unknown` silently, as the primitive does for the same fault.
-                    let plain: JsonObject | null = null
-                    try {
-                        plain = plainObject(slot, 'characters[0]')
-                    } catch {
-                        dropShadow(base.chaId)
-                    }
-                    if (plain !== null) {
-                        // The live `type` is the one input of the entry that is not in the plain tree's compare: a boxed
-                        // or `toJSON` value can leave the tree equal while the entry reads it differently.
-                        const liveType: unknown = (slot as { type?: unknown }).type
-                        const held = shadowOf === previous ? shadows.get(base.chaId) : undefined
-                        if (held !== undefined && Object.is(held.type, liveType) && sameJsonValue(plain, held.plain)) {
-                            verdict = 'clean'
-                            if (MEASURE) {
-                                tag = 'hit'
-                            }
-                        } else {
-                            if (MEASURE) {
-                                tag = 'miss'
-                            }
-                            verdict = characterMatchesAcknowledgedPlain(slot, plain, base, verdictOptions)
-                            if (verdict === 'clean') {
-                                admitShadow(base, plain, liveType)
-                            } else {
-                                dropShadow(base.chaId)
-                            }
-                        }
-                    }
-                }
-                if (MEASURE) {
-                    noteNetSlotPart('primitiveMs', performance.now() - primitiveStartedAt)
-                    // Every eighth hit is judged again by the full primitive on the live slot, which re-reads everything.
-                    if (noteNetShadow(tag) && tag === 'hit' && base !== null) {
-                        const tripwireStartedAt = performance.now()
-                        const full = characterMatchesAcknowledged(slot, verdictOptions)
-                        noteNetShadowTripwire(performance.now() - tripwireStartedAt)
-                        if (full !== 'clean') {
-                            noteNetShadowEvent('disagreed')
-                            dropShadow(base.chaId)
-                            verdict = full
-                        }
-                    }
-                }
-                if (verdict !== 'clean' || base === null) {
-                    return verdict
-                }
-                const movedStartedAt = MEASURE ? performance.now() : 0
-                const movedMatch = movedFieldsMatch(slot, base.acknowledged)
-                if (MEASURE) {
-                    noteNetSlotPart('movedMs', performance.now() - movedStartedAt)
-                }
-                return movedMatch ? 'clean' : 'dirty'
-            } catch (error) {
+        verdictOf: slot => runSteps(verdictSteps(slot)),
+        async verdictOfYielding(slot, pause) {
+            const startedFrom = previous
+            const waits: StepWaits | undefined = MEASURE ? { ms: 0 } : undefined
+            const verdict = await runStepsYielding(verdictSteps(slot, waits), pause, waits)
+            // The save loop is suspended while this verdict waits, so the acknowledged encoding cannot move and no attempt
+            // can become pending. If one did, the verdict and any shadow it admitted were taken against a stale encoding.
+            if (previous !== startedFrom || pending !== null) {
                 dropShadow(shadowKeyOf(slot))
-                console.error('The verdict of a resident character could not be read; a full pass will decide.', error)
                 return 'unknown'
             }
+            return verdict
         },
         contentVerdictOf(slot) {
             if (pending !== null) {

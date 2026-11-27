@@ -72,10 +72,11 @@ import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWrite
 import { assignPresetIds } from 'src/ts/storage/presetMeta'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
+import { currentPresetAck, resetPresetAckForTests, setPresetAckLoaderForTests } from 'src/ts/studio/edit/presetAck.svelte'
 import { presetOwnerKey } from 'src/ts/studio/edit/presetTarget'
 import { createSaveAck, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import { makeCharacter, makeInput, makePreset, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
-import { openStudio, resetStudioScreenForTests, selectedHistoryOwner, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { clearStudioSelection, openStudio, resetStudioScreenForTests, selectedHistoryOwner, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { toastHost, resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
@@ -137,6 +138,33 @@ function makeAck(clock: FakeClock): SaveAck {
     return createSaveAck(deps)
 }
 
+// The preset acks the loader built, over deps that never confirm; each one's `dispose` is spied.
+const presetAcks: SaveAck[] = []
+
+function makePresetAck(clock: FakeClock): SaveAck {
+    const deps: SaveAckDeps = {
+        getMarkCount: () => 0,
+        getCommittedMarkCount: () => 0,
+        afterNextCommit: () => {},
+        requestSaveNow: () => {},
+        getPeerSaveCount: () => 0,
+        onStopped: () => () => {},
+        isStopped: () => false,
+        subscribeFailure: () => () => {},
+        currentFailure: () => null,
+        frozenKeys: () => new Set<string>(),
+        isCharacterUnsavable: () => false,
+        onPassStart: () => () => {},
+        visible: () => true,
+        onVisibilityChange: () => () => {},
+        clock,
+    }
+    const ack = createSaveAck(deps, { kind: 'preset', verdict: () => 'saved' })
+    vi.spyOn(ack, 'dispose')
+    presetAcks.push(ack)
+    return ack
+}
+
 let rigCount = 0
 
 function makeRig(): OwnerHistoryService {
@@ -150,6 +178,7 @@ function makeRig(): OwnerHistoryService {
     })
     setStudioHistoryServiceForTests(service)
     setStudioVisitAckForTests(makeAck(clock))
+    setPresetAckLoaderForTests(async () => () => makePresetAck(clock))
     return service
 }
 
@@ -230,6 +259,7 @@ beforeAll(async () => {
 }, 120_000)
 
 beforeEach(() => {
+    presetAcks.length = 0
     tracker.character.length = 0
     tracker.botPreset = false
     resetCharacterSaveMarksForTest()
@@ -247,6 +277,7 @@ beforeEach(() => {
 
 afterEach(async () => {
     await unmountAll()
+    resetPresetAckForTests()
     uninstallDbWriteHook()
     localStorage.clear()
     resetToggleCarrySessionForTests()
@@ -263,10 +294,10 @@ afterEach(async () => {
 })
 
 describe('T5 the builder of a preset', () => {
-    test('an inactive preset mounts the builder with no chip and the page-only banner at mount; an edit lands in its slot only', async () => {
+    test('an inactive preset mounts the builder with its chip and the page-only banner at mount; an edit lands in its slot only', async () => {
         await mountOn(presetToggles(1))
         expect(part('studio-toggle-builder')).not.toBeNull()
-        expect(part('studio-chip')).toBeNull()
+        expect(part('studio-chip')).not.toBeNull()
         expect(part('studio-detail-text')).toBeNull()
         expect(part('studio-form-banner')?.textContent).toBe('studioBannerPresetSession')
         await showText()
@@ -281,7 +312,7 @@ describe('T5 the builder of a preset', () => {
     test('the active preset writes the working setting', async () => {
         await mountOn(presetToggles(0))
         expect(part('studio-toggle-builder')).not.toBeNull()
-        expect(part('studio-chip')).toBeNull()
+        expect(part('studio-chip')).not.toBeNull()
         await showText()
         typeInText('a=Zero\nz=Z')
         await settle()
@@ -302,6 +333,27 @@ describe('T5 the builder of a preset', () => {
         await settle()
         expect(slot(0)).toBe('a=Zero\nz=Z\ny=Y')
         expect(working()).toBe('b=One\n')
+    })
+})
+
+describe('U1 the ack of a preset ends with its toggle builder (new-rule guard)', () => {
+    test('changing the kind disposes the injected ack and nobody is current for the preset', async () => {
+        await mountOn(presetToggles(1))
+        expect(presetAcks).toHaveLength(1)
+        expect(currentPresetAck(idOf(1))).toBe(presetAcks[0])
+        setStudioSelection('preset:1', 'advanced', null)
+        await settle()
+        expect(presetAcks[0].dispose).toHaveBeenCalledTimes(1)
+        expect(currentPresetAck(idOf(1))).toBeNull()
+    })
+
+    test('clearing the selection disposes the injected ack', async () => {
+        await mountOn(presetToggles(1))
+        expect(currentPresetAck(idOf(1))).toBe(presetAcks[0])
+        clearStudioSelection('')
+        await settle()
+        expect(presetAcks[0].dispose).toHaveBeenCalledTimes(1)
+        expect(currentPresetAck(idOf(1))).toBeNull()
     })
 })
 

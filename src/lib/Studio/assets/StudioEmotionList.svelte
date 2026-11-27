@@ -20,6 +20,8 @@
     import StudioAssetFinder, { type FinderArray, type FinderPort, type FinderRow } from './StudioAssetFinder.svelte'
     import StudioAssetMergePreview from './StudioAssetMergePreview.svelte'
     import StudioAssetRow from './StudioAssetRow.svelte'
+    import StudioImportEntries from './StudioImportEntries.svelte'
+    import type { AssetPickerPort } from '../../../ts/studio/assets/assetPresentation'
 
     // The emotion images of one character, read by id: rows with their thumbnail, the name field that renames, and a
     // menu with delete. Every row change goes through the history service on `emotionImages`, so each is one step with a
@@ -36,9 +38,11 @@
         finderPort?: () => Promise<FinderPort>
         // How many places reach a file under a name, for the survivor rule of Remove extras; absent counts none.
         references?: (name: string, path: string) => number
+        // Opens the picker that adds images; the list has no Add control while it is absent.
+        picker?: AssetPickerPort
     }
 
-    let { chaId, host, sizeJob, usedIn, finderPort, references }: Props = $props()
+    let { chaId, host, sizeJob, usedIn, finderPort, references, picker }: Props = $props()
 
     const uid = $props.id()
     const headingId = `studio-emotion-heading-${uid}`
@@ -448,6 +452,12 @@
         {/if}
         <p data-part="studio-emotion-help" class="text-sm text-textcolor2">{language.studioEmotionHelp}</p>
         <p data-part="studio-emotion-rename-note" class="text-sm text-textcolor2">{language.studioEmotionRenameNote}</p>
+        {#if picker}
+            <div class="flex items-center">
+                <button type="button" data-part="studio-emotion-add" class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer disabled:cursor-default disabled:opacity-50" disabled={!editable} onclick={() => picker.open()}>{language.add}</button>
+            </div>
+        {/if}
+        <StudioImportEntries {owner} array="emotionImages" />
         {#if rows.length === 0}
             <div data-part="studio-emotion-empty" class="flex flex-col gap-1">
                 <p class="text-textcolor2">{language.studioEmotionEmpty}</p>

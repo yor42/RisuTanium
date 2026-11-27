@@ -5,6 +5,7 @@ import { isAppInitiatedReload } from '../reloadGuard'
 import { isTauri } from 'src/ts/platform'
 import { language } from 'src/lang'
 import type { BusyHandle } from '../process/memory/busyActions'
+import { holdVectorPersist } from '../process/memory/chroMemory/vectorPersist'
 import type { Store2Read } from '../storage/store2/backend/types'
 import { Store2BulkAbortError, type Committer, type CommitRequest, type HeldBulk } from '../storage/store2/commit'
 import { classifyCommitRead } from '../storage/store2/commitKey'
@@ -77,6 +78,8 @@ export async function acquireRestoreHold(busy: BusyHandle, options: HoldOptions 
     }
 
     let released = false
+    // The vector cache writes nothing while the restore runs; a restore that landed keeps it blocked until the reload.
+    let releaseVectorHold: (() => void) | null = null
     const held = releaseExclusiveHold
     const hold: RestoreHold = {
         busy,
@@ -87,6 +90,9 @@ export async function acquireRestoreHold(busy: BusyHandle, options: HoldOptions 
                 return
             }
             released = true
+            if (!keepWriteLock) {
+                releaseVectorHold?.()
+            }
             if (held) {
                 await held(keepWriteLock)
             } else if (releaseDbWriteLock && !keepWriteLock) {
@@ -94,8 +100,9 @@ export async function acquireRestoreHold(busy: BusyHandle, options: HoldOptions 
             }
         },
     }
-    // The hold exists before the callback runs, so a callback that throws cannot leave the lock taken with no handle.
+    // The hold exists before the vector hold and the callback run, so a failure of either cannot leave the lock taken with no handle.
     try {
+        releaseVectorHold = await holdVectorPersist()
         options.onGranted?.()
     } catch (error) {
         await hold.release(false)

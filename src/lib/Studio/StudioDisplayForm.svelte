@@ -9,6 +9,7 @@
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText } from '../../ts/studio/history/studioHistoryService.svelte'
+    import { createImportPicker } from '../../ts/studio/assets/studioImport.svelte'
     import { DBState } from '../../ts/stores.svelte'
     import StudioAssetList, { type EnabledModuleAssets } from './assets/StudioAssetList.svelte'
     import StudioDisplayScreen, { type ScreenFill } from './StudioDisplayScreen.svelte'
@@ -25,6 +26,9 @@
     let { chaId, enabledModules }: Props = $props()
 
     const owner = characterOwnerKey(untrack(() => chaId))
+    // One picker per list for the life of the form: the owner is fixed above.
+    const assetPicker = createImportPicker(owner, 'additionalAssets')
+    const emotionPicker = createImportPicker(owner, 'emotionImages')
 
     const service = $derived(getStudioHistoryService())
     $effect(() => {
@@ -196,7 +200,7 @@
 
         <div role="tabpanel" data-part="studio-display-panel" data-seg="screen" hidden={segment !== 'screen'} class="flex flex-col gap-3">
             {#if segment === 'screen'}
-                <StudioDisplayScreen {chaId} {owner} {service} {live} {editable} {fill} onfill={(next) => { fill = next }} {noted} onresult={onFieldResult} />
+                <StudioDisplayScreen {chaId} {owner} {service} {live} {editable} {fill} onfill={(next) => { fill = next }} {noted} onresult={onFieldResult} {emotionPicker} />
             {/if}
         </div>
 
@@ -221,7 +225,7 @@
                     </select>
                 </div>
             {/if}
-            <StudioAssetList {chaId} {enabledModules} />
+            <StudioAssetList {chaId} {enabledModules} picker={assetPicker} />
         </div>
 
         {#if refusal}

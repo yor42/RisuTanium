@@ -212,15 +212,24 @@ describe('resolveFrozen', () => {
         expect(resolveFrozen(frozen, list).map((s) => s.entry.chaId)).toEqual(['b', 'c'])
     })
 
-    test('S3a-U6 gate: the live archived state blanks the frozen text', () => {
+    test('S3a-U6 gate: the live archived state swaps the frozen text for the stub description', () => {
         const list = warmList()
+        list[0].creatorNotes = 'A quiet harbour town.'
         const frozen = freezeStories(list, 'U')
         const warm = resolveFrozen(frozen, list)[0]
         expect(warm).toMatchObject({ archived: false, chatLabel: 'Chat-A', snippet: 'Line A' })
 
         list[0] = buildColdStub(list[0] as never, 'unit-a', []) as unknown as Entry
         const archived = resolveFrozen(frozen, list)[0]
-        expect(archived).toMatchObject({ archived: true, chatLabel: null, snippet: '' })
+        expect(archived).toMatchObject({ archived: true, chatLabel: null, snippet: 'A quiet harbour town.' })
+    })
+
+    test('S3a-U6 description: an archived entry without notes, and an archived group, have an empty snippet', () => {
+        const list = warmList()
+        list[0] = buildColdStub(list[0] as never, 'unit-a', []) as unknown as Entry
+        expect(resolveFrozen(freezeStories(warmList(), 'U'), list)[0].snippet).toBe('')
+        const group = { ...list[0], type: 'group', creatorNotes: 'ignored' } as unknown as Entry
+        expect(resolveFrozen(freezeStories(warmList(), 'U'), [group, ...list.slice(1)])[0].snippet).toBe('')
     })
 
     test('S3a-U6 reverse: a record frozen archived stays text-free after the entry is warm', () => {

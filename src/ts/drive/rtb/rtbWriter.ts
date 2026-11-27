@@ -18,7 +18,7 @@ import { defaultKeyEnv, randomId26, type KeyEnv } from '../../storage/store2/for
 import { FRAME_FMT } from '../../storage/store2/format/versions'
 import type { InlayRecord } from '../../process/files/inlayStore'
 import { assetEntryName } from './assetName'
-import { CONNECTION_KEYS_ID, MANIFEST_ENTRY, MIMETYPE_ENTRY, SETTINGS_DATA_ENTRY, SETTINGS_ID, SETTINGS_PREFIX, SIDE_SECTION_IDS, sideDataName } from './entryNames'
+import { CONNECTION_KEYS_ID, MANIFEST_ENTRY, MIMETYPE_ENTRY, SETTINGS_DATA_ENTRY, SETTINGS_ID, SETTINGS_PREFIX, SIDE_SECTION_IDS, VECTORS_ID, sideDataName } from './entryNames'
 import { checkEntryPath } from './entryPath'
 import { encodeInlayMeta, inlayEntryNames, RtbInlayNameError } from './inlayEntries'
 import { DEFAULT_MANIFEST_CAP, type OmittedEntry } from './manifest'
@@ -35,6 +35,9 @@ import { DEFAULT_BUFFER_LIMIT, Zip64Writer, type ZipDirectoryView, type ZipPiece
 export const MAX_WRITE_NAME_BYTES = 1024
 /** Writer v1 keeps at most this many ancestors in `snapshot.lineage`, newest first. */
 export const MAX_WRITE_LINEAGE = 32
+
+/** The side sections written only when their input has at least one line. */
+const OMIT_WHEN_EMPTY: ReadonlySet<string> = new Set([CONNECTION_KEYS_ID, VECTORS_ID])
 
 export interface AssetInput {
     /** The store key without its `assets/` prefix. */
@@ -362,9 +365,10 @@ export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
         }
         const name = sideDataName(id) as string
         let bytes: number
-        if (id === CONNECTION_KEYS_ID) {
-            // Built from live connections: with no lines there is no row, no entry and no manifest row, so a file
-            // without wrapped keys is byte-identical to one written before this section existed.
+        if (OMIT_WHEN_EMPTY.has(id)) {
+            // Connection keys are built from live connections and vectors from a cache: with no side or no lines
+            // there is no row, no entry and no manifest row, so a file without either is byte-identical to one
+            // written before the section existed.
             const written = side !== undefined && 'records' in side
                 ? await writeSideSection(zip, name, side.records, input.sideTags ?? [], limit, true)
                 : null

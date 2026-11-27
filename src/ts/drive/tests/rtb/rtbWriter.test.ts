@@ -8,9 +8,10 @@ import { decodeInlayMeta, pairInlayEntries } from 'src/ts/drive/rtb/inlayEntries
 import { parseManifest } from 'src/ts/drive/rtb/manifest'
 import { V1_REF_STRINGS } from 'src/ts/drive/rtb/refsFingerprint'
 import { classifyRtb } from 'src/ts/drive/rtb/rtbClassify'
-import { CONNECTION_KEYS_ID, SIDE_SECTION_IDS, parseStoreBlockName } from 'src/ts/drive/rtb/entryNames'
+import { CONNECTION_KEYS_ID, SIDE_SECTION_IDS, VECTORS_ID, parseStoreBlockName } from 'src/ts/drive/rtb/entryNames'
 import { writeRtb, type RtbWriteInput, type SideRecord } from 'src/ts/drive/rtb/rtbWriter'
 import { decodeSideLines, type SideTagCodec } from 'src/ts/drive/rtb/sideLines'
+import { prepareSideValue, RTB_SIDE_TAGS } from 'src/ts/drive/rtb/sideTags'
 import { decodeBlock } from 'src/ts/drive/rtb/unitBlocks'
 import { readDirectory, readEntry } from 'src/ts/drive/rtb/zip64Reader'
 import type { FillPiece } from 'src/ts/drive/rtb/zip64Writer'
@@ -120,8 +121,8 @@ function group(name: string): number {
     return groups[name[0]] ?? -1
 }
 
-/** The side sections read from a store: every one but the connection keys. */
-const STORE_SIDE_IDS = SIDE_SECTION_IDS.filter((id) => id !== CONNECTION_KEYS_ID)
+/** The side sections written even with no lines: every one but the two that are written only with lines. */
+const STORE_SIDE_IDS = SIDE_SECTION_IDS.filter((id) => id !== CONNECTION_KEYS_ID && id !== VECTORS_ID)
 
 const F64: SideTagCodec = {
     tag: 'f64',
@@ -214,6 +215,31 @@ describe('writeRtb with empty stores (T-asm, T40w, T10w, T-sew)', () => {
         const none = (await write()).bytes
         const emptyBytes = (await write({ sides: { [CONNECTION_KEYS_ID]: { records: iterate<SideRecord>([]) } } })).bytes
         expect(Buffer.from(emptyBytes).equals(Buffer.from(none))).toBe(true)
+    })
+
+    // G1b: a file with no vectors input, or an input with no lines, is byte-identical to one written before the row existed.
+    test('a vectors section with no lines, or no input, leaves no row, no entry and no manifest mention and the bytes are those of a file with no sides', async () => {
+        const none = (await write()).bytes
+        const empty = (await write({ sides: { [VECTORS_ID]: { records: iterate<SideRecord>([]) } } })).bytes
+        expect(Buffer.from(empty).equals(Buffer.from(none))).toBe(true)
+        for (const bytes of [none, empty]) {
+            const opened = await open(bytes)
+            expect(manifestOf(opened).sections.map((row: { id: string }) => row.id)).not.toContain(VECTORS_ID)
+            expect([...opened.files.keys()].some((name) => name.startsWith('s/chromemory-vectors/'))).toBe(false)
+            expect(JSON.stringify(manifestOf(opened))).not.toContain('chromemory-vectors')
+        }
+    })
+
+    test('a vectors section with lines is the last side row, one entry, and an unreadable one is named omitted', async () => {
+        const lines: SideRecord[] = [{ key: 'seg/c1', value: await prepareSideValue(Uint8Array.of(1, 2, 3)) }, { key: 'seg/head', value: await prepareSideValue(Uint8Array.of(4)) }]
+        const written = await open((await write({ sides: { [VECTORS_ID]: { records: iterate(lines) } }, sideTags: RTB_SIDE_TAGS })).bytes)
+        const rows = manifestOf(written).sections as { id: string, prefix: string, entries: number, required: boolean }[]
+        expect(rows.at(-1)).toMatchObject({ id: VECTORS_ID, prefix: 's/chromemory-vectors/', entries: 1, required: false })
+        expect(written.files.get('s/chromemory-vectors/data.jsonl')?.length).toBeGreaterThan(0)
+
+        const unreadable = await open((await write({ sides: { [VECTORS_ID]: { unreadable: true } } })).bytes)
+        expect(manifestOf(unreadable).sections.map((row: { id: string }) => row.id)).not.toContain(VECTORS_ID)
+        expect(manifestOf(unreadable).omitted).toContainEqual({ kind: 'side', name: VECTORS_ID, reason: 'unreadable' })
     })
 
     test('the file classifies ok with an empty notice', async () => {

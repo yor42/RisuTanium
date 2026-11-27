@@ -524,7 +524,7 @@ fn t5b_every_accept_row_passes_the_rule_and_fails_only_at_the_open() {
 // T6: the ten commands over keys outside the store set
 // ---------------------------------------------------------------------------
 
-const CELL_KEYS: [&str; 7] = [
+const CELL_KEYS: [&str; 8] = [
     "shared_prefs/x",
     "cache/app-update/x",
     "databases/x",
@@ -532,6 +532,7 @@ const CELL_KEYS: [&str; 7] = [
     "app_webview/x",
     "Assets/x",
     "store2-owner/x",
+    "Derived/x",
 ];
 
 fn is_refusal(result: &Result<impl Sized, String>) -> bool {
@@ -1628,6 +1629,49 @@ fn t12_the_store_set_equals_the_fixture() {
     for key in ["", "store2-owner/x", "assets\\x", "Assets", "assets ", "STORE2/x"] {
         assert!(!inside_store_set(key), "{key:?}");
     }
+}
+
+// The search-vector cache lives under `derived/`: its real key shapes take every key command and the boot sweep
+// reaches a temp left in it, while a differently cased first segment stays outside.
+#[test]
+fn t12_derived_vector_keys_write_read_list_remove_and_sweep_and_derived_case_is_refused() {
+    let root = TempRoot::new();
+    let base = root.base();
+    let head = "derived/chromemory-vectors/0123456789abcdef/head";
+    let chunk = "derived/chromemory-vectors/0123456789abcdef/c1";
+
+    for key in [chunk, head] {
+        assert!(write_key_durable(&base, key, MARKER).is_ok(), "write {key}");
+        assert_eq!(exists_key(&base, key), Ok(true), "exists {key}");
+        assert!(read_key_range(&base, key, 0, 64).unwrap().starts_with(MARKER), "read {key}");
+    }
+    let mut listed: Vec<String> = fs::read_dir(base.join("derived/chromemory-vectors/0123456789abcdef"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+        .collect();
+    listed.sort();
+    assert_eq!(listed, vec!["c1".to_string(), "head".to_string()]);
+
+    let leftover = base.join("derived").join(TEMP);
+    let nested = base.join("derived/chromemory-vectors/0123456789abcdef").join(TEMP);
+    plant(&leftover, MARKER);
+    plant(&nested, MARKER);
+    let report = sweep_write_temps(&base, &["derived".to_string()]);
+    assert_eq!(report.removed, 2, "{:?}", report.failures);
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    assert!(!leftover.exists() && !nested.exists());
+    assert!(base.join(chunk).is_file(), "the sweep keeps live vector files");
+
+    for key in [chunk, head] {
+        assert_eq!(remove_key_guarded(&base, key), Ok(()), "remove {key}");
+        assert!(!base.join(key).exists(), "{key}");
+    }
+
+    assert!(inside_store_set("derived"));
+    assert!(!inside_store_set("Derived/x"));
+    assert!(is_outside(&write_key_durable(&base, "Derived/x", MARKER)));
+    assert!(is_outside(&read_key_range(&base, "Derived/x", 0, 8)));
+    assert!(is_outside(&remove_key_guarded(&base, "Derived/x")));
 }
 
 // ---------------------------------------------------------------------------

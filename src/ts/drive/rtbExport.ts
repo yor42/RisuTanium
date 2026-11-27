@@ -23,6 +23,7 @@
  *    and the sealing sink's held plaintext are zeroed whether or not a sink was ever taken.
  */
 import { withBusy } from '../process/memory/busyActions'
+import { holdVectorPersist } from '../process/memory/chroMemory/vectorPersist'
 import { getDatabase, appVer } from '../storage/database.svelte'
 import { getPageStorageMode, type PageStorageMode } from '../storage/pageStorageMode'
 import { getAppStore, getAppStoreKind } from '../storage/store/appStore'
@@ -226,6 +227,9 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
     }
     session.cancel.throwIfCancelled()
     let seal: PreparedSeal | null = null
+    // Taken after the save and released by the outer `finally`, so a cancel, a rejected store or a failed side read
+    // leaves no hold behind; the vector records are read lazily inside `writeRtb`.
+    let releaseVectorHold: (() => void) | null = null
     try {
         if (options.password !== undefined) {
             // The opening text paints before the derivation holds the thread, and the derivation precedes the writer so a
@@ -246,6 +250,8 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
 
         emit({ phase: 'saving' })
         await deps.saveFirst(options.card !== undefined)
+        // The vector cache writes nothing from here to the end of the export, so the section reads one stable folder set.
+        releaseVectorHold = await holdVectorPersist()
         session.cancel.throwIfCancelled()
         const unsavedExcluded = !deps.isSaveClean() || deps.moduleVerdicts().some((verdict) => verdict !== 'saved')
 
@@ -389,6 +395,7 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
     } finally {
         // Every exit wipes the payload key and the sealing sink's held plaintext; after a finished sink this wipes nothing more.
         seal?.abandon()
+        releaseVectorHold?.()
     }
 }
 

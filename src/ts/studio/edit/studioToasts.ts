@@ -4,7 +4,7 @@
 // on a fake clock.
 
 import { language } from '../../../lang'
-import { toastHost, type ToastHost, type ToastId, type UndoOutcome } from '../../toast/toastHost.svelte'
+import { toastHost, type PlainToastInit, type ToastHost, type ToastId, type UndoOutcome } from '../../toast/toastHost.svelte'
 import type { ListSkipReason, SetPath } from '../history/historyModel'
 import type { OwnerHistoryService, StudioRefusal, StudioResult } from '../history/ownerHistory.svelte'
 import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
@@ -52,6 +52,30 @@ export function addRefusalNotice(visitOpen: boolean, result: { reason: StudioRef
         return { kind: 'not-added' }
     }
     return { kind: 'refusal', text: refusalText(result.reason) }
+}
+
+// The name an emotion image takes from its file: the file name without its last extension; a name whose only dot leads it
+// (or that has none) is kept whole.
+export function emotionNameOf(fileName: string): string {
+    const dot = fileName.lastIndexOf('.')
+    return dot > 0 ? fileName.slice(0, dot) : fileName
+}
+
+// The toast of the files a pick refused for their type, or null when none was. The reason lists each extension once, in
+// pick order; a file with no extension shows its name.
+export function badTypeNotice(badType: readonly File[]): PlainToastInit | null {
+    if (badType.length === 0) {
+        return null
+    }
+    const exts: string[] = []
+    for (const file of badType) {
+        const dot = file.name.lastIndexOf('.')
+        const label = dot < 0 ? file.name : file.name.slice(dot).toLowerCase()
+        if (!exts.includes(label)) {
+            exts.push(label)
+        }
+    }
+    return { kind: 'warning', text: language.studioImportRefused(badType.length), sub: language.studioPickBadType(exts.join(', ')) }
 }
 
 // The sentence that says why the first messages were skipped; null when the model named no reason.

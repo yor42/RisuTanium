@@ -1,6 +1,6 @@
 import type { Layout } from '../SideBars/railLayout'
 import { locate } from '../SideBars/railLayout'
-import { GRID_GAP_REM, GRID_TILE_REM, type CharRow } from './charListRows'
+import { GRID_SMALL, type CharRow, type GridMetrics } from './charListRows'
 
 /**
  * The Grid's two-dimensional hit test, pure: it reads the rows, their layout and the container's
@@ -20,11 +20,13 @@ export interface GridGeometry {
     contentWidth: number
     /** The pixel size of 1 rem. */
     remPx: number
+    /** The tile size the rows were built for; the App host's small tile when unset. */
+    metrics?: GridMetrics
 }
 
 /** The card key of the tile at content coordinates (`x` from the container's left edge, `y` including the scroll), or null between tiles, in the gap below a row, or outside the content. */
 export function tileKeyAt(geometry: GridGeometry, x: number, y: number): string | null {
-    const { rows, layout, contentWidth, remPx } = geometry
+    const { rows, layout, contentWidth, remPx, metrics = GRID_SMALL } = geometry
     if (!(y >= 0) || y >= layout.total || rows.length === 0) {
         return null
     }
@@ -33,8 +35,8 @@ export function tileKeyAt(geometry: GridGeometry, x: number, y: number): string 
     if (!row || row.cards.length === 0) {
         return null
     }
-    const tile = GRID_TILE_REM * remPx
-    const gap = GRID_GAP_REM * remPx
+    const tile = metrics.tileRem * remPx
+    const gap = metrics.gapRem * remPx
     if (y >= layout.offsets[index] + layout.heights[index] - gap) {
         return null
     }

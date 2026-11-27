@@ -251,7 +251,13 @@ export function createLiveReader(target: LiveTarget): LiveReader {
             return rewritableTextAt({ kind: 'character', source: live }, target)
         },
         assetRows(array) {
-            return array === 'assets' ? null : rowsOfList(live[array])
+            if (array === 'assets') {
+                return null
+            }
+            // An absent or null character asset list reads as an empty one, as the classic panel's `??= []` treats it; the
+            // emotion list keeps the strict read.
+            const stored: unknown = live[array]
+            return array === 'additionalAssets' && (stored === undefined || stored === null) ? [] : rowsOfList(stored)
         },
         folderValue() {
             return live.extentions?.[ASSET_FOLDER_KEY]
@@ -652,6 +658,16 @@ function editCharacterRows(live: character, write: Extract<WriteOp, { op: 'asset
     // The list holds rows of strings; a row that came from a plan has exactly the cells the list's rows have.
     const rows: unknown[] | undefined = live[write.array]
     if (!Array.isArray(rows)) {
+        // An insert into an absent or null asset list creates it by assigning the finished array. The local array is never
+        // touched again: a reactive proxy keeps a stale length for a raw array assigned into it, so later writes re-read
+        // the list through the character.
+        const stored: unknown = live[write.array]
+        if (write.op === 'assetRowInsert' && write.array === 'additionalAssets' && (stored === undefined || stored === null)) {
+            const created: string[][] = []
+            created.splice(write.index, 0, [...write.tuple])
+            // The list's rows are `[name, path, ext]`; a plan's tuple has the list's own cells.
+            live.additionalAssets = created as [string, string, string][]
+        }
         return
     }
     if (write.op === 'assetRowRemove') {

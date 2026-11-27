@@ -154,7 +154,7 @@ async function startWorld(db: Database, options: StartOptions = {}): Promise<Wor
         requests.push(request)
         return inner.plan(planDb, request)
     }
-    encoder.verdictOf = (slot) => {
+    encoder.verdictOfYielding = async (slot, pause) => {
         verdicts.push(String((slot as { chaId?: unknown }).chaId))
         if (mode.verdict === 'throw') {
             throw new Error('the verdict threw')
@@ -162,7 +162,7 @@ async function startWorld(db: Database, options: StartOptions = {}): Promise<Wor
         if (mode.verdict === 'dirty' || mode.verdict === 'unknown') {
             return mode.verdict
         }
-        return inner.verdictOf(slot)
+        return inner.verdictOfYielding(slot, pause)
     }
     kit.context.encoder = encoder
     const counted = { reads: 0, sweeps: 0, begun: 0, yields: 0 }

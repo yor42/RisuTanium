@@ -4,6 +4,7 @@ import type { OpenAIChat } from '../../index.svelte'
 import { ChatUnitIndex, RARE_SHARE, recordKeysOf, type IndexedUnit, type Reconcile } from './chatIndex'
 import {
     DENSE_CHAT_CAP,
+    DENSE_LOAD_WAIT_MS,
     DenseStore,
     QUERY_TIMEOUT_MS,
     currentDensePause,
@@ -13,6 +14,7 @@ import {
     queryInput,
     raceTimeout,
     resetDensePauseForTests,
+    settleWithin,
     type DenseEmbedder,
     type DenseEmbedderResult,
     type DenseJob,
@@ -25,6 +27,8 @@ import { FIRST_MESSAGE_ID, firstRecordOf, recordOf, recordTextOf, type FirstMess
 import { readLtmSettings } from './settings'
 import { chroMemoryDiscarded, chroMemoryTrace } from './traceStore'
 import { UNIT_CHARS, splitRecord, type Piece } from './units'
+import { loadVectors, requestDeleteFolder, requestPersist, resetVectorPersistForTests, trackVectorSource } from './vectorPersist'
+import { persistTargetOf } from '../../../chatDraftsModel'
 
 /** The most line texts the slot's count cache holds; it is cleared before a pack that could pass this. */
 export const LINE_CACHE_MAX = 512
@@ -128,6 +132,8 @@ export interface ShadowInput {
     dense?: DenseEmbedderResult
     /** Hybrid retrieval was asked for but the send is a shadow: it stays lexical and the trace says so. */
     hybridShadow?: boolean
+    /** Where this chat's vectors persist: the owner's chaId and the chat's id; absent when either is empty, and nothing persists. */
+    persist?: { chaId: string, chatId: string }
 }
 
 export interface ShadowDeps {
@@ -149,23 +155,47 @@ interface ShadowSlot {
     lineCache: Map<string, number>
     /** This chat's vectors; shared with the parked store map so a switch back finds them. */
     dense: DenseStore | null
+    persist: { chaId: string, chatId: string } | undefined
 }
 
 /** The vectors of the most recent chats, oldest first; a chat past the cap loses its vectors. */
 const denseStores = new Map<string, DenseStore>()
 
-function denseStoreFor(chatKey: string): DenseStore {
+/** Starts the read of a new store's persisted vectors and times it for the device hook. */
+function startVectorLoad(store: DenseStore): void {
+    if (store.owner === '' || store.chat === '') return
+    store.loaded = false
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : 0
+    store.ready = loadVectors(store).then(() => {
+        try {
+            if (typeof performance !== 'undefined' && typeof performance.measure === 'function') {
+                performance.measure('chromemory-vector-load', { start: startedAt, duration: Math.max(0, performance.now() - startedAt), detail: { units: store.size } })
+            }
+        } catch {
+            // The measure is a device hook only.
+        }
+    })
+}
+
+function denseStoreFor(chatKey: string, persist: { chaId: string, chatId: string } | undefined, modelKey: string): DenseStore {
     let store = denseStores.get(chatKey)
     if (store) {
         denseStores.delete(chatKey)
     } else {
         store = new DenseStore()
+        store.bindPersist(persist)
+        store.useModel(modelKey)
+        trackVectorSource(store)
+        startVectorLoad(store)
     }
     denseStores.set(chatKey, store)
     while (denseStores.size > DENSE_CHAT_CAP) {
         const oldest = denseStores.keys().next().value
         if (oldest === undefined) break
-        denseStores.get(oldest)?.dispose()
+        const evicted = denseStores.get(oldest)
+        // The snapshot is taken before the dispose empties the store, so what it holds still persists.
+        if (evicted && evicted.hasUnpersisted()) requestPersist(evicted, evicted.snapshot())
+        evicted?.dispose()
         denseStores.delete(oldest)
     }
     return store
@@ -352,8 +382,14 @@ async function fuseWithDense(
             status.reason = dense.reason ?? 'no-provider'
             return null
         }
-        const store = (s.dense ??= denseStoreFor(s.index.chatKey))
+        const store = (s.dense ??= denseStoreFor(s.index.chatKey, s.persist, embedder.modelKey))
         store.useModel(embedder.modelKey)
+        // A late read still imports and serves the next send; this send goes out on the keyword order.
+        if (!store.loaded) await settleWithin(store.ready, DENSE_LOAD_WAIT_MS)
+        if (store.disposed) {
+            status.state = 'building'
+            return null
+        }
         status.vectors = store.size
         const paused = currentDensePause()
         if (paused) {
@@ -409,7 +445,7 @@ async function shadowOver(input: ShadowInput, deps: ShadowDeps, trace: ChroMemor
     let s = slot
     if (!s || s.index.chatKey !== input.chatKey) {
         chatSwitch = s !== null
-        s = { index: new ChatUnitIndex(input.chatKey), tokenizerKey: input.tokenizerKey, lineCache: new Map(), dense: null }
+        s = { index: new ChatUnitIndex(input.chatKey), tokenizerKey: input.tokenizerKey, lineCache: new Map(), dense: null, persist: input.persist }
         slot = s
     } else if (s.tokenizerKey !== input.tokenizerKey) {
         s.lineCache.clear()
@@ -623,6 +659,7 @@ export async function runChroMemorySafely(args: ShadowSendArgs, deps: ShadowDeps
                 inject: args.inject ? { ...args.inject, maxContextTokens: args.maxContextTokens } : undefined,
                 dense,
                 hybridShadow: hybrid && !args.inject ? true : undefined,
+                persist: persistTargetOf(args.ownerId, args.chatId),
             },
             deps,
         )
@@ -686,6 +723,8 @@ export function discardChroMemoryIndex(chatKey: string): void {
         store.dispose()
         denseStores.delete(chatKey)
     }
+    // The persisted folder goes with the index: a discard means the chat's text is no longer what it was embedded from.
+    void requestDeleteFolder(chatKey)
     chroMemoryDiscarded.set(chatKey)
 }
 
@@ -699,6 +738,7 @@ export function resetChroMemoryShadowForTests(): void {
     denseStores.clear()
     resetDensePauseForTests()
     resetDenseIndexerForTests()
+    resetVectorPersistForTests()
     lastTrace = null
     chroMemoryTrace.set(null)
     chroMemoryDiscarded.set(null)
