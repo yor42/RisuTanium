@@ -10,6 +10,8 @@
   import type { TagManagerState } from "./types";
   import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
   import { isImeComposing } from "src/ts/ime/compositionGuard";
+  import { alertConfirm } from "src/ts/alert";
+  import { fillLang } from "src/lang/fill";
 
   interface Props {
     tagManagerState: TagManagerState;
@@ -63,10 +65,17 @@
     }
   }
 
-  function removeTag(summaryIndex: number, tagIndex: number) {
+  async function removeTag(summaryIndex: number, tagIndex: number) {
     const summary = hypaV3Data.summaries[summaryIndex];
-    if (summary.tags && tagIndex >= 0 && tagIndex < summary.tags.length) {
-      summary.tags.splice(tagIndex, 1);
+    if (!summary?.tags || tagIndex < 0 || tagIndex >= summary.tags.length) return;
+
+    const tagName = summary.tags[tagIndex];
+    if (!(await alertConfirm(fillLang(language.hypaV3Modal.tagRemoveConfirm, { name: tagName })))) return;
+
+    // The list may have changed while the dialog was open; remove only the tag that was confirmed.
+    const currentIndex = summary.tags.indexOf(tagName);
+    if (currentIndex !== -1) {
+      summary.tags.splice(currentIndex, 1);
     }
   }
 
