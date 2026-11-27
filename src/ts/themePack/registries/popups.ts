@@ -11,21 +11,22 @@ import { lintPack, type LintResult, type RegistryInput } from '../engine'
 export const POPUPS_NAMED_CRITICAL: string[] = ['pattern-layer', 'pattern-scrim', 'pattern-dialog', 'pattern-dialog-announce', 'toast-live-polite', 'toast-live-assertive']
 // The files: every component under src/lib/Nexus/pattern except the two test harnesses, the alert prompt components of src/lib/Others, and the overlay
 // components named in OVERLAY_FILES of the census (PopupEditor, HypaV3Progress, SavePopupIcon, listedPersona, BookmarkList, EasyPanel, LoadoutModal,
-// CustomSidebarConfig, RealmPopUp, RealmFrame, RealmBlockedCreators).
+// CustomSidebarConfig, RealmPopUp, RealmFrame, RealmBlockedCreators, botpreset, IrisModal, PromptDiffModal). PromptDiffModal carries parts on its frame,
+// header and close button only, never on its diff view or option controls.
 export const POPUPS_FILES: string[] = ['src/lib/Nexus/pattern/PatternDialog.svelte', 'src/lib/Nexus/pattern/PatternPrompt.svelte', 'src/lib/Nexus/pattern/PatternTask.svelte',
     'src/lib/Nexus/pattern/PatternWarnMark.svelte', 'src/lib/Nexus/pattern/PatternWarning.svelte', 'src/lib/Nexus/pattern/QuitPill.svelte',
     'src/lib/Nexus/pattern/TaskHost.svelte', 'src/lib/Nexus/pattern/ToastHost.svelte', 'src/lib/Others/AlertComp.svelte',
     'src/lib/Others/BookmarkList.svelte', 'src/lib/Others/CustomSidebarConfig.svelte', 'src/lib/Others/HypaV3Progress.svelte',
-    'src/lib/Others/LoadoutModal.svelte', 'src/lib/Others/ParkedReplyPrompt.svelte', 'src/lib/Others/PasswordPrompt.svelte',
+    'src/lib/Others/IrisModal.svelte', 'src/lib/Others/LoadoutModal.svelte', 'src/lib/Others/ParkedReplyPrompt.svelte', 'src/lib/Others/PasswordPrompt.svelte',
     'src/lib/Others/PeerConflicts.svelte', 'src/lib/Others/PopupEditor.svelte', 'src/lib/Others/PresetBundlePrompt.svelte',
-    'src/lib/Others/ProTools/EasyPanel.svelte', 'src/lib/Others/SavePopupIcon.svelte', 'src/lib/Others/SelectCharCard.svelte', 'src/lib/Others/SelectCharGrid.svelte',
-    'src/lib/Others/UpdateOfferPrompt.svelte', 'src/lib/Setting/listedPersona.svelte',
+    'src/lib/Others/ProTools/EasyPanel.svelte', 'src/lib/Others/PromptDiffModal.svelte', 'src/lib/Others/SavePopupIcon.svelte', 'src/lib/Others/SelectCharCard.svelte', 'src/lib/Others/SelectCharGrid.svelte',
+    'src/lib/Others/UpdateOfferPrompt.svelte', 'src/lib/Setting/botpreset.svelte', 'src/lib/Setting/listedPersona.svelte',
     'src/lib/UI/Realm/RealmBlockedCreators.svelte', 'src/lib/UI/Realm/RealmFrame.svelte', 'src/lib/UI/Realm/RealmPopUp.svelte']
 // Every literal data-part of those files; a dynamic name is not counted.
 export const POPUPS_PARTS: string[] = ['memory-progress', 'memory-progress-bar', 'memory-progress-bar-fill', 'memory-progress-card', 'memory-progress-mini', 'memory-progress-pill',
-    'memory-progress-subtext', 'memory-progress-text', 'modal-action', 'modal-body', 'modal-bookmark-list', 'modal-close', 'modal-controls',
-    'modal-custom-sidebar-config', 'modal-easy-panel', 'modal-field', 'modal-footer', 'modal-frame', 'modal-header', 'modal-list', 'modal-listed-persona',
-    'modal-loadout', 'modal-popup-editor', 'modal-realm-blocked-creators', 'modal-realm-frame', 'modal-realm-popup', 'modal-row', 'modal-text', 'modal-title',
+    'memory-progress-subtext', 'memory-progress-text', 'modal-action', 'modal-body', 'modal-bookmark-list', 'modal-botpreset', 'modal-close', 'modal-controls',
+    'modal-custom-sidebar-config', 'modal-easy-panel', 'modal-field', 'modal-footer', 'modal-frame', 'modal-header', 'modal-iris', 'modal-list', 'modal-listed-persona',
+    'modal-loadout', 'modal-popup-editor', 'modal-prompt-diff', 'modal-realm-blocked-creators', 'modal-realm-frame', 'modal-realm-popup', 'modal-row', 'modal-text', 'modal-title',
     'password-prompt-actions',
     'password-prompt-cancel', 'password-prompt-field', 'password-prompt-field-label', 'password-prompt-heading', 'password-prompt-ok',
     'password-prompt-root', 'password-prompt-show', 'pattern-alert-bar', 'pattern-alert-bar-fill', 'pattern-alert-bar-sweep', 'pattern-alert-body',
@@ -74,9 +75,9 @@ export const POPUPS_CRITICAL_CLOSURE: string[] = ['password-prompt-actions', 'pa
 // The parts that enclose a critical element and are not critical themselves: the toast holders. Layout bounds still refuse on them.
 export const POPUPS_HOLDERS: string[] = ['task-toasts', 'toast-host']
 // Holders, plus every non-critical part that is or holds an interactive element (button, input, select, textarea, a, label, any on* handler, tabindex, an interactive role, bind: or a component) and the alert close button: a pack may restyle them but never hide or disable them.
-export const POPUPS_REACH: string[] = ['memory-progress', 'memory-progress-card', 'memory-progress-pill', 'modal-action', 'modal-body', 'modal-bookmark-list', 'modal-close', 'modal-controls',
-    'modal-custom-sidebar-config', 'modal-easy-panel', 'modal-field', 'modal-footer', 'modal-frame', 'modal-header', 'modal-list', 'modal-listed-persona',
-    'modal-loadout', 'modal-popup-editor', 'modal-realm-blocked-creators', 'modal-realm-frame', 'modal-realm-popup', 'modal-row', 'pattern-alert-char', 'pattern-alert-chars',
+export const POPUPS_REACH: string[] = ['memory-progress', 'memory-progress-card', 'memory-progress-pill', 'modal-action', 'modal-body', 'modal-bookmark-list', 'modal-botpreset', 'modal-close', 'modal-controls',
+    'modal-custom-sidebar-config', 'modal-easy-panel', 'modal-field', 'modal-footer', 'modal-frame', 'modal-header', 'modal-iris', 'modal-list', 'modal-listed-persona',
+    'modal-loadout', 'modal-popup-editor', 'modal-prompt-diff', 'modal-realm-blocked-creators', 'modal-realm-frame', 'modal-realm-popup', 'modal-row', 'pattern-alert-char', 'pattern-alert-chars',
     'pattern-alert-chunk', 'pattern-alert-close', 'pattern-alert-code-block', 'pattern-alert-code-head', 'pattern-alert-copy', 'pattern-alert-log',
     'pattern-alert-log-detail', 'pattern-alert-log-summary', 'pattern-alert-logs', 'pattern-alert-panel', 'pattern-alert-row', 'pattern-alert-rows',
     'pattern-alert-tab', 'pattern-alert-tabs', 'pattern-alert-tile', 'pattern-alert-tiles', 'pattern-alert-toolbar', 'pattern-alert-tree',

@@ -20,7 +20,8 @@ const OTHERS = ['AlertComp', 'ParkedReplyPrompt', 'PasswordPrompt', 'PeerConflic
 // Overlay components of the modal vocabulary (modal-*, memory-progress*, save-status-*); each stage that adds an overlay extends this list.
 const OVERLAY_FILES = ['src/lib/Others/PopupEditor.svelte', 'src/lib/Others/HypaV3Progress.svelte', 'src/lib/Others/SavePopupIcon.svelte', 'src/lib/Setting/listedPersona.svelte',
     'src/lib/Others/BookmarkList.svelte', 'src/lib/Others/ProTools/EasyPanel.svelte', 'src/lib/Others/LoadoutModal.svelte', 'src/lib/Others/CustomSidebarConfig.svelte',
-    'src/lib/UI/Realm/RealmPopUp.svelte', 'src/lib/UI/Realm/RealmFrame.svelte', 'src/lib/UI/Realm/RealmBlockedCreators.svelte']
+    'src/lib/UI/Realm/RealmPopUp.svelte', 'src/lib/UI/Realm/RealmFrame.svelte', 'src/lib/UI/Realm/RealmBlockedCreators.svelte',
+    'src/lib/Setting/botpreset.svelte', 'src/lib/Others/IrisModal.svelte', 'src/lib/Others/PromptDiffModal.svelte']
 const relative = (file: string): string => path.relative(root, file).split(path.sep).join('/')
 const files = [
     ...readdirSync(patternDir).filter((name) => name.endsWith('.svelte') && !HARNESSES.has(name)).map((name) => path.join(patternDir, name)),
