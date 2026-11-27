@@ -1,6 +1,6 @@
 name: Android release APK
 
-# Reusable workflow, called only by android-build.yml in release mode (never dispatched on its own).
+# Reusable workflow, called only by android-build.yml in release mode and by release-desktop.yml with includeAndroid (never dispatched on its own).
 #
 #   guard           refuses a run before any build: main branch only, no repository-level copy of the four
 #                   secrets or the variable, and environment android-release restricted to main.
@@ -24,7 +24,7 @@ name: Android release APK
 #
 # The environment rule checks the ref a run starts from, not code that the run checks out later.
 #
-# The unsigned artifact lasts 3 days and the signed one 14 days.
+# The unsigned artifact lasts 3 days; the signed one lasts 14 or 3 days, set by the caller (signed-retention-days).
 # Rule: never install or share an APK from a red run, even though its artifact exists.
 # Setup and the checks before a real-data install: Agents/Tools/device/SIGNING.md.
 on:
@@ -34,6 +34,17 @@ on:
         description: 'Target ABI: aarch64 or all'
         type: string
         required: true
+      signed-retention-days:
+        description: 'Days the signed artifact is kept: 14 for android-build, 3 for release-desktop'
+        type: number
+        required: true
+    outputs:
+      signed-artifact-id:
+        description: Id of the signed APK artifact, checked by inspect-signed
+        value: ${{ jobs.inspect-signed.outputs.artifact-id }}
+      signed-sha256:
+        description: SHA-256 of the signed APK, checked by inspect-signed
+        value: ${{ jobs.inspect-signed.outputs.sha256 }}
     secrets:
       ANDROID_KEYSTORE_BASE64:
         required: true
@@ -392,7 +403,7 @@ jobs:
           name: risutanium-android-release-${{ inputs.abi }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/out/app-release.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: ${{ inputs.signed-retention-days }}
           compression-level: 0
 
   inspect-signed:
@@ -401,6 +412,9 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      artifact-id: ${{ steps.hand-over.outputs.artifact-id }}
+      sha256: ${{ steps.hand-over.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -452,3 +466,14 @@ jobs:
         run: |
           set -euo pipefail
           node util/androidRelease.mjs inspect signed
+
+      # Runs only when the inspect step above passed. The values were validated by check-inputs.
+      - id: hand-over
+        name: Hand the inspected signed file over
+        env:
+          ARTIFACT_ID: ${{ needs.sign.outputs.artifact-id }}
+          SIGNED_SHA256: ${{ needs.sign.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          echo "artifact-id=$ARTIFACT_ID" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SIGNED_SHA256" >> "$GITHUB_OUTPUT"

@@ -34,7 +34,28 @@ const h = vi.hoisted(() => ({
     resolved: 'SENTINEL-resolved-value',
     resolveCalls: [] as string[],
     setDatabase: null as unknown as ReturnType<typeof import('vitest').vi.fn>,
+    /** The token endpoint's answer; `gate` holds every answer until it settles. */
+    oauth: { answer: null as null | (() => unknown), gate: null as null | Promise<void> },
+    /** Holds the private key read of the Vertex slot after the stored value has been read; `reached` counts the held reads. */
+    keyRead: { gate: null as null | Promise<void>, reached: 0 },
 }))
+
+// The read of the stored key is passed through unchanged; only a held Vertex read is delayed after the
+// value is in hand, which is where the Android vault unwrap awaits.
+vi.mock('./secretKey', async (importOriginal) => {
+    const original = await importOriginal<typeof import('./secretKey')>()
+    return {
+        ...original,
+        readKeyField: async (...args: Parameters<typeof original.readKeyField>) => {
+            const value = await original.readKeyField(...args)
+            if (args[1] === 'vertexPrivateKey' && h.keyRead.gate) {
+                h.keyRead.reached++
+                await h.keyRead.gate
+            }
+            return value
+        },
+    }
+})
 
 vi.mock('localforage', () => ({ default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}), removeItem: vi.fn(async () => {}) }) } }))
 vi.mock('@tauri-apps/plugin-fs', () => ({ writeFile: vi.fn(), exists: vi.fn(async () => false), mkdir: vi.fn(), readFile: vi.fn(), BaseDirectory: { AppData: 0 } }))
@@ -59,6 +80,17 @@ vi.mock('../../alert', () => ({
     alertConfirm: vi.fn(async () => true), alertClear: vi.fn(), alertModuleSelect: vi.fn(async () => -1), alertStore: writable({ type: '', msg: '' }), alertWait: vi.fn(),
 }))
 
+/** Answers a token request after the gate, if any, with the configured answer or a minted token. */
+async function serveOauth(): Promise<unknown> {
+    if (h.oauth.gate) {
+        await h.oauth.gate
+    }
+    if (h.oauth.answer) {
+        return h.oauth.answer()
+    }
+    return { ok: true, status: 200, json: async () => ({ access_token: 'MINTED-access-token' }) }
+}
+
 function record(via: string, url: string, headers: unknown, body: unknown) {
     const normalized: Record<string, string> = {}
     if (headers instanceof Headers) {
@@ -80,6 +112,9 @@ function record(via: string, url: string, headers: unknown, body: unknown) {
 vi.mock('../../globalApi.svelte', () => ({
     fetchNative: vi.fn(async (url: string, init?: { headers?: unknown, body?: unknown }) => {
         record('fetchNative', url, init?.headers, init?.body)
+        if (String(url).includes('oauth2.googleapis.com')) {
+            return await serveOauth() as Response
+        }
         return new Response(JSON.stringify({ message: { content: 'ok' } }), { status: 500 })
     }),
     globalFetch: vi.fn(async (url: string, opts?: { headers?: unknown, body?: unknown }) => {
@@ -218,12 +253,16 @@ beforeEach(() => {
     h.resolveCalls.length = 0
     h.resolved = 'SENTINEL-resolved-value'
     h.setDatabase.mockClear()
+    h.oauth.answer = null
+    h.oauth.gate = null
+    h.keyRead.gate = null
+    h.keyRead.reached = 0
     realFetch = globalThis.fetch
     // Plain assignment: the setup file's global stubs must stay in place.
     globalThis.fetch = vi.fn(async (url: string, init?: { headers?: unknown, body?: unknown }) => {
         record('fetch', url, init?.headers, init?.body)
         if (String(url).includes('oauth2.googleapis.com')) {
-            return { ok: true, status: 200, json: async () => ({ access_token: 'MINTED-access-token' }) }
+            return await serveOauth()
         }
         if (String(url).endsWith('/generate/text/async')) {
             return { status: 202, json: async () => ({ id: 'job', kudos: 0 }), text: async () => '' }
@@ -494,6 +533,190 @@ describe('Vertex service-account key as a reference', () => {
 
 //#endregion
 
+describe('Vertex token service: one mint per credential, redacted, through the shared transport', () => {
+    const vertexDb = (key: string) => ({ aiModel: 'gemini-2.5-flash-vertex', vertexPrivateKey: key, requestRetrys: 0 })
+    const oauthCalls = () => h.calls.filter((call) => call.url.includes('oauth2.googleapis.com'))
+    const aiplatformCalls = () => h.calls.filter((call) => call.url.includes('aiplatform.googleapis.com'))
+    const pause = (ms = 25) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+    const holdTokenEndpoint = () => {
+        let release: () => void = () => {}
+        h.oauth.gate = new Promise<void>((resolve) => { release = resolve })
+        return release
+    }
+    const waitForOauth = async (count: number) => {
+        for (let i = 0; i < 200 && oauthCalls().length < count; i++) { await pause(5) }
+        expect(oauthCalls().length).toBeGreaterThanOrEqual(count)
+    }
+    const rejectionOf = () => requestChatData({ formated: messages(), bias: {}, useStreaming: false, noMultiGen: true, tools: [] }, 'model', null)
+        .then(() => null, (error: unknown) => error)
+    const vertexConnectionId = () => (DBState.db.connections as unknown as Array<{ id: string, provider: string }>).find((conn) => conn.provider === 'vertex')?.id ?? ''
+
+    test('R1 concurrent requests on a plain key with an expired token make one token request and all carry its token', async () => {
+        installDb(vertexDb(pem))
+        const release = holdTokenEndpoint()
+
+        const all = Promise.all([ask(), ask(), ask()])
+        await waitForOauth(1)
+        await pause()
+        release()
+        await all
+
+        expect(oauthCalls()).toHaveLength(1)
+        expect(aiplatformCalls()).toHaveLength(3)
+        for (const call of aiplatformCalls()) {
+            expect(call.headers['authorization']).toBe('Bearer MINTED-access-token')
+        }
+    })
+
+    test('R2 a minted token on a plain key is registered for log redaction', async () => {
+        resetSecretRefState()
+        installDb(vertexDb(pem))
+
+        await ask()
+
+        expect(redactResolved('Bearer MINTED-access-token')).not.toContain('MINTED-access-token')
+    })
+
+    test('R3 the token request goes through the shared transport, never the global fetch', async () => {
+        installDb(vertexDb(pem))
+
+        await ask()
+
+        expect(oauthCalls().map((call) => call.via)).toEqual(['fetchNative'])
+    })
+
+    test('R4a a connection deleted while a plain-key mint is in flight leaves no persisted token', async () => {
+        installDb(vertexDb(pem))
+        const release = holdTokenEndpoint()
+        const { deleteConnection } = await import('../../connections/connectionEditor')
+
+        const request = ask()
+        await waitForOauth(1)
+        const id = vertexConnectionId()
+        expect(id).not.toBe('')
+        expect(deleteConnection(DBState.db, id)).not.toBeNull()
+        release()
+        await request
+
+        expect(DBState.db.vertexAccessToken).toBe('')
+        expect(DBState.db.vertexAccessTokenExpires).toBe(0)
+    })
+
+    test('R4b a connection deleted while a referenced-key mint is in flight leaves no memory token', async () => {
+        installDb(vertexDb('${RISU_PEM_SIX}'))
+        const release = holdTokenEndpoint()
+        const { deleteConnection } = await import('../../connections/connectionEditor')
+
+        const request = ask()
+        await waitForOauth(1)
+        const id = vertexConnectionId()
+        expect(id).not.toBe('')
+        expect(deleteConnection(DBState.db, id)).not.toBeNull()
+        release()
+        await request
+        installDb(vertexDb('${RISU_PEM_SIX}'))
+        await ask()
+
+        expect(oauthCalls()).toHaveLength(2)
+    })
+
+    const holdKeyRead = () => {
+        let release: () => void = () => {}
+        h.keyRead.gate = new Promise<void>((resolve) => { release = resolve })
+        return release
+    }
+    const waitForKeyRead = async () => {
+        for (let i = 0; i < 200 && h.keyRead.reached < 1; i++) { await pause(5) }
+        expect(h.keyRead.reached).toBeGreaterThanOrEqual(1)
+    }
+
+    test('R7a a connection deleted while the private key is still being read leaves no persisted token', async () => {
+        installDb(vertexDb(pem))
+        const release = holdKeyRead()
+        const { deleteConnection } = await import('../../connections/connectionEditor')
+
+        const request = ask()
+        await waitForKeyRead()
+        const id = vertexConnectionId()
+        expect(id).not.toBe('')
+        expect(deleteConnection(DBState.db, id)).not.toBeNull()
+        release()
+        await request
+
+        expect(DBState.db.vertexAccessToken).toBe('')
+        expect(DBState.db.vertexAccessTokenExpires).toBe(0)
+    })
+
+    test('R7b a connection deleted while a referenced private key is still being read fills no memory token', async () => {
+        installDb(vertexDb('${RISU_PEM_SIX}'))
+        const release = holdKeyRead()
+        const { deleteConnection } = await import('../../connections/connectionEditor')
+
+        const request = ask()
+        await waitForKeyRead()
+        const id = vertexConnectionId()
+        expect(id).not.toBe('')
+        expect(deleteConnection(DBState.db, id)).not.toBeNull()
+        release()
+        await request
+        h.keyRead.gate = null
+        installDb(vertexDb('${RISU_PEM_SIX}'))
+        await ask()
+
+        expect(oauthCalls()).toHaveLength(2)
+    })
+
+    describe('a failing token endpoint', () => {
+        const failure = () => ({ ok: false, status: 500, json: async () => ({ e: 'srv' }) })
+
+        test('R5a concurrent failing requests share one token request and one rejection message', async () => {
+            installDb(vertexDb(pem))
+            h.oauth.answer = failure
+            const release = holdTokenEndpoint()
+
+            const both = Promise.all([rejectionOf(), rejectionOf()])
+            await waitForOauth(1)
+            await pause()
+            release()
+            const [first, second] = await both
+
+            expect(oauthCalls()).toHaveLength(1)
+            const expected = fillLang(language.errors.googleTokenRefreshFailed, { error: '{"e":"srv"}' })
+            expect((first as Error).message).toBe(expected)
+            expect((second as Error).message).toBe(expected)
+        })
+
+        test('R5b guard: a failed mint caches nothing, so the next request mints and persists', async () => {
+            installDb(vertexDb(pem))
+            h.oauth.answer = failure
+            await rejectionOf()
+            expect(DBState.db.vertexAccessToken).toBe('')
+            h.oauth.answer = null
+
+            await ask()
+
+            expect(oauthCalls()).toHaveLength(2)
+            expect(DBState.db.vertexAccessToken).toBe('MINTED-access-token')
+        })
+    })
+
+    test('R6 a token endpoint error that echoes the assertion shows no JWT in the thrown message', async () => {
+        resetSecretRefState()
+        installDb(vertexDb(pem))
+        let jwt = ''
+        h.oauth.answer = () => {
+            jwt = new URLSearchParams(oauthCalls()[0].body).get('assertion') ?? ''
+            return { ok: false, status: 400, json: async () => ({ error: jwt }) }
+        }
+
+        const error = await rejectionOf()
+
+        expect(jwt.split('.')).toHaveLength(3)
+        expect((error as Error).message).toContain(language.errors.googleTokenRefreshFailed.split('{')[0])
+        expect((error as Error).message).not.toContain(jwt)
+    })
+})
+
 describe('Vertex token minting on a page without crypto.subtle', () => {
     const realCrypto = globalThis.crypto
     const realSubtle = realCrypto.subtle
@@ -596,13 +819,8 @@ describe('Vertex token minting on a page without crypto.subtle', () => {
 
     describe('guard: failures outside the key keep their own messages', () => {
         const oauthAnswer = (answer: () => unknown) => {
-            const original = globalThis.fetch
-            globalThis.fetch = vi.fn(async (url: string, init?: { headers?: unknown, body?: unknown }) => {
-                record('fetch', url, init?.headers, init?.body)
-                if (String(url).includes('oauth2.googleapis.com')) { return answer() }
-                return { json: async () => ({}), status: 200, ok: true, text: async () => '' }
-            }) as unknown as typeof globalThis.fetch
-            return () => { globalThis.fetch = original }
+            h.oauth.answer = answer
+            return () => { h.oauth.answer = null }
         }
 
         test('a token endpoint error status', async () => {

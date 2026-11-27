@@ -168,9 +168,10 @@ describe('T2-RF-5: a restore point that turns a flag on asks', () => {
         service.editField(A, 'utilityBot', false, { coalesceKey: null })
         const keep = new Set<never>()
         const refused = service.restore(A, keep)
-        expect(refused).toEqual({ ok: false, reason: 'riskyConfirm', paths: ['utilityBot'] })
+        // The restore point keeps one entry per holder property, under the slot path `utilityBotFix`, so the question names it.
+        expect(refused).toEqual({ ok: false, reason: 'riskyConfirm', paths: ['utilityBotFix'] })
         expect(live().utilityBot).toBe(false)
-        expect(service.restore(A, keep, { confirmed: ['utilityBot'] }).ok).toBe(true)
+        expect(service.restore(A, keep, { confirmed: ['utilityBotFix'] }).ok).toBe(true)
         expect(live().utilityBot).toBe(true)
     })
 })

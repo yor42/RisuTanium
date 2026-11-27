@@ -1,6 +1,7 @@
 import { get } from 'svelte/store'
 import { afterFlush } from '../../ts/afterFlush'
 import { ReloadChatPointer, ReloadGUIPointer, settingsOpen } from '../../ts/stores.svelte'
+import { SoftRedrawCount } from '../../ts/process/softRedraw'
 import { topLevelChangeCount } from '../../ts/storage/topLevelChanges'
 import { language } from '../../lang'
 import { studioOpen } from '../../ts/studio/studioOpen'
@@ -21,7 +22,8 @@ import { studioOpen } from '../../ts/studio/studioOpen'
  *   turns false. A row or body created under an older epoch is dead and never parses.
  * - `remountEpoch`: bumps on a return after the UI language changed during the visit. The chat
  *   chrome reads its labels once at mount, so only a remount shows the new language.
- * - `heldGui` / `heldChat`: the reload pointers as the surface sees them. They follow the
+ * - `heldGui` / `heldSoft` / `heldChat`: the reload pointers as the surface sees them (`heldSoft` is the count of
+ *   redraw-only GUI bumps, which do not remount a body). They follow the
  *   raw stores while visible and stay put while hidden; a rebuild return catches them up
  *   to the raw values, so the rebuilt rows start from the current pointers.
  */
@@ -31,6 +33,7 @@ export const chatSurface = $state({
     rebuildEpoch: 0,
     remountEpoch: 0,
     heldGui: 0,
+    heldSoft: 0,
     heldChat: {} as Record<number, number>,
 })
 
@@ -99,6 +102,7 @@ async function onSettingsClosed(){
     if(rebuild){
         chatSurface.rebuildEpoch += 1
         chatSurface.heldGui = get(ReloadGUIPointer)
+        chatSurface.heldSoft = get(SoftRedrawCount)
         chatSurface.heldChat = { ...get(ReloadChatPointer) }
     }
     chatSurface.hidden = false
@@ -150,6 +154,12 @@ export function installChatSurface(){
         }
         chatSurface.heldGui = value
     })
+    // A hidden surface already marked the signal missed through the GUI pointer, which a redraw always bumps too.
+    const stopSoft = SoftRedrawCount.subscribe((value) => {
+        if(!chatSurface.hidden){
+            chatSurface.heldSoft = value
+        }
+    })
     const stopChat = ReloadChatPointer.subscribe((value) => {
         if(chatSurface.hidden){
             missedSignal = true
@@ -161,6 +171,7 @@ export function installChatSurface(){
     stopWatching = () => {
         stopSettings()
         stopGui()
+        stopSoft()
         stopChat()
     }
 }
@@ -179,5 +190,6 @@ export function resetChatSurfaceForTests(){
     chatSurface.rebuildEpoch = 0
     chatSurface.remountEpoch = 0
     chatSurface.heldGui = 0
+    chatSurface.heldSoft = 0
     chatSurface.heldChat = {}
 }

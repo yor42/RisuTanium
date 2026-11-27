@@ -29,6 +29,10 @@
 //   present value of another type is then recorded as a foreign reading and an undo writes it back, instead of the
 //   value reading as absent. The frozen-facts test pins it with the other facts. It is never set on a `biasList`
 //   row: a foreign reading is a boolean or text reading, and a bias list has no such reading.
+// - Two paths on one holder property are aliases sharing one restore slot, the later row (`restoreSlotOf`). A later alias
+//   has the same `holders` and `value` and accepts every reading of the earlier rows: `keepForeign` and
+//   `editWhenAbsent: true` whenever an earlier alias has them, and every alias with `editWhenAbsent: true` has the later
+//   row's `absent`. A session kind listing an alias lists the later row. The alias guard test pins this.
 
 import type { languageEnglish } from '../../../lang/en'
 import type { Chat, character } from '../../storage/database.svelte'
@@ -189,6 +193,15 @@ export const FIELD_SPECS = {
     // Studio SC-1: the character's background HTML and CharacterJS. A stored non-string is kept and put back by undo.
     backgroundHTML: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true, keepForeign: true },
     virtualscript: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true, keepForeign: true },
+    // Studio risky flags stored as a non-boolean: the same holder property as the flag's own row, but a stored value of
+    // another type is kept as a foreign reading, so an edit to a real boolean undoes back to it byte-for-byte. The
+    // original rows stay as they are (they read such a value as absent). `utilityBotFix` is editable when absent and
+    // deletes on undo, unlike `utilityBot` (keep, not editable when absent): no base-path write can record an absent
+    // reading, so a restore through the slot writes absent only where the key is already absent, and the slot accepts every
+    // reading of the base row.
+    lowLevelAccessFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'lowLevelAccess', keepForeign: true },
+    utilityBotFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'utilityBot', keepForeign: true },
+    escapeOutputFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'escapeOutput', keepForeign: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -316,6 +329,9 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     // Studio SC-1.
     backgroundHTML: { labelKey: 'backgroundHTML', focus: { form: 'studio-char-html-form', part: 'studio-char-background' } },
     virtualscript: { labelKey: 'charjs', focus: { form: 'studio-scripts-form', part: 'studio-scripts-charjs' } },
+    lowLevelAccessFix: { labelKey: 'lowLevelAccess', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    utilityBotFix: { labelKey: 'utilityBot', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    escapeOutputFix: { labelKey: 'escapeOutput', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed

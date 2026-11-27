@@ -41,13 +41,14 @@
     import { capitalize, sleep } from "src/ts/util"
     import { onDestroy, onMount, untrack } from "svelte"
     import { fade } from "svelte/transition"
-    import { type Unsubscriber } from "svelte/store"
+    import { get, type Unsubscriber } from "svelte/store"
     import { language } from "../../lang"
     import { alertError, alertRequestData } from "../../ts/alert"
     import { ParseMarkdown, type CbsConditions, type simpleCharacterArgument } from "../../ts/parser/parser.svelte"
     import { getCurrentCharacter, type Message, type MessageGenerationInfo, type StreamingDisplayOptimizationMode } from "../../ts/storage/database.svelte"
     import { selectedCharID } from "../../ts/stores.svelte"
     import { HideIconStore, ReloadGUIPointer, selIdState } from "../../ts/stores.svelte"
+    import { SoftRedrawCount } from "../../ts/process/softRedraw"
     import AutoresizeArea from "../UI/GUI/TextAreaResizable.svelte"
     import ChatBody from './ChatBody.svelte'
     import { viewportWidthThisTask } from './chatViewportWidth'
@@ -534,6 +535,18 @@
             }
             updateDisplayedMessage()
         }))
+        // A script redraw re-parses the body without remounting it. The subscription's first call is the current count.
+        let softSeen = get(SoftRedrawCount)
+        unsubscribers.push(SoftRedrawCount.subscribe((v) => {
+            if(v === softSeen){
+                return
+            }
+            softSeen = v
+            if(surfaceEpoch !== null && (chatSurface.hidden || surfaceDead())){
+                return
+            }
+            chatBodyRevision += 1
+        }))
     })
 
     onDestroy(()=>{
@@ -707,8 +720,8 @@
         </div>
     {:else}
         {@const chatReloadPointer = surfaceEpoch !== null
-            ? chatSurface.heldGui + (chatSurface.heldChat[idx] ?? 0)
-            : $ReloadGUIPointer + ($ReloadChatPointer[idx] ?? 0)}
+            ? chatSurface.heldGui - chatSurface.heldSoft + (chatSurface.heldChat[idx] ?? 0)
+            : $ReloadGUIPointer - $SoftRedrawCount + ($ReloadChatPointer[idx] ?? 0)}
         {@const totalLengthPointer = (idx > totalLength - 6) ? totalLength : 0}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->

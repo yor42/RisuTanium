@@ -70,6 +70,7 @@ class ResizeObserverStub {
         ResizeObserverStub.instances.push(this)
     }
     observe(): void {}
+    unobserve(): void {}
     disconnect(): void {
         ResizeObserverStub.instances = ResizeObserverStub.instances.filter((entry) => entry !== this)
     }
@@ -355,7 +356,9 @@ describe('results', () => {
         expect(studioScreen.selectedItemId).toBe('cha-1/lore:1')
         expect(studioScreen.expanded['o:character:cha-1']).toBe(true)
         expect(studioScreen.expanded['k:character:cha-1/lore']).toBe(true)
-        expect(part('studio-detail-text')?.textContent).toBe('tall trees and a king')
+        // The lore entry opens in the lazily loaded lore form: the chosen result's own entry is the one shown.
+        await settled(() => expect((part('studio-lore-content') as HTMLTextAreaElement | null)?.value).toBe('tall trees and a king'))
+        expect((part('studio-lore-name') as HTMLInputElement | null)?.value).toBe('Forest')
     })
 
     test('after a result is picked focus is back in Studio, so Esc and Ctrl+K work without a click', async () => {

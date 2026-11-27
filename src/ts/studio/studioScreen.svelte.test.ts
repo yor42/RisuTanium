@@ -5,6 +5,7 @@ import { get, writable } from 'svelte/store'
 import {
     clearStudioSelection,
     closeStudio,
+    followStudioItem,
     MODULE_LIST_KEY,
     openStudio,
     openStudioModuleList,
@@ -21,6 +22,7 @@ import {
     studioViaList,
 } from './studioScreen.svelte'
 import { setStudioEnabled } from './studioSwitch.svelte'
+import { registerStudioField } from './fieldFlush'
 import { studioOpen } from './studioOpen'
 import { classicLinks } from './classicLinks.svelte'
 import { clearOpenModuleId, publishOpenModuleId, resetOpenModuleIdForTests } from './assets/openModuleForm.svelte'
@@ -484,5 +486,49 @@ describe('I8 import-time rule', () => {
         expect(switchModule.studioEligible()).toBe(false)
         expect(fresh.openStudio(ownerTarget, null)).toBe(false)
         expect(reads.count).toBe(0)
+    })
+})
+
+describe('TS1: followStudioItem', () => {
+    function openItem(returnRow: string | null): void {
+        openStudio(ownerTarget, { element: null, selector: '#opener' })
+        studioScreen.selectedOwnerKey = 'character:char'
+        studioScreen.selectedKind = 'lore'
+        studioScreen.selectedItemId = 'char/lore:2'
+        studioScreen.listReturn = returnRow === null ? null : { ownerKey: 'character:char', kind: 'lore', rowId: returnRow }
+    }
+
+    test('the item id follows, and a return row that named the item follows with it', () => {
+        openItem('char/lore:2')
+        followStudioItem('char/lore:5')
+        expect(studioScreen.selectedItemId).toBe('char/lore:5')
+        expect(studioScreen.listReturn).toEqual({ ownerKey: 'character:char', kind: 'lore', rowId: 'char/lore:5' })
+    })
+
+    test('a tester reveal id, another item id or no return row is left alone', () => {
+        openItem('lt:3')
+        followStudioItem('char/lore:5')
+        expect(studioScreen.listReturn?.rowId).toBe('lt:3')
+        openItem('char/lore:9')
+        followStudioItem('char/lore:5')
+        expect(studioScreen.listReturn?.rowId).toBe('char/lore:9')
+        openItem(null)
+        followStudioItem('char/lore:5')
+        expect(studioScreen.listReturn).toBeNull()
+    })
+
+    test('it changes nothing else and flushes no field', () => {
+        openItem('char/lore:2')
+        studioScreen.restoreSheetOpen = true
+        studioScreen.revealListRow = 'char/lore:7'
+        const flush = vi.fn()
+        const unregister = registerStudioField(flush)
+        followStudioItem('char/lore:5')
+        unregister()
+        expect(flush).not.toHaveBeenCalled()
+        expect(studioScreen.selectedOwnerKey).toBe('character:char')
+        expect(studioScreen.selectedKind).toBe('lore')
+        expect(studioScreen.restoreSheetOpen).toBe(true)
+        expect(studioScreen.revealListRow).toBe('char/lore:7')
     })
 })

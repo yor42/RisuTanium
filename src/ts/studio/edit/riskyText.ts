@@ -5,7 +5,7 @@ import { language } from '../../../lang'
 import { DBState } from '../../stores.svelte'
 import { moduleRowOf } from '../assets/openModuleForm.svelte'
 import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
-import type { CharacterRiskyFlagPath } from './riskyFlags'
+import { characterFlagOf, type CharacterRiskyFixPath, type CharacterRiskyFlagPath } from './riskyFlags'
 
 /**
  * The name the confirm sheet gives a module: its stored name while that is a non-blank string, else the plural module
@@ -20,7 +20,8 @@ export function lowLevelAskName(owner: OwnerKey): string {
     return typeof name === 'string' && name.trim() !== '' ? name : language.modules
 }
 
-export function riskyNameOf(path: CharacterRiskyFlagPath): string {
+export function riskyNameOf(flag: CharacterRiskyFlagPath | CharacterRiskyFixPath): string {
+    const path = characterFlagOf(flag)
     switch (path) {
         case 'lowLevelAccess': return language.lowLevelAccess
         case 'utilityBot': return language.utilityBot
@@ -28,7 +29,8 @@ export function riskyNameOf(path: CharacterRiskyFlagPath): string {
     }
 }
 
-export function riskyExplainOf(path: CharacterRiskyFlagPath): string {
+export function riskyExplainOf(flag: CharacterRiskyFlagPath | CharacterRiskyFixPath): string {
+    const path = characterFlagOf(flag)
     switch (path) {
         case 'lowLevelAccess': return language.help.lowLevelAccess
         case 'utilityBot': return language.help.utilityBot
@@ -36,7 +38,8 @@ export function riskyExplainOf(path: CharacterRiskyFlagPath): string {
     }
 }
 
-export function riskyAskOf(path: CharacterRiskyFlagPath): string {
+export function riskyAskOf(flag: CharacterRiskyFlagPath | CharacterRiskyFixPath): string {
+    const path = characterFlagOf(flag)
     switch (path) {
         case 'lowLevelAccess': return language.studioRiskyAskLow
         case 'utilityBot': return language.studioRiskyAskUtility

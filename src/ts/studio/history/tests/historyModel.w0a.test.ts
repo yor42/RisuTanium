@@ -37,19 +37,20 @@ const S3A_PATHS: readonly SetPath[] = ['name', 'viewScreen', 'largePortrait', 'i
 const S3A_BOOLEAN_PATHS: readonly SetPath[] = ['largePortrait', 'inlayViewScreen', 'prebuiltAssetCommand']
 // Studio SC-1: the character's background HTML and CharacterJS.
 const SC1_PATHS: readonly SetPath[] = ['backgroundHTML', 'virtualscript']
+const RISKY_FIX_PATHS: readonly SetPath[] = ['lowLevelAccessFix', 'utilityBotFix', 'escapeOutputFix']
 
 const S5_PATHS: readonly SetPath[] = ['moduleName', 'moduleDescription', 'moduleNamespace', 'moduleHideIcon', 'moduleLowLevelAccess', 'backgroundEmbedding']
 
-const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S5_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS]
+const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S5_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS, ...RISKY_FIX_PATHS]
 
 const EXPECTED_SET: Record<OwnerKind, readonly SetPath[]> = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS, ...RISKY_FIX_PATHS],
     chat: ['note'],
     module: ['customModuleToggle', ...S5_PATHS],
 }
 
 const EXPECTED_RESTORE: Record<OwnerKind, readonly RestorePath[]> = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS, 'alternateGreetings'],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', ...S1_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS, ...RISKY_FIX_PATHS, 'alternateGreetings'],
     chat: ['note'],
     module: ['customModuleToggle', ...S5_PATHS],
 }
@@ -61,7 +62,7 @@ function fieldValue(path: RestorePath, value: string): unknown {
     if (path === 'bias') {
         return { had: true, value: [[value, 1]] }
     }
-    return { had: true, value: path === 'hideChatIcon' || path === 'risutanium_render_when_complete' || path === 'moduleHideIcon' || path === 'moduleLowLevelAccess' || path === 'removedQuotes' || path === 'lorePlus' || S2B_PATHS.includes(path as SetPath) || S3A_BOOLEAN_PATHS.includes(path as SetPath) ? true : value }
+    return { had: true, value: path === 'hideChatIcon' || path === 'risutanium_render_when_complete' || path === 'moduleHideIcon' || path === 'moduleLowLevelAccess' || path === 'removedQuotes' || path === 'lorePlus' || S2B_PATHS.includes(path as SetPath) || S3A_BOOLEAN_PATHS.includes(path as SetPath) || RISKY_FIX_PATHS.includes(path as SetPath) ? true : value }
 }
 
 function rawRecord(kind: OwnerKind, parts: { done?: unknown[]; restore?: unknown }): unknown {
@@ -115,7 +116,7 @@ describe('A2: the set-path table is the only list of what each owner kind accept
 
 describe('A8 (model half): the restore order lists every restore key once, the toggle before hideChatIcon', () => {
     test('RESTORE_PATH_ORDER is the literal order', () => {
-        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S5_PATHS, ...PRESET_FORM_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, ...PRESET_S4B_PATHS, ...PRESET_S4C_PATHS, ...PRESET_S4D_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS, 'alternateGreetings'])
+        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', ...S1_PATHS, ...S5_PATHS, ...PRESET_FORM_PATHS, ...S2A_PATHS, ...S2B_PATHS, ...S2C_PATHS, ...PRESET_S4B_PATHS, ...PRESET_S4C_PATHS, ...PRESET_S4D_PATHS, 'lorePlus', ...S3A_PATHS, ...SC1_PATHS, ...RISKY_FIX_PATHS, 'alternateGreetings'])
     })
 
     test('every restore key of every owner kind has a place in the order', () => {

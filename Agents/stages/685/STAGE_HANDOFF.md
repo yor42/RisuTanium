@@ -113,3 +113,48 @@
   - commit `writeProbabilityLine`'s result as one `objSet content` with label field `probability`;
   - show the kept notice when `probabilityClearKeeps` is true (S7-1 may reword it to cover both keep reasons).
 - Scratch artifacts: `%TEMP%\risu-b715\685-s7-4\` (plans and their hashed gate-input copies, gate reports, coder reports, dispatch files).
+
+# #685 stage handoff: S7-1 (lore list, entry and folder forms, list ops, restore sheet lore line)
+
+- Stage: S7-1 of `docs/design/studio/S7_LORE_SPEC.md` r6, section 10 row S7-1. PR "Refs #685" (does not close the issue). Branch `claude/685-s7-1-45f7b9` from `c9bf67eda` (main after PR 758), with `origin/main` merged before the PR.
+- Reviewed commit: the first commit of this PR; any later head commit is only a merge of `origin/main`.
+- Decisions (`Agents/mc/685-s7-1.md`): MC-4190 (a new folder's name starts empty), MC-4191 (bulk and folder Always-active toggles skip rows with a malformed stored value), MC-4192 (one rule for deferred row surfaces after the fourth Gate 1 reject), MC-4193 (device rows run before merge, PC legs and phone legs). MC-4194..4199 are unused, held for the rest of #685. Also applied: MC-4090, MC-4092, MC-4179, MC-4180, MC-4182, MC-4184.
+- Files kept off: no history-core file (#681 S3b holds that slot, MC-4186). Lore persisted writes go only through `service.objEdit(owner, build)` and `restore(owner, keep, { lines })`.
+
+## What landed
+
+- Pure layer: `edit/loreListModel.ts` (rows, row keys, folder tree, selection planner: Rules P, U, L, O and the deferred-surface tokens of Rule D), `edit/loreListOps.ts` (builders for add, duplicate, delete, folder delete subtree, move, bulk and folder Always active, local activation `loreActivateInChat`, link and unlink), `edit/objListCopy.ts` (step texts and refusal texts), `studio/loreFolderExpansion.ts`.
+- `process/loreEntryMigration.ts`: `migrateLoreEntryToV2` extracted byte-for-byte from `updateLorebooks` in `characters.ts` (TC1 literal bytes, T46b).
+- UI: `StudioLorePane.svelte`, `StudioLoreList.svelte` (windowed list, row menu, Move to folder sheet, bulk menu), `StudioLoreForm.svelte` (entry form with the S7-4 decorator copy, warnings and picks mounted, probability control, local activation switch), `StudioLoreFolderForm.svelte`, `StudioLoreFolderConfirm.svelte`.
+- `StudioDetail.svelte` loads the pane lazily (`{#await import(...)}` inside `{#key ownerKey}`, with `studio-lore-pane-load-failed` on failure). This departs from plan F touch 1 (a static import), because the static import pulled `parser.svelte.ts` and its module-level effect into 11 existing StudioDetail test files. Gate 2 accepted it.
+- History surfaces: the restore sheet shows the lore line and sends `lines` on Confirm and on the risky-confirm retry (re-read at retry time); History panel lore step texts; the refused-Undo toast maps obj refusals. T50 now runs on the real builders; `loreOps.test-helpers.ts` is deleted.
+- Carry items from S7-0 and S7-4 (carry note): the kept-Clear notice wording and its show rule, the `extraPicks.matches` binding, the `refreshPicker` comment, `coalesceKey` bound to row identity, T50 on real builders, the `lorePlus` focus target, the decorator keys and `LoreDecoratorCopy`.
+- `en.ts`: 126 keys; all 7 locales by the translator (localeParity 7/7). Spec r6 edited (3.3a MC-4092 union, 3.4 MC-4190, 3.9 restated, section 8 copy, 9.1 T50 notes).
+
+## Gates
+
+- Tier 2, Opus designer and orchestrator.
+- Gate 1 (opus-reviewer, fresh each round): r1 [REJECT] (chat owner lifecycle, re-point flushes, landing focus); r2 [REJECT] (tracked entry lost off module hosts, list-mode follow opened the form); r3 [REJECT] (stale Back row key), then a senior-advisor escalation (derive the row key from live rows, one reconcile path); r4 [REJECT] (folder confirm from the form had no token), then MC-4192; r5 [EDITORIAL] (E-8 focus only if inside the closing surface, E-10 PR-body limitation, E-11 retry passes re-read lines).
+- Coders: serial fresh Sonnet sub-stages 1a, TL (translator), 1b (first attempt cut by the quota pause, completed by a correction attempt), 1c, 1d, then the DOC row (doc-writer).
+- Gate 2: r1 (opus-reviewer) [REJECT]: S1, the local-activation link and unlink History steps named the entry "Unnamed lore"; E1 silent read-only module host when the repair import fails; E2 T24d wording; E3 the E-10 limitation. Contracts 1 to 5 held; 8 reviewer mutants killed. Remediated (S1 with a test shown failing first, E1 note with `language.error`, E2 wording). r2 (fresh opus-reviewer) [EDITORIAL]: E-r2-1, the form's unlink caller name was uncovered (mutant S1-M2 survived); closed by a label assertion in T24 (b), S1-M2 then killed (1 test fails), source restored byte-identical.
+- Test-only amendments to existing tests, judged by Gate 2 (D2): StudioDetail.moduleForm and StudioDetail tests mock `moduleLorebookRepair` and `alert`; StudioDetail lore-vehicle tests moved to a kind that keeps the read-only view; StudioHistoryPanel.assetLines lore lines no longer interim; StudioRestoreSheet.formControlNames and StudioScreen.back view mocks gain `restoreLines`/`restoreNotes` (the real view always has them); TL1 waits for the module-host toggle to be enabled (the host is read-only until the lazy repair import resolves).
+
+## Test results
+
+- Orchestrator, before Gate 2: `pnpm check` 0 errors; targeted run of 132 files (every touched test file plus the Studio detail, screen, history and long-text neighbours, `localeParity` and `src/ts/studio/history/tests`): 3081 passed, 3 skipped.
+- After remediation: `pnpm check` 0 errors; the six remediation files 139 passed; `StudioLoreForm.svelte.test.ts` 18 passed.
+- Post-merge numbers are in the PR body.
+
+## Known limitations and leftovers
+
+- E-10 / E3: an uncommitted probability Clear is dropped when the form unmounts without a blur, as with other Studio number fields.
+- E-a widened (spec 3.9 consequence): an open id-less entry drops to the list with `studioLoreEntryGone`, although it still exists, when a change Studio did not run as its own op re-creates its element (module-host History replay of a field, undo or redo of a move or Give id, undo or redo of New ID, a classic-editor drag). Studio's own ops never cause it.
+- Deferred surfaces close, writing nothing, on any view change or when their captured target can no longer be resolved; the user opens them again.
+- Duplicate does not open the copy; the copy's row is focused (Rule L).
+- Device rows DV-L1..L7: see the PR (MC-4193).
+
+## Instructions for the next stage
+
+- S7-3 adds Import and Export; section 8 already lists the `studioLoreImport*` keys, which are not in `en.ts` yet.
+- Keep lore writes on `objEdit` and `restore(..., { lines })`; new list ops get a builder in `loreListOps.ts` and a step text in `objListCopy.ts`.
+- Scratch artifacts: `%TEMP%\risu-b715\685-s7-1\` (plans r1..r5 and their hashed gate-input copies, gate reports, coder reports, dispatch files).

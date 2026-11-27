@@ -1,9 +1,9 @@
 import { fetchNative, textifyReadableStream } from "src/ts/globalApi.svelte"
 import { LLMFlags, LLMFormat, type LLMModel } from "src/ts/model/modellist"
-import { getDatabase, setDatabase } from "src/ts/storage/database.svelte"
-import { base64url, simplifySchema } from "src/ts/util"
+import { getDatabase } from "src/ts/storage/database.svelte"
+import { simplifySchema } from "src/ts/util"
 import { v4 } from "uuid"
-import { pkcs8FromPem, RsaKeyError, signRs256 } from "./rs256Signer"
+import { vertexAccessToken, vertexTokenTicket } from "./vertexToken"
 import { saveInlayedSignature, setInlayAsset, writeInlayImage, type InlaySignature } from "../files/inlays"
 import { extractJSON, getGeneralJSONSchema } from "../templates/jsonSchema"
 import { callTool, decodeToolCall, encodeToolCall } from "../mcp/mcp"
@@ -14,7 +14,7 @@ import { addFetchLog } from "src/ts/globalApi.svelte"
 import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseChunk } from './request'
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type LLMParameter } from './shared'
 import { notifyBodyInterceptors } from "./bodyInterceptors"
-import { isSecretRef, registerSensitive, resolveSecret } from "src/ts/secretRef"
+import { isSecretRef } from "src/ts/secretRef"
 import { limitedField, readKeyField, sendArgKey, sendKeyLine } from "./secretKey"
 import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from "./toolLoop"
 import { isAndroidTransport } from "src/ts/storage/tauriByteTransport"
@@ -23,9 +23,6 @@ import { parseGoogleUsage } from "../../usage/usageParse"
 import type { UsageMeter } from "../../usage/usageTypes"
 import { composeGeminiDisplay, extractGeminiContent, geminiReadRuleOf, geminiStreamTransform, initGeminiStreamState, type GeminiReadRule } from "./geminiStreamTransform"
 import { bindOwnedStream, endOwnedRead, retireFailedHead, retireOwnedStream } from "src/ts/nativeReply/ownedStream"
-
-/** Vertex access token minted from a referenced service-account key. Memory only; never stored. */
-let vertexMemoryToken: { reference: string, email: string, token: string, expires: number } | null = null
 
 type GeminiFunctionCall = {
     id?: string;
@@ -433,81 +430,9 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
         return /^gemini-3-.*-preview$/.test(modelId) || /^gemini-3\.[5678]-flash/.test(modelId)
     }
 
-    async function generateToken(email:string,key:string,persist:boolean = true){
-        // Input validation
-        if (!email.includes("gserviceaccount.com")) {
-            throw new Error(language.errors.vertexInvalidClientEmail);
-        }
-        if (!key.includes("-----BEGIN PRIVATE KEY-----") ||
-            !key.includes("-----END PRIVATE KEY-----")) {
-            throw new Error(language.errors.vertexInvalidPrivateKey);
-        }
-
-        const time = Math.floor(Date.now() / 1000);
-    
-        const header = {
-            alg: "RS256",
-            typ: "JWT",
-        };
-
-        const claimSet = {
-            iss: email,
-            iat: time,
-            exp: time + 3600,
-            scope: "https://www.googleapis.com/auth/cloud-platform",
-            aud: "https://oauth2.googleapis.com/token",
-        };
-
-        const encodedHeader = base64url(new TextEncoder().encode(JSON.stringify(header)));
-        const encodedClaimSet = base64url(new TextEncoder().encode(JSON.stringify(claimSet)));
-    
-        // Only a malformed key is relabelled; network and token failures keep their own messages.
-        let signature: Uint8Array;
-        try {
-            signature = await signRs256(pkcs8FromPem(key), new TextEncoder().encode(`${encodedHeader}.${encodedClaimSet}`));
-        } catch (error) {
-            if (error instanceof RsaKeyError) {
-                throw new Error(language.errors.vertexInvalidPrivateKey);
-            }
-            throw error;
-        }
-
-        const jwt = `${encodedHeader}.${encodedClaimSet}.${base64url(signature)}`;
-
-        const response = await fetch("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-        });
-
-        if (!response.ok) {
-            let errorText;
-            try {
-                errorText = JSON.stringify(await response.json());
-            } catch {
-                errorText = response.status.toString();
-            }
-            throw new Error(fillLang(language.errors.googleTokenRefreshFailed, { error: `${errorText}` }));
-        }
-
-        const data = await response.json();
-        const token = data.access_token;
-
-        if (!token) {
-            throw new Error(language.errors.googleNoAccessToken);
-        }
-
-        if(persist){
-            const db2 = getDatabase()
-            db2.vertexAccessToken = token
-            db2.vertexAccessTokenExpires = Date.now() + 3500 * 1000
-            setDatabase(db2)
-        }
-        return token;
-    }
-
+    // Taken before the key read begins: the read can await, and an invalidation during it must make
+    // the token attempt stale.
+    const vertexTicket = vertexTokenTicket()
     const vertexPrivateKey = await readKeyField(db, 'vertexPrivateKey')
     if(arg.modelInfo.format === LLMFormat.VertexAIGemini && isSecretRef(vertexPrivateKey)){
         // A token minted from a referenced key is derived from a secret that is not stored, so it is
@@ -519,14 +444,14 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
         if(arg.previewBody){
             headers['Authorization'] = "Bearer " + reference
         }
-        else if(vertexMemoryToken && vertexMemoryToken.reference === reference && vertexMemoryToken.email === db.vertexClientEmail && vertexMemoryToken.expires > Date.now()){
-            headers['Authorization'] = "Bearer " + vertexMemoryToken.token
-        }
         else{
-            const token = await generateToken(db.vertexClientEmail, await resolveSecret(vertexPrivateKey), false)
-            registerSensitive(token, reference + ':token')
-            vertexMemoryToken = { reference, email: db.vertexClientEmail, token, expires: Date.now() + 3500 * 1000 }
-            headers['Authorization'] = "Bearer " + token
+            // The ticket was taken before the key read began, so an invalidation during that read
+            // makes this attempt stale.
+            const answer = await vertexAccessToken(db, vertexPrivateKey, vertexTicket)
+            if (answer.kind === 'incomplete') {
+                return { type: 'fail', result: language.errors.vertexAuthIncomplete };
+            }
+            headers['Authorization'] = "Bearer " + answer.token
         }
     }
     else if(arg.modelInfo.format === LLMFormat.VertexAIGemini){
@@ -534,18 +459,16 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
         if(arg.previewBody){
             headers['Authorization'] = "Bearer " + (db.vertexAccessToken || '')
         }
-        else if(db.vertexAccessTokenExpires < Date.now()){
-            if (!db.vertexClientEmail || !vertexPrivateKey) {
+        else{
+            const answer = await vertexAccessToken(db, vertexPrivateKey, vertexTicket)
+            if (answer.kind === 'incomplete') {
                 return { type: 'fail', result: language.errors.vertexAuthIncomplete };
             }
-            headers['Authorization'] = "Bearer " + await generateToken(db.vertexClientEmail, vertexPrivateKey)
-        }
-        else{
-            headers['Authorization'] = "Bearer " + db.vertexAccessToken
+            headers['Authorization'] = "Bearer " + answer.token
         }
     }
 
-    
+
     if((db.jsonSchemaEnabled || arg.schema) && !arg.noJsonSchema){
         body.generation_config.response_mime_type = "application/json"
         body.generation_config.response_schema = getGeneralJSONSchema(arg.schema, ['$schema','additionalProperties'], {subject: arg.subject})

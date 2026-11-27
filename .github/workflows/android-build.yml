@@ -12,7 +12,7 @@ name: Android APK build
 #            environment `android-release` (secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
 #            ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD; variable ANDROID_RELEASE_CERT_SHA256) and inspects again.
 #            No repository-level copies. The key is never re-created for this app: another key cannot update
-#            installed copies. Setup and checks: Agents/Tools/device/SIGNING.md. The signed artifact lasts 14 days.
+#            installed copies. Setup and checks: Agents/Tools/device/SIGNING.md. The signed artifact lasts 14 days (set by signed-retention-days below).
 #            After changing a variable or secret, confirm that no repository-level copy exists before "Re-run failed jobs", or use "Re-run all jobs", because a partial re-run does not repeat guard.
 #
 # The environment rule checks the ref a run starts from, not code that the run checks out later.
@@ -123,6 +123,7 @@ jobs:
     uses: ./.github/workflows/android-release-apk.yml
     with:
       abi: ${{ inputs.abi }}
+      signed-retention-days: 14
     secrets:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

@@ -9,7 +9,7 @@ import { scanReferences } from '../assets/referenceScan'
 import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
 import type { JsonValue } from '../../storage/blockFrame'
 import { sameJsonValue, toPlainJson } from '../../storage/store2/codec/normalize'
-import { cloneValue, factsOf, isHeldBy, registryPaths, typeofKind, valueMatchesKind, valuesEqual } from './fieldAccess'
+import { cloneValue, factsOf, isHeldBy, registryPaths, restoreSlotOf, typeofKind, valueMatchesKind, valuesEqual } from './fieldAccess'
 import { FIELD_SPECS, type BiasRow, type SetPath } from './fieldRegistry'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
 import {
@@ -850,7 +850,11 @@ function parseRestore(value: unknown, kind: OwnerKind): RestorePoint | null {
         if (!before || !last) {
             return null
         }
-        fields[path] = { before, last }
+        // A key that is not its group's slot folds onto the slot; when both are stored the slot's entry wins.
+        const slot: RestorePath = path === LIST_PATH ? path : restoreSlotOf(path)
+        if (slot === path || fields[slot] === undefined) {
+            fields[slot] = { before, last }
+        }
     }
     return { visitId: value.visitId, at: value.at, fields }
 }
@@ -1222,15 +1226,16 @@ function makeWorking(live: LiveReader): Working {
             texts.set(target, value)
         },
         field(path) {
-            let value = fields.get(path)
+            const slot = restoreSlotOf(path)
+            let value = fields.get(slot)
             if (!value) {
-                value = live.field(path)
-                fields.set(path, value)
+                value = live.field(slot)
+                fields.set(slot, value)
             }
             return value
         },
         setField(path, value) {
-            fields.set(path, value)
+            fields.set(restoreSlotOf(path), value)
         },
         list: greetings === null ? null : [...greetings],
         fm(chatId) {
@@ -1724,9 +1729,10 @@ export function deriveRestoreWrites(
             continue
         }
         if (op.op === 'set') {
-            const known = byPath.get(op.path)
-            byPath.set(op.path, {
-                path: op.path,
+            const slot = restoreSlotOf(op.path)
+            const known = byPath.get(slot)
+            byPath.set(slot, {
+                path: slot,
                 before: known ? known.before : op.before,
                 after: op.after,
             })
@@ -2849,8 +2855,8 @@ function editHunks(a: readonly string[], b: readonly string[], start: number, aE
 }
 
 // The ops a revert stores: its net change, not the chain of inverses it applied. One value op per
-// field path and per chat; the list as the differing runs between the common prefix and suffix;
-// each consumed or produced item as an insert and a removal of its value at the end of the list, a
+// restore slot (the paths on one holder property are one) and per chat; the list as the differing runs between the
+// common prefix and suffix; each consumed or produced item as an insert and a removal of its value at the end of the list, a
 // slot no equal value can occupy. Applied in order from `before` every op applies and the result is
 // `after`.
 function revertStepOps(
@@ -2864,9 +2870,10 @@ function revertStepOps(
     const values = new Map<string, Op>()
     for (const op of applied) {
         if (op.op === 'set') {
-            const key = 'set:' + op.path
+            const slot = restoreSlotOf(op.path)
+            const key = 'set:' + slot
             const first = values.get(key)
-            values.set(key, first && first.op === 'set' ? { op: 'set', path: op.path, before: first.before, after: op.after } : op)
+            values.set(key, first && first.op === 'set' ? { op: 'set', path: slot, before: first.before, after: op.after } : { ...op, path: slot })
         } else if (op.op === 'chatFm' && op.chatId !== null) {
             const key = 'fm:' + op.chatId
             const first = values.get(key)
@@ -3298,11 +3305,12 @@ export function noteRestoreWrites(
     }
     const fields: Partial<Record<RestorePath, RestoreField>> = { ...base.fields }
     for (const write of writes) {
-        const known = fields[write.path]
+        const key: RestorePath = write.path === LIST_PATH ? write.path : restoreSlotOf(write.path)
+        const known = fields[key]
         if (known) {
-            fields[write.path] = { before: known.before, last: write.after }
+            fields[key] = { before: known.before, last: write.after }
         } else if (addUnknown) {
-            fields[write.path] = { before: write.before, last: write.after }
+            fields[key] = { before: write.before, last: write.after }
         }
     }
     return { visitId: base.visitId, at: base.at, fields }

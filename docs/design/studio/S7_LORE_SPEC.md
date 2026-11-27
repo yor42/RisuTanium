@@ -278,7 +278,7 @@ A line after the block counts as none (W2 marks it).
 - **Set, no leading block:** prepend `@@probability N` and a line break (the migration's form).
 - **Set, with a block:** insert directly after the block's last line, so no fallback chain is split.
 - **Change:** rewrite only that line; the return value is unchanged.
-- **Clear:** remove the line and its line break, **unless the next block line is a fallback line** (`@@@name`, not `@@@end`). Removing it would hand that line the state of the line before, so it could start or stop running (N5). In that layout Clear writes `@@probability 100` instead, which keeps the state and never blocks, and shows `studioLoreProbabilityKept`.
+- **Clear:** remove the line and its line break, **unless** (MC-4092) the content keeps the Clear: **either** a fallback line follows (`@@@name`, not `@@@end`), since removing it would hand that line the state of the line before, so it could start or stop running (N5), **or** removing it would pull later `@@` lines into the block (the line is the only line of the leading block, the next line is blank and a later non-blank line starts with `@@`; the parser trims the content before parsing, so those lines would join the block, body text would run as decorators, and an argument-less `@@position` would make the scan throw). A Clear that is kept writes `@@probability 100` instead, which keeps the state and never blocks. The notice `studioLoreProbabilityKept` shows whenever the current content keeps a Clear, not only right after a write: after a kept Clear the control shows 100, and a second Clear is a no-op.
 
 `N` is an integer 0 to 100; other input clamps on blur.
 
@@ -290,10 +290,12 @@ A line after the block counts as none (W2 marks it).
 
 **Folder form:** Folder name (`folderName`); Always active with `studioLoreFolderAlwaysActive`; the entry count; `+ Entry here`; Delete.
 
+**New folder name (MC-4190):** Add folder creates the folder with an empty name. The row shows the localized `sidebarUi.unnamedFolder` label, and focus moves to the form's Folder name field, as for a new entry (D1). The classic editor's "New Folder" name is not used in Studio.
+
 **Delete (MC-4009):**
 - A folder whose subtree holds anything asks once, in an `alertdialog`: `studioLoreFolderDeleteConfirm(name, n, f)`, where `n` counts the entries (non-folder rows) and `f` the nested folders in the subtree (E4). Buttons `studioLoreDelete` and `cancel`; focus on Cancel; Esc, tap outside and Back cancel; a cancel writes nothing.
 - An empty folder deletes without asking.
-- Either way one undoable step with one durable deleted item (4.4); the toast shows `studioLoreFolderDeleted(name, n, f)`. Classic asks twice (`LoreBookData.svelte:167-176`).
+- Either way one undoable step with one durable deleted item (4.4); the toast shows `studioLoreFolderDeleted(name, n, f)`. The history label is `studioLoreStepFolderDelete(name, n)`, with `n` the rows inside the folder. Classic asks twice (`LoreBookData.svelte:167-176`).
 
 **Linked entry** (a chat `mode: 'child'` row): read-only `studioLoreLinked(name)` with help `childLoreDesc`; `studioLoreLinkedMissing` when no character entry holds its id; deletable without a confirm; not editable (the scan copies the parent's text at send time, `lorebook.svelte.ts:515-517`).
 
@@ -362,7 +364,7 @@ Chat links follow the same rules; a re-IDed link shows `studioLoreLinkedMissing`
 
 ### 3.9 Selection across list changes
 
-Item ids `<ownerId>/lore:<index>` are valid for the visit (`ownerModel.ts:86-92`). The form tracks its entry by a unique `id`, else by the live entry object (character and chat arrays are edited in place; after its own module writes Studio updates the reference). After its own list op Studio reselects at the builder's new index; after "Give this entry a new ID", by the new id. When the entry cannot be found, the detail drops to the list with `studioLoreEntryGone`.
+Item ids `<ownerId>/lore:<index>` are valid for the visit (`ownerModel.ts:86-92`). The open entry is held by one reference (its id when unique, else the element). After its own op Studio refreshes that reference from the builder's landing on every host. With an entry open the selection follows the entry's new index; in the list no selection is written and the landed row is focused. Back reveals the entry's current row, found from the live list when the list is shown. When the entry cannot be found, the detail drops to the list with `studioLoreEntryGone`.
 
 ## 4. History, undo and the save chip
 
@@ -602,7 +604,7 @@ Unchanged; a hit opens the entry form.
 | `studioLoreProbabilityNone` | Not set: activates every time it matches |
 | `studioLoreProbabilityUnreadable` | The @@probability line in the content can't be read, so it never blocks this entry. Fix it in the content. |
 | `studioLoreProbabilityMany` | Set by several @@probability lines in the content. Edit them there. |
-| `studioLoreProbabilityKept` | Set to 100 instead of removed: the next decorator line depends on this one. |
+| `studioLoreProbabilityKept` | Clearing keeps this line as @@probability 100, which never blocks: a fallback decorator line follows it, or removing it would change which lines count as decorators. |
 | `studioLoreLegacyProbabilityLabel` | Older probability value |
 | `studioLoreLegacyProbability` | Not read by the lorebook engine. |
 | `studioLoreLegacyDiffers(n)` | The engine uses the @@probability line ({n}%) instead. |
@@ -614,8 +616,8 @@ Unchanged; a hit opens the entry form.
 | `studioLoreMoveUp` / `MoveDown` / `MoveTop` / `MoveBottom` / `MoveToFolder` | Move up / Move down / Move to top / Move to bottom / Move to folder… |
 | `studioLoreDuplicate` / `studioLoreDelete` | Duplicate / Delete |
 | `studioLoreDeleted(name)` | Deleted "{name}" |
-| `studioLoreFolderDeleteConfirm(name, n, f)` | Delete folder "{name}" with {n} entries and {f} folders in it? You can undo this. (plural forms per locale; a zero part is left out) |
-| `studioLoreFolderDeleted(name, n, f)` | Deleted folder "{name}" with {n} entries and {f} folders (same plural rule) |
+| `studioLoreFolderDeleteConfirm(name, n, f)` | Delete folder "{name}" with {n} entries and {f} folders in it? You can undo this. (1 entry / 1 folder in the singular; a zero part is left out, and with both zero: Delete folder "{name}"? You can undo this.) |
+| `studioLoreFolderDeleted(name, n, f)` | Deleted folder "{name}" with {n} entries and {f} folders (same rule; both zero: Deleted folder "{name}") |
 | `studioLoreFolderAlwaysActive` | Also sets the entries directly in this folder. |
 | `studioLoreAlwaysActiveToggle(name)` | Always active: {name} |
 | `studioLoreLinked(name)` | Linked to "{name}" in the character lorebook |
@@ -626,7 +628,7 @@ Unchanged; a hit opens the entry form.
 | `studioLoreNewIdNote` | Its chat links and memory flags start over. |
 | `studioLoreRestoreIdTaken` | Can't restore: this lorebook already has an entry or folder with the same ID, folder key or content. |
 | `studioLoreRevertMixed` | This range includes an asset merge that changed lorebook text, so it can't be reverted in one go. Undo steps one at a time. |
-| `studioLoreTestLink` | Test lorebook |
+| `studioLoreTestTitle` | Test lorebook |
 | `studioLoreSettings` | Lorebook settings |
 | `studioLoreGlobalValues(depth, tokens)` | Using the app settings: search depth {depth}, max tokens {tokens} |
 | `studioLoreSettingsChatNote` | Chat lorebook entries use the character's lorebook settings. |
@@ -652,8 +654,15 @@ Unchanged; a hit opens the entry form.
 | `studioLoreDecoIgnored(name)` | This app ignores @@{name}. |
 | `studioLoreDecoFallback` | Runs only when the last decorator that ran was ignored. |
 | `studioLoreDecoHelp.<name>` | One line per table row (3.7) |
-| `studioLoreNonEntryRow` | This item isn't a lorebook entry. It is kept as it is. (MC-4081) |
-| `studioLoreStep*` | History labels: Add, Delete(name), Edit(field), Probability, Move, Duplicate, Import(n), FolderCreate(name), FolderRename(from, to), FolderDelete(name, n, f), FolderActive, BulkActive(n), NewId, Link, Unlink, Settings |
+| `studioLoreNonEntryRow` | This item isn't a lorebook entry. It is kept as it is. |
+| `studioLoreDecoDeprecated` | An older form of @@depth 0. It still works. |
+| `studioLoreDecoMatches(n)` | 1 decorator / {n} decorators |
+| `studioLoreDecoListLabel` | Insert a decorator |
+| `studioLoreRowMenu(name)` | More actions for "{name}" |
+| `studioLoreDepth(n)` | Level {n} |
+| `studioLoreDeletedPreview(name, n)` | {name} (n = 0) / {name} and {n} more |
+| `studioLoreBulkMenu` | Bulk actions |
+| `studioLoreStep*` | History labels, with the English in `en.ts`: Add(name), Delete(name), Edit(field, name), Probability(name), Move(name), Duplicate(name), Import(n), FolderCreate(name), FolderRename(name), FolderDelete(name, n), FolderActive(name), BulkActive(n), NewId(name), Link(name), Unlink(name), Settings. `FolderDelete`'s `n` is the number of rows inside the folder; zero gives `Deleted folder "{name}"`. |
 
 ## 9. Required tests
 
@@ -729,6 +738,8 @@ Fixtures are built like the real producers (MC-329): characters from `createBlan
 T38 cases: (a) a lorebook-only visit stores an empty-fields point, shows only the line with the journal count, and reverts it; (b) after an edit in this visit created the point, an undo of an earlier visit's lorebook step is reverted by the line too; (c) no lore path in the restore record; (d) an outside change makes the line revert nothing with `studioLoreRestoreChanged`, while field writes proceed; (e) a delete and a restore from History in the visit return entries and the item listing to the visit start; (f) a new visit starts with an empty journal; (g) a lorebook-only visit after a visit with a field edit replaces that point: no field rows, and Confirm reverts only the lorebook; (h) an owner with no earlier point shows the section after a lore edit; (i) after a reload an earlier visit's empty point is not offered, and an earlier visit's field point shows its rows, no line and the D8 note; (j) a replay-only visit creates no point and shows no line; (k) after the line applies the journal is empty, and an Undo of its step shows the line again with `n` = 1; (l) an asset step creates no point (C part, passes before and after).
 
 **T50** follows advisor F. Generators: lists in classic shapes mixing id-less rows, exact twins, shared ids, folder rows with and without an id, nested folders and child links. Actions: every builder of 2.5; outside edits (insert, delete, reorder, a field rewrite, a verbatim append of an earlier export); undo; redo; revert to a random step; restore from History; the restore line; a reload that drops either the last history save or the last data save. After every action it asserts I1 (a refused action leaves the list, stacks and listing byte-equal), I2 (after every Studio plan, for every `id` and `folderKey`, and for `content` when the plan holds no `objSet`: holders after it ≤ the larger of holders before it and the highest count an applied insert recorded for it), I3 (every applied remove or set found its recorded anchor) and I4 (after an `already` move, checked without `planObjStep`: for each row the step's direction would add, a canonical-equal row is at its recorded index, and for each row it would remove, the live holder count of each of its identities is below the recorded count); with no outside action and no dropped save, undoing every step returns the initial bytes, redoing every step the final bytes, and, while fewer than `MAX_DELETED` items were listed, choosing the line returns the visit-start bytes (which also checks the tail-merge).
+
+**T50 notes** (S7-1 carry list). T50 runs on the real builders and reaches the `dropStep` class. Its I4 oracle is read net of re-adds. "Initial bytes" means canonical JSON.
 
 A shrunk counterexample becomes a pinned case. CI runs a fixed seed; the run count is set at Gate 2 (10.1).
 

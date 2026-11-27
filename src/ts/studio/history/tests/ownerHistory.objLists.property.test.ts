@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // T50: generated lorebook histories through the real owner history service (memory store, fake clock, a character owner
-// and its chat). Acceptance test for the object-list mechanism of S7-0; it passes with the test-local builders of
-// `loreOps.test-helpers.ts` and must be re-run with the real builders of S7-1.
+// and its chat). Acceptance test for the object-list mechanism: every lorebook action is built by the real builders of
+// `loreListOps.ts` and `loreSettingsOps.ts`, with injected id generators. A `burst` deletes 51 rows with 51 steps and
+// undoes them, which evicts the oldest deleted item and so reaches the `dropStep` class (T50p pins it).
 //
 // Every oracle below is independent simple code in this file: none calls `planObjStep`, `completeObjOps` or
 // `listingEffectOf`. Rows are compared by `canonX`, a string, so a fingerprint collision cannot hide a difference.
@@ -23,13 +24,40 @@ import { DBState, selIdState } from 'src/ts/stores.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
-import { createOwnerHistoryService, type OwnerHistoryService, type StudioResult } from '../ownerHistory.svelte'
+import { idOf, trackedOf, type LoreTracked } from 'src/ts/studio/edit/loreListModel'
+import {
+    loreAddEntry,
+    loreAddFolder,
+    loreAlwaysActive,
+    loreAssignIdForLink,
+    loreBulkActive,
+    loreCaseSensitive,
+    loreDelete,
+    loreDeleteFolder,
+    loreDuplicate,
+    loreFieldEdit,
+    loreLegacyProbability,
+    loreLinkInsert,
+    loreMove,
+    loreNewId,
+    loreProbabilitySet,
+    loreUnlink,
+    type LoreIds,
+    type LoreMove,
+    type LoreOp,
+} from 'src/ts/studio/edit/loreListOps'
+import { buildLoreFlag, buildUseGlobal } from 'src/ts/studio/edit/loreSettingsOps'
+import { MAX_DONE } from '../historyModel'
+import { createOwnerHistoryService, type ObjBuildResult, type OwnerHistoryService, type StudioResult } from '../ownerHistory.svelte'
 import { entryAnchor, isObjFamilyOp, parseObjItem, type IdentityKind, type ObjEntry, type ObjFamilyOp } from '../objectListOps'
 import { characterOwnerKey, chatOwnerKey, SAVE_DEBOUNCE_MS, type OwnerKey } from '../ownerPhase'
 import { createFakeClock, type FakeClock } from './historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, type MemoryStudioStore } from './studioStoreDoubles'
 import { clone, golden, liveCharacter, makeCharacter, putCharacter, row, rows } from './objService.test-helpers'
-import { addEntry, bulkSet, caseSensitive, deleteEntry, deleteSubtree, duplicateEntry, fieldEdit, giveNewId, isRow, loreSettingsSet, moveEntry, type LoreBuilder } from './loreOps.test-helpers'
+
+function isRow(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
 const h = vi.hoisted(() => ({ marks: 0 }))
 
@@ -104,7 +132,7 @@ interface Ctx {
     lastShared: Map<string, string>
     // The data before the last action.
     prevData: DataCapture
-    delSeq: number
+    idSeq: number
     snapshots: string[]
 }
 
@@ -460,8 +488,11 @@ const KINDS = [
     'edit', 'edit', 'edit', 'case', 'add', 'add', 'dup', 'del', 'del', 'folderDel', 'folderDel', 'move', 'move', 'newId', 'bulk', 'prop',
     'outInsert', 'outDelete', 'outReorder', 'outRewrite', 'outAppend',
     'undo', 'undo', 'undo', 'redo', 'redo', 'revert', 'restoreDel', 'restoreDel', 'line', 'reloadHistory', 'reloadData',
+    'link', 'unlink', 'burst',
 ] as const
 type Kind = (typeof KINDS)[number]
+// The round trip has no outside change, no lost save, no burst (its evicted item makes an undo drop) and no link (it
+// writes two owners in one action).
 const STUDIO_ONLY: readonly Kind[] = ['edit', 'edit', 'case', 'add', 'dup', 'del', 'folderDel', 'move', 'newId', 'bulk', 'prop', 'undo', 'redo']
 
 interface Action {
@@ -484,39 +515,60 @@ function actionArb(kinds: readonly Kind[]): fc.Arbitrary<Action> {
 
 const TEXTS = ['', 'alpha', 'beta gamma', 'Row 0', 'body 0']
 
-function editBuilder(a: Action, index: number): LoreBuilder {
-    switch (a.c % 6) {
-        case 0:
-            return fieldEdit(index, 'comment', { had: true, value: TEXTS[a.b % TEXTS.length] })
-        case 1:
-            return fieldEdit(index, 'content', { had: true, value: `${TEXTS[a.b % TEXTS.length]}!` })
-        case 2:
-            return fieldEdit(index, 'insertorder', { had: true, value: a.b })
-        case 3:
-            return fieldEdit(index, 'alwaysActive', { had: true, value: a.b % 2 === 0 })
-        case 4:
-            return fieldEdit(index, 'activationPercent', a.b % 3 === 0 ? { had: true, value: null } : { had: true, value: a.b })
-        default:
-            return fieldEdit(index, 'folder', a.b % 5 === 0 ? { had: false } : { had: true, value: FOLDERS[a.b % FOLDERS.length] })
+// The tracked identity the pane would hold for the row at `index`; an index with no row gives an identity no row has, so
+// the builder refuses.
+function trackedAt(list: readonly unknown[], index: number): LoreTracked {
+    return trackedOf(list, index) ?? { id: null, object: null }
+}
+
+// Ids that collide with the world's own ids on purpose: the builders retry past a taken id and take a fresh one.
+function idsOf(ctx: Ctx): LoreIds {
+    return {
+        newId: () => {
+            ctx.idSeq += 1
+            return ctx.idSeq % 4 === 0 ? `id-n${ctx.idSeq}` : IDS[ctx.idSeq % IDS.length]
+        },
+        newFolderKey: () => `k${(ctx.idSeq += 1)}`,
     }
 }
 
-function newEntry(a: Action, list: readonly unknown[]): ObjEntry {
-    switch (a.c % 5) {
+const MOVES: readonly LoreMove[] = ['up', 'down', 'top', 'bottom', 'out', { to: null }]
+
+function editOp(a: Action, list: readonly unknown[], index: number): LoreOp {
+    const t = trackedAt(list, index)
+    switch (a.c % 7) {
         case 0:
-            return row(100 + a.b)
+            return loreFieldEdit(t, index, 'comment', { had: true, value: TEXTS[a.b % TEXTS.length] }, null)
         case 1:
-            return { ...row(100 + a.b), id: IDS[a.b % IDS.length] }
-        case 2: {
-            const source = list.find(isRow)
-            return source === undefined ? row(100 + a.b) : clone(source as ObjEntry)
-        }
+            return loreFieldEdit(t, index, 'content', { had: true, value: `${TEXTS[a.b % TEXTS.length]}!` }, null)
+        case 2:
+            return loreFieldEdit(t, index, 'insertorder', { had: true, value: a.b }, null)
         case 3:
-            return folderRow(FOLDERS[a.b % FOLDERS.length], a.b % 2 === 0 ? FOLDERS[(a.b + 1) % FOLDERS.length] : undefined)
+            return loreFieldEdit(t, index, 'selective', { had: true, value: a.b % 2 === 0 }, null)
+        case 4:
+            return a.b % 2 === 0 ? loreProbabilitySet(t, index, a.b % 3 === 0 ? null : a.b, null) : loreLegacyProbability(t, index, a.b % 3 === 0 ? null : a.b, null)
+        case 5:
+            return loreAlwaysActive(t, index, a.b % 2 === 0)
         default:
-            return { ...row(100 + a.b), folder: FOLDERS[a.b % FOLDERS.length] }
+            return loreFieldEdit(t, index, 'folder', a.b % 5 === 0 ? { had: false } : { had: true, value: FOLDERS[a.b % FOLDERS.length] }, null)
     }
 }
+
+// A properties step: the settings flag, the follow-the-app switch or a boundary flag that also writes `loreExt`.
+function propBuilder(a: Action): (id: string, live: Parameters<LoreOp['build']>[1]) => ObjBuildResult {
+    switch (a.c % 4) {
+        case 0:
+            return buildUseGlobal(a.b % 2 === 0, { scanDepth: 3, tokenBudget: 1200 })
+        case 1:
+            return buildLoreFlag('fullWordMatching', a.b % 2 === 0)
+        case 2:
+            return buildLoreFlag('fullWordAsciiBoundary', a.b % 2 === 0)
+        default:
+            return buildLoreFlag('recursiveScanning', a.b % 2 === 0)
+    }
+}
+
+const BURST = 51
 
 interface Tally {
     [name: string]: number
@@ -559,7 +611,7 @@ async function startWorld(world: number): Promise<Ctx> {
         prevShared: new Map(),
         lastShared: new Map(made.store.shared),
         prevData: captureData(),
-        delSeq: 0,
+        idSeq: 0,
         snapshots: [JSON.stringify(listOf(OWNERS[0]))],
     }
     return full
@@ -637,43 +689,110 @@ function studio(ctx: Ctx, owner: Owner, mode: Mode, tally: Tally, name: string, 
     count(tally, `${name}:applied`)
 }
 
+// 51 rows are added outside Studio, deleted one step each from the end of the list, and the 51 steps are undone. The
+// deleted-item list holds 50, so the oldest delete's item is gone and its undo has nothing to put back: it is dropped.
+// Returns the results of the undos in order.
+function burst(ctx: Ctx, owner: Owner, tally: Tally, entryAnchor: (row: unknown) => number | null): StudioResult[] {
+    const list = listOf(owner)
+    for (let k = 0; k < BURST; k += 1) {
+        list.push(row(300 + k))
+    }
+    for (let k = 0; k < BURST; k += 1) {
+        const at = list.length - 1
+        const op = loreDelete(trackedAt(list, at), at)
+        studio(ctx, owner, 'edit', tally, 'burstDelete', () => ctx.service.objEdit(owner.key, op.build), entryAnchor)
+    }
+    const results: StudioResult[] = []
+    for (let k = 0; k < BURST; k += 1) {
+        studio(ctx, owner, 'undo', tally, 'undo', () => {
+            const result = ctx.service.undo(owner.key)
+            results.push(result)
+            return result
+        }, entryAnchor)
+    }
+    return results
+}
+
 async function perform(ctx: Ctx, a: Action, tally: Tally, entryAnchor: (row: unknown) => number | null): Promise<void> {
     const owner = a.chat ? OWNERS[1] : OWNERS[0]
     const list = listOf(owner)
     const n = list.length
     const i = a.a % (n + 1)
-    const edit = (builder: LoreBuilder, name: string): void => studio(ctx, owner, 'edit', tally, name, () => ctx.service.objEdit(owner.key, builder), entryAnchor)
-    const delId = (): string => `D${(ctx.delSeq += 1)}`
+    const run = (build: LoreOp['build'], name: string, on: Owner = owner): void => studio(ctx, on, 'edit', tally, name, () => ctx.service.objEdit(on.key, build), entryAnchor)
+    const edit = (op: LoreOp, name: string): void => run(op.build, name)
+    const ids = idsOf(ctx)
+    const t = trackedAt(list, i)
+    const host = owner.chat ? 'chat' : 'character'
     switch (a.k) {
         case 'edit':
-            edit(editBuilder(a, i), 'edit')
+            edit(editOp(a, list, i), 'edit')
             break
         case 'case':
-            edit(caseSensitive(i, a.b % 2 === 0), 'case')
+            edit(loreCaseSensitive(t, i, a.b % 2 === 0), 'case')
             break
-        case 'add':
-            edit(addEntry(a.b % (n + 1), newEntry(a, list)), 'add')
+        case 'add': {
+            // A folder row of the list, when the draw names one, is the container the entry goes into.
+            const folders = list.filter((entry) => isRow(entry) && entry.mode === 'folder' && typeof entry.key === 'string').map((entry) => (entry as { key: string }).key)
+            if (a.c % 3 === 0) {
+                edit(loreAddFolder(ids), 'addFolder')
+            } else {
+                edit(loreAddEntry(folders.length > 0 && a.b % 2 === 0 ? folders[a.b % folders.length] : null, ids), 'add')
+            }
             break
+        }
         case 'dup':
-            edit(duplicateEntry(i, `id-n${a.b}`), 'dup')
+            edit(loreDuplicate(host, t, i, ids), 'dup')
             break
         case 'del':
-            edit(deleteEntry(i, delId()), 'del')
+            edit(loreDelete(t, i), 'del')
             break
         case 'folderDel':
-            edit(deleteSubtree(i, delId()), 'folderDel')
+            edit(loreDeleteFolder(t, i), 'folderDel')
             break
         case 'move':
-            edit(moveEntry(i, a.c % 3 === 0 ? '' : FOLDERS[a.c % FOLDERS.length], a.b % Math.max(n, 1)), 'move')
+            edit(loreMove(t, i, a.c % (MOVES.length + 1) === MOVES.length ? { to: FOLDERS[a.b % FOLDERS.length] } : MOVES[a.c % MOVES.length]), 'move')
             break
         case 'newId':
-            edit(giveNewId(i, IDS[a.b % IDS.length]), 'newId')
+            edit(loreNewId(t, i, ids), 'newId')
             break
         case 'bulk':
-            edit(bulkSet([i, (i + 1) % (n + 1), (i + 3) % (n + 1)], 'alwaysActive', a.b % 2 === 0), 'bulk')
+            edit(loreBulkActive(a.b % 2 === 0), 'bulk')
             break
         case 'prop':
-            edit(loreSettingsSet(a.b % 3 === 0 ? null : { tokenBudget: a.b, fullWordMatching: a.c % 2 === 0 }), 'prop')
+            run(propBuilder(a), 'prop')
+            break
+        case 'link': {
+            // Local activation: an id-less character entry first gets an id (a character step), then the chat gets the link.
+            const characterList = listOf(OWNERS[0])
+            const target = characterList[a.a % (characterList.length + 1)]
+            if (!isRow(target)) {
+                break
+            }
+            const at = characterList.indexOf(target)
+            if (idOf(target) === null) {
+                run(loreAssignIdForLink(trackedAt(characterList, at), at, ids).build, 'linkId', OWNERS[0])
+            }
+            const id = idOf(characterList[at])
+            if (id !== null) {
+                run(loreLinkInsert(id, null).build, 'link', OWNERS[1])
+            }
+            break
+        }
+        case 'unlink': {
+            const chatList = listOf(OWNERS[1])
+            const link = chatList.find((entry) => isRow(entry) && entry.mode === 'child')
+            const id = link === undefined ? idOf(chatList[0]) : idOf(link)
+            if (id !== null) {
+                run(loreUnlink(id, null).build, 'unlink', OWNERS[1])
+            }
+            break
+        }
+        case 'burst':
+            // Rare (each burst is 102 checked actions), and only while the done stack has room for the 51 steps, so each
+            // delete records a step of its own.
+            if (a.c === 0 && a.b % 4 === 0 && ctx.service.view(owner.key).done.length + BURST <= MAX_DONE) {
+                burst(ctx, owner, tally, entryAnchor)
+            }
             break
         case 'outInsert': {
             const at = a.a % (n + 1)
@@ -849,7 +968,7 @@ describe('T50: generated lorebook histories', () => {
         )
         report(`T50: seed ${SEED}, ${RUNS} runs, ms${Math.round(performance.now() - started)} ${JSON.stringify(tally)}`)
         if (RUNS >= 200) {
-            for (const name of ['edit:applied', 'add:applied', 'del:applied', 'folderDel:applied', 'move:applied', 'newId:applied', 'undo:applied', 'redo:applied', 'revert:applied', 'restoreDel:applied', 'line:applied', 'undo:already', 'edit:refused:precondition', 'outside', 'reloadHistory', 'reloadData']) {
+            for (const name of ['edit:applied', 'add:applied', 'del:applied', 'folderDel:applied', 'move:applied', 'newId:applied', 'undo:applied', 'redo:applied', 'revert:applied', 'restoreDel:applied', 'line:applied', 'undo:already', 'undo:dropped', 'dup:applied', 'link:applied', 'bulk:applied', 'edit:refused:precondition', 'outside', 'reloadHistory', 'reloadData']) {
                 expect(tally[name] ?? 0, `class ${name}`).toBeGreaterThan(0)
             }
         }
@@ -866,5 +985,27 @@ describe('T50: generated lorebook histories', () => {
         )
         report(`T50 round trip: ${JSON.stringify(tally)}`)
     }, 600_000)
+
+    test('T50p: of 51 undone deletes the 51st is dropped, writes nothing and leaves the data byte-equal', async () => {
+        const anchor = (row: unknown): number | null => entryAnchor('lore', row)
+        for (const chat of [false, true]) {
+            const tally: Tally = {}
+            const ctx = await startWorld(1)
+            const owner = OWNERS[chat ? 1 : 0]
+            const deletesBefore = ctx.service.view(owner.key).done.length
+            const results = burst(ctx, owner, tally, anchor)
+            expect(tally['burstDelete:applied']).toBe(BURST)
+            expect(ctx.service.view(owner.key).done.length).toBe(deletesBefore)
+            expect(results).toHaveLength(BURST)
+            expect(results.slice(0, BURST - 1).every((result) => result.ok && result.dropped !== true && result.already === undefined)).toBe(true)
+            const last = results[BURST - 1]
+            expect(last.ok && last.dropped === true).toBe(true)
+            expect(tally['undo:dropped']).toBe(1)
+            expect(tally['undo:applied']).toBe(BURST - 1)
+            // The 51 added rows are back except the one whose item was evicted: its delete was dropped, so the row stays out.
+            expect(listOf(owner)).toHaveLength(BURST - 1)
+            expect(ctx.service.view(owner.key).deleted).toHaveLength(0)
+        }
+    })
 })
 

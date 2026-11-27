@@ -31,6 +31,7 @@
     import { getNanoGPTModels, getNanoGPTSubscriptionModels, toModelGridItem as ngToGridItem } from "src/ts/model/nanogpt";
     import { getOllamaModels } from "src/ts/model/ollama";
     import { currentKeyForUi } from "src/ts/process/request/secretKey";
+    import { invalidateVertexToken } from "src/ts/process/request/vertexToken";
     import { proxyUrlValue, setProxyUrl, setSlotKey, slotEditorValue, slotKeyTemporarilyUnavailable } from "src/ts/connections/slotEditor";
     import ModelGrid from "src/lib/UI/ModelGrid.svelte";
     import NanoGPTDashboard from "src/lib/UI/NanoGPTDashboard.svelte";
@@ -115,9 +116,7 @@
     });
 
     function clearVertexToken() {
-        DBState.db.vertexAccessToken = '';
-        DBState.db.vertexAccessTokenExpires = 0;
-        console.log('Vertex AI token cleared');
+        invalidateVertexToken(DBState.db);
     }
 
 
