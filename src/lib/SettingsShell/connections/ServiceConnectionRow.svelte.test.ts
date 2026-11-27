@@ -20,8 +20,15 @@ vi.mock(import('../../../ts/stores.svelte'), () => {
     } as unknown as typeof import('../../../ts/stores.svelte')
 })
 
+// The real hint, wrapped so a test can feed the row a hint kind its catalog never produces for a service
+// provider (a service provider is single-key, so its hint is always a tail-less mask).
+vi.mock(import('../../../ts/connections/connectionHint'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return { ...actual, connectionKeyHint: vi.fn(actual.connectionKeyHint) }
+})
 import { language } from '../../../lang'
 import type { ServiceSlot } from '../../../ts/connections/connections'
+import { connectionKeyHint, type KeyHint } from '../../../ts/connections/connectionHint'
 import { installVaultHost, resetVaultStoreForTest, type VaultPlatform } from '../../../ts/connections/keyVaultStore.svelte'
 import { DBState } from '../../../ts/stores.svelte'
 import Row from './ServiceConnectionRow.svelte'
@@ -51,6 +58,7 @@ function installPlatform(platform: VaultPlatform): void {
 }
 
 afterEach(async () => {
+    vi.mocked(connectionKeyHint).mockRestore()
     for (const app of mounted.splice(0)) await unmount(app)
     document.body.innerHTML = ''
     resetVaultStoreForTest()
@@ -64,6 +72,30 @@ describe('ServiceConnectionRow', () => {
         expect(target.textContent).not.toContain('SYN-eleven')
         expect(target.textContent).not.toContain('1234')
         expect(target.querySelector('[data-part="settings-service-connection"]')?.lastElementChild?.getAttribute('data-part')).toBe('settings-connections-link')
+    })
+
+    test.each([
+        ['a plain key', 'SYN-supersecret-ABCDWXYZ', ['SYN-supersecret-ABCDWXYZ', 'supersecret', 'WXYZ']],
+        ['a ${NAME} reference', '${SYN_DEEPL_KEY}', ['${SYN_DEEPL_KEY}', 'SYN_DEEPL_KEY']],
+    ])('E-ROW: stored %s is shown only as a mask (compatibility guard, real hint)', (_label, key, forbidden) => {
+        const target = mountRow('deeplOptions.key', [{ id: 'conn-1', name: 'DeepL', provider: 'deepl', key }])
+        const chip = target.querySelector('[data-part="settings-service-connection-chip"]')
+        expect(chip).not.toBeNull()
+        expect(chip?.textContent).toContain('••••')
+        for (const part of forbidden) expect(target.textContent).not.toContain(part)
+    })
+
+    test.each<[string, KeyHint, string[]]>([
+        ['a ref hint', { kind: 'ref', text: '${SYN_DEEPL_KEY}' }, ['${SYN_DEEPL_KEY}', 'SYN_DEEPL_KEY']],
+        ['a counted ref hint', { kind: 'ref', text: '${SYN_DEEPL_KEY}', count: 2 }, ['${SYN_DEEPL_KEY}', 'SYN_DEEPL_KEY']],
+        ['a masked hint with a tail', { kind: 'masked', tail: 'WXYZ' }, ['WXYZ']],
+    ])('E-ROW: %s renders a mask chip with no reference text and no tail', (_label, hint, forbidden) => {
+        vi.mocked(connectionKeyHint).mockReturnValue(hint)
+        const target = mountRow('deeplOptions.key', [{ id: 'conn-1', name: 'DeepL', provider: 'deepl', key: 'SYN-supersecret-ABCDWXYZ' }])
+        const chip = target.querySelector('[data-part="settings-service-connection-chip"]')
+        expect(chip).not.toBeNull()
+        expect(chip?.textContent).toContain('••••')
+        for (const part of forbidden) expect(target.textContent).not.toContain(part)
     })
 
     test('E-ROW: with no connection it says so and still links', () => {

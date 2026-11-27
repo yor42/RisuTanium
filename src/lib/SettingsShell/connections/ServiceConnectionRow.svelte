@@ -3,7 +3,7 @@
     import { language } from '../../../lang'
     import { fillLang } from '../../../lang/fill'
     import { slotConnection, type ServiceSlot } from '../../../ts/connections/connections'
-    import { connectionKeyHint } from '../../../ts/connections/connectionHint'
+    import { connectionKeyHint, type KeyHint } from '../../../ts/connections/connectionHint'
     import { DBState } from '../../../ts/stores.svelte'
     import { hintChipText, keyStateText } from './ConnectionCard.svelte'
     import ConnectionsLink from './ConnectionsLink.svelte'
@@ -15,9 +15,15 @@
 
     let { service }: Props = $props()
 
+    function maskedHint(hint: KeyHint): KeyHint {
+        if (hint.kind !== 'ref' && hint.kind !== 'masked') return hint
+        return hint.count === undefined ? { kind: 'masked', tail: '' } : { kind: 'masked', tail: '', count: hint.count }
+    }
+
     const conn = $derived(slotConnection(DBState.db, service))
     const hint = $derived(conn === undefined ? undefined : connectionKeyHint(conn))
-    const chip = $derived(hint === undefined ? '' : hintChipText(hint))
+    // The row always masks: a reference name or a key tail never shows here, whatever the hint kind.
+    const chip = $derived(hint === undefined ? '' : hintChipText(maskedHint(hint)))
     // An empty field is never the only signal: a key that is not readable now or can never be read here says so.
     const reason = $derived(hint === undefined ? '' : keyStateText(hint, false, language.connectionsKeyMissingReason))
 </script>
