@@ -1,7 +1,25 @@
 import { get } from 'svelte/store'
 import { restateForKept, trimChatsToContext, type CountChat } from '../../contextTrim'
 import type { OpenAIChat } from '../../index.svelte'
-import { ChatUnitIndex, RARE_SHARE, recordKeysOf, type Reconcile } from './chatIndex'
+import { ChatUnitIndex, RARE_SHARE, recordKeysOf, type IndexedUnit, type Reconcile } from './chatIndex'
+import {
+    DENSE_CHAT_CAP,
+    DenseStore,
+    QUERY_TIMEOUT_MS,
+    currentDensePause,
+    denseOrder,
+    fuseOrders,
+    pauseDenseAfter,
+    queryInput,
+    raceTimeout,
+    resetDensePauseForTests,
+    type DenseEmbedder,
+    type DenseEmbedderResult,
+    type DenseJob,
+    type DenseStatus,
+    type Fused,
+} from './dense'
+import { resetDenseIndexerForTests, scheduleDenseIndexing } from './denseIndexer'
 import { HEADER, SHADOW_COUNT_CAP, VARYING_COUNT_CAP, packUnits, type PackLine, type PackResult } from './pack'
 import { FIRST_MESSAGE_ID, firstRecordOf, recordOf, recordTextOf, type FirstMessageSource, type MessageRecord, type SendCapture } from './records'
 import { readLtmSettings } from './settings'
@@ -16,7 +34,8 @@ const ERROR_MAX_CHARS = 200
 
 export interface ChroMemoryTraceItem {
     source: { kind: 'turn', chatId: string, index: number, off: number }
-    rank: { lexical: number, dense: null, fused: null }
+    /** `lexical` is the place in the keyword order; `dense` and `fused` are set only when the send ranked by vectors. */
+    rank: { lexical: number, dense: number | null, fused: number | null }
     tokens: number
 }
 
@@ -66,6 +85,8 @@ export interface ChroMemoryTrace {
     items: ChroMemoryTraceItem[]
     makeRoom: ChroMemoryMakeRoom | null
     timings: ChroMemoryTimings
+    /** The vector side of a hybrid send; null when retrieval is lexical. */
+    dense: DenseStatus | null
     timeBox: 'none'
     error: string | null
 }
@@ -103,6 +124,10 @@ export interface ShadowInput {
     /** The counter identity; a change clears the line cache. */
     tokenizerKey: string
     inject?: InjectInput
+    /** Set when retrieval is hybrid and the memory message may be placed: the send ranks by vectors too. */
+    dense?: DenseEmbedderResult
+    /** Hybrid retrieval was asked for but the send is a shadow: it stays lexical and the trace says so. */
+    hybridShadow?: boolean
 }
 
 export interface ShadowDeps {
@@ -112,12 +137,38 @@ export interface ShadowDeps {
     now(): number
     /** The make-room trim; the context trim by default. */
     trim?: typeof trimChatsToContext
+    /** The embedding model for a hybrid send; read only when retrieval is hybrid in inject mode. */
+    embedder?: () => DenseEmbedderResult
+    /** Hands the chat's store to the background indexer after a hybrid send; never awaited. The real indexer by default. */
+    scheduleDense?: (job: DenseJob) => void
 }
 
 interface ShadowSlot {
     index: ChatUnitIndex
     tokenizerKey: string
     lineCache: Map<string, number>
+    /** This chat's vectors; shared with the parked store map so a switch back finds them. */
+    dense: DenseStore | null
+}
+
+/** The vectors of the most recent chats, oldest first; a chat past the cap loses its vectors. */
+const denseStores = new Map<string, DenseStore>()
+
+function denseStoreFor(chatKey: string): DenseStore {
+    let store = denseStores.get(chatKey)
+    if (store) {
+        denseStores.delete(chatKey)
+    } else {
+        store = new DenseStore()
+    }
+    denseStores.set(chatKey, store)
+    while (denseStores.size > DENSE_CHAT_CAP) {
+        const oldest = denseStores.keys().next().value
+        if (oldest === undefined) break
+        denseStores.get(oldest)?.dispose()
+        denseStores.delete(oldest)
+    }
+    return store
 }
 
 interface CoreResult {
@@ -164,6 +215,7 @@ function blankTrace(chatKey: string, mode: ChroMemoryTrace['mode'], budgetTokens
         items: [],
         makeRoom: null,
         timings: { index: 0, rank: 0, pack: 0, room: 0 },
+        dense: null,
         timeBox: 'none',
         error: null,
     }
@@ -250,6 +302,7 @@ async function runChroMemoryCore(input: ShadowInput, deps: ShadowDeps): Promise<
     const at = safeNow(deps)
     const trace = blankTrace(input.chatKey, input.inject ? 'inject' : 'shadow', input.budgetTokens, countCap, at)
     const state: { spliced: boolean, block: string | null } = { spliced: false, block: null }
+    if (input.hybridShadow) trace.dense = { state: 'off', reason: 'shadow-mode', vectors: 0, units: 0, queryMs: 0, ms: 0 }
     try {
         const { before, kept } = input
         const dropped = before.length - kept.length
@@ -274,6 +327,67 @@ export async function runChroMemoryShadow(input: ShadowInput, deps: ShadowDeps):
     return trace
 }
 
+/**
+ * The vector step of a hybrid send: one query embed raced against the send's
+ * time limit, then cosine and fusion. Everything sits in one try, so any
+ * failure keeps the keyword order (null) and reports why on the trace; a
+ * provider failure or timeout also pauses the provider for later sends, an
+ * internal fault does not.
+ */
+async function fuseWithDense(
+    dense: DenseEmbedderResult,
+    s: ShadowSlot,
+    lex: { order: IndexedUnit[], scored: number },
+    queryText: string,
+    deps: ShadowDeps,
+    trace: ChroMemoryTrace,
+): Promise<Fused | null> {
+    const startedAt = safeNow(deps)
+    const units = s.index.units()
+    const status: DenseStatus = { state: 'paused', reason: null, vectors: 0, units: units.length, queryMs: 0, ms: 0 }
+    trace.dense = status
+    try {
+        const embedder = dense.embedder
+        if (!embedder) {
+            status.reason = dense.reason ?? 'no-provider'
+            return null
+        }
+        const store = (s.dense ??= denseStoreFor(s.index.chatKey))
+        store.useModel(embedder.modelKey)
+        status.vectors = store.size
+        const paused = currentDensePause()
+        if (paused) {
+            status.reason = paused.reason
+            return null
+        }
+        if (store.size === 0) {
+            status.state = 'building'
+            return null
+        }
+        let query: Float32Array
+        const queryAt = safeNow(deps)
+        try {
+            query = await raceTimeout((async () => embedder.embedQuery(queryInput(queryText)))(), QUERY_TIMEOUT_MS)
+        } catch (e) {
+            status.queryMs = Math.max(0, safeNow(deps) - queryAt)
+            status.reason = pauseDenseAfter(e)
+            return null
+        }
+        status.queryMs = Math.max(0, safeNow(deps) - queryAt)
+        const ranking = denseOrder(store, units, query)
+        const result = fuseOrders(lex.order, lex.scored, units, ranking.top)
+        status.vectors = ranking.valid
+        status.state = ranking.valid === 0 ? 'building' : ranking.valid < units.length ? 'partial' : 'ready'
+        return result
+    } catch {
+        status.state = 'paused'
+        status.reason = 'internal'
+        return null
+    } finally {
+        status.ms = Math.max(0, safeNow(deps) - startedAt)
+    }
+}
+
 async function shadowOver(input: ShadowInput, deps: ShadowDeps, trace: ChroMemoryTrace, dropped: number, countCap: number, state: { spliced: boolean, block: string | null }): Promise<void> {
     const d0: MessageRecord[] = []
     for (const chat of input.before.slice(0, dropped)) {
@@ -295,7 +409,7 @@ async function shadowOver(input: ShadowInput, deps: ShadowDeps, trace: ChroMemor
     let s = slot
     if (!s || s.index.chatKey !== input.chatKey) {
         chatSwitch = s !== null
-        s = { index: new ChatUnitIndex(input.chatKey), tokenizerKey: input.tokenizerKey, lineCache: new Map() }
+        s = { index: new ChatUnitIndex(input.chatKey), tokenizerKey: input.tokenizerKey, lineCache: new Map(), dense: null }
         slot = s
     } else if (s.tokenizerKey !== input.tokenizerKey) {
         s.lineCache.clear()
@@ -315,9 +429,17 @@ async function shadowOver(input: ShadowInput, deps: ShadowDeps, trace: ChroMemor
         if (q) trace.query = { chatId: q.chatId, terms: [] }
         return
     }
-    const { order, terms } = s.index.rank(queryText, RARE_SHARE)
+    const lex = s.index.rank(queryText, RARE_SHARE)
+    const terms = lex.terms
+    let order = lex.order
     trace.query = { chatId: q.chatId, terms }
     trace.timings.rank = lap()
+    let fused: Fused | null = null
+    if (input.dense) {
+        fused = await fuseWithDense(input.dense, s, lex, queryText, deps, trace)
+        if (fused) order = fused.order
+        lap()
+    }
 
     const keys = recordKeysOf(d0)
     const byKey = new Map<string, { rec: MessageRecord, pos: number }>()
@@ -339,7 +461,7 @@ async function shadowOver(input: ShadowInput, deps: ShadowDeps, trace: ChroMemor
             label: owner.rec.chatId === FIRST_MESSAGE_ID ? 'first' : String(owner.rec.index),
             name: owner.rec.name,
             text: pieces[unit.ordinal]?.text ?? unit.text,
-            rank: i + 1,
+            rank: fused ? (fused.ranks.get(unit)?.fused ?? i + 1) : i + 1,
         }
     }
 
@@ -391,11 +513,14 @@ async function shadowOver(input: ShadowInput, deps: ShadowDeps, trace: ChroMemor
     trace.items = packed.picks
         .map((p, i) => ({ p, tokens: packed.pickTokens[i] }))
         .sort((a, b) => a.p.pos - b.p.pos || a.p.unit.off - b.p.unit.off)
-        .map(({ p, tokens }) => ({
-            source: { kind: 'turn' as const, chatId: byKey.get(p.unit.key)?.rec.chatId ?? '', index: byKey.get(p.unit.key)?.rec.index ?? 0, off: p.unit.off },
-            rank: { lexical: p.rank, dense: null, fused: null },
-            tokens,
-        }))
+        .map(({ p, tokens }) => {
+            const r = fused?.ranks.get(p.unit)
+            return {
+                source: { kind: 'turn' as const, chatId: byKey.get(p.unit.key)?.rec.chatId ?? '', index: byKey.get(p.unit.key)?.rec.index ?? 0, off: p.unit.off },
+                rank: r ? { lexical: r.lexical, dense: r.dense, fused: r.fused } : { lexical: p.rank, dense: null, fused: null },
+                tokens,
+            }
+        })
     if (!packed.picks.length) {
         trace.outcome = inject && packed.droppedForFit > 0 && !packed.capped ? 'no-room' : 'nothing-packed'
         return
@@ -466,9 +591,19 @@ export async function runChroMemorySafely(args: ShadowSendArgs, deps: ShadowDeps
     let chatKey = ''
     let budgetTokens = 0
     let result: CoreResult
+    let dense: DenseEmbedderResult | undefined
     try {
         chatKey = `${args.ownerId}:${args.chatId ?? ''}`
-        budgetTokens = readLtmSettings(args.ltmSettings, args.maxContextTokens).budgetTokens
+        const settings = readLtmSettings(args.ltmSettings, args.maxContextTokens)
+        budgetTokens = settings.budgetTokens
+        const hybrid = settings.retrieval === 'hybrid'
+        if (hybrid && args.inject) {
+            try {
+                dense = deps.embedder?.() ?? { embedder: null, reason: 'no-provider' }
+            } catch {
+                dense = { embedder: null, reason: 'no-provider' }
+            }
+        }
         let user: string | undefined
         const userName = (): string => (user ??= args.userName())
         result = await runChroMemoryCore(
@@ -486,6 +621,8 @@ export async function runChroMemorySafely(args: ShadowSendArgs, deps: ShadowDeps
                 countVaries: args.countVaries,
                 tokenizerKey: args.tokenizerKey(),
                 inject: args.inject ? { ...args.inject, maxContextTokens: args.maxContextTokens } : undefined,
+                dense,
+                hybridShadow: hybrid && !args.inject ? true : undefined,
             },
             deps,
         )
@@ -501,7 +638,26 @@ export async function runChroMemorySafely(args: ShadowSendArgs, deps: ShadowDeps
         result = { trace, block: null }
     }
     publishTrace(result.trace, true)
+    if (dense?.embedder) scheduleDense(chatKey, dense.embedder, deps)
     return result.block === null ? null : { block: result.block }
+}
+
+/** Hands the current chat's store to the indexer hook; a failure here never reaches the send. */
+function scheduleDense(chatKey: string, embedder: DenseEmbedder, deps: ShadowDeps): void {
+    try {
+        const s = slot
+        const store = s?.dense
+        if (!s || !store || s.index.chatKey !== chatKey) return
+        const hand = deps.scheduleDense ?? scheduleDenseIndexing
+        hand({
+            store,
+            units: () => s.index.units(),
+            embedder,
+            isLive: () => slot === s && s.dense === store && !store.disposed,
+        })
+    } catch {
+        // Indexing is optional; the send is already decided.
+    }
 }
 
 /**
@@ -525,6 +681,11 @@ export function markChroMemoryDroppedAtRecheck(chatKey: string): void {
  */
 export function discardChroMemoryIndex(chatKey: string): void {
     if (slot && slot.index.chatKey === chatKey) slot = null
+    const store = denseStores.get(chatKey)
+    if (store) {
+        store.dispose()
+        denseStores.delete(chatKey)
+    }
     chroMemoryDiscarded.set(chatKey)
 }
 
@@ -534,6 +695,10 @@ export function getLastChroMemoryTrace(): Readonly<ChroMemoryTrace> | null {
 
 export function resetChroMemoryShadowForTests(): void {
     slot = null
+    for (const store of denseStores.values()) store.dispose()
+    denseStores.clear()
+    resetDensePauseForTests()
+    resetDenseIndexerForTests()
     lastTrace = null
     chroMemoryTrace.set(null)
     chroMemoryDiscarded.set(null)

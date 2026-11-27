@@ -6,6 +6,8 @@
   import { discardChroMemoryIndex, type ChroMemoryTrace } from "src/ts/process/memory/chroMemory/shadow";
   import type { ChroLoreTrace } from "src/ts/process/memory/chroMemory/loreRecall";
   import { readLtmSettings, writeLtmSettings } from "src/ts/process/memory/chroMemory/settings";
+  import { isEnglishOnlyHypaModel } from "src/ts/process/memory/chroMemory/dense";
+  import { DEFAULT_HYPA_MODEL } from "src/ts/process/memory/embeddingModels";
 
   interface Props {
     trace: Readonly<ChroMemoryTrace> | null;
@@ -20,6 +22,9 @@
 
   const shadow = $derived(readLtmSettings(DBState.db.ltmSettings, 0).shadow);
   const searchLore = $derived(readLtmSettings(DBState.db.ltmSettings, 0).searchLore);
+  const hybrid = $derived(readLtmSettings(DBState.db.ltmSettings, 0).retrieval === "hybrid");
+  // Shown whenever hybrid is on; it never looks at chat content.
+  const englishOnlyModel = $derived(hybrid && isEnglishOnlyHypaModel(DBState.db.hypaModel || DEFAULT_HYPA_MODEL));
 
   function loreIndexText(t: Readonly<ChroLoreTrace>): string {
     switch (t.index.state) {
@@ -83,6 +88,14 @@
 <div class="flex flex-col gap-1">
   <Check check={searchLore} name={language.chroMemorySearchLore} onChange={(v) => writeLtmSettings(DBState.db, { searchLore: v })} />
   <span class="text-sm text-textcolor2">{language.chroMemorySearchLoreDesc}</span>
+</div>
+
+<div class="flex flex-col gap-1">
+  <Check check={hybrid} name={language.chroMemoryHybrid} onChange={(v) => writeLtmSettings(DBState.db, { retrieval: v ? "hybrid" : "lexical" })} />
+  <span class="text-sm text-textcolor2">{language.chroMemoryHybridDesc}</span>
+  {#if englishOnlyModel}
+    <span class="text-sm text-draculared" role="status">{language.chroMemoryHybridEnglishOnly}</span>
+  {/if}
 </div>
 
 <div class="flex flex-col gap-1">

@@ -50,6 +50,7 @@ import { openMemorySettings } from "./memory/memorySettingsLink";
 import { chroMemoryModeOf, memoryTakesChatsOf } from "./memory/memoryEngine";
 import { createSendCapture, type FirstMessageSource } from "./memory/chroMemory/records";
 import { HISTORY_FLOOR, markChroMemoryDroppedAtRecheck, runChroMemorySafely } from "./memory/chroMemory/shadow";
+import { chroMemoryEmbedder } from "./memory/chroMemory/denseEmbedder";
 import { readLtmSettings } from "./memory/chroMemory/settings";
 import { createLoreIndexStore, defaultLoreIndexScheduler } from "./memory/chroMemory/loreIndex";
 import { clearLoreRecallTrace, createLoreRecallStep, loreQueryOf, markLoreRecallTrimmed, type LoreRecallTap } from "./memory/chroMemory/loreRecall";
@@ -2494,6 +2495,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 countText: (t) => tokenize(t),
                 countBlock: countMemoryShape,
                 now: () => performance.now(),
+                embedder: chroMemoryEmbedder,
             })
         }
         // The stamp names the first chat make-room kept; the memory message is added after it,
