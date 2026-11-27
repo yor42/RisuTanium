@@ -226,9 +226,12 @@ describe('PE, K: a pseudo-element may end the last compound (MC-3422, MC-3427)',
             expectRefused(area, `${sel(area, 'S')}{content:""}`, /content may only be the empty string/)
         })
         it(`K3 ${area} GUARD the overlay family stays refused on a pseudo-element`, () => {
-            for (const decl of ['z-index:1', 'direction:rtl', 'unicode-bidi:bidi-override', 'writing-mode:vertical-rl', 'all:unset', 'offset-path:none', 'transform:scale(2)', 'filter:blur(2px)', 'animation:x 1s']) {
+            for (const decl of ['z-index:1', 'direction:rtl', 'unicode-bidi:bidi-override', 'writing-mode:vertical-rl', 'all:unset', 'offset-path:none', 'transform:scale(2)', 'animation:x 1s']) {
                 expectRefused(area, `${sel(area, 'S', '::before')}{content:"";${decl}}`, /can cover, fade or disable/)
             }
+        })
+        it(`K3b ${area} REPRO a bounded filter blur is admitted on a pseudo-element of an eligible subject`, () => {
+            expectOk(area, `${sel(area, 'S', '::before')}{content:"";filter:blur(2px)}`)
         })
         it(`K4 ${area} GUARD fixed and sticky stay refused on a pseudo-element`, () => {
             for (const value of ['fixed', 'sticky']) {

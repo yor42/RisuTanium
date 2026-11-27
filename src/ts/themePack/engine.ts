@@ -16,6 +16,7 @@
 //     bounded spacing, safe widths. Everything else (display, visibility, opacity, transform, clip, filter, position, flex and grid layout, overflow, order, heights, ...) is rejected.
 //  5. For every subject: position fixed / sticky, z-index, animation, transition, filter, backdrop-filter, mix-blend-mode, transform, contain, direction, all, content
 //     other than the empty string on ::before or ::after, and oversized shadows, outlines and borders (more than 64 px) are rejected, because they can cover or disable a protected surface from anywhere.
+//     The fork's effects pass (effects.ts) takes the bounded transition, animation, transform and filter declarations of an eligible subject out of the text before this lint reads it; subjectJudge below gives it the selector facts.
 import { cr, lum, over } from './colour'
 import { decls } from './csslit'
 import { failClosedPass, settableTest, parseConcrete, inlinePrivate, pushUnique, splitFindings } from './failclosed'
@@ -409,6 +410,27 @@ export function lintSelector(sel: string, reg?: RegistryInput): string[] {
     const a = analyse(sel, r)
     const pv = partValueWhy(sel, a, r)
     return pv ? [...a.why, pv] : a.why
+}
+/** What the engine knows about one selector entry: the reasons lintSelector gives, its tier, every data-part value it names (a valueless [data-part] counts as an empty value) and the part values of its subject compound. */
+export interface SubjectFacts {
+    why: string[]
+    tier: 'root' | 'safe' | 'reach' | undefined
+    parts: string[]
+    subjectParts: string[]
+}
+/** Builds the registry once and judges entries against it. The caller passes the entry as lintOnce reads it, that is normalise(entry): `why` then equals lintSelector(entry, registry). */
+export function subjectJudge(registry?: RegistryInput): (entry: string) => SubjectFacts {
+    const reg = effective(registry)
+    return (entry) => {
+        const a = analyse(entry, reg)
+        const pv = partValueWhy(entry, a, reg)
+        const parts: string[] = []
+        for (const c of compounds(pseudoElementOf(entry).base)) {
+            const m = COMPOUND.exec(c)
+            if (m) for (const x of m[2].matchAll(/\[data-part(?:="([^"\]]*)")?\]/g)) parts.push(x[1] ?? '')
+        }
+        return { why: pv ? [...a.why, pv] : a.why, tier: a.tier, parts, subjectParts: a.sp ?? [] }
+    }
 }
 
 // ---- declarations
