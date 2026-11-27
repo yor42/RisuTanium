@@ -17,7 +17,7 @@ import type { ObjEntry, ObjWrite } from '../history/objectListOps'
 import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
 import { cloneValue, factsOf, freshSeed, isHeldBy, isUsableContainer, propertyOf, slotOf, valueMatchesKind, valuesEqual, type SetValue } from '../history/fieldAccess'
-import { fmAfterRemove, textFieldOf, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
+import { fmAfterRemove, textFieldOf, type ExifValue, type FieldValue, type FmValue, type LiveReader, type Op, type PortraitOp, type PortraitRow, type PortraitValue, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
 import { parseStoredOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './assetSetters'
 
@@ -256,6 +256,71 @@ export function createLiveReader(target: LiveTarget): LiveReader {
         folderValue() {
             return live.extentions?.[ASSET_FOLDER_KEY]
         },
+        portrait() {
+            return readPortrait(live)
+        },
+        pngExif() {
+            return readPngExif(live)
+        },
+    }
+}
+
+// A character's portrait as plain copies: the image and the alternates field by field. An image that is not a string, or
+// alternates that are not an array of rows with exactly the four string keys, are unreadable (null): Studio never edits them.
+function readPortrait(live: character): PortraitValue | null {
+    const fields = fieldsView(live)
+    const image = fields.image
+    const alternates = fields.ccAssets
+    let imageValue: PortraitValue['image']
+    if (image === undefined) {
+        imageValue = { had: false }
+    } else if (typeof image === 'string') {
+        imageValue = { had: true, value: image }
+    } else {
+        return null
+    }
+    if (alternates === undefined) {
+        return { image: imageValue, alternates: { had: false } }
+    }
+    if (!Array.isArray(alternates)) {
+        return null
+    }
+    const rows: PortraitRow[] = []
+    for (const row of alternates as unknown[]) {
+        if (!isJsonObject(row) || Object.keys(row).length !== 4) {
+            return null
+        }
+        const { type, uri, name, ext } = row
+        if (typeof type !== 'string' || typeof uri !== 'string' || typeof name !== 'string' || typeof ext !== 'string') {
+            return null
+        }
+        rows.push({ type, uri, name, ext })
+    }
+    return { image: imageValue, alternates: { had: true, rows } }
+}
+
+// The map the PNG text notes are kept in: absent, or a plain object under a plain-object `extentions`. A map or an
+// `extentions` of any other shape is unreadable, so no write ever assigns into a value that is not an object.
+function readPngExif(live: character): ExifValue | null {
+    const extentions: unknown = live.extentions
+    if (extentions === undefined || extentions === null) {
+        return { had: false }
+    }
+    if (!isJsonObject(extentions)) {
+        return null
+    }
+    const stored = extentions.pngExif
+    if (stored === undefined) {
+        return { had: false }
+    }
+    if (!isJsonObject(stored)) {
+        return null
+    }
+    try {
+        const copy = toPlainJson(stored)
+        return copy === undefined ? null : { had: true, value: copy }
+    } catch {
+        return null
     }
 }
 
@@ -598,6 +663,44 @@ function editCharacterRows(live: character, write: Extract<WriteOp, { op: 'asset
     }
 }
 
+// One portrait write, in place: `image` and `ccAssets` are set or deleted as the op's `after` says, the alternates as fresh
+// plain rows; the exif map is set (creating `extentions` only to hold it) or deleted when the op carries the pair. No other
+// key of the character or of `extentions` changes, so the folder document that lives there stays as it is.
+function writeCharacterPortrait(live: character, write: PortraitOp): void {
+    const fields = fieldsView(live)
+    const { image, alternates } = write.after
+    if (image.had) {
+        fields.image = image.value
+    } else {
+        delete fields.image
+    }
+    if (alternates.had) {
+        fields.ccAssets = alternates.rows.map((row) => ({ type: row.type, uri: row.uri, name: row.name, ext: row.ext }))
+    } else {
+        delete fields.ccAssets
+    }
+    if (write.pngExif === undefined) {
+        return
+    }
+    const exif = write.pngExif.after
+    if (!exif.had) {
+        if (isJsonObject(live.extentions)) {
+            delete live.extentions.pngExif
+        }
+        return
+    }
+    const copy = toPlainJson(exif.value)
+    if (copy === undefined) {
+        return
+    }
+    if (live.extentions === undefined || live.extentions === null) {
+        live.extentions = {}
+    }
+    if (isJsonObject(live.extentions)) {
+        live.extentions.pngExif = copy
+    }
+}
+
 function writeCharacterFolder(live: character, folder: AssetWriteExtras['folder']): void {
     if (folder.kind === 'set') {
         // `extentions` is created only when a document must be written and none exists.
@@ -673,7 +776,7 @@ export function applyCharacterWrites(live: character | groupChat, writes: readon
     let folderWritten = false
     // Rows first, then the folder document, then the rest; the folder document is written once, from its result.
     for (const write of extras ? orderAssetWrites(writes) : writes) {
-        if (extras && !folderWritten && write.op !== 'assetRowRemove' && write.op !== 'assetRowInsert' && write.op !== 'assetRowSet') {
+        if (extras && !folderWritten && write.op !== 'assetRowRemove' && write.op !== 'assetRowInsert' && write.op !== 'assetRowSet' && write.op !== 'portraitSet') {
             writeCharacterFolder(live, extras.folder)
             folderWritten = true
         }
@@ -692,6 +795,9 @@ export function applyCharacterWrites(live: character | groupChat, writes: readon
                 break
             case 'assetFolderSet':
             case 'assetFolderOrder':
+                break
+            case 'portraitSet':
+                writeCharacterPortrait(live, write)
                 break
             case 'set':
                 setCharacterField(live, write.path, write.value)

@@ -237,6 +237,9 @@ export type StepLabel =
     | { kind: 'assetAdd'; count: number }
     | { kind: 'folderCreate'; name: string }
     | { kind: 'folderReorder' }
+    | { kind: 'portraitAdd' }
+    | { kind: 'portraitRemove' }
+    | { kind: 'portraitMain' }
     | ObjLabel
     | PropLabel
 
@@ -253,6 +256,17 @@ export type AssetOp =
 // `target` is a registry path of the owner's texts (`desc`, `alternateGreetings/<i>`, `lore/<i>/content`, ...).
 export type TextEditOp = { op: 'textEdit'; target: string; offset: number; from: string; to: string }
 
+// A character's portrait as one whole value: the main image and the alternates (`ccAssets`), each present or absent,
+// with every alternate as a plain row of exactly four strings. `extentions.pngExif` is a separate pair because the PNG
+// text notes of an added photo change inside the same step.
+export type PortraitRow = { type: string; uri: string; name: string; ext: string }
+export type PortraitValue = {
+    image: { had: false } | { had: true; value: string }
+    alternates: { had: false } | { had: true; rows: PortraitRow[] }
+}
+export type ExifValue = { had: false } | { had: true; value: JsonValue }
+export type PortraitOp = { op: 'portraitSet'; before: PortraitValue; after: PortraitValue; pngExif?: { before: ExifValue; after: ExifValue } }
+
 export type Op =
     | { op: 'set'; path: SetPath; before: FieldValue; after: FieldValue }
     | { op: 'listSet'; index: number; before: string; after: string }
@@ -264,6 +278,7 @@ export type Op =
     | { op: 'chatFm'; chatId: string | null; before: FmValue; after: FmValue }
     | AssetOp
     | TextEditOp
+    | PortraitOp
     | ObjFamilyOp
 
 // Fingerprints of the whole greeting list on the two sides of the step's list ops: `before` is the
@@ -450,6 +465,11 @@ export function parseLabel(value: unknown, kind: OwnerKind): StepLabel | null {
             return hasOnlyKeys(value, ['kind', 'name']) && typeof value.name === 'string' ? { kind: 'folderCreate', name: value.name } : null
         case 'folderReorder':
             return hasOnlyKeys(value, ['kind']) ? { kind: 'folderReorder' } : null
+        case 'portraitAdd':
+        case 'portraitRemove':
+        case 'portraitMain':
+            // Only a character has a portrait; the label carries no field of its own.
+            return kind === 'character' && hasOnlyKeys(value, ['kind']) ? { kind: value.kind } : null
         case 'obj':
         case 'prop': {
             // The label's list or property must be one the owner kind holds, as for its ops.
@@ -480,6 +500,8 @@ export function isOpAllowedFor(kind: OwnerKind, op: Op): boolean {
         case 'assetFolderOrder':
         case 'textEdit':
             return kind === 'character' || kind === 'module'
+        case 'portraitSet':
+            return kind === 'character'
         case 'objInsert':
         case 'objRemove':
         case 'objSet':
@@ -570,6 +592,93 @@ function parseAssetOp(value: Record<string, unknown>): Op | null | undefined {
     }
 }
 
+// Exactly these keys, no more and no fewer: the portrait op is strict about its shape so a record from another build
+// that carries more is refused whole instead of being read as less than it holds.
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+    const own = Object.keys(value)
+    return own.length === keys.length && keys.every((key) => Object.hasOwn(value, key))
+}
+
+function parsePortraitRow(value: unknown): PortraitRow | null {
+    if (!isObject(value) || !hasExactKeys(value, ['type', 'uri', 'name', 'ext'])) {
+        return null
+    }
+    const { type, uri, name, ext } = value
+    return typeof type === 'string' && typeof uri === 'string' && typeof name === 'string' && typeof ext === 'string' ? { type, uri, name, ext } : null
+}
+
+function parsePortraitValue(value: unknown): PortraitValue | null {
+    if (!isObject(value) || !hasExactKeys(value, ['image', 'alternates'])) {
+        return null
+    }
+    const { image, alternates } = value
+    let parsedImage: PortraitValue['image']
+    if (isObject(image) && image.had === false && hasExactKeys(image, ['had'])) {
+        parsedImage = { had: false }
+    } else if (isObject(image) && image.had === true && hasExactKeys(image, ['had', 'value']) && typeof image.value === 'string') {
+        parsedImage = { had: true, value: image.value }
+    } else {
+        return null
+    }
+    if (isObject(alternates) && alternates.had === false && hasExactKeys(alternates, ['had'])) {
+        return { image: parsedImage, alternates: { had: false } }
+    }
+    if (!isObject(alternates) || alternates.had !== true || !hasExactKeys(alternates, ['had', 'rows']) || !Array.isArray(alternates.rows)) {
+        return null
+    }
+    const rows: PortraitRow[] = []
+    for (const raw of alternates.rows) {
+        const row = parsePortraitRow(raw)
+        if (row === null) {
+            return null
+        }
+        rows.push(row)
+    }
+    return { image: parsedImage, alternates: { had: true, rows } }
+}
+
+function parseExifValue(value: unknown): ExifValue | null {
+    if (!isObject(value)) {
+        return null
+    }
+    if (value.had === false && hasExactKeys(value, ['had'])) {
+        return { had: false }
+    }
+    if (value.had !== true || !hasExactKeys(value, ['had', 'value'])) {
+        return null
+    }
+    // Stored bytes are plain JSON already; the copy keeps the op free of any shared object.
+    let plain: JsonValue | undefined
+    try {
+        plain = toPlainJson(value.value)
+    } catch {
+        plain = undefined
+    }
+    return plain === undefined ? null : { had: true, value: plain }
+}
+
+function parsePortraitOp(value: Record<string, unknown>): PortraitOp | null {
+    const withExif = Object.hasOwn(value, 'pngExif')
+    if (!hasExactKeys(value, withExif ? ['op', 'before', 'after', 'pngExif'] : ['op', 'before', 'after'])) {
+        return null
+    }
+    const before = parsePortraitValue(value.before)
+    const after = parsePortraitValue(value.after)
+    if (before === null || after === null) {
+        return null
+    }
+    if (!withExif) {
+        return { op: 'portraitSet', before, after }
+    }
+    const pair = value.pngExif
+    if (!isObject(pair) || !hasExactKeys(pair, ['before', 'after'])) {
+        return null
+    }
+    const exifBefore = parseExifValue(pair.before)
+    const exifAfter = parseExifValue(pair.after)
+    return exifBefore !== null && exifAfter !== null ? { op: 'portraitSet', before, after, pngExif: { before: exifBefore, after: exifAfter } } : null
+}
+
 // The shape of one op, whatever the owner kind; null when it is outside the closed union.
 function parseOpShape(value: unknown): Op | null {
     if (!isObject(value)) {
@@ -591,6 +700,8 @@ function parseOpShape(value: unknown): Op | null {
         return parseObjOp(value)
     }
     switch (value.op) {
+        case 'portraitSet':
+            return parsePortraitOp(value)
         case 'listSet':
             return isIndex(value.index) && typeof value.before === 'string' && typeof value.after === 'string'
                 ? { op: 'listSet', index: value.index, before: value.before, after: value.after }
@@ -811,6 +922,13 @@ export interface LiveReader {
     objList?(list: ObjListName): readonly unknown[] | null
     // The owner's object-family property, or null when it cannot be read.
     prop?(prop: PropName): PropValue | null
+    // The owner's portrait as plain copies, or null when it cannot be read (a non-string image, or alternates that are not
+    // an array of rows of exactly four strings). Absent on a reader that serves no portrait, which then cannot apply or
+    // recognise a portrait op.
+    portrait?(): PortraitValue | null
+    // The owner's `extentions.pngExif` as a plain copy, or null when it cannot be read or written into: `extentions` that is
+    // present but not a plain object, or a `pngExif` that is not a plain object.
+    pngExif?(): ExifValue | null
 }
 
 export type WriteOp =
@@ -823,6 +941,7 @@ export type WriteOp =
     // `set`, an alternate first message entry a `listSet`, every other registry text a `textSet`. Never stored or posted.
     | AssetOp
     | { op: 'textSet'; target: string; value: string }
+    | PortraitOp
     | ObjWrite
 
 export interface RestoreWrite {
@@ -877,6 +996,9 @@ export interface StepPlan {
     dropStep?: true
     // Revert only: asset rows whose file is gone and that the revert did not re-insert.
     goneRows?: string[]
+    // Set with `goneRows` when the first of them (sorted) was named only by `portraitSet` ops, never by a row op: the
+    // notice then says a photo's file is gone instead of naming a row.
+    gonePortrait?: true
     // Restore of a deleted item only: the page write for an open chat without a unique id. In memory only, never stored.
     pageFm?: number
     // Replay only: the registry targets of the step's text ops that were skipped because the live text had moved on and
@@ -903,7 +1025,126 @@ export interface ObjRefusal {
 export type PlanResult =
     | StepPlan
     | { ok: false; reason: Exclude<ModelRefusal, 'unchanged'>; listReason?: ListSkipReason; obj?: ObjRefusal; linesRefused?: ObjListName[] }
-    | { ok: false; reason: 'unchanged'; listSkipped?: number; listReason?: ListSkipReason; pairSkipped?: number; fmNotRestored?: boolean; goneRows?: string[] }
+    | { ok: false; reason: 'unchanged'; listSkipped?: number; listReason?: ListSkipReason; pairSkipped?: number; fmNotRestored?: boolean; goneRows?: string[]; gonePortrait?: true }
+
+// ---------------------------------------------------------------- portrait values
+
+function copyPortraitRow(row: PortraitRow): PortraitRow {
+    return { type: row.type, uri: row.uri, name: row.name, ext: row.ext }
+}
+
+// A fresh plain copy: no object is shared with the value it was made from.
+export function copyPortraitValue(value: PortraitValue): PortraitValue {
+    return {
+        image: value.image.had ? { had: true, value: value.image.value } : { had: false },
+        alternates: value.alternates.had ? { had: true, rows: value.alternates.rows.map(copyPortraitRow) } : { had: false },
+    }
+}
+
+function copyExifValue(value: ExifValue): ExifValue {
+    if (!value.had) {
+        return { had: false }
+    }
+    const plain = toPlainJson(value.value)
+    return { had: true, value: plain === undefined ? value.value : plain }
+}
+
+export function copyPortraitOp(op: PortraitOp): PortraitOp {
+    return {
+        op: 'portraitSet',
+        before: copyPortraitValue(op.before),
+        after: copyPortraitValue(op.after),
+        ...(op.pngExif === undefined ? {} : { pngExif: { before: copyExifValue(op.pngExif.before), after: copyExifValue(op.pngExif.after) } }),
+    }
+}
+
+export function portraitValueEquals(a: PortraitValue, b: PortraitValue): boolean {
+    if (a.image.had !== b.image.had || (a.image.had && b.image.had && a.image.value !== b.image.value)) {
+        return false
+    }
+    if (a.alternates.had !== b.alternates.had) {
+        return false
+    }
+    if (!a.alternates.had || !b.alternates.had) {
+        return true
+    }
+    const left = a.alternates.rows
+    const right = b.alternates.rows
+    return (
+        left.length === right.length &&
+        left.every((row, i) => row.type === right[i].type && row.uri === right[i].uri && row.name === right[i].name && row.ext === right[i].ext)
+    )
+}
+
+function exifValueEquals(a: ExifValue, b: ExifValue): boolean {
+    if (a.had !== b.had) {
+        return false
+    }
+    return !a.had || !b.had || sameJsonValue(a.value, b.value)
+}
+
+// Every path a portrait value names: the main image and each alternate's file.
+function portraitPaths(value: PortraitValue): Set<string> {
+    const paths = new Set<string>()
+    if (value.image.had && value.image.value !== '') {
+        paths.add(value.image.value)
+    }
+    if (value.alternates.had) {
+        for (const row of value.alternates.rows) {
+            paths.add(row.uri)
+        }
+    }
+    return paths
+}
+
+function storedPathsOnlyIn(from: PortraitValue, other: PortraitValue): string[] {
+    const elsewhere = portraitPaths(other)
+    return [...portraitPaths(from)].filter((path) => isStoredAssetPath(path) && !elsewhere.has(path)).sort()
+}
+
+// The stored file paths a forward `portraitSet` takes out of the portrait (in `before`, not in `after`). A swap or a
+// replace that keeps every file names none, so only a real removal needs a working undo.
+export function portraitPathsRemoved(op: PortraitOp): string[] {
+    return storedPathsOnlyIn(op.before, op.after)
+}
+
+// The stored file paths a forward `portraitSet` puts into the portrait (in `after`, not in `before`): the ones a replay
+// must read as present first.
+export function portraitPathsPutBack(op: PortraitOp): string[] {
+    return storedPathsOnlyIn(op.after, op.before)
+}
+
+// A name for each stored path a portrait op adds or removes: the row's name when the path is an alternate on either side,
+// else '' (the main image has no name of its own).
+export function portraitPathNames(op: PortraitOp): Map<string, string> {
+    const names = new Map<string, string>()
+    for (const path of [...portraitPathsRemoved(op), ...portraitPathsPutBack(op)]) {
+        names.set(path, '')
+    }
+    for (const value of [op.before, op.after]) {
+        if (value.alternates.had) {
+            for (const row of value.alternates.rows) {
+                if (names.get(row.uri) === '') {
+                    names.set(row.uri, row.name)
+                }
+            }
+        }
+    }
+    return names
+}
+
+// The JSON text of a value with object keys in sorted order, so two readings of one value compare equal whatever order
+// their keys were written in.
+function canonicalJson(value: unknown): string {
+    if (Array.isArray(value)) {
+        return '[' + value.map(canonicalJson).join(',') + ']'
+    }
+    if (typeof value === 'object' && value !== null) {
+        const entries = Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        return '{' + entries.map(([key, item]) => JSON.stringify(key) + ':' + canonicalJson(item)).join(',') + '}'
+    }
+    return JSON.stringify(value) ?? 'null'
+}
 
 interface Working {
     field(path: SetPath): FieldValue
@@ -918,6 +1159,11 @@ interface Working {
     setFolder(value: unknown): void
     text(target: string): string | null
     setText(target: string, value: string): void
+    // The portrait and its exif map as the step's earlier ops left them, read once as plain copies; null when unreadable.
+    portrait(): PortraitValue | null
+    setPortrait(value: PortraitValue): void
+    pngExif(): ExifValue | null
+    setPngExif(value: ExifValue): void
 }
 
 function makeWorking(live: LiveReader): Working {
@@ -926,8 +1172,30 @@ function makeWorking(live: LiveReader): Working {
     const arrays = new Map<AssetArrayName, string[][] | null>()
     const texts = new Map<string, string | null>()
     let folderState: { readable: boolean; value: unknown } | null = null
+    let portraitState: { value: PortraitValue | null } | null = null
+    let exifState: { value: ExifValue | null } | null = null
     const greetings = live.greetings()
     return {
+        portrait() {
+            if (!portraitState) {
+                const read = live.portrait ? live.portrait() : null
+                portraitState = { value: read === null ? null : copyPortraitValue(read) }
+            }
+            return portraitState.value
+        },
+        setPortrait(value) {
+            portraitState = { value: copyPortraitValue(value) }
+        },
+        pngExif() {
+            if (!exifState) {
+                const read = live.pngExif ? live.pngExif() : null
+                exifState = { value: read === null ? null : copyExifValue(read) }
+            }
+            return exifState.value
+        },
+        setPngExif(value) {
+            exifState = { value: copyExifValue(value) }
+        },
         rows(array) {
             if (!arrays.has(array)) {
                 const rows = live.assetRows ? live.assetRows(array) : null
@@ -1002,6 +1270,13 @@ export function invertOp(op: Op): Op {
             return fromFolderOp(invertFolderOp(toFolderOp(op)))
         case 'textEdit':
             return { op: 'textEdit', target: op.target, offset: op.offset, from: op.to, to: op.from }
+        case 'portraitSet':
+            return {
+                op: 'portraitSet',
+                before: op.after,
+                after: op.before,
+                ...(op.pngExif === undefined ? {} : { pngExif: { before: op.pngExif.after, after: op.pngExif.before } }),
+            }
         case 'objInsert':
         case 'objRemove':
         case 'objSet':
@@ -1026,6 +1301,10 @@ export function assetPathsReplayMayInsert(steps: readonly Step[], direction: 'un
                 paths.add(op.tuple[1])
             } else if (op.op === 'assetRowSet' && op.after[1] !== op.before[1] && typeof op.after[1] === 'string' && isStoredAssetPath(op.after[1])) {
                 paths.add(op.after[1])
+            } else if (op.op === 'portraitSet') {
+                for (const path of portraitPathsPutBack(op)) {
+                    paths.add(path)
+                }
             }
         }
     }
@@ -1217,6 +1496,8 @@ export function assetStepWrites(ops: readonly Op[], live: LiveReader): WriteOp[]
             writes.push(outcome.write)
         } else if (op.op === 'assetRowRemove' || op.op === 'assetRowInsert' || op.op === 'assetRowSet' || op.op === 'assetFolderSet' || op.op === 'assetFolderOrder') {
             writes.push(op)
+        } else if (op.op === 'portraitSet') {
+            writes.push(copyPortraitOp(op))
         }
     }
     return writes
@@ -1325,6 +1606,23 @@ function applyForward(op: Op, working: Working): ApplyOutcome {
             storeText(op.target, next, working)
             return { kind: 'applied', write: textWriteFor(op.target, next) }
         }
+        case 'portraitSet': {
+            // The whole portrait must be what the op recorded, and so must the exif map when the op carries it: a
+            // classic-side edit of either refuses the replay instead of being overwritten.
+            const current = working.portrait()
+            if (current === null || !portraitValueEquals(current, op.before)) {
+                return { kind: 'failed' }
+            }
+            if (op.pngExif !== undefined) {
+                const exif = working.pngExif()
+                if (exif === null || !exifValueEquals(exif, op.pngExif.before)) {
+                    return { kind: 'failed' }
+                }
+                working.setPngExif(op.pngExif.after)
+            }
+            working.setPortrait(op.after)
+            return { kind: 'applied', write: copyPortraitOp(op) }
+        }
         case 'objInsert':
         case 'objRemove':
         case 'objSet':
@@ -1370,6 +1668,17 @@ function holdsResultOf(op: Op, working: Working): boolean {
         case 'textEdit': {
             const text = textOf(op.target, working)
             return text !== null && spanHoldsAt(text, op.offset, op.to, op.target)
+        }
+        case 'portraitSet': {
+            const current = working.portrait()
+            if (current === null || !portraitValueEquals(current, op.after)) {
+                return false
+            }
+            if (op.pngExif === undefined) {
+                return true
+            }
+            const exif = working.pngExif()
+            return exif !== null && exifValueEquals(exif, op.pngExif.after)
         }
         case 'objInsert':
         case 'objRemove':
@@ -1773,6 +2082,8 @@ export function planReplay(
     let failed = 0
     let fmNotRestored = false
     const goneSeen = new Set<string>()
+    // The gone paths a row op named: a path both a row and a portrait op name counts as a row.
+    const goneByRow = new Set<string>()
     const skippedText = new Set<Op>()
     // Read before the loop: the working copy's text fields move as the ops apply.
     const targeted = new Set<TextFieldPath>()
@@ -1803,8 +2114,21 @@ export function planReplay(
                 return { ok: false, reason: 'precondition' }
             }
             goneSeen.add(forward.tuple[1])
+            goneByRow.add(forward.tuple[1])
             skipped += 1
             continue
+        }
+        // A portrait op that would put back a gone file is left out whole: nothing of the portrait is written, and the
+        // step is dropped as a row of a gone file is.
+        if (forward.op === 'portraitSet' && goneRows !== undefined) {
+            const goneHere = portraitPathsPutBack(forward).filter((path) => goneRows.has(path))
+            if (goneHere.length > 0) {
+                for (const path of goneHere) {
+                    goneSeen.add(path)
+                }
+                skipped += 1
+                continue
+            }
         }
         // Side `other`: the list already holds what a list op would produce.
         if (side === 'other' && isListOp(original)) {
@@ -1913,7 +2237,7 @@ export function planReplay(
             fmNotRestored: false,
             ...(unreplayable > 0 ? { dropStep: true as const } : { already: direction }),
             ...(unreplayable === 0 && side === 'other' ? { listReason: 'other' as const } : {}),
-            ...(goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}),
+            ...(goneSeen.size > 0 ? { goneRows: [...goneSeen].sort(), ...gonePortraitMark(goneSeen, goneByRow) } : {}),
         }
     }
     if (direction === 'undo') {
@@ -1943,7 +2267,7 @@ export function planReplay(
         fmNotRestored,
         ...(objPlanned === null ? {} : { objEffect: objPlanned.effect, objExecuted: objPlanned.executed }),
         ...(notRestored.length > 0 && listsLeftTexts(step) ? { notRestored } : {}),
-        ...(goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}),
+        ...(goneSeen.size > 0 ? { goneRows: [...goneSeen].sort(), ...gonePortraitMark(goneSeen, goneByRow) } : {}),
         ...(hash === undefined ? {} : { liveListHash: hash }),
         // On the expected side the live list is the side the step was recorded at; with every list op
         // applied it ends on the list the other side's fingerprint was taken from (invariant L6).
@@ -1951,6 +2275,12 @@ export function planReplay(
             ? { afterListHash: direction === 'undo' ? step.listFingerprint.before : step.listFingerprint.after }
             : {}),
     }
+}
+
+// `gonePortrait` for a plan whose first gone path (sorted) no row op named.
+function gonePortraitMark(seen: ReadonlySet<string>, byRow: ReadonlySet<string>): { gonePortrait?: true } {
+    const first = [...seen].sort()[0]
+    return first !== undefined && !byRow.has(first) ? { gonePortrait: true } : {}
 }
 
 function isAssetRowOp(op: Op): boolean {
@@ -2028,8 +2358,8 @@ function revertForward(original: Op, pairsWithReopen: boolean, consumedId: strin
 
 // The target a revert stores a chain for: an asset array, the folder document, or a registry text other than
 // the three text fields (`desc`, `firstMessage`, `exampleMessage`: a `set` carries them) and a greeting entry
-// (the list hunks carry it). Null for every other op.
-type TargetKey = { kind: 'rows'; array: AssetArrayName } | { kind: 'folder' } | { kind: 'text'; target: string }
+// (the list hunks carry it), or the portrait (image, alternates and the exif map together). Null for every other op.
+type TargetKey = { kind: 'rows'; array: AssetArrayName } | { kind: 'folder' } | { kind: 'text'; target: string } | { kind: 'portrait' }
 
 // The text a revert's maps use to tell targets apart; the typed key is what the snapshot reads.
 function targetKeyText(key: TargetKey): string {
@@ -2040,6 +2370,8 @@ function targetKeyText(key: TargetKey): string {
             return 'folder'
         case 'text':
             return 'text:' + key.target
+        case 'portrait':
+            return 'portrait'
     }
 }
 
@@ -2052,6 +2384,8 @@ function targetKeyOf(op: Op): TargetKey | null {
         case 'assetFolderSet':
         case 'assetFolderOrder':
             return { kind: 'folder' }
+        case 'portraitSet':
+            return { kind: 'portrait' }
         case 'textEdit': {
             const route = routeOf(op.target)
             return route !== null && route.kind !== 'text' ? null : { kind: 'text', target: op.target }
@@ -2069,6 +2403,9 @@ function snapshotOf(key: TargetKey, working: Working): string {
             return JSON.stringify(working.rows(key.array))
         case 'text':
             return JSON.stringify(working.text(key.target))
+        // The three values one portrait chain moves: a chain that ends where all three started is dropped.
+        case 'portrait':
+            return canonicalJson({ portrait: working.portrait(), pngExif: working.pngExif() })
     }
 }
 
@@ -2158,6 +2495,7 @@ export function planRevert(
     const startOf = new Map<string, { key: TargetKey; start: string }>()
     const writeTargets: (string | null)[] = []
     const goneSeen = new Set<string>()
+    const goneByRow = new Set<string>()
     let failedOther = 0
     const reopened = new Map<string, number>()
     // A tracker exists when some reverted step inserts or removes: only then does the list's shape
@@ -2294,8 +2632,21 @@ export function planRevert(
             }
             if (forward.op === 'assetRowInsert' && goneRows?.has(forward.tuple[1])) {
                 goneSeen.add(forward.tuple[1])
+                goneByRow.add(forward.tuple[1])
                 skipped += 1
                 continue
+            }
+            // A portrait op that would put back a gone file is not applied: the portrait stays whole. An older portrait op
+            // of the range then fails its precondition (its `after` still names the gone file), so the chain stops there.
+            if (forward.op === 'portraitSet' && goneRows !== undefined) {
+                const goneHere = portraitPathsPutBack(forward).filter((path) => goneRows.has(path))
+                if (goneHere.length > 0) {
+                    for (const path of goneHere) {
+                        goneSeen.add(path)
+                    }
+                    skipped += 1
+                    continue
+                }
             }
             const targetKey = targetKeyOf(forward)
             const targetText = targetKey === null ? null : targetKeyText(targetKey)
@@ -2346,7 +2697,7 @@ export function planRevert(
             }
         }
     }
-    const gone = goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}
+    const gone = goneSeen.size > 0 ? { goneRows: [...goneSeen].sort(), ...gonePortraitMark(goneSeen, goneByRow) } : {}
     const reason = hashStop !== null && skippedBeforeHashStop === 0 && listSkipped > 0 ? { listReason: hashStop } : {}
     if (ops.length === 0 && objExecuted.length === 0) {
         // Nothing applied: a pair stop with no other failure refuses with its own reason, which wins over the

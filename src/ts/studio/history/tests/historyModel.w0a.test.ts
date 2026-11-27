@@ -143,8 +143,10 @@ describe('rule K: isOpAllowedFor is the acceptance the parser applies', () => {
         { name: 'assetFolderSet', op: { op: 'assetFolderSet', name: 'f', before: { had: false }, after: { had: false } } },
         { name: 'assetFolderOrder', op: { op: 'assetFolderOrder', before: ['a'], after: ['b'] } },
         { name: 'textEdit', op: { op: 'textEdit', target: 'desc', offset: 0, from: '', to: 'x' } },
+        // A-T4 (S3b): a portrait belongs to a character only, so it joins the list ops in the module and chat rows.
+        { name: 'portraitSet', op: { op: 'portraitSet', before: { image: { had: false }, alternates: { had: false } }, after: { image: { had: true, value: 'assets/x.png' }, alternates: { had: false } } } },
     ]
-    const LIST_NAMES = ['listSet', 'listInsert', 'listRemove', 'chatFm']
+    const LIST_NAMES = ['listSet', 'listInsert', 'listRemove', 'chatFm', 'portraitSet']
 
     test.each(['character', 'chat', 'module'] as const)('for a %s owner it agrees with what its record reads back', (kind) => {
         for (const { name, op } of ops) {

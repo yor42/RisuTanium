@@ -7,7 +7,7 @@
     import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
     import { pinnedDesc, withRiskyConfirm } from '../../ts/studio/edit/riskyReplay'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
-    import { createStudioToasts, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
+    import { createStudioToasts, goneFileText, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
     import type { DeletedItem, StepLabel } from '../../ts/studio/history/historyModel'
     import type { OwnerHistoryService, ReplayDesc, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
@@ -180,12 +180,12 @@
             message = refusalTextOf(result)
             return
         }
-        const goneFile = result.goneRows !== undefined && result.goneRows.length > 0
-        if (undone && !goneFile && result.notRestored !== undefined && result.notRestored.length > 0) {
+        const goneText = goneFileText(result)
+        if (undone && goneText === null && result.notRestored !== undefined && result.notRestored.length > 0) {
             setStudioNotRestoredNotice(key, language.studioAssetNotRestored(result.notRestored.length), result.notRestored)
         }
         const notes: string[] = []
-        if (goneFile && result.goneRows !== undefined) notes.push(language.studioAssetFileGone(result.goneName ?? result.goneRows[0]))
+        if (goneText !== null) notes.push(goneText)
         if (result.already === 'undo') notes.push(language.studioHistoryAlreadyUndone)
         else if (result.already === 'redo') notes.push(language.studioHistoryAlreadyRedone)
         else if (result.dropped) notes.push(language.studioHistoryStepDropped)
@@ -210,6 +210,9 @@
             case 'restorePoint': return language.studioStepRestorePoint
             case 'revert': return language.studioStepRevert
             case 'restoreDeleted': return language.studioStepRestoreDeleted
+            case 'portraitAdd': return language.studioStepPortraitAdd
+            case 'portraitRemove': return language.studioStepPortraitRemove
+            case 'portraitMain': return language.studioStepPortraitMain
             // A delete of several rows has no name to show: it says how many.
             case 'assetDelete': return label.name === null ? language.studioStepAssetDeleteMany(label.count) : language.studioStepAssetDeleteOne(label.name)
             case 'assetRename': return language.studioStepAssetRename(label.from, label.to)
