@@ -31,13 +31,22 @@ export const RESERVED_ROW_PREFIX: Readonly<Record<string, string>> = {
     [INLAYS_ID]: 'i/',
 }
 
-const SIDE_NAMES = ['iris', 'google-search', 'hypa-vector', 'plugin-safe', 'plugin-safe-ls', 'plugin-permissions', 'mcp-tool-calls', 'ui-prefs', 'connection-keys'] as const
+const SIDE_NAMES = ['iris', 'google-search', 'hypa-vector', 'plugin-safe', 'plugin-safe-ls', 'plugin-permissions', 'mcp-tool-calls', 'ui-prefs', 'connection-keys', 'chromemory-vectors'] as const
 
-/** The nine optional side sections of version 1 (`side.<name>`, prefix `s/<name>/`). */
+/**
+ * The ten optional side sections of version 1 (`side.<name>`, prefix `s/<name>/`). The vectors row is last so the
+ * rows of a file without it keep their order.
+ */
 export const SIDE_SECTION_IDS: readonly string[] = SIDE_NAMES.map((name) => `side.${name}`)
 
-/** The id of one of the nine version 1 side sections. */
+/** The id of one of the ten version 1 side sections. */
 export type SideSectionId = `side.${typeof SIDE_NAMES[number]}`
+
+/**
+ * The section of ChroMemory search vectors, read from the byte store under `derived/chromemory-vectors/`. Like the
+ * connection keys it is written only when it has lines, so a file without vectors has no row and no entry.
+ */
+export const VECTORS_ID = 'side.chromemory-vectors'
 
 /**
  * The section of Keystore-wrapped connection keys. It is built from the live connections, not read from a

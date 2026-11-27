@@ -7,6 +7,7 @@ import { get } from "svelte/store";
 import { setDatabase, defaultSdDataFunc, getDatabase, type Database } from "./storage/database.svelte";
 import { applyUsageRetention } from "./usage/usageRetention";
 import { reconcileChatDraftsAtBoot } from "./chatDraftStore";
+import { sweepVectorsAtBoot } from "./process/memory/chroMemory/vectorPersist";
 import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { takePresetIdsMinted } from "./storage/presetMeta";
 import { takeConnectionsMigrated } from "./connections/migrate";
@@ -449,6 +450,13 @@ export async function loadData() {
                 // (a purged character, or chats an imported profile lacks). A trashed character keeps its own.
                 try {
                     reconcileChatDraftsAtBoot()
+                } catch (error) {
+                    console.error(error)
+                }
+                // The same ownership rule for the saved search vectors: an engine or retrieval that is off, a deleted owner or a
+                // deleted chat loses its folder; cold stubs and trashed characters keep theirs. Queued, never awaited.
+                try {
+                    void sweepVectorsAtBoot(getDatabase().characters)
                 } catch (error) {
                     console.error(error)
                 }

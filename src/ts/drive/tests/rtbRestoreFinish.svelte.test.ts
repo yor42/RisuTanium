@@ -11,6 +11,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
+import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { SIDE_SECTION_IDS } from 'src/ts/drive/rtb/entryNames'
 import type { SideInput, SideRecord } from 'src/ts/drive/rtb/rtbWriter'
 import { GOOGLE_SEARCH_STORE, HYPA_VECTOR_STORE, IRIS_STORE, MCP_TOOL_CALLS_STORE, PLUGIN_PERMISSIONS_STORE, RESTORED_KEYS_STORE, UI_PREFS_KEYS } from 'src/ts/drive/rtb/sideStoreConfig'
@@ -192,6 +193,27 @@ describe('S.1 the side data (B1, B7)', () => {
         })
         expect([...run.fakes.forage(GOOGLE_SEARCH_STORE).data.keys()]).toEqual(['keep'])
         expect(run.notices).toEqual([language.rtbRestoreLeftOut([language.rtbRestoreLineSideNotRestored([language.rtbRestoreSideNames.googleSearch])])])
+    })
+
+    test('the vectors row is named by its own shown name when it is not restored, and its store is left alone (guard; a missing SIDE_NAME_KEYS entry fails it)', async () => {
+        const vectors = createMemoryByteStore()
+        vectors.files.set('derived/chromemory-vectors/keep/head', Uint8Array.of(1))
+        // A string value is not bytes, so pass 1 refuses the row before anything is cleared.
+        const run = await finish(await fileOf({ sides: { ...allSides(), 'side.chromemory-vectors': records(['seg/head', 'not bytes']) } }), {
+            deps: { sideBackends: { ...sideFakes().backends, vectors: async () => vectors } },
+        })
+        expect([...vectors.files.keys()]).toEqual(['derived/chromemory-vectors/keep/head'])
+        expect(run.notices).toEqual([language.rtbRestoreLeftOut([language.rtbRestoreLineSideNotRestored([language.rtbRestoreSideNames.chroMemoryVectors])])])
+    })
+
+    test('a file without the vectors row clears the vector folders and names nothing (guard; a skipped clear leaves a stale cache)', async () => {
+        const vectors = createMemoryByteStore()
+        vectors.files.set('derived/chromemory-vectors/old/head', Uint8Array.of(1))
+        const run = await finish(await fileOf({ sides: allSides() }), {
+            deps: { sideBackends: { ...sideFakes().backends, vectors: async () => vectors } },
+        })
+        expect(vectors.files.size).toBe(0)
+        expect(run.notices).toEqual([])
     })
 
     test('a section whose data entry is missing from the file leaves its store alone and is named as not restored (guard; passing no reader when the entry is missing fails it)', async () => {

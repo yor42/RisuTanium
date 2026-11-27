@@ -66,6 +66,8 @@ describe('sweepAllWriteTemps', () => {
             `store2/${TEMP}`,
             `inlays/${TEMP}`,
             `consent/${TEMP}`,
+            `derived/${TEMP}`,
+            `derived/chromemory-vectors/0123456789abcdef/${TEMP}`,
         ]
         for (const key of planted) {
             h.fs.plant(key, BYTES)

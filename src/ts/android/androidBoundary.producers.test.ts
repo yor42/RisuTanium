@@ -56,6 +56,11 @@ describe('the Android capability and the boundary fixture', () => {
         )
     })
 
+    test('the sweep list the page sends equals the fixture directories, so no store directory keeps its temps', async () => {
+        const { WRITE_TEMP_DIRECTORIES } = await import('src/ts/storage/tauriAtomicWrite')
+        expect([...WRITE_TEMP_DIRECTORIES].sort()).toEqual([...androidBoundary.directories].sort())
+    })
+
     test('the Android capability grants exactly the read-only fs commands the fixture lists', () => {
         const capability = androidCapability()
         expect(capability, 'src-tauri/capabilities/android.json').toBeDefined()
@@ -74,6 +79,7 @@ describe('the keys the fixture and the real producers give', () => {
                 expect(keyInsideAndroidStore(key), key).toBe(true)
             }
         }
+        expect(keyInsideAndroidStore('Derived/x'), 'the first segment is compared byte-exact').toBe(false)
         for (const segment of androidBoundary.outsideStoreFirstSegments) {
             expect(keyInsideAndroidStore(segment), segment).toBe(false)
             expect(keyInsideAndroidStore(`${segment}/x`), `${segment}/x`).toBe(false)
@@ -123,10 +129,33 @@ describe('the keys the fixture and the real producers give', () => {
             ['litellm data', litellm.LITELLM_DATA_KEY],
             ['provider lists', providers.PROVIDER_LISTS_KEY],
             ['cold unit', cold.coldUnitStoreKey('0123456789abcdef')],
+            // The literal shape the search-vector persistence writes (head and a chunk under a per-chat segment);
+            // its producer must match this string exactly.
+            ['search vector head', 'derived/chromemory-vectors/0123456789abcdef/head'],
+            ['search vector chunk', 'derived/chromemory-vectors/0123456789abcdef/c1'],
         ]
         for (const [name, key] of produced) {
             expect(keyInsideAndroidStore(key), `${name}: ${key}`).toBe(true)
         }
+    })
+})
+
+describe('the search-vector keys', () => {
+    test('guard: the real key builders give the shape of the fixture head keys, inside the set, under a key the page can create', async () => {
+        const vectors = await import('src/ts/process/memory/chroMemory/vectorPersist')
+        const keyRules = await import('src/ts/storage/store/keyRules')
+        const seg = vectors.segOf(vectors.chatKeyOf('owner-id', 'chat-id'))
+        const asFixture = (key: string): string => key.replace(`/${seg}/`, '/0123456789abcdef/')
+        const head = vectors.headKey(seg)
+        const chunk = vectors.chunkKey(seg, 1)
+        expect(androidBoundary.keys.head).toContain(asFixture(head))
+        expect(androidBoundary.keys.head).toContain(asFixture(chunk))
+        for (const key of [head, chunk]) {
+            expect(keyInsideAndroidStore(key), key).toBe(true)
+            expect(keyRules.nodeCreatableViolation(key), key).toBeNull()
+            expect(keyRules.tauriCreatableViolation(key), key).toBeNull()
+        }
+        expect(vectors.PREFIX.split('/')[0]).toBe(androidBoundary.directories.find((directory) => directory === 'derived'))
     })
 })
 

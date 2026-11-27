@@ -80,6 +80,7 @@ const SIDE_NAME_KEYS: Readonly<Record<SideSectionId, keyof typeof language.rtbRe
     'side.mcp-tool-calls': 'mcpToolCalls',
     'side.ui-prefs': 'uiPrefs',
     'side.connection-keys': 'connectionKeys',
+    'side.chromemory-vectors': 'chroMemoryVectors',
 }
 
 const SIDE_ORDER: readonly string[] = SIDE_SECTION_IDS

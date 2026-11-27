@@ -379,7 +379,7 @@ export const languageGerman = {
     "settingsShellDataKindTaskPresets": "Aufgaben-Presets",
     "settingsShellDataKindWorkspaces": "Dienstprogramm-Arbeitsbereiche",
     "settingsShellDataKindThemePacks": "Theme-Pakete",
-    "settingsShellDataKindChroMemory": "ChroMemory-Einstellungen",
+    "settingsShellDataKindChroMemory": "ChroMemory-Einstellungen und Suchdaten",
     "settingsShellDataKindChatDrafts": "Ungesendete Nachrichtenbearbeitungen und Hinweise zu langen Chats",
     "settingsShellDataKindUsage": "Nutzungsstatistiken und Modellpreise",
     "settingsShellDataLeaveOutRtb": "Stattdessen .rtb erstellen",
@@ -3867,7 +3867,7 @@ export const languageGerman = {
         `${count} Dienstprogramm-Arbeitsbereich(e) sind nur auf diesem Gerät und in .rtb-Backups gespeichert, und eine .bin-Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `${count} Design-Paket(e) sind nur auf diesem Gerät gespeichert, und eine Backup-Datei hat keinen Platz dafür oder für ihre Dateien, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
-    "backupChroMemoryConfirm": "Ein .bin-Backup hat keinen Platz für die ChroMemory-Auswahl oder ihre Einstellungen, daher lässt dieses Backup sie weg. Dieses Gerät behält sie, und .rtb-Backups enthalten sie. Das Backup ohne sie erstellen?",
+    "backupChroMemoryConfirm": "Ein .bin-Backup hat keinen Platz für die ChroMemory-Auswahl, ihre Einstellungen oder ihre gespeicherten Suchdaten, daher lässt dieses Backup sie weg. Dieses Gerät behält sie, und .rtb-Backups enthalten sie. Das Backup ohne sie erstellen?",
     "backupChatDraftsConfirm": (drafts: number, hintChats: number) => `Ein .bin-Backup hat keinen Platz für ungesendete Nachrichtenbearbeitungen oder die bereits angezeigten Hinweise zu langen Chats (${drafts} ungesendete Bearbeitungen, ${hintChats} Chats mit angezeigtem Hinweis), daher lässt dieses Backup sie weg. Dieses Gerät behält sie, und .rtb-Backups enthalten sie. Das Backup ohne sie erstellen?`,
     "backupUsageStatsConfirm": "Ein .bin-Backup hat keinen Platz für Ihre Nutzungsstatistik oder die von Ihnen eingegebenen Modellpreise, daher lässt dieses Backup sie weg. Dieses Gerät behält sie, und .rtb-Backups enthalten sie. Das Backup ohne sie erstellen?",
     "backupSaveWait": "Lokales Backup wird gespeichert...",
@@ -4495,7 +4495,7 @@ export const languageGerman = {
     "rtbRestoreLineOmittedEntries": (names: string[]) => `- Daten, ohne die das Backup erstellt wurde: ${names.join(', ')}`,
     "rtbRestoreLineSideNotRestored": (names: string[]) => `- Auf diesem Gerät gespeicherte Daten, die nicht wiederhergestellt wurden: ${names.join(', ')}`,
     "rtbRestoreLineSideFailed": (names: string[]) => `- Auf diesem Gerät gespeicherte Daten, die nicht vollständig geschrieben werden konnten: ${names.join(', ')}`,
-    "rtbRestoreSideNames": { iris: "Iris-Unterhaltungen", googleSearch: "Google-Suchschlüssel", hypaVector: "Daten der Gedächtnissuche", pluginSafe: "Plugin-Daten", pluginSafeLs: "Plugin-Einstellungen", pluginPermissions: "Plugin-Berechtigungen", mcpToolCalls: "MCP-Tool-Aufrufe", uiPrefs: "Oberflächeneinstellungen", connectionKeys: "Verbindungsschlüssel" },
+    "rtbRestoreSideNames": { iris: "Iris-Unterhaltungen", googleSearch: "Google-Suchschlüssel", hypaVector: "Daten der Gedächtnissuche", pluginSafe: "Plugin-Daten", pluginSafeLs: "Plugin-Einstellungen", pluginPermissions: "Plugin-Berechtigungen", mcpToolCalls: "MCP-Tool-Aufrufe", uiPrefs: "Oberflächeneinstellungen", connectionKeys: "Verbindungsschlüssel", chroMemoryVectors: "ChroMemory-Suchdaten" },
     "rtbRestoreSettingsConfirm": (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `Die Einstellungen in diesem Backup wiederherstellen? ${fields} Einstellung(en), ${presets} Bot-Preset(s), ${memoryPresets} Gedächtnis-Preset(s) und ${translatorPresets} neue(s) Übersetzer-Preset(s) werden mit diesem Gerät zusammengeführt. Eine Einstellung, die dem Backup fehlt, bleibt unverändert. Charaktere, Chats, Schlüssel und Verbindungen werden nicht angetastet.${dropped > 0 ? ` ${dropped} Wert(e) im Backup sind nicht verwendbar und werden übersprungen.` : ''} Danach wird die App neu geladen.`,
     "rtbRestoreSettingsDone": "Die Einstellungen wurden wiederhergestellt. Die App wird jetzt neu geladen.",
