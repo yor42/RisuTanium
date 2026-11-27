@@ -52,8 +52,8 @@ If a pack makes the app hard to use:
 
 ## What is not supported yet
 
-- Effects. Packs cannot use transitions, transforms, animations, filters, blur or layering. They are not available yet and are planned. Blur-based looks and a reduced-effects fallback do not exist yet.
-- Some popups and dialogs have no theme parts yet (for example the memory, bookmark and persona lists). Packs reach them only through shared shapes. This is planned.
+- Effects (transitions, transforms, animations, filters and blur) are switched off by your device's reduce-motion and reduce-transparency settings; an app setting for reduced effects does not exist yet. Layering (stacking order, fixed or sticky position) is not available to packs.
+- A few pieces inside popups have no part of their own (for example the comparison view of the prompt comparison dialog and the text-area autocomplete popover). The popup list of the old (non-preview) chat screen has no parts.
 - A few small pieces of the chat sidebar (some label texts and the avatar ring of the recent strip) have no part of their own and cannot be styled individually.
 - The built-in packs only restyle the chat screen. They are planned to be rebuilt.
 - A file named `sidebar.css` (or any other extra `.css` file) in a pack is kept with the pack but never applied. A pack with only `popups.css` is refused.
