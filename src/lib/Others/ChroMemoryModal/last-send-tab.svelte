@@ -84,26 +84,26 @@
 </script>
 
 {#if !trace && !loreTrace}
-  <p class="text-sm text-textcolor2">{language.chroMemoryNoSend}</p>
+  <p data-part="modal-text" class="text-sm text-textcolor2">{language.chroMemoryNoSend}</p>
 {/if}
 
 {#if trace}
-  <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-    <div class="col-span-2 p-2 border rounded-md bg-bgcolor/50 border-darkborderc">
-      <div class="text-xs text-textcolor2">{language.chroMemoryOutcome}</div>
-      <div class="text-sm font-semibold wrap-break-word {trace.outcome === 'error' ? 'text-draculared' : 'text-textcolor'}">{outcomeText(trace)}</div>
+  <div data-part="modal-list" class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div data-part="modal-row" class="col-span-2 p-2 border rounded-md bg-bgcolor/50 border-darkborderc">
+      <div data-part="modal-text" class="text-xs text-textcolor2">{language.chroMemoryOutcome}</div>
+      <div data-part="modal-text" class="text-sm font-semibold wrap-break-word {trace.outcome === 'error' ? 'text-draculared' : 'text-textcolor'}">{outcomeText(trace)}</div>
     </div>
-    <div class="p-2 border rounded-md bg-bgcolor/50 border-darkborderc">
-      <div class="text-xs text-textcolor2">{language.chroMemoryItems}</div>
-      <div class="text-lg font-semibold tabular-nums text-textcolor">{trace.items.length}</div>
+    <div data-part="modal-row" class="p-2 border rounded-md bg-bgcolor/50 border-darkborderc">
+      <div data-part="modal-text" class="text-xs text-textcolor2">{language.chroMemoryItems}</div>
+      <div data-part="modal-text" class="text-lg font-semibold tabular-nums text-textcolor">{trace.items.length}</div>
     </div>
-    <div class="p-2 border rounded-md bg-bgcolor/50 border-darkborderc">
-      <div class="text-xs text-textcolor2">{language.chroMemoryTime}</div>
-      <div class="text-lg font-semibold tabular-nums text-textcolor">{fillLang(language.chroMemoryMs, { ms: Math.round(trace.ms) })}</div>
+    <div data-part="modal-row" class="p-2 border rounded-md bg-bgcolor/50 border-darkborderc">
+      <div data-part="modal-text" class="text-xs text-textcolor2">{language.chroMemoryTime}</div>
+      <div data-part="modal-text" class="text-lg font-semibold tabular-nums text-textcolor">{fillLang(language.chroMemoryMs, { ms: Math.round(trace.ms) })}</div>
     </div>
-    <div class="col-span-2 p-2 border rounded-md sm:col-span-4 bg-bgcolor/50 border-darkborderc">
-      <div class="text-xs text-textcolor2">{language.chroMemoryTokens}</div>
-      <div class="text-lg font-semibold tabular-nums text-textcolor">{fillLang(language.chroMemoryTokensOf, { tokens: trace.T, budget: trace.budgetTokens })}</div>
+    <div data-part="modal-row" class="col-span-2 p-2 border rounded-md sm:col-span-4 bg-bgcolor/50 border-darkborderc">
+      <div data-part="modal-text" class="text-xs text-textcolor2">{language.chroMemoryTokens}</div>
+      <div data-part="modal-text" class="text-lg font-semibold tabular-nums text-textcolor">{fillLang(language.chroMemoryTokensOf, { tokens: trace.T, budget: trace.budgetTokens })}</div>
       <div
         class="mt-1 overflow-hidden rounded-full h-1.5 bg-darkbutton"
         role="meter"
@@ -117,7 +117,7 @@
     </div>
   </div>
 
-  <div class="flex flex-col gap-1 text-sm text-textcolor2">
+  <div data-part="modal-text" class="flex flex-col gap-1 text-sm text-textcolor2">
     {#if trace.d0.records > 0}
       <div>{fillLang(language.chroMemorySearched, { records: trace.d0.records, units: trace.d0.units })}</div>
     {/if}
@@ -139,16 +139,16 @@
   </div>
 
   {#if trace.items.length > 0}
-    <ul class="flex flex-col gap-2 text-sm">
+    <ul data-part="modal-list" class="flex flex-col gap-2 text-sm">
       {#each trace.items as item, i (i)}
         {@const excerpt = excerptOf(item.source)}
-        <li class="p-2 border rounded-md border-darkborderc">
+        <li data-part="modal-row" class="p-2 border rounded-md border-darkborderc">
           <div class="flex flex-wrap items-baseline justify-between gap-x-2">
-            <span class="font-semibold text-textcolor">{item.source.chatId === FIRST_MESSAGE_ID ? language.chroMemoryItemFirst : `#${item.source.index}`}</span>
-            <span class="tabular-nums text-textcolor2">{fillLang(language.chroMemoryItemMeta, { tokens: item.tokens, rank: item.rank.fused ?? item.rank.lexical })}</span>
+            <span data-part="modal-text" class="font-semibold text-textcolor">{item.source.chatId === FIRST_MESSAGE_ID ? language.chroMemoryItemFirst : `#${item.source.index}`}</span>
+            <span data-part="modal-text" class="tabular-nums text-textcolor2">{fillLang(language.chroMemoryItemMeta, { tokens: item.tokens, rank: item.rank.fused ?? item.rank.lexical })}</span>
           </div>
           {#if excerpt}
-            <div class="mt-1 text-textcolor2 wrap-break-word">{excerpt}</div>
+            <div data-part="modal-text" class="mt-1 text-textcolor2 wrap-break-word">{excerpt}</div>
           {/if}
         </li>
       {/each}
@@ -158,24 +158,24 @@
 
 {#if loreTrace}
   <section class="flex flex-col gap-2" aria-labelledby="lore-recall-title">
-    <h2 id="lore-recall-title" class="text-base font-semibold text-textcolor">{language.chroMemoryLoreSection}</h2>
-    <div class="p-2 border rounded-md bg-bgcolor/50 border-darkborderc">
-      <div class="text-xs text-textcolor2">{language.chroMemoryOutcome}</div>
-      <div class="text-sm font-semibold wrap-break-word {loreTrace.outcome === 'error' ? 'text-draculared' : 'text-textcolor'}">{loreOutcomeText(loreTrace)}</div>
-      <div class="mt-1 text-sm tabular-nums text-textcolor2">{fillLang(language.chroMemoryLoreUsed, { used: loreTrace.budget.used, limit: loreTrace.budget.limit })}</div>
+    <h2 data-part="modal-title" id="lore-recall-title" class="text-base font-semibold text-textcolor">{language.chroMemoryLoreSection}</h2>
+    <div data-part="modal-row" class="p-2 border rounded-md bg-bgcolor/50 border-darkborderc">
+      <div data-part="modal-text" class="text-xs text-textcolor2">{language.chroMemoryOutcome}</div>
+      <div data-part="modal-text" class="text-sm font-semibold wrap-break-word {loreTrace.outcome === 'error' ? 'text-draculared' : 'text-textcolor'}">{loreOutcomeText(loreTrace)}</div>
+      <div data-part="modal-text" class="mt-1 text-sm tabular-nums text-textcolor2">{fillLang(language.chroMemoryLoreUsed, { used: loreTrace.budget.used, limit: loreTrace.budget.limit })}</div>
       {#if loreTrace.trimmed && loreTrace.trimmed.removed > 0}
-        <div class="mt-1 text-sm text-textcolor2">{fillLang(language.chroMemoryLoreRemoved, { count: loreTrace.trimmed.removed })}</div>
+        <div data-part="modal-text" class="mt-1 text-sm text-textcolor2">{fillLang(language.chroMemoryLoreRemoved, { count: loreTrace.trimmed.removed })}</div>
       {/if}
     </div>
     {#if loreTrace.items.length > 0}
-      <ul class="flex flex-col gap-2 text-sm">
+      <ul data-part="modal-list" class="flex flex-col gap-2 text-sm">
         {#each loreTrace.items as item, i (i)}
-          <li class="p-2 border rounded-md border-darkborderc">
+          <li data-part="modal-row" class="p-2 border rounded-md border-darkborderc">
             <div class="flex flex-wrap items-baseline justify-between gap-x-2">
-              <span class="font-semibold text-textcolor wrap-break-word">{item.source.name}</span>
-              <span class="tabular-nums text-textcolor2">{fillLang(language.chroMemoryItemMeta, { tokens: item.tokens, rank: item.rank.lexical })}</span>
+              <span data-part="modal-text" class="font-semibold text-textcolor wrap-break-word">{item.source.name}</span>
+              <span data-part="modal-text" class="tabular-nums text-textcolor2">{fillLang(language.chroMemoryItemMeta, { tokens: item.tokens, rank: item.rank.lexical })}</span>
             </div>
-            <div class="mt-1 text-textcolor2">{loreFromText(item.source.from)}</div>
+            <div data-part="modal-text" class="mt-1 text-textcolor2">{loreFromText(item.source.from)}</div>
           </li>
         {/each}
       </ul>

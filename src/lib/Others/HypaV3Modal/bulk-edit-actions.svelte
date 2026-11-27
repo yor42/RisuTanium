@@ -77,12 +77,12 @@
 
 <!-- Bulk Edit Action Bar -->
 {#if bulkEditState.isEnabled}
-  <div class="sticky bottom-0 p-3 bg-bgcolor border-t border-darkborderc rounded-b-lg">
+  <div data-part="modal-footer" class="sticky bottom-0 p-3 bg-bgcolor border-t border-darkborderc rounded-b-lg">
     <div class="flex items-center justify-between">
       <!-- Left Side: Resummarize Button -->
-      <div class="flex items-center gap-2">
+      <div data-part="modal-controls" class="flex items-center gap-2">
         <!-- Resummarize Button -->
-        <button
+        <button data-part="modal-action"
           class="px-4 py-2 rounded text-sm font-medium transition-colors {bulkEditState.selectedSummaries.size > 1
             ? 'bg-selected text-textcolor ring-1 ring-borderc hover:ring-2 hover:ring-textcolor2'
             : 'bg-selected text-textcolor2 cursor-not-allowed'}"
@@ -94,10 +94,10 @@
       </div>
 
       <!-- Right Side: Category, Important, Bulk Select, Clear -->
-      <div class="flex items-center gap-2">
+      <div data-part="modal-controls" class="flex items-center gap-2">
         <!-- Category Selection -->
         <span id="{uid}-category" class="sr-only">{language.hypaV3Modal.categoryFilter}</span>
-        <select
+        <select data-part="modal-field"
           aria-labelledby="{uid}-category"
           aria-describedby="{uid}-category"
           class="risu-select px-3 py-2 rounded-sm border border-darkborderc bg-darkbg text-textcolor text-sm focus:outline-hidden risu-focus-ring"
@@ -110,7 +110,7 @@
         </select>
 
         <!-- Apply Category Button -->
-        <button
+        <button data-part="modal-action"
           class="px-4 py-2 rounded text-sm font-medium transition-colors {bulkEditState.selectedSummaries.size > 0
             ? 'bg-selected text-textcolor ring-1 ring-borderc hover:ring-2 hover:ring-textcolor2'
             : 'bg-selected text-textcolor2 cursor-not-allowed'}"
@@ -121,7 +121,7 @@
         </button>
 
         <!-- Bulk Toggle Important Button -->
-        <button
+        <button data-part="modal-action"
           class="px-3 py-2 rounded-sm border border-darkborderc text-textcolor hover:bg-selected text-sm transition-colors flex items-center gap-2 {bulkEditState.selectedSummaries.size === 0 ? 'opacity-50 cursor-not-allowed' : ''}"
           aria-label={language.hypaV3BulkImportant}
           onclick={bulkToggleImportant}
@@ -133,7 +133,7 @@
         <!-- Bulk Select by Numbers -->
         <div class="flex gap-2">
           <span id="{uid}-bulk-select" class="sr-only">{language.select}</span>
-          <input
+          <input data-part="modal-field"
             type="text"
             value={bulkEditState.bulkSelectInput}
             oninput={handleBulkSelectInputChange}
@@ -143,7 +143,7 @@
             aria-describedby="{uid}-bulk-select"
             onkeydown={handleBulkSelectKeydown}
           />
-          <button
+          <button data-part="modal-action"
             class="px-3 py-2 rounded-sm border border-darkborderc text-textcolor hover:bg-selected text-sm transition-colors"
             onclick={parseAndSelectSummaries}
           >
@@ -152,7 +152,7 @@
         </div>
 
         <!-- Clear Selection Button -->
-        <button
+        <button data-part="modal-action"
           class="px-3 py-2 rounded-sm border border-draculared text-draculared hover:bg-draculared hover:text-bgcolor text-sm transition-colors"
           onclick={clearSelection}
         >

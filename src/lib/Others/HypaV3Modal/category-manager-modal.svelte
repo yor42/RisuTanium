@@ -145,13 +145,13 @@
 
 <!-- Category Manager Modal -->
 {#if categoryManagerState.isOpen}
-  <div class="fixed inset-0 z-50 p-4 bg-black/70 flex items-center justify-center">
-    <div class="bg-darkbg rounded-lg p-6 w-full max-w-md">
-      <div class="flex justify-between items-center mb-6">
-        <h2 class="text-lg font-semibold text-textcolor">{language.hypaV3Modal.categoryManager}</h2>
-        <div class="flex items-center gap-2">
+  <div data-part="modal-hypa-v3-category-manager" class="fixed inset-0 z-50 p-4 bg-black/70 flex items-center justify-center">
+    <div data-part="modal-frame" class="bg-darkbg rounded-lg p-6 w-full max-w-md">
+      <div data-part="modal-header" class="flex justify-between items-center mb-6">
+        <h2 data-part="modal-title" class="text-lg font-semibold text-textcolor">{language.hypaV3Modal.categoryManager}</h2>
+        <div data-part="modal-controls" class="flex items-center gap-2">
           <!-- Add Category Button -->
-          <button
+          <button data-part="modal-action"
             class="p-2 text-textcolor2 hover:text-textcolor transition-colors"
             aria-label={language.add}
             onclick={startAddCategory}
@@ -159,7 +159,7 @@
             <PlusIcon class="w-5 h-5" aria-hidden="true" />
           </button>
           <!-- Close Button -->
-          <button
+          <button data-part="modal-close"
             class="p-2 text-textcolor2 hover:text-textcolor transition-colors"
             aria-label={language.uiCommon.close}
             onclick={closeCategoryManager}
@@ -170,9 +170,9 @@
       </div>
 
       <!-- Combined Category List -->
-      <div class="space-y-2 max-h-80 overflow-y-auto">
+      <div data-part="modal-list" class="space-y-2 max-h-80 overflow-y-auto">
         <!-- All Categories -->
-        <button
+        <button data-part="modal-row"
           class="w-full flex items-center gap-3 px-3 py-2.5 rounded transition-colors text-left {categoryManagerState.selectedCategoryFilter === 'all'
             ? 'bg-selected text-textcolor ring-1 ring-borderc'
             : 'bg-bgcolor text-textcolor hover:bg-selected'}"
@@ -188,14 +188,14 @@
 
         {#each categories as category}
           {@const count = hypaV3Data.summaries.filter(s => (s.categoryId || '') === category.id).length}
-          <div
+          <div data-part="modal-row"
             class="flex items-center gap-3 px-3 py-2.5 rounded transition-colors {categoryManagerState.selectedCategoryFilter === category.id
               ? 'bg-selected text-textcolor ring-1 ring-borderc'
               : 'bg-bgcolor text-textcolor hover:bg-selected'}"
           >
             {#if categoryManagerState.editingCategory?.id === category.id}
               <span id="{uid}-category-name" class="sr-only">{language.hypaV3Modal.categoryName}</span>
-              <input
+              <input data-part="modal-field"
                 type="text"
                 class="flex-1 px-3 py-1.5 text-sm rounded-sm border border-darkborderc bg-darkbg text-textcolor focus:outline-hidden risu-focus-ring"
                 aria-labelledby="{uid}-category-name"
@@ -203,14 +203,14 @@
                 bind:value={categoryManagerState.editingCategory.name}
                 placeholder={language.hypaV3Modal.categoryName}
               />
-              <button
+              <button data-part="modal-action"
                 class="p-1.5 text-textcolor hover:text-textcolor2 transition-colors"
                 aria-label={language.uiCommon.save}
                 onclick={saveEditingCategory}
               >
                 <CheckIcon class="w-4 h-4" aria-hidden="true" />
               </button>
-              <button
+              <button data-part="modal-action"
                 class="p-1.5 text-textcolor2 hover:text-textcolor transition-colors"
                 aria-label={language.cancel}
                 onclick={cancelEditingCategory}
@@ -218,21 +218,21 @@
                 <XIcon class="w-4 h-4" aria-hidden="true" />
               </button>
             {:else}
-              <button
+              <button data-part="modal-action"
                 class="flex-1 text-sm text-left"
                 onclick={() => selectCategory(category.id)}
               >
                 {category.name} ({count})
               </button>
               {#if category.id !== ""}
-                <button
+                <button data-part="modal-action"
                   class="p-1.5 text-textcolor2 hover:text-textcolor transition-colors"
                   aria-label={language.edit}
                   onclick={() => startEditCategory(category)}
                 >
                   <SquarePenIcon class="w-4 h-4" aria-hidden="true" />
                 </button>
-                <button
+                <button data-part="modal-action"
                   class="p-1.5 text-textcolor2 hover:text-draculared transition-colors"
                   aria-label={language.uiCommon.delete}
                   onclick={() => deleteCategory(category.id)}
@@ -252,7 +252,7 @@
 
         <!-- Empty State -->
         {#if categories.filter(c => c.id !== "").length === 0 && !categoryManagerState.editingCategory}
-          <div class="text-center py-8 text-textcolor2 text-sm">
+          <div data-part="modal-text" class="text-center py-8 text-textcolor2 text-sm">
             {language.hypaV3Modal.noCategoriesYet}<br>
             <span class="text-xs">{language.hypaV3Modal.addNewCategoryHint}</span>
           </div>

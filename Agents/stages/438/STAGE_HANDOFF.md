@@ -1,6 +1,52 @@
-# #438 stage handoffs: wrap-up W3-6a (this PR) and the merged stages W3-5, W3-4, W3-3, W3-2, W2, W3-1 and W1
+# #438 stage handoffs: wrap-up W3-6b (this PR) and the merged stages W3-6a, W3-5, W3-4, W3-3, W3-2, W2, W3-1 and W1
 
 Each wrap-up stage adds a section; the one under review is first, the merged ones follow. The sections come from their own PRs and were merged here without dropping any.
+
+## #438 stage handoff: W3-6b category and tag managers, bulk bar and result, ChroMemoryModal and its tabs, device rows pending
+
+Branch `claude/438-w3-6b`, PR "Refs #438" (PR 7 of 8 of wrap-up W3 after the MC-4215 split; the issue stays open). Tier 2, no new critical root. Decisions MC-4213, MC-4214, MC-4215 (W3-6a records in `Agents/mc/438-w3-6.md`); also MC-2947, MC-3009, MC-3638, MC-3639, MC-3659, MC-3660, MC-4165. Gates (reports under `%TEMP%/risu-b715/438/w3/`): plan r1 `w36b-plan-r1.md`; Gate 1 r1 [EDITORIAL] `w36b-g1-r1.md` (E1 to E5 applied by the coder, E3 included); Gate 2 r1 [EDITORIAL] `w36b-g2-r1.md` (F1 to F5 applied: mutant record, Rebuild wording, unclaimed list, one test header). Base c27c0c8e1 (W3-6a merged).
+
+### What changed
+- Markup only: 121 literal `data-part` attributes (17 category manager, 17 tag manager, 10 bulk-edit-actions, 11 bulk-resummary-result, 8 ChroMemoryModal, 27 index tab, 31 last-send tab). With every attribute stripped (line endings normalised) each file equals its base blob; all stay CRLF. No class, handler, element, order, aria, focus or Back change.
+  - New identity roots, reach: `modal-chro-memory` (the `fixed inset-0 z-40` scrim), `modal-hypa-v3-category-manager` and `modal-hypa-v3-tag-manager` (each manager's scrim). Existing names elsewhere: `modal-frame`, `modal-header`, `modal-title`, `modal-controls`, `modal-action`, `modal-field`, `modal-list`, `modal-row`, `modal-body`, `modal-footer`, `modal-text` and the other names already in the vocabulary.
+  - The bulk bar and result take ordinary reach parts inside the HypaV3 frame (MC-4213), never a critical root. ChroMemoryModal and its tabs carry parts on their own elements, never on `Check` or `Button`.
+  - Unclaimed (no pack hook): ChroMemoryModal's wrapper div around the frame, the translation wrapper in the bulk result, every lucide icon and component tag, the token meter and its fill, the six line rows and their spans, the item and lore item header divs, the lore `section`, the Rebuild wrapper div, and the `CheckInput` and `Button` internals. Each is rendered and asserted unparted in the render tests.
+- Census: `OVERLAY_FILES` +7; `registries/popups.ts`: `POPUPS_FILES` 36 to 43, `POPUPS_PARTS` 192 to 195, `POPUPS_REACH` 57 to 60. Values inserted by hand at their sorted positions, not pasted; the A1 file pin and A8 parts and reach pins equal the census. Critical closure, roots pin, holders and shared tokens-only are unchanged. `overlayVocabulary.test.ts` gains 3 names, 4 W1-T5a rows and 3 hide names.
+
+### Tests (class, true counts)
+- New render tests (jsdom, real components, find each element by tag, text, aria-label, role or structure, assert the part and its DIRECT parent, whole-tree outlines): `managers.parts` (10: 8 acceptance, 2 guard), `bulk.parts` (8: 6 acceptance, 2 guard), `HypaV3Modal.nested.parts` (4: 3 acceptance, 1 guard), `ChroMemoryModal.parts` (8: 7 acceptance, 1 guard).
+- Extended: `overlayVocabulary.test.ts` (90), `popupsCriticalClosure.test.ts` (18). Head: 138 of 138 across the 6 files.
+- True base counts (head tests against the c27c0c8e1 sources served in memory): base components + base registry 32 fail, 106 pass; base components + head registry 26 fail, 112 pass. The new footer W1-T5a row passes on base and head: a guard.
+
+### Evidence and limits
+- 103 named in-memory mutants (dropped, swapped, renamed and misplaced parts, parts on component tags, reach demotion, files dropped from the census). 99 killed; M67 to M70 (a part on a component tag with no rest props) survive as expected: nothing renders. The coder's parallel run shared one `$env:MUT`, so its per-mutant record is not evidence; the valid record is the Gate 2 reviewer's per-process rerun (103 applied, 99 killed, M67 to M70 survive, base 32/26): `results.json` under the Gate 2 scratch `mut` folder named in `%TEMP%/risu-b715/438/w3/w36b-g2-r1.md` (Artifacts). Scratch config under `%TEMP%`, no tracked file touched.
+- `vitest run src/ts/themePack src/lib/Others/HypaV3Modal src/lib/Others/MemoryModalHost src/lib/Others/ChroMemoryModal .parts.`: 120 files, 5322 tests pass. `pnpm check`: 0 errors, 5 warnings (none in these files).
+- jsdom proves structure, not looks: no device run, no real pack applied.
+
+### Known limitations (MC-3638, MC-3639, MC-3659, no guard)
+- A pack may restyle the category Delete, tag Remove and bulk Apply and Cancel (reach buttons); it cannot hide them. Their confirms stay in AlertComp's critical prompt. ChroMemoryModal's Rebuild is the shared `Button` and carries no part: it gets only what its `modal-controls` group passes on, a pack cannot hide that group, and Rebuild has no confirm because it drops only an in-memory index.
+- A pack may hide the safe names (titles, labels, counts, empty and notice texts). It cannot hide the frames, headers, bodies, lists, controls or fields.
+- The three identity roots sit on fixed full-viewport scrims: over the colour-mode chat shell a pack may recolour them, even opaque, so they cover the chat while open.
+- Inherited text properties set on `modal-frame`, `modal-row` or `modal-controls` reach the unclaimed text inside, including lucide icon colour.
+- A part on a component tag with no rest props renders nothing and no census sees it (M67 to M70).
+- The per-card reroll Apply still has no confirm (see W3-6a leftovers).
+
+### Leftovers
+- The MC-4214 leftover (category Delete, tag Remove and bulk re-summary Apply without a confirm) is discharged by #818 (PR 829, MC-4430, issue closed); all three now ask through `alertConfirm` and their parts are unchanged.
+
+### Device rows (fold into W5; synthetic data; Note 9; every-target network block up for the whole run)
+Test pack as in the W3-6a rows plus popups.css rules for the three new roots as listed in the plan. Order rows 1 to 4 before row 5 (E2a): switch the engine back to HypaV3 V3 in `OtherBotSettings` before re-running row 1. Read the sticky bulk bar in row 3 (E2c).
+- DV-W36b-1 Categories: purple frame, 12px rows; add "Synthetic A", Save; Delete shows the critical confirm, Cancel keeps the row. Never confirm.
+- DV-W36b-2 a card's "+ Tag": 8px field; add `alpha`; Remove shows the critical confirm; Cancel keeps the tag.
+- DV-W36b-3 Bulk edit: 16px bar corners; tick two cards, Cancel clears.
+- DV-W36b-4 Re-summarize needs a provider reply: MC-4165 PQ-5 plain-fetch mock, read the panel, Apply, critical confirm, Cancel; otherwise a not-run ruling.
+- DV-W36b-5 engine to ChroMemory, Plus sheet "ChroMemory Modal": title 2px wider, "Last send" empty text, Index tab with four groups. No toggles, no Rebuild.
+- DV-W36b-6 trace views after one message with the network block up; tiles only if the engine publishes a trace, else PQ-5 or a not-run ruling.
+- DV-W36b-7 safe start with the pack, then rows 1 and 5: built-in look; pack-free launch: no visible difference.
+
+### For W3-7 and W5
+- W3-7 starts from the merged 6b values (`POPUPS_FILES` 43, `POPUPS_PARTS` 195, `POPUPS_REACH` 60) and regenerates the same registry and census tests.
+- W5 folds DV-W36a and DV-W36b rows into one run; the rows need a provider reply or a ruling for DV-W36b-4 and -6.
 
 ## #438 stage handoff: W3-6a HypaV3Modal, modal-header, modal-summary-item and modal-footer, device rows pending
 
@@ -36,7 +82,7 @@ Branch `claude/438-w3-6`, PR "Refs #438" (PR 6 of 8 of wrap-up W3 after the MC-4
 - The bulk bar, bulk result and the category and tag managers stay built-in beside or inside a frame a pack may recolour until W3-6b (cosmetic). Over legacy or unthemed screens and under safe start nothing applies; over another area's sheet only the shape subset applies (MC-3009).
 
 ### Leftovers (MC-4214)
-- Category Delete, tag Remove and bulk re-summary Apply run with no confirm and stay reach buttons (follow-up #818, outside #438). The per-card reroll Apply also has no confirm: same treatment, no new ticket.
+- Category Delete, tag Remove and bulk re-summary Apply ran with no confirm and stay reach buttons. Discharged by #818 (PR 829, MC-4430): all three now ask through `alertConfirm`, AlertComp's critical `ask`; their parts are unchanged. The per-card reroll Apply still has no confirm: same treatment, no new ticket.
 
 ### Device rows (fold into W5; synthetic data; Note 9; every-target network block up for the whole run)
 Test pack: popups.css `[data-part="modal-frame"]{border-radius:24px;background:#5a1f6b}`, `[data-part="modal-hypa-v3"] [data-part="modal-row"]{border-radius:20px}`, `[data-part="modal-hypa-v3"] [data-part="modal-title"]{letter-spacing:2px}`; chat.css colour mode.

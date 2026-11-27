@@ -22,7 +22,10 @@ const OVERLAY_FILES = ['src/lib/Others/PopupEditor.svelte', 'src/lib/Others/Hypa
     'src/lib/Others/BookmarkList.svelte', 'src/lib/Others/ProTools/EasyPanel.svelte', 'src/lib/Others/LoadoutModal.svelte', 'src/lib/Others/CustomSidebarConfig.svelte',
     'src/lib/UI/Realm/RealmPopUp.svelte', 'src/lib/UI/Realm/RealmFrame.svelte', 'src/lib/UI/Realm/RealmBlockedCreators.svelte',
     'src/lib/Setting/botpreset.svelte', 'src/lib/Others/IrisModal.svelte', 'src/lib/Others/PromptDiffModal.svelte', 'src/lib/UI/ModelList.svelte', 'src/lib/UI/OpenrouterProviderList.svelte',
-    'src/lib/Others/HypaV3Modal.svelte', 'src/lib/Others/HypaV3Modal/modal-header.svelte', 'src/lib/Others/HypaV3Modal/modal-summary-item.svelte', 'src/lib/Others/HypaV3Modal/modal-footer.svelte']
+    'src/lib/Others/HypaV3Modal.svelte', 'src/lib/Others/HypaV3Modal/modal-header.svelte', 'src/lib/Others/HypaV3Modal/modal-summary-item.svelte', 'src/lib/Others/HypaV3Modal/modal-footer.svelte',
+    'src/lib/Others/HypaV3Modal/category-manager-modal.svelte', 'src/lib/Others/HypaV3Modal/tag-manager-modal.svelte', 'src/lib/Others/HypaV3Modal/bulk-edit-actions.svelte',
+    'src/lib/Others/HypaV3Modal/bulk-resummary-result.svelte', 'src/lib/Others/ChroMemoryModal.svelte', 'src/lib/Others/ChroMemoryModal/index-tab.svelte',
+    'src/lib/Others/ChroMemoryModal/last-send-tab.svelte']
 const relative = (file: string): string => path.relative(root, file).split(path.sep).join('/')
 const files = [
     ...readdirSync(patternDir).filter((name) => name.endsWith('.svelte') && !HARNESSES.has(name)).map((name) => path.join(patternDir, name)),
