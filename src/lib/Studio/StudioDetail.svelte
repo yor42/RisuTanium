@@ -19,6 +19,7 @@
     import StudioModuleAdvancedForm from './StudioModuleAdvancedForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
+    import StudioGroupForm from './StudioGroupForm.svelte'
     import StudioCharacterHtmlForm from './StudioCharacterHtmlForm.svelte'
     import StudioDisplayForm from './StudioDisplayForm.svelte'
     import StudioAdvancedForm from './StudioAdvancedForm.svelte'
@@ -43,9 +44,11 @@
         untrack(() => applyStudioTarget(current, noticeTextOf))
     })
 
-    const combinedKind = $derived(combinedKindOf(studioScreen.selectedOwnerKey))
+    // A group visit has neither of the two selections that bypass the model.
+    const groupVisit = $derived(model?.character.type === 'group')
+    const combinedKind = $derived(groupVisit ? null : combinedKindOf(studioScreen.selectedOwnerKey))
     // The module list page is a selection of its own: no owner, no kind, no history.
-    const moduleListShown = $derived(studioScreen.selectedOwnerKey === MODULE_LIST_KEY)
+    const moduleListShown = $derived(!groupVisit && studioScreen.selectedOwnerKey === MODULE_LIST_KEY)
     const owner = $derived(model && studioScreen.selectedOwnerKey !== null ? model.ownerByKey(studioScreen.selectedOwnerKey) : undefined)
     const kindNode = $derived(owner && studioScreen.selectedKind !== null ? owner.kinds().find((node) => node.kind === studioScreen.selectedKind) : undefined)
     // A kind without a list below it (everything but lore and regex) is one item: choosing the kind shows it.
@@ -110,6 +113,8 @@
     const destination = $derived(owner && !owner.restricted ? classicDestinationOf(owner.type, kindNode?.kind ?? null) : null)
     // The live forms: the character's basic info, its asset list, and the chat owner's own screen. None exists for a
     // private or not-loaded owner; the forms re-check privacy themselves at every render.
+    // The group's form is its own branch below: it carries no save chip, as the group's history is memory-only.
+    const groupFormLive = $derived(owner?.type === 'group' && !owner.restricted && kindNode?.kind === 'basic')
     const characterFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'basic')
     const assetFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'display')
     const chatFormLive = $derived(owner?.type === 'chat' && !owner.restricted && !owner.stub && studioScreen.selectedKind === null)
@@ -355,6 +360,8 @@
                         <p role="alert" data-part="studio-lore-pane-load-failed" class="text-sm text-draculared">{language.error}</p>
                     {/await}
                 {/key}
+            {:else if groupFormLive}
+                <StudioGroupForm chaId={studioScreen.chaId} />
             {:else if !toggleBuilderLive}
                 <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>
             {/if}

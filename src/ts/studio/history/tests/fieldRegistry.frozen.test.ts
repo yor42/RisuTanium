@@ -132,6 +132,8 @@ const FROZEN_FIELD_FACTS: readonly (readonly [string, FieldFacts])[] = [
     ['escapeOutputFix', { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'escapeOutput', keepForeign: true }],
     // #729: unreadable character bias list repair row.
     ['biasFix', { value: 'biasList', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'bias', keepForeign: true }],
+    // Studio S8: the group session kind's order flag (session-only).
+    ['orderByOrder', { value: 'bool', holders: [], absent: 'delete', editWhenAbsent: true }],
 ]
 
 // The containers a dotted path names, with the value an absent container reads as. An undo replays a seed reading, so

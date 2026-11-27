@@ -89,6 +89,9 @@ export const SESSION_OWNER_KINDS = {
             'presetImage',
         ],
     },
+    // A group's name, its order flag and its member list, by the group's chaId (see groupTarget.ts). The three parallel
+    // member arrays of the group change only together, through the `members` list.
+    group: { setPaths: ['name', 'orderByOrder'], objLists: ['members'] },
 } as const satisfies Record<string, SessionOwnerKindSpec>
 
 export type SessionOwnerKind = keyof typeof SESSION_OWNER_KINDS

@@ -204,6 +204,9 @@ export const FIELD_SPECS = {
     // #729: character token bias list stored with malformed rows/value. A malformed value is kept as a foreign reading
     // so repairing it is one undoable history step; the original `bias` row stays untouched.
     biasFix: { value: 'biasList', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'bias', keepForeign: true },
+    // Studio S8: the group's order flag. Session-only like the preset rows: only the group session kind lists it, and the
+    // group adapter deletes the key when an undo restores its absence.
+    orderByOrder: { value: 'bool', holders: [], absent: 'delete', editWhenAbsent: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -335,6 +338,7 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     utilityBotFix: { labelKey: 'utilityBot', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
     escapeOutputFix: { labelKey: 'escapeOutput', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
     biasFix: { labelKey: 'studioFieldBias', focus: { form: 'studio-advanced-form', part: 'studio-form-bias' } },
+    orderByOrder: { labelKey: 'orderByOrder', focus: { form: 'studio-group-form', part: 'studio-group-order-by-order' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed
