@@ -1,6 +1,45 @@
-# #438 stage handoffs: wrap-up W3-3 (this PR) and the merged stages W3-2, W2, W3-1 and W1
+# #438 stage handoffs: wrap-up W3-4 (this PR) and the merged stages W3-3, W3-2, W2, W3-1 and W1
 
 Each wrap-up stage adds a section; the one under review is first, the merged ones follow. The sections come from their own PRs and were merged here without dropping any.
+
+## #438 stage handoff: W3-4 botpreset, IrisModal, PromptDiffModal (frame, header and close only), device rows pending
+
+Branch `claude/438-w3-4`, PR "Refs #438" (PR 4 of 7 of wrap-up W3; the issue stays open). Tier 2, no new critical root. Plan r1 (designer) and Gate 1 r1 [EDITORIAL] by a fresh opus-reviewer (reports `%TEMP%/risu-b715/438/w3/w34-plan-r1.md`, `w34-g1-r1.md`); its four findings applied by the coder brief (F1 IrisModal in scope unconditionally per MC-4210 and the not-run row per MC-4210, MC-4211 cited for Reset; F2 inherited-text wording; F3 M8 split into component-only and component-plus-registry; F4 the strip check normalises line endings). Decisions: MC-4160, MC-4164, MC-4165 (PromptDiffModal parts on frame, header and close only), MC-4210, MC-4211 (records in `Agents/mc/438-w3-4.md`). Gate 2 r1 [EDITORIAL] by a fresh opus-reviewer, F1 to F3 applied (this H1 and two PR body lines; report `%TEMP%/risu-b715/438/w3/w34-g2-r1.md`). Base 7374a3b9a (W3-3 merged) with origin/main merged in.
+
+### What changed
+- Markup only, literal `data-part` attributes (23 on botpreset, 19 on IrisModal, 4 on PromptDiffModal); with every attribute stripped (and line endings normalised, the base blobs are LF) each file equals its base blob, and all three stay all CRLF. No class, handler, element, order, aria, focus or Back change.
+  - New identity roots, all reach: `modal-botpreset` (layer), `modal-iris` (root), `modal-prompt-diff` (layer). Existing names: reach `modal-frame`, `modal-header`, `modal-close`, `modal-row`, `modal-controls`, `modal-action`, `modal-footer`, `modal-list`, `modal-body`, `modal-field`; safe `modal-title`, `modal-text`.
+  - botpreset: title, close, row, name and slot badge, row tools (Compare, Copy, Export, Remove), toolbar and select bar footers, quick-preset hint. IrisModal: the dialogue box and backlog panel frames, Reset, backlog close, log, lines, speaker tag, text, tip, unsupported-model notice, field, Send. PromptDiffModal: layer, dialog, header, close. Unclaimed: botpreset's windowed `ul`/`li`, `TextInput`, drop gaps, select mark, image; IrisModal's sprite, scrim, position wrapper, cursor, waiting row, advance overlay; PromptDiffModal's option row and whole diff view. PromptDiffModal renders beside botpreset's layer, not inside it.
+- Census: `OVERLAY_FILES` +3; `registries/popups.ts` regenerated from the printed values: `POPUPS_FILES` 27 to 30, `POPUPS_PARTS` 186 to 189, `POPUPS_REACH` 51 to 54. Only the three new reach names and the three file entries changed; critical closure, A1 roots pin, holders and shared-tokens-only are unchanged. No Settings EXEMPT, Home `FOREIGN`, `areaParts`, chat or Studio change (all three files are App-level; verified by the unchanged `homeParts`, `settingsParts`, `areaParts` passes).
+- Criticality (MC-2947): no new critical root. botpreset Remove goes through the critical `alertConfirm`/`alertError`; Export is the tool dialog; Import's bundle prompt is critical. IrisModal's backlog Reset has no confirm and is a direct reach button (MC-4211).
+
+### Tests (class, true counts)
+- New render tests mount the real components, find each element by tag, role, aria-label, title, text or structure (never by its part), assert the part and the DIRECT parent, plus whole-tree outlines: `botpreset.parts` (10: 8 acceptance, 2 guard; jsdom, real PromptDiffModal mounted by two Compare picks), `IrisModal.parts` (6: 4 acceptance, 2 guard; happy-dom), `PromptDiffModal.parts` (20: 18 acceptance over the 16 states plus Legacy, 2 guard that the diff body and option row stay unparted).
+- Extended: `overlayVocabulary.test.ts` (70; 3 W1-T4 rows, the table row, 4 W1-T5a rows, 3 `display:none` reach rows that are guards on the base), `popupsCriticalClosure.test.ts` (18; `OVERLAY_FILES` +3).
+- True base counts (head tests of these 5 files, 124 tests, against the 7374a3b9a sources served in memory): base components + base registry 38 fail, 86 pass (IrisModal.parts 4, botpreset.parts 8, PromptDiffModal.parts 18, overlayVocabulary 7, popupsCriticalClosure 1); base components + head registry 32 fail, 92 pass (same render counts, popupsCriticalClosure 2, overlayVocabulary 0). Head 124 of 124.
+
+### Evidence and limits
+- 19 named in-memory mutants (comment, sibling swap, part swapped with its parent, dropped, renamed component-only and with the registry, moved inward and outward, part on the `WindowedSegment` tag, diff view and sprite parted, reach demotion, critical marker, files dropped from the census, diff modal moved inside botpreset) all killed; scratch config under `%TEMP%`, no tracked file touched. Killers in `%TEMP%/risu-b715/438/w3/w34-code-report.md`.
+- `vitest run src/ts/themePack src/lib/Setting/botpreset src/lib/Others/IrisModal src/lib/Others/PromptDiffModal src/lib/Others/OverlayBack src/lib/keyListenersUnderAlert src/App`: all pass (94 plus 11 files). `pnpm check`: 0 errors, 5 warnings (none in these files).
+- jsdom/happy-dom prove structure, not looks: no device run, no real pack applied. IrisModal has no opener in this build (`irisStore.open` is set to true only by tests; upstream commit 04d8c98f6 removed it), so its tests are its only evidence and its device row is not run (MC-4210).
+
+### Known limitations (MC-3638, MC-3639, MC-3659, no guard)
+- A pack may restyle Remove, Export, the select-mode Export and Reset so they look harmless (colours only over the chat shell); it cannot hide them. The Remove confirm stays in the critical AlertComp prompt. IrisModal's Reset wipes the saved Iris conversation with no confirm: a leftover of this PR, no ticket (MC-4211).
+- A pack may hide the safe names: botpreset's title, preset names, slot badges and hint; IrisModal's speaker tag, tip, unsupported-model notice and backlog line texts.
+- PromptDiffModal: a pack may restyle the frame and header box. It cannot select the diff view or the option controls. Inherited text properties set on the frame or header (colour, letter-spacing, line-height) still reach their unclassed text. The same holds for botpreset's unclaimed `TextInput` and windowed list.
+- Over Home, Settings or Studio only the shape subset applies (MC-3009).
+
+### Device rows (fold into W5; synthetic data; Note 9)
+Test pack: popups.css `[data-part="modal-frame"]{border-radius:24px;background:#5a1f6b}`, `[data-part="modal-botpreset"] [data-part="modal-title"]{letter-spacing:2px}`, `[data-part="modal-prompt-diff"] [data-part="modal-close"]{background:#ffcc00}`; chat.css colour mode; home.css one shape rule. Profile: two presets, one character, "Show Prompt Comparison" on.
+- DV-W34-1 botpreset over the chat shell: Ctrl+P, or the quick menu (three fingers down together within 300 ms, then "Presets"). Read: panel corners 24px (built-in about 6px), purple panel, title letters 2px wider; X and Back close.
+- DV-W34-2 PromptDiffModal from DV-W34-1: Compare on P1 then P2. Read: frame 24px and purple, a yellow box behind the X, the built-in diff colours unchanged; Back closes the diff first.
+- DV-W34-3 botpreset over Home (quick menu, "Presets"): 24px and 2px spacing but no purple (MC-3009).
+- DV-W34-4 safe start with the pack installed, then DV-W34-1: built-in look, plus the plain-launch control. DV-W34-5 pack-free launch, then DV-W34-1 and DV-W34-2: built-in look.
+- DV-W34-6 IrisModal: not run, test-only (MC-4210).
+
+### For W3-5 and later
+- The popups registry and census test are serial: regenerate from the printed constants, never hand-order (`…/Others/IrisModal` sorts after `HypaV3Progress`, `…/Others/PromptDiffModal` after `ProTools/EasyPanel`, `…/Setting/botpreset` before `listedPersona`).
+- All three files are App-level overlays: no Home, Settings or chat census sees them. A later popups name rendered inside the HomeShell closure still fails the `FOREIGN` pin until reviewed.
 
 ## #438 stage handoff: W3-3 Realm family (RealmPopUp, RealmFrame chrome, RealmBlockedCreators), device rows pending
 
