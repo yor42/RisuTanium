@@ -3963,6 +3963,7 @@ export const languageJapanese = {
     fallbackWhenBlankResponse: "応答が空の場合にフォールバック",
     doNotChangeFallbackModels: "プリセット変更時にフォールバックモデルを変更しない",
     customModels: "カスタムモデル",
+    customModelTag: "カスタム",
     useTokenizerCaching: "トークナイザーキャッシング",
     hypaMemoryV2Modal: "Hypa V2モーダル",
     hypaMemoryV3Modal: "Hypa V3モーダル",

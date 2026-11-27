@@ -2,7 +2,7 @@
     import { onDestroy, tick } from 'svelte'
     import { language } from '../../../lang'
     import { addConnection } from '../../../ts/connections/connectionEditor'
-    import { addPrefillName, addableProviders, type ProviderEntry, type ProviderGroup } from '../../../ts/connections/providerCatalog'
+    import { addPrefillName, addableProviders, allowsSeveral, type ProviderEntry, type ProviderGroup } from '../../../ts/connections/providerCatalog'
     import { DBState } from '../../../ts/stores.svelte'
     import KeyListInput from '../../UI/GUI/KeyListInput.svelte'
     import TextInput from '../../UI/GUI/TextInput.svelte'
@@ -32,7 +32,7 @@
     onDestroy(() => { alive = false })
 
     const offered = $derived(addableProviders(DBState.db))
-    const onlyProxy = $derived(offered.every((entry) => entry.provider === 'reverse_proxy'))
+    const onlyProxy = $derived(offered.every((entry) => allowsSeveral(entry.provider)))
     const groups = $derived(GROUP_ORDER
         .map((group) => ({ group, entries: offered.filter((entry) => entry.group === group) }))
         .filter((item) => item.entries.length > 0))

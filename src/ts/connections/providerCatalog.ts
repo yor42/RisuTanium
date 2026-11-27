@@ -8,7 +8,7 @@ export type ProviderEntry = {
     group: ProviderGroup
     icon: ProviderIcon
     label: string
-    /** Only a reverse proxy carries a URL. */
+    /** Only a reverse proxy and a custom endpoint carry a URL. */
     takesUrl: boolean
     /** The key is one secret that is sent whole (a PEM, or a service key): it uses the masked single-line field and is never a rotation list. Every other key is a rotation list (KeyListInput). */
     singleKey: boolean
@@ -35,21 +35,29 @@ const GROUPS: Record<ProviderGroup, readonly ConnectionProvider[]> = {
     ],
     router: ['openrouter', 'nanogpt', 'horde'],
     local: ['ollama'],
-    compatible: ['reverse_proxy'],
+    compatible: ['reverse_proxy', 'custom'],
     services: SERVICE_PROVIDERS,
 }
 
 /** The OaiComp key identifiers the add flow offers; a test keeps them equal to the model list's. */
 export const OAICOMP_KIDS: readonly string[] = ['deepseek', 'deepinfra']
 
-/** Every provider the add flow can create, in display order. `custom` belongs to a custom model and is not listed. */
+/** What the add flow calls a custom connection; the stored provider label stays the migration default. */
+const CUSTOM_ENDPOINT_LABEL = 'Custom endpoint'
+
+/** Providers that allow several connections: each is its own endpoint. */
+export function allowsSeveral(provider: ConnectionProvider): boolean {
+    return provider === 'reverse_proxy' || provider === 'custom'
+}
+
+/** Every provider the add flow can create, in display order. */
 export const PROVIDER_CATALOG: readonly ProviderEntry[] = (Object.keys(GROUPS) as ProviderGroup[]).flatMap(
     (group) => GROUPS[group].map((provider): ProviderEntry => ({
         provider,
         group,
         icon: GROUP_ICONS[group],
-        label: providerLabel(provider),
-        takesUrl: provider === 'reverse_proxy',
+        label: provider === 'custom' ? CUSTOM_ENDPOINT_LABEL : providerLabel(provider),
+        takesUrl: allowsSeveral(provider),
         singleKey: provider === 'vertex' || group === 'services',
     })),
 )
@@ -60,16 +68,16 @@ export function catalogEntry(provider: ConnectionProvider): ProviderEntry | unde
 }
 
 /**
- * The providers the add flow offers: each one without a stored connection, and a reverse proxy
- * always, because several proxies can coexist.
+ * The providers the add flow offers: each one without a stored connection, and a reverse proxy or
+ * a custom endpoint always, because several can coexist.
  */
 export function addableProviders(db: ConnectionHolder): ProviderEntry[] {
     const present = new Set(storedConnections(db).map((conn) => conn.provider))
-    return PROVIDER_CATALOG.filter((entry) => entry.provider === 'reverse_proxy' || !present.has(entry.provider))
+    return PROVIDER_CATALOG.filter((entry) => allowsSeveral(entry.provider) || !present.has(entry.provider))
 }
 
 /** The name the add flow prefills: the default name, suffixed only while the user has not typed one. */
 export function addPrefillName(db: ConnectionHolder, provider: ConnectionProvider, url = ''): string {
-    const base = provider === 'reverse_proxy' ? proxyName(url) : providerLabel(provider)
+    const base = provider === 'reverse_proxy' ? proxyName(url) : provider === 'custom' ? CUSTOM_ENDPOINT_LABEL : providerLabel(provider)
     return uniqueName(base, storedConnections(db))
 }

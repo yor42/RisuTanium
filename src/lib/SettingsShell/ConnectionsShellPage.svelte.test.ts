@@ -267,12 +267,12 @@ describe('T17 add flow (A2); falsified by M-KEYWRITE: the add flow ignores keyWr
         await settle()
     }
 
-    test('offers only providers without a connection, plus Reverse proxy, never Custom', async () => {
+    test('offers only providers without a connection, plus Reverse proxy and Custom endpoint', async () => {
         mountPage()
         await openAdd()
         const offered = Array.from(document.querySelectorAll<HTMLElement>('[data-connection-provider]')).map((el) => el.getAttribute('data-connection-provider'))
         expect(offered).not.toContain('openai')
-        expect(offered).not.toContain('custom')
+        expect(offered).toContain('custom')
         expect(offered).toContain('reverse_proxy')
         expect(offered).toContain('anthropic')
     })

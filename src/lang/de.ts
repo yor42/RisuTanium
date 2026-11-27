@@ -3824,6 +3824,7 @@ export const languageGerman = {
     "fallbackWhenBlankResponse": "Fallback bei leerer Antwort",
     "doNotChangeFallbackModels": "Fallback-Modelle bei Voreinstellungsänderung nicht ändern",
     "customModels": "Benutzerdefinierte Modelle",
+    "customModelTag": "Benutzerdefiniert",
     "useTokenizerCaching": "Tokenizer-Caching verwenden",
     "hypaMemoryV2Modal": "Hypa V2 Modal",
     "hypaMemoryV3Modal": "Hypa V3 Modal",

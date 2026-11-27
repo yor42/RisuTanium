@@ -3824,6 +3824,7 @@ export const languageSpanish = {
     "fallbackWhenBlankResponse": "Fallback Cuando Respuesta en Blanco",
     "doNotChangeFallbackModels": "No Cambiar Modelos de Fallback al Cambiar Preset",
     "customModels": "Modelos Personalizados",
+    "customModelTag": "Personalizado",
     "useTokenizerCaching": "Caché de Tokenizador",
     "hypaMemoryV2Modal": "Modal Hypa V2",
     "hypaMemoryV3Modal": "Modal Hypa V3",

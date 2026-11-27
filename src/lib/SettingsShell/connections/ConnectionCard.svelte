@@ -5,6 +5,7 @@
     import { providerLabel, type Connection } from '../../../ts/connections/connections'
     import type { ConnectionUsers } from '../../../ts/connections/connectionUsers'
     import type { KeyHint } from '../../../ts/connections/connectionHint'
+    import type { TestOutcome } from '../../../ts/connections/connectionTest'
     import { catalogEntry, type ProviderIcon } from '../../../ts/connections/providerCatalog'
 
     const PROVIDER_ICONS: Record<ProviderIcon, typeof CloudIcon> = {
@@ -36,6 +37,19 @@
         return hint.kind === 'none' ? missing : ''
     }
 
+    /** The one-line text of a test result. */
+    export function testResultText(result: TestOutcome): string {
+        switch (result.kind) {
+            case 'ok': return result.models === null
+                ? fillLang(language.connectionsTestOkPlain, { ms: result.ms })
+                : fillLang(language.connectionsTestOk, { n: result.models, ms: result.ms })
+            case 'badKey': return language.connectionsTestBadKey
+            case 'rateLimited': return language.connectionsTestRate
+            case 'unreachable': return language.connectionsTestUnreachable
+            default: return language.connectionsTestUnsupported
+        }
+    }
+
     /** The used-by line; empty when nothing countable is known (a provider in use). */
     export function usedByText(conn: Connection, users: ConnectionUsers): string {
         if (users.kind === 'presets') {
@@ -56,6 +70,7 @@
 
 <script lang="ts">
     import { CircleAlertIcon, KeyRoundIcon, VariableIcon } from '@lucide/svelte'
+    import { rememberedTest, testStamp } from '../../../ts/connections/connectionTestMemory'
 
     interface Props {
         conn: Connection
@@ -72,6 +87,7 @@
     const usedLine = $derived(usedByText(conn, users))
     const chip = $derived(hintChipText(hint))
     const reason = $derived(keyStateText(hint, needsKey, language.connectionsKeyMissingReason))
+    const tested = $derived(rememberedTest(conn.id, testStamp(conn.url, JSON.stringify(hint))))
 </script>
 
 <li class="rounded-md border border-darkborderc bg-darkbg min-w-0" data-part="settings-connection-card">
@@ -97,6 +113,9 @@
                     {/if}
                     <span class="truncate">{chip}</span>
                 </span>
+            {/if}
+            {#if tested}
+                <span class="text-xs {tested.kind === 'ok' ? 'text-textcolor2' : 'text-draculared'}" data-part="settings-connection-tested">{testResultText(tested)}</span>
             {/if}
             {#if reason !== ''}
                 <span class="flex items-center gap-1 text-sm text-draculared" data-part="settings-connection-alert">

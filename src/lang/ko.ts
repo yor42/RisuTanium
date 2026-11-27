@@ -3823,6 +3823,7 @@ export const languageKorean = {
     "fallbackWhenBlankResponse": "빈 응답 시 대체",
     "doNotChangeFallbackModels": "프리셋 변경 시 대체 모델 변경 안 함",
     "customModels": "커스텀 모델",
+    "customModelTag": "직접 추가",
     "useTokenizerCaching": "토크나이저 캐싱",
     "hypaMemoryV2Modal": "하이파 V2 모달",
     "hypaMemoryV3Modal": "하이파 V3 모달",

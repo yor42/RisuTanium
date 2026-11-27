@@ -3868,6 +3868,7 @@ export const languageChineseTraditional = {
     "fallbackWhenBlankResponse": "空白回應時使用 Fallback",
     "doNotChangeFallbackModels": "切換預設集時不要變更 Fallback 模型",
     "customModels": "自訂模型",
+    "customModelTag": "自訂",
     "useTokenizerCaching": "使用 Tokenizer 快取",
     "hypaMemoryV2Modal": "Hypa V2 視窗",
     "hypaMemoryV3Modal": "Hypa V3 視窗",

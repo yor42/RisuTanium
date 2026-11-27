@@ -9,10 +9,12 @@
     import { catalogEntry } from '../../../ts/connections/providerCatalog'
     import { connectionKey } from '../../../ts/connections/keyAccess'
     import { appTestFetcher, canTestConnection, testConnection, type TestFetcher, type TestOutcome } from '../../../ts/connections/connectionTest'
+    import { rememberTest, rememberedTest, testStamp } from '../../../ts/connections/connectionTestMemory'
     import type { UnderModel } from '../../../ts/connections/customModelsUnder'
     import KeyListInput from '../../UI/GUI/KeyListInput.svelte'
     import TextInput from '../../UI/GUI/TextInput.svelte'
-    import { hintChipText, keyStateText, usedByText } from './ConnectionCard.svelte'
+    import CustomModelFields from '../../Setting/Pages/Advanced/CustomModelFields.svelte'
+    import { hintChipText, keyStateText, testResultText, usedByText } from './ConnectionCard.svelte'
 
     /** How many users the used-by list names before it folds the rest into "and n more". */
     const LISTED_USERS = 5
@@ -74,20 +76,19 @@
         return true
     }
 
-    /** The last test of this open page; never stored, and cleared when the key or URL changes. */
+    /** The last test of this connection; kept for the app session only, never stored, and dropped when the key or URL changes. */
     let outcome = $state<TestOutcome | null>(null)
     let testing = $state<AbortController | null>(null)
     const testable = $derived(canTestConnection(conn))
 
     // A test belongs to the URL and key it started with: a change of either, a cleared key or a
     // closed page drops a running request and its result.
-    const keyState = $derived(JSON.stringify(hint))
+    const stamp = $derived(testStamp(conn.url, JSON.stringify(hint)))
     $effect(() => {
-        void conn.url
-        void keyState
+        const current = stamp
         untrack(() => {
             cancelTest()
-            outcome = null
+            outcome = rememberedTest(conn.id, current)
         })
     })
     $effect(() => () => { testing?.abort() })
@@ -97,6 +98,7 @@
         const controller = new AbortController()
         testing = controller
         outcome = null
+        const ran = stamp
         let result: TestOutcome
         try {
             result = await testConnection(conn, await connectionKey(conn), fetcher, controller.signal)
@@ -106,24 +108,13 @@
         if (testing === controller) {
             testing = null
             outcome = result.kind === 'cancelled' ? null : result
+            if (outcome) rememberTest(conn.id, ran, outcome)
         }
     }
 
     function cancelTest(): void {
         testing?.abort()
         testing = null
-    }
-
-    function outcomeText(result: TestOutcome): string {
-        switch (result.kind) {
-            case 'ok': return result.models === null
-                ? fillLang(language.connectionsTestOkPlain, { ms: result.ms })
-                : fillLang(language.connectionsTestOk, { n: result.models, ms: result.ms })
-            case 'badKey': return language.connectionsTestBadKey
-            case 'rateLimited': return language.connectionsTestRate
-            case 'unreachable': return language.connectionsTestUnreachable
-            default: return language.connectionsTestUnsupported
-        }
     }
 
     function commitName(): void {
@@ -139,6 +130,7 @@
 
     async function saveKey(): Promise<void> {
         if (pending || newKey.trim() === '') return
+        cancelTest()
         if (await onreplace(newKey)) {
             newKey = ''
             replacing = false
@@ -278,7 +270,7 @@
         {#if !testable}
             <span class="text-sm text-textcolor2">{language.connectionsTestUnsupported}</span>
         {:else if outcome}
-            <span class="text-sm {outcome.kind === 'ok' ? 'text-textcolor' : 'text-draculared'}" role="status" data-part="settings-connection-test-result">{outcomeText(outcome)}</span>
+            <span class="text-sm {outcome.kind === 'ok' ? 'text-textcolor' : 'text-draculared'}" role="status" data-part="settings-connection-test-result">{testResultText(outcome)}</span>
         {:else if !testing}
             <span class="text-sm text-textcolor2">{language.connectionsTestNone}</span>
         {/if}
@@ -310,6 +302,7 @@
                         value={model.internalId}
                         onchange={(event) => oneditmodel?.(model.id, { internalId: event.currentTarget.value })}
                     />
+                    <CustomModelFields modelId={model.id} connectionId={conn.id} idPrefix="{uid}-m" idSuffix="-{model.id}" />
                     <button
                         type="button"
                         class="inline-flex items-center gap-2 self-start min-h-11 px-4 rounded-md bg-darkbutton text-draculared hover:bg-selected risu-focus-ring"

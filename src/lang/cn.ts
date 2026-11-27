@@ -3822,6 +3822,7 @@ export const languageChinese = {
     "fallbackWhenBlankResponse": "空白响应时回退",
     "doNotChangeFallbackModels": "预设更改时不要更改回退模型",
     "customModels": "自定义模型",
+    "customModelTag": "自定义",
     "useTokenizerCaching": "Tokenizer 缓存",
     "hypaMemoryV2Modal": "Hypa V2 模态框",
     "hypaMemoryV3Modal": "Hypa V3 模态框",

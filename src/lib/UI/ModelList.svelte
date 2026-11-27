@@ -12,6 +12,7 @@
     import { modelStatusTag, modelStatusWarning } from 'src/ts/model/modelStatusText';
     import { addedSourceOf } from 'src/ts/model/modelData/addedModels.svelte';
     import { alertConfirm } from 'src/ts/alert';
+    import { storedConnections } from 'src/ts/connections/connections';
 
     interface Props {
         value?: string;
@@ -67,6 +68,12 @@
                 ? language.modelSource.sourceUnknownNote
                 : ''
     )
+
+    /** The name of the connection a custom model belongs to; empty when it names none. */
+    function connectionNameOf(connectionId: string | undefined): string {
+        if (!connectionId) return ''
+        return storedConnections(DBState.db).find((conn) => conn.id === connectionId)?.name ?? ''
+    }
 
     function rowLabel(model: { id: string, name: string }){
         const tag = modelStatusTag(modelIdStatus(model.id))
@@ -130,7 +137,13 @@
             {#if DBState?.db.customModels?.length > 0}
                 <Accordion name={language.customModels}>
                     {#each DBState.db.customModels as model}
-                        <button data-part="modal-row" class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{model.name ?? language.settingsPage.unnamed}</button>
+                        <button data-part="modal-row" class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>
+                            {model.name ?? language.settingsPage.unnamed}
+                            <span data-testid="modal-custom-tag" class="ml-2 px-2 rounded-full bg-darkbutton text-textcolor2 text-xs">{language.customModelTag}</span>
+                            {#if connectionNameOf(model.connectionId) !== ''}
+                                <span data-testid="modal-custom-connection" class="ml-1 text-textcolor2 text-sm">{connectionNameOf(model.connectionId)}</span>
+                            {/if}
+                        </button>
                     {/each}
                 </Accordion>
 

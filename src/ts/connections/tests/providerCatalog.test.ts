@@ -32,7 +32,7 @@ function makeDb(): Database {
 }
 
 describe('addableProviders', () => {
-    it('T3: omits a provider that has a connection, keeps reverse proxy, never offers custom', async () => {
+    it('T3: omits a provider that has a connection, keeps reverse proxy and custom', async () => {
         const db = makeDb()
         expect(addableProviders(db).map((e) => e.provider)).toContain('openai')
         await setSlotKey(db, 'openAIKey', 'sk-test-AAAA1234')
@@ -43,8 +43,8 @@ describe('addableProviders', () => {
         expect(offered).not.toContain('oaicomp:deepseek')
         expect(offered).toContain('oaicomp:deepinfra')
         expect(offered).toContain('reverse_proxy')
-        expect(offered).not.toContain('custom')
-        expect(PROVIDER_CATALOG.map((e) => e.provider)).not.toContain('custom')
+        expect(offered).toContain('custom')
+        expect(PROVIDER_CATALOG.find((e) => e.provider === 'custom')).toMatchObject({ group: 'compatible', takesUrl: true, label: 'Custom endpoint' })
     })
 
     it('groups and flags match the plan', () => {
