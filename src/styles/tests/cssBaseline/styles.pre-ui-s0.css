@@ -423,6 +423,7 @@ body {
  * The same ring drawn inside a container whose child has keyboard focus, for a segment of a group
  * that clips overflow (an outline outside the segment would be cut off). Keyboard focus only.
  */
+.risu-focus-ring-inset:focus-visible,
 .risu-focus-ring-inset-within:has(:focus-visible) {
   outline: 2px solid var(--risu-theme-role-focus-ring, #6f7fc8);
   outline-offset: -2px;
