@@ -5,7 +5,8 @@
 //
 // Everything is allowlisted. A property the lists below do not name is paint and is removed, so a property added to the
 // judge's declaration allowlist later is stripped until it is classified here. The scope allowlist is a strict superset of
-// SHAPE_PROPERTY; shapeMode.test.ts pins the partition.
+// SHAPE_PROPERTY; shapeMode.test.ts pins the partition. A declaration inside an admitted @keyframes frame follows the same list, so a frame keeps its opacity,
+// transform and easing and loses its filter.
 import { decls } from './csslit'
 import type { AppliedArea } from './intake'
 
@@ -19,6 +20,8 @@ export const SHAPE_PROPERTY: readonly RegExp[] = [
     /^((min-|max-)?(width|height|block-size|inline-size))$/, /^(margin|padding)(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/,
     /^(gap|row-gap|column-gap|order|flex|flex-[a-z-]+|align-(content|items|self)|justify-(content|items|self)|place-(content|items|self)|grid|grid-[a-z-]+)$/,
     /^(border-collapse|border-spacing|table-layout|caption-side|empty-cells)$/,
+    // Motion and geometry transforms carry no colour or image. filter and backdrop-filter stay paint: a blur is a visual effect, and the fallback tail turns it off.
+    /^(transition|animation|animation-timing-function|transform|translate|scale|rotate|transform-origin)$/,
 ]
 
 /**
@@ -126,7 +129,7 @@ const IMAGE_VALUE = /(?:^|[^\w-])(?:url|image|image-set|-webkit-image-set|cross-
 const IMAGE_PROPERTY = /^(list-style|cursor)$/
 
 /** Splits a selector list at its top-level commas. */
-function selectorList(selector: string): string[] {
+export function selectorList(selector: string): string[] {
     const parts: string[] = []
     let depth = 0
     let start = 0
@@ -153,7 +156,7 @@ function keepsCustomProperty(name: string, names: ReadonlySet<string>): boolean 
  * - A top-level `:root` or `html` rule keeps only a custom property that is a shape token or a `--pack-*` helper (pack-private
  *   names that no app rule reads), so no app colour token and no `color-scheme` survives.
  * - Any other rule keeps a declaration whose property is on SHAPE_PROPERTY and whose value draws no image; its custom
- *   properties follow the root test. A `list-style` or `cursor` value that reads a variable goes too, because a `--pack-*`
+ *   properties follow the root test. A frame declaration of a @keyframes pack-* block follows the same list, and an emptied frame stays. A `list-style` or `cursor` value that reads a variable goes too, because a `--pack-*`
  *   helper can hold an image.
  * - A `@font-face` block is kept whole: a font is typography.
  * Deterministic and never throws; a sheet the walker cannot read gives `''`, which applies nothing.
@@ -169,7 +172,7 @@ export function shapeOnlySheet(canonical: string, names: ReadonlySet<string> = S
             } else if (!decl.ctx.keyframes && selectorList(decl.ctx.selector).every((part) => ROOT_SELECTOR.test(part))) {
                 keep = false
             } else {
-                keep = !decl.ctx.keyframes && SHAPE_PROPERTY.some((pattern) => pattern.test(decl.prop)) && !IMAGE_VALUE.test(decl.value) && !(IMAGE_PROPERTY.test(decl.prop) && /var\(/i.test(decl.value))
+                keep = SHAPE_PROPERTY.some((pattern) => pattern.test(decl.prop)) && !IMAGE_VALUE.test(decl.value) && !(IMAGE_PROPERTY.test(decl.prop) && /var\(/i.test(decl.value))
             }
             if (!keep) {
                 cuts.push([decl.ds, canonical[decl.de] === ';' ? decl.de + 1 : decl.de])

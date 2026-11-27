@@ -23,6 +23,8 @@ vi.mock(import('src/ts/stores.svelte'), () => {
     } as unknown as typeof import('src/ts/stores.svelte')
 })
 
+vi.mock('src/ts/alert', () => ({ alertConfirm: vi.fn(async () => true) }))
+
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { enterKeydown, imeEventSequence } from 'src/ts/ime/tests/imeEventSequence'

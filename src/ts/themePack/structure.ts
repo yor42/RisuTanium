@@ -5,13 +5,15 @@
 //       between statements; `@` only at the start of a statement; no `[` or `]` in a rule block; every declaration is
 //       name:value; every rule has a selector; brackets close in order (MC-1549).
 //   I2  a case-significant span is ASCII and unchanged by the engine's own normalise() (MC-1568): custom property names
-//       and var() references, class and id selectors, unquoted attribute values, font family names, and selector
-//       attribute names (SVG attribute names are case-sensitive).
+//       and var() references, class and id selectors, unquoted attribute values, font family names, selector
+//       attribute names (SVG attribute names are case-sensitive), the name of a @keyframes pack-* block and the
+//       name token of each animation shorthand item.
 //   I3  a string in a selector or at-rule prelude holds only a-z, 0-9, - and _ (MC-1568).
 // Case-insensitive keyword spans (property names, keywords, function names, `html`, `:root`, pseudo-classes, hex colours)
 // are not judged: the browser and the engine both fold them.
 // Invariant: if the engine or a registry ever compares a new case-kept span (a tag, an animation or container name),
 // that span must be added to I2 with a reproducer.
+import { isPackKeyframesPrelude } from './canonical'
 import { normalise } from './engine'
 
 export interface StructureError {
@@ -30,6 +32,9 @@ const ID_CHAR = /[A-Za-z0-9_-]/
 const PROPERTY_NAME = /^(?:--[A-Za-z0-9_-]+|-?[A-Za-z][A-Za-z0-9-]*)$/
 const STRING_LITERAL = /"[^"\n]*"|'[^'\n]*'/g
 const SELECTOR_STRING = /^[a-z0-9_-]*$/
+/** The words of an animation shorthand item that are keywords (compared case-insensitively); any other identifier is the name of a @keyframes block. */
+const ANIMATION_KEYWORDS: ReadonlySet<string> = new Set(['none', 'infinite', 'normal', 'reverse', 'alternate', 'alternate-reverse', 'forwards', 'backwards', 'both', 'running', 'paused', 'linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end', 'initial', 'inherit', 'unset', 'revert', 'revert-layer'])
+const ANIMATION_NAME_TOKEN = /^-?[A-Za-z_][A-Za-z0-9_-]*$/
 
 /**
  * Whether a span survives the engine's fold: every character is ASCII and normalise() leaves it unchanged. A span whose
@@ -201,6 +206,13 @@ export function structurePass(css: string): StructureError[] {
         if (colon < 0 || !PROPERTY_NAME.test(name)) { fail('', N0D(text)); return }
         const lower = name.toLowerCase()
         const value = text.slice(colon + 1).replace(/\s*!\s*important\s*$/i, '')
+        if (lower === 'animation' && kind === 'rule') {
+            for (const item of splitTop(value, ',')) {
+                for (const token of topTokens(item)) {
+                    if (ANIMATION_NAME_TOKEN.test(token.text) && !ANIMATION_KEYWORDS.has(token.text.toLowerCase()) && !caseSafe(token.text)) fail(lower, caseReason('an animation name', token.text))
+                }
+            }
+        }
         if (lower === 'font-family') for (const why of judgeFamilyList(value)) fail(lower, why)
         else if (lower === 'font' && kind === 'rule') {
             const split = splitFontShorthand(value)
@@ -265,7 +277,14 @@ export function structurePass(css: string): StructureError[] {
                     const name = (/^@([A-Za-z-]*)/.exec(trimmed)?.[1] ?? '').toLowerCase()
                     if (t === undefined && name === 'media') blocks.push('media')
                     else if (t === undefined && name === 'font-face') blocks.push('fontface')
-                    else { if (t === 'media') fail('', N0A(trimmed)); blocks.push('other') }
+                    else {
+                        if (t === 'media') fail('', N0A(trimmed))
+                        else if (isPackKeyframesPrelude(trimmed)) {
+                            const keyframesName = /^@keyframes\s+(\S+)/i.exec(trimmed)?.[1] ?? ''
+                            if (!caseSafe(keyframesName)) fail('', caseReason('a keyframes name', keyframesName))
+                        }
+                        blocks.push('other')
+                    }
                 } else {
                     judgeSelector(prelude)
                     blocks.push('rule')

@@ -1,6 +1,54 @@
-# #438 stage handoffs: wrap-up W3-5 (this PR) and the merged stages W3-4, W3-3, W3-2, W2, W3-1 and W1
+# #438 stage handoffs: wrap-up W3-6a (this PR) and the merged stages W3-5, W3-4, W3-3, W3-2, W2, W3-1 and W1
 
 Each wrap-up stage adds a section; the one under review is first, the merged ones follow. The sections come from their own PRs and were merged here without dropping any.
+
+## #438 stage handoff: W3-6a HypaV3Modal, modal-header, modal-summary-item and modal-footer, device rows pending
+
+Branch `claude/438-w3-6`, PR "Refs #438" (PR 6 of 8 of wrap-up W3 after the MC-4215 split; the issue stays open). Tier 2, no new critical root. Decisions MC-4213, MC-4214, MC-4215 (record in `Agents/mc/438-w3-6.md`); also MC-4160, MC-4164, MC-4165, MC-4167, MC-4168, MC-2947, MC-3009, MC-3638, MC-3639, MC-3659, MC-3660. Gates (reports under `%TEMP%/risu-b715/438/w3/`): plan r1 `w36-plan-r1.md` (6a part); Gate 1 r1 [EDITORIAL] `w36a-g1-r1.md` (F1 to F7 applied by the coder brief); Gate 2 r1 [REJECT] `w36a-g2-r1.md` (F1: translation wrapper unasserted, fixed in B8, X16 killed; F2 to F4 wording applied), Gate 2 r2 [APPROVE] `w36a-g2-r2.md`. Base f283d0cb8 (W3-5 merged).
+
+### What changed
+- Markup only: 72 literal `data-part` attributes (12 on HypaV3Modal, 15 on modal-header, 37 on modal-summary-item, 8 on modal-footer). With every attribute stripped (line endings normalised) each file equals its base blob; all four stay all CRLF. No class, handler, element, order, aria, focus, Back, z-index or transition change.
+  - New identity root, reach: `modal-hypa-v3` (the fixed scrim layer). Existing names: reach `modal-frame`, `modal-header`, `modal-body`, `modal-controls`, `modal-action`, `modal-field`, `modal-close`, `modal-list`, `modal-row`, `modal-footer`; safe `modal-title`, `modal-text`.
+  - Placed on: layer, frame, header, title, controls, the header and card actions, close, dropdown list, body, conversion card and button, search bar, field, counter and prev/next, the cards (row, checkbox, number, category chip, tag chips, badges, controls, text areas, rerolled controls) and, in the connected messages, the chip list and chips and the labels, text areas and error spans of the expanded message and the two footers with their labels, preview and error spans.
+  - Unclaimed (no pack hook): HypaV3Modal's wrapper, conversion inner div, search layout divs, form and sr-only span; the `WindowedSegment` root and item wrappers (a spacer is never rendered under the test geometry; the guard for the shared component is the expected-files list, `git diff --stat`); the header's `div.relative` and dropdown inner div; the card's header row, left group, badge wrapper, every panel wrapper and the count span; every lucide icon and component tag. MemoryModalHost has no regular element: no attribute, not on `OVERLAY_FILES`.
+- Census: `OVERLAY_FILES` +4; `registries/popups.ts`: `POPUPS_FILES` 32 to 36, `POPUPS_PARTS` 191 to 192, `POPUPS_REACH` 56 to 57 (only `modal-hypa-v3` and the four files). The values were inserted by hand at their sorted positions, keeping the file's wrapping, not pasted: the A1 file pin and the A8 parts and reach pins equal the census (the three failing pins were run first and printed exactly these additions). Critical closure, A1 roots pin (14), holders (2) and shared tokens-only (9) are unchanged. `overlayVocabulary.test.ts` gains `modal-hypa-v3: 'reach'`, two W1-T5a rows and the W1-T5b hide row.
+- No Settings EXEMPT, Home `FOREIGN`, chat or Studio census change: `settingsParts`, `settingsCriticalClosure`, `homeParts`, `areaParts`, `studioCriticalClosure` pass unchanged. The only importer of `MemoryModalHost` is `App.svelte`.
+- Criticality (MC-2947): no new critical root. Reset (two confirms), Delete this (one), Delete after (two), Import from and Export to lorebook (one each) go through AlertComp's critical `ask`, unchanged.
+
+### Tests (class, true counts)
+- New render tests mount the real modal (real `WindowedSegment`, real windowing geometry hook, real `$state` DB) and the real card, find each element by tag, aria-label, text, placeholder, id or structure (never by its part), assert the part and its DIRECT parent, plus whole-tree outlines: `HypaV3Modal.parts` (15: 11 acceptance, 4 guard) and `modal-summary-item.parts` (14: 11 acceptance, 3 guard). Guards cover unparted elements, Close, frame click, Reset, Convert, Delete this and after, the star, Apply and the tag chip.
+- Extended: `overlayVocabulary.test.ts` (80), `popupsCriticalClosure.test.ts` (18).
+- True base counts (head tests of these 4 files, 127 tests, against the f283d0cb8 sources served in memory): base components + base registry 27 fail, 100 pass (each render file 11, overlayVocabulary 4, popupsCriticalClosure 1); base components + head registry 24 fail, 103 pass (render 11 and 11, popupsCriticalClosure 2, overlayVocabulary 0). Head 127 of 127.
+
+### Evidence and limits
+- 30 named in-memory mutants (swaps, dropped, renamed and misplaced parts, a part on the `WindowedSegment` tag and inside the shared `WindowedSegment.svelte`, reach demotion, critical marker, files dropped from the census). 29 killed; M8 (a part on the `ModalSummaryItem` tag) survives as expected: the component takes no rest props, so nothing renders. The census cannot see `<svelte:element>` or component tags, so only the render tests guard the `WindowedSegment` root and item wrappers (M9 inside `src/lib/UI/Windowed/WindowedSegment.svelte`, M7 on its tag). Scratch config under `%TEMP%`, no tracked file touched. Killers in `%TEMP%/risu-b715/438/w3/w36a-code-report.md`.
+- `vitest run src/ts/themePack src/lib/Others/HypaV3Modal src/lib/Others/MemoryModalHost src/lib/Others/ChroMemoryModal .parts.`: 112 files, 5132 tests pass. `pnpm check`: 0 errors, 5 warnings (none in these files).
+- jsdom proves structure, not looks: no device run, no real pack applied.
+
+### Known limitations (MC-3638, MC-3639, MC-3659, no guard)
+- A pack may restyle Reset, Delete this, Delete after and the rerolled Apply and Cancel (reach) so they look harmless or alike (colours only over the chat shell); it cannot hide them. The five critical confirms stay in AlertComp's tokens-only prompt.
+- The per-card reroll Apply overwrites one summary's text in one tap with no confirm and no undo; the original and the rerolled text are shown side by side first, and the source gives it the danger hover. It is an edit in an inline panel, not an MC-2947 popup confirm, so it stays a reach `modal-action` (same treatment as MC-4211, MC-4213).
+- A pack may hide the safe names: the title, card number, category chip, metric badges, result counter, convert label, footer labels and the red error spans (not found, load error, no first message). It cannot hide the frame, header, body, cards, controls, fields or footers.
+- The identity root sits on the fixed full-viewport scrim: over the colour-mode chat shell a pack may recolour it, even opaque, so it covers the chat while the modal is open.
+- Inherited text properties set on `modal-frame`, `modal-row` or `modal-controls` reach the unclaimed text inside, including lucide icon colour.
+- A part on a component tag with no rest props (`ModalHeader`, `ModalSummaryItem`, `ModalFooter`) renders nothing and no census sees it (M8).
+- Settings focus-return fallback (`settingsOrigin.ts`): after Settings is opened from the header Settings button, closing it may focus another open overlay's `modal-action`. Benign edge.
+- The bulk bar, bulk result and the category and tag managers stay built-in beside or inside a frame a pack may recolour until W3-6b (cosmetic). Over legacy or unthemed screens and under safe start nothing applies; over another area's sheet only the shape subset applies (MC-3009).
+
+### Leftovers (MC-4214)
+- Category Delete, tag Remove and bulk re-summary Apply run with no confirm and stay reach buttons (follow-up #818, outside #438). The per-card reroll Apply also has no confirm: same treatment, no new ticket.
+
+### Device rows (fold into W5; synthetic data; Note 9; every-target network block up for the whole run)
+Test pack: popups.css `[data-part="modal-frame"]{border-radius:24px;background:#5a1f6b}`, `[data-part="modal-hypa-v3"] [data-part="modal-row"]{border-radius:20px}`, `[data-part="modal-hypa-v3"] [data-part="modal-title"]{letter-spacing:2px}`; chat.css colour mode.
+Precondition: a synthetic profile with one character and one chat, chat shell on; memory engine HypaMemory V3 (selector in `OtherBotSettings`, opened by the header Settings button or Settings > Other bot settings), ChroMemory off; the Settings shell Input page toggle "Memory summary menu" on; the chat carries two chat-lorebook entries (legacy chat-lorebook editor, or a restore of a synthetic `.bin` with `chat.localLore`; no hand edit of app state), so cards come from a local import and need no provider reply.
+- DV-W36a-1 Plus sheet, item "Hypa V3 Modal": 24px purple frame, title "HypaV3" 2px wider, the empty state; X and Back close. DV-W36a-2 This chat, memory view button: same look.
+- DV-W36a-3 More, "Import this chat's lorebook entries as summaries": the confirm shows in its own critical look, not purple; OK; two cards with 20px corners. Then More, Reset: the first confirm is critical; Cancel; no data changed. Never confirm a Delete or Reset.
+- DV-W36a-4 Search, type part of a card, Next: counter `1/1` inside the bar. DV-W36a-5 safe start with the pack, then 1: built-in look, plus the plain-launch control. DV-W36a-6 pack-free launch, then 1 and 3: no visible difference.
+- If the lorebook route is unavailable, rows 3 and 4 fall to MC-4165 PQ-5 (plain-fetch mock) or a not-run ruling (MC-4210, MC-4211).
+
+### For W3-6b and later
+- 6b files: category manager, tag manager, bulk-edit-actions, bulk-resummary-result (ordinary reach parts, MC-4213), ChroMemoryModal and its two tabs. 6b regenerates the same registry and census test: start from the merged 6a values (`POPUPS_FILES` 36, `POPUPS_PARTS` 192, `POPUPS_REACH` 57).
+- The managers get their own identity roots (planned `modal-hypa-v3-category-manager`, `modal-hypa-v3-tag-manager`); the bulk result takes ordinary reach parts, never a critical root (MC-4213), which would make the shared `modal-frame` a holder.
 
 ## #438 stage handoff: W3-5 ModelList and OpenrouterProviderList overlays (overlay only, never the trigger or notes), device rows pending
 

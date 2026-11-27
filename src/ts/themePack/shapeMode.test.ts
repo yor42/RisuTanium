@@ -172,12 +172,30 @@ describe('T5b the shape token and property partition', () => {
     })
 
     it('pins the paint side of the allowlist: every probe that is allowed and not shape is paint', () => {
+        // A property the judge allows that SHAPE_PROPERTY does not list counts as paint here; the motion and transform names are shape, filter and backdrop-filter are not on the judge allowlist.
         const stripped = PROBES.filter((prop) => isAllowedProperty(prop) && !SHAPE_PROPERTY.some((pattern) => pattern.test(prop)))
         expect(stripped.sort()).toEqual([
             'accent-color', 'background', 'background-clip', 'background-color', 'background-image', 'background-origin', 'background-position', 'background-position-x', 'background-size', 'background-repeat',
             'border', 'border-block', 'border-color', 'border-inline-end-color', 'border-inline-start', 'border-top', 'border-top-color',
             'border-image', 'box-shadow', 'caret-color', 'color', 'color-scheme', 'content', 'fill', 'mask', 'outline', 'outline-color', 'scrollbar-color', 'stroke', 'text-decoration', 'text-decoration-color', 'text-shadow',
         ].sort())
+    })
+
+    it('the motion and transform names are shape and on the judge allowlist; filter and backdrop-filter are neither', () => {
+        for (const prop of ['transition', 'animation', 'animation-timing-function', 'transform', 'translate', 'scale', 'rotate', 'transform-origin']) {
+            expect(SHAPE_PROPERTY.some((pattern) => pattern.test(prop)), prop).toBe(true)
+            expect(isAllowedProperty(prop), prop).toBe(true)
+        }
+        for (const prop of ['filter', 'backdrop-filter', '-webkit-backdrop-filter']) {
+            expect(SHAPE_PROPERTY.some((pattern) => pattern.test(prop)), prop).toBe(false)
+            expect(isAllowedProperty(prop), prop).toBe(false)
+        }
+    })
+
+    it('a keyframes frame keeps opacity, transform and easing and loses its filter, an emptied frame stays', () => {
+        const canonical = '@keyframes pack-chat-a{from{opacity:.6;animation-timing-function:ease-in}to{opacity:1;transform:scale(1.2);filter:blur(4px)}}[data-part="chat-message-avatar"]{animation:pack-chat-a 1.2s infinite;filter:blur(4px);color:#ffffff}'
+        expect(shapeOnlySheet(canonical)).toBe('@keyframes pack-chat-a{from{opacity:.6;animation-timing-function:ease-in}to{opacity:1;transform:scale(1.2);}}[data-part="chat-message-avatar"]{animation:pack-chat-a 1.2s infinite;}')
+        expect(shapeOnlySheet('@keyframes pack-studio-x{from{filter:blur(4px)}to{filter:blur(2px)}}')).toBe('@keyframes pack-studio-x{from{}to{}}')
     })
 })
 

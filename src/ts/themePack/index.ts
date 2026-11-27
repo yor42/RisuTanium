@@ -4,6 +4,7 @@
 // Nothing in the app installs or applies a pack yet; a later stage should load this module lazily and run it off the main
 // thread or in slices, because a large pack takes a noticeable time to judge.
 import { chatLiveChainErrors, lintPack as lintChat, normalise, type LintError, type LintResult } from './engine'
+import { effectsPass, extractKeyframes } from './effects'
 import { extractFontFaces, type FontFaceExtraction } from './fontFace'
 import { pushUnique, splitFindings } from './failclosed'
 import { packSizeWarning, type PackSizeVerdict } from './packSize'
@@ -62,7 +63,8 @@ function appValues(area: JudgedArea): Map<string, string[]> {
  * Judges one area's stylesheet of a pack. The preprocessed text is tokenised under the strict profile (canonical.ts),
  * which also judges every resource it names; the other passes read its canonical text, in which the reference engine's
  * patterns and the browser agree. The statement structure and case-significant spans are judged on that text before the
- * @font-face blocks leave it (structure.ts); top-level @font-face blocks are judged on their own, the rest goes to the
+ * @font-face blocks leave it (structure.ts); top-level @font-face blocks are judged on their own, then the top-level @keyframes pack-*
+ * blocks and the bounded effect declarations on an eligible subject leave the text (effects.ts: every refusal it does not lift stays the lint's), the rest goes to the
  * area's reference lint unchanged, and the value rules (valueRules.ts) then judge it with the area's app tokens. The
  * families the pack registers (this sheet's, plus `packFamilies` from its other sheets) are the only non-generic ones
  * a font-family may name without a warning: any other name warns, except a symbol font, which is refused (MC-2542). A chat or Studio stylesheet that all of these accept is then judged by Rule S
@@ -131,10 +133,14 @@ function judgeSheet(area: JudgedArea, source: string, name: string, packFamilies
     const canonical = canonicalStylesheet(preprocessCss(source))
     const structure = structurePass(canonical.text)
     const fonts = extractFontFaces(canonical.text, normalise)
-    const engine = AREA_LINT[area](fonts.remainder, name)
+    const keyframes = extractKeyframes(fonts.remainder, area)
+    const effects = effectsPass(area, keyframes.remainder, keyframes.names)
+    // Every pass below reads the text without the @font-face blocks, the @keyframes pack-* blocks and the effect declarations the effects pass claimed.
+    const body = effects.remainder
+    const engine = AREA_LINT[area](body, name)
     const ownFamilies = new Set([...fonts.families, ...(packFamilies ?? [])])
-    const values = valueRulesPass(fonts.remainder, { ownFamilies, app: appValues(area), source: canonical.text })
-    const extra: LintError[] = [...canonical.errors, ...structure, ...fonts.errors, ...values.errors]
+    const values = valueRulesPass(body, { ownFamilies, app: appValues(area), source: canonical.text })
+    const extra: LintError[] = [...canonical.errors, ...structure, ...fonts.errors, ...keyframes.errors, ...values.errors]
     const seen = new Set(engine.errors.map((e) => `${e.selector}|${e.prop}|${e.why}`))
     const errors = [...engine.errors]
     for (const e of extra) {
@@ -152,17 +158,17 @@ function judgeSheet(area: JudgedArea, source: string, name: string, packFamilies
         pushUnique(notes, seenNotes, tagged)
     }
     // Rule S and Rule SCOPE judge a stylesheet the passes above accept; a stylesheet refused for another reason reports those reasons first.
-    if (!errors.length) route([...cascadePass(area, fonts.remainder), ...scopePass(area, fonts.remainder, fonts.families)])
+    if (!errors.length) route([...cascadePass(area, body), ...scopePass(area, body, fonts.families)])
     // The live chat shell is judged only on a sheet every pass above accepted, so a Rule S or SCOPE refusal never gains a geometry error.
-    if (area === 'chat' && !errors.length) route(chatLiveChainErrors(fonts.remainder))
+    if (area === 'chat' && !errors.length) route(chatLiveChainErrors(body))
     // Rule E-2 (outerShadow.ts) runs last, on a sheet every pass above accepted, so a refused sheet never gains or loses a reason.
-    if ((area === 'chat' || area === 'studio') && !errors.length) route(outerShadowPass(area, fonts.remainder))
-    // Engine-side warnings read only a sheet that every pass above accepted. A throw adds no warning: a warning must never change a verdict or turn lintAreaPack into a refusal.
-    const warnings: LintError[] = [...values.warnings]
+    if ((area === 'chat' || area === 'studio') && !errors.length) route(outerShadowPass(area, body))
+    // The effects warnings are added whatever the verdict; the engine-side warnings below read only a sheet that every pass above accepted. A throw adds no warning: a warning must never change a verdict or turn lintAreaPack into a refusal.
+    const warnings: LintError[] = [...values.warnings, ...effects.warnings]
     if ((area === 'chat' || area === 'studio') && !errors.length) {
         try {
             const known = new Set(values.warnings.map((w) => `${w.selector}|${w.prop}|${w.why}`))
-            const found = [...coverageWarnings(area, fonts.remainder), ...(area === 'chat' ? chainWidthWarnings(fonts.remainder) : [])]
+            const found = [...coverageWarnings(area, body), ...(area === 'chat' ? chainWidthWarnings(body) : [])]
             for (const w of found) if (!known.has(`${w.selector}|${w.prop}|${w.why}`)) warnings.push(w)
         } catch { /* no engine-side warning */ }
     }

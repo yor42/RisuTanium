@@ -23,10 +23,22 @@ name: Desktop draft release
 # collide with an existing release; nothing is ever deleted or overwritten, a conflict prints the commands for you.
 # The signed APK artifact lasts 3 days here: "Re-run failed jobs" after that fails at the download, so run everything again.
 #
+# Cargo.lock is untracked (as upstream has it), so each build resolves its own crate versions. Every build therefore
+# uploads the lock it resolved as a workflow artifact (cargo-lock-<target>, cargo-lock-android-all), and attach-locks
+# attaches them all to the draft as Cargo.lock-<target> and Cargo.lock-android-all (MC-4410). The security-relevant
+# resolved versions (tauri, tauri-plugin-fs, tauri-plugin-dialog, wry, url) of a release are read from those files.
+# attach-locks runs last, after the six builds (and the Android attach when includeAndroid is on) all succeeded, and
+# holds no key. A re-run of a failed run replaces the lock artifacts; attach-locks refuses a draft that already
+# holds a Cargo.lock file and prints the delete commands. Desktop-only runs over a published tag, another commit's
+# draft, or a draft that already holds Cargo.lock files pass release-check but end red at attach-locks, after the builds;
+# clear them by hand first. Lock artifacts last 3 days (Android: as long as the signed APK), so re-run failed jobs
+# within that time.
+#
 # Publish checklist (this workflow never publishes; you do):
 #   1. Read the three script success lines of the reusable workflow (guard, inspect unsigned, inspect signed) and the
 #      release-check and publish success lines. A green step without its line is a failure.
-#   2. The draft holds exactly one APK and one latest-android.json from this run, and no other .apk.
+#   2. The draft holds exactly one APK and one latest-android.json from this run, and no other .apk. It also holds one
+#      Cargo.lock-<target> per desktop target (six) and, with Android, Cargo.lock-android-all.
 #   3. Never publish a draft from a red run, and never publish a draft whose android job failed.
 #   4. Download the draft's own APK and run the SIGNING.md item 6 dumpsys checks on the spare Note 9 (API 29) and the
 #      API 35 emulator, with synthetic data only (MC-3722).
@@ -197,6 +209,23 @@ jobs:
           args: --target ${{ matrix.settings.target }}
           tauriScript: pnpm tauri
 
+      # The lock this build resolved. Runs only after the build succeeded; no secret is read here.
+      - name: Name the resolved Cargo.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lock"
+          cp src-tauri/Cargo.lock "$RUNNER_TEMP/lock/Cargo.lock-${{ matrix.settings.target }}"
+
+      - name: Upload the resolved Cargo.lock
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cargo-lock-${{ matrix.settings.target }}
+          path: ${{ runner.temp }}/lock/Cargo.lock-${{ matrix.settings.target }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 3
+
   # Called workflow: guard, build, inspect, sign (the only job with the key), inspect again. The four secrets are
   # passed by name and reach only its sign job, inside environment android-release.
   android:
@@ -279,3 +308,78 @@ jobs:
         run: |
           set -euo pipefail
           node util/androidPublish.mjs publish
+
+  # Desktop only (includeAndroid off): runs after all six desktop builds succeeded. No key, no environment. It attaches the
+  # resolved Cargo.lock of each build to this commit's draft.
+  attach-locks:
+    name: Attach the resolved Cargo.lock files to the draft
+    needs: [release-check, build-desktop]
+    if: inputs.includeAndroid == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - id: download
+        name: Download the lock artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: cargo-lock-*
+          path: ${{ runner.temp }}/locks
+          merge-multiple: true
+
+      - id: attach
+        name: Attach the Cargo.lock files
+        env:
+          EXPECTED_LOCKS: Cargo.lock-aarch64-apple-darwin,Cargo.lock-x86_64-apple-darwin,Cargo.lock-x86_64-unknown-linux-gnu,Cargo.lock-aarch64-unknown-linux-gnu,Cargo.lock-x86_64-pc-windows-msvc,Cargo.lock-aarch64-pc-windows-msvc
+          LOCK_DIR: ${{ runner.temp }}/locks
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node util/androidPublish.mjs attach-locks
+
+  # Android on: runs after the six desktop builds and the Android attach succeeded, and adds the Android build's lock.
+  attach-locks-android:
+    name: Attach the resolved Cargo.lock files to the draft (Android on)
+    needs: [release-check, build-desktop, publish]
+    if: inputs.includeAndroid
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - id: download
+        name: Download the lock artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: cargo-lock-*
+          path: ${{ runner.temp }}/locks
+          merge-multiple: true
+
+      - id: attach
+        name: Attach the Cargo.lock files
+        env:
+          EXPECTED_LOCKS: Cargo.lock-aarch64-apple-darwin,Cargo.lock-x86_64-apple-darwin,Cargo.lock-x86_64-unknown-linux-gnu,Cargo.lock-aarch64-unknown-linux-gnu,Cargo.lock-x86_64-pc-windows-msvc,Cargo.lock-aarch64-pc-windows-msvc,Cargo.lock-android-all
+          LOCK_DIR: ${{ runner.temp }}/locks
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node util/androidPublish.mjs attach-locks

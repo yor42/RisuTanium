@@ -566,7 +566,7 @@ describe('W6: documents carry both names and the ref sentence', () => {
 })
 
 // A file hash, no certificate fingerprint. This file is the signing boundary: changing it is a signing-contract change.
-const RELEASE_WORKFLOW_FILE_SHA256 = '4131896a3103329a5870ca3bb0d392bf033f9648075da6efa85cda586a0d5039'
+const RELEASE_WORKFLOW_FILE_SHA256 = '73ee0d5dc55047961b5aff07506095d8ad2dc8c4ebab9f83287a0f25a58ff82e'
 describe('W7: the release workflow is the reviewed file', () => {
   test('file hash', () => {
     const body = readFileSync(path.join(workflowDir, RELEASE)).toString('latin1').replace(/\r\n/g, '\n')
@@ -591,22 +591,28 @@ describe('D1: release-desktop is dispatch-only and includeAndroid is a boolean t
 
 describe('D2: job graph, conditions and permissions', () => {
   test('jobs, needs, conditions, permissions', () => {
-    expect(Object.keys(dJobs())).toEqual(['release-check', 'build-desktop', 'android', 'publish'])
+    expect(Object.keys(dJobs())).toEqual(['release-check', 'build-desktop', 'android', 'publish', 'attach-locks', 'attach-locks-android'])
     expect(Object.fromEntries(Object.entries(dJobs()).map(([k, v]) => [k, needsOf(v)]))).toEqual({
       'release-check': [],
       'build-desktop': ['release-check'],
       android: ['release-check'],
       publish: ['release-check', 'build-desktop', 'android'],
+      'attach-locks': ['release-check', 'build-desktop'],
+      'attach-locks-android': ['release-check', 'build-desktop', 'publish'],
     })
     expect(Object.fromEntries(Object.entries(dJobs()).map(([k, v]) => [k, v.permissions]))).toEqual({
       'release-check': { contents: 'write' },
       'build-desktop': { contents: 'write' },
       android: { contents: 'read', actions: 'read' },
       publish: { contents: 'write' },
+      'attach-locks': { contents: 'write' },
+      'attach-locks-android': { contents: 'write' },
     })
   })
   test('android and publish run only with includeAndroid, with no status function that could run them after a failure', () => {
     for (const id of ['android', 'publish']) expect(dJobs()[id].if, id).toBe('inputs.includeAndroid')
+    expect(dJobs()['attach-locks'].if).toBe('inputs.includeAndroid == false')
+    expect(dJobs()['attach-locks-android'].if).toBe('inputs.includeAndroid')
     expect(dJobs()['release-check'].if).toBeUndefined()
     expect(dJobs()['build-desktop'].if).toBeUndefined()
     for (const [id, job] of Object.entries(dJobs())) expect(JSON.stringify(job.if ?? ''), id).not.toMatch(/always|cancelled|failure|success/)
@@ -712,6 +718,88 @@ describe('D7: the header carries the publish checklist', () => {
       expect(body, needle).toContain(needle)
     }
     expect(body).not.toMatch(/[0-9a-f]{2}(:[0-9a-f]{2}){15,}|\b[0-9a-f]{64}\b/i)
+  })
+})
+
+// ---------------------------------------------------------------- L1: every release build records its resolved Cargo.lock (#814)
+// Cargo.lock is untracked, so each release build resolves its own crate versions; the lock it resolved is uploaded as an
+// artifact and attached to the draft, which is how the resolved tauri, plugin, wry and url versions of a release are read.
+const isTauriBuild = (step: Obj) => /^tauri-apps\/tauri-action@/.test(String(step.uses ?? '')) || /\bpnpm tauri\b/.test(String(step.run ?? ''))
+const isLockUpload = (step: Obj) => /^actions\/upload-artifact@/.test(String(step.uses ?? '')) && String(asObj(step.with).name ?? '').startsWith('cargo-lock-')
+const isLockCopy = (step: Obj) => /\bcp src-tauri\/Cargo\.lock /.test(String(step.run ?? ''))
+const lastIndex = (steps: Obj[], pred: (s: Obj) => boolean) => steps.reduce((at, s, i) => (pred(s) ? i : at), -1)
+const matrixTargets = () =>
+  asArr(asObj(asObj(asObj(dJobs()['build-desktop']).strategy).matrix).settings).map(s => String(asObj(s).target))
+
+describe('L1: every release build uploads the Cargo.lock it resolved', () => {
+  test('each release job that builds with Tauri copies and uploads src-tauri/Cargo.lock after its last build step', () => {
+    for (const [file, expected] of [[DESKTOP, ['build-desktop']], [RELEASE, ['build']]] as const) {
+      const builders = Object.entries(jobsOf(load(file))).filter(([, job]) => stepsOf(job).some(isTauriBuild))
+      expect(builders.map(([id]) => id), file).toEqual(expected)
+      for (const [id, job] of builders) {
+        const steps = stepsOf(job)
+        const built = lastIndex(steps, isTauriBuild)
+        const copy = steps.findIndex(isLockCopy)
+        const up = steps.findIndex(isLockUpload)
+        expect(copy, `${file} ${id} copy`).toBeGreaterThan(built)
+        expect(up, `${file} ${id} upload`).toBeGreaterThan(copy)
+        expect(steps[copy].if, 'the copy runs only after a green build').toBeUndefined()
+        expect(steps[up].if, 'the upload runs only after a green build').toBeUndefined()
+        const withs = asObj(steps[up].with)
+        expect(withs['if-no-files-found']).toBe('error')
+        expect(withs.overwrite).toBe(true)
+        expect(JSON.stringify([steps[copy], steps[up]]), `${file} ${id}`).not.toMatch(/secrets\.|ANDROID_KEY|TAURI_SIGNING/)
+      }
+    }
+  })
+  test('the file and artifact names carry the matrix target (desktop) or the abi (Android)', () => {
+    const d = stepsOf(dJobs()['build-desktop'])
+    expect(runOf(d[d.findIndex(isLockCopy)])).toContain('"$RUNNER_TEMP/lock/Cargo.lock-${{ matrix.settings.target }}"')
+    expect(asObj(d[d.findIndex(isLockUpload)].with)).toMatchObject({
+      name: 'cargo-lock-${{ matrix.settings.target }}',
+      path: '${{ runner.temp }}/lock/Cargo.lock-${{ matrix.settings.target }}',
+    })
+    const a = stepsOf(jobsOf(load(RELEASE)).build)
+    expect(runOf(a[a.findIndex(isLockCopy)])).toContain('"$RUNNER_TEMP/lock/Cargo.lock-android-$ABI"')
+    expect(asObj(a[a.findIndex(isLockCopy)].env)).toEqual({ ABI: '${{ inputs.abi }}' })
+    expect(asObj(a[a.findIndex(isLockUpload)].with)).toMatchObject({
+      name: 'cargo-lock-android-${{ inputs.abi }}',
+      path: '${{ runner.temp }}/lock/Cargo.lock-android-${{ inputs.abi }}',
+    })
+  })
+  test('android-build.yml builds inline only for debug; its release path is the reusable workflow, which uploads the lock', () => {
+    const jobs = jobsOf(load(BUILD))
+    expect(jobs['build-android'].if).toBe("inputs.build_type == 'debug'")
+    for (const [id, job] of Object.entries(jobs)) {
+      if (id !== 'build-android') expect(job.uses, id).toBe(REUSABLE_USES)
+    }
+  })
+  test('the draft gets exactly one lock per matrix target, plus the Android one only when Android is on', () => {
+    const targets = matrixTargets()
+    expect(targets).toHaveLength(6)
+    const desk = targets.map(t => `Cargo.lock-${t}`)
+    expect(asObj(stepById(desktop(), 'attach-locks', 'attach').env).EXPECTED_LOCKS).toBe(desk.join(','))
+    expect(asObj(stepById(desktop(), 'attach-locks-android', 'attach').env).EXPECTED_LOCKS).toBe([...desk, 'Cargo.lock-android-all'].join(','))
+    expect(asObj(dJobs().android.with).abi).toBe('all')
+  })
+  test('both attach jobs hold no key and no environment, take the token from github.token and run the one command', () => {
+    for (const id of ['attach-locks', 'attach-locks-android']) {
+      const job = dJobs()[id]
+      expect(JSON.stringify(job), id).not.toMatch(/secrets\.|ANDROID_KEY|TAURI_SIGNING/)
+      expect(job.environment, id).toBeUndefined()
+      const checkouts = stepsOf(job).filter(s => /^actions\/checkout@/.test(String(s.uses ?? '')))
+      expect(checkouts, id).toHaveLength(1)
+      expect(checkouts[0].with, id).toEqual({ 'persist-credentials': false })
+      for (const step of stepsOf(job).filter(s => s.run !== undefined)) expect(runOf(step), id).not.toContain('${{')
+      expect(asObj(stepById(desktop(), id, 'download').with).pattern, id).toBe('cargo-lock-*')
+      expect(runOf(stepById(desktop(), id, 'attach')).replace(/\n$/, ''), id).toBe('set -euo pipefail\nnode util/androidPublish.mjs attach-locks')
+      expect(asObj(stepById(desktop(), id, 'attach').env), id).toMatchObject({ GITHUB_TOKEN: '${{ github.token }}', LOCK_DIR: '${{ runner.temp }}/locks' })
+    }
+  })
+  test('the Android attach waits for the Android APK attach; the desktop-only one needs no Android job', () => {
+    expect(needsOf(dJobs()['attach-locks-android'])).toContain('publish')
+    expect(needsOf(dJobs()['attach-locks'])).not.toContain('publish')
+    expect(needsOf(dJobs()['attach-locks'])).toContain('build-desktop')
   })
 })
 
