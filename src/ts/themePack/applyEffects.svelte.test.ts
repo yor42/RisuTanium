@@ -35,7 +35,7 @@ const MOTION = (rules: string): string => `@media (prefers-reduced-motion: reduc
 const TRANSPARENCY = (rules: string): string => `@media (prefers-reduced-transparency: reduce){${rules}}`
 type Area = 'chat' | 'studio' | 'settings' | 'home' | 'popups'
 const SAFE_PART: Readonly<Record<Area, string>> = {
-    chat: 'chat-message-avatar', studio: 'studio-asset-row', settings: 'settings-section-title', home: 'home-brand', popups: POPUPS_SAFE[0],
+    chat: 'chat-message-avatar', studio: 'studio-asset-row', settings: 'settings-section-heading', home: 'home-brand', popups: POPUPS_SAFE[0],
 }
 const K = '@keyframes pack-chat-pulse{from{opacity:.6}to{opacity:1}}'
 const PULSE = 'animation:pack-chat-pulse 1.2s infinite alternate'

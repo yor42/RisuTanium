@@ -71,6 +71,13 @@ const chat = (name: string, preview: string, extra: Partial<Chat> = {}) => ({ id
 /** Every part name this file proved on a rendered element; compared with the names the file claims at the end. */
 const proved = new Set<string>()
 
+/** Every proving scenario, registered as its own test and replayed by the coverage test so that test needs no earlier test's state. */
+const SCENARIOS: Array<() => void | Promise<void>> = []
+function scenario(name: string, run: () => void | Promise<void>) {
+    SCENARIOS.push(run)
+    test(name, run)
+}
+
 let app: Record<string, unknown> | null = null
 let target: HTMLElement
 
@@ -138,24 +145,27 @@ function menuItem(action: string): HTMLElement {
     return document.querySelector<HTMLElement>(`[role^="menuitem"][data-action="${action}"]`)!
 }
 
-beforeEach(() => {
+function resetScenario() {
     localStorage.clear()
     selectedCharID.set(-1)
     clearPending()
     takeOverlayReturnFocus()
-})
+}
 
-afterEach(async () => {
+async function teardownScenario() {
     if (app) await unmount(app as never)
     app = null
     target?.remove()
     document.body.innerHTML = ''
     localStorage.clear()
     vi.useRealTimers()
-})
+}
+
+beforeEach(resetScenario)
+afterEach(teardownScenario)
 
 describe('the sidebar header', () => {
-    test('heading, new chat row, new chat button, chevron, sort label and help sit on their elements', () => {
+    scenario('heading, new chat row, new chat button, chevron, sort label and help sit on their elements', () => {
         render([owner([chat('Zeta', 'zeta-preview')])])
         const heading = one('chat-sidebar-heading')
         expect(heading.tagName).toBe('H2')
@@ -191,7 +201,7 @@ describe('the sidebar header', () => {
         expect(row.parentElement?.getAttribute('data-part')).toBe('chat-sidebar-header')
     })
 
-    test('the new chat menu and its two items', () => {
+    scenario('the new chat menu and its two items', () => {
         render([owner([chat('Zeta', 'zeta-preview')])])
         click(one('chat-sidebar-new-menu-toggle'))
         const menu = one('chat-sidebar-new-menu')
@@ -208,7 +218,7 @@ describe('the sidebar header', () => {
         inside('chat-sidebar-export-all', 'chat-sidebar-new-menu')
     })
 
-    test('the search box wraps the text field', () => {
+    scenario('the search box wraps the text field', () => {
         render([owner([chat('Zeta', 'zeta-preview')])])
         const box = one('chat-sidebar-search-box')
         const field = box.querySelector('input')
@@ -221,7 +231,7 @@ describe('the sidebar header', () => {
 })
 
 describe('chat rows and folder rows', () => {
-    test('the name line and the meta line of a chat row hold the name and the preview', () => {
+    scenario('the name line and the meta line of a chat row hold the name and the preview', () => {
         render([owner([chat('Zeta', 'zeta-preview'), chat('Yota', 'yota-preview')])])
         const host = rowHost('Zeta')
         const nameLine = host.querySelector<HTMLElement>('[data-part="chat-row-name-line"]')!
@@ -241,7 +251,7 @@ describe('chat rows and folder rows', () => {
         inside('chat-row-name', 'chat-row-name-line')
     })
 
-    test('the folder count is the count of its chats, on the folder row', () => {
+    scenario('the folder count is the count of its chats, on the folder row', () => {
         render([owner([chat('Zeta', 'zeta-preview', { folderId: 'F1' }), chat('Yota', 'yota-preview', { folderId: 'F1' }), chat('Xi', 'xi-preview')])])
         const count = one('chat-folder-count')
         expect(count.textContent?.trim()).toBe('2')
@@ -252,7 +262,7 @@ describe('chat rows and folder rows', () => {
         inside('chat-folder-count', 'chat-folder')
     })
 
-    test('Edit order shows the move cluster of a chat row and of a folder row, each named for its own row', () => {
+    scenario('Edit order shows the move cluster of a chat row and of a folder row, each named for its own row', () => {
         render([owner([chat('Zeta', 'zeta-preview', { folderId: 'F1' }), chat('Xi', 'xi-preview')])])
         click(target.querySelector('[data-part="sidebar-edit-order"]')!)
         const chatActions = rowHost('Xi').querySelector<HTMLElement>('[data-part="chat-row-actions"]')!
@@ -271,7 +281,7 @@ describe('chat rows and folder rows', () => {
         inside('chat-folder-actions', 'chat-folder-host')
     })
 
-    test('the folder rename wrapper holds the folder name field', async () => {
+    scenario('the folder rename wrapper holds the folder name field', async () => {
         render([owner([chat('Zeta', 'zeta-preview', { folderId: 'F1' }), chat('Xi', 'xi-preview')])])
         click(folderHost().querySelector('[data-part="chat-folder-menu"]')!)
         click(menuItem('folder-rename'))
@@ -288,7 +298,7 @@ describe('chat rows and folder rows', () => {
 })
 
 describe('the search results', () => {
-    test('a result row carries the character name, the chat name and the chat preview', () => {
+    scenario('a result row carries the character name, the chat name and the chat preview', () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
         render([
             owner([chat('Match one', 'one-preview'), chat('Other', 'other-preview')], { name: 'Match A' }),
@@ -341,7 +351,7 @@ describe('the row menu', () => {
         expect(el.textContent?.trim(), part).toBe(text)
     }
 
-    test('each chat menu item carries its own part, and the delete item is the destructive one', () => {
+    scenario('each chat menu item carries its own part, and the delete item is the destructive one', () => {
         render([owner([chat('Zeta', 'zeta-preview'), chat('Xi', 'xi-preview')])])
         click(rowHost('Xi').querySelector('[data-part="chat-row-menu"]')!)
         for (const [part, action, role, text] of CHAT_MENU) {
@@ -354,7 +364,7 @@ describe('the row menu', () => {
         }
     })
 
-    test('the move list carries the three move parts', () => {
+    scenario('the move list carries the three move parts', () => {
         render([owner([chat('Zeta', 'zeta-preview'), chat('Xi', 'xi-preview')])])
         click(rowHost('Xi').querySelector('[data-part="chat-row-menu"]')!)
         click(menuItem('move'))
@@ -365,7 +375,7 @@ describe('the row menu', () => {
         expect(one('row-menu-no-folder').getAttribute('aria-checked')).toBe('true')
     })
 
-    test('each folder menu item carries its own part, and the delete item is the destructive one', () => {
+    scenario('each folder menu item carries its own part, and the delete item is the destructive one', () => {
         render([owner([chat('Zeta', 'zeta-preview', { folderId: 'F1' }), chat('Xi', 'xi-preview')])])
         click(folderHost().querySelector('[data-part="chat-folder-menu"]')!)
         expectItem('row-menu-folder-rename', 'folder-rename', 'menuitem', language.chatShellRenameFolder)
@@ -377,7 +387,7 @@ describe('the row menu', () => {
         for (const part of ['row-menu-folder-rename', 'row-menu-folder-colour', 'row-menu-folder-delete']) inside(part, 'row-menu')
     })
 
-    test('the colour list carries one colour-option part per palette entry', () => {
+    scenario('the colour list carries one colour-option part per palette entry', () => {
         render([owner([chat('Zeta', 'zeta-preview', { folderId: 'F1' }), chat('Xi', 'xi-preview')])])
         click(folderHost().querySelector('[data-part="chat-folder-menu"]')!)
         click(menuItem('folder-colour'))
@@ -394,8 +404,14 @@ describe('the row menu', () => {
 })
 
 describe('coverage of this file', () => {
-    test('the names proved here are exactly the sidebar parts this file claims', () => {
-        // The tests above ran first in file order; every claimed part was proved on a rendered element.
+    test('the names proved here are exactly the sidebar parts this file claims', async () => {
+        proved.clear()
+        await teardownScenario()
+        for (const run of SCENARIOS) {
+            resetScenario()
+            await run()
+            await teardownScenario()
+        }
         expect(Array.from(proved).sort()).toEqual([...CLAIMED].sort())
     })
 })

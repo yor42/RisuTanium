@@ -4,7 +4,7 @@ export const SETTINGS_CRITICAL = ['settings-dialog', 'settings-dialog-backdrop',
   // Final round (re-review Q2, rule 3 names warnings): the inline warnings and failure results
   'settings-connection-warning', 'settings-connection-card-status', 'settings-test-result', 'settings-picker-warning', 'settings-fix-mark', 'settings-preset-warning', 'settings-warning-banner'];
 // parts that are never critical, never hold a critical element and never sit inside one (asserted in the browser by parts.mjs over the whole tour)
-export const SETTINGS_SAFE = ['settings-header', 'settings-search', 'settings-index-item', 'settings-index-link', 'settings-index-foot', 'settings-section-title', 'settings-jump-chips', 'settings-list-item', 'settings-toggle', 'settings-menu', 'settings-menu-item',
+export const SETTINGS_SAFE = ['settings-header', 'settings-search', 'settings-index-item', 'settings-index-link', 'settings-index-foot', 'settings-section-heading', 'settings-jump-chips', 'settings-list-item', 'settings-toggle', 'settings-menu', 'settings-menu-item',
   'settings-callout', 'settings-banner', 'settings-toast', 'settings-results', 'settings-result', 'settings-result-group', 'settings-no-results', 'settings-switcher', 'settings-switcher-panel', 'settings-switcher-option', 'settings-switcher-option-name', 'settings-switcher-search', 'settings-switcher-scrim',
   'settings-picker-search', 'settings-picker-row-name', 'settings-picker-chip', 'settings-picker-scrim',
   'settings-connection-card-name', 'settings-fallback-item', 'settings-segmented'];

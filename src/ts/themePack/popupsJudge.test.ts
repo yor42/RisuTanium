@@ -29,7 +29,7 @@ describe('SC-1 membership: popups.css names popups parts only', () => {
     it.each([
         ['a chat part', '[data-part="chat-header"]{border-radius:4px}'],
         ['a studio part', '[data-part="studio-asset-row"]{border-radius:4px}'],
-        ['a settings part', '[data-part="settings-section-title"]{border-radius:4px}'],
+        ['a settings part', '[data-part="settings-section-heading"]{border-radius:4px}'],
     ])('%s as the subject is refused by membership', (_name, css) => {
         expect(scopePass('popups', css, []).length).toBeGreaterThan(0)
         refused(css, /is not a part of the popups screen/)

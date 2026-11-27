@@ -1,0 +1,7 @@
+### MC-4610 — #860: the sidebar parts coverage test replays its own scenarios
+
+`ShellSidebar.parts.svelte.test.ts` collected the proved part names in a module set filled by the earlier tests, so its coverage test failed alone (`-t`) and under a shuffled order. The proving tests are now registered through `scenario()`, and the coverage test clears the set and replays every scenario itself, with the same reset and teardown the other tests get. Test-only, Tier 0; no product behaviour changed.
+
+### MC-4611 — #862: SETTINGS_SAFE names settings-section-heading; the width token keeps its name
+
+`SETTINGS_SAFE` in `registries/settings.ts` named `settings-section-title`, but the shipping Settings shell (`DisplayShellPage.svelte`, `ShellSectionsPage.svelte`) and the census in `areaParts.ts` use `settings-section-heading`. The registry and the tests that used the stale name now say `settings-section-heading`. `--settings-section-title-width` in `engine.ts` is a theme token (defined by `docs/design/settings/theme-tokens.css`), not a part name, and no shipping markup consumes it; it keeps its name so packs that set it keep working. No built-in pack imports a settings theme: `builtins.ts` imports only the chat themes. The design prototypes under `docs/design/settings/` (the `slice*` files, `themes/banana-cocoa.css`, `themes/scratch-white.css`, `packlint-settings.mjs`, `SLICE1_SPEC.md`) and the design checks under `docs/design/chat/checks/th/` and `docs/design/theme/checks/` still name `settings-section-title`; they are not shipped and were left unchanged.

@@ -13,7 +13,7 @@ const AREAS: readonly ThemeArea[] = ['chat', 'studio', 'settings', 'home']
 const PARTS: Record<ThemeArea, { S: string; R: string; P: string }> = {
     chat: { S: 'chat-message-avatar', R: 'chat-send', P: 'chat-shell' },
     studio: { S: 'studio-asset-row', R: 'studio-item-apply', P: 'studio-asset-row' },
-    settings: { S: 'settings-section-title', R: 'settings-header', P: 'settings-section-title' },
+    settings: { S: 'settings-section-heading', R: 'settings-header', P: 'settings-section-heading' },
     home: { S: 'home-brand', R: 'home-run-card', P: 'home-shell' },
 }
 const sel = (area: ThemeArea, kind: 'S' | 'R' | 'P', suffix = ''): string => `[data-part="${PARTS[area][kind]}"]${suffix}`

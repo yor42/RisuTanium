@@ -243,7 +243,8 @@ describe('S3a-2 census: the rendered Settings parts', () => {
 
 describe('S3a-2 tier pin (MC-3249): no live Settings part is in the safe tier', () => {
     /** A live part may be safe only with a reason: "a genuine safe leaf: decoration with no control or warning". */
-    const REVIEWED_SAFE_LIVE: readonly string[] = []
+    // settings-section-heading: the section's label, a leaf with no control or warning (maintainer chose the safe tier, MC-4611).
+    const REVIEWED_SAFE_LIVE: readonly string[] = ['settings-section-heading']
 
     it('the live parts with the safe tier are exactly the reviewed list', () => {
         const safe = [...SETTINGS_PARTS].filter((name) => selectorTier(`[data-part="${name}"]`, SETTINGS_LINT_REGISTRY) === 'safe').sort()

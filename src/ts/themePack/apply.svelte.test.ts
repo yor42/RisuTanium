@@ -1386,8 +1386,8 @@ describe('S3a-3 the settings element (MC-3121: shape variant only, no base, in b
     const CHAT_X = FACE_X + LEAF
     /** A settings sheet with colours, an image only its colours name, a pattern token and two shape properties. */
     const SETTINGS_X = '@font-face{font-family:"pack-x";src:url(fonts/x.woff2)}:root{--pattern-warn-padding:20px;--nexus-touch:44px}'
-        + '[data-part="settings-section-title"]{font-family:"pack-x";color:#ff0000;background-image:url(images/s.png);border-radius:6px}'
-    const SETTINGS_WHOLE = '[data-part="settings-section-title"]{border-radius:6px}'
+        + '[data-part="settings-section-heading"]{font-family:"pack-x";color:#ff0000;background-image:url(images/s.png);border-radius:6px}'
+    const SETTINGS_WHOLE = '[data-part="settings-section-heading"]{border-radius:6px}'
     const BASE = 'data-theme-pack-base'
     const pack = (extra: Readonly<Record<string, PackFile>>): Uint8Array => packOf(CHAT_X, [FONT_X], { 'images/s.png': PNG_1X1, ...extra })
 
