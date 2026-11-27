@@ -12,6 +12,7 @@ Placeholders:
 | `<request>` | the lease request id |
 | `<token>` | the lease token; it is in the brief only |
 | `<controller>` | `C:\Projects\RisuAI\.claude\scripts\workflow-control.mjs` |
+| `<reset-helper>` | `C:\Projects\RisuAI\.claude\scripts\workflow-device-reset.mjs` |
 | `<adbg>` | `C:\Projects\RisuAI\Agents\Tools\device-guard\adbg.mjs` |
 | `<apk>` | the pinned APK, absolute path, with its SHA-256 |
 | `<result>` | the result file, absolute, under `%TEMP%` |
@@ -96,14 +97,14 @@ Report and hand back; never improvise a workaround.
 
 - The token is `<token>`. Never print it, echo it, or write it to the result file, the run logs or any other file.
 - Before every step, and at least every `heartbeatSeconds` (the grant carries it): `node <controller> lease-renew --request <request> --token <token>`. A refusal means the lease has lapsed: stop every adb call and hand back.
-- If the grant shows `resetRequired: true`, no row counts yet. Do the allowed resets (section 5) and the census (section 8), then `node <controller> lease-reset-done --request <request> --token <token> --evidence <census file>`.
+- At every grant start, before any row, run the helper: `node <reset-helper> start --request <request> --token <token> --run <run>` (add `--stranded <name>` for a vendor preinstall per section 8, and `--apk <apk> --apk-sha256 <sha>` when this brief names the pinned APK). It does the census, the allowed resets (section 5) and `lease-reset-done` in one step. No row counts until it prints `"status": "ok"`; exit 3 is a STOP (section 8, step 3).
 - Pass `--lease <request> --token <token>` on every `device` claim: `node <controller> device --claim <id> --result pass|inconclusive|fail --required true --evidence <path> --lease <request> --token <token>`. It refuses while the lease is not live or the reset is unacknowledged.
-- On every exit path, failure included, release: `node <controller> lease-release --request <request> --token <token> --clean <end census file>` only after a clean end census, otherwise without `--clean` (the phone is then marked as needing a reset for the next holder).
+- On every exit path, failure included, end with the helper: `node <reset-helper> end --request <request> --token <token> --run <run>`. It releases with `--clean` only when the end census equals the start baseline, otherwise without (the phone is then marked as needing a reset for the next holder). Never call `lease-release --clean` by hand: it is refused while a reset is still owed, and a hand-made end census is not compared with anything. If the helper itself fails, release without `--clean`.
 - The PR session releases again after the handback; the call is idempotent.
 
 ## 8. Census
 
-Run it at every grant start (before any row) and at the end. The end census's result file is the `--clean` evidence.
+The helper (section 7) runs it at every grant start (before any row) and at the end and writes `census-start.txt`, `census-end.txt` and the evidence files in `<run>`; the end census file is the `--clean` evidence. The steps below are what it does and the rules for a STOP; do them by hand only if the helper cannot run, and then release without `--clean`.
 
 1. `shell pm list packages -3` through the guard on `<serial>`. It lists third-party packages only; system and preinstalled packages are outside the census by design.
 2. Classify each `package:<name>` line against the grant's lists:

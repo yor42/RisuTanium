@@ -227,8 +227,8 @@ function resourceClaims(d, root) {
 // serialized by the state lock. Liveness is the single predicate leaseLive; the stored status is bookkeeping.
 // HELPER_RE is a hard-coded constant: no flag, environment variable or state file can widen it. The device
 // guard (adbg) carries the same pattern.
-const HELPER_RE = /^dev\.risu\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
-const PACKAGE_RE = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/;
+export const HELPER_RE = /^dev\.risu\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
+export const PACKAGE_RE = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/;
 const TOKEN_RE = /^[A-Za-z0-9-]{16,128}$/;
 const TICKET_RE = /^[A-Za-z0-9-]{1,32}$/;
 const unsafePolicy = () => Error('Unsupported or unsafe policy');
@@ -399,6 +399,9 @@ export function leaseRelease({ root = defaultRoot, request, token, clean }) {
     const req = L.requests[request]; const iso = new Date(now).toISOString();
     if (req.status === 'waiting') { req.status = 'withdrawn'; req.endedAt = iso; return { request, status: 'withdrawn', member: null, needsReset: false }; }
     if (req.status !== 'granted') return { request, status: req.status, member: req.member, needsReset: L.members[req.member]?.needsReset === true };
+    // A clean release cannot stand in for a reset the lease still owes: the obligation would survive it (the member stays
+    // needsReset), so the holder is sent to the helper instead of finding out at the next grant.
+    if (isDeviceMember(req.member) && req.resetRequired && clean !== undefined) throw Error('Reset still owed: run node .claude/scripts/workflow-device-reset.mjs start for this lease (it does the census and resets and calls lease-reset-done), then release with --clean; or release without --clean');
     req.status = 'released'; req.endedAt = iso;
     if (isDeviceMember(req.member)) {
       const member = memberState(L, req.member);
@@ -411,6 +414,14 @@ export function leaseRelease({ root = defaultRoot, request, token, clean }) {
     }
     return { request, status: 'released', member: req.member, needsReset: L.members[req.member]?.needsReset === true };
   });
+}
+// Read-only view of one live grant for its holder (the helper's input); it never extends the lease.
+export function leaseGrant({ root = defaultRoot, request, token, now = Date.now() }) {
+  const p = loadPolicy(root); devicePool(p);
+  const s = structuredClone(loadState(root)); ensureLeases(s);
+  const req = leaseRequest(s, request, token);
+  if (!leaseLive(req, p, now)) throw Error('Lease is not live; stop using the device');
+  return grantView(s, p, request, now);
 }
 export function leaseResetDone({ root = defaultRoot, request, token, evidence, stranded }) {
   const p = loadPolicy(root); const dp = devicePool(p);
