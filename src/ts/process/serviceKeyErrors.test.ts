@@ -72,7 +72,8 @@ describe('the OpenAI-compatible image provider with a stored key that cannot be 
     function seed() {
         Object.assign(h.db, {
             sdProvider: 'openai-compat',
-            openaiCompatImage: { url: 'https://img.example.invalid/v1/images', key: 'SYN-openai-image', model: '', size: '', quality: '' },
+            openaiCompatImage: { url: 'https://img.example.invalid/v1/images', key: '', model: '', size: '', quality: '' },
+            connections: [{ id: 'conn-1', name: 'OpenAI-compatible image', provider: 'openai_image', key: 'SYN-openai-image' }],
         })
     }
 
@@ -97,7 +98,7 @@ describe('the OpenAI-compatible image provider with a stored key that cannot be 
 
 describe('the WaveSpeed image provider with a stored key that cannot be read', () => {
     test('sends no request and reports the failure instead of asking for a key', async () => {
-        Object.assign(h.db, { sdProvider: 'wavespeed', wavespeedImage: { key: 'SYN-wavespeed', reference_mode: '' } })
+        Object.assign(h.db, { sdProvider: 'wavespeed', wavespeedImage: { key: '', reference_mode: '' }, connections: [{ id: 'conn-1', name: 'WaveSpeed', provider: 'wavespeed', key: 'SYN-wavespeed' }] })
         h.rejectRead = true
 
         const image = await generateAIImage('a prompt', { chaId: 'cha' } as unknown as character, '', 'inlay')
@@ -113,7 +114,8 @@ describe('the custom embedding endpoint with a stored key that cannot be read', 
     function seed() {
         Object.assign(h.db, {
             hypaModel: 'custom',
-            hypaCustomSettings: { url: 'https://embed.example.invalid/v1', key: 'SYN-embed', model: '' },
+            hypaCustomSettings: { url: 'https://embed.example.invalid/v1', key: '', model: '' },
+            connections: [{ id: 'conn-1', name: 'Custom embedding', provider: 'embedding_custom', key: 'SYN-embed' }],
         })
     }
 

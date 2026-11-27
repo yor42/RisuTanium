@@ -21,6 +21,12 @@ function fullLegacy(): StoredDatabase {
         ollamaApiKey: 'ol', novellistAPI: 'nl', mancerHeader: 'ma', vertexPrivateKey: 'PEM',
         novelai: { token: 'nt', model: 'm' }, hordeConfig: { apiKey: 'hk', model: 'h', softPrompt: '' },
         google: { accessToken: 'gk', projectId: 'p' }, OaiCompAPIKeys: { deepseek: 'dk', deepinfra: 'di' },
+        elevenLabKey: 'SYN-el', huggingfaceKey: 'SYN-hf', fishSpeechKey: 'SYN-fs', NAIApiKey: 'SYN-nai',
+        stabilityKey: 'SYN-st', falToken: 'SYN-fal', supaMemoryKey: 'SYN-mem', voyageApiKey: 'SYN-vo',
+        openaiCompatImage: { url: 'https://img.invalid', key: 'SYN-oi', model: 'm', size: '1024x1024', quality: 'auto' },
+        wavespeedImage: { key: 'SYN-ws', reference_image: 'ref', loras: [{ id: 'l' }] },
+        deeplOptions: { key: 'SYN-dl', freeApi: true }, deeplXOptions: { url: 'http://dx.invalid', token: 'SYN-dx' },
+        hypaCustomSettings: { url: 'https://em.invalid', key: 'SYN-ec', model: 'em' },
         botPresets: [producerPreset('https://p.invalid/v1', 'K-stale'), producerPreset('https://q.invalid', 'Q')],
         customModels: [
             { id: 'ma', name: 'A', key: 'kA', url: 'https://a.invalid' },
@@ -46,9 +52,18 @@ describe('migrate then translate', () => {
         const original = structuredClone(live)
         migrateConnections(live)
         expect(live.openAIKey).toBe('')
+        for (const row of GLOBAL_ROWS) {
+            expect(row.legacyGet(live), `${row.slot} cleared after the migration`).toBe('')
+        }
+        expect(live.elevenLabKey).toBe('')
+        expect(live.deeplXOptions.token).toBe('')
+        expect(live.hypaCustomSettings.key).toBe('')
         const out = await translate(live)
         for (const row of GLOBAL_ROWS) {
             expect(row.legacyGet(out), row.slot).toBe(row.legacyGet(original))
+        }
+        for (const root of ['openaiCompatImage', 'wavespeedImage', 'deeplOptions', 'deeplXOptions', 'hypaCustomSettings'] as const) {
+            expect(out[root], `${root} with its siblings`).toEqual(original[root])
         }
         expect(out.OaiCompAPIKeys).toEqual(original.OaiCompAPIKeys)
         expect(out.forceReplaceUrl).toBe(original.forceReplaceUrl)

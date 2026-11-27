@@ -29,7 +29,11 @@ vi.mock('localforage', () => ({
     default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}) }) },
 }))
 
-vi.mock('src/ts/storage/database.svelte', () => ({ getDatabase: () => h.db }))
+// A service key lives in its connection; the adapter moves the legacy-shaped seeds of this file there.
+vi.mock('src/ts/storage/database.svelte', async () => {
+    const { absorbLegacyForTest } = await import('src/ts/connections/tests/legacyFixture')
+    return { getDatabase: () => absorbLegacyForTest(h.db) }
+})
 
 vi.mock('src/ts/globalApi.svelte', () => ({
     globalFetch: vi.fn(async (url: string, opts: { headers?: Record<string, string>, body?: { input?: unknown[], inputs?: unknown[] } }) => {
@@ -158,7 +162,7 @@ describe('SupaMemory summarizer key (supaMemoryKey)', () => {
 
     test('guard: writes no resolved value to the database or the returned memory', async () => {
         const result = await runSupa()
-        expect(h.db.supaMemoryKey).toBe(REF)
+        expect((h.db.connections as Array<{ provider: string, key: string }>).find((c) => c.provider === 'memory_openai')?.key).toBe(REF)
         expect(JSON.stringify(result)).not.toContain(h.resolved)
         expect(JSON.stringify(h.db)).not.toContain(h.resolved)
     })
@@ -232,7 +236,7 @@ describe('HypaMemory V2 summarizer and embedding key (supaMemoryKey)', () => {
 
     test('guard: writes no resolved value to the database or the returned memory', async () => {
         const result = await runHypaV2()
-        expect(h.db.supaMemoryKey).toBe(REF)
+        expect((h.db.connections as Array<{ provider: string, key: string }>).find((c) => c.provider === 'memory_openai')?.key).toBe(REF)
         expect(JSON.stringify(result.memory)).not.toContain(h.resolved)
         expect(JSON.stringify(h.db)).not.toContain(h.resolved)
     })

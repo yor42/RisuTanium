@@ -25,7 +25,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const runTranslatorMock = vi.hoisted(() => vi.fn(async (text: string, _reverse: boolean, _from: string, _to: string): Promise<string> => text))
-const dbBox = vi.hoisted(() => ({ db: { huggingfaceKey: 'hf-key' } as Record<string, unknown> }))
+const dbBox = vi.hoisted(() => ({ db: { connections: [{ id: 'conn-1', name: 'Hugging Face', provider: 'huggingface', key: 'hf-key' }] } as Record<string, unknown> }))
 
 // When `seam.value` is set the key seam answers it for every slot, so a reader that bypasses the seam is visible.
 const seam = vi.hoisted(() => ({ value: null as string | null }))
@@ -169,7 +169,7 @@ beforeEach(() => {
     alertErrorMock.mockReset()
     runTranslatorMock.mockClear()
     runTranslatorMock.mockImplementation(async (text: string) => `JA:${text}`)
-    dbBox.db = { huggingfaceKey: 'hf-key' }
+    dbBox.db = { connections: [{ id: 'conn-1', name: 'Hugging Face', provider: 'huggingface', key: 'hf-key' }] }
     seam.value = null
 })
 

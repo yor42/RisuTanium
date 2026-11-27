@@ -138,4 +138,55 @@ describe('the boot connections migration, over the real save loop on a store2 se
         const reloaded = await page.k.saved() as unknown as StoredDatabase
         expect(migrateConnections(reloaded)).toBe('none')
     })
+
+    test('T6s-svc: all 13 service keys of a V3 profile are written into connections once, siblings intact, chat connections unchanged', async () => {
+        const chatConnections = [
+            { id: 'conn-1', name: 'OpenAI', provider: 'openai', key: 'sk-chat' },
+            { id: 'conn-2', name: 'Claude', provider: 'anthropic', key: 'sk-ant' },
+            { id: 'conn-3', name: 'p.invalid', provider: 'reverse_proxy', key: 'PK', url: 'https://p.invalid/v1' },
+        ]
+        const containers = {
+            openaiCompatImage: { url: 'https://img.invalid/v1', key: 'SYN-openai_image', model: 'img', size: '1024x1024', quality: 'hd' },
+            wavespeedImage: { key: 'SYN-wavespeed', model: 'ws', reference_image: 'asset/ref.png', loras: [{ id: 'l1', weight: 0.5 }] },
+            deeplOptions: { key: 'SYN-deepl', freeApi: true },
+            deeplXOptions: { url: 'http://dx.invalid:1188', token: 'SYN-deeplx' },
+            hypaCustomSettings: { url: 'https://emb.invalid/v1', key: 'SYN-embedding_custom', model: 'emb' },
+        }
+        const flat = {
+            elevenLabKey: 'SYN-elevenlabs', huggingfaceKey: 'SYN-huggingface', fishSpeechKey: 'SYN-fishspeech', NAIApiKey: 'SYN-novelai_media',
+            stabilityKey: 'SYN-stability', falToken: 'SYN-fal', supaMemoryKey: 'SYN-memory_openai', voyageApiKey: 'SYN-voyage',
+        }
+        const db = buildSmall(2)
+        Object.assign(db, structuredClone({ connections: chatConnections, proxyConnectionId: 'conn-3', ...flat, ...containers }))
+        const page = await startPage(db)
+        await settled(page.w)
+
+        const saved = await page.k.saved() as unknown as StoredDatabase & Record<string, unknown>
+        const connections = saved.connections ?? []
+        expect(connections.slice(0, 3)).toEqual(chatConnections)
+        const byProvider = Object.fromEntries(connections.slice(3).map((conn) => [conn.provider, conn.key]))
+        expect(byProvider).toEqual({
+            elevenlabs: 'SYN-elevenlabs', huggingface: 'SYN-huggingface', fishspeech: 'SYN-fishspeech', novelai_media: 'SYN-novelai_media',
+            stability: 'SYN-stability', fal: 'SYN-fal', openai_image: 'SYN-openai_image', wavespeed: 'SYN-wavespeed',
+            deepl: 'SYN-deepl', deeplx: 'SYN-deeplx', memory_openai: 'SYN-memory_openai', voyage: 'SYN-voyage',
+            embedding_custom: 'SYN-embedding_custom',
+        })
+        for (const field of Object.keys(flat)) {
+            expect(saved[field], field).toBe('')
+        }
+        expect(saved.openaiCompatImage).toEqual({ ...containers.openaiCompatImage, key: '' })
+        expect(saved.wavespeedImage).toEqual({ ...containers.wavespeedImage, key: '' })
+        expect(saved.deeplOptions).toEqual({ ...containers.deeplOptions, key: '' })
+        expect(saved.deeplXOptions).toEqual({ ...containers.deeplXOptions, token: '' })
+        expect(saved.hypaCustomSettings).toEqual({ ...containers.hypaCustomSettings, key: '' })
+
+        // The second boot of the saved store has nothing to absorb and writes nothing.
+        const mark = page.k.memory.snapshot()
+        await sleepReal(300)
+        await settled(page.w)
+        expect(page.k.writtenSince(mark)).toEqual([])
+        const { migrateConnections } = await import('src/ts/connections/migrate')
+        const reloaded = await page.k.saved() as unknown as StoredDatabase
+        expect(migrateConnections(reloaded)).toBe('none')
+    })
 })

@@ -1,18 +1,33 @@
 /**
- * The service key seam: one position per slot, the whole stored value, and the shared predicate
- * for a key read that must stop a request. The seam is backed by the legacy database position in
- * this stage, so these tests pin the position table; a later backing change keeps the same API.
+ * The service key seam: a slot is backed by its connection, the value is the whole stored string, a
+ * legacy database field is never read here, and the shared predicate marks a key read that must stop a request.
  */
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock('src/ts/storage/database.svelte', () => ({ getDatabase: vi.fn() }))
 
+const rejectRead = vi.hoisted(() => ({ on: false }))
+vi.mock('./keyAccess', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('./keyAccess')>()
+    return {
+        ...actual,
+        connectionKey: vi.fn(async (conn: Parameters<typeof actual.connectionKey>[0]) => {
+            if (rejectRead.on) {
+                const { VaultKeyUnavailableError } = await import('./keyVaultStore.svelte')
+                throw new VaultKeyUnavailableError('not yet')
+            }
+            return actual.connectionKey(conn)
+        }),
+    }
+})
+
 import type { Database } from 'src/ts/storage/database.svelte'
 import { SecretRefError } from 'src/ts/secretRef'
+import { GLOBAL_SLOT_PROVIDERS, slotConnection } from './connections'
 import { VaultKeyUnavailableError } from './keyVaultStore.svelte'
 import { currentServiceKey, currentServiceKeyForUi } from 'src/ts/process/request/secretKey'
 import {
-    isKeyReadStop, legacyServiceKey, SERVICE_SLOTS, serviceEditorValue, serviceKey, serviceKeyForUi, setServiceKey, type ServiceSlot,
+    isKeyReadStop, SERVICE_SLOTS, serviceEditorValue, serviceKey, serviceKeyForUi, setServiceKey, type ServiceSlot,
 } from './serviceKeys'
 
 function dbWith(extra: Record<string, unknown> = {}): Database {
@@ -28,87 +43,78 @@ function dbWith(extra: Record<string, unknown> = {}): Database {
     } as unknown as Database
 }
 
-/** The raw legacy position of each slot, spelled out so a table mistake in the seam cannot hide. */
-const POSITIONS: Record<ServiceSlot, (db: Database) => unknown> = {
-    elevenLabKey: (db) => db.elevenLabKey,
-    huggingfaceKey: (db) => db.huggingfaceKey,
-    fishSpeechKey: (db) => db.fishSpeechKey,
-    NAIApiKey: (db) => db.NAIApiKey,
-    stabilityKey: (db) => db.stabilityKey,
-    falToken: (db) => db.falToken,
-    'openaiCompatImage.key': (db) => db.openaiCompatImage.key,
-    'wavespeedImage.key': (db) => db.wavespeedImage.key,
-    'deeplOptions.key': (db) => db.deeplOptions.key,
-    'deeplXOptions.token': (db) => db.deeplXOptions.token,
-    supaMemoryKey: (db) => db.supaMemoryKey,
-    voyageApiKey: (db) => db.voyageApiKey,
-    'hypaCustomSettings.key': (db) => db.hypaCustomSettings.key,
+const PROVIDERS: Record<ServiceSlot, string> = {
+    elevenLabKey: 'elevenlabs', huggingfaceKey: 'huggingface', fishSpeechKey: 'fishspeech', NAIApiKey: 'novelai_media',
+    stabilityKey: 'stability', falToken: 'fal', 'openaiCompatImage.key': 'openai_image', 'wavespeedImage.key': 'wavespeed',
+    'deeplOptions.key': 'deepl', 'deeplXOptions.token': 'deeplx', supaMemoryKey: 'memory_openai', voyageApiKey: 'voyage',
+    'hypaCustomSettings.key': 'embedding_custom',
 }
 
+beforeEach(() => { rejectRead.on = false })
+
 describe('the service key table', () => {
-    test('lists the 13 slots, each once', () => {
+    test('lists the 13 slots, each once, each with its own provider', () => {
         expect(SERVICE_SLOTS).toHaveLength(13)
         expect(new Set(SERVICE_SLOTS).size).toBe(13)
-        expect([...SERVICE_SLOTS].sort()).toEqual(Object.keys(POSITIONS).sort())
+        expect([...SERVICE_SLOTS].sort()).toEqual(Object.keys(PROVIDERS).sort())
+        expect(new Set(SERVICE_SLOTS.map((slot) => GLOBAL_SLOT_PROVIDERS[slot])).size).toBe(13)
+        for (const slot of SERVICE_SLOTS) {
+            expect(GLOBAL_SLOT_PROVIDERS[slot]).toBe(PROVIDERS[slot])
+        }
     })
 
-    test.each(Object.keys(POSITIONS) as ServiceSlot[])('%s reads and writes its own legacy position and nothing else', async (slot) => {
+    test.each(Object.keys(PROVIDERS) as ServiceSlot[])('%s is stored in its connection and nowhere in the legacy fields', async (slot) => {
         const db = dbWith()
         const before = JSON.stringify(db)
 
         await setServiceKey(db, slot, `SYN-${slot}`)
 
-        expect(POSITIONS[slot](db)).toBe(`SYN-${slot}`)
-        expect(legacyServiceKey(db, slot)).toBe(`SYN-${slot}`)
+        expect(slotConnection(db, slot)).toMatchObject({ provider: PROVIDERS[slot], key: `SYN-${slot}` })
         expect(serviceEditorValue(db, slot)).toBe(`SYN-${slot}`)
         expect(serviceKeyForUi(slot, db)).toBe(`SYN-${slot}`)
         expect(await serviceKey(slot, db)).toBe(`SYN-${slot}`)
-        // Only the one position changed: every other slot still reads empty and the siblings are intact.
         for (const other of SERVICE_SLOTS.filter((s) => s !== slot)) {
-            expect(legacyServiceKey(db, other)).toBe('')
+            expect(await serviceKey(other, db)).toBe('')
         }
-        expect(JSON.stringify(db).replace(`SYN-${slot}`, '')).toBe(before)
+        const { connections, ...rest } = db as unknown as { connections: unknown } & Record<string, unknown>
+        expect(connections).toHaveLength(1)
+        expect(JSON.stringify(rest)).toBe(before)
     })
 })
 
 describe('the stored value', () => {
     test('is returned whole, with its lines and its reference text, never split or resolved', async () => {
-        const db = dbWith({ elevenLabKey: 'L1\nL2' })
+        const db = dbWith()
+        await setServiceKey(db, 'elevenLabKey', 'L1\nL2')
         expect(await serviceKey('elevenLabKey', db)).toBe('L1\nL2')
-        const ref = dbWith({ falToken: '${SYN_NAME}' })
-        expect(await serviceKey('falToken', ref)).toBe('${SYN_NAME}')
+        await setServiceKey(db, 'falToken', '${SYN_NAME}')
+        expect(await serviceKey('falToken', db)).toBe('${SYN_NAME}')
     })
 
-    test('a value that is not a string counts as empty', () => {
-        const db = dbWith({ elevenLabKey: 5, deeplOptions: 'x', hypaCustomSettings: { key: 7 } })
-        expect(legacyServiceKey(db, 'elevenLabKey')).toBe('')
-        expect(legacyServiceKey(db, 'deeplOptions.key')).toBe('')
-        expect(legacyServiceKey(db, 'hypaCustomSettings.key')).toBe('')
+    test('a legacy field is never read: a slot with no connection is empty although its old position holds a key', async () => {
+        const db = dbWith({
+            elevenLabKey: 'SYN-legacy', deeplOptions: { key: 'SYN-legacy-deepl', freeApi: true },
+            hypaCustomSettings: { url: 'u', key: 'SYN-legacy-hypa', model: 'm' },
+        })
+        expect(await serviceKey('elevenLabKey', db)).toBe('')
+        expect(serviceKeyForUi('elevenLabKey', db)).toBe('')
+        expect(serviceEditorValue(db, 'deeplOptions.key')).toBe('')
+        expect(await serviceKey('hypaCustomSettings.key', db)).toBe('')
     })
 
     test('currentServiceKey and currentServiceKeyForUi return the same whole value as the seam', async () => {
-        const db = dbWith({ voyageApiKey: 'SYN-a\nSYN-b' })
+        const db = dbWith()
+        await setServiceKey(db, 'voyageApiKey', 'SYN-a\nSYN-b')
         expect(await currentServiceKey('voyageApiKey', db)).toBe('SYN-a\nSYN-b')
         expect(currentServiceKeyForUi('voyageApiKey', db)).toBe('SYN-a\nSYN-b')
     })
-})
 
-describe('a nested write', () => {
-    test('keeps the container and its siblings', async () => {
+    test('a read that is rejected rejects, and is not turned into an empty key', async () => {
         const db = dbWith()
-        const container = db.wavespeedImage
-        await setServiceKey(db, 'wavespeedImage.key', 'SYN-w')
-        expect(db.wavespeedImage).toBe(container)
-        expect(db.wavespeedImage).toMatchObject({ key: 'SYN-w', reference_image: 'ref', loras: [] })
-    })
-
-    test('creates a container that is missing or not an object, with just the key', async () => {
-        const missing = dbWith({ deeplOptions: undefined })
-        await setServiceKey(missing, 'deeplOptions.key', 'SYN-d')
-        expect(missing.deeplOptions).toEqual({ key: 'SYN-d' })
-        const wrong = dbWith({ deeplXOptions: 'x' })
-        await setServiceKey(wrong, 'deeplXOptions.token', 'SYN-x')
-        expect(wrong.deeplXOptions).toEqual({ token: 'SYN-x' })
+        await setServiceKey(db, 'deeplXOptions.token', 'SYN-dx')
+        rejectRead.on = true
+        await expect(serviceKey('deeplXOptions.token', db)).rejects.toBeInstanceOf(VaultKeyUnavailableError)
+        await expect(currentServiceKey('deeplXOptions.token', db)).rejects.toBeInstanceOf(VaultKeyUnavailableError)
     })
 })
 

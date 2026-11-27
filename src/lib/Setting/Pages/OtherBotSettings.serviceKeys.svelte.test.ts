@@ -74,7 +74,7 @@ vi.mock(import('src/ts/connections/serviceKeys'), async (importOriginal) => {
 })
 
 import { DBState } from 'src/ts/stores.svelte'
-import { setServiceKey, type ServiceSlot } from 'src/ts/connections/serviceKeys'
+import { serviceEditorValue, setServiceKey, type ServiceSlot } from 'src/ts/connections/serviceKeys'
 import OtherBotSettings from './OtherBotSettings.svelte'
 
 let mounted: Array<{ target: HTMLElement, app: Record<string, unknown> }> = []
@@ -123,16 +123,15 @@ afterEach(async () => {
     vi.mocked(setServiceKey).mockClear()
 })
 
-const FIELDS: Array<{ provider: string, slot: ServiceSlot, labelSuffix: string, seed: Record<string, unknown>, read: () => unknown }> = [
-    { provider: 'stability', slot: 'stabilityKey', labelSuffix: '-f6', seed: { stabilityKey: 'SYN-shown' }, read: () => DBState.db.stabilityKey },
-    { provider: 'fal', slot: 'falToken', labelSuffix: '-f15', seed: { falToken: 'SYN-shown' }, read: () => DBState.db.falToken },
-    { provider: 'openai-compat', slot: 'openaiCompatImage.key', labelSuffix: '-f18', seed: { openaiCompatImage: { url: '', key: 'SYN-shown', model: '', size: '', quality: '' } }, read: () => DBState.db.openaiCompatImage.key },
-    { provider: 'wavespeed', slot: 'wavespeedImage.key', labelSuffix: '-f20', seed: { wavespeedImage: { key: 'SYN-shown', model: '', loras: [] } }, read: () => DBState.db.wavespeedImage.key },
+const FIELDS: Array<{ provider: string, slot: ServiceSlot, serviceProvider: string, labelSuffix: string }> = [
+    { provider: 'stability', slot: 'stabilityKey', serviceProvider: 'stability', labelSuffix: '-f6' },
+    { provider: 'fal', slot: 'falToken', serviceProvider: 'fal', labelSuffix: '-f15' },
+    { provider: 'openai-compat', slot: 'openaiCompatImage.key', serviceProvider: 'openai_image', labelSuffix: '-f18' },
+    { provider: 'wavespeed', slot: 'wavespeedImage.key', serviceProvider: 'wavespeed', labelSuffix: '-f20' },
 ]
-
-describe.each(FIELDS)('the $provider key field', ({ provider, slot, labelSuffix, seed, read }) => {
+describe.each(FIELDS)('the $provider key field', ({ provider, slot, serviceProvider, labelSuffix }) => {
     test('shows the stored key', () => {
-        seedDb({ sdProvider: provider, ...seed })
+        seedDb({ sdProvider: provider, connections: [{ id: 'conn-1', name: 'S', provider: serviceProvider, key: 'SYN-shown' }] })
         const input = mountImageTab().querySelector<HTMLInputElement>(`input[aria-labelledby$="${labelSuffix}"]`)
         expect(input?.value).toBe('SYN-shown')
     })
@@ -145,6 +144,7 @@ describe.each(FIELDS)('the $provider key field', ({ provider, slot, labelSuffix,
         input!.dispatchEvent(new Event('input', { bubbles: true }))
         flushSync()
         expect(setServiceKey).toHaveBeenCalledWith(DBState.db, slot, 'SYN-typed')
-        expect(read()).toBe('SYN-typed')
+        expect(serviceEditorValue(DBState.db, slot)).toBe('SYN-typed')
+        expect(DBState.db.connections).toEqual([expect.objectContaining({ provider: serviceProvider, key: 'SYN-typed' })])
     })
 })

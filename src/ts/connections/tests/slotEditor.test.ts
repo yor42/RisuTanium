@@ -49,6 +49,22 @@ describe('global and OaiComp slots', () => {
     })
 })
 
+describe('service slots', () => {
+    it('creates the connection of a service slot by its provider, named by its label, on the first value', async () => {
+        const db = makeDb()
+        await setSlotKey(db, 'elevenLabKey', '')
+        expect(db.connections).toBeUndefined()
+        await setSlotKey(db, 'elevenLabKey', 'SYN-el')
+        await setSlotKey(db, 'deeplXOptions.token', 'SYN-dx')
+        expect(db.connections!.map((c) => [c.provider, c.key, c.name])).toEqual([
+            ['elevenlabs', 'SYN-el', 'ElevenLabs'],
+            ['deeplx', 'SYN-dx', 'DeepLX'],
+        ])
+        expect(slotEditorValue(db, 'elevenLabKey')).toBe('SYN-el')
+        expect(slotEditorValue(db, 'deeplXOptions.token')).toBe('SYN-dx')
+    })
+})
+
 describe('proxy', () => {
     it('creates the working proxy on the first value and edits a shared one in place', async () => {
         const db = makeDb()

@@ -526,3 +526,86 @@ describe('T-RT: every in-scope key survives load, export and decode', () => {
         expect(exported.botPresets.map((preset) => preset.openAIKey)).toEqual(['', '', ''])
     })
 })
+
+//#region the 13 service keys
+
+const SERVICE_FLAT = ['elevenLabKey', 'huggingfaceKey', 'fishSpeechKey', 'NAIApiKey', 'stabilityKey', 'falToken', 'supaMemoryKey', 'voyageApiKey'] as const
+const SERVICE_NESTED = [['openaiCompatImage', 'key'], ['wavespeedImage', 'key'], ['deeplOptions', 'key'], ['deeplXOptions', 'token'], ['hypaCustomSettings', 'key']] as const
+const SERVICE_PROVIDERS = [
+    'elevenlabs', 'huggingface', 'fishspeech', 'novelai_media', 'stability', 'fal', 'memory_openai', 'voyage',
+    'openai_image', 'wavespeed', 'deepl', 'deeplx', 'embedding_custom',
+]
+
+/** A fork database holding the 13 service keys in connections only, with the containers present and their legacy positions empty. */
+function serviceConnectionsSeed(): Tree {
+    const keys = LEGACY_ROOT_KEYS as unknown as Record<string, Record<string, unknown> | string>
+    const seed: Tree = { connections: [] as unknown[] }
+    const conns = seed.connections as unknown[]
+    const add = (provider: string, key: string) => conns.push({ id: `conn-${conns.length + 1}`, name: provider, provider, key })
+    const providerOf = [...SERVICE_FLAT.map(String), ...SERVICE_NESTED.map(([root]) => root)]
+    const providers = Object.fromEntries(providerOf.map((slot, index) => [slot, SERVICE_PROVIDERS[index]]))
+    for (const field of SERVICE_FLAT) {
+        seed[field] = ''
+        add(providers[field], keys[field] as string)
+    }
+    for (const [root, sub] of SERVICE_NESTED) {
+        seed[root] = { ...(keys[root] as Record<string, unknown>), [sub]: '' }
+        add(providers[root], (keys[root] as Record<string, string>)[sub])
+    }
+    return seed
+}
+
+describe('the 13 service keys', () => {
+    // regression reproducer: RT-FU
+    test('RT-FU: an export of a connections-only database writes the 13 legacy fields, siblings intact, and no store', async () => {
+        const { exported } = await exportOf(serviceConnectionsSeed(), { load: false })
+
+        for (const field of SERVICE_FLAT) {
+            expect(exported[field], field).toBe((LEGACY_ROOT_KEYS as Record<string, unknown>)[field])
+        }
+        for (const [root] of SERVICE_NESTED) {
+            expect(exported[root], root).toEqual((LEGACY_ROOT_KEYS as Record<string, unknown>)[root])
+        }
+        expect(exported.connections).toBeUndefined()
+    })
+
+    // compatibility guard (passes before and after): T9-svc
+    test('T9-svc: an export leaves the page database as it was, service connections and containers included', async () => {
+        const { before, after } = await exportOf(serviceConnectionsSeed(), { load: false })
+
+        expect(after).toBe(before)
+    })
+
+    // regression reproducer: RT-UFU (the cleared legacy positions) plus a guard (the identity)
+    test('RT-UFU: an upstream database loads into 13 connections, and its export equals the original with every sibling', async () => {
+        const { exported, before } = await exportOf(roundTripLiteral(), { load: true })
+        const loaded = JSON.parse(before) as Record<string, unknown> & { connections: Array<{ provider: string }> }
+
+        for (const provider of SERVICE_PROVIDERS) {
+            expect(loaded.connections.filter((conn) => conn.provider === provider), provider).toHaveLength(1)
+        }
+        for (const field of SERVICE_FLAT) {
+            expect(loaded[field], `${field} cleared on the page`).toBe('')
+            expect(exported[field], field).toBe((LEGACY_ROOT_KEYS as Record<string, unknown>)[field])
+        }
+        for (const [root, sub] of SERVICE_NESTED) {
+            expect((loaded[root] as Record<string, unknown>)[sub], `${root}.${sub} cleared on the page`).toBe('')
+            expect(exported[root], root).toMatchObject((LEGACY_ROOT_KEYS as Record<string, unknown>)[root] as object)
+        }
+    })
+
+    // regression reproducer: RT-FUF
+    test('RT-FUF: the export of a connections-only database loads again into the same 13 connections', async () => {
+        const { exported } = await exportOf(serviceConnectionsSeed(), { load: false })
+        const reloaded = { pluginCustomStorage: {}, ...structuredClone(exported) } as unknown as StoredDatabase
+
+        setDatabase(reloaded)
+
+        const byProvider = Object.fromEntries((reloaded.connections ?? []).map((conn) => [conn.provider, conn.key]))
+        const expected = Object.fromEntries((serviceConnectionsSeed().connections as Array<{ provider: string, key: string }>).map((conn) => [conn.provider, conn.key]))
+        expect(byProvider).toEqual(expected)
+        expect(Object.keys(byProvider).sort()).toEqual([...SERVICE_PROVIDERS].sort())
+    })
+})
+
+//#endregion

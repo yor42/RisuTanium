@@ -498,6 +498,38 @@ describe('T21: the .bin names the keys it cannot carry before its writer opens',
         expect(order.log).not.toContain('writer-open')
     })
 
+    // regression reproducer: T21-svc
+    test('T21-svc: a wrapped service connection key is named in the one confirm and exported empty, never as the envelope', async () => {
+        live = [wrapped('conn-1', 'ElevenLabs', 'elevenlabs', ENV_A), wrapped('conn-2', 'Claude wrapped', 'anthropic', ENV_B)]
+        useDb({ connections: live, elevenLabKey: '', claudeAPIKey: '', deeplOptions: { key: '', freeApi: true } })
+
+        const outcome = await SaveLocalBackup()
+
+        expect(outcome.status).toBe('saved')
+        expect(keyConfirms()).toEqual([language.vaultExportUnreadableKeys('Claude wrapped, ElevenLabs')])
+        const out = await exported()
+        expect(out.elevenLabKey).toBe('')
+        expect(out.claudeAPIKey).toBe('')
+        expect(JSON.stringify(out)).not.toContain(ENV_A)
+        expect(JSON.stringify(out)).not.toContain(ENV_B)
+    })
+
+    // regression reproducer: T21-svc
+    test('T21-svc: declining the confirm for a service key writes no file', async () => {
+        live = [wrapped('conn-1', 'ElevenLabs wrapped', 'elevenlabs', ENV_A)]
+        useDb({ connections: live, elevenLabKey: '' })
+        alertConfirmMock.mockImplementation(async (message: string) => {
+            order.log.push(`confirm:${message}`)
+            return !message.includes('wrapped')
+        })
+
+        const outcome = await SaveLocalBackup()
+
+        expect(outcome).toEqual({ status: 'declined', cause: 'incomplete-data-declined' })
+        expect(order.log).not.toContain('writer-open')
+        expect(backupSink.writes).toHaveLength(0)
+    })
+
     // compatibility guard (passes before and after)
     test('a profile with no wrapped key asks no key confirm', async () => {
         live = [{ id: 'conn-1', name: 'OpenAI wrapped', provider: 'openai', key: 'SYNTH-PLAIN', url: undefined }]
