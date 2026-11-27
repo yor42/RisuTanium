@@ -9,7 +9,7 @@
  * Mounts the REAL `Sidebar.svelte`; the module mocks follow `Sidebar.closeButton.svelte.test.ts`.
  */
 import { flushSync, mount, unmount } from 'svelte'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
 import type { RisuEnvironmentLabel } from '../../ts/platform'
@@ -98,7 +98,7 @@ vi.mock(import('../../ts/stores.svelte'), () => {
         botMakerMode: writable(false),
         DynamicGUI: writable(false),
         sideBarClosing: writable(false),
-        sideBarStore: writable({ tab: 0 }),
+        sideBarStore: writable(false),
         PlaygroundStore: writable(0),
         QuickSettings: writable([]),
         additionalHamburgerMenu: writable([]),
@@ -114,7 +114,7 @@ vi.mock(import('../../ts/stores.svelte'), () => {
 // The chat panel's list is not under test; a selected character would otherwise mount its full toggle tree.
 vi.mock('./SideChatList.svelte', () => ({ default: () => {} }))
 
-import { DBState, OpenRealmStore, PlaygroundStore, selectedCharID } from '../../ts/stores.svelte'
+import { DBState, DynamicGUI, OpenRealmStore, PlaygroundStore, selectedCharID, sideBarClosing, sideBarStore } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import { homeChrome } from '../UI/Home/homeChrome.svelte'
 import { requestHomeReturnFocus, showHomeLanding, takeHomeReturnFocus } from '../UI/Home/homeView.svelte'
@@ -141,11 +141,11 @@ let mounted: { target: HTMLElement; app: Record<string, unknown> } | null = null
 let writes: string[] = []
 let unsubscribers: Array<() => void> = []
 
-function mountSidebar(dbExtra: Record<string, unknown>): HTMLElement {
+function mountSidebar(dbExtra: Record<string, unknown>, hidden = false): HTMLElement {
     DBState.db = buildDb(dbExtra)
     const target = document.createElement('div')
     document.body.appendChild(target)
-    const app = mount(Sidebar, { target, props: {} }) as unknown as Record<string, unknown>
+    const app = mount(Sidebar, { target, props: { hidden } }) as unknown as Record<string, unknown>
     flushSync()
     mounted = { target, app }
     return target
@@ -181,6 +181,8 @@ const EXPECTED_WRITES = [
 
 beforeEach(() => {
     resetRailMemory()
+    DynamicGUI.set(false)
+    sideBarStore.set(false)
     writes = []
     unsubscribers = []
     showHomeLanding()
@@ -267,28 +269,63 @@ describe('Sidebar Home look', () => {
         PlaygroundStore.set(0)
     })
 
-    test('S5-R1: on Home the panel has no welcome heading and no welcome hint', () => {
+    test.each([false, true])('Home shows only the docked rail even when the sidebar was closed (menuSideBar %s)', (menuSideBar) => {
+        homeChrome.landing = true
+        const target = mountSidebar({ menuSideBar }, true)
+        expect(rootOf(target)?.classList.contains('home-landing-rail')).toBe(true)
+        expect(rootOf(target)?.classList.contains('flex')).toBe(true)
+        expect(panelOf(target)).toBeNull()
+        expect(get(sideBarStore)).toBe(false)
+    })
+
+    test('entering Home hides the docked panel and opening a chat restores it', () => {
+        sideBarStore.set(true)
+        const target = mountSidebar({
+            characters: [{ chaId: 'c1', name: 'Synthetic', chats: [{ name: 'Chat 1', message: [], id: 'chat-1' }], chatPage: 0, image: '' }],
+        })
+        expect(panelOf(target)).not.toBeNull()
+
+        homeChrome.landing = true
+        flushSync()
+        expect(panelOf(target)).toBeNull()
+        expect(get(sideBarStore)).toBe(true)
+
+        selectedCharID.set(0)
+        homeChrome.landing = false
+        flushSync()
+        expect(panelOf(target)?.classList.contains('flex')).toBe(true)
+        expect(rootOf(target)?.classList.contains('home-landing-rail')).toBe(false)
+    })
+
+    test('entering Home completes a pending close without an animation event', () => {
+        sideBarStore.set(true)
+        const target = mountSidebar({})
+        sideBarClosing.set(true)
+        flushSync()
+        expect(panelOf(target)?.classList.contains('risu-sidebar-close')).toBe(true)
+
+        homeChrome.landing = true
+        flushSync()
+        expect(panelOf(target)).toBeNull()
+        expect(rootOf(target)?.classList.contains('risu-sub-sidebar-close')).toBe(false)
+        expect(get(sideBarClosing)).toBe(false)
+        expect(get(sideBarStore)).toBe(false)
+    })
+
+    test('an open Home rail overlay keeps a backdrop that closes without an animation event', () => {
+        DynamicGUI.set(true)
+        sideBarStore.set(true)
         homeChrome.landing = true
         const target = mountSidebar({})
-        const panel = panelOf(target)!
-        expect(panel.querySelector('h1')).toBeNull()
-        const texts = Array.from(panel.querySelectorAll('*')).map((el) => el.textContent?.trim())
-        expect(texts).not.toContain(language.sidebarWelcome)
-        expect(texts).not.toContain(language.sidebarWelcomeHint)
-    })
+        expect(panelOf(target)).toBeNull()
+        expect(rootOf(target)?.classList.contains('home-landing-rail')).toBe(true)
 
-    test('S5-R2: the Home look classes sit on the rail root and the panel in the avatar variant', () => {
-        homeChrome.landing = true
-        const avatar = mountSidebar({})
-        expect(rootOf(avatar)!.classList.contains('home-landing-rail')).toBe(true)
-        expect(panelOf(avatar)!.classList.contains('home-landing-panel')).toBe(true)
-    })
-
-    test('S5-R2: the menu-bar variant carries the same classes', () => {
-        homeChrome.landing = true
-        const target = mountSidebar({ menuSideBar: true })
-        expect(rootOf(target)!.classList.contains('home-landing-rail')).toBe(true)
-        expect(panelOf(target)!.classList.contains('home-landing-panel')).toBe(true)
+        const backdrop = target.querySelector<HTMLElement>('[role="button"][data-panel-surface]')
+        expect(backdrop).not.toBeNull()
+        backdrop!.click()
+        flushSync()
+        expect(get(sideBarClosing)).toBe(false)
+        expect(get(sideBarStore)).toBe(false)
     })
 
     for (const bottom of [false, true]) {
@@ -317,7 +354,7 @@ describe('Sidebar Home look', () => {
         expect(classTokens(target.querySelector('[data-rail-menu-wrap]'))).toEqual(tokensOf(BASE_WRAP_TOP))
         expect(classTokens(target.querySelector('[data-rail-menu]'))).toEqual(tokensOf(BASE_POPOVER_TOP))
         expect(target.querySelector('.home-landing-rail')).toBeNull()
-        expect(target.querySelector('.home-landing-panel')).toBeNull()
+        expect(panelOf(target)).not.toBeNull()
     })
 
     test('S5-G1: with the flag off the bottom menu keeps the base class lists', () => {

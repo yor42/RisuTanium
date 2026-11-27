@@ -143,7 +143,7 @@ test('a pending report cannot send traffic after agreement is withdrawn and the 
 
 const partOf = (el: Element | null): string | null => el?.getAttribute('data-part') ?? null
 
-/** The first element of the given tags whose trimmed text is exactly `text`. */
+/** The only element matching the selector whose trimmed text is exactly `text` (the test fails when there is none or more than one). */
 function byText(root: ParentNode, selector: string, text: string): HTMLElement {
     const found = Array.from(root.querySelectorAll<HTMLElement>(selector)).filter((el) => el.textContent?.trim() === text)
     expect(found, `${selector} with text ${text}`).toHaveLength(1)

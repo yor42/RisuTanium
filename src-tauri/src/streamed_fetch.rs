@@ -71,6 +71,9 @@ struct LiveEntry {
     /// True once the request's record is open: `cancel_all` then leaves it to
     /// run to its end and write its own record.
     owned: Arc<AtomicBool>,
+    /// The reply key the request's owner named, when it has one: `cancel_owned`
+    /// selects on it.
+    owner_key: Option<String>,
 }
 
 struct RegistryState {
@@ -151,11 +154,25 @@ impl FetchRegistry {
         self.register_tagged_at(id, StreamTags::default(), now)
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn register_tagged(&self, id: &str, tags: StreamTags) -> Registration {
         self.register_tagged_at(id, tags, Instant::now())
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn register_tagged_at(&self, id: &str, tags: StreamTags, now: Instant) -> Registration {
+        self.register_request(id, tags, None, now)
+    }
+
+    /// The request path's registration: `owner_key` is the reply key the page
+    /// asked this request to be owned under, if any.
+    pub fn register_request(
+        &self,
+        id: &str,
+        tags: StreamTags,
+        owner_key: Option<String>,
+        now: Instant,
+    ) -> Registration {
         let mut state = self.lock();
         Self::purge(&mut state, now);
         if state.tombstones.remove(id).is_some() {
@@ -169,7 +186,7 @@ impl FetchRegistry {
         let serial = state.next_serial;
         let (handle, registration) = AbortHandle::new_pair();
         let owned = Arc::new(AtomicBool::new(false));
-        state.live.insert(id.to_string(), LiveEntry { serial, handle, tags, owned: owned.clone() });
+        state.live.insert(id.to_string(), LiveEntry { serial, handle, tags, owned: owned.clone(), owner_key });
         Registration::Live(
             RegistrationGuard {
                 registry: self.clone(),
@@ -198,6 +215,29 @@ impl FetchRegistry {
             entry.handle.abort();
             false
         });
+    }
+
+    /// Aborts the live entries whose record is open and whose owner named `key`,
+    /// and returns whether any was aborted. It writes no tombstone: a key is not
+    /// a request id, and a request not yet open (not owned) is left alone.
+    /// Aborting ends the request in `run_registered`'s abort arm, which writes
+    /// the `stopped` end while the record is still held.
+    pub fn cancel_owned(&self, key: &str) -> bool {
+        let mut state = self.lock();
+        let ids: Vec<String> = state
+            .live
+            .iter()
+            .filter(|(_, entry)| {
+                entry.owned.load(Ordering::SeqCst) && entry.owner_key.as_deref() == Some(key)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &ids {
+            if let Some(entry) = state.live.remove(id) {
+                entry.handle.abort();
+            }
+        }
+        !ids.is_empty()
     }
 
     /// Aborts every live entry the page marked `chat_stop` and returns how many.
@@ -936,7 +976,12 @@ where
     F: Fn(String) -> Result<(), String> + Send + Sync,
 {
     let (_guard, abort_registration) =
-        match registry.register_tagged(&request.id, request.tags.clone()) {
+        match registry.register_request(
+            &request.id,
+            request.tags.clone(),
+            request.owner.as_ref().map(|owner| owner.key.clone()),
+            Instant::now(),
+        ) {
             Registration::AlreadyCancelled => return cancelled(),
             Registration::Duplicate => return cancelled(),
             Registration::Live(guard, abort_registration) => (guard, abort_registration),
@@ -950,7 +995,7 @@ where
     match Abortable::new(run_fetch(&request, &emit, slot.as_ref()), abort_registration).await {
         Ok(result) => result,
         // The one place every abort of a LIVE registration ends (`cancel_chat`,
-        // `cancel_all`, and `cancel` of a registered id): a later terminal
+        // `cancel_all`, `cancel_owned`, and `cancel` of a registered id): a later terminal
         // record for a cancelled request belongs here, where the request and
         // its tags are still owned. A cancel that arrives before registration
         // ends in the `AlreadyCancelled` arm instead. An owned request that had
@@ -2536,6 +2581,97 @@ mod tests {
         let slot: SharedSlot = Arc::new(Mutex::new(RecordSlot { record: None, ended: false, owned: Arc::new(AtomicBool::new(false)) }));
         let owner = OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None, notice: None, budget: process_body_budget() };
         stop_owned(&slot, &owner, "x", &|_| panic!("a stopped event for a request without a record"));
+    }
+
+    // #616: `cancel_owned` stops the owned request of one reply key; `retire_owned` then discards its record.
+    // RT1, guard (new contract): the abort reaches the request, closes its socket and the record ends `stopped`.
+    #[test]
+    fn cancel_owned_stops_the_owned_request_of_a_key() {
+        let base = scratch("rt1-owned");
+        let store = plain_store();
+        let registry = FetchRegistry::new();
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let (port, server) = serve_until_closed(closed_tx);
+        let (_events, chunk_rx, result_rx) = spawn_owned_abortable(&registry, &store, &base, port);
+        chunk_rx.recv_timeout(Duration::from_secs(5)).expect("stream did not start");
+
+        assert!(registry.cancel_owned(KEY));
+
+        assert_eq!(parse(&result_rx.recv_timeout(Duration::from_secs(5)).expect("fetch was not aborted")), cancelled_json());
+        assert!(closed_rx.recv_timeout(Duration::from_secs(5)).expect("socket stayed open"));
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.state, listing.outcome), (ReplyState::Terminal, Some(ReplyOutcome::Stopped)));
+        assert_eq!(registry.live_len(), 0);
+        server.join().unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    fn live_guard(registration: Registration) -> RegistrationGuard {
+        match registration {
+            Registration::Live(guard, _) => guard,
+            _ => panic!("the registration was not live"),
+        }
+    }
+
+    // RT2, guard: only an owned entry carrying the key is aborted; a not-yet-open entry of the same
+    // key, other keys and unkeyed entries are spared.
+    #[test]
+    fn cancel_owned_touches_only_owned_entries_of_that_key() {
+        let registry = FetchRegistry::new();
+        let now = Instant::now();
+        let other_key = "00000000-0000-4000-8000-000000000999".to_string();
+        let target = live_guard(registry.register_request("a", StreamTags::default(), Some(KEY.to_string()), now));
+        let other = live_guard(registry.register_request("b", StreamTags::default(), Some(other_key), now));
+        let refused = live_guard(registry.register_request("c", StreamTags::default(), Some(KEY.to_string()), now));
+        let unkeyed = live_guard(registry.register_request("d", StreamTags::default(), None, now));
+        for guard in [&target, &other, &unkeyed] {
+            guard.owned_flag().store(true, Ordering::SeqCst);
+        }
+
+        assert!(registry.cancel_owned(KEY));
+
+        assert_eq!(registry.live_len(), 3);
+        assert_eq!(registry.live_tags("a"), None);
+        assert!(registry.live_tags("b").is_some() && registry.live_tags("c").is_some() && registry.live_tags("d").is_some());
+        assert!(!registry.cancel_owned(KEY));
+        drop((target, other, refused, unkeyed));
+    }
+
+    // RT3, guard: an unknown key cancels nothing and leaves no tombstone, so a request registered later
+    // under an equal id runs.
+    #[test]
+    fn cancel_owned_of_an_unknown_key_leaves_no_tombstone() {
+        let registry = FetchRegistry::new();
+
+        assert!(!registry.cancel_owned(KEY));
+
+        assert_eq!(registry.tombstone_len(), 0);
+        assert!(matches!(registry.register(KEY), Registration::Live(..)));
+    }
+
+    // RT5, guard (new contract): a live owned request is stopped, and the record is discarded only after
+    // its `stopped` end was written and its live membership dropped.
+    #[test]
+    fn retire_owned_stops_a_live_request_and_discards_its_record() {
+        let base = scratch("rt5-retire");
+        let store = plain_store();
+        let registry = FetchRegistry::new();
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let (port, server) = serve_until_closed(closed_tx);
+        let (_events, chunk_rx, result_rx) = spawn_owned_abortable(&registry, &store, &base, port);
+        chunk_rx.recv_timeout(Duration::from_secs(5)).expect("stream did not start");
+
+        let outcome = store
+            .retire_owned(&base, KEY, |key| registry.cancel_owned(key), Duration::from_secs(5), Duration::from_millis(5))
+            .unwrap();
+
+        assert_eq!(outcome, crate::reply_store::CancelOutcome { cancelled: true, result: "removed", flushed: true });
+        assert!(!record_dir(&base, KEY).exists());
+        assert_eq!(parse(&result_rx.recv_timeout(Duration::from_secs(5)).expect("fetch was not aborted")), cancelled_json());
+        assert!(closed_rx.recv_timeout(Duration::from_secs(5)).expect("socket stayed open"));
+        assert!(store.list(&base).unwrap().is_empty());
+        server.join().unwrap();
+        fs::remove_dir_all(&base).unwrap();
     }
 
     // Native reply notices (stage 3): the hub decision, the end record and the token's life.

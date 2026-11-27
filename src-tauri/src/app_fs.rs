@@ -70,8 +70,10 @@ pub struct SweepReport {
 }
 
 /// The directories the process-start sweep walks: the same set as the page's
-/// `WRITE_TEMP_DIRECTORIES`, which `writeTempDirectories.json` keeps equal.
-pub const STARTUP_SWEEP_DIRECTORIES: [&str; 6] = ["database", "remotes", "coldstorage", "blocks", "assets", "modeldata"];
+/// `WRITE_TEMP_DIRECTORIES`, which `writeTempDirectories.json` keeps equal, and
+/// matching `store_keys::STORE_DIRECTORIES` (`native-reply` sweeps its own temps).
+pub const STARTUP_SWEEP_DIRECTORIES: [&str; 9] =
+    ["database", "remotes", "coldstorage", "blocks", "assets", "modeldata", "store2", "inlays", "consent"];
 
 /// How far before its trigger a walk's cutoff lies. File times come from a
 /// tick-coarse clock that can read slightly earlier than a precise `now`, so a
@@ -535,10 +537,9 @@ mod tests {
     }
 
     const TEMP: &str = "risu-write-0123456789abcdef.tmp";
-    const LISTED: [&str; 6] = ["database", "remotes", "coldstorage", "blocks", "assets", "modeldata"];
 
     fn listed() -> Vec<String> {
-        LISTED.iter().map(|name| name.to_string()).collect()
+        STARTUP_SWEEP_DIRECTORIES.iter().map(|name| name.to_string()).collect()
     }
 
     fn plant(s: &Scratch, key: &str) {
@@ -552,7 +553,7 @@ mod tests {
         let s = Scratch::new("sweep-all");
         plant(&s, TEMP);
         let mut expected = 1;
-        for directory in LISTED {
+        for directory in STARTUP_SWEEP_DIRECTORIES {
             plant(&s, &format!("{}/{}", directory, TEMP));
             plant(&s, &format!("{}/nested/deeper/{}", directory, TEMP));
             plant(&s, &format!("{}/keep.bin", directory));
@@ -564,7 +565,7 @@ mod tests {
         assert_eq!(report.removed, expected);
         assert!(report.failures.is_empty(), "{:?}", report.failures);
         assert!(!s.base.join(TEMP).exists());
-        for directory in LISTED {
+        for directory in STARTUP_SWEEP_DIRECTORIES {
             assert!(!s.base.join(directory).join(TEMP).exists());
             assert!(!s.base.join(directory).join("nested").join("deeper").join(TEMP).exists());
             assert!(s.base.join(directory).join("keep.bin").exists());
@@ -599,14 +600,14 @@ mod tests {
     fn sweep_does_not_descend_from_the_root_and_leaves_an_unlisted_directory_alone() {
         let s = Scratch::new("sweep-root-flat");
         plant(&s, &format!("other/{}", TEMP));
-        plant(&s, &format!("store2/{}", TEMP));
+        plant(&s, &format!("native-reply/{}", TEMP));
         plant(&s, &format!("assets/{}", TEMP));
 
         let report = sweep_write_temps(&s.base, &listed());
 
         assert_eq!(report.removed, 1);
         assert!(s.base.join("other").join(TEMP).exists());
-        assert!(s.base.join("store2").join(TEMP).exists());
+        assert!(s.base.join("native-reply").join(TEMP).exists());
     }
 
     #[test]
@@ -1205,7 +1206,7 @@ mod tests {
         let s = Scratch::new("cutoff-depth");
         let mut fresh = vec![producer_temp_name()];
         let mut old = vec![producer_temp_name()];
-        for directory in LISTED {
+        for directory in STARTUP_SWEEP_DIRECTORIES {
             fresh.push(format!("{}/{}", directory, producer_temp_name()));
             fresh.push(format!("{}/nested/deeper/{}", directory, producer_temp_name()));
             old.push(format!("{}/nested/deeper/{}", directory, producer_temp_name()));
@@ -1267,5 +1268,83 @@ mod tests {
         assert_eq!(removed.removed, 1);
         assert!(fs::symlink_metadata(&link).is_err());
         assert!(s.sentinel_intact());
+    }
+
+    #[test]
+    fn startup_sweep_removes_old_temps_in_store2_inlays_and_consent_and_keeps_live_files_and_native_reply() {
+        let s = Scratch::new("startup-store2-inlays-consent");
+        let old_temps = [
+            format!("store2/{}", producer_temp_name()),
+            format!("store2/nested/{}", producer_temp_name()),
+            format!("inlays/{}", producer_temp_name()),
+            format!("consent/{}", producer_temp_name()),
+        ];
+        for key in &old_temps {
+            plant_temp(&s, key, ago(60));
+        }
+        let fresh_store2 = format!("store2/{}", producer_temp_name());
+        plant_fresh_temp(&s, &fresh_store2);
+        let lookalike = "store2/risu-write-0123456789ABCDEF.tmp";
+        let keep = [
+            "store2/m-0123456789abcdef",
+            "store2/u-0123456789abcdef",
+            "store2-commit",
+            "store2-fence",
+            lookalike,
+            "inlays/m-0123456789abcdef",
+            "inlays/b-0123456789abcdef.0123456789abcdef",
+            "consent/mcp-stdio-approvals.json",
+            "consent/workspace-tool-grants.json",
+            "consent/native-private-network.json",
+        ];
+        for key in keep {
+            plant(&s, key);
+        }
+        let reply_temp = format!("native-reply/r/{}", producer_temp_name());
+        plant_temp(&s, &reply_temp, ago(60));
+
+        let sweep = StartupSweep::new();
+        sweep.run(|| Ok(s.base.clone()));
+        let report = sweep.take_or_walk(&s.base, &listed(), SystemTime::now());
+
+        assert_eq!(report.removed, old_temps.len() as u32, "{:?}", report);
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+        for key in &old_temps {
+            assert!(!s.base.join(key).exists(), "{}", key);
+        }
+        assert!(s.base.join(&fresh_store2).exists());
+        for key in keep {
+            assert!(s.base.join(key).exists(), "{}", key);
+        }
+        assert!(s.base.join(&reply_temp).exists());
+    }
+
+    #[test]
+    fn startup_directories_cover_every_store_directory() {
+        let mut swept: Vec<&str> = STARTUP_SWEEP_DIRECTORIES.to_vec();
+        let mut store: Vec<&str> = crate::store_keys::STORE_DIRECTORIES.to_vec();
+        swept.sort_unstable();
+        store.sort_unstable();
+        assert_eq!(swept, store);
+    }
+
+    #[test]
+    fn sweep_removes_the_temp_an_abandoned_chunked_store2_write_left_and_keeps_committed_keys() {
+        let s = Scratch::new("sweep-chunked-store2");
+        let keep = ["store2/u-0123456789abcdef", "store2-commit", "store2-fence"];
+        for key in keep {
+            plant(&s, key);
+        }
+        crate::chunked_io::write_chunk_key(&s.base, "store2/u-abcdef0123456789", "0123456789abcdef", 0, "AAAA", false, true, None).unwrap();
+        assert!(s.base.join("store2").join(TEMP).exists());
+
+        let report = sweep_write_temps(&s.base, &listed());
+
+        assert_eq!(report.removed, 1);
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+        assert!(!s.base.join("store2").join(TEMP).exists());
+        for key in keep {
+            assert_eq!(fs::read(s.base.join(key)).unwrap(), b"x", "{}", key);
+        }
     }
 }

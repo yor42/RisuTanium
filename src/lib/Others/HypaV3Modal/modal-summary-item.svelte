@@ -582,7 +582,7 @@
       </div>
 
       <textarea
-        class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden text-textcolor bg-darkbg"
+        class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
         aria-labelledby="{uid}-translation"
         aria-describedby="{uid}-translation"
         readonly
@@ -661,7 +661,7 @@
         </div>
 
         <textarea
-          class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden text-textcolor bg-darkbg"
+          class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
           aria-labelledby="{uid}-rerolled-translation"
           aria-describedby="{uid}-rerolled-translation"
           readonly
@@ -747,7 +747,7 @@
 
             <!-- Content -->
             <textarea
-              class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden text-textcolor bg-darkbg"
+              class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
               aria-labelledby="{uid}-message-role"
               aria-describedby="{uid}-message-role"
               readonly
@@ -777,7 +777,7 @@
           </div>
 
           <textarea
-            class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden text-textcolor bg-darkbg"
+            class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
             aria-labelledby="{uid}-message-translation"
             aria-describedby="{uid}-message-translation"
             readonly

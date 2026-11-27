@@ -6,7 +6,7 @@
 
 </script>
 
-{#if !homeChrome.phoneDrawer}
+{#if !homeChrome.phoneDrawer && (!homeChrome.landing || $DynamicGUI)}
 {#if $sideBarStore && !$DynamicGUI}
     <button aria-label={language.closeSidebar} title={language.closeSidebar} onclick={() => {sideBarClosing.set(true)}} class="absolute top-3 left-0 h-12 w-12 border-r border-b border-t border-transparent  rounded-r-md bg-darkbg hover:border-neutral-200 transition-colors flex items-center justify-center text-textcolor z-20">
         <ArrowLeft aria-hidden="true" />

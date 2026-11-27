@@ -8,7 +8,7 @@
  *
  * Tests starting `acceptance:` fail on the base (every part is absent). Tests starting `guard:` pass before and after.
  * MOCKED: `src/ts/alert`, `src/ts/realm`, `src/ts/storage/database.svelte`, `src/ts/process/moduleUse`, `src/ts/realmUploadUrl`, `src/ts/util`
- * (a sleep that never resolves) and `src/ts/stores.svelte`. Synthetic data only; the iframe URL is an unresolvable `.invalid` host and page
+ * (a sleep that never resolves), `src/ts/toast/toastHost.svelte` and `src/ts/stores.svelte`. Synthetic data only; the iframe URL is an unresolvable `.invalid` host and page
  * loading is disabled, so nothing contacts a host.
  */
 

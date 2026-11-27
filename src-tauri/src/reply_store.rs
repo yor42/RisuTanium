@@ -47,6 +47,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 /// The reserved top-level directory; `store2_gate` refuses it to the page's generic commands.
 pub const ROOT_DIR: &str = "native-reply";
@@ -198,6 +199,15 @@ impl ReplyListing {
 /// and whether every directory flush that backs the removal succeeded.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct RemoveOutcome {
+    pub result: &'static str,
+    pub flushed: bool,
+}
+
+/// The answer of `retire_owned`: whether a live request was stopped, and what
+/// the discard of its record did.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct CancelOutcome {
+    pub cancelled: bool,
     pub result: &'static str,
     pub flushed: bool,
 }
@@ -792,6 +802,38 @@ impl<O: FileOps + Send + Sync + 'static> ReplyStore<O> {
         self.remove(base, key, true)
     }
 
+    /// Whether a request in this process is still writing the key's record.
+    pub fn is_live(&self, key: &str) -> bool {
+        self.inner.live.lock().contains(key)
+    }
+
+    /// Stops the key's owned request through `cancel`, waits (at most `wait`,
+    /// polling every `step`) until the record's live membership has dropped, and
+    /// then discards the record. The discard happens only after the request has
+    /// written its end and released the record, so nothing recreates the
+    /// directory afterwards. A record still live when the wait ends is refused
+    /// with `live:` and left in place.
+    pub fn retire_owned(
+        &self,
+        base: &Path,
+        key: &str,
+        cancel: impl FnOnce(&str) -> bool,
+        wait: Duration,
+        step: Duration,
+    ) -> Result<CancelOutcome, String> {
+        require_key(key)?;
+        let cancelled = cancel(key);
+        let deadline = Instant::now() + wait;
+        while self.is_live(key) {
+            if Instant::now() >= deadline {
+                return Err(format!("live: reply {} is still being received", key));
+            }
+            std::thread::sleep(step);
+        }
+        let removed = self.discard(base, key)?;
+        Ok(CancelOutcome { cancelled, result: removed.result, flushed: removed.flushed })
+    }
+
     fn remove(&self, base: &Path, key: &str, allow_parked: bool) -> Result<RemoveOutcome, String> {
         require_key(key)?;
         let ops = &self.inner.ops;
@@ -1252,6 +1294,54 @@ mod tests {
         assert_eq!(listings[0].state, ReplyState::Live);
         drop(first);
         assert_eq!(store.list(&base).unwrap()[0].state, ReplyState::Incomplete);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    const RETIRE_WAIT: Duration = Duration::from_millis(200);
+    const RETIRE_STEP: Duration = Duration::from_millis(5);
+
+    // RT6, guard: a finished record is discarded without a cancel; no record is absent.
+    #[test]
+    fn retire_owned_discards_a_finished_record_and_reports_absent_for_none() {
+        let base = scratch("retire-done");
+        let store = plain_store();
+        produce_done(&store, &base, KEY, b"body");
+
+        let done = store.retire_owned(&base, KEY, |_| false, RETIRE_WAIT, RETIRE_STEP).unwrap();
+        let none = store.retire_owned(&base, KEY, |_| false, RETIRE_WAIT, RETIRE_STEP).unwrap();
+
+        assert_eq!(done, CancelOutcome { cancelled: false, result: "removed", flushed: true });
+        assert_eq!(none, CancelOutcome { cancelled: false, result: "absent", flushed: true });
+        assert!(!record_dir(&base, KEY).exists());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // RT7, guard: an invalid key is refused before the cancel callback runs.
+    #[test]
+    fn retire_owned_refuses_an_invalid_key_without_cancelling() {
+        let base = scratch("retire-invalid");
+        let store = plain_store();
+
+        let outcome = store.retire_owned(&base, "../x", |_| panic!("cancel called"), RETIRE_WAIT, RETIRE_STEP);
+
+        assert!(outcome.unwrap_err().starts_with("invalid-key"));
+        fs::remove_dir_all(&base).ok();
+    }
+
+    // RT8, guard: a record that stays live is refused within the wait and left in place.
+    #[test]
+    fn retire_owned_refuses_a_record_that_stays_live_within_the_wait() {
+        let base = scratch("retire-held");
+        let store = plain_store();
+        let held = store.open_record(&base, KEY, 1, "{}").unwrap();
+        let started = Instant::now();
+
+        let outcome = store.retire_owned(&base, KEY, |_| false, RETIRE_WAIT, RETIRE_STEP);
+
+        assert!(outcome.unwrap_err().starts_with("live:"));
+        assert!(started.elapsed() < RETIRE_WAIT + Duration::from_secs(1));
+        assert!(record_dir(&base, KEY).join(TICKET_FILE).exists());
+        drop(held);
         fs::remove_dir_all(&base).unwrap();
     }
 

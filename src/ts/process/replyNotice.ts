@@ -7,7 +7,7 @@ import { buildNativeNoticeArm } from '../nativeReply/notice'
 import { readNotificationStatus } from '../gui/notificationPermission'
 import { isAndroidTransport } from '../storage/tauriByteTransport'
 import { DBState } from '../stores.svelte'
-import { postToast } from '../toast/toastHost.svelte'
+import { DEFAULT_TOAST_CONFIG, postToast } from '../toast/toastHost.svelte'
 import { readAt, type Origin } from './chatOrigin'
 import { isPageVisible } from './chatOnScreen.svelte'
 import type { ReplyAnnouncement, ReplyOutcome } from './replyMarks'
@@ -229,7 +229,7 @@ export function announceReply(announcement: ReplyAnnouncement | null, callerSign
         return
     }
     if (announcement.outcome === 'stopped') {
-        postToast({ kind: 'warning', text: fillLang(language.replyStoppedElsewhere, { name: names.owner }), sub, cue: null })
+        postToast({ kind: 'warning', text: fillLang(language.replyStoppedElsewhere, { name: names.owner }), sub, cue: null, durationMs: DEFAULT_TOAST_CONFIG.infoMs })
         return
     }
     const title = fillLang(language.replyFinishedElsewhere, { name: names.owner })

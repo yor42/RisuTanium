@@ -21,6 +21,28 @@ export function propertyOf(path: SetPath): string {
     return factsOf(path).property ?? path
 }
 
+// The restore slot of a path: the last registered path that shares its (holder, property). Two paths on one holder
+// property read and write the same value, so a restore point, a restore plan and a revert keep one entry for them, and
+// the slot is the row that accepts every reading of the others (see the rules in fieldRegistry.ts). A path with no
+// alias, and every session-only path, is its own slot.
+let slotTable: Map<string, SetPath> | null = null
+
+export function restoreSlotOf(path: SetPath): SetPath {
+    const holders = factsOf(path).holders
+    if (holders.length === 0) {
+        return path
+    }
+    if (slotTable === null) {
+        slotTable = new Map()
+        for (const each of registryPaths()) {
+            for (const holder of factsOf(each).holders) {
+                slotTable.set(holder + '\u0000' + propertyOf(each), each)
+            }
+        }
+    }
+    return slotTable.get(holders[0] + '\u0000' + propertyOf(path)) ?? path
+}
+
 // Where a path lives on its holder: a dotted path `a.b` is key `b` of container `a`, any other path is a key of the holder
 // itself (`container` is null).
 export function slotOf(path: SetPath): { container: ContainerName | null; key: string } {

@@ -55,6 +55,8 @@ export interface PlainToastInit {
     sub?: string
     /** The cue played when the toast becomes visible: the kind's own when omitted, none when null. */
     cue?: ToastCue | null
+    /** Optional positive duration in ms; overrides the kind default (including making warning/error timed). */
+    durationMs?: number
 }
 
 /** `ok` must be literally true and `text` a non-blank string for the host to show success. */
@@ -207,7 +209,9 @@ interface Entry {
     pending: boolean
     /** Played once when the entry becomes visible; null is silent. */
     cue: ToastCue | null
-    /** Milliseconds still to run; null for a toast with no timer (warning, error). */
+    /** Explicit positive duration override in ms, when supplied by the caller. */
+    durationMs?: number
+    /** Milliseconds still to run; null for an untimed sticky toast (warning, error). */
     remaining: number | null
     /** Clock reading when the running timer started; null while the timer is not running. */
     startedAt: number | null
@@ -253,12 +257,16 @@ function isBlank(value: unknown): boolean {
     return typeof value !== 'string' || value.trim() === ''
 }
 
-function isSticky(kind: Entry['kind']): boolean {
+function isStickyKind(kind: Entry['kind']): boolean {
     return kind === 'warning' || kind === 'error'
 }
 
-function isTimedPlain(kind: Entry['kind']): boolean {
-    return kind === 'info' || kind === 'success'
+function isEntrySticky(entry: Entry): boolean {
+    return isStickyKind(entry.kind) && entry.durationMs === undefined
+}
+
+function isEntryTimedPlain(entry: Entry): boolean {
+    return entry.kind !== 'undo' && !isEntrySticky(entry)
 }
 
 function isRefusalAfter(value: unknown): value is 'close' | 'keep' | undefined {
@@ -391,7 +399,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
 
     function announceShown(entry: Entry): void {
         const text = entry.sub !== undefined ? entry.text + ' ' + entry.sub : entry.text
-        queueAnnouncement(isSticky(entry.kind) ? 'assertive' : 'polite', text)
+        queueAnnouncement(isStickyKind(entry.kind) ? 'assertive' : 'polite', text)
     }
 
     function durationFor(kind: Entry['kind']): number | null {
@@ -471,7 +479,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
     }
 
     function stickyCount(): number {
-        return entries.filter((entry) => isSticky(entry.kind)).length
+        return entries.filter(isEntrySticky).length
     }
 
     /** A sound that fails never disturbs the toast. */
@@ -487,7 +495,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
     }
 
     function show(entry: Entry): void {
-        entry.remaining = durationFor(entry.kind)
+        entry.remaining = entry.durationMs ?? durationFor(entry.kind)
         entries = [...entries, entry]
         announceShown(entry)
         playCue(entry.cue)
@@ -501,7 +509,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         const waiting = queue
         queue = []
         for (const entry of waiting) {
-            if (isSticky(entry.kind) && stickyCount() >= cfg.stickyCap) {
+            if (isEntrySticky(entry) && stickyCount() >= cfg.stickyCap) {
                 queue.push(entry)
             } else if (entries.length < cfg.maxVisible) {
                 show(entry)
@@ -527,7 +535,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
 
     /** Admission of an arriving toast; true when it was shown, false when it was queued. */
     function admit(entry: Entry): boolean {
-        if (isSticky(entry.kind) && stickyCount() >= cfg.stickyCap) {
+        if (isEntrySticky(entry) && stickyCount() >= cfg.stickyCap) {
             queue.push(entry)
             return false
         }
@@ -535,7 +543,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
             show(entry)
             return true
         }
-        const plain = entries.find((candidate) => isTimedPlain(candidate.kind))
+        const plain = entries.find((candidate) => isEntryTimedPlain(candidate))
         if (plain !== undefined) {
             removeEntry(plain)
             show(entry)
@@ -555,7 +563,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         return false
     }
 
-    function newEntry(kind: Entry['kind'], text: string, sub: unknown, cue: ToastCue | null): Entry {
+    function newEntry(kind: Entry['kind'], text: string, sub: unknown, cue: ToastCue | null, durationMs?: number): Entry {
         const entry: Entry = {
             id: nextId,
             kind,
@@ -570,6 +578,9 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         nextId += 1
         if (!isBlank(sub)) {
             entry.sub = sub as string
+        }
+        if (durationMs !== undefined) {
+            entry.durationMs = durationMs
         }
         return entry
     }
@@ -590,8 +601,11 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
             if (isBlank(init.text)) {
                 return refuse('text')
             }
+            if (init.durationMs !== undefined && (typeof init.durationMs !== 'number' || !Number.isFinite(init.durationMs) || init.durationMs <= 0)) {
+                return refuse('durationMs')
+            }
             const kind = init.kind ?? 'info'
-            const entry = newEntry(kind, init.text, init.sub, init.cue === undefined ? kind : init.cue)
+            const entry = newEntry(kind, init.text, init.sub, init.cue === undefined ? kind : init.cue, init.durationMs)
             // A queued toast changes nothing visible until it is released.
             if (admit(entry)) {
                 publishAfterAdmission()

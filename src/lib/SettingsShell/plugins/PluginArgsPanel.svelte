@@ -57,7 +57,7 @@
         }
     })
 
-    const fieldClass = 'border border-darkborderc focus:border-borderc rounded-md bg-transparent text-textcolor px-3 py-2 min-h-11 w-full focus:ring-borderc focus:ring-2 focus:outline-hidden'
+    const fieldClass = 'border border-darkborderc focus:border-borderc rounded-md bg-transparent text-textcolor px-3 py-2 min-h-11 w-full focus:outline-hidden risu-focus-ring'
 </script>
 
 <div class="flex flex-col pt-1" data-part="settings-plugin-args">

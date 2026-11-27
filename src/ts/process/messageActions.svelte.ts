@@ -19,6 +19,7 @@ import { speakerSpeechText } from './ttsSpeechText'
 import { getModelInfo } from '../model/modellist'
 import { getFileSrc } from '../globalApi.svelte'
 import { ParseMarkdown, type CbsConditions } from '../parser/parser.svelte'
+import { retireDeletedReplies } from '../nativeReply/retireOnDelete'
 
 export function copyMessageAsCard(options: {
     owner: object
@@ -106,9 +107,11 @@ export function deleteNow(owner: character | groupChat, chat: Chat, target: Mess
     if (!DBState.db.characters.includes(owner) || !owner.chats.includes(chat)) return false
     const at = chat.message.indexOf(target)
     if (at < 0) return false
+    let removed: Message[] = []
     withSupaRepoint(chat, () => {
-        chat.message.splice(at, mode === 'one' ? 1 : chat.message.length - at)
+        removed = chat.message.splice(at, mode === 'one' ? 1 : chat.message.length - at)
     })
+    retireDeletedReplies(removed)
     markCharacterForSave(owner.chaId)
     return true
 }
@@ -141,9 +144,11 @@ export function deleteAtSettle(origin: Origin, ids: FrozenDeleteIds, mode: Delet
             if (current.siblingIds.length !== ids.siblingIds.length) return
             if (current.siblingIds.some((id) => !ids.siblingIds.includes(id))) return
         } else if (current.rangeIds.length !== ids.rangeIds.length || current.rangeIds.some((id, index) => id !== ids.rangeIds[index])) return
+        let removed: Message[] = []
         withSupaRepoint(ctx.chat, () => {
-            ctx.chat.message.splice(at, mode === 'one' ? 1 : ctx.chat.message.length - at)
+            removed = ctx.chat.message.splice(at, mode === 'one' ? 1 : ctx.chat.message.length - at)
         })
+        retireDeletedReplies(removed)
         deleted = true
     })
     return deleted

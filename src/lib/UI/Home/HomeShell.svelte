@@ -151,6 +151,9 @@
     const latticeStill = $derived(band !== 'wide')
     const latticePaused = $derived(chatSurface.hidden || coversPage($alertStore.type) || modalLayerOpen())
     const latticeShown = $derived(latticeArmed && !DBState.db.customBackground)
+    // A custom background image (or the waifu theme wallpaper) sits behind the transparent landing;
+    // a scheme-matched scrim keeps Home text at WCAG AA without overriding scheme or pack text colours.
+    const hasBackdrop = $derived((DBState.db.customBackground?.length ?? 0) >= 2 || DBState.db.theme === 'waifu')
     // A light scheme and the Lite preset draw the lattice fainter: a light page has less headroom before the
     // links compete with text.
     const latticeSoft = $derived($ColorSchemeTypeStore === 'light' || DBState.db.colorSchemeName === 'lite')
@@ -311,7 +314,7 @@
     </div>
 {/if}
 
-<div bind:this={landingRoot} data-part="home-landing" data-layout={band} class="home-root relative flex h-full w-full flex-col">
+<div bind:this={landingRoot} data-part="home-landing" data-layout={band} data-backdrop={hasBackdrop ? '' : undefined} class="home-root relative flex h-full w-full flex-col {hasBackdrop ? 'bg-bgcolor/90' : ''}">
     {#if !$OpenRealmStore}
         <HomeTopBar
             {band}

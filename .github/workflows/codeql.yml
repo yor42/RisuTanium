@@ -46,3 +46,76 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: /language:${{ matrix.language }}
+
+  # CodeQL build-mode: none covers Java only; Kotlin requires a traced build.
+  # Uses a throwaway debug build with no signing secrets or keystore.
+  analyze-kotlin:
+    name: Analyze (java-kotlin)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    env:
+      # Skip onnxruntime-node CUDA binary downloads on Linux x64 (matches android-build.yml).
+      ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # The pnpm version comes from the packageManager field in package.json.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # The Android Gradle plugin and Gradle 8.14 need JDK 21 here; newer JDKs are not supported.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The runner image already carries the Android SDK and an NDK.
+      - name: Point the build at the runner's Android SDK and NDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android-aarch64
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin
+          build-mode: manual
+          config-file: ./.github/codeql/codeql-config.yml
+
+      # Disable the Gradle daemon and build cache so CodeQL traces kotlinc/javac in-process;
+      # pass -Xmx2048m to match gradle.properties when running without a daemon.
+      - name: Build Android debug APK
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.caching=false -Xmx2048m
+        run: pnpm tauri android build --apk --debug --target aarch64
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:java-kotlin
