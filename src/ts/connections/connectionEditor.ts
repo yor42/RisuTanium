@@ -7,6 +7,7 @@ import {
 import { setConnectionKey } from './keyAccess'
 import { catalogEntry } from './providerCatalog'
 import { appendConnection } from './slotEditor'
+import { invalidateVertexToken } from 'src/ts/process/request/vertexToken'
 
 /*
  * The writers behind the Connections page. Each refuses a malformed store, replaces the connections
@@ -74,8 +75,7 @@ function applyKeyEffects(db: Database, provider: ConnectionProvider, plain: stri
         db.nanogptProvider = ''
     }
     if (provider === 'vertex') {
-        db.vertexAccessToken = ''
-        db.vertexAccessTokenExpires = 0
+        invalidateVertexToken(db)
     }
 }
 
