@@ -29,6 +29,7 @@ vi.mock(import('../../ts/stores.svelte'), () => {
         SettingsMenuIndex: writable(-1),
         settingsOpen: writable(true),
         alertStore: writable({ type: 'none', msg: '' }),
+        selIdState: { selId: -1 },
     } as unknown as typeof import('../../ts/stores.svelte')
 })
 
