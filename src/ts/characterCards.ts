@@ -17,6 +17,7 @@ import { ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "./
 import { createExportTask, type ExportTask } from "./exportTask"
 import { compressImage, getImageType } from "./media"
 import { DBState, SettingsMenuIndex, ShowRealmFrameStore, selectedCharID, settingsOpen } from "./stores.svelte"
+import { studioOpen } from "./studio/studioOpen"
 import { hasher } from "./parser/parser.svelte"
 import { type CharacterCardV3, type LorebookEntry } from '@risuai/ccardlib'
 import { reencodeImage } from "./process/files/inlays"
@@ -38,7 +39,7 @@ import { refuseImportWhileRestoring } from "./drive/backupWorkGuard"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
 import { DOWNLOAD_IMPORT_STEPS, IMPORT_STEPS, ImportCancelled, NO_IMPORT_PROGRESS, responseBlobWithProgress, sourceWithProgress, type ImportProgress } from "./importProgress"
 import { markBootWrite } from "./bootWindow"
-import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
+import { filterBlockedRealmCards, isRealmCreatorBlocked, realmBlockListKey } from "./realmBlocking"
 import { normalizeOnboarding } from "./onboardingData"
 import { splitLoreKeys } from "./process/loreKeys"
 import { placeDisabledMarker } from "./process/lorebookImportDecorators"
@@ -213,8 +214,11 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource, p
         DBState.db.modules.push(md)
         progress.committed({kind: 'module', slot: DBState.db.modules[DBState.db.modules.length - 1]})
         progress.notice(language.successImport)
-        SettingsMenuIndex.set(14)
-        settingsOpen.set(true)
+        // A module imported while Studio is open stays in Studio instead of opening Settings over it.
+        if(!get(studioOpen)){
+            SettingsMenuIndex.set(14)
+            settingsOpen.set(true)
+        }
         return {kind: 'imported', index: null}
     } catch (error) {
         if(error instanceof ModuleImportStopped){
@@ -1250,8 +1254,10 @@ export async function characterURLImport() {
                 markBootWrite()
                 DBState.db.modules.push(importData)
                 alertNormal(language.successImport)
-                SettingsMenuIndex.set(14)
-                settingsOpen.set(true)
+                if(!get(studioOpen)){
+                    SettingsMenuIndex.set(14)
+                    settingsOpen.set(true)
+                }
             }
         } catch (error) {
             alertError(importErrorMessage(error))
@@ -2803,7 +2809,7 @@ export type hubType = {
  * - `network` — anything else thrown (e.g. the request never reached a server at all).
  */
 export type RisuHubResult =
-    | { ok: true; cards: hubType[]; additionalHTML: string }
+    | { ok: true; cards: hubType[]; additionalHTML: string; blockedCreatorsKey?: string }
     | { ok: false; reason: 'http' | 'network' | 'timeout' | 'malformed' | 'offline' | 'consent'; status?: number }
 
 // A manual AbortController + setTimeout, not AbortSignal.timeout: distinguishing `timeout` from
@@ -2861,11 +2867,12 @@ export async function getRisuHub(arg:{
         try {
             const jso = await da.json()
             const blocked = DBState.db.blockedRealmCreators ?? []
+            const blockedCreatorsKey = realmBlockListKey(blocked)
             if(Array.isArray(jso)){
-                return { ok: true, cards: filterBlockedRealmCards(jso, blocked), additionalHTML: '' }
+                return { ok: true, cards: filterBlockedRealmCards(jso, blocked), additionalHTML: '', blockedCreatorsKey }
             }
             if(jso && Array.isArray(jso.cards)){
-                return { ok: true, cards: filterBlockedRealmCards(jso.cards, blocked), additionalHTML: jso.additionalHTML || '' }
+                return { ok: true, cards: filterBlockedRealmCards(jso.cards, blocked), additionalHTML: jso.additionalHTML || '', blockedCreatorsKey }
             }
             return { ok: false, reason: 'malformed' }
         } catch {

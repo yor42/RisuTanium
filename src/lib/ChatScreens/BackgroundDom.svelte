@@ -119,7 +119,7 @@
 
 
 {#if shown && selIdState.selId > -1}
-    <div class="absolute top-0 left-0 w-full h-full" {...{ [CARD_BACKGROUND_ATTR]: '' }}>
+    <div class="absolute top-0 left-0 w-full h-full isolate" {...{ [CARD_BACKGROUND_ATTR]: '' }}>
         {@html shown.html}
     </div>
 {/if}

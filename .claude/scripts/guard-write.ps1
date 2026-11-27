@@ -1,11 +1,11 @@
 #requires -Version 7.0
 $ErrorActionPreference = 'Stop'
-$role = '?'; $session = '?'; $agent = '?'; $requested = '?'
+$role = '?'; $session = '?'; $agent = '?'; $requested = '?'; $payloadCwd = $null
 try {
     . (Join-Path $PSScriptRoot 'write-guard-common.ps1')
     Assert-GuardRepository
     $payload = Read-GuardObject (Read-GuardStdin)
-    $session = $payload.session_id
+    $session = $payload.session_id; $payloadCwd = $payload.cwd
     Assert-GuardId $session
     if ($payload.hook_event_name -isnot [string] -or $payload.hook_event_name -cne 'PreToolUse' -or $payload.tool_name -isnot [string] -or $payload.tool_name -cnotin @('Write', 'Edit') -or $payload.tool_input -isnot [Collections.IDictionary]) { throw 'Unsupported hook event or tool shape.' }
     $requested = $payload.tool_input.file_path
@@ -26,7 +26,11 @@ try {
 } catch {
     function Safe-Label([object]$Value) { return ([string]$Value -replace '[\x00-\x1f\x7f]', '?').Substring(0, [Math]::Min(200, ([string]$Value -replace '[\x00-\x1f\x7f]', '?').Length)) }
     # Do not echo input content or parser exception excerpts.
-    $diagnostic = 'Write/Edit denied: invalid or ungranted request; role={0}; session={1}; agent={2}; path={3}' -f @((Safe-Label $role), (Safe-Label $session), (Safe-Label $agent), (Safe-Label $requested))
+    # The automatic worktree grant is keyed on the payload cwd, so a denial names the cwd and the worktree it resolves to.
+    $cwdLabel = if ($payloadCwd -is [string]) { Safe-Label $payloadCwd } else { '(missing)' }
+    $worktreeLabel = 'none'
+    try { $resolved = Get-GuardSessionWorktree $payloadCwd; if ($resolved) { $worktreeLabel = Safe-Label $resolved } } catch { }
+    $diagnostic = 'Write/Edit denied: invalid or ungranted request; role={0}; session={1}; agent={2}; path={3}; cwd={4}; worktree={5}' -f @((Safe-Label $role), (Safe-Label $session), (Safe-Label $agent), (Safe-Label $requested), $cwdLabel, $worktreeLabel)
     [Console]::Error.WriteLine($diagnostic)
     exit 2
 }

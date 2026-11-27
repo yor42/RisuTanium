@@ -61,6 +61,8 @@ import { createMacroIndex } from 'src/ts/studio/longText/macroIndex'
 import { setMacroIndexForTests } from 'src/ts/studio/longText/macroIndexService'
 import { readOwnerFields } from 'src/ts/studio/ownerFields'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { flushStudioFields } from 'src/ts/studio/fieldFlush'
+import { studioOpen } from 'src/ts/studio/studioOpen'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
@@ -444,5 +446,46 @@ describe('S4a-F1: classic placeholders on the two fields that carry them', () =>
         expect((field('presetGroupTemplate') as HTMLTextAreaElement).placeholder).toBe("<{{char}}'s Message>\n{{slot}}\n</{{char}}'s Message>")
         const plain = field('presetMainPrompt') as HTMLTextAreaElement
         expect(plain.hasAttribute('placeholder')).toBe(false)
+    })
+})
+
+describe('held composition flush on leave, close, and pagehide', () => {
+    function holdNameComposition(text: string): void {
+        const input = field('presetName') as HTMLInputElement
+        input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        input.value = text
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, inputType: 'insertCompositionText' }))
+        flushSync()
+    }
+
+    test('reproducer: pagehide writes a held preset name composition while the form stays mounted', async () => {
+        await mountPreset(1)
+        holdNameComposition('프리셋')
+        expect(slotBag(1).name).toBe('B')
+        window.dispatchEvent(new Event('pagehide'))
+        flushSync()
+        expect(slotBag(1).name).toBe('프리셋')
+        expect(service.view(presetOwnerKey(ids[1])).done).toHaveLength(1)
+    })
+
+    test('reproducer: leave flush writes a held preset name composition', async () => {
+        await mountPreset(1)
+        holdNameComposition('프리셋')
+        expect(slotBag(1).name).toBe('B')
+        flushStudioFields('leave')
+        flushSync()
+        expect(slotBag(1).name).toBe('프리셋')
+        expect(service.view(presetOwnerKey(ids[1])).done).toHaveLength(1)
+    })
+
+    test('reproducer: closing Studio via studioOpen writes a held preset name composition', async () => {
+        await mountPreset(1)
+        studioOpen.set(true)
+        holdNameComposition('프리셋')
+        expect(slotBag(1).name).toBe('B')
+        studioOpen.set(false)
+        flushSync()
+        expect(slotBag(1).name).toBe('프리셋')
+        expect(service.view(presetOwnerKey(ids[1])).done).toHaveLength(1)
     })
 })

@@ -929,7 +929,8 @@
     [data-part="chat-message-generation-info"] { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     [data-part="chat-message-avatar"] { display: inline-flex; align-items: center; justify-content: center; width: var(--size-avatar-sm); height: var(--size-avatar-sm); border-radius: var(--radius-circle); background: var(--nexus-surface-raised); }
     [data-part="chat-message-avatar"]:not([data-round]) { border-radius: var(--radius-4); }
-    [data-part="chat-message-body"] { max-width: var(--thread-max-width); width: 100%; overflow-wrap: anywhere; }
+    /* Isolation keeps card-authored z-index inside the body while leaving sibling PartialEditController overlays untrapped. */
+    [data-part="chat-message-body"] { max-width: var(--thread-max-width); width: 100%; overflow-wrap: anywhere; isolation: isolate; }
     [data-part="chat-message"].user { border-left: var(--stroke-bold) solid var(--nexus-edge-strong); }
     [data-part="chat-message-body"][data-spring] { transition: transform var(--chat-dur-slow) var(--chat-ease-spring); }
     [data-part="chat-message-body"][data-commit="forward"] { animation: commit-in-forward var(--chat-dur-base) var(--chat-ease-out) both; }

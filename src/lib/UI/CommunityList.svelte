@@ -92,12 +92,12 @@
           -->
           <button
             type="button"
-            class="risu-focus-ring flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--home-radius-3)] px-2 text-left text-textcolor hover:bg-darkbutton"
+            class="risu-focus-ring flex min-h-11 w-full flex-wrap items-start gap-x-3 gap-y-1 rounded-[var(--home-radius-3)] px-2 py-2.5 text-left text-textcolor hover:bg-darkbutton"
             onclick={() => {
               openURL(relatedLink.href)
             }}
           >
-            <span aria-hidden="true" data-part="home-row-icon" class="shrink-0 text-[color:var(--home-ink-2)]">
+            <span aria-hidden="true" data-part="home-row-icon" class="mt-1 shrink-0 text-[color:var(--home-ink-2)]">
               <Icon class="h-4 w-4" strokeWidth={1.5} />
             </span>
             <span data-part="home-community-title" class="max-w-full flex-1 text-[length:var(--home-text-md)] [overflow-wrap:break-word]">{relatedLink.title}</span>

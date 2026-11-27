@@ -3,8 +3,7 @@
 // decodes `Content-Encoding: br` through that decoder, so a hostile remote
 // server can reach it. The server only warns; it never refuses to start.
 //
-// MUST be updated with future Node security releases. The Hono Node entry keeps
-// a copy of this table in server/hono/src/nodeVersionCheck.ts; keep both equal.
+// MUST be updated with future Node security releases.
 const CVE_ID = 'CVE-2026-111497';
 const LATEST_FIXED_MAJOR = 26;
 // Lowest fixed version of each fixed release line: [major, minor, patch].

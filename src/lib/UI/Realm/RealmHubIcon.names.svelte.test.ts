@@ -91,4 +91,12 @@ describe('RealmHubIcon tile and capability badges', () => {
     test('no default-palette class is left', () => {
         expect(paletteClasses(mountIcon())).toEqual([])
     })
+
+    test('card image uses lazy loading and async decoding', () => {
+        const target = mountIcon()
+        const img = target.querySelector('img')
+        expect(img).not.toBeNull()
+        expect(img?.getAttribute('loading')).toBe('lazy')
+        expect(img?.getAttribute('decoding')).toBe('async')
+    })
 })

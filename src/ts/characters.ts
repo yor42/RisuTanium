@@ -392,12 +392,24 @@ function createPaintYield(): () => Promise<void> {
     }
 }
 
+function canCopyHtmlEmbed(): boolean {
+    return typeof ClipboardItem === 'function' && typeof navigator.clipboard?.write === 'function'
+}
+
 export async function exportChat(page:number){
     // The card of the HTML modes only: instant modes and every stop before the render never create it.
     let task: ExportTask<'messages' | 'write'> | null = null
     try {
 
-        const mode = await alertSelect([language.alerts.exportAsJson, language.alerts.exportAsTxt, language.alerts.exportAsHtmlFile, language.alerts.exportAsHtmlEmbed], undefined, { cancel: ALERT_SELECT_CANCEL })
+        const exportModes = [
+            language.alerts.exportAsJson,
+            language.alerts.exportAsTxt,
+            language.alerts.exportAsHtmlFile,
+        ]
+        if(canCopyHtmlEmbed()){
+            exportModes.push(language.alerts.exportAsHtmlEmbed)
+        }
+        const mode = await alertSelect(exportModes, undefined, { cancel: ALERT_SELECT_CANCEL })
         if(mode === ALERT_SELECT_CANCEL){
             return
         }
@@ -459,7 +471,7 @@ export async function exportChat(page:number){
         }
         const date = new Date().toJSON();
         const htmlChatParse = async (v:string) => {
-            v = parseMarkdownSafe(v)
+            v = parseMarkdownSafe(v, { forTranslation: doTranslate })
 
             if(doTranslate){
                 // Translator, LLM and display-script output is not trusted markup:

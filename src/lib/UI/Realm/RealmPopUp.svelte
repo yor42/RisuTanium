@@ -7,7 +7,7 @@
     import { ALERT_INPUT_CANCEL } from "src/ts/alertCancel";
     import { copyPlainText } from "src/ts/chatCopy";
     import { hubURL, type hubType, downloadRisuHub, getRealmInfo } from "src/ts/characterCards";
-    import { askUpstreamAgreement } from "src/ts/upstreamAgreement";
+    import { askUpstreamAgreement, verifyUpstreamAccepted } from "src/ts/upstreamAgreement";
 
     import { get } from "svelte/store";
     import { DBState, alertStore } from 'src/ts/stores.svelte';
@@ -211,19 +211,20 @@
                 <div data-part="modal-controls" class="flex flex-wrap gap-2 p-2" hidden={!moreOpen}>
                     <button type="button" data-part="modal-action" class="risu-focus-ring flex min-h-11 items-center gap-2 rounded-md border border-darkborderc bg-darkbutton px-4 text-draculared hover:bg-selected/50" onclick={(async (e) => {
                         e.stopPropagation()
+                        const card = openedData
                         const conf = await alertConfirm(language.alerts.realmReportConfirm)
-                        if(conf){
+                        if(conf && openedData === card){
                             const report = await alertInput(language.alerts.realmReportPrompt, undefined, undefined, { cancel: ALERT_INPUT_CANCEL })
-                            if(report === ALERT_INPUT_CANCEL){
+                            if(report === ALERT_INPUT_CANCEL || openedData !== card){
                                 return
                             }
-                            if(!(await askUpstreamAgreement())){
+                            if(!(await askUpstreamAgreement()) || openedData !== card || !verifyUpstreamAccepted()){
                                 return
                             }
                             const da = await fetch(hubURL + '/hub/report', {
                                 method: "POST",
                                 body: JSON.stringify({
-                                    id: openedData.id,
+                                    id: card.id,
                                     report: report
                                 })
                             })

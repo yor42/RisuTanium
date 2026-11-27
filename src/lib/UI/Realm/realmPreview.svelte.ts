@@ -1,5 +1,7 @@
+import { untrack } from 'svelte';
 import { DBState } from 'src/ts/stores.svelte';
-import { getRisuHub, type hubType } from 'src/ts/characterCards';
+import { getRisuHub, type RisuHubResult, type hubType } from 'src/ts/characterCards';
+import { filterBlockedRealmCards, realmBlockListKey } from 'src/ts/realmBlocking';
 
 // Five-state model replacing the old `{#await}` -- offline/pending/
 // failed/empty/populated, the card list, the announcement string, and a
@@ -16,7 +18,16 @@ export interface RealmPreview {
   readonly announcement: string;
   readonly hidden: boolean;
   load(): Promise<void>;
+  /**
+   * Returns the in-flight or recent default-page request so RealmMain can reuse
+   * it instead of issuing a duplicate recommended/page-0 fetch. Returns null
+   * when no load is cached, the cache is older than 5 minutes, or the blocked
+   * creators list changed since the request started.
+   */
+  getInitialList(): Promise<RisuHubResult> | null;
 }
+
+const REALM_LIST_MAX_AGE_MS = 5 * 60 * 1000;
 
 /**
  * Contains effects; call it while a component (or an effect root) is being
@@ -24,17 +35,25 @@ export interface RealmPreview {
  * owner. `accepted` is read inside both effects, so it must read reactive
  * state for them to follow acceptance.
  */
-export function createRealmPreview(accepted: () => boolean): RealmPreview {
+export function createRealmPreview(accepted: () => boolean, verifyAccepted: () => boolean): RealmPreview {
     let hubStatus: HubPreviewStatus = $state('pending');
     let hubCards: hubType[] = $state([]);
     let hubAnnouncement = $state('');
+    const visibleCards = $derived(filterBlockedRealmCards(hubCards, DBState.db.blockedRealmCreators ?? []));
 
     // Monotonic generation counter: guards every state write below (offline,
     // pending, success and failure alike) so a superseded request's late
     // resolution can never stomp a newer request's result.
     let hubGeneration = 0;
 
+    let initialEntry: { key: string; time: number; promise: Promise<RisuHubResult> } | null = null;
+    // Untracked so loadHubPreview() called inside the acceptance/hideRealm $effect
+    // does not subscribe that effect to wholesale DBState.db reassignments.
+    const blockedCreatorsKey = () => untrack(() => realmBlockListKey(DBState.db.blockedRealmCreators ?? []));
+
     async function loadHubPreview() {
+      if (!verifyAccepted()) return;
+
       // Captured, then written before the request-issuing await below:
       // nothing else can run between the increment and this write (both
       // happen synchronously), so it is always the newest generation at
@@ -44,17 +63,24 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
       const generation = ++hubGeneration;
       hubStatus = 'pending';
 
+      const key = blockedCreatorsKey();
       // `getRisuHub` itself classifies "offline" (checked before any fetch
       // is issued) alongside every other failure reason.
-      const result = await getRisuHub({
+      const promise = getRisuHub({
         search: '',
         page: 0,
         nsfw: false,
         sort: 'recommended'
       });
+      const entry = { key, time: Date.now(), promise };
+      initialEntry = entry;
 
-      if (generation !== hubGeneration) {
+      const result = await promise;
+      if (generation !== hubGeneration || !verifyAccepted()) {
         return;
+      }
+      if (initialEntry === entry && (!result.ok || result.cards.length === 0 || result.blockedCreatorsKey !== entry.key)) {
+        initialEntry = null;
       }
 
       if (result.ok !== true) {
@@ -96,7 +122,13 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
     // `$derived`) both skip notifying on a write that reconfirms their current value, so a rerun
     // here always corresponds to a genuine transition.
     $effect(() => {
-      if (!realmHidden && accepted()) {
+      if (!accepted()) {
+        hubGeneration++;
+        initialEntry = null;
+        hubCards = [];
+        hubAnnouncement = '';
+        hubStatus = 'pending';
+      } else if (!realmHidden) {
         loadHubPreview();
       }
     });
@@ -123,11 +155,23 @@ export function createRealmPreview(accepted: () => boolean): RealmPreview {
       return () => window.removeEventListener('online', handleOnline);
     });
 
+    function getInitialList(): Promise<RisuHubResult> | null {
+      if (!accepted() || !initialEntry) {
+        return null;
+      }
+      if (initialEntry.key !== blockedCreatorsKey() || Date.now() - initialEntry.time > REALM_LIST_MAX_AGE_MS) {
+        initialEntry = null;
+        return null;
+      }
+      return initialEntry.promise;
+    }
+
     return {
-      get status() { return hubStatus; },
-      get cards() { return hubCards; },
+      get status() { return hubStatus === 'populated' && visibleCards.length === 0 ? 'empty' : hubStatus; },
+      get cards() { return visibleCards; },
       get announcement() { return hubAnnouncement; },
       get hidden() { return realmHidden; },
       load: loadHubPreview,
+      getInitialList,
     };
 }

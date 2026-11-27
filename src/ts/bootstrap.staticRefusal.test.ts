@@ -1,5 +1,5 @@
 /**
- * `loadData()` on a page that is neither Tauri nor served by the Node server (a static or Hono page): the boot
+ * `loadData()` on a page that is neither Tauri nor served by the Node server (a static page), the boot
  * refuses with a message and opens, reads and writes nothing. The real `bootstrap.ts` runs; the LocalForage module
  * and the storage object are in-memory models that record any use. Everything else `bootstrap.ts` imports is mocked,
  * as in the sibling bootstrap test files. The store2 dispatch is the real one over a memory backend, so a dispatch

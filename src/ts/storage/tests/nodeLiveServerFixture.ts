@@ -799,6 +799,23 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
             await pause(20)
         }
         quiet = true
+        // A paused committer can leave a staging marker behind (for example after a dropped commit-write reply).
+        // With writers paused nobody else would clear it, so every quiet GC pass would be refused with `staging`.
+        // `quiet` is set first so any pass that runs as soon as the marker clears is tallied under `-quiet`.
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const read = await seeder.committer.readCommit()
+            const classified = classifyCommitRead(read)
+            if (classified.status !== 'parsed' || classified.value.staging === null) {
+                break
+            }
+            const owning = clients.find((client) => client.owner === classified.value.staging?.owner) ?? seeder
+            await guarded('quiet-clear-marker', async () => {
+                const cleared = await owning.committer.clearMarker(read)
+                tally.add(`quiet-clear-marker:${cleared.cleared === null ? cleared.decision.decision : outcomeOf(cleared.cleared)}`)
+            })
+            await observer.check('quiet-clear-marker')
+        }
+        quietPasses = 0
         // An aged collector needs three sightings a minimum age apart, so its writer-free phase is bounded by time.
         const quietUntil = Date.now() + (options.aged === undefined ? 0 : AGED_QUIET_AGES * options.aged.minAgeMs)
         const quietExhausted = (): boolean => options.aged === undefined ? quietPasses >= QUIET_GC_MAX_PASSES : Date.now() >= quietUntil
