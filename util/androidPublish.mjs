@@ -2,6 +2,7 @@
 //
 //   node util/androidPublish.mjs check      before any build: refuses a run that would collide with a release
 //   node util/androidPublish.mjs publish    attaches the signed APK and latest-android.json to this commit's draft
+//   node util/androidPublish.mjs attach-locks   attaches the resolved Cargo.lock of every build to this commit's draft
 //
 // Importing this file has no effect. Every message printed is a fixed text plus values this script computed (the tag,
 // numeric release and asset ids, the repository constant): never release notes, a draft's name or body, or any other
@@ -308,6 +309,69 @@ export async function publish(env, { api, readConf = readRepoConf }) {
     return { ok: true, lines: [`publish: attached ${apkName} (asset id ${apkId}, ${apk.size} bytes) and ${jsonName} (asset id ${jsonId}) to draft release id ${draft.id} of ${tag}.`] }
 }
 
+// ---------------------------------------------------------------- attach-locks
+
+export const LOCK_MAX_BYTES = 4 * 1024 * 1024
+const LOCK_NAME = /^Cargo\.lock-[0-9A-Za-z._-]{1,80}$/
+
+/** The expected asset names from a comma list: each one Cargo.lock-<label>, no repeats, at least one. */
+export function expectedLockNames(text) {
+    const names = String(text ?? '').split(',')
+    if (names.some(name => !LOCK_NAME.test(name)) || new Set(names).size !== names.length) {
+        refuse('attach-locks: EXPECTED_LOCKS must be a comma list of distinct names like Cargo.lock-<target>.')
+    }
+    return names
+}
+
+/** The folder must hold exactly the expected regular files, none empty or over the limit. Nothing from the folder is printed. */
+function readLocks(dir, expected) {
+    if (!dir) refuse('attach-locks: the lock folder is not set.')
+    const entries = readdirSync(dir).sort()
+    if (entries.join('\n') !== [...expected].sort().join('\n')) refuse('attach-locks: the folder must hold exactly the expected Cargo.lock files.')
+    return entries.map(name => {
+        const info = lstatSync(path.join(dir, name))
+        if (!info.isFile() || info.isSymbolicLink() || info.size < 1 || info.size > LOCK_MAX_BYTES) {
+            refuse(`attach-locks: ${name} is not a regular file of 1..${LOCK_MAX_BYTES} bytes.`)
+        }
+        return { name, bytes: readFileSync(path.join(dir, name)) }
+    })
+}
+
+/** Returns { ok, lines }. Like publish: one matching draft of this commit, nothing deleted, a re-run over held names uploads nothing. */
+export async function attachLocks(env, { api, readConf = readRepoConf }) {
+    const version = (() => {
+        try {
+            const parsed = JSON.parse(readConf().confText).version
+            return typeof parsed === 'string' && PLAIN_VERSION.test(parsed) ? parsed : null
+        } catch {
+            return null
+        }
+    })()
+    if (version === null) refuse('attach-locks: the version in src-tauri/tauri.conf.json is not usable as a release tag.')
+    const sha = env.GITHUB_SHA ?? ''
+    if (env.GITHUB_REPOSITORY !== REPOSITORY) refuse(`attach-locks: this runs only in ${REPOSITORY}.`)
+    if (!COMMIT.test(sha)) refuse('attach-locks: the commit of this run is not a 40-digit lower-case hex id.')
+    const locks = readLocks(env.LOCK_DIR, expectedLockNames(env.EXPECTED_LOCKS))
+
+    const tag = `v${version}`
+    const draft = selectDraft(tagReleases(await pagedGet(api, releasesUrl(REPOSITORY)), tag), sha, version)
+    const base = `${UPLOAD_BASE}/repos/${REPOSITORY}/releases/${draft.id}/assets`
+    const release = await getRelease(api, draft.id)
+    if (release.id !== draft.id || release.draft !== true || release.tag_name !== tag || release.target_commitish !== sha || release.upload_url !== `${base}{?name,label}`) {
+        refuse('attach-locks: the draft changed or does not match this run.')
+    }
+    const names = locks.map(lock => lock.name)
+    const held = (await assetsOf(api, REPOSITORY, draft.id)).filter(asset => names.includes(asset.name))
+    if (held.length > 0) {
+        return { ok: false, lines: [`::error::attach-locks: the draft (release id ${draft.id}) already holds Cargo.lock files. Delete them by hand, then re-run:`, ...deleteCommands(held)] }
+    }
+    const ids = []
+    for (const lock of locks) ids.push(await upload(api, base, lock.name, 'text/plain', lock.bytes))
+    const after = await getRelease(api, draft.id)
+    if (after.id !== draft.id || after.draft !== true || after.target_commitish !== sha) refuse('attach-locks: the draft changed during the upload. Check it by hand.')
+    return { ok: true, lines: [`attach-locks: attached ${locks.length} Cargo.lock files (asset ids ${ids.join(', ')}) to draft release id ${draft.id} of ${tag}.`] }
+}
+
 // ---------------------------------------------------------------- network
 
 /** The real API function: GET and POST only, no redirect followed, bounded time. Returns { status, body }. */
@@ -353,8 +417,8 @@ export function githubApi(token) {
 export async function main(argv, env = process.env, log = console.log, { api, readConf } = {}) {
     try {
         const [command] = argv
-        if (argv.length !== 1 || (command !== 'check' && command !== 'publish')) {
-            log('::error::usage: androidPublish.mjs check | publish')
+        if (argv.length !== 1 || (command !== 'check' && command !== 'publish' && command !== 'attach-locks')) {
+            log('::error::usage: androidPublish.mjs check | publish | attach-locks')
             return 2
         }
         const deps = { api: api ?? githubApi(env.GITHUB_TOKEN) }
@@ -365,7 +429,7 @@ export async function main(argv, env = process.env, log = console.log, { api, re
             if (result.lines.length === 0) log(`release-check: v${result.version}: no conflicting release (Android ${result.includeAndroid ? 'on' : 'off'}).`)
             return result.lines.length === 0 ? 0 : 1
         }
-        const result = await publish(env, deps)
+        const result = command === 'publish' ? await publish(env, deps) : await attachLocks(env, deps)
         for (const line of result.lines) log(line)
         return result.ok ? 0 : 1
     } catch (error) {
