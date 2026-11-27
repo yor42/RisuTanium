@@ -1,4 +1,4 @@
-// Shared by the restore-slot tests: the real risky-flag fix rows (`lowLevelAccessFix` over `lowLevelAccess`, and so on)
+// Shared by the restore-slot tests: the real risky-flag fix rows (`lowLevelAccessFix` over `lowLevelAccess`, and so on, and `biasFix` over `bias`)
 // are the aliases of the real registry; `withAliasRows` adds one synthetic alias row over `hideChatIcon`, a holder
 // property no real row aliases, so a test can show the slot mechanism over a group the real registry does not hold.
 // A `vi.mock` of the registry calls `withAliasRows` through a dynamic import, because a mock factory is hoisted above

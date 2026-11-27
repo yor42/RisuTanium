@@ -2,7 +2,7 @@
     import { onDestroy, onMount, untrack } from 'svelte'
     import { language } from '../../lang'
     import { afterFlush } from '../../ts/afterFlush'
-    import { addRow, clampBias, deleteRow, duplicateIndexes, editToken, editValue, focusAfterDelete, type BiasNote } from '../../ts/studio/edit/biasRows'
+    import { addRow, clampBias, deleteRow, duplicateIndexes, editToken, editValue, focusAfterDelete, normalizeBiasRows, type BiasNote } from '../../ts/studio/edit/biasRows'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
     import { registerStudioField } from '../../ts/studio/fieldFlush'
     import { isBiasList } from '../../ts/studio/history/fieldAccess'
@@ -18,7 +18,7 @@
     // The token bias list of the character: one row per token with its value and a delete. Every change is one history
     // step; typing a token coalesces per row and a blur closes the step. A value is clamped to -100..100 and an emptied
     // one is stored as 0, each with a note. A list the strict reader cannot read (a `null` cell, a 3-tuple, a non-array)
-    // is shown read-only, as stored, and nothing is written for it: mounting writes nothing either.
+    // is shown read-only, as stored; only the Repair step writes it (one undoable `biasFix` step), and mounting writes nothing.
     interface Props {
         chaId: string
         owner: OwnerKey
@@ -123,6 +123,16 @@
         noted(service.editField(owner, 'bias', addRow(current), { coalesceKey: null }))
     }
 
+    async function repair(): Promise<void> {
+        if (!service || !editable || rows !== null) return
+        const result = service.editField(owner, 'biasFix', normalizeBiasRows(currentStored()), { coalesceKey: null })
+        if (!noted(result)) return
+        valueNotes = {}
+        await afterFlush()
+        const target = root?.querySelector<HTMLElement>('[data-bias-token]') ?? root?.querySelector<HTMLElement>('[data-bias-add]')
+        target?.focus()
+    }
+
     async function remove(index: number): Promise<void> {
         const current = rows
         if (!service || !editable || !current) return
@@ -167,6 +177,13 @@
     </div>
     {#if rows === null}
         <p role="note" class="text-sm text-textcolor2">{language.studioBiasUnreadable}</p>
+        <button
+            type="button"
+            data-bias-repair
+            class="min-h-11 self-start rounded-md border border-darkborderc bg-darkbg px-3 text-sm text-textcolor disabled:opacity-50"
+            disabled={!editable || !service}
+            onclick={() => void repair()}
+        >{language.studioBiasRepair}</button>
     {/if}
     {#if shownRows.length === 0}
         <p class="text-sm text-textcolor2">{language.noBias}</p>
