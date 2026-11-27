@@ -1,5 +1,7 @@
 import type { IndexedUnit } from './chatIndex'
+import { rawHash } from './records'
 import { UNIT_CHARS } from './units'
+import type { LoadResult, LoadTarget, PersistRow } from './vectorPersist'
 
 /** The dense list's length: only the best this many vectored units join the fusion (no similarity floor). */
 export const DENSE_TOP_K = 200
@@ -19,6 +21,26 @@ export const PAUSE_AUTH_MS = 10 * 60_000
 export const PAUSE_ERROR_MS = 60_000
 /** The most chats whose vectors are held in memory at once. */
 export const DENSE_CHAT_CAP = 2
+/** The longest a send waits for a chat's persisted vectors before it goes out on the keyword order. */
+export const DENSE_LOAD_WAIT_MS = 1000
+/** The longest the indexer waits for the persisted vectors before it embeds what is missing. */
+export const DENSE_READY_WAIT_MS = 10_000
+/** The indexer persists after this many embedded batches of one run. */
+export const PERSIST_EVERY_BATCHES = 32
+
+/** Resolves true when `p` settled within `ms`, false at the timeout; the timer never outlives `p`. */
+export function settleWithin(p: Promise<void>, ms: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), ms)
+        p.then(() => {
+            clearTimeout(timer)
+            resolve(true)
+        }, () => {
+            clearTimeout(timer)
+            resolve(true)
+        })
+    })
+}
 
 /** Embedding models trained on English only; a chat in another language matches poorly by meaning with them. */
 export const ENGLISH_ONLY_HYPA_MODELS: readonly string[] = ['MiniLM', 'MiniLMGPU', 'bgeSmallEn', 'bgeSmallEnGPU', 'nomic', 'nomicGPU']
@@ -69,18 +91,32 @@ export interface DenseJob {
 
 interface Entry {
     vec: Float32Array
-    text: string
+    /** The text the vector was embedded from; absent on an entry loaded from disk until its unit is first looked up. */
+    text?: string
+    /** `rawHash` of that text; what a persisted entry is validated by. */
+    textHash: string
+    /** 0 while the entry has no persisted row; the chunk number it was persisted in otherwise. */
+    seq: number
 }
 
 /**
- * One chat's vectors, in memory only. An entry belongs to a record key and an
+ * One chat's vectors, in memory and, once persisted, on disk. An entry belongs to a record key and an
  * ordinal and counts only while the unit's text still equals the text it was
  * embedded from: a record's key hashes its raw data, but a unit's text comes
  * from the wrapped message, so the same key may carry new text.
  */
-export class DenseStore {
+export class DenseStore implements LoadTarget {
     modelKey: string | null = null
     disposed = false
+    /** The owner and chat the vectors persist under; empty means the store persists nothing. */
+    owner = ''
+    chat = ''
+    /** Settles when the persisted vectors were imported or the read gave up; a store without persistence is ready at once. */
+    ready: Promise<void> = Promise.resolve()
+    loaded = true
+    persistedG: number | null = null
+    persistedChunks: number[] = []
+    persistedRows = 0
     private entries = new Map<string, (Entry | undefined)[]>()
     private count = 0
 
@@ -98,7 +134,12 @@ export class DenseStore {
 
     get(unit: IndexedUnit): Float32Array | undefined {
         const entry = this.entries.get(unit.key)?.[unit.ordinal]
-        if (!entry || entry.text !== unit.text) return undefined
+        if (!entry) return undefined
+        if (entry.text === undefined) {
+            if (entry.textHash !== rawHash(unit.text)) return undefined
+        } else if (entry.text !== unit.text) {
+            return undefined
+        }
         entry.text = unit.text
         return entry.vec
     }
@@ -111,12 +152,60 @@ export class DenseStore {
             this.entries.set(unit.key, row)
         }
         if (!row[unit.ordinal]) this.count++
-        row[unit.ordinal] = { vec, text: unit.text }
+        row[unit.ordinal] = { vec, text: unit.text, textHash: rawHash(unit.text), seq: 0 }
     }
 
     clear(): void {
         this.entries.clear()
         this.count = 0
+        this.resetPersistMarks()
+    }
+
+    resetPersistMarks(): void {
+        this.persistedG = null
+        this.persistedChunks = []
+        this.persistedRows = 0
+        for (const row of this.entries.values()) for (const entry of row) if (entry) entry.seq = 0
+    }
+
+    /** Binds the owner and chat the vectors persist under; no target means nothing persists. */
+    bindPersist(target: { chaId: string, chatId: string } | undefined): void {
+        this.owner = target?.chaId ?? ''
+        this.chat = target?.chatId ?? ''
+    }
+
+    /** Every entry as a persistable row; the rows stay valid after the store is disposed. */
+    snapshot(): PersistRow[] {
+        const rows: PersistRow[] = []
+        for (const [key, row] of this.entries) {
+            row.forEach((entry, ordinal) => {
+                if (entry) rows.push({ key, ordinal, textHash: entry.textHash, vec: entry.vec, seq: entry.seq, mark: (seq) => { entry.seq = seq } })
+            })
+        }
+        return rows
+    }
+
+    hasUnpersisted(): boolean {
+        for (const row of this.entries.values()) for (const entry of row) if (entry && entry.seq === 0) return true
+        return false
+    }
+
+    /** Adds the persisted rows the store has no entry for; a head of another model, owner or chat was already refused by the loader. */
+    importLoaded(result: LoadResult): void {
+        if (this.disposed || result.kind !== 'loaded' || result.head === null || this.modelKey !== result.modelKey) return
+        for (const r of result.rows) {
+            let row = this.entries.get(r.key)
+            if (!row) {
+                row = []
+                this.entries.set(r.key, row)
+            }
+            if (row[r.ordinal]) continue
+            row[r.ordinal] = { vec: r.vec, textHash: r.textHash, seq: r.seq }
+            this.count++
+        }
+        this.persistedG = result.head.g
+        this.persistedChunks = result.chunks
+        this.persistedRows = result.rowsRead
     }
 
     /** Drops every entry whose unit is no longer indexed; only the indexer calls this. */
@@ -145,9 +234,11 @@ export class DenseStore {
         this.count = count
     }
 
+    /** Drops the entries but keeps the persist marks: a snapshot taken before the dispose still persists incrementally. */
     dispose(): void {
         this.disposed = true
-        this.clear()
+        this.entries.clear()
+        this.count = 0
     }
 }
 

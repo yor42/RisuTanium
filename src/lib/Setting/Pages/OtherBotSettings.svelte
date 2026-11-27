@@ -41,6 +41,7 @@
         renameHypaV3Preset,
     } from "src/ts/process/memory/hypaV3Presets";
     import { chroMemoryOn, legacyEngineFields, memoryEngineOf, setMemoryEngine, type MemoryEngine } from "src/ts/process/memory/memoryEngine";
+    import { dropVectorsUnlessWanted } from "src/ts/process/memory/chroMemory/vectorPersist";
     import { budgetInputValue, defaultBudgetTokens, LORE_RECALL_CAP_DEFAULT, loreRecallCapInputValue, normalizeBudgetInput, writeLtmSettings } from "src/ts/process/memory/chroMemory/settings";
 
     // One hold per reference image; they end with the page.
@@ -1085,6 +1086,8 @@
             //@ts-expect-error 'value' doesn't exist on EventTarget, but target is HTMLSelectElement here
             const value: MemoryEngine = v.target.value
             setMemoryEngine(DBState.db, value)
+            // Saved search vectors are kept only while ChroMemory is the engine with hybrid retrieval.
+            void dropVectorsUnlessWanted()
         }}>
             <OptionInput value="none" >{language.none}</OptionInput>
             <OptionInput value="supaMemory" >{language.SuperMemory}</OptionInput>

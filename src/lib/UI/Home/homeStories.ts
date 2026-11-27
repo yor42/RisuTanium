@@ -1,5 +1,6 @@
 import type { Chat, Database } from '../../../ts/storage/database.svelte'
 import { isHiddenSystemCharacter } from '../../../ts/hiddenCharacters'
+import { stubDescription } from '../../../ts/process/coldCharacter'
 import { storySnippet } from './storySnippet'
 
 /**
@@ -49,6 +50,11 @@ export function currentChat(entry: Entry): Chat | null {
         return null
     }
     return chats[entry.chatPage] ?? chats[0] ?? null
+}
+
+/** The stub's description, which a group (no creator notes of its own) does not have. */
+function archivedSnippet(entry: Entry): string {
+    return entry.type === 'group' ? '' : stubDescription(entry.creatorNotes)
 }
 
 /** The story entries, most recent first, one per chaId, at most `STORY_CAP`. */
@@ -115,7 +121,9 @@ export function freezeStories(characters: ReadonlyArray<Entry>, unnamedLabel: st
  * The frozen stories against the live list: the frozen order, entries that left
  * the list (removed, trashed, hidden) dropped, nothing added or re-sorted. The
  * entry, its name, picture, time and archived state are live. The frozen chat
- * label and last line show only while the live entry is not archived.
+ * label and last line show only while the live entry is not archived. An
+ * archived entry shows the stub's description in the snippet slot: a string
+ * the stub already holds, so no chat is read.
  */
 export function resolveFrozen(frozen: readonly FrozenStory[], characters: ReadonlyArray<Entry>): ShelfStory[] {
     const wanted = new Set(frozen.map((story) => story.chaId))
@@ -140,7 +148,7 @@ export function resolveFrozen(frozen: readonly FrozenStory[], characters: Readon
             entry,
             archived,
             chatLabel: archived ? null : story.chatLabel,
-            snippet: archived ? '' : story.snippet,
+            snippet: archived ? archivedSnippet(entry) : story.snippet,
         })
     }
     return resolved

@@ -33,7 +33,9 @@
         "$APPDATA/coldstorage",
         "$APPDATA/coldstorage/**/*",
         "$APPDATA/remotes",
-        "$APPDATA/remotes/**/*"
+        "$APPDATA/remotes/**/*",
+        "$APPDATA/derived",
+        "$APPDATA/derived/**/*"
       ],
       "deny": [
         "/data/user/*/io.github.yor42.risutanium/cache",

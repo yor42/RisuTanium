@@ -172,9 +172,9 @@ describe('the shelf on the landing', () => {
         expect(part(cardOf(root, 'S1'), 'home-story-snippet')!.className).toContain('line-clamp-2')
     })
 
-    test('S3b-R2: an archived card shows the name, the tag and the time, reads no chats and shows no text', () => {
+    test('S3b-R2: an archived card shows the name, its description and the time, no badge, and reads no chats', () => {
         setCharacters([
-            archivedStub(warm('Arch', 9000), 'unit-arch'),
+            archivedStub(warm('Arch', 9000, { creatorNotes: 'A quiet harbour town.' }), 'unit-arch'),
             warm('S1', 1000),
         ])
         // The probe fires through the reactive proxy: a read of the stub's chats throws.
@@ -184,14 +184,15 @@ describe('the shelf on the landing', () => {
         expect(first.dataset.chaId).toBe('Arch')
         expect(first.textContent).toContain('Arch')
         expect(first.textContent).not.toContain(language.settingsPage.unnamed)
-        expect(part(first, 'home-story-archived')).not.toBeNull()
+        expect(part(first, 'home-story-archived')).toBeNull()
+        expect(first.textContent).not.toContain('Archived')
         expect(part(first, 'home-story-chat')).toBeNull()
-        expect(part(first, 'home-story-snippet')).toBeNull()
+        expect(part(first, 'home-story-snippet')!.textContent).toBe('A quiet harbour town.')
         expect(part(first, 'home-story-time')).not.toBeNull()
     })
 
-    test('S3b-R8: a warm card archived while Home is shown gains the tag and loses its text; the order holds', () => {
-        const s1 = warm('S1', 9000)
+    test('S3b-R8: a warm card archived while Home is shown swaps its last line for the description; the order holds', () => {
+        const s1 = warm('S1', 9000, { creatorNotes: 'A quiet harbour town.' })
         setCharacters([s1, warm('S2', 1000)])
         const { root } = mountShell()
         expect(cardOf(root, 'S1').textContent).toContain('Chat-S1')
@@ -201,9 +202,9 @@ describe('the shelf on the landing', () => {
         slots()[0] = buildColdStub(s1 as never, 'unit-s1', []) as unknown as Slot
         flushSync()
         const after = cardOf(root, 'S1')
-        expect(part(after, 'home-story-archived')).not.toBeNull()
+        expect(part(after, 'home-story-archived')).toBeNull()
         expect(part(after, 'home-story-chat')).toBeNull()
-        expect(part(after, 'home-story-snippet')).toBeNull()
+        expect(part(after, 'home-story-snippet')!.textContent).toBe('A quiet harbour town.')
         expect(after.textContent).not.toContain('Chat-S1')
         expect(after.textContent).not.toContain('Line S1')
         expect(order(root)).toEqual(['S1', 'S2'])

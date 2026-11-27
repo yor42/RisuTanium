@@ -26,6 +26,8 @@
 import localforage from 'localforage'
 import { acceptStagedLine } from '../../connections/restoredKeys'
 import { wrapForStaging } from '../../connections/keyVaultStore.svelte'
+import { nodeCreatableViolation, tauriCreatableViolation } from '../../storage/store/keyRules'
+import type { ByteStore } from '../../storage/store/contract'
 import { CONNECTION_KEYS_ID, SIDE_SECTION_IDS, type SideSectionId, type StoreSideSectionId } from './entryNames'
 import type { SideAction } from './sideDecision'
 import type { SideInput, SideRecord } from './rtbWriter'
@@ -40,6 +42,8 @@ import {
     RESTORED_KEYS_STORE,
     SAFE_PLUGIN_LS_PREFIX,
     UI_PREFS_KEYS,
+    VECTORS_KEY_PREFIX,
+    VECTORS_MAX_RECORD_BYTES,
     type ForageStoreConfig,
 } from './sideStoreConfig'
 import { prepareSideValue, RTB_SIDE_TAGS } from './sideTags'
@@ -53,6 +57,24 @@ export interface SideBackends {
      * working vault. Absent means no vault: the record then holds the plain.
      */
     stageWrap?(plain: string): Promise<string | null>
+    /** The byte store holding the ChroMemory vector folders; absent means the page's own store. */
+    vectors?(): Promise<ByteStore>
+}
+
+/**
+ * The byte store of the vector folders. An injected backend answers for itself. The page's own store, when the page
+ * cannot select one, holds no folders: null, with nothing to read and nothing to clear. The export and the restore
+ * both need that same store for the data they carry, so a page without it never reaches this far.
+ */
+async function vectorStoreOf(backends: SideBackends): Promise<ByteStore | null> {
+    if (backends.vectors !== undefined) {
+        return backends.vectors()
+    }
+    try {
+        return await (await import('../../storage/store/appStore')).getAppStore()
+    } catch {
+        return null
+    }
 }
 
 export const defaultSideBackends: SideBackends = {
@@ -66,6 +88,7 @@ type StoreKind =
     | { kind: 'safe-ls' }
     | { kind: 'ui-prefs' }
     | { kind: 'staging' }
+    | { kind: 'vectors' }
 
 const STORE_KINDS: Readonly<Record<SideSectionId, StoreKind>> = {
     'side.iris': { kind: 'forage', config: IRIS_STORE },
@@ -77,6 +100,7 @@ const STORE_KINDS: Readonly<Record<SideSectionId, StoreKind>> = {
     'side.mcp-tool-calls': { kind: 'forage', config: MCP_TOOL_CALLS_STORE },
     'side.ui-prefs': { kind: 'ui-prefs' },
     'side.connection-keys': { kind: 'staging' },
+    'side.chromemory-vectors': { kind: 'vectors' },
 }
 
 const UI_PREFS_SET: ReadonlySet<string> = new Set(UI_PREFS_KEYS)
@@ -140,6 +164,46 @@ function sorted(keys: readonly string[]): string[] {
     return [...keys].sort()
 }
 
+/** The folder a vector key belongs to: its first segment, or the whole key when it has none. */
+function vectorFolderOf(key: string): string {
+    const slash = key.indexOf('/')
+    return slash < 0 ? key : key.slice(0, slash)
+}
+
+/**
+ * Records of the vector folders, keys relative to the prefix. A vanished key is skipped. A read that rejects skips
+ * the rest of that folder (its head sorts last, so the folder restores headless and is reclaimed) with a console
+ * warning only: the vectors are a rebuildable cache and the export goes on. A record over the cap is skipped.
+ */
+async function* vectorRecords(store: ByteStore | null, keys: readonly string[]): AsyncGenerator<SideRecord> {
+    if (store === null) {
+        return
+    }
+    const failed = new Set<string>()
+    for (const key of keys) {
+        const folder = vectorFolderOf(key)
+        if (failed.has(folder)) {
+            continue
+        }
+        let bytes: Uint8Array | null
+        try {
+            bytes = (await store.read(`${VECTORS_KEY_PREFIX}${key}`)).bytes
+        } catch (error) {
+            console.warn(`The search-vector folder ${JSON.stringify(folder)} could not be read; the rest of it is left out of the backup.`, error)
+            failed.add(folder)
+            continue
+        }
+        if (bytes === null) {
+            continue
+        }
+        if (bytes.length > VECTORS_MAX_RECORD_BYTES) {
+            console.warn(`The search-vector record ${JSON.stringify(key)} is over the record bound and is left out of the backup.`)
+            continue
+        }
+        yield { key, value: await prepareSideValue(bytes) }
+    }
+}
+
 /** One store as the writer's input; `unreadable` when it cannot be probed. */
 export async function readSideStore(id: StoreSideSectionId, backends: SideBackends = defaultSideBackends): Promise<SideInput> {
     const spec = STORE_KINDS[id]
@@ -147,6 +211,16 @@ export async function readSideStore(id: StoreSideSectionId, backends: SideBacken
         return { unreadable: true }
     }
     try {
+        if (spec.kind === 'vectors') {
+            const store = await vectorStoreOf(backends)
+            if (store === null) {
+                return { records: vectorRecords(null, []) }
+            }
+            const keys = (await store.list(VECTORS_KEY_PREFIX))
+                .filter((key) => key.startsWith(VECTORS_KEY_PREFIX) && key.length > VECTORS_KEY_PREFIX.length)
+                .map((key) => key.slice(VECTORS_KEY_PREFIX.length))
+            return { records: vectorRecords(store, sorted(keys)) }
+        }
         if (spec.kind === 'forage') {
             const store = backends.forage(spec.config)
             await store.ready()
@@ -233,10 +307,74 @@ interface StoreOps {
     clear(): Promise<void>
     accept(key: string, value: unknown): Accepted
     write(key: string, value: unknown): Promise<void>
+    /**
+     * Set where one key may not be the folder prefix of another (a desktop file cannot also be a directory). Pass 1
+     * collects the accepted keys and refuses the row when one is a `/`-prefix of another; `accept` stays stateless.
+     */
+    prefixFree?: true
+}
+
+/** The first accepted key that is the `/`-prefix of another accepted key, or null. */
+function prefixConflict(keys: ReadonlySet<string>): string | null {
+    for (const key of keys) {
+        for (let slash = key.indexOf('/'); slash >= 0; slash = key.indexOf('/', slash + 1)) {
+            if (keys.has(key.slice(0, slash))) {
+                return key.slice(0, slash)
+            }
+        }
+    }
+    return null
+}
+
+function vectorOps(backends: SideBackends): StoreOps {
+    return {
+        clearsBeforeRestore: true,
+        prefixFree: true,
+        // Deletes every key under the prefix, foreign folders included: the restored file replaces the cache whole.
+        clear: async () => {
+            const { holdVectorPersist } = await import('../../process/memory/chroMemory/vectorPersist')
+            const release = await holdVectorPersist()
+            try {
+                const store = await vectorStoreOf(backends)
+                const keys = store === null ? [] : await store.list(VECTORS_KEY_PREFIX)
+                if (store !== null && keys.length > 0) {
+                    await store.deleteMany(keys.map((key) => ({ key, condition: 'unconditional' as const })))
+                }
+            } finally {
+                release()
+            }
+        },
+        accept: (key, value) => {
+            if (!(value instanceof Uint8Array)) {
+                return { kind: 'bad', reason: `the value of key ${JSON.stringify(key)} is not bytes` }
+            }
+            if (value.length > VECTORS_MAX_RECORD_BYTES) {
+                return { kind: 'bad', reason: `the value of key ${JSON.stringify(key)} is over ${VECTORS_MAX_RECORD_BYTES} bytes` }
+            }
+            if (!key.includes('/')) {
+                return { kind: 'bad', reason: `the key ${JSON.stringify(key)} names no folder` }
+            }
+            const full = `${VECTORS_KEY_PREFIX}${key}`
+            const violation = nodeCreatableViolation(full) ?? tauriCreatableViolation(full)
+            return violation === null
+                ? { kind: 'write', key: full, value }
+                : { kind: 'bad', reason: `the key ${JSON.stringify(key)} cannot be stored: ${violation}` }
+        },
+        write: async (key, value) => {
+            const store = await vectorStoreOf(backends)
+            if (store === null) {
+                throw new Error('This page has no storage for the search vectors.')
+            }
+            await store.write(key, value as Uint8Array, 'unconditional')
+        },
+    }
 }
 
 function opsFor(id: SideSectionId, backends: SideBackends): StoreOps {
     const spec = STORE_KINDS[id]
+    if (spec.kind === 'vectors') {
+        return vectorOps(backends)
+    }
     if (spec.kind === 'forage') {
         // One instance per section: localforage never releases an instance and each new one
         // re-initialises against every earlier one, so a per-write instance is quadratic.
@@ -406,15 +544,19 @@ function skipOf(line: NumberedSideLine): SideSkip | null {
 async function restoreSection(id: SideSectionId, body: SideBodyReader, ops: StoreOps): Promise<SideRestoreResult> {
     // Pass 1: validate everything; the store is not touched.
     let expected = 0
+    const acceptedKeys = new Set<string>()
     const first = await runPass(body, async (line) => {
         const { decoded } = line
         if (decoded.kind === 'damaged') {
             throw new PassAbort({ kind: 'stop', reason: decoded.reason, line: line.line })
         }
         if (decoded.kind === 'value') {
-            const accepted = ops.accept(decoded.key, decoded.value)
-            if (accepted.kind === 'bad') {
-                throw new PassAbort({ kind: 'stop', reason: accepted.reason, line: line.line })
+            const verdict = ops.accept(decoded.key, decoded.value)
+            if (verdict.kind === 'bad') {
+                throw new PassAbort({ kind: 'stop', reason: verdict.reason, line: line.line })
+            }
+            if (ops.prefixFree === true && verdict.kind === 'write') {
+                acceptedKeys.add(verdict.key)
             }
         }
         expected++
@@ -422,6 +564,12 @@ async function restoreSection(id: SideSectionId, body: SideBodyReader, ops: Stor
     if (first.kind === 'failed') {
         const stop = stopOf(first)
         return { id, status: 'malformed', reason: stop.reason, line: stop.line, conflict: false }
+    }
+    if (ops.prefixFree === true) {
+        const conflict = prefixConflict(acceptedKeys)
+        if (conflict !== null) {
+            return { id, status: 'malformed', reason: `the key ${JSON.stringify(conflict)} is also the folder of another key`, line: null, conflict: false }
+        }
     }
 
     if (ops.clearsBeforeRestore) {

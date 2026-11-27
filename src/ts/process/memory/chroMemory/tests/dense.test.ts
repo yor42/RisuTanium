@@ -17,6 +17,7 @@ import {
     raceTimeout,
     resetDensePauseForTests,
 } from '../dense'
+import { rawHash } from '../records'
 import { UNIT_CHARS } from '../units'
 import { unitOf } from './denseFixtures'
 
@@ -243,5 +244,68 @@ describe('raceTimeout', () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
         await expect(raceTimeout(Promise.reject(new Error('nope')), 1500)).rejects.toThrow('nope')
         expect(vi.getTimerCount()).toBe(0)
+    })
+})
+
+describe('G6 a loaded entry is served only on its text hash', () => {
+    const loaded = (u: ReturnType<typeof unitOf>, over: Partial<{ textHash: string, seq: number }> = {}) => ({
+        kind: 'loaded' as const,
+        modelKey: 'm',
+        head: { f: 'chromemory-vectors' as const, v: 1 as const, g: 3, w: '', owner: 'o', chat: 'c', model: 'x', label: 'l', dim: 2, chunks: [4], at: 1 },
+        rows: [{ key: u.key, ordinal: u.ordinal, textHash: over.textHash ?? rawHash(u.text), vec: new Float32Array([1, 0]), seq: over.seq ?? 4 }],
+        chunks: [4],
+        dropped: 0,
+        rowsRead: 1,
+    })
+
+    test('guard (new API): the unit with the persisted text gets the vector, another text does not, and the text is then cached', () => {
+        const store = new DenseStore()
+        store.useModel('m')
+        const u = unitOf('k', 'the text')
+        store.importLoaded(loaded(u))
+        expect(store.get(unitOf('k', 'another text'))).toBeUndefined()
+        expect(store.get(u)).toEqual(new Float32Array([1, 0]))
+        expect(store.get(unitOf('k', 'another text'))).toBeUndefined()
+        expect(store.persistedG).toBe(3)
+    })
+
+    test('guard (new API): an import fills only absent keys, never replaces a fresh vector, and is refused for another model or a disposed store', () => {
+        const store = new DenseStore()
+        store.useModel('m')
+        const u = unitOf('k', 'the text')
+        store.set(u, new Float32Array([0, 1]))
+        store.importLoaded(loaded(u))
+        expect(store.get(u)).toEqual(new Float32Array([0, 1]))
+        const other = new DenseStore()
+        other.useModel('another')
+        other.importLoaded(loaded(u))
+        expect(other.size).toBe(0)
+        const gone = new DenseStore()
+        gone.useModel('m')
+        gone.dispose()
+        gone.importLoaded(loaded(u))
+        expect(gone.size).toBe(0)
+    })
+
+    test('guard (new API): a set entry is unpersisted, a snapshot marks rows, a model change forgets the marks, dispose keeps them', () => {
+        const store = new DenseStore()
+        store.useModel('m')
+        store.set(unitOf('a'), new Float32Array([1]))
+        store.set(unitOf('b'), new Float32Array([1]))
+        expect(store.hasUnpersisted()).toBe(true)
+        const rows = store.snapshot()
+        expect(rows.map((r) => r.seq)).toEqual([0, 0])
+        rows.forEach((r) => r.mark(7))
+        expect(store.hasUnpersisted()).toBe(false)
+        store.persistedG = 2
+        store.dispose()
+        expect(store.persistedG).toBe(2)
+        const second = new DenseStore()
+        second.useModel('m')
+        second.set(unitOf('a'), new Float32Array([1]))
+        second.persistedG = 2
+        second.useModel('other')
+        expect(second.persistedG).toBeNull()
+        expect(second.size).toBe(0)
     })
 })

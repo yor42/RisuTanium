@@ -175,14 +175,15 @@ export async function sweepAtomicWriteTemps(directory: string, options: { recurs
  * (the cached model data files), `store2/` (durable unit writes whose temps
  * store2 GC skips and `store2_gate::ungated_remove_refusal` leaves removable
  * while refusing non-temp `store2/` keys and gated top-level keys), `inlays/`
- * (atomic/chunked metadata and bodies), and `consent/` (atomic/chunked JSON
- * consent records). A key without a slash lands in the AppData root itself,
- * which is swept without descending. `native-reply/` lies outside the store
+ * (atomic/chunked metadata and bodies), `consent/` (atomic/chunked JSON
+ * consent records), and `derived/` (rebuildable caches derived from user data,
+ * such as persisted search vectors). A key without a slash lands in the AppData
+ * root itself, which is swept without descending. `native-reply/` lies outside the store
  * set and sweeps its own temps (`reply_store.rs`), so it stays omitted. The app
  * pages send this list to the native sweep.
  */
 export const WRITE_TEMP_DIRECTORIES: readonly string[] = [
-    'database', 'remotes', 'coldstorage', 'blocks', 'assets', 'modeldata', 'store2', 'inlays', 'consent',
+    'database', 'remotes', 'coldstorage', 'blocks', 'assets', 'modeldata', 'store2', 'inlays', 'consent', 'derived',
 ]
 
 /** The app command that walks and sweeps the AppData root and `WRITE_TEMP_DIRECTORIES` natively (through `app_fs::StartupSweep::take_or_walk`). */

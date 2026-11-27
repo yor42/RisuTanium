@@ -24,6 +24,14 @@ export const MCP_TOOL_CALLS_STORE: ForageStoreConfig = Object.freeze({ name: 'mc
  */
 export const RESTORED_KEYS_STORE: ForageStoreConfig = Object.freeze({ name: 'risutanium-restored-keys', storeName: 'keys' })
 
+/**
+ * The byte-store key prefix of the ChroMemory search vectors and the largest record the `.rtb` row carries. They equal
+ * `PREFIX` and `MAX_RECORD_BYTES` of `process/memory/chroMemory/vectorPersist.ts` (a test holds the two together); the
+ * adapter reads them here so it does not import the cache's engine.
+ */
+export const VECTORS_KEY_PREFIX = 'derived/chromemory-vectors/'
+export const VECTORS_MAX_RECORD_BYTES = 4_194_304
+
 /** The prefix of every localStorage key and every `plugin` store key a plugin's safe storage owns. */
 export const SAFE_PLUGIN_LS_PREFIX = 'safe_plugin_'
 

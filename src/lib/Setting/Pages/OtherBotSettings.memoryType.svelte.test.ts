@@ -66,8 +66,14 @@ vi.mock(import('src/ts/tokenizer'), () => ({
 
 vi.mock('src/lib/UI/GUI/TextAreaInput.svelte', () => ({ default: () => {} }))
 
+vi.mock('src/ts/process/memory/chroMemory/vectorPersist', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('src/ts/process/memory/chroMemory/vectorPersist')>()
+    return { ...actual, dropVectorsUnlessWanted: vi.fn(async () => { }) }
+})
+
 //#endregion
 
+import { dropVectorsUnlessWanted } from 'src/ts/process/memory/chroMemory/vectorPersist'
 import { DBState } from 'src/ts/stores.svelte'
 import OtherBotSettings from './OtherBotSettings.svelte'
 import { language } from 'src/lang'
@@ -204,6 +210,22 @@ describe('ChroMemory in the memory Type dropdown', () => {
         await choose(await typeSelect(), 'chroMemory')
         expect(memoryFields()).toEqual({ supaModelType: 'none', memoryAlgorithmType: 'none', hypav2: false, hanuraiEnable: false, hypaV3: false })
         expect(DBState.db.ltmEngine).toBe(true)
+    })
+})
+
+describe('leaving ChroMemory drops the saved search vectors (G15)', () => {
+    test('reproducer: choosing another engine asks the drop after the engine fields are written; mounting asks nothing', async () => {
+        installDb({ ltmEngine: true })
+        vi.mocked(dropVectorsUnlessWanted).mockClear()
+        const engineAtDrop: unknown[] = []
+        vi.mocked(dropVectorsUnlessWanted).mockImplementation(async () => {
+            engineAtDrop.push(DBState.db.ltmEngine)
+        })
+        const select = await typeSelect()
+        expect(dropVectorsUnlessWanted).not.toHaveBeenCalled()
+        await choose(select, 'none')
+        expect(dropVectorsUnlessWanted).toHaveBeenCalledTimes(1)
+        expect(engineAtDrop).toEqual([false])
     })
 })
 
