@@ -5,7 +5,8 @@ import { getDatabase, type Chat, type character } from "../storage/database.svel
 import { tokenize } from "../tokenizer";
 import { getModuleTriggers } from "./modules";
 import { get } from "svelte/store";
-import { ReloadChatPointer, ReloadGUIPointer, CurrentTriggerIdStore, DBState } from "../stores.svelte";
+import { ReloadChatPointer, CurrentTriggerIdStore, DBState } from "../stores.svelte";
+import { redrawGuiSoft } from "./softRedraw";
 import { processMultiCommand, type CommandContext } from "./command";
 import { parseKeyValue, sleep } from "../util";
 import { alertError, alertInput, alertNormal, alertSelect } from "../alert";
@@ -2582,7 +2583,7 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                     break
                 }
                 case 'v2UpdateGUI':{
-                    ReloadGUIPointer.set(get(ReloadGUIPointer) + 1)
+                    redrawGuiSoft()
                     break
                 }
                 case 'v2UpdateChatAt':{
@@ -3017,7 +3018,7 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
         caculatedTokens += await tokenize(additonalSysPrompt.promptend)
     }
     if(varChanged){
-        ReloadGUIPointer.set(get(ReloadGUIPointer) + 1)
+        redrawGuiSoft()
     }
 
     if (shouldSetTriggerId && mode !== 'manual') {

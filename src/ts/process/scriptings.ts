@@ -5,7 +5,8 @@ import { LuaEngine, LuaFactory } from "wasmoon";
 import luaWasmUrl from "wasmoon/dist/glue.wasm?url";
 import { getCurrentCharacter, getCurrentChat, getDatabase, setDatabase, type Chat, type character, type Message, type groupChat, type triggerscript } from "../storage/database.svelte";
 import { get } from "svelte/store";
-import { ReloadChatPointer, ReloadGUIPointer, selectedCharID } from "../stores.svelte";
+import { ReloadChatPointer, selectedCharID } from "../stores.svelte";
+import { redrawGuiSoft } from "./softRedraw";
 import { alertSelect, alertError, alertInput, alertNormal, alertConfirm } from "../alert";
 import { HypaProcesser } from "./memory/hypamemory";
 import { generateAIImage, type ImageGenerationOptions } from "./stableDiff";
@@ -545,7 +546,7 @@ export async function runScripted(code:string, arg:{
                 if(!ScriptingSafeIds.has(id)){
                     return
                 }
-                ReloadGUIPointer.set(get(ReloadGUIPointer) + 1)
+                redrawGuiSoft()
             })
 
             declareAPI('reloadChat', (id: string, index: number) => {
