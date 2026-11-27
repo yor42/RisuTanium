@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parse } from 'svelte/compiler'
 import { describe, expect, it } from 'vitest'
 import { AREA_LINT, lintAreaPack, THEME_AREAS } from './index'
-import { CRITICAL_PARTS, ESCAPE_ANCESTORS, ESCAPE_ROUTE_PARTS, THEME_PACK_ROW_CLOSURE, lintPack as engineLint, selectorTier, type RegistryInput } from './engine'
+import { CRITICAL_PARTS, ESCAPE_ANCESTORS, ESCAPE_ROUTE_PARTS, REACH_CHAT, THEME_PACK_ROW_CLOSURE, lintPack as engineLint, selectorTier, type RegistryInput } from './engine'
 import { HOME_REGISTRY } from './registries/home'
 import { SETTINGS_REGISTRY } from './registries/settings'
 import { STUDIO_REGISTRY } from './registries/studio'
@@ -25,6 +25,7 @@ interface PackLint {
     ESCAPE_ROUTE_PARTS: readonly string[]
     THEME_PACK_ROW_CLOSURE: readonly string[]
     CRITICAL_PARTS: readonly string[]
+    REACH_CHAT: readonly string[]
     SAFE_LEAVES: ReadonlySet<string>
 }
 const packlint = await import(/* @vite-ignore */ pathToFileURL(abs('docs/design/chat/checks/th/packlint.mjs')).href) as PackLint
@@ -66,6 +67,10 @@ describe('TA-2 every escape name and the row closure are protected in every area
         expect([...packlint.ESCAPE_ROUTE_PARTS]).toEqual(ESCAPE_ROUTE_PARTS)
         expect([...packlint.THEME_PACK_ROW_CLOSURE]).toEqual(THEME_PACK_ROW_CLOSURE)
         expect([...packlint.ESCAPE_ANCESTORS].sort()).toEqual([...ESCAPE_ANCESTORS].sort())
+    })
+    it('the packlint mirror holds every engine critical and reach chat name', () => {
+        for (const name of CRITICAL_PARTS) expect(packlint.CRITICAL_PARTS, name).toContain(name)
+        for (const name of REACH_CHAT) expect(packlint.REACH_CHAT, name).toContain(name)
     })
 })
 
