@@ -10,6 +10,7 @@ import { parseChatML } from "../parser/chatML";
 import { promptViewAt, promptViewOf, splitSentMessages, type PromptView, type SentMessages } from "../cbs";
 import { loadLoreBookV3Prompt } from "./lorebook.svelte";
 import { noteLoreUse, renameLoreUseReply } from "./loreUse";
+import { memberName } from "./groupMembers";
 import { findCharacterbyId, getUserName, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand, pickHashRand } from "../util";
 import { requestChatData } from "./request/request";
 import { stableDiff } from "./stableDiff";
@@ -967,6 +968,17 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
     }
 
+    // A member's display name: the live character, else the group's join record.
+    const memberNameCache = new Map<string, string>()
+    function memberNameWithCache(id:string){
+        let name = memberNameCache.get(id)
+        if(name === undefined){
+            name = memberName(DBState.db.characters, nowChatroom, id)
+            memberNameCache.set(id, name)
+        }
+        return name
+    }
+
     // Ends the call quietly because its origin is gone: nothing more is
     // written or generated for it.
     function endGone():false{
@@ -1490,7 +1502,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     {
         let description = risuChatParser((DBState.db.promptPreprocess ? DBState.db.descriptionPrefix: '') + currentChar.desc, {chara: currentChar, subject, promptView})
 
-        const additionalRaced = await raceAbort(abortSignal, () => additionalInformations(currentChar, currentChat, promptView), { label: 'The additional information search' })
+        const additionalRaced = await raceAbort(abortSignal, () => additionalInformations(currentChar, currentChat, promptView, nowChatroom), { label: 'The additional information search' })
         if(!additionalRaced.settled){
             return false
         }
@@ -2047,7 +2059,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         let name = ''
         if(msg.role === 'char'){
             if(msg.saying){
-                name = `${findCharacterbyIdwithCache(msg.saying).name}`
+                name = `${memberNameWithCache(msg.saying)}`
             }
             else{
                 name = `${currentChar.name}`
@@ -2139,7 +2151,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             (usingPromptTemplate && DBState.db.promptSettings.sendName)
         ){
             const form = DBState.db.groupTemplate || `<{{char}}\'s Message>\n{{slot}}\n</{{char}}\'s Message>`
-            formatedChat = risuChatParser(form, {chara: findCharacterbyIdwithCache(msg.saying).name, subject, promptView: promptViewAt(promptView, chatIndex)}).replace('{{slot}}', formatedChat)
+            formatedChat = risuChatParser(form, {chara: memberNameWithCache(msg.saying), subject, promptView: promptViewAt(promptView, chatIndex)}).replace('{{slot}}', formatedChat)
             switch(DBState.db.groupOtherBotRole){
                 case 'user':
                 case 'assistant':

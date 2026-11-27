@@ -5,7 +5,8 @@ import { type Chat, type character, type groupChat, type Message, type loreBook 
 import { DBState } from '../stores.svelte';
 import { tokenize } from "../tokenizer";
 import { risuChatParser } from "../parser/parser.svelte";
-import { findCharacterbyId, pickHashRand, selectSingleFile } from "../util";
+import { pickHashRand, selectSingleFile } from "../util";
+import { memberName } from "./groupMembers";
 import { alertError, alertNormal } from "../alert";
 import { language } from "../../lang";
 import { downloadNotice } from "../exportNotice";
@@ -300,7 +301,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             else{
                 return {
                     source: `message ${i} by char`,
-                    prompt: `\x01{{${msg.name ?? (msg.saying ? findCharacterbyId(msg.saying)?.name : null) ?? char?.name}}}:` + msg.data + '\x01',
+                    prompt: `\x01{{${msg.name ?? (msg.saying ? memberName(DBState.db.characters, char, msg.saying) : null) ?? char?.name}}}:` + msg.data + '\x01',
                     data: msg.data
                 }
             }
