@@ -30,13 +30,13 @@
 
 <!-- Bulk Resummarize Result Section -->
 {#if bulkResummaryState}
-  <div class="sticky bottom-0 p-4 bg-darkbg border-t border-darkborderc rounded-b-lg">
+  <div data-part="modal-footer" class="sticky bottom-0 p-4 bg-darkbg border-t border-darkborderc rounded-b-lg">
     <div class="flex flex-col gap-3">
       <div class="flex justify-between items-center">
-        <h3 id="{uid}-result" class="text-sm font-medium text-textcolor">{language.hypaV3Modal.reSummarizeResult}</h3>
-        <div class="flex items-center gap-2">
+        <h3 data-part="modal-title" id="{uid}-result" class="text-sm font-medium text-textcolor">{language.hypaV3Modal.reSummarizeResult}</h3>
+        <div data-part="modal-controls" class="flex items-center gap-2">
           <!-- Translate Button -->
-          <button
+          <button data-part="modal-action"
             class="p-2 text-textcolor2 hover:text-textcolor transition-colors {bulkResummaryState.isProcessing || !bulkResummaryState.result
               ? 'opacity-50 cursor-not-allowed'
               : ''}"
@@ -52,7 +52,7 @@
           </button>
 
           <!-- Reroll Button -->
-          <button
+          <button data-part="modal-action"
             class="p-2 rounded transition-colors {bulkResummaryState.isProcessing
               ? 'text-textcolor2 opacity-50 cursor-not-allowed'
               : 'text-textcolor hover:text-textcolor2'}"
@@ -65,7 +65,7 @@
           </button>
 
           <!-- Apply Button -->
-          <button
+          <button data-part="modal-action"
             class="p-2 rounded transition-colors {bulkResummaryState.isProcessing || !bulkResummaryState.result
               ? 'text-textcolor2 opacity-50 cursor-not-allowed'
               : 'text-textcolor hover:text-textcolor2'}"
@@ -78,7 +78,7 @@
           </button>
 
           <!-- Cancel Button -->
-          <button
+          <button data-part="modal-action"
             class="p-2 rounded-sm transition-colors text-textcolor2 hover:text-textcolor"
             onclick={onCancel}
             title={language.cancel}
@@ -91,12 +91,12 @@
 
       <!-- Result Content -->
       {#if bulkResummaryState.isProcessing}
-        <div class="text-center py-4 text-textcolor2">
+        <div data-part="modal-text" class="text-center py-4 text-textcolor2">
           <RefreshCw class="w-6 h-6 animate-spin inline mr-2" aria-hidden="true" />
           {language.hypaV3Modal.reSummarizing}
         </div>
       {:else if bulkResummaryState.result}
-        <textarea
+        <textarea data-part="modal-field"
           class="p-3 w-full min-h-32 resize-vertical rounded-sm border border-darkborderc focus:outline-hidden risu-focus-ring transition-colors text-textcolor bg-bgcolor"
           aria-labelledby="{uid}-result"
           aria-describedby="{uid}-result"
@@ -107,10 +107,10 @@
         <!-- Translation Result -->
         {#if bulkResummaryState.translation}
           <div class="mt-3">
-            <div id="{uid}-translation" class="mb-2 text-sm text-textcolor2">
+            <div data-part="modal-text" id="{uid}-translation" class="mb-2 text-sm text-textcolor2">
               {language.hypaV3Modal.translationLabel}
             </div>
-            <textarea
+            <textarea data-part="modal-field"
               class="p-3 w-full min-h-32 resize-vertical rounded-sm border border-darkborderc focus:outline-hidden risu-focus-ring transition-colors text-textcolor bg-bgcolor"
               aria-labelledby="{uid}-translation"
               aria-describedby="{uid}-translation"

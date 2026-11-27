@@ -125,13 +125,13 @@
 
 <!-- Tag Manager Modal -->
 {#if tagManagerState.isOpen && tagManagerState.currentSummaryIndex >= 0}
-  <div class="fixed inset-0 z-50 p-4 bg-black/70 flex items-center justify-center">
-    <div class="bg-darkbg rounded-lg p-6 w-full max-w-md">
-      <div class="flex justify-between items-center mb-6">
-        <h2 class="text-lg font-semibold text-textcolor">
+  <div data-part="modal-hypa-v3-tag-manager" class="fixed inset-0 z-50 p-4 bg-black/70 flex items-center justify-center">
+    <div data-part="modal-frame" class="bg-darkbg rounded-lg p-6 w-full max-w-md">
+      <div data-part="modal-header" class="flex justify-between items-center mb-6">
+        <h2 data-part="modal-title" class="text-lg font-semibold text-textcolor">
           {language.hypaV3Modal.tagManagerTitle.replace("{0}", (tagManagerState.currentSummaryIndex + 1).toString())}
         </h2>
-        <button
+        <button data-part="modal-close"
           class="p-2 text-textcolor2 hover:text-textcolor transition-colors"
           aria-label={language.uiCommon.close}
           onclick={closeTagManager}
@@ -142,9 +142,9 @@
 
       <!-- Add New Tag -->
       <div class="mb-4">
-        <div class="flex gap-2">
+        <div data-part="modal-controls" class="flex gap-2">
           <span id="{uid}-new-tag" class="sr-only">{language.hypaV3Modal.newTagName}</span>
-          <input
+          <input data-part="modal-field"
             type="text"
             class="flex-1 px-3 py-2 text-sm rounded-sm border border-darkborderc bg-darkbg text-textcolor focus:outline-hidden risu-focus-ring"
             aria-labelledby="{uid}-new-tag"
@@ -153,7 +153,7 @@
             bind:value={tagManagerState.editingTag}
             onkeydown={handleAddTagKeydown}
           />
-          <button
+          <button data-part="modal-action"
             class="px-4 py-2 rounded-sm bg-selected text-textcolor ring-1 ring-borderc hover:ring-2 hover:ring-textcolor2 text-sm transition-colors"
             onclick={handleAddTagEnter}
           >
@@ -163,13 +163,13 @@
       </div>
 
       <!-- Tag List -->
-      <div class="space-y-2 max-h-60 overflow-y-auto">
+      <div data-part="modal-list" class="space-y-2 max-h-60 overflow-y-auto">
         {#if hypaV3Data.summaries[tagManagerState.currentSummaryIndex].tags && hypaV3Data.summaries[tagManagerState.currentSummaryIndex].tags.length > 0}
           {#each hypaV3Data.summaries[tagManagerState.currentSummaryIndex].tags as tag, tagIndex}
-            <div class="flex items-center gap-2 px-3 py-2 rounded-sm bg-bgcolor">
+            <div data-part="modal-row" class="flex items-center gap-2 px-3 py-2 rounded-sm bg-bgcolor">
               {#if tagManagerState.editingTagIndex === tagIndex}
                 <span id="{uid}-edit-tag" class="sr-only">{language.edit}</span>
-                <input
+                <input data-part="modal-field"
                   type="text"
                   class="flex-1 px-2 py-1 text-sm rounded-sm border border-darkborderc bg-darkbg text-textcolor focus:outline-hidden risu-focus-ring"
                   aria-labelledby="{uid}-edit-tag"
@@ -177,14 +177,14 @@
                   bind:value={tagManagerState.editingTag}
                   onkeydown={handleEditTagKeydown}
                 />
-                <button
+                <button data-part="modal-action"
                   class="p-1.5 text-textcolor hover:text-textcolor2 transition-colors"
                   aria-label={language.uiCommon.save}
                   onclick={saveEditingTag}
                 >
                   <CheckIcon class="w-4 h-4" aria-hidden="true" />
                 </button>
-                <button
+                <button data-part="modal-action"
                   class="p-1.5 text-textcolor2 hover:text-textcolor transition-colors"
                   aria-label={language.cancel}
                   onclick={cancelEditingTag}
@@ -192,15 +192,15 @@
                   <XIcon class="w-4 h-4" aria-hidden="true" />
                 </button>
               {:else}
-                <span class="flex-1 text-sm text-textcolor">#{tag}</span>
-                <button
+                <span data-part="modal-text" class="flex-1 text-sm text-textcolor">#{tag}</span>
+                <button data-part="modal-action"
                   class="p-1.5 text-textcolor2 hover:text-textcolor transition-colors"
                   aria-label={language.edit}
                   onclick={() => startEditTag(tagIndex, tag)}
                 >
                   <SquarePenIcon class="w-4 h-4" aria-hidden="true" />
                 </button>
-                <button
+                <button data-part="modal-action"
                   class="p-1.5 text-textcolor2 hover:text-draculared transition-colors"
                   aria-label={language.uiCommon.delete}
                   onclick={() => removeTag(tagManagerState.currentSummaryIndex, tagIndex)}
@@ -211,7 +211,7 @@
             </div>
           {/each}
         {:else}
-          <div class="text-center py-8 text-textcolor2 text-sm">
+          <div data-part="modal-text" class="text-center py-8 text-textcolor2 text-sm">
             {language.hypaV3Modal.noTagsYet}<br>
             <span class="text-xs">{language.hypaV3Modal.addNewTagHint}</span>
           </div>

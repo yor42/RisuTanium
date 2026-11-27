@@ -39,12 +39,12 @@
 </script>
 
 <!-- Modal Backdrop -->
-<div class="fixed inset-0 z-40 p-1 sm:p-2 bg-black/50">
+<div data-part="modal-chro-memory" class="fixed inset-0 z-40 p-1 sm:p-2 bg-black/50">
   <div class="flex justify-center w-full h-full">
-    <div class="flex flex-col w-full max-w-3xl p-3 rounded-lg sm:p-6 bg-darkbg h-full sm:h-fit sm:max-h-full">
-      <div class="flex items-center justify-between mb-2 sm:mb-4">
-        <h1 id="{uid}-title" class="text-lg font-semibold sm:text-2xl text-textcolor">{language.chroMemoryModal}</h1>
-        <button
+    <div data-part="modal-frame" class="flex flex-col w-full max-w-3xl p-3 rounded-lg sm:p-6 bg-darkbg h-full sm:h-fit sm:max-h-full">
+      <div data-part="modal-header" class="flex items-center justify-between mb-2 sm:mb-4">
+        <h1 data-part="modal-title" id="{uid}-title" class="text-lg font-semibold sm:text-2xl text-textcolor">{language.chroMemoryModal}</h1>
+        <button data-part="modal-close"
           type="button"
           class="p-2 transition-colors text-textcolor2 hover:text-textcolor risu-focus-ring rounded-md"
           aria-label={language.uiCommon.close}
@@ -54,9 +54,9 @@
         </button>
       </div>
 
-      <div role="tablist" aria-labelledby="{uid}-title" class="flex gap-4 mb-3 border-b border-darkborderc">
+      <div data-part="modal-controls" role="tablist" aria-labelledby="{uid}-title" class="flex gap-4 mb-3 border-b border-darkborderc">
         {#each tabs as t (t.id)}
-          <button
+          <button data-part="modal-action"
             type="button"
             role="tab"
             id="{uid}-tab-{t.id}"
@@ -72,7 +72,7 @@
         {/each}
       </div>
 
-      <div
+      <div data-part="modal-body"
         role="tabpanel"
         id="{uid}-panel-{tab}"
         aria-labelledby="{uid}-tab-{tab}"
