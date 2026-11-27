@@ -1,0 +1,20 @@
+# Marks who owns the paths where a change needs the maintainer's own eye. It does NOT require a review:
+# the repository has one maintainer, who cannot approve their own pull request, so the main ruleset must keep
+# "Require review from Code Owners" off. GitHub only lists the owner on a pull request that touches these paths.
+# The last matching pattern decides.
+
+# Branding, legal text and the screen that shows it.
+/docs/branding/**               @yor42
+/docs/Terms-of-Services.md      @yor42
+/docs/Privacy-Policy.md         @yor42
+/src/lib/Others/Legal.svelte    @yor42
+
+# Signing material: none of it is tracked, so a match means something is being added that should not be.
+/src-tauri/key.txt              @yor42
+**/keystore*                    @yor42
+**/keystore.properties          @yor42
+
+# CI definitions run with repository permissions.
+/.github/workflows/**           @yor42
+/.github/scripts/**             @yor42
+/.github/CODEOWNERS             @yor42

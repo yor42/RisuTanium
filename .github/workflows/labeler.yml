@@ -1,0 +1,29 @@
+name: Label by path
+
+# Adds the area labels that .github/labeler.yml maps from the changed paths. It runs on pull_request, never
+# pull_request_target: the token is read-only for a fork or Dependabot pull request, so those are skipped
+# instead of failing. Nothing here is a required check.
+on:
+  pull_request:
+
+concurrency:
+  group: labeler-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    name: Label by path
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          sync-labels: false
