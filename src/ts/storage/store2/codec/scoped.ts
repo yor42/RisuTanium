@@ -11,9 +11,10 @@ import { manifestStateEquals } from './manifest'
 import { defineOwn } from './normalize'
 import { isUnchanged, unitDigest, UnitNotReusedError, UnitSink, type UnitKeyKind } from './reuse'
 import {
-    checkDatabase, emitCharacter, encodeCharacter, encodeFront, encodeModuleSetYielding, Encoder, finishTree, IDENTITY, isSkippableFault,
-    normalizeCharacter, normalizeCharacterFromPlain, type ModuleSet, type NormalizedCharacter,
+    characterSteps, checkDatabase, emitCharacter, emitCharacterYielding, encodeCharacter, encodeFront, encodeModuleSetYielding, Encoder, entryLiveFieldsOf, finishTree, IDENTITY,
+    isSkippableFault, normalizeCharacter, normalizeCharacterFromPlain, type EntryLiveFields, type ModuleSet, type NormalizedCharacter,
 } from './split'
+import { runSteps, type Steps, type StepWaits } from './steps'
 import { noteShardDigest } from './shard'
 import { isColdStub } from './stub'
 import {
@@ -389,8 +390,8 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     // characters from the list as it stood when this pass began, and a character added during any yield is not among
     // them, so it would meet `carriedEntry` and fail the save. It reaches the next pass through the new-character rule.
     // A list edit during a yield (splice, reassign, unshift) likewise reaches the next pass, so the committed tree holds
-    // exactly this list. Each slot is encoded synchronously on its turn; an edit inside a slot after its turn is the
-    // next pass's. `finishTree` takes its characters from `entries` and `configFields` leaves the field out.
+    // exactly this list. Each slot is read in one synchronous stretch (the plain read plus the live entry fields); an
+    // edit after that read is the next pass's. `finishTree` takes its characters from `entries` and `configFields` leaves the field out.
     const characters: readonly Slot[] = [...db.characters]
     const ambiguous = ambiguousChaIds(characters, previous)
     if (MEASURE && split !== undefined) {
@@ -473,15 +474,31 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
                     continue
                 }
             }
-            if (MEASURE && split !== undefined && normalized === null) {
-                // `encodeCharacter` is `emitCharacter` over `normalizeCharacter`; taking the two steps apart only lets the read be timed.
+            if (normalized === null) {
+                // The shared-id and skip-off branch: a fault of the read fails the pass, as `encodeCharacter` did.
                 normalized = normalizeCharacter(slot, position)
             }
             const emitStarted = readClock(split)
-            entries.push(normalized === null ? encodeCharacter(slot, position, encoder) : emitCharacter(normalized, encoder))
+            // The live entry fields are taken in the same synchronous stretch as the read, before any yield: the emit
+            // below reads the slot no more, so an edit during a yield is the next pass's and cannot tear the entry from
+            // its units. No try/catch encloses the yields or the emit, so a cut tick or a faulted emit fails the pass.
+            const live = entryLiveFieldsOf(slot)
+            const waits: StepWaits | undefined = MEASURE && split !== undefined && scope.yield !== undefined ? { ms: 0 } : undefined
+            if (waits !== undefined) {
+                const waitStartedAt = performance.now()
+                try {
+                    await scope.yield?.()
+                } finally {
+                    waits.ms += performance.now() - waitStartedAt
+                }
+            } else {
+                await scope.yield?.()
+            }
+            entries.push(await emitCharacterYielding(normalized, encoder, live, scope.yield, waits))
             encoded.push(chaId)
             if (MEASURE && split !== undefined) {
-                split.splitCharacter(chaId, emitStarted - normalizeStarted, split.now() - emitStarted, false)
+                // Emit CPU: the waits in the yields are left out.
+                split.splitCharacter(chaId, emitStarted - normalizeStarted, split.now() - emitStarted - (waits?.ms ?? 0), false)
             }
             await scope.yield?.()
         } else {
@@ -1161,24 +1178,46 @@ export function acknowledgedBytesOf(previous: PreviousEncoding, entry: ShardEntr
 /**
  * `characterMatchesAcknowledged` over a character whose plain JSON the caller already read (`plainObject(slot, ...)`)
  * and whose prologue it already passed (`verdictBaseOf`). It never writes into `plain`. The entry fields that do not
- * come from the plain tree (`type`, `characters`, the tags and the creator) are still read from the live `slot` by
- * `emitCharacter`, so the answer is the wrapper's for the same slot: a fault of the split is `unknown`, silently.
+ * come from the plain tree (`type`, `characters`, the tags and the creator) are read from the live `slot` when this
+ * is called, so the answer is the wrapper's for the same slot: a fault of the split is `unknown`, silently.
  */
 export function characterMatchesAcknowledgedPlain(slot: Slot, plain: JsonObject, base: VerdictBase, options: VerdictOptions): AcknowledgedVerdict {
+    return runSteps(acknowledgedPlainSteps(slot, plain, base, options, entryLiveFieldsOf(slot)))
+}
+
+/**
+ * `characterMatchesAcknowledgedPlain` as stages, over the live entry fields the caller took in the same synchronous
+ * stretch as the plain read. It yields once after the split of the chats and before the first unit, then between the
+ * stages of the reuse-only emit (see `characterSteps`), so a driver can hand control back between them. A fault of the
+ * split answers `unknown` before any yield.
+ */
+export function* acknowledgedPlainSteps(slot: Slot, plain: JsonObject, base: VerdictBase, options: VerdictOptions, live: EntryLiveFields): Steps<AcknowledgedVerdict> {
     let normalized: NormalizedCharacter
     try {
         normalized = normalizeCharacterFromPlain(slot, base.chaId, plain, 0)
     } catch {
         return 'unknown'
     }
-    return verdictOfNormalized(normalized, base, options)
+    yield
+    return yield* verdictStepsOfNormalized(normalized, base, options, live)
 }
 
 function verdictOfNormalized(normalized: NormalizedCharacter, base: VerdictBase, options: VerdictOptions, mode: KnownFieldsMode = 'all'): AcknowledgedVerdict {
+    return runSteps(verdictStepsOfNormalized(normalized, base, options, entryLiveFieldsOf(normalized.slot), mode))
+}
+
+/**
+ * The reuse-only emit of a read character and its comparison with the acknowledged entry, as stages. The error mapping
+ * is the verdict's: a unit that is not the acknowledged one is `dirty`, a fault of the codec is `unknown`, anything
+ * else is the caller's. A driver's pause error never enters this `try`: the drivers do not resume it with a throw.
+ */
+function* verdictStepsOfNormalized(
+    normalized: NormalizedCharacter, base: VerdictBase, options: VerdictOptions, live: EntryLiveFields, mode: KnownFieldsMode = 'all',
+): Steps<AcknowledgedVerdict> {
     const { previous } = options
     const encodeOptions: EncodeOptions = { env: options.env, lists: options.lists, seq: 0, createdAt: 0, previous }
     try {
-        const fresh = emitCharacter(normalized, new ReuseOnlyEncoder(encodeOptions, previous))
+        const fresh = yield* characterSteps(normalized, new ReuseOnlyEncoder(encodeOptions, previous), live)
         return sameKnownFields(fresh, base.acknowledged, mode) ? 'clean' : 'dirty'
     } catch (error) {
         if (error instanceof UnitNotReusedError) {

@@ -89,9 +89,9 @@ async function startRun(db: Database, idleNet: { intervalMs: number, moduleInter
         return inner.plan(planDb, request)
     }
     const verdicts: string[] = []
-    encoder.verdictOf = (slot) => {
+    encoder.verdictOfYielding = async (slot, pause) => {
         verdicts.push(String((slot as { chaId?: unknown }).chaId))
-        return inner.verdictOf(slot)
+        return inner.verdictOfYielding(slot, pause)
     }
     kit.context.encoder = encoder
     edit(kit)

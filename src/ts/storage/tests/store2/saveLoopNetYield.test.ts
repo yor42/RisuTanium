@@ -164,11 +164,11 @@ async function startWorld(db: Database, options: StartOptions = {}): Promise<Wor
         hooks.afterScan?.()
         return scan
     }
-    encoder.verdictOf = (slot) => {
+    encoder.verdictOfYielding = async (slot, pause) => {
         order.push('verdict')
         verdicts.push(String((slot as { chaId?: unknown }).chaId))
         hooks.beforeVerdict?.()
-        return inner.verdictOf(slot)
+        return inner.verdictOfYielding(slot, pause)
     }
     kit.context.encoder = encoder
     const counted = { reads: 0, sweeps: 0 }

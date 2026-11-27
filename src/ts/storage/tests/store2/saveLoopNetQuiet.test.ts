@@ -165,7 +165,7 @@ async function startWorld(db: Database, options: StartOptions = {}): Promise<Wor
         counted.scans += 1
         return inner.netScan(scanDb)
     }
-    encoder.verdictOf = (slot) => {
+    encoder.verdictOfYielding = async (slot, pause) => {
         verdicts.push(String((slot as { chaId?: unknown }).chaId))
         if (mode.verdict === 'throw') {
             throw new Error('the verdict threw')
@@ -173,7 +173,7 @@ async function startWorld(db: Database, options: StartOptions = {}): Promise<Wor
         if (mode.verdict === 'dirty' || mode.verdict === 'unknown') {
             return mode.verdict
         }
-        return inner.verdictOf(slot)
+        return inner.verdictOfYielding(slot, pause)
     }
     Object.defineProperty(encoder, 'pendingKey', {
         get: () => pending.on ? 'a-pending-key-the-test-holds' : inner.pendingKey,

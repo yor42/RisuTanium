@@ -101,9 +101,9 @@ async function startWorld(db: Database, options: StartOptions = {}): Promise<Wor
         requests.push(request)
         return inner.plan(planDb, request)
     }
-    encoder.verdictOf = (slot) => {
+    encoder.verdictOfYielding = async (slot, pause) => {
         verdicts.push(String((slot as { chaId?: unknown }).chaId))
-        return inner.verdictOf(slot)
+        return inner.verdictOfYielding(slot, pause)
     }
     kit.context.encoder = encoder
     options.configure?.(kit)
@@ -305,18 +305,18 @@ describe('R1 (CHORE-205 stage 2c): the checks of an idle-net slot read each char
      * Mechanism guard for the read counts, not a coverage reproducer: it fails on the base that ran three scans (a
      * character's `chaId` was read three to four times, its `coldstorage` three to four) and passes with the fused scan.
      * The window opens when the counters are reset after the world is up, with no full pass pending, and closes when
-     * `verdictOf` is entered. The chosen resident is index 0 (the net starts there) and the final lookup reads it a second
-     * time, so its counts are 2 and every other character's are 1.
+     * `verdictOfYielding` is entered. The chosen resident is index 0 (the net starts there) and the final lookup reads it a
+     * second time, so its counts are 2 and every other character's are 1.
      */
     test('reproducer (read counts): with residents, the scan and the lookup read each character once, the chosen one twice', async () => {
         const db = clone(buildSmall(3))
         const world = await startWorld(db)
         const reads = countReads(db)
-        const real = world.encoder.verdictOf
+        const real = world.encoder.verdictOfYielding
         let atVerdict: ReadCounts | null = null
-        world.encoder.verdictOf = (slot) => {
+        world.encoder.verdictOfYielding = async (slot, pause) => {
             atVerdict = { chaId: [...reads.counts.chaId], coldstorage: [...reads.counts.coldstorage] }
-            return real(slot)
+            return real(slot, pause)
         }
         reads.reset()
         const slot = await world.slotAt(2_000)
