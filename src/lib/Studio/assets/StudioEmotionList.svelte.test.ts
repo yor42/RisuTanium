@@ -57,12 +57,13 @@ import { assetRow, hashPath } from '../../../ts/studio/assets/assetFixtures.test
 import type { UsedInPort } from '../../../ts/studio/assets/assetPresentation'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey } from '../../../ts/studio/history/ownerPhase'
-import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../../ts/studio/history/studioHistoryService.svelte'
+import { getStudioHistoryService, resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks } from '../../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, type ClaimDouble } from '../../../ts/studio/history/tests/studioStoreDoubles'
 import { setSessionAssetSizeJobForTests } from './StudioAssetList.svelte'
 import { installChromiumFocusRemoval } from './chromiumFocusRemoval.test-helpers'
 import StudioEmotionList from './StudioEmotionList.svelte'
+import { createImportPicker, resetStudioImportsForTests, type ImportDeps } from '../../../ts/studio/assets/studioImport.svelte'
 
 // No size is ever read: the production size job is not loaded.
 const noSizes: AssetSizeJob = { peek: () => undefined, snapshot: () => new Map<string, StoredSize>(), ensure: async () => true }
@@ -223,6 +224,7 @@ afterEach(async () => {
         await unmount(entry.app)
         entry.host.remove()
     }
+    resetStudioImportsForTests()
     vi.restoreAllMocks()
     setSessionAssetSizeJobForTests(undefined)
     resetStudioToastsForTests()
@@ -687,5 +689,69 @@ describe('thumbnails', () => {
         }
         expect(shownNames()).toEqual(['sad', 'hat'])
         expect(parts('studio-thumb').map((image) => image.getAttribute('src'))).toEqual([`blob:${pB}`, `blob:${pC}`])
+    })
+})
+
+describe('E-T1: Add and the entries of an import', () => {
+    function importDeps(store: () => Promise<string>, files: File[] = [{ name: 'new.png', size: 1 } as File]): ImportDeps {
+        return {
+            pickFiles: async () => ({ kind: 'picked', files, badType: [], tooLarge: [] }),
+            storeAsset: store,
+            storeEmotion: store,
+            service: getStudioHistoryService,
+            toastHost: { post: () => 1 },
+            beginBusy: () => ({ end: () => {} }),
+        }
+    }
+
+    test('without a picker there is no Add', async () => {
+        await install(THREE())
+        await show()
+        expect(part('studio-emotion-add')).toBeNull()
+    })
+
+    test('with a picker, Add shows in the empty state and with rows, and the hint is the reworded one', async () => {
+        const picker = { open: vi.fn() }
+        await install([])
+        await show({ picker })
+        expect(part('studio-emotion-empty')).not.toBeNull()
+        expect(part('studio-emotion-add')).not.toBeNull()
+        expect(part('studio-emotion-empty')?.textContent).toContain('studioEmotionEmptyHint')
+        part('studio-emotion-add')?.click()
+        expect(picker.open).toHaveBeenCalledTimes(1)
+        for (const entry of mounted.splice(0)) { unmount(entry.app); entry.host.remove() }
+        await install(THREE())
+        await show({ picker })
+        expect(part('studio-emotion-add')).not.toBeNull()
+    })
+
+    test('Add is disabled while the view is not editable', async () => {
+        const picker = { open: vi.fn() }
+        await install(THREE())
+        const real = rig.service.view.bind(rig.service)
+        vi.spyOn(rig.service, 'view').mockImplementation((owner) => ({ ...real(owner), editable: false }))
+        await show({ picker })
+        expect((part('studio-emotion-add') as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    test('a storing file shows as importing, a failed one with Retry and Remove', async () => {
+        await install([])
+        studioScreen.open = true
+        let fail!: () => void
+        const store = () => new Promise<string>((_resolve, reject) => { fail = () => reject(new Error('no')) })
+        await show({ picker: createImportPicker(A, 'emotionImages', importDeps(store)) })
+        part('studio-emotion-add')?.click()
+        await settle()
+        expect(parts('studio-import-entry').map((entry) => entry.dataset.state)).toEqual(['storing'])
+        expect(part('studio-import-entries')?.textContent).toContain('new.png')
+        expect(part('studio-import-entries')?.textContent).toContain('studioImporting')
+        fail()
+        await settle()
+        expect(parts('studio-import-entry').map((entry) => entry.dataset.state)).toEqual(['failed'])
+        expect(part('studio-import-retry')).not.toBeNull()
+        expect(part('studio-import-entries')?.textContent).toContain('studioStoreFail')
+        part('studio-import-drop')?.click()
+        await settle()
+        expect(part('studio-import-entries')).toBeNull()
     })
 })

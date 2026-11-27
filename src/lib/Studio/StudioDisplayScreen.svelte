@@ -2,6 +2,7 @@
     import type { Snippet } from 'svelte'
     import { language } from '../../lang'
     import { modeDefaultOf, NEW_GEN_PATHS, type NewGenPath, type ScreenMode } from '../../ts/studio/edit/screenModeFill'
+    import type { AssetPickerPort } from '../../ts/studio/assets/assetPresentation'
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import type { OwnerKey } from '../../ts/studio/history/ownerPhase'
     import type { LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
@@ -29,9 +30,11 @@
         onfill: (next: ScreenFill | null) => void
         noted: (result: StudioResult | null) => boolean
         onresult: (result: StudioResult | null) => void
+        // The picker of the emotion list's Add; the list has no Add while it is absent.
+        emotionPicker?: AssetPickerPort
     }
 
-    let { chaId, owner, service, live, editable, fill, onfill, noted, onresult }: Props = $props()
+    let { chaId, owner, service, live, editable, fill, onfill, noted, onresult, emotionPicker }: Props = $props()
 
     const idBase = $props.id()
     const mode = $derived<ScreenMode>(live.viewScreen === 'emotion' || live.viewScreen === 'imggen' ? live.viewScreen : 'none')
@@ -179,7 +182,7 @@
             <h3 class="font-bold">{language.emotionImage}</h3>
             <p class="text-sm text-textcolor2">{language.emotionWarn}</p>
         </div>
-        <StudioEmotionList {chaId} />
+        <StudioEmotionList {chaId} picker={emotionPicker} />
         {#if inlay}
             {@render textField('newGenData.emotionInstructions', language.emotionInstructions, emotionInstructionsBody)}
         {/if}

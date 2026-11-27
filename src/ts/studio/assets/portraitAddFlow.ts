@@ -7,7 +7,7 @@
 
 import { language } from '../../../lang'
 import type { PlainToastInit } from '../../toast/toastHost.svelte'
-import { addRefusalNotice } from '../edit/studioToasts'
+import { addRefusalNotice, badTypeNotice } from '../edit/studioToasts'
 import type { OwnerHistoryService } from '../history/ownerHistory.svelte'
 import type { OwnerKey } from '../history/ownerPhase'
 import { studioScreen } from '../studioScreen.svelte'
@@ -41,14 +41,18 @@ export async function runPortraitAdd(owner: OwnerKey, deps: PortraitAddDeps): Pr
     if (picked.kind === 'cancelled') {
         return 'cancelled'
     }
+    const file = picked.files[0]
+    if (file === undefined) {
+        // Refused for its type or size: the size refusal was already reported by the picker, the type refusal is reported here.
+        const notice = badTypeNotice(picked.badType)
+        if (notice !== null) {
+            deps.toastHost.post(notice)
+        }
+        return 'bad-file'
+    }
     // The chooser may stay open for as long as the person likes; the visit may have ended meanwhile.
     if (!alive()) {
         return notAdded()
-    }
-    const file = picked.files[0]
-    if (file === undefined) {
-        // Refused for its type or size: the size refusal was already reported by the picker.
-        return 'bad-file'
     }
     const busy = deps.beginBusy?.()
     try {
@@ -78,7 +82,7 @@ export async function runPortraitAdd(owner: OwnerKey, deps: PortraitAddDeps): Pr
             if (notice.kind === 'not-added') {
                 return notAdded()
             }
-            deps.toastHost.post({ kind: 'warning', text: notice.text })
+            deps.toastHost.post({ kind: 'warning', text: language.studioImportRefused(1), sub: notice.text })
             return 'refused'
         }
         deps.onLanded(result.pngChunks ?? 0)
