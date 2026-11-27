@@ -299,7 +299,7 @@ describe('T2-BI-UI-5: the delete toast and the focus after a delete', () => {
     })
 })
 
-describe('T2-BI-UI-6 (AS-C6): an unreadable list is shown read-only and nothing is written', () => {
+describe('T2-BI-UI-6 (AS-C6): an unreadable list is shown read-only and only the repair step writes it', () => {
     test.each([
         ['a null cell', [['tok', null]], ['tok']],
         ['a 3-tuple', [['tok', 1, 'x']], ['tok']],
@@ -332,7 +332,7 @@ describe('T2-BI-UI-6 (AS-C6): an unreadable list is shown read-only and nothing 
         expect(document.activeElement).toBe(tokens()[0])
         expect(service.view(A).done).toHaveLength(1)
 
-        // Subsequent same-visit edit uses `biasFix` so `restore.fields` has no duplicate `bias` key.
+        // A same-visit edit through `bias` lands in the shared restore slot, so `restore.fields` holds the one `biasFix` entry.
         commitValue(values()[0], '5')
         expect(live().bias).toEqual([['tok', 5], ['x', 2.5]])
         const restoreFields = service.view(A).restore?.fields

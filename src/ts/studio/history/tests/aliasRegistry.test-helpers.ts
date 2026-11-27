@@ -1,5 +1,6 @@
-// Shared by the restore-slot tests: a registry that adds two later alias rows over holder properties the real registry
-// already owns (`lowLevelAccess`, `utilityBot`), shaped like the rows a later ticket appends, plus the model fixtures.
+// Shared by the restore-slot tests: `withAliasRows` adds two synthetic alias rows over holder properties no real row
+// aliases (`lowLevelAccess`, `utilityBot`), shaped like the rows a later ticket appends, next to the real `biasFix`
+// alias of `bias`; the model fixtures follow.
 // A `vi.mock` of the registry calls `withAliasRows` through a dynamic import, because a mock factory is hoisted above
 // the static imports of its file.
 

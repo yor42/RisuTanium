@@ -18,7 +18,7 @@
     // The token bias list of the character: one row per token with its value and a delete. Every change is one history
     // step; typing a token coalesces per row and a blur closes the step. A value is clamped to -100..100 and an emptied
     // one is stored as 0, each with a note. A list the strict reader cannot read (a `null` cell, a 3-tuple, a non-array)
-    // is shown read-only, as stored, and nothing is written for it: mounting writes nothing either.
+    // is shown read-only, as stored; only the Repair step writes it (one undoable `biasFix` step), and mounting writes nothing.
     interface Props {
         chaId: string
         owner: OwnerKey
@@ -79,16 +79,10 @@
     const idBase = $props.id()
     let root = $state<HTMLElement>()
 
-    // Once a malformed bias list is repaired via `biasFix` in this visit, keep using `biasFix` for subsequent edits in
-    // the same visit so the restore point tracks one entry for the property rather than both `bias` and `biasFix`.
-    function biasPath(): 'bias' | 'biasFix' {
-        return service?.view(owner).restore?.fields.biasFix !== undefined ? 'biasFix' : 'bias'
-    }
-
     // Token typing goes through a composition gate per row: nothing is written while an IME composes.
     function commitToken(index: number, value: string, element: HTMLInputElement | null): void {
         const current = currentRows()
-        const result = service && editable && current ? service.editField(owner, biasPath(), editToken(current, index, value), { coalesceKey: `bias:${index}:token` }) : null
+        const result = service && editable && current ? service.editField(owner, 'bias', editToken(current, index, value), { coalesceKey: `bias:${index}:token` }) : null
         if ((result === null || !noted(result)) && element) element.value = current?.[index]?.[0] ?? ''
     }
     const gates = new Map<number, ReturnType<typeof createCompositionGate>>()
@@ -118,7 +112,7 @@
         const current = rows
         if (!service || !editable || !current) return
         const { value, note } = clampBias(element.value)
-        const result = service.editField(owner, biasPath(), editValue(current, index, value), { coalesceKey: null })
+        const result = service.editField(owner, 'bias', editValue(current, index, value), { coalesceKey: null })
         if (noted(result)) valueNotes[index] = note
         element.value = String(rows?.[index]?.[1] ?? value)
     }
@@ -126,7 +120,7 @@
     function add(): void {
         const current = rows
         if (!service || !editable || !current) return
-        noted(service.editField(owner, biasPath(), addRow(current), { coalesceKey: null }))
+        noted(service.editField(owner, 'bias', addRow(current), { coalesceKey: null }))
     }
 
     async function repair(): Promise<void> {
@@ -142,7 +136,7 @@
     async function remove(index: number): Promise<void> {
         const current = rows
         if (!service || !editable || !current) return
-        const result = service.editField(owner, biasPath(), deleteRow(current, index), { coalesceKey: null, reportStep: true })
+        const result = service.editField(owner, 'bias', deleteRow(current, index), { coalesceKey: null, reportStep: true })
         noted(result)
         if (result.ok === false) return
         valueNotes = {}
