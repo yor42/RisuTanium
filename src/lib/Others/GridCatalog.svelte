@@ -543,6 +543,10 @@
     // A pick whose tile is gone or now stands for another object leaves the selection, so an action
     // never reaches a character the user cannot see or a look-alike that took the slot.
     $effect(() => {
+        // No pick, nothing to drop: the entries stay unbuilt until the Grid tab needs them.
+        if (picks.size === 0) {
+            return
+        }
         const stale = stalePickedKeys(picks, entryByKey, DBState.db.characters, DBState.db.characterOrder)
         if (stale.length > 0) {
             untrack(() => {
@@ -1459,7 +1463,10 @@
     // A press whose tile left the entries ends without effect, except a hold that already entered edit
     // mode (see holdEnteredEdit).
     $effect(() => {
-        void entries
+        // A session starts only on the Grid tab, so elsewhere the entries are not read unless one lingers.
+        if (selected === 0 || machine.isPressed) {
+            void entries
+        }
         untrack(() => {
             if (!holdEnteredEdit) {
                 machine.layoutChanged()
