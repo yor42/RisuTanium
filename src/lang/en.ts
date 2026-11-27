@@ -3990,6 +3990,7 @@ export const languageEnglish = {
     fallbackWhenBlankResponse: "Fallback When Blank Response",
     doNotChangeFallbackModels: "Do Not Change Fallback Models on Preset Change",
     customModels: "Custom Models",
+    customModelTag: "Custom",
     useTokenizerCaching: "Tokenizer Caching",
     hypaMemoryV2Modal: "Hypa V2 Modal",
     hypaMemoryV3Modal: "Hypa V3 Modal",

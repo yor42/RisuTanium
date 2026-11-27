@@ -36,7 +36,7 @@ vi.mock('../../ts/connections/connectionTest', async (importOriginal) => ({
 
 import { language } from '../../lang'
 import { DBState } from '../../ts/stores.svelte'
-import { resetBackHandlersForTests } from '../../ts/backHandlers'
+import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 import { setSettingsSubLevel } from '../../ts/settingsShell/settingsNavigation'
 import Page from './ConnectionsShellPage.svelte'
 
@@ -116,6 +116,72 @@ describe('connection test', () => {
         run.click()
         await settle()
         expect(h.calls).toEqual([])
+    })
+})
+
+describe('a remembered test result', () => {
+    const tested = (id: string): HTMLElement | null =>
+        document.querySelector(`[data-connection-open="${id}"]`)?.closest('li')?.querySelector<HTMLElement>('[data-part="settings-connection-tested"]') ?? null
+
+    async function backToList(): Promise<void> {
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(document.querySelector('[data-part="settings-connections-list"]')).not.toBeNull()
+    }
+
+    test('shows on the list card after the detail closes and again when it reopens', async () => {
+        await openDetail('c-ok')
+        part('settings-connection-test-run').click()
+        await settle()
+        await backToList()
+        expect(tested('c-ok')?.textContent).toContain('2')
+        expect(tested('c-nai')).toBeNull()
+        await openDetail('c-ok')
+        expect(part('settings-connection-test-result').textContent).toContain('2')
+    })
+
+    test('a URL change hides it', async () => {
+        await openDetail('c-custom')
+        part('settings-connection-test-run').click()
+        await settle()
+        await backToList()
+        expect(tested('c-custom')).not.toBeNull()
+        DBState.db.connections![0].url = 'https://other.invalid/v1'
+        await settle()
+        expect(tested('c-custom')).toBeNull()
+    })
+
+    test('replacing the key hides it even when the key hint stays the same', async () => {
+        DBState.db.connections![1].key = 'abc'
+        await settle()
+        h.status = 401
+        await openDetail('c-ok')
+        part('settings-connection-test-run').click()
+        await settle()
+        expect(part('settings-connection-test-result').textContent).toBe(language.connectionsTestBadKey)
+        part('settings-connection-key-replace')?.click()
+        await settle()
+        const field = document.querySelector<HTMLInputElement>('[data-part="settings-connection-key-input"] input, [data-part="settings-connection-key"] input')
+        if (!field) throw new Error('no key field')
+        field.value = 'xyz'
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+        await settle()
+        part('settings-connection-key-save').click()
+        await settle()
+        await backToList()
+        expect(tested('c-ok')).toBeNull()
+    })
+
+    test('deleting the connection forgets it', async () => {
+        const { deleteConnection } = await import('../../ts/connections/connectionEditor')
+        await openDetail('c-ok')
+        part('settings-connection-test-run').click()
+        await settle()
+        await backToList()
+        deleteConnection(DBState.db, 'c-ok')
+        DBState.db.connections = [...DBState.db.connections!, { id: 'c-ok', name: 'Again', provider: 'openai', key: 'sk-test-BBBB5678' }]
+        await settle()
+        expect(tested('c-ok')).toBeNull()
     })
 })
 

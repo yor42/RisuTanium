@@ -3849,6 +3849,7 @@ export const languageVietnamese = {
     "fallbackWhenBlankResponse": "Dự phòng khi phản hồi trống",
     "doNotChangeFallbackModels": "Không thay đổi mô hình dự phòng khi thay đổi cài đặt trước",
     "customModels": "Mô hình tùy chỉnh",
+    "customModelTag": "Tùy chỉnh",
     "useTokenizerCaching": "Lưu trữ đệm Tokenizer",
     "hypaMemoryV2Modal": "Hypa V2 Modal",
     "hypaMemoryV3Modal": "Hypa V3 Modal",

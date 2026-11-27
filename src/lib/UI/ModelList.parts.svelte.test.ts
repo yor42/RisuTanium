@@ -190,7 +190,8 @@ describe('ModelList overlay parts', () => {
         const target = mountList('', true)
         const frame = frameOf(target)
         const body = openAccordion(frame, language.customModels)
-        const row = byText(body, 'button', 'Zz Custom')
+        // The row also carries the Custom tag, so it is found by its part rather than its exact text.
+        const row = body.querySelector<HTMLElement>('[data-part="modal-row"]')!
         expect(partOf(row)).toBe('modal-row')
         expect(row.parentElement).toBe(body)
         expect(partOf(body)).toBeNull()

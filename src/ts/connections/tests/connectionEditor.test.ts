@@ -70,8 +70,6 @@ describe('addConnection', () => {
         const before = storedConnections(db).length
         expect(await addConnection(db, { provider: 'openai', name: 'x', key: 'sk-test-ZZZZ0000' }))
             .toEqual({ ok: false, reason: 'taken' })
-        expect(await addConnection(db, { provider: 'custom', name: 'x', key: 'sk-test-ZZZZ0000' }))
-            .toEqual({ ok: false, reason: 'taken' })
         expect(await addConnection(db, { provider: 'anthropic', name: 'x', key: '  ' }))
             .toEqual({ ok: false, reason: 'blank' })
         expect(await addConnection(db, { provider: 'reverse_proxy', name: 'x', key: '', url: ' ' }))
@@ -102,6 +100,18 @@ describe('addConnection', () => {
         const result = await addConnection(db, { provider: 'mistral', name: 'M', key: 'sk-test-MMMM1234', url: 'https://ignored.invalid' })
         expect(result).toEqual({ ok: true, id: `conn-${before + 1}` })
         expect(storedConnections(db).at(-1)).toEqual({ id: `conn-${before + 1}`, name: 'M', provider: 'mistral', key: 'sk-test-MMMM1234' })
+    })
+
+    it('#819: adds several custom connections, each with its own url and no working-proxy change', async () => {
+        const db = migratedDb()
+        const proxyBefore = db.proxyConnectionId
+        const first = await addConnection(db, { provider: 'custom', name: 'Local A', key: '', url: ' https://a.invalid/v1 ' })
+        const second = await addConnection(db, { provider: 'custom', name: 'Local B', key: 'sk-test-DDDD1234', url: 'https://b.invalid/v1' })
+        expect(first.ok && second.ok).toBe(true)
+        const added = storedConnections(db).slice(-2)
+        expect(added.map((c) => [c.provider, c.name, c.url])).toEqual([['custom', 'Local A', 'https://a.invalid/v1'], ['custom', 'Local B', 'https://b.invalid/v1']])
+        expect(db.proxyConnectionId).toBe(proxyBefore)
+        expect(await addConnection(db, { provider: 'custom', name: 'none', key: '', url: ' ' })).toEqual({ ok: false, reason: 'blank' })
     })
 
     it('T27: the first proxy becomes the working one when none or a dangling one resolves; a resolving one is kept', async () => {

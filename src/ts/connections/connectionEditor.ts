@@ -5,7 +5,8 @@ import {
     type Connection, type ConnectionProvider,
 } from './connections'
 import { setConnectionKey } from './keyAccess'
-import { catalogEntry } from './providerCatalog'
+import { forgetTest } from './connectionTestMemory'
+import { allowsSeveral, catalogEntry } from './providerCatalog'
 import { appendConnection } from './slotEditor'
 import { invalidateVertexToken } from 'src/ts/process/request/vertexToken'
 
@@ -101,7 +102,7 @@ export async function addConnection(db: Database, input: AddConnectionInput): Pr
         return { ok: false, reason: 'name' }
     }
     const entry = catalogEntry(input.provider)
-    if (entry === undefined || (entry.provider !== 'reverse_proxy'
+    if (entry === undefined || (!allowsSeveral(entry.provider)
         && storedConnections(db).some((conn) => conn.provider === input.provider))) {
         return { ok: false, reason: 'taken' }
     }
@@ -164,6 +165,8 @@ async function changeKey(db: Database, id: string, plain: string): Promise<KeyCh
     }
     applyKeyEffects(db, conn.provider, plain)
     needsKey.delete(id)
+    // The key hint can stay equal across a replacement (short or single-line keys), so the stamp alone cannot tell.
+    forgetTest(id)
     return { ok: true }
 }
 
@@ -225,8 +228,9 @@ export function deleteConnection(db: Database, id: string): RemovedConnection | 
             }
         }
     }
-    // A reused id must not inherit the "enter the key again" state of an earlier connection.
+    // A reused id must not inherit the "enter the key again" state or the test result of an earlier connection.
     needsKey.delete(id)
+    forgetTest(id)
     applyKeyEffects(db, snapshot.provider, '')
     return { snapshot, index, refs }
 }
@@ -247,7 +251,7 @@ export function restoreConnection(db: Database, removed: RemovedConnection): Res
     if (conns.some((conn) => conn.id === snapshot.id)) {
         return 'taken'
     }
-    const single = snapshot.provider !== 'reverse_proxy' && snapshot.provider !== 'custom'
+    const single = !allowsSeveral(snapshot.provider)
     if (single && conns.some((conn) => conn.provider === snapshot.provider)) {
         return 'provider'
     }
