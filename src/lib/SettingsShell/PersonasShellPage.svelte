@@ -12,6 +12,7 @@
     } from '../../ts/personaList'
     import { personaUndoAction } from '../../ts/setting/personaUndo'
     import { autoscrollDelta, dropIndex, type CardRect } from '../../ts/settingsShell/personaDrag'
+    import { isUntouchedPersona } from '../../ts/settingsShell/personaBuilder'
     import { setSettingsSubLevel } from '../../ts/settingsShell/settingsNavigation'
     import { isColdStub } from '../../ts/storage/store2/codec/stub'
     import type { RisuPersona } from '../../ts/storage/database.svelte'
@@ -22,6 +23,7 @@
     import PatternWarning from '../Nexus/pattern/PatternWarning.svelte'
     import type { PatternAnswer, PatternWarningDef } from '../Nexus/pattern/patternWarning'
     import Check from '../UI/GUI/CheckInput.svelte'
+    import PersonaBuilder from './persona/PersonaBuilder.svelte'
     import WindowedSegment from '../UI/Windowed/WindowedSegment.svelte'
     import { createWindowHost } from '../../ts/windowing/windowHost.svelte'
 
@@ -64,6 +66,10 @@
     let cardMenu = $state<{ id: string, opener: HTMLElement } | null>(null)
     let addMenuOpen = $state(false)
     let deleteAsk = $state<DeleteAsk | null>(null)
+    /** The persona the guided builder is writing; it replaces the editor while set. */
+    let builderId = $state<string | null>(null)
+    let builder = $state<{ back: () => void, hasInput: () => boolean, flush: () => void }>()
+    let discardAsk = $state<{ id: string } | null>(null)
     let importItems = $state<PersonaImportItem[] | null>(null)
     let listEl = $state<HTMLElement>()
     let editorEl = $state<HTMLElement>()
@@ -110,7 +116,7 @@
     const boundChats = $derived(shown?.id ? listBoundChats(shown.id) : [])
     const menuTarget = $derived(cardMenu ? DBState.db.personas.find((entry) => entry.id === cardMenu?.id) : undefined)
     const menuIndex = $derived(menuTarget ? DBState.db.personas.indexOf(menuTarget) : -1)
-    const dialogOpen = $derived(deleteAsk !== null || importItems !== null)
+    const dialogOpen = $derived(deleteAsk !== null || importItems !== null || discardAsk !== null)
 
     function listBoundChats(id: string): string[] {
         const found: string[] = []
@@ -152,6 +158,11 @@
     }
 
     async function openById(id: string): Promise<void> {
+        // Choosing another card leaves the builder; the persona it made stays as it is.
+        if (builderId !== id) {
+            builder?.flush()
+            builderId = null
+        }
         openId = id
         if (innerWidth < SPLIT_WIDTH) {
             drilled = true
@@ -168,15 +179,15 @@
     }
 
     // The registration reads the width at call time, so a rotation or resize while drilled in leaves no sub-level at the split width.
-    setSettingsSubLevel({ isOpen: () => drilled && innerWidth < SPLIT_WIDTH, close: () => { void closeEditor() } })
+    setSettingsSubLevel({ isOpen: () => drilled && innerWidth < SPLIT_WIDTH, close: () => { if (builderId !== null) builder?.back(); else void closeEditor() } })
     onDestroy(() => setSettingsSubLevel(null))
 
     $effect(() => {
         if (!dialogOpen) return
         return registerBackHandler(backCloseHandler({
-            isOpen: () => deleteAsk !== null || importItems !== null,
-            snapshot: () => `${deleteAsk !== null}|${importItems !== null}`,
-            close: () => { deleteAsk = null; importItems = null },
+            isOpen: () => deleteAsk !== null || importItems !== null || discardAsk !== null,
+            snapshot: () => `${deleteAsk !== null}|${importItems !== null}|${discardAsk !== null}`,
+            close: () => { deleteAsk = null; importItems = null; discardAsk = null },
         }))
     })
 
@@ -307,6 +318,68 @@
     function create(): void {
         addMenuOpen = false
         void openById(createPersona(DBState.db, language.settingsShellPersonaNewName))
+    }
+
+    // The persona exists from the moment the builder opens: the picture picker needs it, and every step writes it live.
+    async function startBuilder(): Promise<void> {
+        addMenuOpen = false
+        const id = createPersona(DBState.db, language.settingsShellPersonaNewName)
+        builderId = id
+        openId = id
+        if (innerWidth < SPLIT_WIDTH) drilled = true
+        await afterFlush()
+    }
+
+    async function finishBuilder(): Promise<void> {
+        const id = builderId
+        builderId = null
+        if (id) await openById(id)
+    }
+
+    function cancelBuilder(): void {
+        const id = builderId
+        const made = DBState.db.personas.find((entry) => entry.id === id)
+        if (!id || !made) {
+            builderId = null
+            return
+        }
+        if (isUntouchedPersona(made, language.settingsShellPersonaNewName) && !builder?.hasInput()) discardBuilt(id)
+        else discardAsk = { id }
+    }
+
+    // A persona still untouched leaves through the ordinary delete path, with its undo toast.
+    function discardBuilt(id: string): void {
+        builderId = null
+        const removed = removePersona(DBState.db, id)
+        openId = null
+        if (removed !== null && removed !== 'last') {
+            postUndoToast({
+                text: language.settingsShellPersonaDeleted,
+                actionLabel: language.uiCommon.undo,
+                action: personaUndoAction(removed.copy, removed.index, removed.wasActive),
+            })
+        }
+        void closeEditor()
+    }
+
+    function discardDef(): PatternWarningDef {
+        return {
+            severity: 'confirm',
+            headline: language.settingsShellPersonaBuilderDiscardTitle,
+            consequences: [],
+            actions: { cancel: language.settingsShellPersonaBuilderKeep, primary: language.settingsShellPersonaBuilderDiscard },
+        }
+    }
+
+    function answerDiscard(answer: PatternAnswer): void {
+        const ask = discardAsk
+        discardAsk = null
+        if (!ask) return
+        if (answer === 'confirm') discardBuilt(ask.id)
+        else {
+            builder?.flush()
+            void finishBuilder()
+        }
     }
 
     function duplicate(persona: RisuPersona): void {
@@ -490,7 +563,10 @@
         </div>
 
         <div class="grow min-w-0" class:hidden={!split && !drilled}>
-            <div class="flex flex-col gap-3 outline-none rounded-md" tabindex="-1" role="group" aria-label={shown ? displayName(shown) : undefined} bind:this={editorEl} data-part="settings-persona-editor">
+            {#if builderId}
+                <PersonaBuilder bind:this={builder} id={builderId} onfinish={() => { void finishBuilder() }} oncancel={cancelBuilder} />
+            {/if}
+            <div class="flex flex-col gap-3 outline-none rounded-md" class:hidden={builderId !== null} tabindex="-1" role="group" aria-label={shown ? displayName(shown) : undefined} bind:this={editorEl} data-part="settings-persona-editor">
                 {#if shown}
                     <div class="flex flex-wrap gap-4">
                         <button type="button" class="shrink-0 rounded-md" data-part="settings-persona-portrait" aria-label={language.onboarding.choosePicture} onclick={() => { void selectUserImg(shown.id) }}>
@@ -558,12 +634,16 @@
 <ShellSheet open={addMenuOpen} kind="menu" mode="action" label={language.settingsShellPersonaAdd} opener={addButton ?? null} inertOutside onclose={() => { addMenuOpen = false }}>
     <div class="flex flex-col gap-2 p-2">
         <button type="button" role="menuitem" data-sheet-initial class="min-h-11 px-3 rounded-md text-left bg-darkbutton text-textcolor" onclick={create}>{language.settingsShellPersonaNew}</button>
+        <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-darkbutton text-textcolor" onclick={() => { void startBuilder() }}>{language.settingsShellPersonaGuided}</button>
         <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-darkbutton text-textcolor" onclick={() => { void startImport() }}>{language.settingsShellPersonaImportMenu}</button>
     </div>
 </ShellSheet>
 
 {#if deleteAsk}
     <PatternWarning def={deleteDef(deleteAsk)} trigger={deleteAsk.trigger} background={dialogBackground()} onanswer={answerDelete} />
+{/if}
+{#if discardAsk}
+    <PatternWarning def={discardDef()} background={dialogBackground()} onanswer={answerDiscard} />
 {/if}
 {#if importItems}
     <PatternWarning def={importDef(importItems)} background={dialogBackground()} onanswer={(answer) => { void answerImport(answer) }} />
