@@ -177,6 +177,7 @@ const EXEMPT: ReadonlyMap<string, string> = new Map<string, string>([
     ...group('the chat shell sheet the Display page opens: a chat part', ['chat-sheet', 'chat-sheet-handle', 'chat-sheet-layer', 'chat-sheet-scrim', 'chat-customize-action', 'chat-customize-preview']),
     ...group('a Studio component, rendered on the Studio screen as well', ['studio-toggle-link']),
     ...group('a name the character asset inputs render as well (AssetInput, CharConfigPanel)', ['asset-name-box']),
+    ...group('the model and provider picker overlays (ModelList, OpenrouterProviderList): popups modal parts on the overlay that opens over the page; the inline trigger and notes carry none (MC-4212)', ['modal-close', 'modal-footer', 'modal-frame', 'modal-header', 'modal-model-list', 'modal-openrouter-provider-list', 'modal-row', 'modal-text', 'modal-title']),
 ])
 
 const SETTINGS_ONLY_PREFIX = /^settings-[a-z0-9-]+$/
