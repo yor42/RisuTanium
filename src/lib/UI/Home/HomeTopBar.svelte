@@ -39,6 +39,8 @@
 
     // Lives here, not in HomeTasks: a band change replaces the Tasks instance, and the open dialog must survive it.
     let tasksOpen = $state(false)
+    // The selected tab lives beside it for the same reason; the Tasks button chooses it when it opens the dialog.
+    let tasksTab = $state<'replies' | 'background'>('replies')
 
     // The bar's own width, not the window's: a docked sidebar makes the bar narrower than the window. It is read only
     // while the band is wide, synchronously on entering and again on every resize of the bar's parent. The parent
@@ -238,7 +240,7 @@
                 <MenuIcon size={22} />
             </button>
             {@render brand()}
-            <HomeTasks bind:open={tasksOpen} class="ms-auto" />
+            <HomeTasks bind:open={tasksOpen} bind:tab={tasksTab} class="ms-auto" />
             <HomePersonaChip compact />
         </div>
         {#if hasSwitcher}
@@ -251,7 +253,7 @@
         {/if}
         <!-- Roleplay content: while Roleplay is the only built mode (BUILT_HOME_MODES) the landing is Roleplay. -->
         <div class={chipClass[chipLayout]}>
-            <HomeTasks bind:open={tasksOpen} />
+            <HomeTasks bind:open={tasksOpen} bind:tab={tasksTab} />
             <HomePersonaChip />
         </div>
         {#if layout === 'mid' && hasSwitcher}

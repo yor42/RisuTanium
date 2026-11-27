@@ -6,7 +6,8 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { taskRows, type HomeTaskCharacter } from './homeTasks'
+import { createTaskController, type TaskClock, type TaskLabels } from '../../Nexus/pattern/taskProgress'
+import { jobProgressText, taskRows, type HomeTaskCharacter } from './homeTasks'
 
 const UNNAMED = 'Unnamed'
 
@@ -64,5 +65,66 @@ describe('taskRows', () => {
                 for (const id of [row.chaId, row.chatId]) expect(text).not.toContain(id)
             }
         }
+    })
+})
+
+describe('jobProgressText', () => {
+    const labels: TaskLabels = {
+        stepOf: (i, n) => `Step ${i} of ${n}`,
+        fileOf: (i, n) => `File ${i} of ${n}`,
+        count: (noun, d, t) => `${noun} ${d} / ${t}`,
+        countFound: (noun, d, f) => `${noun} ${d} saved, ${f} found so far`,
+        bytes: (d, t) => `${d} / ${t}`,
+        cancelling: 'Wrapping up',
+        cancelledHeadline: 'Cancelled',
+        skippedTitle: (n) => `${n} skipped`,
+    }
+
+    /** A real controller on a clock that moves on every read, so each write publishes at once. */
+    function controller() {
+        let now = 0
+        const clock: TaskClock = {
+            now: () => (now += 1000),
+            setTimeout: () => 0 as unknown as ReturnType<typeof setTimeout>,
+            clearTimeout: () => { },
+            hidden: () => false,
+        }
+        return createTaskController({
+            title: 'Import',
+            steps: [{ label: 'Read file', noun: 'Assets' }, { label: 'Add items' }],
+            onCancel: () => { },
+            background: true,
+        }, clock)
+    }
+
+    test('T-613-09: step only, then file and step', () => {
+        const task = controller()
+        expect(jobProgressText(task.view, labels)).toBe('Step 1 of 2: Read file')
+
+        task.setFile(1, 3)
+        expect(jobProgressText(task.view, labels)).toBe('File 2 of 3: Step 1 of 2: Read file')
+    })
+
+    test('T-613-09: a closed count, an open count and MiB read as amounts, never a percentage', () => {
+        const counted = controller()
+        counted.setCount(3, 10)
+        const opened = controller()
+        opened.setFound(2, 5)
+        const sized = controller()
+        sized.setBytes(1024 * 1024, 3 * 1024 * 1024)
+
+        expect(jobProgressText(counted.view, labels)).toBe('Step 1 of 2: Read file, Assets 3 / 10')
+        expect(jobProgressText(opened.view, labels)).toBe('Step 1 of 2: Read file, Assets 2 saved, 5 found so far')
+        expect(jobProgressText(sized.view, labels)).toBe('Step 1 of 2: Read file, 1.0 MiB / 3.0 MiB')
+        for (const task of [counted, opened, sized]) expect(jobProgressText(task.view, labels)).not.toContain('%')
+    })
+
+    test('T-613-09: a cancelling task reads the cancelling word', () => {
+        const task = controller()
+        task.setCount(3, 10)
+        expect(task.requestCancel()).toBe(true)
+
+        expect(task.view.state).toBe('cancelling')
+        expect(jobProgressText(task.view, labels)).toBe('Wrapping up')
     })
 })

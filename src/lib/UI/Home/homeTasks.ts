@@ -1,4 +1,5 @@
 import type { ReplyTarget } from 'src/ts/process/chatOrigin'
+import { taskValueText, type TaskLabels, type TaskView } from 'src/lib/Nexus/pattern/taskProgress'
 
 /** The slice of a character slot the Tasks dialog reads: a name and its chats' ids and names. */
 export interface HomeTaskCharacter {
@@ -16,6 +17,14 @@ export interface TaskRow {
     name: string
     /** The chat's name; never an id. */
     chatName: string
+}
+
+/**
+ * The progress line of a backgrounded task: the cancelling word while it stops, otherwise where it is (step, file, count
+ * or MiB). Never a percentage.
+ */
+export function jobProgressText(view: TaskView, labels: TaskLabels): string {
+    return view.state === 'cancelling' ? labels.cancelling : taskValueText(view, labels)
 }
 
 /** The pair that identifies one chat; the same key `replyTargets` deduplicates by. */

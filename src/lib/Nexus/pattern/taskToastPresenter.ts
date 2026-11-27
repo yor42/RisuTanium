@@ -4,7 +4,7 @@ import type { TaskToastAnnouncement, TaskToastContent, TaskToastPhase, ToastHost
 import { afterFrameSettle } from './patternFocus'
 import { taskAnnouncement, taskToastContent, taskToastPhase, type TaskLabels, type TaskView } from './taskProgress'
 
-function buildLabels(): TaskLabels {
+export function buildTaskLabels(): TaskLabels {
     return {
         stepOf: language.patternTaskStepOf,
         fileOf: language.patternTaskFileOf,
@@ -61,7 +61,7 @@ export function createTaskToastPresenter(host: ToastHost): TaskToastPresenter {
     }
     return {
         post(view, on) {
-            const labels = buildLabels()
+            const labels = buildTaskLabels()
             const content = toastContent(view, labels)
             const id = host.postTask({
                 ...content,
@@ -83,7 +83,7 @@ export function createTaskToastPresenter(host: ToastHost): TaskToastPresenter {
             return id
         },
         update(id, view) {
-            const labels = buildLabels()
+            const labels = buildTaskLabels()
             const content = toastContent(view, labels)
             const before = phases.get(id)
             phases.set(id, content.phase)
