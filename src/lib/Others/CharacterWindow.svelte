@@ -3,7 +3,7 @@
     import { afterFlush } from "../../ts/afterFlush";
     import { buildSlices, computeWindow } from "../SideBars/railWindow";
     import { UNMEASURED_VIEWPORT_PX, WINDOW_MIN_OVERSCAN_ROWS, WINDOW_OVERSCAN_VIEWPORTS } from "../SideBars/railConstants";
-    import { anchorAt, buildRowLayout, cardAnchorAt, gridColumns, heightDeltaAbove, scrollTopFor, scrollTopForCard, type CardAnchor, type CharRow, type ScrollAnchor } from "./charListRows";
+    import { anchorAt, buildRowLayout, cardAnchorAt, gridColumns, GRID_SMALL, heightDeltaAbove, scrollTopFor, scrollTopForCard, type CardAnchor, type CharRow, type GridMetrics, type ScrollAnchor } from "./charListRows";
     import type { GridGeometry } from "./gridTarget";
     import { createFocusSettle } from "../../ts/focusSettle";
 
@@ -16,6 +16,8 @@
         layout?: "list" | "grid";
         // Height of a row that has not been measured yet.
         fallbackHeight: number;
+        // The tile size the grid's column count and hit tests are computed for (grid layout only).
+        metrics?: GridMetrics;
         // Measured row heights by row key. The owner may keep the map alive across
         // this component's life (a saved scroll anchor only works against the
         // heights it was taken with); this component is its only writer.
@@ -38,7 +40,7 @@
         card: Snippet<[cardKey: string, position: number, visible: () => boolean]>;
     }
 
-    let { rows: rowsProp, layout: variant = "list", fallbackHeight, heights = new Map<string, number>(), resetToken, initialAnchor = null, rowClass = "", class: className = "", attach, card }: Props = $props();
+    let { rows: rowsProp, layout: variant = "list", fallbackHeight, metrics = GRID_SMALL, heights = new Map<string, number>(), resetToken, initialAnchor = null, rowClass = "", class: className = "", attach, card }: Props = $props();
 
     //#region geometry
 
@@ -47,7 +49,7 @@
     // that keeps the count rebuilds nothing.
     let contentWidth = $state(0);
     let remPx = $state(16);
-    const columns = $derived(variant === "grid" && contentWidth > 0 ? gridColumns(contentWidth, remPx) : 0);
+    const columns = $derived(variant === "grid" && contentWidth > 0 ? gridColumns(contentWidth, remPx, metrics) : 0);
     const noRows: readonly CharRow[] = [];
     const rows = $derived.by(() => {
         if (typeof rowsProp !== "function") {
@@ -183,7 +185,7 @@
             measuredRemPx = measureRemPx();
         }
         const rem = measuredRemPx;
-        if (columns === 0 || gridColumns(width, rem) === columns) {
+        if (columns === 0 || gridColumns(width, rem, metrics) === columns) {
             contentWidth = width;
             remPx = rem;
             return;
@@ -263,7 +265,7 @@
 
     /** The rows, their layout and the measures a position inside them is resolved from (grid layout). */
     export function getGeometry(): GridGeometry {
-        return { rows, layout, contentWidth, remPx };
+        return { rows, layout, contentWidth, remPx, metrics };
     }
 
     //#endregion

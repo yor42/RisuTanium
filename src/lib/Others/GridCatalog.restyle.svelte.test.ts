@@ -339,6 +339,58 @@ describe('T24: the view group wrapper is in both hosts of the library', () => {
     })
 })
 
+describe('#479: the Home library tile is a larger square with the name beneath and no chat count', () => {
+    // happy-dom lays nothing out, so the container reports a phone's width and height by stubbed getters.
+    function withContainerSize<T>(width: number, height: number, run: () => T): T {
+        const widthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+        const heightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+        Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width })
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => height })
+        try {
+            return run()
+        } finally {
+            for (const [name, descriptor] of [['clientWidth', widthDescriptor], ['clientHeight', heightDescriptor]] as const) {
+                if (descriptor) {
+                    Object.defineProperty(HTMLElement.prototype, name, descriptor)
+                } else {
+                    Reflect.deleteProperty(HTMLElement.prototype, name)
+                }
+            }
+        }
+    }
+
+    const tiles = (root: HTMLElement) => Array.from(root.querySelectorAll('[data-part="library-tile"]')) as HTMLElement[]
+
+    test('(R) Home tiles carry the name beneath a 4.5 rem picture and show no count', () => {
+        DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
+        const root = withContainerSize(328, 640, () => {
+            const mountedRoot = mountComponent(HomeLibrary)
+            openView(mountedRoot, language.grid)
+            return mountedRoot
+        })
+        const found = tiles(root)
+        expect(found.length).toBe(2)
+        expect(found.map((tile) => tile.querySelector('[data-part="library-tile-name"]')?.textContent)).toEqual(['Ann', 'Bob'])
+        const picture = found[0].querySelector('button') as HTMLElement
+        expect(picture.className).toContain('h-[4.5rem]')
+        expect(picture.className).not.toContain('h-14')
+        expect(found[0].textContent).not.toMatch(/\d/)
+    })
+
+    test('(F) the App host keeps the 56 px tile and no name beneath', () => {
+        DBState.db = buildDb([makeCharacter('a', 'Ann')])
+        const root = withContainerSize(328, 640, () => {
+            const mountedRoot = mountComponent(GridCatalog)
+            openView(mountedRoot, language.grid)
+            return mountedRoot
+        })
+        const found = tiles(root)
+        expect(found.length).toBe(1)
+        expect(found[0].querySelector('[data-part="library-tile-name"]')).toBeNull()
+        expect((found[0].querySelector('button') as HTMLElement).className).toContain('h-14')
+    })
+})
+
 describe('T25a: the density fence holds', () => {
     test('guard: the row-pitch fallbacks equal their base values', () => {
         expect(SIMPLE_ROW_FALLBACK_PX).toBe(73)
