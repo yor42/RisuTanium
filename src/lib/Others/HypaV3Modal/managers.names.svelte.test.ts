@@ -19,6 +19,8 @@ vi.mock(import('src/ts/stores.svelte'), () => {
     } as unknown as typeof import('src/ts/stores.svelte')
 })
 
+vi.mock('src/ts/alert', () => ({ alertConfirm: vi.fn(async () => true) }))
+
 import { language } from 'src/lang'
 import { DBState } from 'src/ts/stores.svelte'
 import { controlName, exposedIcons, paletteClasses, textColourTokens, unnamedControls } from 'src/lib/a11yNames.test-helpers'
