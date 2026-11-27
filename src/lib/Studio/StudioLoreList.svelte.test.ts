@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock('src/ts/globalApi.svelte', () => ({ getSaveMarkCount: () => 0 }))
 vi.mock('src/ts/alert', () => ({ alertMd: vi.fn() }))
+// The Back dispatcher asks whether an alert covers the page; the store mock below carries no alert store.
+vi.mock('src/ts/alertPrompts', () => ({ pageCovered: () => false }))
 // `lorebookRepairNeed` reads the module body alone; the loader's migration it sits beside pulls in the whole database layer.
 vi.mock('src/ts/characters', () => ({ updateLorebooks: (book: unknown) => book }))
 vi.mock('src/ts/stores.svelte', async () => {
@@ -24,6 +26,7 @@ vi.mock('src/ts/stores.svelte', async () => {
 })
 
 import { language } from 'src/lang'
+import { dispatchBack, registerBackHandler, resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { DBState } from 'src/ts/stores.svelte'
 import { golden, clone } from '../../ts/studio/history/tests/objService.test-helpers'
 import { readExpandedFolders } from '../../ts/studio/loreFolderExpansion'
@@ -194,6 +197,40 @@ describe('T42p: the bulk menu', () => {
         expect(lore().map((entry) => entry.alwaysActive)).toEqual([true, true])
         expect(studioScreen.selectedItemId).toBeNull()
         expect(focusedPart()).toBe('studio-lore-bulk-menu')
+    })
+})
+
+describe('Back closes the topmost surface of the list', () => {
+    afterEach(() => resetBackHandlersForTests())
+
+    test('one Back closes the row menu and the list stays; the next Back is left to the layer below', async () => {
+        await startCharacter([row(0), row(1)])
+        await mountPane()
+        const below = vi.fn(() => true)
+        registerBackHandler(below)
+        await openMenuOf('@0')
+        expect(part('studio-lore-menu')).not.toBeNull()
+        expect(dispatchBack()).toBe(true)
+        flushSync()
+        expect(part('studio-lore-menu')).toBeNull()
+        expect(part('studio-lore-list')).not.toBeNull()
+        expect(below).not.toHaveBeenCalled()
+        expect(dispatchBack()).toBe(true)
+        expect(below).toHaveBeenCalledTimes(1)
+    })
+
+    test('one Back closes the bulk menu and the list stays', async () => {
+        await startCharacter([row(0), row(1)], { bulk: true })
+        await mountPane()
+        const below = vi.fn(() => true)
+        registerBackHandler(below)
+        await click(part('studio-lore-bulk-menu'))
+        expect(part('studio-lore-bulk-list')).not.toBeNull()
+        expect(dispatchBack()).toBe(true)
+        flushSync()
+        expect(part('studio-lore-bulk-list')).toBeNull()
+        expect(part('studio-lore-list')).not.toBeNull()
+        expect(below).not.toHaveBeenCalled()
     })
 })
 

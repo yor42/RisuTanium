@@ -476,7 +476,9 @@
     {#if refusal !== null}
         <p role="alert" data-part="studio-lore-refusal" class="text-sm text-draculared">{refusal}</p>
     {/if}
-    {#if open === null}
+    <!-- A selected item with no open view yet is about to open (or to clear its selection): the list model, which reads
+         every entry's name, is not built for that one frame. -->
+    {#if open === null && itemId === null}
         <StudioLoreList
             {ownerKey}
             {ownerId}

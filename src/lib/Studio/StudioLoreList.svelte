@@ -316,6 +316,10 @@
         if (surface?.target) void placeFocus({ target: surface.target, hint: surface.hint, control: 'menu' }, () => true)
     }
 
+    // Back closes the topmost surface: the row menu, the bulk menu and the sheet are never open together, and each one
+    // closes before the list lets Back leave the lore list.
+    registerStudioBackLayer({ isOpen: () => menu !== null, close: () => closeMenu(true) })
+    registerStudioBackLayer({ isOpen: () => bulk !== null, close: () => closeBulk() })
     registerStudioBackLayer({ isOpen: () => sheet !== null, close: () => closeSheet() })
 
     function moveToFolder(to: string | null): void {
