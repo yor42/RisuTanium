@@ -453,7 +453,7 @@ describe('the Background tab', () => {
         flushSync()
         expect(textsOf('home-run-title')).toEqual(['Xena', 'Failing'])
 
-        void failing.fail({ headline: 'Failed' })
+        void failing.fail({ headline: 'Failed', dataState: 'same' })
         time.advance(300)
         expect(textsOf('home-run-title')).toEqual(['Xena'])
 
