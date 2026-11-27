@@ -484,6 +484,40 @@ describe('T18: a missing member', () => {
     })
 })
 
+describe('T18b: the name of a removed member (#871)', () => {
+    const stored = (id: string, name: string) => ({ risutanium_members: { [id]: { name, slot: 0 } } })
+
+    test('a missing member with a stored record shows its join-time name with the id beside it', async () => {
+        await mountForm([{ ...makeGroup([member('A', sixths(1)), member('Z', sixths(2), false)]), ...stored('Z', 'SynthC') }, loadedCharacter('A')])
+        const row = rowOf('Z')
+        expect(row.dataset.tag).toBe('missing')
+        expect(within(row, 'studio-group-member-name').textContent).toBe('SynthC (Z)')
+        expect(within(row, 'studio-group-member-remove').getAttribute('aria-label')).toContain('SynthC (Z)')
+    })
+
+    test('a missing member with no record, or an unusable one, shows the id alone', async () => {
+        await mountForm([{ ...makeGroup([member('A', sixths(1)), member('Z', sixths(2)), member('Y', sixths(3))]), ...stored('Y', '') }, loadedCharacter('A')])
+        expect(within(rowOf('Z'), 'studio-group-member-name').textContent).toBe('Z')
+        expect(within(rowOf('Y'), 'studio-group-member-name').textContent).toBe('Y')
+    })
+
+    test('a live holder keeps its own name even when a record exists', async () => {
+        await mountForm([{ ...makeGroup([member('A', sixths(1))]), ...stored('A', 'Old name') }, loadedCharacter('A')])
+        expect(within(rowOf('A'), 'studio-group-member-name').textContent).toBe('Name A')
+    })
+})
+
+describe('T18c: touch targets of the checkboxes (#872)', () => {
+    test('each checkbox sits in a label that is at least 44 px high, so the label is the hit area', async () => {
+        await mountForm()
+        for (const box of [within<HTMLInputElement>(rowOf('A'), 'studio-group-member-active'), part('studio-group-order-by-order') as HTMLInputElement]) {
+            const label = box.closest('label')
+            expect(label).not.toBeNull()
+            expect(label?.classList.contains('min-h-11')).toBe(true)
+        }
+    })
+})
+
 describe('T19: an archived member', () => {
     test('shows the stub name and the archived tag; talk, active and Remove work; nothing is restored or dropped', async () => {
         await mountForm([makeGroup([member('A', sixths(1)), member('S', sixths(2), true)]), loadedCharacter('A'), archivedStub('S')])
