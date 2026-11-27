@@ -156,12 +156,12 @@
 
 </script>
 
-<div class="absolute w-full h-full z-40 bg-black/50 flex justify-center items-center">
-    <div class="bg-darkbg p-4 break-any rounded-md flex flex-col max-w-3xl w-124 max-h-full overflow-y-auto" bind:this={listRoot}>
-        <div class="flex items-center text-textcolor mb-4">
-            <h2 class="mt-0 mb-0">{language.presets}</h2>
+<div class="absolute w-full h-full z-40 bg-black/50 flex justify-center items-center" data-part="modal-botpreset">
+    <div class="bg-darkbg p-4 break-any rounded-md flex flex-col max-w-3xl w-124 max-h-full overflow-y-auto" bind:this={listRoot} data-part="modal-frame">
+        <div class="flex items-center text-textcolor mb-4" data-part="modal-header">
+            <h2 class="mt-0 mb-0" data-part="modal-title">{language.presets}</h2>
             <div class="grow flex justify-end">
-                <button aria-label={language.uiCommon.close} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer items-center" onclick={close}>
+                <button aria-label={language.uiCommon.close} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer items-center" onclick={close} data-part="modal-close">
                     <XIcon size={24} aria-hidden="true"/>
                 </button>
             </div>
@@ -196,7 +196,7 @@
                 }}>
             </div>
             
-            <button onclick={() => {
+            <button data-part="modal-row" onclick={() => {
                 if(selectMode){
                     toggleSelected(preset.id)
                 } else if(!editMode){
@@ -261,18 +261,18 @@
                             <CheckIcon size={14} aria-hidden="true"/>
                         </span>
                     {:else if slotBadgeFor(DBState.db.botPresets, i) !== undefined}
-                        <span class="w-2 text-center mr-2 text-textcolor2">{slotBadgeFor(DBState.db.botPresets, i)}</span>
+                        <span class="w-2 text-center mr-2 text-textcolor2" data-part="modal-text">{slotBadgeFor(DBState.db.botPresets, i)}</span>
                     {/if}
                     {#if preset.image}
                         <img src={preset.image} alt={language.settingsPage.iconAlt} class="mr-2 min-w-6 min-h-6 w-6 h-6 rounded-md" decoding="async"/>
 
                     {/if}
-                    <span>{preset.name}</span>
+                    <span data-part="modal-text">{preset.name}</span>
                 {/if}
-                <div class="grow flex justify-end">
+                <div class="grow flex justify-end" data-part="modal-controls">
                     {#if !selectMode}
                     {#if DBState.db.showPromptComparison}
-                        <div class="{selectedDiffPreset === i ? 'text-textcolor bg-selected ring-1 ring-borderc rounded-sm' : 'text-textcolor2 hover:text-textcolor'} cursor-pointer mr-2" role="button" tabindex="0" aria-label={language.comparePreset} aria-pressed={selectedDiffPreset === i} onclick={(e) => {
+                        <div class="{selectedDiffPreset === i ? 'text-textcolor bg-selected ring-1 ring-borderc rounded-sm' : 'text-textcolor2 hover:text-textcolor'} cursor-pointer mr-2" data-part="modal-action" role="button" tabindex="0" aria-label={language.comparePreset} aria-pressed={selectedDiffPreset === i} onclick={(e) => {
                             e.stopPropagation()
                             handleDiffMode(i)
                         }} onkeydown={(e) => {
@@ -285,7 +285,7 @@
                             <GitCompare size={18} aria-hidden="true"/>
                         </div>
                     {/if}
-                    <div class="text-textcolor2 hover:text-textcolor cursor-pointer mr-2" role="button" tabindex="0" aria-label={language.copy} onclick={(e) => {
+                    <div class="text-textcolor2 hover:text-textcolor cursor-pointer mr-2" data-part="modal-action" role="button" tabindex="0" aria-label={language.copy} onclick={(e) => {
                         e.stopPropagation()
                         copyPreset(i)
                     }} onkeydown={(e) => {
@@ -297,7 +297,7 @@
                     }}>
                         <CopyIcon size={18} aria-hidden="true"/>
                     </div>
-                    <div class="text-textcolor2 hover:text-textcolor cursor-pointer mr-2" role="button" tabindex="0" aria-label={language.export} onclick={async (e) => {
+                    <div class="text-textcolor2 hover:text-textcolor cursor-pointer mr-2" data-part="modal-action" role="button" tabindex="0" aria-label={language.export} onclick={async (e) => {
                         e.stopPropagation()
                         const data = await alertCardExport('preset')
                         console.log(data.type)
@@ -317,7 +317,7 @@
 
                         <Share2Icon size={18} aria-hidden="true" />
                     </div>
-                    <div class="text-textcolor2 hover:text-textcolor cursor-pointer" role="button" tabindex="0" aria-label={language.remove} onclick={async (e) => {
+                    <div class="text-textcolor2 hover:text-textcolor cursor-pointer" data-part="modal-action" role="button" tabindex="0" aria-label={language.remove} onclick={async (e) => {
                         e.stopPropagation()
                         const target = preset
                         if(DBState.db.botPresets.length === 1){
@@ -379,21 +379,21 @@
         </div>
         
         {#if selectMode}
-        <div class="sticky bottom-0 bg-darkbg border-t border-solid border-0 border-darkborderc flex items-center gap-2 mt-2 pt-2" data-select-bar>
-            <button type="button" class="min-h-11 px-3 text-textcolor2 hover:text-textcolor cursor-pointer rounded-md border border-solid border-darkborderc" class:bg-selected={allSelected} class:text-textcolor={allSelected} aria-pressed={allSelected} onclick={toggleAll}>
+        <div class="sticky bottom-0 bg-darkbg border-t border-solid border-0 border-darkborderc flex items-center gap-2 mt-2 pt-2" data-select-bar data-part="modal-footer">
+            <button type="button" class="min-h-11 px-3 text-textcolor2 hover:text-textcolor cursor-pointer rounded-md border border-solid border-darkborderc" class:bg-selected={allSelected} class:text-textcolor={allSelected} aria-pressed={allSelected} data-part="modal-action" onclick={toggleAll}>
                 {language.presetBundleAll}
             </button>
             <div class="grow"></div>
-            <button type="button" class="min-h-11 px-3 text-textcolor2 hover:text-textcolor cursor-pointer" onclick={() => setSelectMode(false)}>
+            <button type="button" class="min-h-11 px-3 text-textcolor2 hover:text-textcolor cursor-pointer" data-part="modal-action" onclick={() => setSelectMode(false)}>
                 {language.cancel}
             </button>
-            <button type="button" class="min-h-11 px-4 font-semibold text-textcolor bg-selected rounded-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled={selectedCount === 0 || exporting} onclick={exportSelected}>
+            <button type="button" class="min-h-11 px-4 font-semibold text-textcolor bg-selected rounded-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled={selectedCount === 0 || exporting} data-part="modal-action" onclick={exportSelected}>
                 {fillLang(language.presetBundleExport, { count: selectedCount })}
             </button>
         </div>
         {:else}
-        <div class="flex mt-2 items-center">
-            <button aria-label={language.add} class="text-textcolor2 hover:text-textcolor cursor-pointer mr-1" onclick={() => {
+        <div class="flex mt-2 items-center" data-part="modal-footer">
+            <button aria-label={language.add} class="text-textcolor2 hover:text-textcolor cursor-pointer mr-1" data-part="modal-action" onclick={() => {
                 let botPresets = DBState.db.botPresets
                 let newPreset = safeStructuredClone(prebuiltPresets.OAI2)
                 newPreset.name = `New Preset`
@@ -403,22 +403,22 @@
             }}>
                 <PlusIcon aria-hidden="true"/>
             </button>
-            <button aria-label={language.import} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" onclick={() => {
+            <button aria-label={language.import} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" data-part="modal-action" onclick={() => {
                 importPreset()
             }}>
                 <HardDriveUploadIcon size={18} aria-hidden="true"/>
             </button>
-            <button aria-label={language.presetBundleSelect} aria-pressed={selectMode} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" onclick={() => setSelectMode(true)}>
+            <button aria-label={language.presetBundleSelect} aria-pressed={selectMode} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" data-part="modal-action" onclick={() => setSelectMode(true)}>
                 <ListChecksIcon size={18} aria-hidden="true"/>
             </button>
-            <button aria-label={language.othersUi.editMode} aria-pressed={editMode} class="text-textcolor2 hover:text-textcolor cursor-pointer" onclick={() => {
+            <button aria-label={language.othersUi.editMode} aria-pressed={editMode} class="text-textcolor2 hover:text-textcolor cursor-pointer" data-part="modal-action" onclick={() => {
                 editMode = !editMode
             }}>
                 <PencilIcon size={18} aria-hidden="true"/>
             </button>
         </div>
         {/if}
-        <span class="text-textcolor2 text-sm">{language.quickPreset}</span>
+        <span class="text-textcolor2 text-sm" data-part="modal-text">{language.quickPreset}</span>
     </div>
 </div>
 

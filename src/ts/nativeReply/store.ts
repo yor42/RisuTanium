@@ -36,6 +36,11 @@ export interface RemoveOutcome {
     flushed: boolean
 }
 
+/** `native_reply_cancel`: whether a live request was stopped, and what the discard of its record did. */
+export interface CancelOutcome extends RemoveOutcome {
+    cancelled: boolean
+}
+
 export type ReplyInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>
 
 export interface NativeReplyStore {
@@ -50,6 +55,8 @@ export interface NativeReplyStore {
     consume(key: string): Promise<RemoveOutcome>
     discard(key: string): Promise<RemoveOutcome>
     park(key: string): Promise<void>
+    /** Stops the owned request of a key and discards its record, for a message the person deleted while it ran. */
+    cancel(key: string): Promise<CancelOutcome>
 }
 
 /**
@@ -111,5 +118,6 @@ export function createReplyStore(invoke: ReplyInvoke = tauriInvoke as ReplyInvok
         consume: (key) => invoke<RemoveOutcome>('native_reply_consume', { key }),
         discard: (key) => invoke<RemoveOutcome>('native_reply_discard', { key }),
         park: (key) => invoke<void>('native_reply_park', { key }),
+        cancel: (key) => invoke<CancelOutcome>('native_reply_cancel', { key }),
     }
 }

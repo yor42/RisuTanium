@@ -1664,7 +1664,7 @@
 {/snippet}
 
 
-<div bind:this={layer} class="absolute inset-0 z-50 bg-black bg-black/60 flex justify-center items-center p-4">
+<div bind:this={layer} class="absolute inset-0 z-50 bg-black bg-black/60 flex justify-center items-center p-4" data-part="modal-prompt-diff">
   <div
     bind:this={panel}
     role="dialog"
@@ -1672,9 +1672,10 @@
     aria-label={language.comparePreset}
     tabindex="-1"
     class="bg-darkbg rounded-md w-full max-w-4xl max-h-full overflow-hidden flex flex-col outline-hidden"
+    data-part="modal-frame"
   >
     
-    <div class="flex items-center justify-between px-4 py-3 border-b border-darkborderc">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-darkborderc" data-part="modal-header">
       <div class="flex items-center gap-4 flex-wrap">
         {@render pillRadioGroup(language.promptDiff.diff, 'diffStyle', diffOptions, diffStyle, (v) => (diffStyle = v as DiffStyle))}
         {@render pillRadioGroup(language.format, 'formatStyle', formatOptions, formatStyle, (v) => (formatStyle = v as FormatStyle), isFlatText)}
@@ -1687,7 +1688,7 @@
         {/if}
       </div>
 
-      <button bind:this={closeButton} class="risu-focus-ring text-textcolor2 hover:text-textcolor" aria-label={language.uiCommon.close} onclick={(e) => {handleClose()}}>
+      <button bind:this={closeButton} class="risu-focus-ring text-textcolor2 hover:text-textcolor" aria-label={language.uiCommon.close} data-part="modal-close" onclick={(e) => {handleClose()}}>
         <XIcon size={20} aria-hidden="true"/>
       </button>
     </div>

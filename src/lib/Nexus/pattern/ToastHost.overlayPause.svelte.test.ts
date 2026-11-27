@@ -248,15 +248,16 @@ describe('overlays with a background list', () => {
 })
 
 describe('the view while paused', () => {
-    test('PV1 data-paused follows the overlay without hiding, inerting or deferring announcements', () => {
+    test('PV1 data-paused and inert follow the overlay without hiding or deferring announcements', () => {
         mountView()
         const sheet = mountSheet({ kind: 'menu', background: [addNode('main')] })
         expect(hostRoot().hasAttribute('data-paused')).toBe(false)
+        expect((hostRoot() as HTMLElement & { inert?: boolean }).inert === true || hostRoot().hasAttribute('inert')).toBe(false)
         setOpen(sheet.state, true)
         expect(hostRoot().hasAttribute('data-paused')).toBe(true)
         expect(hostRoot().hasAttribute('data-suspended')).toBe(false)
         expect(hostRoot().style.visibility).not.toBe('hidden')
-        expect(hostRoot().hasAttribute('inert')).toBe(false)
+        expect((hostRoot() as HTMLElement & { inert?: boolean }).inert === true || hostRoot().hasAttribute('inert')).toBe(true)
         postUndo(host, 'Removed while open')
         flushSync()
         expect(document.querySelector('[data-part="toast-live-polite"]')?.textContent).toBe('Removed while open')
@@ -265,6 +266,7 @@ describe('the view while paused', () => {
         expect(host.visible).toHaveLength(1)
         setOpen(sheet.state, false)
         expect(hostRoot().hasAttribute('data-paused')).toBe(false)
+        expect((hostRoot() as HTMLElement & { inert?: boolean }).inert === true || hostRoot().hasAttribute('inert')).toBe(false)
         clock.advance(6000)
         expect(host.visible).toHaveLength(0)
     })

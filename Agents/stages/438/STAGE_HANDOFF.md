@@ -1,17 +1,98 @@
-# #438 stage handoffs: wrap-up W3-3 (this PR) and the merged stages W3-2, W2, W3-1 and W1
+# #438 stage handoffs: wrap-up W3-5 (this PR) and the merged stages W3-4, W3-3, W3-2, W2, W3-1 and W1
 
 Each wrap-up stage adds a section; the one under review is first, the merged ones follow. The sections come from their own PRs and were merged here without dropping any.
 
+## #438 stage handoff: W3-5 ModelList and OpenrouterProviderList overlays (overlay only, never the trigger or notes), device rows pending
+
+Branch `claude/438-w3-5`, PR "Refs #438" (PR 5 of 7 of wrap-up W3; the issue stays open). Tier 2, no new critical root. Decision MC-4212 (record in `Agents/mc/438-w3-5.md`); also MC-4160, MC-4164, MC-4165, MC-4167, MC-4168. Gates (reports under `%TEMP%/risu-b715/438/w3/`): plan r1 `w35-plan-r1.md`; Gate 1 r1 [REJECT] `w35-g1-r1.md` (F1: no killer for a part on the status note, fixed in r2 by guard (9b) and mutant M20); plan r2 `w35-plan-r2.md`; Gate 1 r2 [APPROVE] `w35-g1-r2.md`; Gate 2 r1 [EDITORIAL] `w35-g2-r1.md` (F1 PR body census wording, F2 this limitation split, F3 component-tag limitation line; all applied). Base 4e6b2fb47 (W3-4 merged).
+
+### What changed
+- Markup only, literal `data-part` attributes inside the `{#if openOptions}` overlay block: 14 on ModelList, 6 on OpenrouterProviderList. With every attribute stripped (line endings normalised) each file equals its base blob; both stay all CRLF. No class, handler, element, order, aria, focus, Back or z-index change.
+  - New identity roots, both reach: `modal-model-list`, `modal-openrouter-provider-list` (the fixed scrim layer). Existing names: reach `modal-frame`, `modal-header`, `modal-close`, `modal-row`, `modal-footer`; safe `modal-title`, `modal-text`.
+  - ModelList: layer, panel, header, Back, title, as-is rows, provider rows, Horde auto and model rows with their subtext spans, custom rows, None row, the footer holding the CheckInput. OpenrouterProviderList: layer, panel, header, Back, title, provider rows.
+  - Unclaimed (no pack hook): the trigger buttons and both notes (status, source) on every host, the dividers, every Accordion tag and part, the Horde loading button, the CheckInput, the TextInput and its sr-only span, the icons.
+- Census: `OVERLAY_FILES` +2; `registries/popups.ts`: `POPUPS_FILES` 30 to 32, `POPUPS_PARTS` 189 to 191, `POPUPS_REACH` 54 to 56 (only the two new names and two files; the closure, A1 roots pin, holders and shared tokens-only are unchanged). `overlayVocabulary.test.ts` gains the two names, two W1-T5a rows and two `display:none` reach rows.
+- Settings census: `settingsParts.test.ts` `EXEMPT` gains one group of the 9 names the two pickers render (`modal-close`, `modal-footer`, `modal-frame`, `modal-header`, `modal-model-list`, `modal-openrouter-provider-list`, `modal-row`, `modal-text`, `modal-title`). `SETTINGS_PARTS` is unchanged. The pickers render inside the Settings shell closure (PromptSettings, BotSettings, OpenrouterSettings). No Home `FOREIGN`, chat or Studio census change (homeParts, areaParts, studioCriticalClosure, settingsCriticalClosure pass unchanged).
+- Criticality (MC-2947): no new critical root, no tokens-only item. A gray model still asks through the critical `alertConfirm`.
+
+### Tests (class, true counts)
+- New render tests mount the real components, find each element by tag, aria-label, text or structure (never by its part), assert the part and its DIRECT parent, plus whole-tree outlines: `ModelList.parts` (11: 7 acceptance, 4 guard: pending Horde, source note, status note, behaviour), `OpenrouterProviderList.parts` (8: 4 acceptance, 4 guard).
+- Extended: `overlayVocabulary.test.ts` (76), `popupsCriticalClosure.test.ts` (18; `OVERLAY_FILES` +2), `settingsParts.test.ts` (13; EXEMPT group).
+- True base counts (head tests of these 5 files, 126 tests, against the 4e6b2fb47 sources served in memory, the Settings test reading the same served text): base components + base registry 18 fail, 108 pass (ModelList.parts 7, OpenrouterProviderList.parts 4, overlayVocabulary 5, popupsCriticalClosure 1, settingsParts 1); base components + head registry 14 fail, 112 pass (same render counts, popupsCriticalClosure 2, overlayVocabulary 0, settingsParts 1). Head 126 of 126.
+
+### Evidence and limits
+- 20 named in-memory mutants (M1 to M20: swaps, dropped and renamed parts, part on a component tag, on the shared CheckInput, on the trigger, the loading row and the status note, reach demotion, critical marker, files dropped from the census) all killed; scratch config under `%TEMP%`, no tracked file touched. Killers in `%TEMP%/risu-b715/438/w3/w35-code-report.md`.
+- `vitest run src/lib/UI/ModelList src/lib/UI/OpenrouterProviderList src/ts/themePack`: 79 files, 4812 tests pass. `pnpm check`: 0 errors, 5 warnings (none in these files).
+- jsdom proves structure, not looks: no device run, no real pack applied.
+
+### Known limitations (MC-3638, MC-3639, MC-3659, no guard)
+- A pack may restyle `modal-row` so one-source (gray) models no longer look gray (colours only over the chat shell); the confirm stays in the critical prompt.
+- A pack may hide the safe names (the Model and Provider titles, the Horde performance subtexts); it cannot hide rows, Back, the footer or the identity roots.
+- The identity roots sit on the fixed full-viewport scrim: over the colour-mode chat shell a pack may recolour it (even opaque) so it covers the host screen while the picker is open.
+- Host-area sheets still pass inherited text properties into the picker, as today. A popups rule that sets inherited text properties (colour, letter-spacing, line-height) on `modal-frame` or `modal-footer` also reaches the unclassed Accordion, CheckInput and TextInput text. An EasyPanel-scoped frame rule also styles a picker opened from EasyPanel. The trigger, the notes, the Accordion, CheckInput and TextInput are not selectable.
+- A part on a shared component tag (Accordion, TextInput) is caught by the census only for a name outside the Settings EXEMPT group; it renders nothing while those components take no rest props.
+- Over Settings or Studio only the shape subset applies; over legacy screens and under safe start nothing applies (MC-3009).
+
+### Device rows (fold into W5; synthetic data; Note 9; every-target network block up for the whole run)
+Test pack: popups.css `[data-part="modal-frame"]{border-radius:24px;background:#5a1f6b}`, `[data-part="modal-model-list"] [data-part="modal-close"]{background:#ffcc00}`, `[data-part="modal-openrouter-provider-list"] [data-part="modal-title"]{letter-spacing:2px}`; chat.css colour mode; settings.css and studio.css one shape rule each. Profile: one character, Pro tools on, chat, Settings and Studio shells on, one preset.
+- DV-W35-1 ModelList from EasyPanel (Plus sheet, Easy panel, Run if shown, Models tab, main-model field): 24px corners, purple panel, yellow box behind Back; Back closes; pick no gray model. Record whether EasyPanel's blur confines the picker.
+- DV-W35-2 ModelList over the Settings shell (Bot settings, Model field): 24px, no purple, no yellow.
+- DV-W35-3 OpenrouterProviderList over the Settings shell: pick "OpenRouter", Parameters tab, OpenRouter Settings, Provider order, +, tap the empty field: 24px, title 2px wider, no purple.
+- DV-W35-4 ModelList over Studio (preset, Advanced, model field): 24px, no purple; close with Back.
+- DV-W35-5 safe start with the pack, then 1 and 2: square corners, normal title spacing, plus the plain-launch control. DV-W35-6 pack-free, then 1 to 3: no visible difference from the built-in look.
+
+### For W3-6 and later
+- The popups registry and census test are serial: regenerate from the printed constants, never hand-order (`…/UI/ModelList` and `…/UI/OpenrouterProviderList` sort between `…/Setting/listedPersona` and `…/UI/Realm/RealmBlockedCreators`).
+- Any later popups name that a shared component renders inside the Settings shell closure needs a Settings EXEMPT row (name-level); W1-T6b guards every other file. Both new names are exempt there only because the pickers render inside that closure.
+## #438 stage handoff: W3-4 botpreset, IrisModal, PromptDiffModal (frame, header and close only), device rows pending
+
+Branch `claude/438-w3-4`, PR "Refs #438" (PR 4 of 7 of wrap-up W3; the issue stays open). Tier 2, no new critical root. Plan r1 (designer) and Gate 1 r1 [EDITORIAL] by a fresh opus-reviewer (reports `%TEMP%/risu-b715/438/w3/w34-plan-r1.md`, `w34-g1-r1.md`); its four findings applied by the coder brief (F1 IrisModal in scope unconditionally per MC-4210 and the not-run row per MC-4210, MC-4211 cited for Reset; F2 inherited-text wording; F3 M8 split into component-only and component-plus-registry; F4 the strip check normalises line endings). Decisions: MC-4160, MC-4164, MC-4165 (PromptDiffModal parts on frame, header and close only), MC-4210, MC-4211 (records in `Agents/mc/438-w3-4.md`). Gate 2 r1 [EDITORIAL] by a fresh opus-reviewer, F1 to F3 applied (this H1 and two PR body lines; report `%TEMP%/risu-b715/438/w3/w34-g2-r1.md`). Base 7374a3b9a (W3-3 merged) with origin/main merged in.
+
+### What changed
+- Markup only, literal `data-part` attributes (23 on botpreset, 19 on IrisModal, 4 on PromptDiffModal); with every attribute stripped (and line endings normalised, the base blobs are LF) each file equals its base blob, and all three stay all CRLF. No class, handler, element, order, aria, focus or Back change.
+  - New identity roots, all reach: `modal-botpreset` (layer), `modal-iris` (root), `modal-prompt-diff` (layer). Existing names: reach `modal-frame`, `modal-header`, `modal-close`, `modal-row`, `modal-controls`, `modal-action`, `modal-footer`, `modal-list`, `modal-body`, `modal-field`; safe `modal-title`, `modal-text`.
+  - botpreset: title, close, row, name and slot badge, row tools (Compare, Copy, Export, Remove), toolbar and select bar footers, quick-preset hint. IrisModal: the dialogue box and backlog panel frames, Reset, backlog close, log, lines, speaker tag, text, tip, unsupported-model notice, field, Send. PromptDiffModal: layer, dialog, header, close. Unclaimed: botpreset's windowed `ul`/`li`, `TextInput`, drop gaps, select mark, image; IrisModal's sprite, scrim, position wrapper, cursor, waiting row, advance overlay; PromptDiffModal's option row and whole diff view. PromptDiffModal renders beside botpreset's layer, not inside it.
+- Census: `OVERLAY_FILES` +3; `registries/popups.ts` regenerated from the printed values: `POPUPS_FILES` 27 to 30, `POPUPS_PARTS` 186 to 189, `POPUPS_REACH` 51 to 54. Only the three new reach names and the three file entries changed; critical closure, A1 roots pin, holders and shared-tokens-only are unchanged. No Settings EXEMPT, Home `FOREIGN`, `areaParts`, chat or Studio change (all three files are App-level; verified by the unchanged `homeParts`, `settingsParts`, `areaParts` passes).
+- Criticality (MC-2947): no new critical root. botpreset Remove goes through the critical `alertConfirm`/`alertError`; Export is the tool dialog; Import's bundle prompt is critical. IrisModal's backlog Reset has no confirm and is a direct reach button (MC-4211).
+
+### Tests (class, true counts)
+- New render tests mount the real components, find each element by tag, role, aria-label, title, text or structure (never by its part), assert the part and the DIRECT parent, plus whole-tree outlines: `botpreset.parts` (10: 8 acceptance, 2 guard; jsdom, real PromptDiffModal mounted by two Compare picks), `IrisModal.parts` (6: 4 acceptance, 2 guard; happy-dom), `PromptDiffModal.parts` (20: 18 acceptance over the 16 states plus Legacy, 2 guard that the diff body and option row stay unparted).
+- Extended: `overlayVocabulary.test.ts` (70; 3 W1-T4 rows, the table row, 4 W1-T5a rows, 3 `display:none` reach rows that are guards on the base), `popupsCriticalClosure.test.ts` (18; `OVERLAY_FILES` +3).
+- True base counts (head tests of these 5 files, 124 tests, against the 7374a3b9a sources served in memory): base components + base registry 38 fail, 86 pass (IrisModal.parts 4, botpreset.parts 8, PromptDiffModal.parts 18, overlayVocabulary 7, popupsCriticalClosure 1); base components + head registry 32 fail, 92 pass (same render counts, popupsCriticalClosure 2, overlayVocabulary 0). Head 124 of 124.
+
+### Evidence and limits
+- 19 named in-memory mutants (comment, sibling swap, part swapped with its parent, dropped, renamed component-only and with the registry, moved inward and outward, part on the `WindowedSegment` tag, diff view and sprite parted, reach demotion, critical marker, files dropped from the census, diff modal moved inside botpreset) all killed; scratch config under `%TEMP%`, no tracked file touched. Killers in `%TEMP%/risu-b715/438/w3/w34-code-report.md`.
+- `vitest run src/ts/themePack src/lib/Setting/botpreset src/lib/Others/IrisModal src/lib/Others/PromptDiffModal src/lib/Others/OverlayBack src/lib/keyListenersUnderAlert src/App`: all pass (94 plus 11 files). `pnpm check`: 0 errors, 5 warnings (none in these files).
+- jsdom/happy-dom prove structure, not looks: no device run, no real pack applied. IrisModal has no opener in this build (`irisStore.open` is set to true only by tests; upstream commit 04d8c98f6 removed it), so its tests are its only evidence and its device row is not run (MC-4210).
+
+### Known limitations (MC-3638, MC-3639, MC-3659, no guard)
+- A pack may restyle Remove, Export, the select-mode Export and Reset so they look harmless (colours only over the chat shell); it cannot hide them. The Remove confirm stays in the critical AlertComp prompt. IrisModal's Reset wipes the saved Iris conversation with no confirm: a leftover of this PR, no ticket (MC-4211).
+- A pack may hide the safe names: botpreset's title, preset names, slot badges and hint; IrisModal's speaker tag, tip, unsupported-model notice and backlog line texts.
+- PromptDiffModal: a pack may restyle the frame and header box. It cannot select the diff view or the option controls. Inherited text properties set on the frame or header (colour, letter-spacing, line-height) still reach their unclassed text. The same holds for botpreset's unclaimed `TextInput` and windowed list.
+- Over Home, Settings or Studio only the shape subset applies (MC-3009).
+
+### Device rows (fold into W5; synthetic data; Note 9)
+Test pack: popups.css `[data-part="modal-frame"]{border-radius:24px;background:#5a1f6b}`, `[data-part="modal-botpreset"] [data-part="modal-title"]{letter-spacing:2px}`, `[data-part="modal-prompt-diff"] [data-part="modal-close"]{background:#ffcc00}`; chat.css colour mode; home.css one shape rule. Profile: two presets, one character, "Show Prompt Comparison" on.
+- DV-W34-1 botpreset over the chat shell: Ctrl+P, or the quick menu (three fingers down together within 300 ms, then "Presets"). Read: panel corners 24px (built-in about 6px), purple panel, title letters 2px wider; X and Back close.
+- DV-W34-2 PromptDiffModal from DV-W34-1: Compare on P1 then P2. Read: frame 24px and purple, a yellow box behind the X, the built-in diff colours unchanged; Back closes the diff first.
+- DV-W34-3 botpreset over Home (quick menu, "Presets"): 24px and 2px spacing but no purple (MC-3009).
+- DV-W34-4 safe start with the pack installed, then DV-W34-1: built-in look, plus the plain-launch control. DV-W34-5 pack-free launch, then DV-W34-1 and DV-W34-2: built-in look.
+- DV-W34-6 IrisModal: not run, test-only (MC-4210).
+
+### For W3-5 and later
+- The popups registry and census test are serial: regenerate from the printed constants, never hand-order (`…/Others/IrisModal` sorts after `HypaV3Progress`, `…/Others/PromptDiffModal` after `ProTools/EasyPanel`, `…/Setting/botpreset` before `listedPersona`).
+- All three files are App-level overlays: no Home, Settings or chat census sees them. A later popups name rendered inside the HomeShell closure still fails the `FOREIGN` pin until reviewed.
+
 ## #438 stage handoff: W3-3 Realm family (RealmPopUp, RealmFrame chrome, RealmBlockedCreators), device rows pending
 
-Branch `claude/438-w3-3`, PR "Refs #438" (PR 3 of 7 of wrap-up W3; the issue stays open). Tier 2, no new critical root. Plan r2 (designer), Gate 1 r1 [REJECT] (device rows, fixed in r2) and Gate 1 r2 [EDITORIAL] (reports `%TEMP%/risu-b715/438/w3/w33-g1-r1.md`, `w33-g1-r2.md`); both r2 findings applied (F1: the device pack gets a 2px solid border so the "no magenta" read can fail; F2: MC-4168 and MC-4169 followed). Decisions: MC-4160, MC-4164, MC-4165, MC-4167, MC-4168 (RealmLicense gets no parts and stays out of `OVERLAY_FILES`), MC-4169 (DV-W33-6 not run). Base origin/main c33cfb061 (W3-2 merged).
+Branch `claude/438-w3-3`, PR "Refs #438" (PR 3 of 7 of wrap-up W3; the issue stays open). Tier 2, no new critical root. Plan r2 (designer), Gate 1 r1 [REJECT] (device rows, fixed in r2) and Gate 1 r2 [EDITORIAL] (reports `%TEMP%/risu-b715/438/w3/w33-g1-r1.md`, `w33-g1-r2.md`); both r2 findings applied (F1: the device pack gets a 2px solid border so the "no magenta" read can fail; F2: MC-4168 and MC-4169 followed). Decisions: MC-4160, MC-4164, MC-4165, MC-4167, MC-4168 (RealmLicense gets no parts and stays out of `OVERLAY_FILES`), MC-4169 (DV-W33-6 not run). Gate 2 r1 [EDITORIAL] by a fresh opus-reviewer, F1 to F3 applied (the RealmPopUp not-run row cites MC-4165 PQ-5, the DV-W33-1 border colour is the default light gray, the Unblock wording; report `%TEMP%/risu-b715/438/w3/w33-g2-r1.md`). Base origin/main c33cfb061 (W3-2 merged).
 
 ### What changed
 - Markup only, literal `data-part` attributes (23 on RealmPopUp, 4 on RealmFrame, 11 on RealmBlockedCreators), stripped of the attributes each file equals its base blob; no class, handler, element, order, aria, focus or Back change. CRLF kept.
   - New identity roots, all reach: `modal-realm-popup` (backdrop layer), `modal-realm-frame` (full-screen root), `modal-realm-blocked-creators` (backdrop layer).
   - Existing names. Reach: `modal-frame`, `modal-header`, `modal-body`, `modal-footer`, `modal-controls`, `modal-list`, `modal-row`, `modal-action` (forked, Import, Copy, `summary`, Report, Block, Unblock), `modal-close`. Safe: `modal-title`, `modal-text` (author, description heading, tag chips, popularity, three badges, blocked-creator name and id, empty state).
   - RealmFrame's `<iframe>`, its loading container and everything in the iframe document carry no part (no part between iframe and root).
-- Census: `OVERLAY_FILES` +3; `registries/popups.ts` regenerated from the printed values: `POPUPS_FILES` 24 to 27, `POPUPS_PARTS` 183 to 186, `POPUPS_REACH` 48 to 51. Only the three new reach names changed; the critical closure, the A1 roots pin, holders and shared-tokens-only are unchanged. Home `FOREIGN` +13 `modal-*` names (RealmPopUp is in the HomeShell closure through RealmMain; `HOME_PARTS` unchanged). No chat, Settings or Studio change.
+- Census: `OVERLAY_FILES` +3; `registries/popups.ts` regenerated from the printed values: `POPUPS_FILES` 24 to 27, `POPUPS_PARTS` 183 to 186, `POPUPS_REACH` 48 to 51. Only the three new reach names changed; the critical closure, the A1 roots pin, holders and shared-tokens-only are unchanged. Home `FOREIGN` +13 `modal-*` names (RealmPopUp is in the HomeShell closure through RealmMain and brings the names it renders; `modal-realm-blocked-creators` and `modal-row` come from RealmBlockedCreators; `HOME_PARTS` unchanged). No chat, Settings or Studio change.
 - Criticality (MC-2947): no new critical root. Block, Report and the agreement go through AlertComp prompts (already critical); Unblock is a direct reversible button, reach.
 
 ### Tests (class, true counts)

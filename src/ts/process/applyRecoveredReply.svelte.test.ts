@@ -13,6 +13,7 @@ import { get, writable } from 'svelte/store'
 import type { Database, Chat, Message } from '../storage/database.svelte'
 import '../polyfill'
 import { heldReply, resetPageStateForTests, configurePageState, setReconcileTrigger } from '../nativeReply/pageState'
+import { addRunningReplies, resetRunningRepliesForTests, retireRunningReplies } from '../nativeReply/runningReplies.svelte'
 import type { ReplyBlob } from '../nativeReply/blob'
 
 const requestChatDataMock = vi.hoisted(() => vi.fn())
@@ -463,5 +464,37 @@ describe('the unit an apply holds', () => {
             { busy: true, writing: false },
             { busy: false, writing: false },
         ])
+    })
+})
+
+describe('a key whose message the person deleted while it ran (#616)', () => {
+    // P10n, new-contract guard: the non-stream apply refuses a retired key at the top and again where it writes.
+    test('a key retired before the apply starts is not written and takes no unit', async () => {
+        installDb()
+        resetRunningRepliesForTests()
+        addRunningReplies([{ key: KEY, target: { chaId: 'cha', chatId: 'chat', name: 'Alice' } }])
+        retireRunningReplies([KEY])
+
+        expect(await applyRecoveredReply(input())).toBe('retired')
+
+        expect(processScriptFullMock).not.toHaveBeenCalled()
+        expect(liveChat().message).toHaveLength(2)
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    test('a key retired during the output scripts is not pushed and is not held', async () => {
+        installDb()
+        resetRunningRepliesForTests()
+        addRunningReplies([{ key: KEY, target: { chaId: 'cha', chatId: 'chat', name: 'Alice' } }])
+        processScriptFullMock.mockImplementationOnce(async (_char: unknown, text: string) => {
+            retireRunningReplies([KEY])
+            return { data: text, emoChanged: false }
+        })
+
+        expect(await applyRecoveredReply(input())).toBe('retired')
+
+        expect(liveChat().message).toHaveLength(2)
+        expect(heldReply(KEY)).toBeUndefined()
+        expect(activeUnits.any()).toBe(false)
     })
 })

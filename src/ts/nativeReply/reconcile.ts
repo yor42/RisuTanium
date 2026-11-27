@@ -5,7 +5,7 @@ import { decodeReplyBlob, isStreamReplyBlob, type ReplyBlob, type StreamReplyBlo
 import type { ParkedReply } from './parkedDialog'
 import type { GeminiSignatureRecord } from './streamReplay'
 import { consumeReply, heldReply } from './pageState'
-import { addRunningReplies, setRunningReplies, takeWaitingForUnit, type RunningReplyEntry, type RunningReplyTarget } from './runningReplies.svelte'
+import { addRunningReplies, isRetiredReply, setRunningReplies, takeWaitingForUnit, type RunningReplyEntry, type RunningReplyTarget } from './runningReplies.svelte'
 import type { NativeReplyStore, ReplyListing, ReplyListingState, ReplyOutcome } from './store'
 import type { UsageMeterState } from '../usage/usageTypes'
 import { raceAbort } from '../process/abortRace'
@@ -51,9 +51,10 @@ export interface RecoveredStreamInput {
 /**
  * `applied`: the reply is in the chat and awaits its save. `present`: it was there already; a stream apply marks and holds
  * it for the save like an applied one, so the reconcile never consumes on it. `deferred`: a send is running; the apply
- * reruns after it.
+ * reruns after it. `retired`: the person deleted the message while the reply ran; the apply wrote nothing and the record
+ * is discarded without a note.
  */
-export type ApplyOutcome = 'applied' | 'present' | 'deferred' | 'failed'
+export type ApplyOutcome = 'applied' | 'present' | 'deferred' | 'failed' | 'retired'
 
 export interface ReconcileDeps {
     store: Pick<NativeReplyStore, 'list' | 'readBody' | 'readBodyBytes' | 'readPartialBytes' | 'park' | 'discard'>
@@ -287,6 +288,18 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
         }
     }
 
+    /**
+     * Discards the record of a key whose message the person deleted. No note, no placement and no usage settlement; a
+     * refused discard is logged and the key stays retired, so nothing places it in this page lifetime.
+     */
+    async function dropRetired(key: string): Promise<void> {
+        try {
+            await deps.store.discard(key)
+        } catch (error) {
+            console.error(error)
+        }
+    }
+
     async function placeFinished(listing: ReplyListing, blob: ReplyBlob, text: string, items: ParkedReply[]): Promise<void> {
         const key = listing.key
         const state = await settleTarget(blob, key)
@@ -306,6 +319,10 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
                 return
             case 'ok': {
                 const outcome = await deps.apply({ key, blob, text })
+                if (outcome === 'retired') {
+                    await dropRetired(key)
+                    return
+                }
                 if (outcome === 'failed') {
                     noteOnce(`apply:${key}`, deps.notes.failedElsewhere(blob.targetName))
                 }
@@ -371,9 +388,18 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
             } catch (error) {
                 // A replay that throws never consumes: the record is kept and reported.
                 console.error(error)
+                if (isRetiredReply(key)) {
+                    await dropRetired(key)
+                    return
+                }
                 reportUnreadable(key, 'the stream record cannot be replayed')
                 return
             }
+        }
+        // The reads above were waits: a delete that landed during them retires the key before any note or placement.
+        if (isRetiredReply(key)) {
+            await dropRetired(key)
+            return
         }
         const text = replayed === null ? '' : replayed.modelText.trim()
         if (replayed === null || text === '') {
@@ -426,7 +452,9 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
                     how,
                     signatures: replayed.signatures,
                 })
-                if (outcome === 'applied' || outcome === 'present') {
+                if (outcome === 'retired') {
+                    await dropRetired(key)
+                } else if (outcome === 'applied' || outcome === 'present') {
                     if (!complete && note !== null) {
                         noteOnce(key, note)
                     }
@@ -444,6 +472,10 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
     async function handle(listing: ReplyListing, items: ParkedReply[]): Promise<void> {
         const key = listing.key
         if (listing.state === 'live') {
+            return
+        }
+        if (isRetiredReply(key)) {
+            await dropRetired(key)
             return
         }
         const held = heldReply(key)

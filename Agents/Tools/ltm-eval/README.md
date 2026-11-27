@@ -191,3 +191,18 @@ node node_modules/vitest/vitest.mjs run --config Agents/Tools/ltm-eval/s4/vitest
 ```
 
 The maintainer applies the O1 pass rule to the seed B numbers; the result sets `SEARCH_LORE_DEFAULT`.
+
+## S3 dense and hybrid harness
+
+`s3-dense.harness.ts` is the S3 measurement (spec 9 sizes, #688). Everything is synthetic and offline: seeded 5,000-message chats in spec 9's short and long length profiles with 40% Hangul text (the shape `--ltm-bench` builds), seeded unit-length vectors and the concept embedder of `src/ts/process/memory/chroMemory/tests/denseFixtures.ts`. No provider is called.
+
+- Per profile it reports the unit count after `ChatUnitIndex.reconcile`, and per dimension (384, 1024, 1536, 3072): the RAM of a filled `DenseStore` (`arrayBuffers` and `heapUsed` delta after gc, beside the computed bytes), `denseOrder` and `denseOrder` plus `fuseOrders` p50 and p95 over 50 queries (top-K 200), the stored size and the deserialize-to-`Float32Array` load time for f32 raw, f16, int8 plus a scale and JSON `number[]` (the proxy for the hypaVector form) against the spec 9 target of load <= 1 s, and the smallest cosine of a quantized vector to its original over a sample.
+- The binary forms are measured on every unit and loaded from memory (no disk read); the JSON form is stringified and parsed on 1,000 entries and scaled, because a whole-chat JSON string passes V8's string limit at large dimensions. Its row says it is extrapolated.
+- The embedding build projection is an estimate: request count at batch 16 (`DENSE_BATCH`) and 50 (the remote batch) and character totals of the units. Provider latency is never measured.
+- The paraphrase diagnostic runs lexical against hybrid retrieval through `runChroMemorySafely` (which calls `runChroMemoryCore` with `input.dense`, the only way to fill the chat's store) with the synthetic concept embedder. It is mechanism-only evidence and never gates: the embedder knows eight concepts by construction.
+- PC numbers are lower bounds (best-case hardware). Run it by hand (CI skips `Agents/**`) with gc exposed. `LTM_S3_OUT` defaults to `<temp>\ltm-s3-dense-out` and must lie under the temp folder; the run writes `profile-short.json`, `profile-long.json` and `paraphrase.json` there.
+
+```powershell
+$env:LTM_S3_OUT = "$env:TEMP\ltm-s3-dense-out"
+node --expose-gc node_modules/vitest/vitest.mjs run --config Agents/Tools/ltm-eval/vitest.ltm.config.ts Agents/Tools/ltm-eval/s3-dense.harness.ts
+```

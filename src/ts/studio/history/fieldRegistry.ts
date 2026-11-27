@@ -28,6 +28,10 @@
 // - `keepForeign` is set on new rows only, requires `editWhenAbsent: true`, and is never changed on an existing row: a
 //   present value that does not match the path's registered kind is then recorded as a foreign reading and an undo
 //   writes it back, instead of the value reading as absent. The frozen-facts test pins it with the other facts.
+// - Two paths on one holder property are aliases sharing one restore slot, the later row (`restoreSlotOf`). A later alias
+//   has the same `holders` and `value` and accepts every reading of the earlier rows: `keepForeign` and
+//   `editWhenAbsent: true` whenever an earlier alias has them, and every alias with `editWhenAbsent: true` has the later
+//   row's `absent`. A session kind listing an alias lists the later row. The alias guard test pins this.
 
 import type { languageEnglish } from '../../../lang/en'
 import type { Chat, character } from '../../storage/database.svelte'

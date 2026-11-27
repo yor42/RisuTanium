@@ -110,6 +110,7 @@ vi.mock(import('../../storage/tauriByteTransport'), async (importOriginal) => {
 vi.mock(import('../../platform'), () => ({
     isTauri: false,
     isNodeServer: false,
+    isMobile: false,
 }) as unknown as typeof import('../../platform'))
 
 vi.mock(import('../../stores.svelte'), () => {
@@ -196,11 +197,15 @@ vi.mock(import('../files/inlays'), () => ({
     writeInlayImage: vi.fn(async () => 'inlay-id'),
 }) as unknown as typeof import('../files/inlays'))
 
+const hypa = vi.hoisted(() => ({ built: 0 }))
+
 vi.mock(import('../memory/hypamemory'), () => ({
     HypaProcesser: class {
+        constructor() { hypa.built++ }
         async addText() {}
         async similaritySearch() { return [] }
     },
+    localModels: { models: {}, gpuModels: [] },
 }) as unknown as typeof import('../memory/hypamemory'))
 
 vi.mock(import('../request/request'), () => ({
@@ -1829,6 +1834,18 @@ describe('guard: the request the trim produces is the one the base produced', ()
                 const evicted = inj.trace!.makeRoom!.evictedChats
                 expect(evicted).toBeGreaterThan(0)
                 expect(inj.kept).toEqual(off.kept.slice(evicted))
+            })
+
+            test('G-send compatibility guard: a lexical send never builds an embedding processor; a hybrid send does, and with no vectors yet its request is the keyword one', async () => {
+                const lexical = await sendWith(on)
+                expect(lexical.trace!.dense).toBeNull()
+                expect(hypa.built).toBe(0)
+                const hybrid = await sendWith({ ...on, hypaModel: 'openai3small', ltmSettings: { retrieval: 'hybrid' } })
+                expect(hybrid.ok).toBe(true)
+                expect(hypa.built).toBe(1)
+                expect(hybrid.trace!.dense).toMatchObject({ state: 'building', vectors: 0 })
+                expect(hybrid.facts).toEqual(lexical.facts)
+                expect(hybrid.memory).toEqual(lexical.memory)
             })
 
             test('T1 regression reproducer: the traced T is the recount of the memory entry, with the wrap and with a template memory card', async () => {

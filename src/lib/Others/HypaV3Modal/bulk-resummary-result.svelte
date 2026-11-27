@@ -111,7 +111,7 @@
               {language.hypaV3Modal.translationLabel}
             </div>
             <textarea
-              class="p-3 w-full min-h-32 resize-vertical rounded-sm border border-darkborderc focus:outline-hidden transition-colors text-textcolor bg-bgcolor"
+              class="p-3 w-full min-h-32 resize-vertical rounded-sm border border-darkborderc focus:outline-hidden risu-focus-ring transition-colors text-textcolor bg-bgcolor"
               aria-labelledby="{uid}-translation"
               aria-describedby="{uid}-translation"
               readonly

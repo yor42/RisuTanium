@@ -93,7 +93,7 @@ function traceFor(chatKey: string, patch: Partial<ChroMemoryTrace> = {}): ChroMe
         ],
         makeRoom: { room: 600, limit: 5000, reserved: 0, floor: 4, evictedChats: 3, evictedTokens: 321, itemsDropped: 2 },
         timings: { index: 1, rank: 1, pack: 1, room: 1 },
-        timeBox: 'none', error: null,
+        timeBox: 'none', error: null, dense: null,
         ...patch,
     }
 }
@@ -437,7 +437,7 @@ describe('Recalled lore (S18)', () => {
         flushSync()
         expect(JSON.stringify(DBState.db.ltmSettings)).toBe(before)
         const checks = target.querySelectorAll<HTMLInputElement>('input[type=checkbox]')
-        expect(checks).toHaveLength(2)
+        expect(checks).toHaveLength(3)
         const lore = checks[1]
         expect(lore.checked).toBe(false)
         lore.click()
@@ -447,5 +447,90 @@ describe('Recalled lore (S18)', () => {
         lore.click()
         flushSync()
         expect(DBState.db.ltmSettings).toEqual({ budgetTokens: 900, future: { x: 1 }, searchLore: false })
+    })
+})
+
+describe('Hybrid retrieval (#688 S3)', () => {
+    function openIndexTab(): HTMLElement {
+        const { target } = mountModal()
+        tab(target, language.chroMemoryTabIndex).click()
+        flushSync()
+        return target
+    }
+
+    test('G-ui (G, new strings and control): the hybrid check writes retrieval through the writer, keeps unknown keys, and mounting writes nothing', () => {
+        const before = JSON.stringify(DBState.db.ltmSettings)
+        const target = openIndexTab()
+        expect(JSON.stringify(DBState.db.ltmSettings)).toBe(before)
+        const hybrid = target.querySelectorAll<HTMLInputElement>('input[type=checkbox]')[2]
+        expect(hybrid.checked).toBe(false)
+        expect(target.textContent).toContain(language.chroMemoryHybridDesc)
+        hybrid.click()
+        flushSync()
+        expect(DBState.db.ltmSettings).toEqual({ budgetTokens: 900, future: { x: 1 }, retrieval: 'hybrid' })
+        hybrid.click()
+        flushSync()
+        expect(DBState.db.ltmSettings).toEqual({ budgetTokens: 900, future: { x: 1 }, retrieval: 'lexical' })
+    })
+
+    test('G-ui+ (G): the English-only warning shows for bgeSmallEn with hybrid on in an all-English chat, and not for a multilingual model or with hybrid off', () => {
+        DBState.db.ltmSettings = { budgetTokens: 900, future: { x: 1 }, retrieval: 'hybrid' } as unknown as Database['ltmSettings']
+        DBState.db.hypaModel = 'bgeSmallEn'
+        const english = openIndexTab()
+        expect(english.textContent).toContain(language.chroMemoryHybridEnglishOnly)
+
+        DBState.db.hypaModel = 'openai3small'
+        flushSync()
+        expect(english.textContent).not.toContain(language.chroMemoryHybridEnglishOnly)
+
+        DBState.db.hypaModel = 'bgeSmallEn'
+        DBState.db.ltmSettings = { budgetTokens: 900 } as unknown as Database['ltmSettings']
+        flushSync()
+        expect(english.textContent).not.toContain(language.chroMemoryHybridEnglishOnly)
+    })
+
+    test('G-ui (G): the default model is multilingual, so an unset hypaModel shows no warning', () => {
+        DBState.db.ltmSettings = { budgetTokens: 900, retrieval: 'hybrid' } as unknown as Database['ltmSettings']
+        const target = openIndexTab()
+        expect(target.textContent).not.toContain(language.chroMemoryHybridEnglishOnly)
+    })
+
+    test('G-ui (G): Last send shows the vectors count, building, paused with its reason, and off; no line for a lexical send', () => {
+        const dense = (patch: Partial<NonNullable<ChroMemoryTrace['dense']>>): ChroMemoryTrace['dense'] =>
+            ({ state: 'ready', reason: null, vectors: 40, units: 45, queryMs: 5, ms: 9, ...patch })
+        const cases: Array<[ChroMemoryTrace['dense'], string | null]> = [
+            [dense({}), fillLang(language.chroMemoryDenseCount, { vectors: 40, units: 45 })],
+            [dense({ state: 'partial', vectors: 10 }), fillLang(language.chroMemoryDenseCount, { vectors: 10, units: 45 })],
+            [dense({ state: 'building', vectors: 0 }), language.chroMemoryDenseBuilding],
+            [dense({ state: 'paused', reason: 'timeout' }), fillLang(language.chroMemoryDensePaused, { reason: language.chroMemoryDenseReasonTimeout })],
+            [dense({ state: 'paused', reason: 'auth' }), fillLang(language.chroMemoryDensePaused, { reason: language.chroMemoryDenseReasonAuth })],
+            [dense({ state: 'paused', reason: 'error' }), fillLang(language.chroMemoryDensePaused, { reason: language.chroMemoryDenseReasonError })],
+            [dense({ state: 'paused', reason: 'local-model-on-phone' }), fillLang(language.chroMemoryDensePaused, { reason: language.chroMemoryDenseReasonPhoneLocal })],
+            [dense({ state: 'off', reason: 'shadow-mode', vectors: 0, units: 0 }), language.chroMemoryDenseOff],
+            [null, null],
+        ]
+        for (const [value, expected] of cases) {
+            chroMemoryTrace.set(traceFor(KEY, { dense: value }))
+            const { target, destroy } = mountModal()
+            const text = target.textContent ?? ''
+            if (expected === null) expect(text).not.toContain(language.chroMemoryDense)
+            else {
+                expect(text, expected).toContain(`${language.chroMemoryDense}:`)
+                expect(text, expected).toContain(expected)
+            }
+            destroy()
+        }
+    })
+
+    test('G-ui (G): the item rank shows the fused place when the send fused, else the keyword place', () => {
+        chroMemoryTrace.set(traceFor(KEY, { items: [
+            { source: { kind: 'turn', chatId: 'm2', index: 2, off: 0 }, rank: { lexical: 4, dense: 2, fused: 1 }, tokens: 100 },
+            { source: { kind: 'turn', chatId: 'm1', index: 1, off: 0 }, rank: { lexical: 7, dense: null, fused: null }, tokens: 50 },
+        ] }))
+        const { target } = mountModal()
+        const text = target.textContent ?? ''
+        expect(text).toContain(fillLang(language.chroMemoryItemMeta, { tokens: 100, rank: 1 }))
+        expect(text).not.toContain(fillLang(language.chroMemoryItemMeta, { tokens: 100, rank: 4 }))
+        expect(text).toContain(fillLang(language.chroMemoryItemMeta, { tokens: 50, rank: 7 }))
     })
 })

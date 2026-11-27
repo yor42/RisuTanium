@@ -32,6 +32,27 @@ export function refusalText(reason: StudioRefusal): string {
     }
 }
 
+// The line for a replay that left a gone file out: the portrait's own sentence (no name) when the first gone path came from a
+// portrait step, else the row's name. Null when no file is gone. Every place that shows a gone file reads this one function.
+export function goneFileText(result: { goneRows?: readonly string[]; goneName?: string; goneKind?: 'portrait' }): string | null {
+    if (result.goneRows === undefined || result.goneRows.length === 0) {
+        return null
+    }
+    return result.goneKind === 'portrait' ? language.studioPortraitFileGone : language.studioAssetFileGone(result.goneName ?? result.goneRows[0])
+}
+
+// The notice of a portrait add that did not land, or that landed with a refusal while the visit was open. `visitOpen` is
+// whether the Studio visit the add began in is still the open one. A visit that ended, or a selection that moved away (the
+// watcher's own reason to close Studio), reads as "not added because Studio closed"; any other refusal states its own cause.
+export type AddRefusalNotice = { kind: 'not-added' } | { kind: 'refusal'; text: string }
+
+export function addRefusalNotice(visitOpen: boolean, result: { reason: StudioRefusal }): AddRefusalNotice {
+    if (!visitOpen || result.reason === 'not-selected') {
+        return { kind: 'not-added' }
+    }
+    return { kind: 'refusal', text: refusalText(result.reason) }
+}
+
 // The sentence that says why the first messages were skipped; null when the model named no reason.
 export function listReasonText(reason: ListSkipReason | undefined): string | null {
     return reason === 'neither' ? language.studioHistoryListChangedElsewhere : reason === 'other' ? language.studioHistoryListSaveUnfinished : null
@@ -216,8 +237,9 @@ export function createStudioToasts(deps: StudioToastDeps): StudioToasts {
                             }
                             return { ok: false, text: refusalTextOf(result) }
                         }
-                        if (result.goneRows !== undefined && result.goneRows.length > 0) {
-                            return { ok: true, text: language.studioAssetFileGone(result.goneName ?? result.goneRows[0]) }
+                        const goneText = goneFileText(result)
+                        if (goneText !== null) {
+                            return { ok: true, text: goneText }
                         }
                         // The toast is always an Undo. The places go to the Studio notice too, where Show lists them.
                         if (result.notRestored !== undefined && result.notRestored.length > 0) {

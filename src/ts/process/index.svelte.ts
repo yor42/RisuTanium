@@ -50,6 +50,7 @@ import { openMemorySettings } from "./memory/memorySettingsLink";
 import { chroMemoryModeOf, memoryTakesChatsOf } from "./memory/memoryEngine";
 import { createSendCapture, type FirstMessageSource } from "./memory/chroMemory/records";
 import { HISTORY_FLOOR, markChroMemoryDroppedAtRecheck, runChroMemorySafely } from "./memory/chroMemory/shadow";
+import { chroMemoryEmbedder } from "./memory/chroMemory/denseEmbedder";
 import { readLtmSettings } from "./memory/chroMemory/settings";
 import { createLoreIndexStore, defaultLoreIndexScheduler } from "./memory/chroMemory/loreIndex";
 import { clearLoreRecallTrace, createLoreRecallStep, loreQueryOf, markLoreRecallTrimmed, type LoreRecallTap } from "./memory/chroMemory/loreRecall";
@@ -65,7 +66,7 @@ import { hasModuleStubs } from "./moduleRefList";
 import { getSaveMarkCount, readImage } from "../globalApi.svelte";
 import { issueNativeReplyGrant, nativeReplyEligible } from "../nativeReply/grant";
 import { holdRecoveredReply, noteReplyPushed, ownsPushedReply, requestReconcile, settleNativeReplyInflight, takeAnnounced } from "../nativeReply/pageState";
-import { noteWaitingForUnit } from "../nativeReply/runningReplies.svelte";
+import { isRetiredReply, noteWaitingForUnit } from "../nativeReply/runningReplies.svelte";
 import { endOwnedRead, forgetOwnedStream, settleOwnedStreamEnd } from "../nativeReply/ownedStream";
 import type { ApplyOutcome, RecoveredReplyInput, RecoveredStreamInput } from "../nativeReply/reconcile";
 import { settleRecoveredUsage } from "../usage/usageCapture";
@@ -628,6 +629,11 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
     let handle: WorkHandle | null = null
     let pushed = false
     try {
+        // A key whose message the person deleted is never written: this check precedes the take, so a retired key neither
+        // holds the unit nor defers.
+        if(isRetiredReply(key)){
+            return 'retired'
+        }
         held = active.take()
         if(!held){
             return deferRecoveredApply(origin, key)
@@ -666,6 +672,9 @@ export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<A
         const pushCtx = subject.resolve()
         if(stopped || !pushCtx){
             return 'deferred'
+        }
+        if(isRetiredReply(key)){
+            return 'retired'
         }
         if(pushCtx.chat.message.some((message) => message.chatId === key)){
             pushed = true
@@ -755,6 +764,11 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
     // The signature inlays the written text references; the record is held for the save only after they settle.
     const signatureWrites: Promise<unknown>[] = []
     try {
+        // A key whose message the person deleted is never written: this check precedes the take, so a retired key neither
+        // holds the unit nor defers, and it covers the awaits that ran before the apply started.
+        if(isRetiredReply(key)){
+            return 'retired'
+        }
         held = active.take()
         if(!held){
             return deferRecoveredApply(origin, key)
@@ -797,6 +811,10 @@ export async function applyRecoveredStreamReply(input: RecoveredStreamInput): Pr
         const writeCtx = subject.resolve()
         if(stopped || !writeCtx){
             return 'deferred'
+        }
+        // A delete during the awaits retires the key: nothing below writes, upgrades or holds it.
+        if(isRetiredReply(key)){
+            return 'retired'
         }
         const writeIndex = writeCtx.chat.message.findIndex((message) => message.chatId === key)
         if(upgrade){
@@ -2477,6 +2495,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 countText: (t) => tokenize(t),
                 countBlock: countMemoryShape,
                 now: () => performance.now(),
+                embedder: chroMemoryEmbedder,
             })
         }
         // The stamp names the first chat make-room kept; the memory message is added after it,

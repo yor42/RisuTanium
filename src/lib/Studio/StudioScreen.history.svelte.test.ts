@@ -789,6 +789,56 @@ describe('Ctrl+Z over asset rows asks the files first', () => {
     })
 })
 
+// B-T14: the file of a portrait is gone when its removal is undone. The step is dropped, nothing of the portrait is
+// written, and the one portrait sentence (no row name, no path) is said by the Studio notice and by the History panel.
+describe('B-T14: a gone portrait file is said in its own words', () => {
+    const MAIN = 'assets/' + 'm'.repeat(64) + '.png'
+    const portrait = (): { image: string; ccAssets: unknown[] } => live() as unknown as { image: string; ccAssets: unknown[] }
+
+    async function portraitRig(panel: boolean): Promise<Rig> {
+        const rig = makeRig(undefined, true)
+        portrait().image = MAIN
+        portrait().ccAssets = []
+        flushSync()
+        await mountScreen({ panel })
+        await rig.service.whenReady(A)
+        expect(rig.service.portraitRemove(A, 'main').ok).toBe(true)
+        flushSync()
+        files.states.set(MAIN, 'gone')
+        return rig
+    }
+
+    test('Ctrl+Z puts the sentence in the Studio notice, and the portrait stays as it is', async () => {
+        const rig = await portraitRig(false)
+        expect((await ctrl({ key: 'z' })).defaultPrevented).toBe(true)
+        expect(shownMessages()).toEqual({ notice: 'studioPortraitFileGone', panel: null })
+        expect(portrait().image).toBe('')
+        expect(rig.service.view(A).done).toHaveLength(0)
+    })
+
+    test('Undo in the History panel puts the sentence in its message line and names no path', async () => {
+        const rig = await portraitRig(true)
+        await press('studio-history-undo')
+        expect(shownMessages().panel).toContain('studioPortraitFileGone')
+        expect(shownMessages().panel).not.toContain(MAIN)
+        expect(portrait().image).toBe('')
+        expect(rig.service.view(A).done).toHaveLength(0)
+    })
+
+    test('a gone asset row still says its own name in both places', async () => {
+        const rig = makeRig(undefined, true)
+        live().additionalAssets = [['smile', 'assets/smile.png', 'png'], ['grin', 'assets/grin.png', 'png']]
+        flushSync()
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        expect(rig.service.assetDelete(A, 'additionalAssets', [1]).ok).toBe(true)
+        flushSync()
+        files.states.set('assets/grin.png', 'gone')
+        await ctrl({ key: 'z' })
+        expect(shownMessages().notice).toBe('studioAssetFileGone(grin)')
+    })
+})
+
 describe('the History panel over asset rows asks the files first', () => {
     const SMILE = ['smile', 'assets/smile.png', 'png']
     const GRIN = ['grin', 'assets/grin.png', 'png']

@@ -16,6 +16,7 @@ import { get, writable } from 'svelte/store'
 import type { Database, Chat, Message } from '../storage/database.svelte'
 import '../polyfill'
 import { heldReply, resetPageStateForTests, configurePageState, setReconcileTrigger } from '../nativeReply/pageState'
+import { addRunningReplies, resetRunningRepliesForTests, retireRunningReplies } from '../nativeReply/runningReplies.svelte'
 
 const requestChatDataMock = vi.hoisted(() => vi.fn())
 const runTriggerMock = vi.hoisted(() => vi.fn())
@@ -126,6 +127,7 @@ vi.mock('./chatOrigin', async (importOriginal) => {
 
 
 import { applyRecoveredStreamReply, doingChat, sendChat } from './index.svelte'
+import { deleteNow } from './messageActions.svelte'
 import { activeUnits } from './activeUnits'
 import { hasAnyWork, isWriting } from './chatOrigin'
 import { abortChat } from './composerActions.svelte'
@@ -823,5 +825,66 @@ describe('the unit an apply holds', () => {
             { busy: true, writing: false },
             { busy: false, writing: false },
         ])
+    })
+})
+
+describe('a key whose message the person deleted while it ran (#616)', () => {
+    const running = { key: KEY, target: { chaId: 'cha', chatId: 'chat', name: 'Alice' } }
+
+    // P9, regression reproducer: the delete lands while the apply's dependency is still loading.
+    test('P9: a real delete during the apply dependency await leaves the apply with nothing to write', async () => {
+        installDb()
+        resetRunningRepliesForTests()
+        addRunningReplies([running])
+        let release!: () => void
+        const gate = new Promise<void>((resolve) => { release = resolve })
+        const dep = async (applyInput: RecoveredStreamInput) => { await gate; return applyRecoveredStreamReply(applyInput) }
+        const pending = dep(input({ complete: false, outcome: 'stopped' }))
+
+        const owner = DBState.db.characters[0]
+        expect(deleteNow(owner, liveChat(), liveChat().message[1], 'one')).toBe(true)
+        release()
+
+        expect(await pending).toBe('retired')
+        expect(processScriptFullMock).not.toHaveBeenCalled()
+        expect(liveChat().message.map((message) => message.chatId)).toEqual([undefined])
+        expect(heldReply(KEY)).toBeUndefined()
+        expect(usageKeys()).toEqual([])
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    // P10, new-contract guard: a retire during the output scripts stops the write in both the append and the upgrade branch.
+    test.each([
+        ['append', () => [msg('user', 'hi')]],
+        ['upgrade', () => [msg('user', 'hi'), interruptedPartial()]],
+    ])('P10: a retire during the script pass writes nothing (%s)', async (_name, messages) => {
+        installDb({}, messages())
+        resetRunningRepliesForTests()
+        addRunningReplies([running])
+        processScriptFullMock.mockImplementationOnce(async (_char: unknown, text: string) => {
+            retireRunningReplies([KEY])
+            return { data: text, emoChanged: false }
+        })
+        const before = liveChat().message.map((message) => ({ ...message }))
+
+        expect(await applyRecoveredStreamReply(input({ complete: false, outcome: 'stopped' }))).toBe('retired')
+
+        expect(liveChat().message.map((message) => ({ ...message }))).toEqual(before)
+        expect(heldReply(KEY)).toBeUndefined()
+        expect(usageKeys()).toEqual([])
+        expect(activeUnits.any()).toBe(false)
+    })
+
+    test('P10: a key retired before the apply starts neither takes the unit nor runs the scripts', async () => {
+        installDb({}, [msg('user', 'hi')])
+        resetRunningRepliesForTests()
+        addRunningReplies([running])
+        retireRunningReplies([KEY])
+
+        expect(await applyRecoveredStreamReply(input())).toBe('retired')
+
+        expect(processScriptFullMock).not.toHaveBeenCalled()
+        expect(liveChat().message).toHaveLength(1)
+        expect(activeUnits.any()).toBe(false)
     })
 })

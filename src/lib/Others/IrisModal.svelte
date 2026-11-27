@@ -317,6 +317,7 @@
     class="fixed inset-0 z-50 flex items-end justify-center bg-black/60"
     transition:fade={{ duration: 300 }}
     role="presentation"
+    data-part="modal-iris"
 >
 
     <!-- Close button (mobile only) -->
@@ -324,6 +325,7 @@
         onclick={hide}
         class="absolute right-4 top-4 flex items-center gap-1 rounded-md bg-black/40 px-2 py-1 text-xs text-white/50 transition hover:bg-black/60 hover:text-white/80"
         aria-label={language.uiCommon.close}
+        data-part="modal-close"
     >
         <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -352,15 +354,18 @@
             <div
                 class="flex w-full max-w-2xl flex-col rounded-2xl border border-white/15 bg-black/90 shadow-2xl"
                 style="max-height: 70vh;"
+                data-part="modal-frame"
                 transition:fly={{ y: -20, duration: 250 }}
             >
                 <!-- Header -->
                 <div
                     class="flex items-center justify-end border-b border-white/10 px-6 py-3 gap-3"
+                    data-part="modal-header"
                 >
                     <button
                         class="text-white/40 transition hover:text-white/80"
                         aria-label={language.reset}
+                        data-part="modal-action"
                         onclick={() => {
                             resetDialogue();
                             showBacklog = false;
@@ -384,6 +389,7 @@
                         onclick={closeBacklog}
                         class="text-white/40 transition hover:text-white/80"
                         aria-label={language.iris.closeBacklog}
+                        data-part="modal-close"
                     >
                         <svg
                             class="h-4 w-4"
@@ -405,6 +411,7 @@
                 <div
                     bind:this={backlogEl}
                     class="flex-1 overflow-y-auto px-6 py-4 space-y-4"
+                    data-part="modal-list"
                 >
                     {#each seenDialogue as line, i}
                         <div
@@ -412,12 +419,14 @@
                             'You'
                                 ? 'items-end'
                                 : 'items-start'}"
+                            data-part="modal-row"
                         >
                             <span
                                 class="text-xs font-semibold {line.speaker ===
                                 'You'
                                     ? 'text-emerald-400'
                                     : 'text-indigo-400'}"
+                                data-part="modal-text"
                             >
                                 {line.speaker}
                             </span>
@@ -427,6 +436,7 @@
                                     ? 'rounded-tr-sm bg-emerald-900/60'
                                     : 'rounded-tl-sm bg-indigo-900/60'}
                 {i === currentIndex ? 'ring-1 ring-white/20' : ''}"
+                                data-part="modal-text"
                             >
                                 {line.text}
                             </div>
@@ -444,11 +454,13 @@
     >
         <div
             class="relative rounded-xl border border-white/20 bg-black/80 px-8 py-6 shadow-2xl"
+            data-part="modal-frame"
         >
             <!-- Backlog button -->
             <button
                 onclick={openBacklog}
                 title={language.iris.viewBacklog}
+                data-part="modal-action"
                 class="absolute right-4 top-4 flex items-center gap-1 rounded-md px-2 py-1 text-xs text-white/40 transition hover:bg-white/10 hover:text-white/70"
             >
                 <svg
@@ -474,6 +486,7 @@
             {dialogue[currentIndex].speaker === 'You'
                         ? 'bg-emerald-600'
                         : 'bg-indigo-600'}"
+                    data-part="modal-title"
                 >
                     {dialogue[currentIndex].speaker}
                 </div>
@@ -489,17 +502,18 @@
                 aria-live="polite"
                 aria-atomic="true"
                 class="min-h-20 cursor-pointer select-none text-base leading-relaxed text-white/90"
+                data-part="modal-body"
             >
                 {displayedText}
                 {#if isTyping}
                     <span class="animate-pulse" aria-hidden="true">▌</span>
                 {:else if dialogue[currentIndex].tip}
-                    <div class="mt-2 rounded-md bg-white/10 px-3 py-2 text-sm text-white/70">
+                    <div class="mt-2 rounded-md bg-white/10 px-3 py-2 text-sm text-white/70" data-part="modal-text">
                         {dialogue[currentIndex].tip}
                     </div>
                 {/if}
                 {#if isUnsupportedModel}
-                    <div class="mt-2 rounded-md bg-red-600/80 px-3 py-2 text-sm text-white">
+                    <div class="mt-2 rounded-md bg-red-600/80 px-3 py-2 text-sm text-white" data-part="modal-text">
                         {language.iris.unsupportedModel}
                     </div>
                 {/if}
@@ -530,6 +544,7 @@
             {#if atEnd}
                 <div
                     class="mt-4 flex items-center gap-2"
+                    data-part="modal-controls"
                     transition:fly={{ y: 8, duration: 200 }}
                 >
                     <input
@@ -537,6 +552,7 @@
                         bind:value={userInput}
                         onkeydown={handleInputKey}
                         type="text"
+                        data-part="modal-field"
                         placeholder={waitingForReply
                             ? language.iris.waitingForReply
                             : language.iris.typeMessage}
@@ -547,6 +563,7 @@
                         onclick={submitUserInput}
                         disabled={!userInput.trim() || waitingForReply || isUnsupportedModel}
                         class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-40"
+                        data-part="modal-action"
                     >
                         {language.uiCommon.send}
                     </button>
