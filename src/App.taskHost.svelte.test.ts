@@ -207,7 +207,7 @@ describe('App mounts the task host', () => {
         expect(document.activeElement).toBe(document.querySelector('[data-part="pattern-task-result-headline"]'))
     })
 
-    test('R7 the toast stack stays visible and its timers pause under the card, and run again after it closes', async () => {
+    test('R7 the toast stack stays visible, inert and paused under the card, and resumes after it closes', async () => {
         await showApp()
         const handle = alertTask(def)
         flushSync()
@@ -215,10 +215,12 @@ describe('App mounts the task host', () => {
         flushSync()
         const host = document.querySelector<HTMLElement>('[data-part="toast-host"]')!
         expect(host.hasAttribute('data-suspended')).toBe(false)
-        expect(insideInertScope(host)).toBe(false)
+        expect(host.style.visibility).not.toBe('hidden')
+        expect(insideInertScope(host)).toBe(true)
         expect(toastHost.paused).toBe(true)
         handle.close()
         flushSync()
+        expect(insideInertScope(host)).toBe(false)
         expect(toastHost.paused).toBe(false)
     })
 

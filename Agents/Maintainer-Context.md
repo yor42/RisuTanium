@@ -39640,3 +39640,645 @@ Write stall: the maintainer first answered "Accept, open perf follow-up (Recomme
 **Effect.** Filed #694 and started its Sonnet session (694-createinlay). The plugin's `getPermission('inlay')` is asked once and kept, unlike upstream's periodic re-ask. #694 merged as PR 695 (177dfc9cf). `Agents/Upstream-Merges.md` records the same ruling in prose; this entry gives it an ID.
 
 *Source: lane A decisions log 2026-11-23, line 352.*
+
+### MC-3959 — #596 stage 5d: reply error alerts follow the boot-notice rules; the count card's close and label rules, 2026-11-23
+
+- Tag: decisions (maintainer via AskUserQuestion, two asks). Date: 2026-11-23. Exact times: UNKNOWN. Related: `#596`, `MC-3742`, `MC-3791`, `MC-3792`, `MC-3309`.
+
+**What the maintainer chose.** All recommended options. A reply error alert waits behind an alert the person can close instead of replacing it ("Wait its turn"), is shown again after a cover closes ("Show it again") and is dismissed only by the person's own tap, never by code ("Only my tap"), as boot notices already behave. The keep-alive count card: when several replies end with some failed and some stopped, the closing card counts only the failed ones ("2 replies failed" for 2 failed and 1 stopped); the "N replies writing" card has no character-count line; an error whose chat cannot be named shows the message without the "Character: chat" line. Scope: 5d also makes the notification Stop mark every running reply as stopped on the native side (no "Replied" notice after it), and queues the module-load failure in `sendChat` as a labelled reply error. A third ask (2026-11-24): the Vertex auth error dialog in the Gemini request layer is removed ("Remove it"), so a reply shows only its labelled error; triggers, Lua and MCP calls that hit it fail without a dialog, like every other failed request they make.
+
+### MC-4100 — #233 preset toggles link leads to the active preset only, 2026-11-24
+
+Orchestrator reading under MC-3896 and the #233 brief: the "Edit in Studio" link beside `customPromptTemplateToggle` in PromptSettings targets `preset:<botPresetsId>` toggles from Settings. Classic edits only the active preset, so the link never names another one. With no valid active preset row the link is hidden; a preset that disappears after the link is shown resolves through the existing studioNotFound path (MC-3896), with nothing new added.
+
+# #681 decisions (Studio S3: character name, Display leftovers, portrait)
+
+Block MC-4130..4139 (lane A, MC-3878). Lane A folds these into Maintainer-Context.
+
+### MC-4130 — #681: Studio S3 is built in three stages S3a, S3b and S3c, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #681 plan session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#681`, `MC-3900`, `MC-4030`.
+
+**What was asked.** How to stage S3, given the sizing finding that Studio has no real file picker today: `StudioAssetList` takes an optional `picker` prop that nothing supplies, and `StudioEmotionList` has no add path, so classic parity (MC-4030) adds a picker.
+
+**What the maintainer chose.** "S3a, S3b, S3c (Recommended)". S3a: the name and the Display text, select and switch fields (history registry rows, Sonnet Gate 2). S3b: the portrait (add, replace, swap with an alternate, remove, durable undo) with its picker (new history op kinds and the asset lifecycle, Opus Gate 2). S3c: real Add for additional assets and emotion images, reusing the S3b picker. Not chosen: S3b with all Add; one stage; asset and emotion Add left behind a classic link with a follow-up ticket.
+
+**Consequence.** Three PRs on #681; only S3c closes it. S3b and S3c run after S7-0 (#685) frees the Studio history-core slot; S3a also edits `fieldRegistry.ts`, `ownerHistory.svelte.ts` and `studioSetters.ts`, so it waits for the slot too.
+
+### MC-4131 — #681: the hide-chat-icon switch moves to Display in S3a, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #681 plan session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#681`, DD-169.
+
+**What the maintainer chose.** "Move in S3a (Recommended)". The switch leaves the Studio Basic form and appears in Display, 사진 section, when S3a builds the Display form. Not chosen: move it with the portrait in S3b.
+
+**Consequence.** A presentation change only: the `hideChatIcon` history path and data are unchanged; its history focus target moves to the Display form.
+
+### MC-4132 — #681: a screen-mode switch fills default prompts like classic, tags them and is one undo step, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #681 plan session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#681`, `MC-4030`, DD-177, DD-180.
+
+**What the maintainer chose.** "Fill + tag, one undo (Recommended)". When `viewScreen` or the inlay switch changes, Studio fills the image-generation and emotion prompt fields as classic's `updateInlayScreen` does, tags each field it filled as a default with a reset, and records the switch and the fills as one undo step. Not chosen: fill silently; do not fill (breaks MC-4030 parity).
+
+**Consequence.** No engine change is needed: Studio computes which fields were filled by running the classic fill on a copy and comparing. `newGenData` becomes a history container.
+
+### MC-4133 — #681: the portrait's PNG text chunks are copied inside the portrait's undo step, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #681 plan session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#681`, `MC-4030`.
+
+**What the maintainer chose.** "Copy inside the undo step (Recommended)". When a new portrait is picked, Studio copies its PNG text chunks into `extentions.pngExif` as classic does, but as part of the same history step, so undoing the portrait add also restores the previous `pngExif`. Not chosen: copy at pick time outside undo, as classic does.
+
+**Consequence.** S3b's portrait op carries the `pngExif` before and after values.
+
+### MC-4134 — #681: Studio's inlay switch leaves the additional-asset list as it is, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #681 plan session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#681`, `MC-4132`, `MC-4030`.
+
+**What was asked.** Classic sets `additionalAssets` to an empty list when the inlay switch turns on with no list, and removes the key when it turns off with an empty list. Upstream readers treat absent and empty alike except the `{{assetlist}}` tag.
+
+**What the maintainer chose.** "Leave list as is (Recommended)". Not chosen: copy both directions as a recorded part of the switch's undo step (a new history op kind); create the list on turn-on only as an unrecorded write.
+
+**Consequence.** S3a needs no new op kind. S3c makes asset Add work on a character with no `additionalAssets` key. A deliberate, recorded difference from classic under MC-4030.
+
+### MC-4135 — #681: a Studio asset import lands only while its character stays selected, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #681 plan session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#681`, DD-191, DD-196.
+
+**What was asked.** The spec lets an import continue after the author leaves the item, even after Studio closes, but every Studio write requires the owner to be the selected Studio character.
+
+**What the maintainer chose.** "Finish only while selected (Recommended)". Leaving the item or the form does not stop the import. If the character stops being selected before the insert, the stored files are not added, and an app-wide toast says how many were not added because Studio closed; the unreferenced files go at the next boot sweep. Not chosen: extend the write guard to land on a non-selected owner; cancel the import when the item is left.
+
+**Consequence.** S3c changes no history-service guard. The spec's "View in Studio" report after Studio closes becomes the not-added toast.
+
+### MC-4136 — #681: S3a's Gate 2 is an opus-reviewer, 2026-11-24
+
+- Tag: routing (the #681 plan session, from the Gate 1 plan; not a maintainer answer). Date: 2026-11-24. Exact times: UNKNOWN. Related: `MC-4130`, `#681`.
+
+**What was decided.** S3a's Gate 2 uses an opus-reviewer, not the Sonnet reviewer named in MC-4130. S3a changes history replay of stored merge text edits on `newGenData` paths (they become field sets) and adds a persisted container seed, which the critical-contract rule covers.
+
+**Consequence.** MC-4130's stage split is unchanged; only S3a's reviewer is raised.
+
+### MC-4137 — #681 S3a: Gate 2 dispositions (foreign undo fix, part names, accepted limitation), 2026-11-24
+
+- Tag: arbitration (the #681 session, from the S3a Gate 2 verdicts; not a maintainer answer). Date: 2026-11-24. Exact times: UNKNOWN. Related: `MC-4136`, `MC-4030`, `#681`.
+
+**What was decided.**
+- Round-1 F1: the character writer `writeHeld` (`studioSetters.ts`) gains a foreign branch like the module writer's, so undoing a `prebuiltAssetCommand` edit on a card-imported character puts back the stored `''` byte-equal. `keepForeign` stays on that row; the fact freezes at merge.
+- F2: Display data-part names are lower-case literal `studio-*` names, and no STUDIO_SAFE part wraps the merge roots. The theme-pack guards are unchanged.
+- F3: accepted as a known limitation. A wrong-typed `newGenData` key is overwritten by the fill, as classic does, and undo deletes it rather than restoring it. `newGenData.*` rows carry no `keepForeign`; that fact freezes at merge.
+- F4: an emptied name reverts on blur to its value at focus. It is written back as its own undoable step, because the partial name typed before was really written.
+
+- Lane A's PR check (ruling relayed by lane A): `largePortrait` and `inlayViewScreen` carry no `keepForeign`. A stored non-boolean value, such as the string `"true"` from a hand-made card, is deleted by undo rather than restored. This is accepted as a known limitation, consistent with the S1 boolean rows, because upstream export and classic write booleans. The fact freezes at merge.
+- Also accepted as a known limitation: the per-character Display segment choice in `localStorage` is never removed when a character is deleted.
+- B1 from the same check: the name field's composition gate is registered with `registerStudioField`, so a held IME composition is written on page hide (MC-1813).
+
+**Consequence.** S3a's PR body lists F3, the boolean rows, the segment keys, and the optional tests and surviving mutants as known gaps.
+
+# MC entries for #709 (Studio module list operations spec)
+
+Block MC-4120..4129, session `claude/709-module-list-spec` (spec), continued on `claude/709-module-list-build` (build). MC-4126..4129 are unused.
+
+### MC-4120 — #709 module list product answers, 2026-11-24
+
+The maintainer answered the four open product questions of `docs/design/studio/MODULE_LIST_SPEC.md`, each with the recommended option:
+- **Create:** ask for a name first; cancel or a blank name creates nothing; then create the module and open its Advanced form.
+- **Delete:** a confirm naming the module and no Undo, as in classic.
+- **MCP import URL:** parse the URL and allow plain `http://` only for `localhost`, `127.0.0.0/8` and `[::1]`. The function is shared, so classic tightens too. No confirm after the handshake.
+- **Convert to character with Low Level Access on:** ask first, naming the module and what the flag allows; cancel makes no character.
+
+Consequence: build stage L3 (URL admission and the low-level ask, Opus) is built. No stage edits the history-core files.
+
+Known limitation, accepted by the maintainer the same day (Gate 1 r1 F2): the loopback rule gates only the explicit Import MCP prompt, in classic and in Studio. MCP modules that arrive through file import, plugins or a backup restore keep today's run-time rule, so plain `http://` to a non-loopback host stays reachable that way. Enforcing it in the run-time client was offered and not chosen.
+
+### MC-4121 — #709 build started as the Sonnet orchestrator, 2026-11-24
+
+The maintainer answered lane A's question (AskUserQuestion, 2026-11-24) "Start now, Sonnet (Recommended)": the same session continues as the Sonnet orchestrator for the #709 build, per the merged spec's stages L1 (Opus coder), L2 (Sonnet coder) and L3 (Opus coder), one build PR "Closes #709" on branch `claude/709-module-list-build`. The build stays off `fieldRegistry.ts`, `historyModel.ts`, `ownerHistory.svelte.ts` and `studioSetters.ts` (#685 S7-0 holds them); a need for one stops the build and goes to lane A.
+
+
+### MC-4122 — #709 a deleted or replaced module clears the Studio selection, 2026-11-24
+
+The maintainer confirmed (AskUserQuestion, 2026-11-24, answer "Confirm as built") that MC-3896's rule for presets applies to modules: when the module a Studio form shows is deleted, or replaced by an import, the selection clears with the notice "That module is no longer available.", held typing is dropped and no module changes. The alternative, keeping the form open on the replaced content, was declined.
+
+### MC-4124 — #709 grilling accepted, 2026-11-24
+
+Lane A accepted the asked-and-answered product questions (MC-4120) in place of a separate Tier 2 grilling pass (MC-778).
+
+### MC-4123 — #709 Note 9 device rows run before merge, 2026-11-24
+
+The maintainer chose to run the spec's Note 9 rows before merge (AskUserQuestion, 2026-11-24, answer "Run before merge"): create and open, `.risum` import through the Android picker, CharX export save dialog, `internal:dice` MCP import, delete, and a replace-import with a module form open. The merge of PR 750 waits for their results. Synthetic data, a leased Note 9 (live-checks.md).
+
+### MC-4125 — #709 device rows: CDP file chooser for the file legs, 2026-11-24
+
+The guard cannot drive Android's system picker or save dialog. The maintainer ruled (AskUserQuestion, 2026-11-24, answer "CDP file chooser") that the file legs of DV-709-2 and DV-709-3 run through the guard's `file-chooser` verb, with the system picker and save dialog themselves NOT RUN. Results are in `Agents/stages/709/STAGE_HANDOFF.md`.
+
+### MC-4140 — #438 S3c-B restarts as a small plan: popups.css is an applied area judged like the other sheets, 2026-11-24
+
+- Tag: decisions (session, under MC-3638, MC-3639, MC-3659, MC-3660; not a new maintainer answer). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `#560`, `MC-3007`, `MC-3009`, `MC-3126`, `MC-3247`, `MC-3871`.
+
+**What was decided.** The S3c-B plan was rewritten from scratch (plan r1, Gate 1 [EDITORIAL], no blocking finding) instead of patching the failed r4. `popups` joins `APPLIED_AREAS` the way settings did, through a judge built from the S3c-A census. popups.css sets no custom property at all (MC-3007), so it cannot change a screen's tokens. It is applied as two overlay styles (colour and shape) that the surface gate turns on from the shown screen: off where that screen's sheet applies nothing, colour over a colour-ready screen, shape otherwise. The toast containment, protected data notices, image ban and popups own-colour trigger of the earlier plans are not built (MC-3659, MC-3638, MC-3639, MC-3660). A pack with only popups.css is still refused (MC-3123).
+
+### MC-4141 — #438 No popups-versus-screen colour clash note, 2026-11-24
+
+- Tag: decisions (session, plan r1 OQ-1, recommended option A; follows MC-3660). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3122`, `MC-3421`, `MC-3658`, `MC-3660`.
+
+**What was decided.** The install-time estimate of a clash between popup colours and screen colours is not built. MC-3660 already says popups readability never switches own colours on, and the estimate was a note only. Popups.css's own notes still show at install. If the maintainer wants the note later it is one additive module.
+
+### MC-4142 — #438 popups.css may still set color-scheme on :root or html, 2026-11-24
+
+- Tag: decisions (session, Gate 1 finding E-3; known limitation under MC-3638). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3638`, `MC-3419`.
+
+**What was decided.** The Rule SCOPE root clause admits `color-scheme` set to light or dark on `:root` or `html`, so a popups.css colour overlay can set the document's colour scheme (form controls, scrollbars) while it is on. That is restyling, a known limitation with no new guard (MC-3638, MC-3419).
+
+### MC-4143 — #438 S3c-B device run may install the synthetic pack through an in-page File over CDP, 2026-11-24
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; live-checks per-run ruling for an in-page `File` over CDP). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3768`, `docs/workflow/live-checks.md`.
+
+**What the maintainer chose.** For the S3c-B device rows DV-0..DV-5 on a Note 9 playground phone, the runner installs the 760-byte synthetic test pack with an in-page `File` built over CDP from the pack bytes, because the WebView of the debug app cannot read a path under `/sdcard/Download` (`NotReadableError`). The ruling covers this run only and is not standing policy. Not chosen: skipping the install rows, and running the rows on a PC production dist.
+
+### MC-3654 — #438 Popups notes count toward the own-colour trigger, 2026-11-22
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; plan S3c-B r4 OQ-1). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `#560`, `MC-3445`, `MC-3007`.
+
+**What the maintainer chose.** A contrast or readability note on a pack's popups.css counts toward the MC-3445 own-colour trigger, the same way the chat, Studio and Settings sheets do. A pack whose toasts and popups are unreadable therefore switches the escape route, Settings and the save-guard prompts to the app's own colours.
+
+### MC-3655 — #438 Packs style the inside of plain toasts; the app owns the stack, Dismiss and height, 2026-11-22
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; S3c-B Gate 1 r4 and advisor Q3). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3009`, `MC-3419`, `MC-2940`. Amends `MC-3009`.
+
+**What the maintainer chose.** A theme pack may style the inside of a plain toast: colours, borders, corners, spacing, fonts and shadow. The app owns the toast stack, the place of the close button and a maximum height, so a very long message scrolls inside its toast, built-in toasts included. The maintainer was told this needs an app change and a Note 9 check first. Not chosen: no pack styling on toasts, and parking popup theming.
+
+### MC-3656 — #438 Toasts that report data trouble are protected, 2026-11-22
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; S3c-B Gate 1 r4 F4 and advisor Q1). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2947`, `MC-3009`, `MC-3655`. Amends `MC-3009`.
+
+**What the maintainer chose.** All data notices are protected: toasts about save failure and retry, repair, import, export and backup keep the built-in shape and take only the pack's colours, following the MC-2947 critical list. The plan lists every such call site for review. Not chosen: protecting save failures only, and protecting none.
+
+### MC-3657 — #438 No pack images inside toasts, 2026-11-22
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; S3c-B advisor Q3). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3655`, `MC-3422`.
+
+**What the maintainer chose.** A pack may not put images inside a toast, because a size limit cannot stop a picture that imitates a system message. Images elsewhere are unchanged.
+
+### MC-3658 — #438 The popup clash estimate is a note only, 2026-11-22
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; S3c-B Gate 1 r4 PQ-2 and advisor Q2). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `#560`, `MC-3122`, `MC-3421`, `MC-3445`, `MC-3654`. Clarifies `MC-3654`.
+
+**What the maintainer chose.** The install-time estimate of a clash between popup colours and chat colours only shows a note and never switches own colours on by itself. Failed readability checks on popup colours that are really painted still count toward that switch under MC-3654.
+
+### MC-3659 — #438 Today's toast and notice guards are superseded by the theme-pack review rule, 2026-11-22
+
+- Tag: decisions (session re-check under MC-3638 and MC-3639, as those decisions direct; not a new maintainer answer). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3638`, `MC-3639`, `MC-3655`, `MC-3656`, `MC-3657`. Supersedes `MC-3655` (its app-owned limits part), `MC-3656` and `MC-3657`.
+
+**What was decided.** MC-3638 makes hiding, covering or restyling a toast, popup or notice a known limitation with no new guard, and MC-3639 freezes the own-colour protection of data-loss prompts and the save-failure notice with no new mechanism. So the app-owned toast limits in MC-3655, the protected data notices of MC-3656 and the toast image ban of MC-3657 are not built. MC-3655's grant that packs may style plain toasts stands, as MC-3009 already allowed. A toast or notice a pack hides or covers is a known limitation.
+
+### MC-3660 — #438 popups.css does not trigger own colours, 2026-11-22
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; conflict between MC-3654 and MC-3639). Date: 2026-11-22. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `#560`, `MC-3639`, `MC-3445`. Supersedes `MC-3654` and `MC-3658`.
+
+**What the maintainer chose.** The MC-3639 freeze applies: notes on a pack's popups.css are shown under the installed pack but never switch own colours on. Only the chat, Studio and Settings sheets can trigger it, as today. Not chosen: keeping MC-3654.
+
+### MC-4110 — #708: Studio edits V2 and V1 triggers natively, all 101 effect types, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #708 session). Date: 2026-11-24. Exact times: answered 2026-11-23 22:45:57Z. Related: `#708`, `MC-3983`, `MC-4030`.
+
+**What the maintainer chose.** "Native V2 and V1". Studio builds its own editors for module and character triggers; the classic V2 and V1 editors are not hosted inside Studio. The recommendation had been to host the classic editors on a detached copy.
+
+**Consequence.** More build stages (split by effect category). The classic editor stays untouched until the Studio forms cover it.
+
+### MC-4111 — #708: importing triggers asks when the owner has Low Level Access on, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #708 session). Date: 2026-11-24. Exact times: answered 2026-11-23 22:45:57Z. Related: `#708`, `MC-3984`.
+
+**What the maintainer chose.** "Ask if flag on (Recommended)". A trigger-file import asks first when the owner has Low Level Access on and the import adds at least one trigger; cancel writes nothing.
+
+**Consequence.** One confirm sheet; no question when the flag is off.
+
+### MC-4112 — #708: undo, redo and restore ask nothing extra for trigger code, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #708 session). Date: 2026-11-24. Exact times: answered 2026-11-23 22:45:57Z. Related: `#708`, `MC-3984`.
+
+**What the maintainer chose.** "No extra ask (Recommended)". Only turning the flag on asks. The replace-import case is a named known limit.
+
+**Consequence.** No new ask on replay; the limit is recorded in the spec.
+
+### MC-4113 — #708: CharacterJS (virtualscript) is editable text in Studio, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #708 session). Date: 2026-11-24. Exact times: answered 2026-11-23 22:45:57Z. Related: `#708`, `MC-4030`.
+
+**What the maintainer chose.** "Editable text (Recommended)", same show rule as classic, with a note that this app never runs CharacterJS.
+
+**Consequence.** One small history field.
+
+### MC-4114 — #708: Restore from History across trigger modes, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #708 session). Date: 2026-11-24. Exact times: answered 2026-11-23 23:21:26Z. Related: `#708`, `MC-4030`.
+
+**What the maintainer chose.** "Inverse replace + refuse rest (Recommended)". A mode switch's whole-list history item restores as an inverse replace; any other cross-mode item is refused with a message.
+
+**Consequence.** SC-0 carries a per-list restore rule and a whole-list item marker; a restore never produces a mixed list. Derived (Gate 1 draft 5): the marker is recorded as span `list` (spec 4.3); the answer is unchanged.
+
+### MC-4115 — #708: SC-2a (classic goldens and pure trigger modules) starts now, Sonnet orchestrator, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in lane A, relayed to the #708 session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#708`, `MC-4110`.
+
+**What the maintainer chose.** "Start SC-2a now, Sonnet (Recommended)". SC-2a runs in the #708 session with an Opus coder and an opus-reviewer at Gate 2. SC-1 and SC-0 still wait for the history-core slot, and each later stage start is asked.
+
+**Consequence.** SC-2a touches no history-core file and changes no classic component.
+
+Derived (MC-894, workflow controller): the controller routes implement dispatches only to `sonnet-coder` on Sonnet, so the coders were Sonnet, not Opus; the Gate 2 reviewer was Opus.
+
+### MC-4116 — #708 SC-2a: a non-object element in an effect list is treated as a typeless row, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #708 session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#708`, `MC-4030`.
+
+**What the maintainer chose.** "Treat as typeless row (Recommended)". Classic throws on a `null` or string element; Studio's block functions never throw: `type` and `indent` read as undefined, Delete removes only that element, Copy copies it, and moves and pastes compute indents as classic does for a missing indent. The alternative made the whole list inert.
+
+**Consequence.** No classic golden exists for this case; the Studio tests state it as an exception to TS11.
+
+### MC-4117 — #708 SC-2a: toggling Else with no matching end marker writes nothing, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #708 session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#708`, `MC-011`, `MC-4030`.
+
+**What the maintainer chose.** "Refuse, write nothing (Recommended)". Classic overwrites an unrelated effect when Else is added to an opener with no matching `v2EndIndent`; Studio's `replaceEffect` returns `null` instead. Other edits and removals keep classic parity.
+
+**Consequence.** TS11's Else cell becomes a named exception; a fork-local defect is not preserved (MC-011).
+
+### MC-4118 — #708: SC-1 takes the Studio history-core slot next, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in lane A, relayed to the #708 session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#708`, `MC-4115`.
+
+**What the maintainer chose.** "#708 SC-1 (Recommended)". The Studio history-core slot goes to SC-1 (registry rows and the 배경 HTML form) next; #681 S3a (PR 758, c9bf67eda) is merged, so its registry rows are on main and SC-1 builds on them. SC-1 holds the slot until it merges.
+
+**Consequence.** SC-1 starts from current main in its own branch and worktree; SC-0 still waits for S7-0.
+
+### MC-4090 — #685 S7-0: a Studio edit of a lore field whose stored value has the wrong type is refused, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in the #685 S7-0 session, designer open question Q1). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#685`, `MC-1827`, `MC-4080`.
+
+**What the maintainer chose.** "Refuse the edit (Recommended)": when a stored lore entry holds a field whose value is not that field's `LORE_FIELDS` kind (for example `insertorder: "100"` from an imported file, `content: null`, `alwaysActive: "true"`), a Studio edit of that field writes nothing and is refused as `precondition`, Studio's usual refusal. The stored history format is unchanged. The value can still be changed by deleting and re-adding the entry, or outside Studio.
+
+**Alternatives offered.** Record the live value as a foreign reading, the way `keepForeign` registry paths do (widens the frozen `LORE_FIELDS` stored format, needs a spec amendment and its own MC-1827 refusal analysis); coerce the value to the field's kind on edit (changes data the user did not touch).
+
+### MC-4144 — #438 The Home sheet is the next theme-pack stage, started in the same session, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "Start Home sheet now (Recommended)"). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3871`, `MC-3621`, `MC-3622`.
+
+**What the maintainer chose.** The Home sheet stage starts now in the #438 session (Sonnet orchestrator, Opus designer, fresh opus-reviewer Gate 1, then implementation and Gate 2), on a new branch cut from `origin/main` after PR 743. One PR "Refs #438" with a stage handoff. The wrap-up scope is asked of the maintainer after Home merges.
+
+### MC-4145 — #438 The Home stage adds a Note 9 row that installs a downloaded pack through the real Android picker, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "Device row in Home stage (Recommended)"). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4143`.
+
+**What the maintainer chose.** The Home plan carries a Note 9 row that downloads a synthetic pack to the phone and installs it through the real Android system file picker (DocumentsUI) with guarded taps, with no CDP File injection. It settles whether a pack downloaded to the Downloads folder is readable through the picker, which the S3c-B run could not show (MC-4143).
+
+### MC-4146 — #438 scroll-snap-type joins the allowed properties so the golden Home sheet stays accepted, 2026-11-24
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion; Home plan r1 OQ-1 after diagnostic D-0). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3008`, `MC-3419`, `MC-3871`.
+
+**What the maintainer chose.** Applying Rule SCOPE to Home would refuse the golden banana-cocoa pack, because its home.css sets `scroll-snap-type: none` and `scroll-snap-type` is not on the shared allowed-properties list. D-0 (both golden home.css texts, scratch run on 2026-11-24) found it to be the only such property, and every Home part name in both goldens fits the `home-*` / `library-*` rule. The maintainer chose to add only `scroll-snap-type` to the shared list (it changes how a scroll area snaps and cannot hide, cover, run code or reach the network), so the golden stays accepted whole. Not chosen: refusing the golden, and exempting Home from the list.
+
+### MC-4147 — #438 A pack in Downloads installs through the real Android picker, 2026-11-24
+
+- Tag: evidence (device run DV-P, MC-4145; result file `%TEMP%/risu-b715/438/home/dv/run1/dv438h-result.md`). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4143`, `MC-4145`.
+
+**What was observed.** On Note 9 phone 1 (synthetic data, debug APK of 4f090bea0), a pack pushed to `/sdcard/Download` was installed through the app's install-from-file control and the real DocumentsUI picker (`com.android.documentsui/.picker.PickActivity`), chosen by an exact file-name pick and a guarded tap, with no CDP file injection. The app installed it with the held-colours line for home.css and no read error. The S3c-B read failure (MC-4143) came from a CDP-set path, not from the picker. Not covered: a browser download, other file managers, other Android versions or phones.
+
+### MC-4148 — #438 Wrap-up starts with a read-only audit, then the maintainer is asked, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "Audit first, then ask (Recommended)"). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3871`, `MC-4144`.
+
+**What the maintainer chose.** The #438 wrap-up begins with a read-only audit (stage W0, no PR): a coverage matrix of every shell, popup, toast and dialog against an applied theme-pack area, the sidebar parts check, the status of the MC-2942 effects, what the #654 pack rebuild needs from the engine, and the docs gap list. The maintainer is asked the wrap-up questions afterwards, with the audit's findings. Nothing is built until that answer is relayed.
+
+### MC-4150 — #685 S7-2: number fields clamp and round at write, 2026-11-24
+
+- Tag: decisions (orchestrator default inside the spec's own range; no maintainer question). Date: 2026-11-24. Related: `#685`, `MC-4043`, `S7_LORE_SPEC.md` 3.5.
+
+**What was decided.** The lorebook settings panel's scan depth (0 to 20) and token budget (0 to 4096) write the clamped, rounded integer on change, coalesced, and resync the shown text on blur. The spec said "write on change, clamp on blur"; the final stored value is the same, but live data is never out of range mid-typing. The preset form in Studio already works this way.
+
+**Consequence.** Rounding is new behaviour: classic keeps decimals, so a stored 7.5 is shown as 7.5 and any Studio edit makes it 8. An empty or non-finite input writes nothing.
+
+### MC-4151 — #685 S7-2: the settings panel ships unmounted; S7-1 mounts it, 2026-11-24
+
+- Tag: decisions (stage split). Date: 2026-11-24. Related: `#685`, `S7_LORE_SPEC.md` section 10.
+
+**What was decided.** S7-2 ships `StudioLoreSettings.svelte`, `loreSettingsOps.ts`, tests and the English keys only. S7-1 owns `StudioDetail.svelte`, so it mounts the panel above the lorebook list for the three hosts and passes `onOpenCharacter`. S7-1 also maps `case 'prop'` to `studioLoreStepSettings` in `StudioHistoryPanel.svelte` and rebases `en.ts`.
+
+**Consequence.** Until S7-1 lands, the component is exercised by its own tests only.
+
+### MC-4152 — #685 S7-5: a shared or gone entry id opens the list with a notice, 2026-11-24
+
+- Tag: decisions (stage plan, follows MC-4007). Date: 2026-11-24. Related: `#685`, `MC-4007`, `MC-3334`.
+
+**What was decided.** A reply's deep link by entry id opens the one entry holding that id; if no entry or several entries hold it, Studio opens the lorebook list with `studioLoreEntryGone`. Entries without an id keep MC-3334's index-and-name rule. Nothing stored changes.
+
+**Consequence.** A module with a non-array lorebook no longer shifts later modules' owners or reported indexes, so a ChroMemory lore fingerprint built over such a module changes once.
+
+### MC-4149 — #438 Effects move to a separate ticket before #654; #438 closes without them, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "Separate ticket before #654 (Recommended)"). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `#654`, `#751`, `MC-2942`, `MC-3010`, `MC-3422`, `MC-3871`, `MC-4148`.
+
+**What the maintainer chose.** The pack effects of MC-2942 (transitions, transforms, animations and @keyframes, filters and blur, layering, with the MC-3010 reduced-motion and reduced-transparency fallbacks) are not built in #438. Lane A filed #751 for them, and #751 must land before #654's Terran Eclipse, Aqua Halo and Elemental Ivory packs. #438 closes without effects. The W0 audit's finding that MC-2942 "layering" conflicts with MC-3422 and MC-3881 (z-index and fixed/sticky stay banned) is left for #751 to settle. Not chosen: building effects in #438, and dropping MC-2942.
+
+### MC-4160 — #438 All 12 overlays from the W0 audit get theme parts, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "Parts for all 12"; this is not the session's recommendation, which was token-only). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2941`, `MC-3007`, `MC-4148`.
+
+**What the maintainer chose.** The 12 App-level overlays that have no `data-part` (BookmarkList, MemoryModalHost and MemoryModal, HypaV3Progress, PopupList, EasyPanel, PopupEditor, LoadoutModal, IrisModal, CustomSidebarConfig, botpreset, listedPersona, RealmPopUp and RealmFrame) get literal `data-part` values and census entries in stage W3 (Tier 2, Opus designer, sizing first). The read-only second audit W0b runs first to find overlays below App level; if it finds more, lane A tells the maintainer before W3 is planned, so the maintainer can say whether they join W3. SavePopupIcon, a corner save-status icon rather than a modal, is raised separately in the sizing. Amended by MC-4164: PopupList is exempt (legacy chat only), so the base list is 11. Studio hooks stay held.
+
+### MC-4161 — #438 The sidebar gets its missing parts; sidebar.css stays a skipped sheet and no refusal is built, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "Add parts, amend records (Recommended)"). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3007`, `MC-3124`, `MC-2941`.
+
+**What the maintainer chose.** The unmarked elements of the chat-shell sidebar (heading, "New chat" button and menu, sort label, the More menu header and items, the row-menu buttons) get literal chat parts and census entries in stage W2 (Tier 1). The records are amended: the sidebar is part of chat, `sidebar.css` stays a skipped sheet like any unknown area sheet, and the "sidebar.css without chat.css is refused" rule of MC-3124 is never built; this supersedes MC-3124's refusal, and the passage of MC-3007 that makes `sidebar.css` a chat appendix judged with `chat.css` and on only with chat (MC-2944 only lists `sidebar.css` among the per-area sheets and is not superseded).
+
+**Disposition (session, not part of the maintainer's choice).** The stale line "Settings Theme pack text does not name the safe-start route" left over from PR 743 is disposed as a known limitation: the route is now documented in the wiki page "Theme Packs" under "Start without a theme pack".
+
+### MC-4162 — #438 Acceptance reads "when the new screens are on"; built-in packs stay with #654; docs now; one closeout device run, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `#654`, `MC-3871`, `MC-1608`, `MC-2941`, `MC-4148`.
+
+**What the maintainer chose.** (1) #438's acceptance is "theme packs cover the shape and design of all new screens and popups when the new screens are on"; the chat, Settings and Studio preview switches default to off, and making the new shells the default belongs to the release-switch ticket, not #438. (2) The four built-in packs stay chat-only; their rebuild is #654's (MC-3871). (3) The docs are updated now (stage W1: THEMING.md, Agents/Theme-Packs.md, a wiki page, the goldens README and `themePackRowHelp` with its locales). (4) One integration Note 9 run closes the work (stage W5): one pack with all five sheets through every screen, plus the safe start and the pack-free launch.
+
+### MC-4163 — #438 Wrap-up stages each get their own PR; only W5 closes #438, 2026-11-24
+
+- Tag: decisions (lane A with the maintainer's answers). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4149`, `MC-4160`, `MC-4161`, `MC-4162`.
+
+**What was decided.** Order: W0b (read-only audit below App level), then W1 (docs) in parallel with W2 (sidebar parts), then W3 (overlay parts, Tier 2 with an Opus designer, sized first), then W5 (closeout run). Each stage is one PR "Refs #438" with its `Agents/stages/438/STAGE_HANDOFF.md`; only W5 says "Closes #438". One app-code writer per checkout, so parallel stages use separate worktrees. Overlay and sidebar parts are literal `data-part` values with the census updated. Studio hooks stay held until lane A says the Studio forms merged.
+
+### MC-4164 — #438 W3 covers 11 App-level overlays plus four groups found below App level, the code-block menu and SavePopupIcon, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion on the W0b extras). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4160`, `MC-4161`, `MC-3226`.
+
+**What the maintainer chose.** All overlays the W0b second audit found below App level join stage W3: PartialEditController (4 modals), ModelList and OpenrouterProviderList, RealmBlockedCreators, and the HypaV3 sub-modals. The code-block context menu built in `observer.svelte.ts` gets a part and theme colours instead of its hard-coded gray. SavePopupIcon, the corner save-status icon, gets a part. The PopupList exemption is accepted (it is reachable only from the legacy chat), so the base list is the 11 App-level overlays of MC-4160 and W3 covers those 11 plus the four groups found below App level (PartialEditController, ModelList with OpenrouterProviderList, RealmBlockedCreators, the HypaV3 sub-modals), the code-block menu and SavePopupIcon.
+
+**Lane A note (instructions, not the maintainer's choice).** The W0b scan was marker-based and can miss overlays; before the list is frozen the W3 designer notes that limit and runs one grep pass for fixed or absolutely positioned roots with `role=dialog` or a z-index. The designer sizes W3 into several PRs.
+
+### MC-4165 — #438 W3 scope answers: autocomplete popover excluded, PromptDiffModal frame only, save-problem buttons tokens-only, device rows by mock or recorded not-run, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, all recommended options). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4160`, `MC-4164`, `MC-2940`, `MC-2947`, `MC-3009`.
+
+**What the maintainer chose.**
+- PQ-1: the CBS autocomplete popover inside the shared TextAreaInput (`src/lib/UI/GUI/TextAreaInput.svelte`, found by the W3 designer's grep pass) is EXCLUDED from W3. It is an inline suggestion list already on theme colours and mounted in every area.
+- PQ-2: PromptDiffModal (opened only from botpreset) gets parts on its frame, header and close button only, inside W3-4; not its diff view.
+- PQ-3: the save-problem buttons of SavePopupIcon (the corner button that opens the save-stopped alert) are critical, tokens only (MC-2947), as the W3-1 plan has it. The saving icon and the peer-wait note are not critical.
+- PQ-5: device rows for overlays that need a provider reply (the HypaV3 progress popup): use the plain-fetch mock of the live-checks checklist if it serves summaries; otherwise keep the test-only evidence and record a not-run row.
+**Lane A note (instruction, not the maintainer's choice).** Order of the W3 PRs: W3-1, W3-2, W3-5, W3-3, W3-4, W3-6 one after another (they share the popups census files); W3-7 starts after W2 merges.
+
+### MC-4166 — #438 The code-block context menu belongs to the chat area (lane A ruling), 2026-11-24
+
+- Tag: decisions (lane A ruling, not a maintainer answer; PQ-4 was not put to the maintainer). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4164`, `MC-4165`.
+
+**What lane A ruled.** The code-block context menu built in `src/ts/observer.svelte.ts` gets chat parts (registry-only names, chat colours), because it only appears over chat messages and chat is the colour-ready area; it does not go to the popups area. Its hard-coded gray classes become theme classes (MC-4164). This is stage W3-7.
+
+### MC-4167 — #438 The two shared parameter panels get no parts; only EasyPanel's own elements do, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "No parts on them (Recommended)", PQ-W32-1 of the W3-2 plan). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4160`, `MC-4165`, `MC-3007`.
+
+**What the maintainer chose.** AllSeperateParameters and ClaudeThinkingSeparateParams get no theme parts in W3-2. They are shared with the Bot Settings page (the Settings closure reaches them through the custom component list), so a popups name there would also style that page. Only EasyPanel's own elements get parts. The two panels are deliberate skips, not omissions. Not chosen: parts on both panels with entries in the Settings census exemption list.
+
+### MC-4168 — #438 RealmLicense gets no parts and stays out of the overlay census list, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "No parts (Recommended)", PQ-W33-1 of the W3-3 plan). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4160`, `MC-4182` (lane A's record of the same ruling).
+
+**What the maintainer chose.** `src/lib/UI/Realm/RealmLicense.svelte`, used only by RealmPopUp, gets no theme parts in W3-3 and stays out of `OVERLAY_FILES`. Its license section is covered only through the `modal-body` of RealmPopUp, and its button is an external link, not a consent. A deliberate skip. Not chosen: `modal-text` on its heading and `modal-action` on its button with the file added to the census list.
+
+### MC-4169 — #438 The RealmFrame chrome device row is not run; the rendered tests are the evidence, 2026-11-24
+
+- Tag: decisions (maintainer, lane A AskUserQuestion, "Not run, test-only (Recommended)", DV-W33-6). Date: 2026-11-24. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-4165`, `MC-4175` and `MC-4183` (lane A's records of the related rulings).
+
+**What the maintainer chose.** The device row DV-W33-6 for the RealmFrame chrome (it needs Wi-Fi off plus the every-target network block, or a Realm reply) is recorded as NOT RUN, with the rendered tests as the evidence. Not chosen: running it on a Note 9 under a device ruling.
+
+### MC-4091 — #685: after S7-0, S7-4 runs in the S7-0 session while a separate Sonnet session runs S7-2 and then S7-5, 2026-11-24
+
+- Tag: decisions (maintainer, AskUserQuestion in lane A after PR 747 merged; relayed to the #685 S7-0 session). Date: 2026-11-24. Exact times: UNKNOWN. Related: `#685`, `MC-3878`, `MC-4090`.
+
+**What the maintainer chose.** "S7-4 + S7-2/S7-5 parallel":
+1. The #685 S7-0 session builds S7-4 next (Opus, S7_LORE_SPEC section 10) on `claude/685-s7-4` from `origin/main` `dbe8084a8`: an Opus designer and a fresh opus-reviewer for Gate 1, then the build and Gate 2; one PR "Refs #685" with its STAGE_HANDOFF.
+2. A separate new Sonnet session runs S7-2 and then S7-5. S7-4 stays off that session's files (`lorebook.svelte.ts` and the S7-2/S7-5 files of spec section 10) and owns `loreDecoratorTable.ts`.
+3. S7-4 edits none of the history-core files (`fieldRegistry.ts`, `historyModel.ts`, `ownerHistory.svelte.ts`): #681 S3a holds that slot.
+4. S7-1 follows after S7-4 merges, and is asked of the maintainer then.
+
+### MC-4092 — #685 S7-4: Clear keeps `@@probability 100` whenever removing the line would change what the scan runs, 2026-11-24
+
+- Tag: correction (orchestrator, MC-091 shared-cause correction from S7-4 Gate 1 round 1, finding S1; not a new product trade-off). Date: 2026-11-24. Related: `#685`, `MC-4006`, `MC-091`.
+
+**Failure.** Spec 3.3a's Clear removes the `@@probability` line unless a `@@@` fallback follows it (N5). When the line is the only line of the leading block, the next line is blank and a later non-blank line starts with `@@`, removing it turns that blank line into a leading blank. ccardlib trims the content before parsing, so the later `@@` lines join the block. Body text then runs as decorators, and an argument-less `@@position` makes the scan throw for the whole lorebook. The reviewer reproduced this against the real ccardlib 0.4.2.
+
+**Causal connection.** N5's own reason for the fallback case ("removing it could start or stop running a later line") is the same cause.
+
+**Smallest coherent correction.** Clear writes `@@probability 100` (the N5 form) whenever removing the line would change the body or the executed non-probability decorator sequence. That covers the existing fallback case and this case. `probabilityClearKeeps` follows the same predicate, and S7-1 shows the existing kept notice (S7-1 may reword it). Nothing else changes.
+
+**Addendum (O-5, from S7-4 Gate 1 round 2, finding E2).** The keep predicate is the union: Clear keeps `@@probability 100` where spec 3.3a already keeps it (a `@@@` fallback follows the line, as at T47 and T47c) **or** where removing the line would change the body or the executed non-probability decorator sequence. Spec 3.3a's stated behaviour is unchanged; the narrower "keep exactly when the view changes" reading would remove the line at T47c, where the spec keeps it, and is not adopted. The reviewer executed the union reading against real ccardlib with 0 failures.
+
+### MC-3878 — Studio starts after the 2026-11-24 records batch: #685 S7-0, #233, the #708 and #709 specs and the #681 S3 plan, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A, header "Studio start", multiSelect). Date: 2026-11-24. Related: `#685`, `#233`, `#708`, `#709`, `#681`, `MC-3622`, `MC-3764`.
+
+**What the maintainer chose.** '#685 S7-0, Opus (Recommended)', '#233 preset link, Sonnet (Recommended)', '#708 + #709 specs, Opus' and '#681 S3 plan only, Opus'.
+
+**Effect.** Sessions started with blocks #685 MC-4090..4099, #233 MC-4100..4109, #708 MC-4110..4119, #709 MC-4120..4129 and #681 MC-4130..4139. #685 S7-0 held the Studio history-core slot. `start_session` was refused during a Remote Control turn, so the sessions started once the maintainer was on the desktop app.
+
+*Source: lane A decisions log 2026-11-24, lines 434-445.*
+
+### MC-3879 — #438 theme packs restarts as a Sonnet session, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A, header "Theme #438"). Date: 2026-11-24. Related: `#438`, `#654`, `MC-3871`.
+
+**What the maintainer chose.** 'Restart #438, Sonnet (Recommended)'. Context: the theme system was found not complete, and #654 waits on #438 (MC-3871).
+
+**Effect.** Session 438-s3c-b started with block MC-4140..4149 (Sonnet orchestrator; Opus designers and gate reviewers).
+
+*Source: lane A decisions log 2026-11-24, lines 434 and 444.*
+
+### MC-4170 — The Studio history-core slot goes to #681 S3a after #685 S7-0, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#681`, `#685`, `MC-3878`. Lane A first logged this as MC-3880, an ID granted to the #560 sessions; renumbered the same day (log line 532).
+
+**What the maintainer chose.** Core slot: '#681 S3a first (Recommended)'.
+
+**Effect.** #681 S3a started on `claude/681-s3a` and merged as PR 758 (c9bf67eda).
+
+*Source: lane A decisions log 2026-11-24, lines 487 and 532.*
+
+### MC-4171 — #685 continues with S7-4 in the S7-0 session while a separate Sonnet session runs S7-2 then S7-5, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#685`, `MC-4091` (the session's record of the same ruling). First logged as MC-3881 and renumbered (log line 532).
+
+**What the maintainer chose.** 'S7-4 + S7-2/S7-5 parallel'.
+
+**Effect.** As MC-4091 records. Session 685-s7-2-5 (Sonnet) got block MC-4150..4159; S7-2 merged as PR 749, S7-5 as PR 755 and S7-4 as PR 759.
+
+*Source: lane A decisions log 2026-11-24, lines 487 and 532.*
+
+### MC-4172 — The maintainer confirms #685 S7-2's rounding at write (MC-4150), 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#685`, `MC-4150`. First logged as MC-3882 and renumbered (log line 532).
+
+**What was asked.** MC-4150 (round the value at write) was an orchestrator default with a product consequence.
+
+**What the maintainer chose.** 'Keep rounding (Recommended)'. MC-4150 is now the maintainer's choice; its text stays unchanged.
+
+*Source: lane A decisions log 2026-11-24, lines 495 and 532.*
+
+### MC-4173 — #438 wrap-up: audit first, then effects as a separate ticket, parts for all overlays and the sidebar, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#438`, `#751`, `#654`, `MC-4148`, `MC-3124`, `MC-2942`, `MC-4160`, `MC-4161`, `MC-4162`. First logged as MC-3883 and renumbered (log line 532).
+
+**What the maintainer chose.**
+- Wrap-up approach: 'Audit first, then ask (Recommended)' (the session's MC-4148).
+- After the W0 audit: effects 'Separate ticket before #654 (Recommended)', filed as #751, which must land before #654; overlays 'Parts for all 12' (not the recommendation; W0b first); sidebar 'Add parts, amend records (Recommended)', which supersedes the MC-3124 refusal.
+- Accepted: acceptance "when the new screens are on", built-in packs move to #654, docs now (W1), and one closeout device run (W5), which closes #438.
+
+**Effect.** #438 got block MC-4160..4169 and recorded the parts as MC-4160..4162.
+
+*Source: lane A decisions log 2026-11-24, lines 505 and 507.*
+
+### MC-4174 — #438 W0b extras all join W3; PopupList is exempt, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#438`, `MC-4164`. First logged as MC-3884 and renumbered (log line 532).
+
+**What the maintainer chose.** PartialEditController, ModelList with OpenrouterProviderList, RealmBlockedCreators and the HypaV3 sub-modals all join W3. The code-block context menu and SavePopupIcon each get a part. PopupList is exempt (legacy only), which makes the base 11 App-level overlays.
+
+**Effect.** The session recorded the W3 scope as MC-4164. Lane A verified the imports (PopupButton only in `ChatScreens/Chat.svelte`; ShellMessage mounts PartialEditController).
+
+*Source: lane A decisions log 2026-11-24, lines 511 and 532.*
+
+### MC-4175 — #438 W3 product questions PQ-1, PQ-2, PQ-3 and PQ-5, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#438`, `MC-4165` (the session's record of the same ruling), `MC-2947`. First logged as MC-3885 and renumbered (log line 532).
+
+**What the maintainer chose.**
+- PQ-1: the TextAreaInput autocomplete popover is excluded.
+- PQ-2: PromptDiffModal gets frame, header and close parts only, in W3-4.
+- PQ-3: SavePopupIcon's save-problem buttons are critical, tokens only (MC-2947).
+- PQ-5: device rows run on the mock where possible, otherwise test-only with a recorded not-run row.
+
+*Source: lane A decisions log 2026-11-24, lines 514 and 532.*
+
+### MC-4176 — Lane A ruling: the code-block context menu belongs to the chat area (#438 PQ-4), 2026-11-24
+
+- Tag: ruling (lane A, not a maintainer decision). Date: 2026-11-24. Related: `#438`, `MC-4166` (the session's record). First logged as MC-3886 and renumbered (log line 532).
+
+**Ruling.** The code-block context menu (`src/ts/observer.svelte.ts`) takes its part in the chat area. W3-7 carries it.
+
+*Source: lane A decisions log 2026-11-24, lines 514 and 532.*
+
+### MC-4177 — PR 750 (#709 build) merges with three device checks waived as known limitations, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#709`, `MC-4123`. First logged as MC-3887 and renumbered (log line 532).
+
+**What the maintainer chose.** 'Merge, waive with limits (Recommended)': the export save dialog, the real file picker and real soft-keyboard typing are waived as known limitations for a later device run. DV-709-1, -4 and -5 passed, -2 passed its app leg, -3 was inconclusive and -6 passed with simulated composition.
+
+**Effect.** PR 750 merged as 1c2a29c5f with the waiver in its body; #709 closed.
+
+*Source: lane A decisions log 2026-11-24, lines 526-527 and 532.*
+
+### MC-4178 — Lane A ruling: #681 S3a's largePortrait and inlayViewScreen rows without keepForeign are a known limitation, 2026-11-24
+
+- Tag: ruling (lane A, from the PR 758 check; not a maintainer decision). Date: 2026-11-24. Related: `#681`, `#752`.
+
+**Ruling.** As with the S1 boolean rows, the largePortrait and inlayViewScreen history rows without keepForeign are accepted as a known limitation. The B1 defect from the same check (character nameGate not registered; MC-1813) was fixed before merge. The remaining single-line gates are noted on #752.
+
+*Source: lane A decisions log 2026-11-24, line 533.*
+
+### MC-4179 — #685 S7-1 runs as a fresh Opus session, started from the desktop app, 2026-11-24
+
+- Tag: decisions (maintainer, relayed in lane A's log). Date: 2026-11-24. Related: `#685`.
+
+**What the maintainer said.** S7-1 runs in a fresh Opus session, started only once the maintainer is on the desktop app (not Remote Control).
+
+**Effect.** Session 685-s7-1 started with block MC-4190..4199 and brief `b61\briefs-1124\685-s7-1.md`, building after PR 758 merged. It was paused on 2026-11-24 by the weekly quota limit (see the lane A handoff of 2026-11-27).
+
+*Source: lane A decisions log 2026-11-24, lines 534-535 and 543.*
+
+### MC-4180 — #438 W3-2: the shared parameter panels get no parts (PQ-W32-1), 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#438`, `MC-4167` (the session's record of the same ruling).
+
+**What the maintainer chose.** 'No parts on them (Recommended)': AllSeperateParameters and ClaudeThinkingSeparateParams get no parts.
+
+*Source: lane A decisions log 2026-11-24, line 548.*
+
+### MC-4181 — The Studio history-core slot goes to #708 SC-1 after #681 S3a, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#708`, `#681`, `MC-4118`.
+
+**What the maintainer chose.** Next history-core holder: '#708 SC-1 (Recommended)'. #681 S3b waited. SC-1 merged as PR 766 (82d1dac4a).
+
+*Source: lane A decisions log 2026-11-24, line 550.*
+
+### MC-4182 — #438 W3-3: no parts on RealmLicense (PQ-W33-1), 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#438`, `MC-4168` (the session's record of the same ruling).
+
+**What the maintainer chose.** (a) No parts on `RealmLicense.svelte`.
+
+*Source: lane A decisions log 2026-11-24, line 566.*
+
+### MC-4183 — #438 W3-3: the RealmFrame chrome device row DV-W33-6 is test-only, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#438`, `MC-4169` (the session's record of the same ruling), `MC-4175`.
+
+**What the maintainer chose.** DV-W33-6 is not run on a device; its evidence is test-only, under MC-4175 PQ-5.
+
+*Source: lane A decisions log 2026-11-24, line 566.*
+
+### MC-4184 — Lane A ruling: the 배경 HTML form keeps LongTextField's token chip, an accepted spec deviation (#708 SC-1), 2026-11-24
+
+- Tag: ruling (lane A, from the PR 766 check; precedent MC-4071). Date: 2026-11-24. Related: `#708`, `MC-4071`.
+
+**Ruling.** Spec 3.8 says "no token chip", but the SC-1 배경 HTML form keeps LongTextField's chip for now (Gate 1 F9, D-SC1-3). Accepted as an interim deviation and stated in PR 766's known limitations. #708 carries it as a fold-in for a later stage.
+
+*Source: lane A decisions log 2026-11-24, line 572.*
+
+### MC-4185 — Auth decoupling review: file the Vertex preview bug and token service, add notes to #540, #153 and #152, park the proposal; all after performance work, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#767`, `#768`, `#540`, `#153`, `#152`.
+
+**What the maintainer chose.** All four filing options, queued 'Backlog, after perf (Recommended)'.
+
+**Effect.** Filed #767 (a request preview with a plain-key Vertex connection mints a token over the network and stores it; Tier 1) and #768 (Vertex token service, blocked by #767), with notes on #540, #153 and #152. The proposal itself is parked; the review is summarized in `Agents/Reports/2026-11-24-auth-decoupling-parked.md`.
+
+*Source: lane A decisions log 2026-11-24, lines 576-580.*
+
+### MC-4186 — The Studio history-core slot goes to #681 S3b, a fresh Opus session, 2026-11-24
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A). Date: 2026-11-24. Related: `#681`, `#708`.
+
+**What the maintainer chose.** '#681 S3b, Opus (Recommended)'. #708 SC-0 is queued behind it.
+
+**Effect.** Session 681-s3b started with block MC-4200..4209. It was paused on 2026-11-24 by the weekly quota limit while holding the slot (see the lane A handoff of 2026-11-27).
+
+*Source: lane A decisions log 2026-11-24, lines 582 and 588.*
+
+### MC-4187 — Self-contained ticket lanes: the maintainer starts each ticket from a lane A staging prompt; lane A stages, checks and merges, 2026-11-27
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A, header "Lane model"; the maintainer proposed the model). Date: 2026-11-27. Related: `MC-3622`, `MC-3764`, `MC-2713`, `MC-2744`, `MC-4188`, `MC-4189`, `#763`.
+
+**What the maintainer chose.** 'Adopt (Recommended)'.
+
+**The model.**
+- Lane A recommends the next tickets and writes one paste-ready staging prompt per ticket: brief, model, MC block, relevant decisions, and everything that crosses tickets (file overlaps, the Studio history-core slot, merge order, device rows). Lane A no longer starts ticket sessions; the maintainer starts each one in a `claude -rc` session.
+- Ticket sessions are self-contained: they run sizing, gates, build, tests, commit, push and the PR on their own, and ask the maintainer their own questions with AskUserQuestion. Lane A no longer relays rulings or receives stage updates.
+- Lane A runs the final independent check and merges on green CI under the approval matrix.
+
+**Why.** The 2026-11-24 usage review measured turns started by peer-session messages at 17.4% of total weighted cost, and notification and side-session turns at about 10% more, each re-reading lane A's large context. It also removes the `start_session` failures during Remote Control turns. The review is in `Agents/Reports/2026-11-24-usage-efficiency.md`.
+
+*Source: lane A decisions log 2026-11-27, line 617.*
+
+### MC-4188 — A ticket session sends lane A exactly one message, when its PR is open and Gate 2 has passed, 2026-11-27
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A, header "Wake-up"). Date: 2026-11-27. Related: `MC-4187`.
+
+**What was asked.** How lane A learns that a ticket PR is ready. Claude Code hooks fire on local events only, so no hook can watch GitHub for green CI.
+
+**What the maintainer chose.** 'One ready message (Recommended)': the message gives the PR number, head SHA and the Gate 2 report path. Nothing else goes to lane A unless the session needs a lane A decision. Not chosen: a timer fallback, or a timer only.
+
+*Source: lane A decisions log 2026-11-27, line 618.*
+
+### MC-4189 — Lane A removes a ticket's worktree right after merging its PR, 2026-11-27
+
+- Tag: decisions (maintainer via AskUserQuestion in lane A, header "Cleanup"). Date: 2026-11-27. Related: `MC-4187`.
+
+**What the maintainer chose.** 'Lane A at merge (Recommended)'. Lane A unlinks the worktree's node_modules junction with a non-recursive `cmd /c rmdir`, then runs `git worktree remove`, then deletes the merged local branch. The ticket session may end once its PR is ready. Not chosen: the session cleans up after a "merged" message.
+
+*Source: lane A decisions log 2026-11-27, line 619.*

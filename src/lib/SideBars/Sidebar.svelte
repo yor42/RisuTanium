@@ -81,8 +81,9 @@
   let viewportWidth = $state(window.innerWidth);
   let panelEl: HTMLDivElement | undefined = $state();
   const shellMode = $derived(shellEligible());
-  // The Home look applies while a Home shell is mounted, and never in shell mode, which has no rail.
+  // The legacy sidebar is rail-only for the Home shell's lifetime, including Realm.
   const homeLook = $derived(homeChrome.landing && !shellMode);
+  const railHidden = $derived(hidden && !homeLook);
   const shellOverlay = $derived(shellMode && $DynamicGUI);
   const shellDocked = $derived(shellMode && !$DynamicGUI);
   const followMode = $derived(shellOverlay && viewportWidth < WIDE_LAYOUT_MIN_PX);
@@ -133,6 +134,18 @@
         : 'background-color: rgb(0 0 0); opacity: 0.5;'
       : undefined,
   );
+
+  function finishPanelClose() {
+    sideBarClosing.set(false);
+    sideBarStore.set(false);
+  }
+
+  // Home removes the panel, so neither an in-flight close nor a rail overlay close can wait for its animation.
+  $effect.pre(() => {
+    if (homeLook && $sideBarClosing) {
+      finishPanelClose();
+    }
+  });
 
   function closeFollowPanel() {
     if ($sideBarClosing || $panelFollowView.phase !== 'idle') {
@@ -241,8 +254,8 @@
   class:follow-in={followEnter}
   class:follow-out={followExit}
   style={railStyle}
-  class:hidden={hidden}
-  class:flex={!hidden}
+  class:hidden={railHidden}
+  class:flex={!railHidden}
   class:home-landing-rail={homeLook}
 >
 <button
@@ -322,8 +335,8 @@
   class:follow-in={followEnter}
   class:follow-out={followExit}
   style={railStyle}
-  class:hidden={hidden}
-  class:flex={!hidden}
+  class:hidden={railHidden}
+  class:flex={!railHidden}
   class:home-landing-rail={homeLook}
 >
   {#if !DBState.db.hamburgerButtonBottom}
@@ -475,6 +488,7 @@
   {/if}
 </div>
 {/if}
+{#if !homeLook}
 <!-- tabindex is -1 only while the panel is a modal dialog, so focus can move into it. -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
@@ -502,11 +516,9 @@
   class:dynamic-sidebar={$DynamicGUI}
   class:hidden={hidden}
   class:flex={!hidden}
-  class:home-landing-panel={homeLook}
   onanimationend={() => {
-    if($sideBarClosing){
-      $sideBarClosing = false
-      sideBarStore.set(false)
+    if ($sideBarClosing) {
+      finishPanelClose();
     }
   }}
 >
@@ -531,12 +543,10 @@
     <ShellSidebar {openGrid} {reseter} />
   {:else if sideBarMode === 0}
     {#if $selectedCharID < 0 || $settingsOpen}
-      {#if !homeLook}
       <div>
         <h1 class="text-xl">{language.sidebarWelcome}</h1>
         <span class="text-xs text-textcolor2">{language.sidebarWelcomeHint}</span>
       </div>
-      {/if}
     {:else if DBState.db.characters[$selectedCharID]?.chaId === '§playground'}
       <SideChatList bind:chara={ DBState.db.characters[$selectedCharID]} />
     {:else}
@@ -569,6 +579,7 @@
     {/if}
   {/if}
 </div>
+{/if}
 
 {#if $DynamicGUI}
     <div role="button" tabindex="0" aria-label={language.closeSidebar} data-panel-surface {@attach panelGestureAttachment} class="grow h-full min-w-12 relative" class:hidden={hidden} onclick={() => {
@@ -777,14 +788,10 @@
 
   /* Home look: a flush darkbg rail with hairline edges. Every rule descends from a Home-only root class,
      and colours are scheme names only; the geometry reads the Home tokens. */
-  /* The root and panel rules sit in :where() so they stay at one class of specificity and a user's
-     custom CSS on `.rs-sidebar` still wins. */
+  /* Keep the rail rule in :where() so a user's custom CSS on `.rs-sidebar` still wins. */
   :where(.home-landing-rail) {
     background-color: var(--risu-theme-darkbg);
     box-shadow: none;
-    border-inline-end: var(--home-hairline) solid var(--risu-theme-darkborderc);
-  }
-  :where(.home-landing-panel) {
     border-inline-end: var(--home-hairline) solid var(--risu-theme-darkborderc);
   }
   .home-landing-rail button[aria-expanded] {
