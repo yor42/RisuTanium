@@ -158,8 +158,8 @@ export interface StudioToastDeps {
 
 export interface StudioToasts {
     // One Undo toast for one deleted item; `deletedId` is the id of the History entry and of the toast action. `text` is the
-    // toast's line; absent, it is the first message's.
-    postDeleted(owner: OwnerKey, deletedId: string, text?: string): ToastId
+    // toast's line and `restoredText` the line of a successful Undo; absent, they are the first message's.
+    postDeleted(owner: OwnerKey, deletedId: string, text?: string, restoredText?: string): ToastId
     // The delete was undone another way (Ctrl+Z or a History restore): its toast no longer offers Undo.
     dismissDeleted(deletedId: string): void
     // One Undo toast for one landed asset step. Its Undo runs only while that step is still on top of the owner's
@@ -265,7 +265,7 @@ export function createStudioToasts(deps: StudioToastDeps): StudioToasts {
                 action: { id: 'undo-action:' + undoActionCounter, failedText: language.studioToastRestoreFailed, run },
             })
         },
-        postDeleted(owner, deletedId, text) {
+        postDeleted(owner, deletedId, text, restoredText) {
             return host.postUndo({
                 text: text ?? language.studioToastGreetingDeleted,
                 actionLabel: language.studioToastUndo,
@@ -281,7 +281,7 @@ export function createStudioToasts(deps: StudioToastDeps): StudioToasts {
                         }
                         return {
                             ok: true,
-                            text: result.fmNotRestored ? language.studioToastRestoredFmNotice : language.studioToastRestored,
+                            text: restoredText ?? (result.fmNotRestored ? language.studioToastRestoredFmNotice : language.studioToastRestored),
                         }
                     },
                 },

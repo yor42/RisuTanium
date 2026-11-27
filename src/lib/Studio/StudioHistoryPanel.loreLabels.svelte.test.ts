@@ -297,6 +297,23 @@ describe('TH3: a restore the list rules refuse says why, in the panel and in the
         expect(host.visible[0].text).toBe(languageEnglish.studioLoreRestoreIdTaken)
     })
 
+    test('a lore delete undone from its toast logs the neutral restore line, and the success toast names lore', async () => {
+        const service = makeService()
+        await service.whenReady(A)
+        apply(service, loreDelete(tracked('Kid').t, tracked('Kid').at))
+        const [item] = service.view(A).deleted
+        await mountPanel(service)
+        const clock: ToastClock = { now: () => 0, after: () => () => {} }
+        const host = createToastHost({ clock })
+        const toasts = createStudioToasts({ service: () => service, host })
+        await host.activate(toasts.postDeleted(A, item.id, languageEnglish.studioLoreDeleted('Kid'), languageEnglish.studioLoreToastRestored))
+        await drainMicrotasks()
+        flushSync()
+        expect(host.visible.map((toast) => [toast.kind, toast.text])).toEqual([['success', languageEnglish.studioLoreToastRestored]])
+        expect(stepTexts()[0]).toBe(languageEnglish.studioStepRestoreDeleted)
+        expect(stepTexts()[0]).not.toMatch(/first message/i)
+    })
+
     test('a refusal with no list rule keeps the generic text', async () => {
         const service = makeService()
         await service.whenReady(A)

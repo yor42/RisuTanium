@@ -232,6 +232,7 @@ describe('TF: focus after a delete', () => {
         await toastHost.activate(toastHost.visible[0].id)
         await settle()
         expect(comments()).toEqual(['Row 0', 'Row 1'])
+        expect(toastHost.visible.map((toast) => toast.text)).toEqual([language.studioLoreToastRestored])
     })
 })
 

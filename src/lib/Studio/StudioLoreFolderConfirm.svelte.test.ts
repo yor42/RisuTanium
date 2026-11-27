@@ -19,7 +19,7 @@ vi.mock('src/ts/stores.svelte', async () => {
 })
 
 import { language } from 'src/lang'
-import { dispatchBack, resetBackHandlersForTests } from 'src/ts/backHandlers'
+import { dispatchBack, registerBackHandler, resetBackHandlersForTests } from 'src/ts/backHandlers'
 import StudioLoreFolderConfirm from './StudioLoreFolderConfirm.svelte'
 
 let mounted: { app: ReturnType<typeof mount>; host: HTMLElement }[] = []
@@ -72,6 +72,15 @@ describe('T41: the folder delete question', () => {
         expect(calls.cancelled).toBe(3)
         dispatchBack()
         expect(calls).toEqual({ confirmed: 0, cancelled: 4 })
+    })
+
+    test('one Back closes the question and does not reach an older Back handler', () => {
+        const older = vi.fn(() => true)
+        registerBackHandler(older)
+        const calls = show()
+        expect(dispatchBack()).toBe(true)
+        expect(calls).toEqual({ confirmed: 0, cancelled: 1 })
+        expect(older).not.toHaveBeenCalled()
     })
 
     test('an Esc during an IME composition is the IME`s and cancels nothing', () => {

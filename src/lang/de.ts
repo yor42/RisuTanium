@@ -2656,6 +2656,7 @@ export const languageGerman = {
     "studioLoreDuplicate": "Duplizieren",
     "studioLoreDelete": "Löschen",
     "studioLoreDeleted": (name: string) => `"${name}" gelöscht`,
+    "studioLoreToastRestored": "Lore wiederhergestellt",
     "studioLoreFolderDeleteConfirm": (name: string, n: number, f: number) => {
         const parts = [n > 0 ? (n === 1 ? "1 Eintrag" : `${n} Einträgen`) : "", f > 0 ? (f === 1 ? "1 Ordner" : `${f} Ordnern`) : ""].filter((part) => part !== "")
         return parts.length === 0 ? `Ordner "${name}" löschen? Du kannst das rückgängig machen.` : `Ordner "${name}" mit ${parts.join(" und ")} darin löschen? Du kannst das rückgängig machen.`
@@ -3027,7 +3028,7 @@ export const languageGerman = {
     "studioStepGreetingEdit": "Erste Nachricht bearbeitet",
     "studioStepRestorePoint": "Wiederherstellungspunkt wiederhergestellt",
     "studioStepRevert": "Auf einen früheren Schritt zurückgesetzt",
-    "studioStepRestoreDeleted": "Gelöschte erste Nachricht wiederhergestellt",
+    "studioStepRestoreDeleted": "Gelöschtes Element wiederhergestellt",
     "studioStepGreetingMove": "Erste Nachricht verschoben",
     "studioStepGreetingSwap": "Alternative erste Nachricht mit der Standard-ersten-Nachricht getauscht",
     "studioStepGreetingAddMany": (n: number) => `${n} erste Nachrichten hinzugefügt`,

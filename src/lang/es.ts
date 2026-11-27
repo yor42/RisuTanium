@@ -2656,6 +2656,7 @@ export const languageSpanish = {
     "studioLoreDuplicate": "Duplicar",
     "studioLoreDelete": "Eliminar",
     "studioLoreDeleted": (name: string) => `Se eliminó "${name}"`,
+    "studioLoreToastRestored": "Lore restaurado",
     "studioLoreFolderDeleteConfirm": (name: string, n: number, f: number) => {
         const parts = [n > 0 ? (n === 1 ? "1 entrada" : `${n} entradas`) : "", f > 0 ? (f === 1 ? "1 carpeta" : `${f} carpetas`) : ""].filter((part) => part !== "")
         return parts.length === 0 ? `¿Eliminar la carpeta "${name}"? Puedes deshacerlo.` : `¿Eliminar la carpeta "${name}" con ${parts.join(" y ")} dentro? Puedes deshacerlo.`
@@ -3027,7 +3028,7 @@ export const languageSpanish = {
     "studioStepGreetingEdit": "Primer mensaje editado",
     "studioStepRestorePoint": "Se restauró el punto de restauración",
     "studioStepRevert": "Se volvió a un paso anterior",
-    "studioStepRestoreDeleted": "Primer mensaje eliminado restaurado",
+    "studioStepRestoreDeleted": "Elemento eliminado restaurado",
     "studioStepGreetingMove": "Primer mensaje movido",
     "studioStepGreetingSwap": "Primer mensaje alternativo intercambiado con el primer mensaje predeterminado",
     "studioStepGreetingAddMany": (n: number) => `${n} primeros mensajes añadidos`,

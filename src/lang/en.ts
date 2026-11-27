@@ -2790,6 +2790,7 @@ export const languageEnglish = {
     studioLoreDuplicate: "Duplicate",
     studioLoreDelete: "Delete",
     studioLoreDeleted: (name: string) => `Deleted "${name}"`,
+    studioLoreToastRestored: "Lore restored",
     studioLoreFolderDeleteConfirm: (name: string, n: number, f: number) => {
         const parts = [n > 0 ? (n === 1 ? "1 entry" : `${n} entries`) : "", f > 0 ? (f === 1 ? "1 folder" : `${f} folders`) : ""].filter((part) => part !== "")
         return parts.length === 0 ? `Delete folder "${name}"? You can undo this.` : `Delete folder "${name}" with ${parts.join(" and ")} in it? You can undo this.`
@@ -3161,7 +3162,7 @@ export const languageEnglish = {
     studioStepGreetingEdit: "First message edited",
     studioStepRestorePoint: "Restored the restore point",
     studioStepRevert: "Reverted to an earlier step",
-    studioStepRestoreDeleted: "Deleted first message restored",
+    studioStepRestoreDeleted: "Deleted item restored",
     studioStepGreetingMove: "First message moved",
     studioStepGreetingSwap: "Alternative first message swapped with the default first message",
     studioStepGreetingAddMany: (n: number) => `${n} first messages added`,

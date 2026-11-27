@@ -61,7 +61,7 @@ vi.mock('../../lang', async () => {
 })
 
 import { resetBackHandlersForTests } from '../../ts/backHandlers'
-import { openStudio, resetStudioScreenForTests, studioScreen } from '../../ts/studio/studioScreen.svelte'
+import { openStudio, openStudioListRow, resetStudioScreenForTests, studioDetailBack, studioScreen } from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
 import { studioOpen } from '../../ts/studio/studioOpen'
 import StudioScreen from './StudioScreen.svelte'
@@ -308,6 +308,29 @@ describe('4b roles and roving focus', () => {
         expect(studioScreen.detailShown).toBe(false)
         press(row(`o:${CHARACTER}`)!, 'Enter')
         expect(rowsOfKind('kind').length).toBe(0)
+    })
+
+    test('on a phone a tap on a non-empty Lorebook kind row opens the lore list, a Regex kind row only expands, and Back from an entry returns to the list row', () => {
+        openStudio(ownerTarget, null)
+        studioScreen.layout = 'stack'
+        show(StudioTree)
+        click(row(`k:${CHARACTER}/regex`))
+        expect(row(`k:${CHARACTER}/regex`)?.getAttribute('aria-expanded')).toBe('true')
+        expect(studioScreen.selectedKind).not.toBe('regex')
+        expect(studioScreen.selectedKind).not.toBe('lore')
+
+        click(row(`k:${CHARACTER}/lore`))
+        expect(studioScreen.selectedOwnerKey).toBe(CHARACTER)
+        expect(studioScreen.selectedKind).toBe('lore')
+        expect(studioScreen.selectedItemId).toBeNull()
+        expect(studioScreen.detailShown).toBe(true)
+
+        openStudioListRow({ ownerKey: CHARACTER, kind: 'lore' }, CHARACTER, 'lore-3')
+        expect(studioScreen.selectedItemId).toBe('lore-3')
+        studioDetailBack()
+        expect(studioScreen.selectedKind).toBe('lore')
+        expect(studioScreen.selectedItemId).toBeNull()
+        expect(studioScreen.revealListRow).toBe('lore-3')
     })
 
     test('hide empty kinds drops the kinds with nothing in them', () => {

@@ -2699,6 +2699,7 @@ export const languageChineseTraditional = {
     "studioLoreDuplicate": "複製",
     "studioLoreDelete": "刪除",
     "studioLoreDeleted": (name: string) => `已刪除「${name}」`,
+    "studioLoreToastRestored": "Lorebook 已還原",
     "studioLoreFolderDeleteConfirm": (name: string, n: number, f: number) => {
         const parts = [n > 0 ? `${n} 個條目` : "", f > 0 ? `${f} 個資料夾` : ""].filter((part) => part !== "")
         return parts.length === 0 ? `刪除資料夾「${name}」？可以復原。` : `刪除內含${parts.join("和")}的資料夾「${name}」？可以復原。`
@@ -3070,7 +3071,7 @@ export const languageChineseTraditional = {
     "studioStepGreetingEdit": "已編輯開局訊息",
     "studioStepRestorePoint": "已還原到還原點",
     "studioStepRevert": "已還原到先前的步驟",
-    "studioStepRestoreDeleted": "已還原刪除的開局訊息",
+    "studioStepRestoreDeleted": "已還原刪除的項目",
     "studioStepGreetingMove": "已移動開局訊息",
     "studioStepGreetingSwap": "已將替代開局訊息與預設開局訊息互換",
     "studioStepGreetingAddMany": (n: number) => `已新增 ${n} 則開局訊息`,

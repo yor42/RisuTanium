@@ -2791,6 +2791,7 @@ export const languageJapanese = {
     studioLoreDuplicate: "複製",
     studioLoreDelete: "削除",
     studioLoreDeleted: (name: string) => `"${name}"を削除しました`,
+    studioLoreToastRestored: "ロアを復元しました",
     studioLoreFolderDeleteConfirm: (name: string, n: number, f: number) => {
         const parts = [n > 0 ? `${n}件のエントリ` : "", f > 0 ? `${f}個のフォルダ` : ""].filter((part) => part !== "")
         return parts.length === 0 ? `フォルダ"${name}"を削除しますか？元に戻せます。` : `${parts.join("と")}が入ったフォルダ"${name}"を削除しますか？元に戻せます。`
@@ -3162,7 +3163,7 @@ export const languageJapanese = {
     studioStepGreetingEdit: "最初のメッセージを編集",
     studioStepRestorePoint: "復元ポイントを復元",
     studioStepRevert: "以前のステップに戻しました",
-    studioStepRestoreDeleted: "削除した最初のメッセージを復元",
+    studioStepRestoreDeleted: "削除した項目を復元",
     studioStepGreetingMove: "最初のメッセージを移動",
     studioStepGreetingSwap: "代替の最初のメッセージとデフォルトの最初のメッセージを入れ替え",
     studioStepGreetingAddMany: (n: number) => `最初のメッセージを${n}件追加`,

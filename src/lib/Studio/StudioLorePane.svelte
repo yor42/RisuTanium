@@ -257,7 +257,7 @@
             setStudioSelection(ownerKey, 'lore', null)
         }
         if (removal !== undefined) focusRequest = removal.focus === null ? rootRequest() : { target: removal.focus, hint: removal.hint, control: 'name' }
-        if (removal !== undefined && landing?.deletedId !== undefined && owner !== null) toasts.postDeleted(owner, landing.deletedId, removal.text)
+        if (removal !== undefined && landing?.deletedId !== undefined && owner !== null) toasts.postDeleted(owner, landing.deletedId, removal.text, language.studioLoreToastRestored)
     }
 
     function itemOfSelection(): string | null {

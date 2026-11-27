@@ -2654,6 +2654,7 @@ export const languageChinese = {
     "studioLoreDuplicate": "复制",
     "studioLoreDelete": "删除",
     "studioLoreDeleted": (name: string) => `已删除"${name}"`,
+    "studioLoreToastRestored": "世界书已恢复",
     "studioLoreFolderDeleteConfirm": (name: string, n: number, f: number) => {
         const parts = [n > 0 ? `${n} 个条目` : "", f > 0 ? `${f} 个文件夹` : ""].filter((part) => part !== "")
         return parts.length === 0 ? `删除文件夹"${name}"？可以撤销。` : `删除包含${parts.join("和")}的文件夹"${name}"？可以撤销。`
@@ -3025,7 +3026,7 @@ export const languageChinese = {
     "studioStepGreetingEdit": "已编辑初始消息",
     "studioStepRestorePoint": "已恢复到还原点",
     "studioStepRevert": "已还原到之前的步骤",
-    "studioStepRestoreDeleted": "已恢复删除的初始消息",
+    "studioStepRestoreDeleted": "已恢复删除的项目",
     "studioStepGreetingMove": "已移动初始消息",
     "studioStepGreetingSwap": "已将备选初始消息与默认初始消息互换",
     "studioStepGreetingAddMany": (n: number) => `已添加 ${n} 条初始消息`,

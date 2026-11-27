@@ -17,7 +17,9 @@
 
     let { name, entries, folders, onconfirm, oncancel }: Props = $props()
 
-    registerStudioBackLayer({ isOpen: () => true, close: () => oncancel() })
+    // `closed` flips when Back closes the question, so the press counts as handled and does not reach an older layer.
+    let closed = false
+    registerStudioBackLayer({ isOpen: () => !closed, close: () => { closed = true; oncancel() } })
 
     const titleId = $props.id()
     let cancelButton = $state<HTMLButtonElement | undefined>()

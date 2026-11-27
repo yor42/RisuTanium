@@ -2654,6 +2654,7 @@ export const languageVietnamese = {
     "studioLoreDuplicate": "Nhân bản",
     "studioLoreDelete": "Xóa",
     "studioLoreDeleted": (name: string) => `Đã xóa "${name}"`,
+    "studioLoreToastRestored": "Đã khôi phục lore",
     "studioLoreFolderDeleteConfirm": (name: string, n: number, f: number) => {
         const parts = [n > 0 ? `${n} mục` : "", f > 0 ? `${f} thư mục` : ""].filter((part) => part !== "")
         return parts.length === 0 ? `Xóa thư mục "${name}"? Bạn có thể hoàn tác.` : `Xóa thư mục "${name}" cùng ${parts.join(" và ")} bên trong? Bạn có thể hoàn tác.`
@@ -3025,7 +3026,7 @@ export const languageVietnamese = {
     "studioStepGreetingEdit": "Đã chỉnh sửa tin nhắn đầu tiên",
     "studioStepRestorePoint": "Đã khôi phục điểm khôi phục",
     "studioStepRevert": "Đã quay lại bước trước đó",
-    "studioStepRestoreDeleted": "Đã khôi phục tin nhắn đầu tiên đã xóa",
+    "studioStepRestoreDeleted": "Đã khôi phục mục đã xóa",
     "studioStepGreetingMove": "Đã di chuyển tin nhắn đầu tiên",
     "studioStepGreetingSwap": "Đã hoán đổi tin nhắn đầu tiên thay thế với tin nhắn đầu tiên mặc định",
     "studioStepGreetingAddMany": (n: number) => `Đã thêm ${n} tin nhắn đầu tiên`,

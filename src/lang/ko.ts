@@ -2654,6 +2654,7 @@ export const languageKorean = {
     "studioLoreDuplicate": "복제",
     "studioLoreDelete": "삭제",
     "studioLoreDeleted": (name: string) => `"${name}" 삭제됨`,
+    "studioLoreToastRestored": "로어 복원됨",
     "studioLoreFolderDeleteConfirm": (name: string, n: number, f: number) => {
         const parts = [n > 0 ? `항목 ${n}개` : "", f > 0 ? `폴더 ${f}개` : ""].filter((part) => part !== "")
         return parts.length === 0 ? `폴더 "${name}"을(를) 삭제할까요? 실행 취소할 수 있습니다.` : `${parts.join(" 및 ")}이(가) 들어 있는 폴더 "${name}"을(를) 삭제할까요? 실행 취소할 수 있습니다.`
@@ -3025,7 +3026,7 @@ export const languageKorean = {
     "studioStepGreetingEdit": "첫 메시지 수정됨",
     "studioStepRestorePoint": "복원 지점으로 복원함",
     "studioStepRevert": "이전 단계로 되돌림",
-    "studioStepRestoreDeleted": "삭제한 첫 메시지를 복원함",
+    "studioStepRestoreDeleted": "삭제한 항목을 복원함",
     "studioStepGreetingMove": "첫 메시지 이동됨",
     "studioStepGreetingSwap": "추가 첫 메시지와 기본 첫 메시지를 맞바꿈",
     "studioStepGreetingAddMany": (n: number) => `첫 메시지 ${n}개 추가됨`,
