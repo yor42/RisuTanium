@@ -114,7 +114,7 @@ Marked **(design default)** = chosen here within the decided intent, open to vet
 - **Active persona:** a `check` badge with "사용 중".
 - **Layout:** one column on phones, two from 768 px, and a list beside the editor at 1024 px and up.
 - **Header:**
-  - "+ 페르소나" opens a menu: 새로 만들기, 가져오기 (PNG). A guided 안내받아 만들기 item is proposed in [PERSONA_BUILDER.md](PERSONA_BUILDER.md) (draft, not yet approved).
+  - "+ 페르소나" opens a menu: 새로 만들기, 가져오기 (PNG). A guided 안내받아 만들기 item is proposed in [PERSONA_BUILDER.md](PERSONA_BUILDER.md) (approved, MC-4530 to MC-4535).
   - A search field appears from 8 personas (design default).
 - **Reorder:**
   - drag on a handle (pointer only: the handle is not focusable; the keyboard uses Alt+↑/↓ on the card, R5-9);

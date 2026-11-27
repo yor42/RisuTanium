@@ -1,6 +1,6 @@
 # Guided persona builder (CHORE-326)
 
-Status: **draft, revision 1** (2026-11-27), awaiting the maintainer's approval of the product questions in §9. Ticket: yor42/RisuTanium #252. Decision: MC-2141 (a persona builder design is added to the personas work). Extends [SLICE5A_SPEC.md](SLICE5A_SPEC.md) §3 (the personas page, DS-110, DS-111). No application code changes until this is approved.
+Status: **approved, revision 1** (2026-11-27). The maintainer accepted all six recommendations in §9 (MC-4530 to MC-4535). Ticket: yor42/RisuTanium #252. Decision: MC-2141 (a persona builder design is added to the personas work). Extends [SLICE5A_SPEC.md](SLICE5A_SPEC.md) §3 (the personas page, DS-110, DS-111). No application code changes until this is approved.
 
 ## 1. What it is
 
@@ -107,4 +107,4 @@ No new persisted field, no migration, no change to export or import (`buildPerso
 - **Q5: Create at open (§6, live-save) or only at the end.** Recommendation: at open, because the picture picker needs a persona. Creating only at the end needs a picture step after "만들기" or a new asset hand-off for an unsaved persona (an asset-lifecycle change that should be its own ticket).
 - **Q6: Writing with a model.** Recommendation: not in this ticket, and not a design default; it needs its own decision on privacy and on which connection it would use.
 
-Default if the maintainer answers only "go": Q1 to Q6 as recommended.
+Answers: all six recommendations accepted (MC-4530 to MC-4535).
