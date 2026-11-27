@@ -1124,6 +1124,25 @@ export function replyTargets(): ReplyTarget[] {
 }
 
 /**
+ * The distinct (chaId, chatId) pairs of every registered `preview` send, in first-registration order, with the same
+ * pair identity and stopped-until-ended rule as `replyTargets`. A chat with a reply and a preview is one entry in each list.
+ * Read-only and reactive: a preview's start and end bump the same version the reply list follows.
+ */
+export function previewTargets(): ReplyTarget[] {
+    readReplyVersion()
+    const seen = new Set<string>()
+    const targets: ReplyTarget[] = []
+    for (const registration of registrations) {
+        if (registration.kind !== 'preview') continue
+        const key = `${registration.chaId}\u0000${registration.chatId}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        targets.push({ chaId: registration.chaId, chatId: registration.chatId })
+    }
+    return targets
+}
+
+/**
  * True while a `reply` or a `preview` send is registered as owned by `target`.
  * Reactive; same owner-level match as `isGeneratingIn`.
  */

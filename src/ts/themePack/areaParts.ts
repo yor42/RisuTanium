@@ -119,9 +119,9 @@ const HOME_PART_NAMES: readonly string[] = [
     'home-dialog-body', 'home-dialog-title', 'home-drawer', 'home-drawer-close', 'home-drawer-item', 'home-drawer-layer', 'home-drawer-scrim', 'home-drawer-settings',
     'home-empty-hero', 'home-eyebrow', 'home-greeting', 'home-head', 'home-jump', 'home-jump-link', 'home-landing', 'home-library', 'home-library-placeholder',
     'home-menu-button', 'home-network', 'home-persona-chip', 'home-persona-chip-label', 'home-realm', 'home-realm-announcement', 'home-realm-body', 'home-row-icon',
-    'home-run-meta', 'home-run-stop', 'home-run-title', 'home-shelf', 'home-shelf-section', 'home-side', 'home-stage', 'home-story',
-    'home-story-chat', 'home-story-name', 'home-story-rows', 'home-story-snippet', 'home-story-time', 'home-task-actions', 'home-task-list', 'home-task-row',
-    'home-tasks-button', 'home-topbar', 'home-upstream-tag', 'home-utility-text', 'home-version', 'library-all-trashed', 'library-back', 'library-head',
+    'home-run-cancel', 'home-run-kind', 'home-run-meta', 'home-run-progress', 'home-run-stop', 'home-run-title', 'home-shelf', 'home-shelf-section', 'home-side', 'home-stage', 'home-story',
+    'home-story-chat', 'home-story-name', 'home-story-rows', 'home-story-snippet', 'home-story-time', 'home-task-actions', 'home-task-list', 'home-task-open', 'home-task-panel', 'home-task-row',
+    'home-task-tab', 'home-task-tabs', 'home-tasks-button', 'home-topbar', 'home-upstream-tag', 'home-utility-text', 'home-version', 'library-all-trashed', 'library-back', 'library-head',
     'library-no-match', 'library-row', 'library-studio', 'library-tile', 'library-trash', 'library-views',
 ]
 

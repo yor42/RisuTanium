@@ -98,8 +98,10 @@ let entry: Entry | null = null
 let shownView = $state.raw<TaskView | null>(null)
 let clockOverride: TaskClock | null = null
 let presenter: TaskToastPresenter | null = null
-// Entries whose card is off the screen; plain, because no reader needs to react to the list itself.
-let backgroundEntries: Entry[] = []
+// Entries whose card is off the screen; raw state, so every change replaces the array and `backgroundJobs` re-reads it.
+let backgroundEntries = $state.raw<Entry[]>([])
+// Bumped when a backgrounded task publishes a view, so a reader of `backgroundJobs` sees progress and state changes.
+let backgroundRevision = $state(0)
 // Set and cleared with `entry`: true while the shown card is one that `reopenEntry` brought back from a toast.
 let reopenedShown = $state(false)
 // Modules rounds that may still answer Replace, counted from the round's start until it ends; reactive, so a card hides its button.
@@ -194,7 +196,10 @@ export function alertTask(def: TaskDef): TaskHandle {
     }
     const stopView = controller.subscribe((view) => {
         if (entry === self) shownView = view
-        else if (self.inBackground && self.toastId !== null) presenter?.update(self.toastId, view)
+        else if (self.inBackground && self.toastId !== null) {
+            presenter?.update(self.toastId, view)
+            backgroundRevision++
+        }
     })
     const onVisibility = () => controller.flush()
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility)
@@ -287,7 +292,7 @@ export function backgroundTask(): boolean {
     reopenedShown = false
     target.inBackground = true
     target.everBackgrounded = true
-    backgroundEntries.push(target)
+    backgroundEntries = [...backgroundEntries, target]
     target.toastId = presenter.post(target.controller.view, {
         open: () => reopenEntry(target),
         end: () => endBackground(target),
@@ -303,6 +308,52 @@ export function taskReopened(): boolean {
 /** The number of tasks running or waiting as toasts; a test seam. */
 export function backgroundTaskCount(): number {
     return backgroundEntries.length
+}
+
+/** One backgrounded task still running or cancelling, as the Tasks dialog lists it. */
+export interface BackgroundJob {
+    /** The task view's id: unique per task and stable across a reopen. */
+    readonly id: number
+    readonly title: string
+    readonly subtitle?: string
+    readonly view: TaskView
+    /** True while Cancel is offered and the task is still in the background. */
+    readonly canCancel: boolean
+    /** Brings the card back; false and no change while another card is shown or the task has left the background. */
+    open(): boolean
+    /** Requests the cancel the card's button would; false when it is not offered or the task has left the background. */
+    cancel(): boolean
+}
+
+/**
+ * The backgrounded tasks that have not ended, in the order they were sent to the background. A finished or failed task
+ * keeps its toast but is not a job. Reactive: it follows the list and each published view.
+ */
+export function backgroundJobs(): BackgroundJob[] {
+    void backgroundRevision
+    const jobs: BackgroundJob[] = []
+    for (const target of backgroundEntries) {
+        if (target.detached || !target.inBackground) continue
+        const view = target.controller.view
+        if (isTaskTerminal(view.state)) continue
+        jobs.push({
+            id: view.id,
+            title: view.title,
+            subtitle: view.subtitle,
+            view,
+            canCancel: view.cancelOffered,
+            open: () => {
+                if (entry !== null || !target.inBackground) return false
+                reopenEntry(target)
+                return true
+            },
+            cancel: () => {
+                if (!target.inBackground || target.detached) return false
+                return target.controller.requestCancel()
+            },
+        })
+    }
+    return jobs
 }
 
 /** The toast's Open: the same controller returns to the slot, only while no card is shown. */

@@ -17,7 +17,7 @@ vi.mock(import('../../stores.svelte'), () => {
 })
 
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, stopAllReplyWork, hasAnyWork, isWorkInProgress, isGeneratingIn, generatingChatIdsIn, replyTargets, stopRepliesOf, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
+import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, stopAllReplyWork, hasAnyWork, isWorkInProgress, isGeneratingIn, generatingChatIdsIn, replyTargets, previewTargets, busyTargets, stopRepliesOf, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
 
 type CharacterFixture = Database['characters'][number]
 
@@ -609,5 +609,97 @@ describe('replyTargets lists the chats with a reply registered', () => {
         flushSync()
         expect(seen.at(-1)).toBe(0)
         stopEffect()
+    })
+})
+
+// Specification: `previewTargets` is a new read-only export, so T-613-01 is a diagnostic; T-613-02 and T-613-03 are
+// compatibility guards that pass before and after.
+describe('previewTargets lists the chats with a preview registered', () => {
+    const X_A = { chaId: 'cha-x', chatId: 'chat-a' }
+    const X_B = { chaId: 'cha-x', chatId: 'chat-b' }
+    const Y_C = { chaId: 'cha-y', chatId: 'chat-c' }
+
+    test('T-613-01: each pair once in first-registration order, group owner not member, ignores reply and work, stopped stays until ended', () => {
+        open(registerWork(X_A, undefined, 'preview'))
+        open(registerWork(Y_C, undefined, 'preview'))
+        open(registerWork(X_A, undefined, 'preview'))
+        open(registerWork(X_B, undefined, 'preview'))
+        open(registerWork({ chaId: 'cha-z', chatId: 'chat-r' }, undefined, 'reply'))
+        open(registerWork({ chaId: 'cha-z', chatId: 'chat-w' }))
+        open(registerWork({ chaId: 'grp-g', chatId: 'chat-g', memberChaId: 'cha-x' }, undefined, 'preview'))
+        const stop = vi.fn()
+        const stopped = open(registerWork({ chaId: 'cha-s', chatId: 'chat-s' }, stop, 'preview'))
+
+        stopWorkIn({ chaId: 'cha-s', chatId: 'chat-s' })
+
+        expect(stop).toHaveBeenCalledTimes(1)
+        expect(previewTargets()).toEqual([X_A, Y_C, X_B, { chaId: 'grp-g', chatId: 'chat-g' }, { chaId: 'cha-s', chatId: 'chat-s' }])
+        stopped.end()
+        expect(previewTargets()).toEqual([X_A, Y_C, X_B, { chaId: 'grp-g', chatId: 'chat-g' }])
+    })
+
+    test('T-613-01: a derived over it re-runs when a preview starts or ends, not when work starts or ends', () => {
+        const seen: number[] = []
+        const stopEffect = $effect.root(() => {
+            const targets = $derived(previewTargets())
+            $effect(() => {
+                seen.push(targets.length)
+            })
+        })
+        flushSync()
+        expect(seen).toEqual([0])
+
+        const work = open(registerWork(X_B))
+        flushSync()
+        work.end()
+        flushSync()
+        expect(seen).toEqual([0])
+
+        const preview = open(registerWork(X_A, undefined, 'preview'))
+        flushSync()
+        expect(seen.at(-1)).toBe(1)
+
+        preview.end()
+        flushSync()
+        expect(seen.at(-1)).toBe(0)
+        stopEffect()
+    })
+
+    test('T-613-01: returns copies, so a caller cannot reach a registration', () => {
+        open(registerWork(X_A, undefined, 'preview'))
+
+        const first = previewTargets()
+        first[0].chatId = 'tampered'
+        first.push(Y_C)
+
+        expect(previewTargets()).toEqual([X_A])
+    })
+
+    test('T-613-02: previews leave replyTargets, isBusyIn and busyTargets results as they were', () => {
+        open(registerWork(X_A, undefined, 'reply'))
+        const replyOnly = [replyTargets(), isBusyIn(X_A), isBusyIn(Y_C), busyTargets()]
+
+        open(registerWork(Y_C, undefined, 'preview'))
+
+        expect(replyTargets()).toEqual(replyOnly[0])
+        expect(isBusyIn(X_A)).toBe(replyOnly[1])
+        expect(replyOnly[2]).toBe(false)
+        expect(isBusyIn(Y_C)).toBe(true)
+        expect(busyTargets()).toEqual([X_A, Y_C])
+    })
+
+    test('T-613-03: a chat with a reply and a preview is one entry in each list, and stopWorkIn stops both', () => {
+        const stopReply = vi.fn()
+        const stopPreview = vi.fn()
+        open(registerWork(X_A, stopReply, 'reply'))
+        open(registerWork(X_A, stopPreview, 'preview'))
+
+        expect(replyTargets()).toEqual([X_A])
+        expect(previewTargets()).toEqual([X_A])
+
+        stopWorkIn(X_A)
+
+        expect(stopReply).toHaveBeenCalledTimes(1)
+        expect(stopPreview).toHaveBeenCalledTimes(1)
     })
 })
