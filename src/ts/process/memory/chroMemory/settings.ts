@@ -8,7 +8,11 @@ export interface LtmSettings {
     searchLore: boolean
     /** The most tokens recalled lore may take in one send. */
     loreRecallCap: number
+    /** How units are ranked: keywords only, or keywords fused with vector similarity. Only an exact 'hybrid' reads as hybrid. */
+    retrieval: RetrievalMode
 }
+
+export type RetrievalMode = 'lexical' | 'hybrid'
 
 /** The most tokens a recalled-memory block may take by default. */
 export const BUDGET_CAP_TOKENS = 2400
@@ -29,15 +33,16 @@ export function defaultBudgetTokens(maxContext: number): number {
  */
 export function readLtmSettings(raw: unknown, maxContext: number): LtmSettings {
     if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
-        const { budgetTokens, shadow, searchLore, loreRecallCap } = raw as { budgetTokens?: unknown, shadow?: unknown, searchLore?: unknown, loreRecallCap?: unknown }
+        const { budgetTokens, shadow, searchLore, loreRecallCap, retrieval } = raw as { budgetTokens?: unknown, shadow?: unknown, searchLore?: unknown, loreRecallCap?: unknown, retrieval?: unknown }
         return {
             budgetTokens: normalizeBudgetInput(budgetTokens) ?? defaultBudgetTokens(maxContext),
             shadow: shadow === true,
             searchLore: typeof searchLore === 'boolean' ? searchLore : SEARCH_LORE_DEFAULT,
             loreRecallCap: normalizeBudgetInput(loreRecallCap) ?? LORE_RECALL_CAP_DEFAULT,
+            retrieval: retrieval === 'hybrid' ? 'hybrid' : 'lexical',
         }
     }
-    return { budgetTokens: defaultBudgetTokens(maxContext), shadow: false, searchLore: SEARCH_LORE_DEFAULT, loreRecallCap: LORE_RECALL_CAP_DEFAULT }
+    return { budgetTokens: defaultBudgetTokens(maxContext), shadow: false, searchLore: SEARCH_LORE_DEFAULT, loreRecallCap: LORE_RECALL_CAP_DEFAULT, retrieval: 'lexical' }
 }
 
 /** A positive integer, else null: any other value is treated as no budget set, as the reader does. */
@@ -69,13 +74,14 @@ export function loreRecallCapInputValue(raw: unknown): number | null {
  */
 export function writeLtmSettings(
     db: Pick<Database, 'ltmSettings'>,
-    patch: { shadow?: boolean, budgetTokens?: number | null, searchLore?: boolean, loreRecallCap?: number | null },
+    patch: { shadow?: boolean, budgetTokens?: number | null, searchLore?: boolean, loreRecallCap?: number | null, retrieval?: RetrievalMode },
 ): void {
-    const set: { shadow?: boolean, budgetTokens?: number, searchLore?: boolean, loreRecallCap?: number } = {}
+    const set: { shadow?: boolean, budgetTokens?: number, searchLore?: boolean, loreRecallCap?: number, retrieval?: RetrievalMode } = {}
     if (patch.shadow !== undefined) set.shadow = patch.shadow
     if (typeof patch.budgetTokens === 'number') set.budgetTokens = patch.budgetTokens
     if (patch.searchLore !== undefined) set.searchLore = patch.searchLore
     if (typeof patch.loreRecallCap === 'number') set.loreRecallCap = patch.loreRecallCap
+    if (patch.retrieval === 'lexical' || patch.retrieval === 'hybrid') set.retrieval = patch.retrieval
     const old = db.ltmSettings
     if (typeof old === 'object' && old !== null && !Array.isArray(old)) {
         const next: Record<string, unknown> = { ...old, ...set }
