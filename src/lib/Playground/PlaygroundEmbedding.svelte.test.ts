@@ -53,6 +53,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 
 //#endregion
 
+import { language } from 'src/lang'
 import { DBState } from 'src/ts/stores.svelte'
 import { serviceKeyForUi } from 'src/ts/connections/serviceKeys'
 import PlaygroundEmbedding from './PlaygroundEmbedding.svelte'
@@ -222,6 +223,17 @@ describe('the embedding page: the shared custom key and model', () => {
         await type(field(target, 'Request Model'), 'new-model')
         expect(serviceKeyForUi('hypaCustomSettings.key', DBState.db)).toBe('new-key')
         expect(DBState.db.hypaCustomSettings.model).toBe('new-model')
+    })
+})
+
+describe('the embedding page: the connection row', () => {
+    test('E-PLAY: the custom key editor is followed by the row of its slot; a local model shows none', async () => {
+        const target = mountPage()
+        expect(target.querySelector('[data-part="settings-service-connection"]')).toBeNull()
+        await chooseModel(target, 'custom')
+        const row = target.querySelector('[data-part="settings-service-connection"]')
+        expect(row?.getAttribute('data-slot')).toBe('hypaCustomSettings.key')
+        expect(row?.textContent).toContain(language.connectionsServiceUses.replace('{name}', 'Custom embedding'))
     })
 })
 

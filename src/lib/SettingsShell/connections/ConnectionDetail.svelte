@@ -57,7 +57,7 @@
 
     const chip = $derived(hintChipText(hint))
     const usedLine = $derived(usedByText(conn, users))
-    const multiline = $derived(catalogEntry(conn.provider)?.multilineKey ?? false)
+    const multiline = $derived(catalogEntry(conn.provider)?.singleKey ?? false)
     const userList = $derived<ConnectionUser[]>(users.kind === 'presets' ? users.presets : users.kind === 'models' ? users.models : [])
     const listed = $derived(userList.slice(0, LISTED_USERS))
     const hidden = $derived(userList.length - listed.length)

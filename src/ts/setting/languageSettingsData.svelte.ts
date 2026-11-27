@@ -176,6 +176,14 @@ export const languageSettingsItems: SettingItem[] = [
     },
 
     {
+        id: 'lang.deeplConnection',
+        type: 'custom',
+        componentId: 'ServiceConnectionRow',
+        componentProps: { service: 'deeplOptions.key' },
+        condition: (ctx) => !!ctx.db.translator && ctx.db.translatorType === 'deepl',
+    },
+
+    {
         id: 'lang.deeplFree',
         type: 'check',
         labelKey: 'deeplFreeKey',
@@ -200,6 +208,14 @@ export const languageSettingsItems: SettingItem[] = [
         getValue: (db) => serviceEditorValue(db, 'deeplXOptions.token'),
         setValue: (db, value) => { void setServiceKey(db, 'deeplXOptions.token', value) },
         classes: 'mt-4',
+        condition: (ctx) => !!ctx.db.translator && ctx.db.translatorType === 'deeplX',
+    },
+
+    {
+        id: 'lang.deeplXConnection',
+        type: 'custom',
+        componentId: 'ServiceConnectionRow',
+        componentProps: { service: 'deeplXOptions.token' },
         condition: (ctx) => !!ctx.db.translator && ctx.db.translatorType === 'deeplX',
     },
 

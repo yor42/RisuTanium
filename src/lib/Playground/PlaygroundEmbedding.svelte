@@ -8,6 +8,7 @@
     import { DEFAULT_HYPA_MODEL } from "src/ts/process/memory/embeddingModels";
     import { DBState } from "src/ts/stores.svelte"
     import { alertError } from "src/ts/alert";
+    import ServiceConnectionRow from "src/lib/SettingsShell/connections/ServiceConnectionRow.svelte";
     import { serviceEditorValue, serviceKeyForUi, setServiceKey } from "src/ts/connections/serviceKeys";
 
     let query = $state("");
@@ -91,6 +92,7 @@
     <TextInput labelId="{uid}-url" size="sm" marginBottom bind:value={customEmbeddingUrl}/>
     <span id="{uid}-proxy-key" class="text-textcolor text-lg">{language.proxyAPIKey}</span>
     <TextInput labelId="{uid}-proxy-key" size="sm" marginBottom bind:value={() => serviceEditorValue(DBState.db, 'hypaCustomSettings.key'), (v) => { void setServiceKey(DBState.db, 'hypaCustomSettings.key', v) }}/>
+    <ServiceConnectionRow service="hypaCustomSettings.key" />
     <span id="{uid}-request-model" class="text-textcolor text-lg">{language.playground.requestModel}</span>
     <TextInput labelId="{uid}-request-model" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.model}/>
     <span class="text-textcolor2 text-sm mb-4">{language.playground.embeddingSharedSettingsNote}</span>
