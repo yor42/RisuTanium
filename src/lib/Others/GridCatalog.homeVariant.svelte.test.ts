@@ -370,6 +370,8 @@ describe('GridCatalog cast-sheet hooks (S4d-U1)', { timeout: 60_000 }, () => {
         expect(app.listRows).toBe(3)
         expect(app.head).toBe('mx-4 mb-6 flex flex-col shrink-0')
         expect(app.views).toEqual(home.views)
-        expect(app.tile).toBe(home.tile)
+        // The tile itself differs on purpose since #479: the Home tile stacks a larger picture over the name.
+        expect(app.tile).toBe('flex text-textcolor items-center')
+        expect(home.tile).toBe('flex text-textcolor flex-col items-center w-[4.5rem]')
     })
 })

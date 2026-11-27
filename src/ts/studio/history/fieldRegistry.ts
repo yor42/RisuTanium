@@ -26,9 +26,8 @@
 //   builder for every kind.
 // - Adding an existing path to another builtin kind's row is a widening for older builds too.
 // - `keepForeign` is set on new rows only, requires `editWhenAbsent: true`, and is never changed on an existing row: a
-//   present value of another type is then recorded as a foreign reading and an undo writes it back, instead of the
-//   value reading as absent. The frozen-facts test pins it with the other facts. It is never set on a `biasList`
-//   row: a foreign reading is a boolean or text reading, and a bias list has no such reading.
+//   present value that does not match the path's registered kind is then recorded as a foreign reading and an undo
+//   writes it back, instead of the value reading as absent. The frozen-facts test pins it with the other facts.
 // - Two paths on one holder property are aliases sharing one restore slot, the later row (`restoreSlotOf`). A later alias
 //   has the same `holders` and `value` and accepts every reading of the earlier rows: `keepForeign` and
 //   `editWhenAbsent: true` whenever an earlier alias has them, and every alias with `editWhenAbsent: true` has the later
@@ -202,6 +201,9 @@ export const FIELD_SPECS = {
     lowLevelAccessFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'lowLevelAccess', keepForeign: true },
     utilityBotFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'utilityBot', keepForeign: true },
     escapeOutputFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'escapeOutput', keepForeign: true },
+    // #729: character token bias list stored with malformed rows/value. A malformed value is kept as a foreign reading
+    // so repairing it is one undoable history step; the original `bias` row stays untouched.
+    biasFix: { value: 'biasList', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'bias', keepForeign: true },
 } as const satisfies Record<string, FieldFacts>
 
 // The containers a dotted path names, with the value an absent container reads as: the classic character select's own
@@ -332,6 +334,7 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     lowLevelAccessFix: { labelKey: 'lowLevelAccess', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
     utilityBotFix: { labelKey: 'utilityBot', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
     escapeOutputFix: { labelKey: 'escapeOutput', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    biasFix: { labelKey: 'studioFieldBias', focus: { form: 'studio-advanced-form', part: 'studio-form-bias' } },
 }
 
 // Compile-time check: every registered path's holder property (`property`, else the path) is a key of each listed

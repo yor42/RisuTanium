@@ -1,6 +1,6 @@
 import type { Chat, Database } from '../../../ts/storage/database.svelte'
-import { recentCharacters } from '../../../ts/chatShell/recentCharacters'
 import { isHiddenSystemCharacter } from '../../../ts/hiddenCharacters'
+import { stubDescription } from '../../../ts/process/coldCharacter'
 import { storySnippet } from './storySnippet'
 
 /**
@@ -52,22 +52,53 @@ export function currentChat(entry: Entry): Chat | null {
     return chats[entry.chatPage] ?? chats[0] ?? null
 }
 
+/** The stub's description, which a group (no creator notes of its own) does not have. */
+function archivedSnippet(entry: Entry): string {
+    return entry.type === 'group' ? '' : stubDescription(entry.creatorNotes)
+}
+
 /** The story entries, most recent first, one per chaId, at most `STORY_CAP`. */
 function storyEntries(characters: ReadonlyArray<Entry>): Entry[] {
-    // Filter before the sort: a NaN time would make the comparator inconsistent.
-    const seen = new Set<string>()
-    const picked: Entry[] = []
-    for (const entry of recentCharacters(characters.filter(isStory))) {
-        if (seen.has(entry.chaId)) {
+    // One pass, no full sort. Same filters as `recentCharacters` over the story
+    // entries (`isStory` drops a NaN time before it reaches the comparator) and
+    // the same order: later `lastInteraction` first, ties by list position.
+    // Only the best entry per chaId can take a slot, so dedupe comes before the cap.
+    const best = new Map<string, Ranked>()
+    let order = 0
+    for (const c of characters) {
+        if (!isStory(c) || typeof c.chaId !== 'string' || isHiddenSystemCharacter(c) || c.trashTime) {
             continue
         }
-        seen.add(entry.chaId)
-        picked.push(entry)
-        if (picked.length === STORY_CAP) {
-            break
+        const candidate: Ranked = { c, order: order++ }
+        const held = best.get(c.chaId)
+        if (!held || storyBefore(candidate, held) < 0) {
+            best.set(c.chaId, candidate)
         }
     }
-    return picked
+    const top: Ranked[] = []
+    for (const candidate of best.values()) {
+        let at = top.length
+        while (at > 0 && storyBefore(candidate, top[at - 1]) < 0) {
+            at--
+        }
+        if (at >= STORY_CAP) {
+            continue
+        }
+        top.splice(at, 0, candidate)
+        if (top.length > STORY_CAP) {
+            top.pop()
+        }
+    }
+    return top.map((x) => x.c)
+}
+
+interface Ranked {
+    c: Entry
+    order: number
+}
+
+function storyBefore(a: Ranked, b: Ranked): number {
+    return ((b.c.lastInteraction ?? 0) - (a.c.lastInteraction ?? 0)) || (a.order - b.order)
 }
 
 export function storyOrder(characters: ReadonlyArray<Entry>): string[] {
@@ -90,7 +121,9 @@ export function freezeStories(characters: ReadonlyArray<Entry>, unnamedLabel: st
  * The frozen stories against the live list: the frozen order, entries that left
  * the list (removed, trashed, hidden) dropped, nothing added or re-sorted. The
  * entry, its name, picture, time and archived state are live. The frozen chat
- * label and last line show only while the live entry is not archived.
+ * label and last line show only while the live entry is not archived. An
+ * archived entry shows the stub's description in the snippet slot: a string
+ * the stub already holds, so no chat is read.
  */
 export function resolveFrozen(frozen: readonly FrozenStory[], characters: ReadonlyArray<Entry>): ShelfStory[] {
     const wanted = new Set(frozen.map((story) => story.chaId))
@@ -115,7 +148,7 @@ export function resolveFrozen(frozen: readonly FrozenStory[], characters: Readon
             entry,
             archived,
             chatLabel: archived ? null : story.chatLabel,
-            snippet: archived ? '' : story.snippet,
+            snippet: archived ? archivedSnippet(entry) : story.snippet,
         })
     }
     return resolved

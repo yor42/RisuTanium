@@ -302,7 +302,7 @@ describe('new behaviour: whole-resident mode, the idle net and the new-character
         expect(pass.written).toEqual(unitsToWrite(full).map(unit => unit.identity).sort())
     })
 
-    test('whole-resident mode yields once after each module and each resident character that it encodes, a stub excluded', async () => {
+    test('whole-resident mode yields once after each module and between and after the stages of each resident character that it encodes, a stub excluded', async () => {
         const db = buildSmall(5)
         const previous = previousFrom(encodeWith(db))
         const lists = countingLists()
@@ -311,24 +311,34 @@ describe('new behaviour: whole-resident mode, the idle net and the new-character
         const next = withStub(db, stubChaId, undefined)
         // The module set yields once per module before any character is encoded.
         const moduleCount = next.modules.length
+        // A character's emit yields between its stages, so the per-character count is taken from a marked pass over one
+        // character of the same fixture.
+        const one = chaIdOf(db, 0)
+        let oneYields = 0
+        await encoderOf(previous).plan(next, request({ marked: new Set([one]), yield: async () => { oneYields++ } }))
+        expect(oneYields).toBeGreaterThan(2)
         await encoderOf(previous, lists.lists).plan(next, request({
             whole: true,
             yield: async () => {
                 yields++
-                expect(lists.encoded.length).toBe(Math.max(0, yields - moduleCount))
             },
         }))
-        expect(yields).toBe(4 + moduleCount)
+        expect(yields).toBe(4 * oneYields + moduleCount)
+        expect(lists.encoded.length).toBe(4)
         expect(lists.encoded).not.toContain(stubChaId)
     })
 
-    test('a marked pass yields once per marked character and an unmarked pass never', async () => {
+    test('a marked pass yields between the stages of each marked character and an unmarked pass never', async () => {
         const db = buildSmall(5)
         const previous = previousFrom(encodeWith(db))
         let yields = 0
         const yielding = async (): Promise<void> => { yields++ }
+        await encoderOf(previous).plan(db, request({ marked: new Set([chaIdOf(db, 1)]), yield: yielding }))
+        const perCharacter = yields
+        expect(perCharacter).toBeGreaterThan(2)
+        yields = 0
         await encoderOf(previous).plan(db, request({ marked: new Set([chaIdOf(db, 1), chaIdOf(db, 3)]), yield: yielding }))
-        expect(yields).toBe(2)
+        expect(yields).toBe(2 * perCharacter)
         yields = 0
         await encoderOf(previous).plan(db, request({ yield: yielding }))
         expect(yields).toBe(0)

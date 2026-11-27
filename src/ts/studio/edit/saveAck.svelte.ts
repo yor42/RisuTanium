@@ -1,6 +1,6 @@
 // The Studio save chip's state machine: when may a Studio edit be called "saved". An edit is saved
 // only after a commit whose snapshot covers its save mark, for a character the store can encode and
-// the legacy loop does not hold frozen. A module ack asks the commit's module verdict instead: the module must be
+// the legacy loop does not hold frozen. A module or preset ack asks the commit's own verdict for its subject instead: the module must be
 // stored by a commit that did not carry the module set whole. Every dependency is injected, as in
 // hiddenReplySaveGuard.ts; `productionSaveAckDeps()` builds them from the existing exports.
 
@@ -12,6 +12,7 @@ import {
     getPeerSaveCount,
     getSaveMarkCount,
     isCharacterUnsavable,
+    isItemUnsavable,
     isSavingStopped,
     moduleCommitVerdict,
     onSavingStopped,
@@ -21,6 +22,8 @@ import {
 import { saveFailureStore, type SaveFailureState } from '../../storage/store2/saveFailure'
 import { frozenSaveKeysStore } from '../../stores.svelte'
 import type { HistoryClock } from '../history/historyModel'
+import { presetCommitVerdict } from './presetCommitVerdict'
+import { presetStateOf } from './presetTarget'
 
 // No confirmation and no failure within this long of page time: the chip stops claiming progress.
 export const ACK_BOUND_MS = 30_000
@@ -61,14 +64,18 @@ export interface SaveAckDeps {
 // encoded, and its saved copy is kept).
 export type ModuleCommitVerdict = 'saved' | 'unsavable' | 'blocked'
 
-// What an ack is for. A character ack is judged by the character rules; a module ack by the module's commit verdict.
-export type AckSubject = { readonly kind: 'character' } | { readonly kind: 'module', verdict(moduleId: string): ModuleCommitVerdict }
+// What an ack is for. A character ack is judged by the character rules; a module ack by the module's commit verdict and a
+// preset ack by the preset's. Both verdicts share the module ack's meanings.
+export type AckSubject =
+    | { readonly kind: 'character' }
+    | { readonly kind: 'module', verdict(moduleId: string): ModuleCommitVerdict }
+    | { readonly kind: 'preset', verdict(presetId: string): ModuleCommitVerdict }
 
 export interface SaveAck {
     readonly state: AckState
     readonly changedElsewhere: boolean
     readonly display: AckDisplay
-    // The id of the subject of the latest edit (a chaId, or a module id for a module ack); null before the first one.
+    // The id of the subject of the latest edit (a chaId, a module id for a module ack, or a preset id for a preset ack); null before the first one.
     readonly chaId: string | null
     canRetry(): boolean
     noteEdit(chaId: string, before: number): void
@@ -126,6 +133,14 @@ export function productionSaveAckDeps(clock: HistoryClock): SaveAckDeps {
 // The subject of a module ack in production: the module verdict of the latest commit the loop reported.
 export function productionModuleAckSubject(): AckSubject {
     return { kind: 'module', verdict: moduleCommitVerdict }
+}
+
+// The subject of a preset ack in production: the latest reported commit's unsavable items and the live preset list.
+export function productionPresetAckSubject(): AckSubject {
+    return {
+        kind: 'preset',
+        verdict: (presetId) => presetCommitVerdict(presetId, { isItemUnsavable, presetLive: (id) => presetStateOf(id) !== null }),
+    }
 }
 
 class SaveAckImpl implements SaveAck {
@@ -283,7 +298,7 @@ class SaveAckImpl implements SaveAck {
             this.startCeiling()
         }
         const covered = chaId !== null && this.deps.getCommittedMarkCount() >= this.target && this.target > 0
-        if (covered && chaId !== null && this.subject.kind === 'module') {
+        if (covered && chaId !== null && this.subject.kind !== 'character') {
             this.settleModuleCommit(this.subject.verdict(chaId))
         } else if (covered && chaId !== null) {
             const blocked = this.deps.isCharacterUnsavable(chaId) || this.deps.frozenKeys().has(chaId)

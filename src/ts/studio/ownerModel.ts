@@ -215,8 +215,18 @@ function overEntries<T>(
     }
 }
 
+/** The item id of the lore entry at index of the owner's list (<ownerId>/lore:<index>). */
+export function loreItemIdOf(ownerId: string, index: number): string {
+    return itemId(ownerId, 'lore', index)
+}
+
+/** The lore list index an item id names, or undefined unless it is <ownerId>/lore:<canonical decimal index>. */
+export function loreIndexOfItemId(ownerId: string, id: string): number | undefined {
+    return indexOfItemId({ id: ownerId }, 'lore', id)
+}
+
 function loreKind(owner: { key: string, id: string }, list: readonly LoreLike[] | undefined): KindNode {
-    const source = list ?? []
+    const source: readonly LoreLike[] = Array.isArray(list) ? list : []
     const folderCount = countFolders(source)
     return {
         kind: 'lore',
@@ -227,7 +237,7 @@ function loreKind(owner: { key: string, id: string }, list: readonly LoreLike[] 
             ownerKey: owner.key,
             kind: 'lore' as const,
             index,
-            name: entry?.comment || entry?.key || '',
+            name: entry?.mode === 'folder' ? (typeof entry.comment === 'string' ? entry.comment : '') : entry?.comment || entry?.key || '',
             folder: entry?.mode === 'folder',
         })),
     }

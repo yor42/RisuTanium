@@ -74,6 +74,7 @@ const VALUE_OF: Record<Exclude<SetPath, `preset${string}`>, string | boolean | B
     lowLevelAccessFix: true,
     utilityBotFix: true,
     escapeOutputFix: true,
+    biasFix: [['tok', 5]],
 }
 
 describe('T-W1: the writers of the builtin holders', () => {

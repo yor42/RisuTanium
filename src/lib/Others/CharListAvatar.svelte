@@ -88,9 +88,11 @@
         visible?: () => boolean;
         // Marks the avatar as loading its character: a dimmed cover with a spinner, and aria-busy on the button form.
         busy?: boolean;
+        // The Home library's larger square (GRID_HOME.tileRem); the default is the 56 px tile.
+        large?: boolean;
     }
 
-    let { src, fallbackStyle = "", onclick, label, class: className = "", children, visible, busy = false }: Props = $props();
+    let { src, fallbackStyle = "", onclick, label, class: className = "", children, visible, busy = false, large = false }: Props = $props();
 
     // The lookup effect reads no visibility itself: the queue calls this later, and a change of `visible`
     // must not look the image up again.
@@ -144,7 +146,7 @@
         };
     });
 
-    const base = "ico shrink-0 flex justify-center items-center rounded-md h-14 w-14 min-h-14 shadow-lg bg-[#6b7280]";
+    const base = $derived(`ico shrink-0 flex justify-center items-center rounded-md ${large ? "h-[4.5rem] w-[4.5rem] min-h-[4.5rem]" : "h-14 w-14 min-h-14"} shadow-lg bg-[#6b7280]`);
 </script>
 {#snippet openingMark()}
     <span aria-hidden="true" data-charlist-opening class="absolute inset-0 rounded-md bg-darkbg/60 flex items-center justify-center pointer-events-none">

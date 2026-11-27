@@ -4,10 +4,11 @@
 // on a fake clock.
 
 import { language } from '../../../lang'
-import { toastHost, type ToastHost, type ToastId, type UndoOutcome } from '../../toast/toastHost.svelte'
+import { toastHost, type PlainToastInit, type ToastHost, type ToastId, type UndoOutcome } from '../../toast/toastHost.svelte'
 import type { ListSkipReason, SetPath } from '../history/historyModel'
 import type { OwnerHistoryService, StudioRefusal, StudioResult } from '../history/ownerHistory.svelte'
 import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
+import { objRefusalText } from './objListCopy'
 
 export function refusalText(reason: StudioRefusal): string {
     switch (reason) {
@@ -51,6 +52,30 @@ export function addRefusalNotice(visitOpen: boolean, result: { reason: StudioRef
         return { kind: 'not-added' }
     }
     return { kind: 'refusal', text: refusalText(result.reason) }
+}
+
+// The name an emotion image takes from its file: the file name without its last extension; a name whose only dot leads it
+// (or that has none) is kept whole.
+export function emotionNameOf(fileName: string): string {
+    const dot = fileName.lastIndexOf('.')
+    return dot > 0 ? fileName.slice(0, dot) : fileName
+}
+
+// The toast of the files a pick refused for their type, or null when none was. The reason lists each extension once, in
+// pick order; a file with no extension shows its name.
+export function badTypeNotice(badType: readonly File[]): PlainToastInit | null {
+    if (badType.length === 0) {
+        return null
+    }
+    const exts: string[] = []
+    for (const file of badType) {
+        const dot = file.name.lastIndexOf('.')
+        const label = dot < 0 ? file.name : file.name.slice(dot).toLowerCase()
+        if (!exts.includes(label)) {
+            exts.push(label)
+        }
+    }
+    return { kind: 'warning', text: language.studioImportRefused(badType.length), sub: language.studioPickBadType(exts.join(', ')) }
 }
 
 // The sentence that says why the first messages were skipped; null when the model named no reason.
@@ -156,8 +181,9 @@ export interface StudioToastDeps {
 }
 
 export interface StudioToasts {
-    // One Undo toast for one deleted item; `deletedId` is the id of the History entry and of the toast action.
-    postDeleted(owner: OwnerKey, deletedId: string): ToastId
+    // One Undo toast for one deleted item; `deletedId` is the id of the History entry and of the toast action. `text` is the
+    // toast's line and `restoredText` the line of a successful Undo; absent, they are the first message's.
+    postDeleted(owner: OwnerKey, deletedId: string, text?: string, restoredText?: string): ToastId
     // The delete was undone another way (Ctrl+Z or a History restore): its toast no longer offers Undo.
     dismissDeleted(deletedId: string): void
     // One Undo toast for one landed asset step. Its Undo runs only while that step is still on top of the owner's
@@ -263,9 +289,9 @@ export function createStudioToasts(deps: StudioToastDeps): StudioToasts {
                 action: { id: 'undo-action:' + undoActionCounter, failedText: language.studioToastRestoreFailed, run },
             })
         },
-        postDeleted(owner, deletedId) {
+        postDeleted(owner, deletedId, text, restoredText) {
             return host.postUndo({
-                text: language.studioToastGreetingDeleted,
+                text: text ?? language.studioToastGreetingDeleted,
                 actionLabel: language.studioToastUndo,
                 action: {
                     id: deletedId,
@@ -275,11 +301,11 @@ export function createStudioToasts(deps: StudioToastDeps): StudioToasts {
                         const result = service ? service.restoreDeleted(owner, deletedId) : ({ ok: false, reason: 'loading' } as const)
                         if (result.ok === false) {
                             // `after` stays absent: a refused Undo removes the action, and the record stays in History.
-                            return { ok: false, text: refusalText(result.reason) }
+                            return { ok: false, text: ('obj' in result ? objRefusalText(result) : null) ?? refusalText(result.reason) }
                         }
                         return {
                             ok: true,
-                            text: result.fmNotRestored ? language.studioToastRestoredFmNotice : language.studioToastRestored,
+                            text: restoredText ?? (result.fmNotRestored ? language.studioToastRestoredFmNotice : language.studioToastRestored),
                         }
                     },
                 },

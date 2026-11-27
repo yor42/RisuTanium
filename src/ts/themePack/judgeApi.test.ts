@@ -9,6 +9,8 @@ import { describe, expect, it } from 'vitest'
 import { canonicalStylesheet, type ResourceSpan } from './canonical'
 import { THEME_AREAS, judgeAreaSheet, judgePackSheets, lintAreaPack, preprocessCss, validateThemePack, type ThemeArea } from './index'
 
+/** The properties the effects pass warns about; its warnings are the only kind a refused sheet may carry. */
+const EFFECT_WARNING_PROPS: ReadonlySet<string> = new Set(['transition', 'animation', 'transform', 'translate', 'scale', 'rotate', 'transform-origin', 'filter', 'backdrop-filter'])
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const DESIGN = path.resolve(ROOT, 'docs/design')
 const LEGACY_SETTINGS = ['backdrop-hidden', 'backdrop-top', 'cancel-hidden', 'footer-row-reverse', 'retry-hidden', 'row-hidden', 'toast-faded']
@@ -181,7 +183,8 @@ describe('Ts-2: a resource span indexes the canonical text exactly', () => {
                 const judged = judgeAreaSheet(area, input.css, undefined, input.label)
                 expect(judged.result, `${area} / ${input.label}`).toEqual(lintAreaPack(area, input.css, input.label))
                 // the engine-side warnings read only a sheet no refusal stops; a sheet that carries only notes is read too since #560 PR2
-                if (!judged.result.ok) expect(judged.warnings, `${area} / ${input.label}`).toEqual([])
+                // a refused sheet may carry the effects warnings (they name a refused effect declaration) and no other kind
+                if (!judged.result.ok) expect(judged.warnings.filter((w) => !EFFECT_WARNING_PROPS.has(w.prop)), `${area} / ${input.label}`).toEqual([])
                 expect(judged.canonical, `${area} / ${input.label}`).toBe(canonical.text)
                 expect(judged.resources, `${area} / ${input.label}`).toEqual(canonical.resources)
                 for (const block of judged.fontFaceBlocks) expect(judged.canonical.slice(block.start, block.end), `${area} / ${input.label}`).toBe(block.text)

@@ -119,3 +119,24 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: /language:java-kotlin
+
+      # A traced build that compiled no Kotlin still finalises and passes with 0 alerts.
+      # Analysis has finalised the database, whose src.zip archives every extracted source
+      # file, so fail the job when that archive holds no .kt file.
+      - name: Require extracted Kotlin sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          db_root="${RUNNER_TEMP}/codeql_databases"
+          src_zip="$(find "$db_root" -type f -name src.zip -path '*java*' | head -n 1)"
+          if [ -z "$src_zip" ]; then
+            echo "::error::No java-kotlin database src.zip under $db_root; the scan extracted nothing."
+            exit 1
+          fi
+          kt_count="$(unzip -Z1 "$src_zip" | grep -c '\.kt$' || true)"
+          echo "Kotlin files extracted: $kt_count (from $src_zip)"
+          echo "Kotlin files extracted by CodeQL: $kt_count" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$kt_count" -eq 0 ]; then
+            echo "::error::CodeQL extracted zero Kotlin source files; an empty scan must not pass."
+            exit 1
+          fi

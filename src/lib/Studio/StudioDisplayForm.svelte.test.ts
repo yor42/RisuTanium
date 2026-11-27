@@ -414,3 +414,16 @@ describe('A-T3 and D-A1: the detail title follows the name', () => {
         expect(part('studio-detail-title')?.textContent).toBe('Alicia')
     })
 })
+
+describe('D-T1: a character Display has a real Add for assets and emotions', () => {
+    test('the Assets segment shows the asset Add', async () => {
+        await show({}, 'assets')
+        expect(part('studio-asset-add')).not.toBeNull()
+    })
+
+    test('the Screen segment in emotion mode shows the emotion Add, also with no emotion images', async () => {
+        await show({ viewScreen: 'emotion', emotionImages: [] }, 'screen')
+        expect(part('studio-emotion-add')).not.toBeNull()
+        expect(part('studio-emotion-empty')).not.toBeNull()
+    })
+})

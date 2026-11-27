@@ -44,6 +44,8 @@ vi.mock('../../ts/globalApi.svelte', () => ({ getFileSrc: async (path: string, u
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
 // The loader module is not spread in: evaluating the real one loads the app graph, and the detail reads no other export of it.
 vi.mock('../../ts/process/moduleLoader', () => ({ loadModuleStubsOf: loader.load, loadModule: vi.fn() }))
+vi.mock('../../ts/process/moduleLorebookRepair', () => ({ lorebookRepairNeed: () => 'none' }))
+vi.mock('../../ts/alert', () => ({ alertMd: vi.fn() }))
 // The real publish, counted: a rebuild of the owner model must not publish again.
 vi.mock('../../ts/studio/assets/openModuleForm.svelte', async (importActual) => {
     const actual = await importActual<typeof import('../../ts/studio/assets/openModuleForm.svelte')>()

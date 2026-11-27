@@ -158,15 +158,15 @@ describe('structure', () => {
 
 describe('accessible names', () => {
     test('S3b-U2: a card is named by its name, chat and time, and described by the snippet', () => {
-        setCharacters([warm('S1', 6000), warm('G', 5000, { type: 'group' }), buildColdStub(warm('Arch', 4000) as never, 'unit-arch', []) as unknown as Entry])
+        setCharacters([warm('S1', 6000), warm('G', 5000, { type: 'group' }), buildColdStub(warm('Arch', 4000, { creatorNotes: 'A quiet harbour town.' }) as never, 'unit-arch', []) as unknown as Entry])
         const root = mountShelf(storiesOf())
         const [first, group, archived] = cards(root)
         const timeOf = (card: Element) => part(card, 'home-story-time')!.textContent!
         expect(controlName(first)).toBe(`S1 Chat-S1 ${timeOf(first)}`)
         expect(controlDescription(first)).toBe('Line S1')
         expect(controlName(group).startsWith(language.chatShellGroupName('G'))).toBe(true)
-        expect(controlName(archived)).toBe(`Arch ${language.homeStoryArchived} ${timeOf(archived)}`)
-        expect(controlDescription(archived)).toBe('')
+        expect(controlName(archived)).toBe(`Arch ${timeOf(archived)}`)
+        expect(controlDescription(archived)).toBe('A quiet harbour town.')
         expect(exposedIcons(root)).toEqual([])
         expect(paletteClasses(root)).toEqual([])
     })

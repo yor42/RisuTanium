@@ -147,9 +147,9 @@ async function startWorld(db: Database, options: StartOptions = {}): Promise<Wor
         requests.push(request)
         return inner.plan(planDb, request)
     }
-    encoder.verdictOf = (slot) => {
+    encoder.verdictOfYielding = async (slot, pause) => {
         verdicts.push(String((slot as { chaId?: unknown }).chaId))
-        return inner.verdictOf(slot)
+        return inner.verdictOfYielding(slot, pause)
     }
     kit.context.encoder = encoder
     const counted = { reads: 0, sweeps: 0, begun: 0 }

@@ -179,7 +179,7 @@ interface Probe {
     encoder: SaveEncoder
     verdicts: number
     fronts: number
-    /** Runs once, inside the next `verdictOf`. */
+    /** Runs once, inside the next `verdictOfYielding`. */
     onVerdict: (() => void) | null
     /** Throws once, from the next `netScan`. */
     netScanFails: boolean
@@ -190,13 +190,22 @@ function probeEncoder(kit: Store2Kit): Probe {
     const encoder = createSaveEncoder({ previous, lists, env })
     kit.context.encoder = encoder
     const probe: Probe = { encoder, verdicts: 0, fronts: 0, onVerdict: null, netScanFails: false }
-    const verdictOf = encoder.verdictOf.bind(encoder)
-    encoder.verdictOf = (slot) => {
+    // The parked-page judgement asks `verdictOf` and the idle net asks `verdictOfYielding`; both are counted and hooked.
+    const countVerdict = (): void => {
         probe.verdicts += 1
         const hook = probe.onVerdict
         probe.onVerdict = null
         hook?.()
+    }
+    const verdictOf = encoder.verdictOf.bind(encoder)
+    encoder.verdictOf = (slot) => {
+        countVerdict()
         return verdictOf(slot)
+    }
+    const verdictOfYielding = encoder.verdictOfYielding.bind(encoder)
+    encoder.verdictOfYielding = async (slot, pause) => {
+        countVerdict()
+        return verdictOfYielding(slot, pause)
     }
     const frontVerdictOf = encoder.frontVerdictOf.bind(encoder)
     encoder.frontVerdictOf = (db) => {

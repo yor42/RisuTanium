@@ -130,6 +130,7 @@ export async function postInlayAsset(img:{
 
         report(0, size)
         await writeInlay(imgid, {
+            created: Date.now(),
             name: img.name,
             data: blob,
             ext: extention,
@@ -177,6 +178,7 @@ export async function writeInlayImage(imgObj:HTMLImageElement, arg:{name?:string
     const imgid = arg.id ?? v4()
 
     await writeInlay(imgid, {
+        created: Date.now(),
         name: arg.name ?? imgid,
         data: imageBlob,
         ext: 'png',
@@ -233,6 +235,7 @@ export type InlaySignature = {
 
 export async function saveInlayedSignature(sigid:string,signature:InlaySignature){
     await writeInlay(sigid, {
+        created: Date.now(),
         name: sigid,
         data: JSON.stringify(signature),
         ext: 'json',

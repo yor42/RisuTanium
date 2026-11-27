@@ -264,6 +264,11 @@
             return
         }
         if (row.expandable) {
+            // A phone opens the lorebook list, the home of its entries, instead of an inline expansion.
+            if (row.rowKind === 'kind' && row.kind === 'lore' && row.ownerKey !== null && studioScreen.layout === 'stack') {
+                selectStudioNode(row.ownerKey, row.kind, null)
+                return
+            }
             toggle(row, !row.expanded)
             // Wide layouts also show the opened owner or kind; a phone stays on the list to open further.
             if (row.ownerKey !== null && studioScreen.layout !== 'stack') setStudioSelection(row.ownerKey, row.kind, null)

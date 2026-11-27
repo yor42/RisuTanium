@@ -8,6 +8,7 @@
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
+import { beginPresetAck, endPresetAck } from '../../ts/studio/edit/presetAck.svelte'
 import { presetNameOf, presetStateOf } from '../../ts/studio/edit/presetTarget'
 import { characterTogglePort, moduleTogglePort, presetTogglePort } from '../../ts/studio/edit/toggleTextPort'
     import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
@@ -93,6 +94,8 @@ import { characterTogglePort, moduleTogglePort, presetTogglePort } from '../../t
                 port.begin()
                 if (fixed.kind === 'module') {
                     beginModuleAck(fixed.moduleId)
+                } else if (fixed.kind === 'preset') {
+                    beginPresetAck(fixed.presetId, studioScreen.visitId)
                 }
             })
         } else {
@@ -372,6 +375,8 @@ import { characterTogglePort, moduleTogglePort, presetTogglePort } from '../../t
         // The module's ack ends with its builder: a switch of owner, a change of kind or a cleared selection destroys it.
         if (fixed.kind === 'module') {
             endModuleAck(fixed.moduleId)
+        } else if (fixed.kind === 'preset') {
+            endPresetAck(fixed.presetId)
         }
     })
 </script>

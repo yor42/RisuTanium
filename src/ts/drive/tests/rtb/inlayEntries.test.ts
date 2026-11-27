@@ -60,6 +60,17 @@ describe('decodeInlayMeta (T20)', () => {
         expect(decoded.meta).toEqual({ v: 1, repr, mime: original.mime, len: 7, fields: original.fields, unknown: {} })
     })
 
+    test('compatibility guard: a record with a created time, and one without, round-trip their fields unchanged', () => {
+        for (const fields of [{ created: 1700000000000, name: 'pic.png', width: 3 }, { name: 'pic.png', width: 3 }]) {
+            const original = record({ fields })
+            const decoded = decodeInlayMeta(encodeInlayMeta('id', original), original.len)
+            expect(decoded.kind).toBe('ok')
+            if (decoded.kind === 'ok') {
+                expect(decoded.meta.fields).toEqual(fields)
+            }
+        }
+    })
+
     test('unknown top-level fields are kept', () => {
         const decoded = decodeInlayMeta(metaBytes({ ...GOOD_META, later: [1], other: 'x' }))
         expect(decoded.kind === 'ok' && decoded.meta.unknown).toEqual({ later: [1], other: 'x' })

@@ -13,6 +13,8 @@
 // `modal-iris`, `modal-prompt-diff`) are reach, with the same row classes as W3-2.
 // #438 W3-5 adds ModelList and OpenrouterProviderList (overlay only, never the trigger or notes): the two new identity roots (`modal-model-list`,
 // `modal-openrouter-provider-list`) are reach, with the same row classes as W3-2.
+// #438 W3-6a adds HypaV3Modal, modal-header, modal-summary-item and modal-footer: the one new identity root (`modal-hypa-v3`) is reach, with the
+// same row classes as W3-2.
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -30,7 +32,7 @@ const OVERLAY_NAMES: Readonly<Record<string, NameClass>> = {
     'modal-list': 'reach', 'modal-bookmark-list': 'reach', 'modal-easy-panel': 'reach', 'modal-loadout': 'reach', 'modal-custom-sidebar-config': 'reach',
     'modal-realm-popup': 'reach', 'modal-realm-frame': 'reach', 'modal-realm-blocked-creators': 'reach',
     'modal-botpreset': 'reach', 'modal-iris': 'reach', 'modal-prompt-diff': 'reach',
-    'modal-model-list': 'reach', 'modal-openrouter-provider-list': 'reach',
+    'modal-model-list': 'reach', 'modal-openrouter-provider-list': 'reach', 'modal-hypa-v3': 'reach',
     'memory-progress': 'reach', 'memory-progress-card': 'reach', 'memory-progress-text': 'safe', 'memory-progress-bar': 'safe', 'memory-progress-bar-fill': 'safe',
     'memory-progress-subtext': 'safe', 'memory-progress-pill': 'reach', 'memory-progress-mini': 'safe',
     'save-status-alert': 'critical', 'save-status-note': 'safe', 'save-status-saving': 'safe',
@@ -74,6 +76,8 @@ describe('W1-T5a a popups sheet may restyle the safe and reach overlay names', (
         '[data-part="modal-iris"] [data-part="modal-field"]{border-radius:8px}',
         '[data-part="modal-model-list"] [data-part="modal-close"]{background:#ffcc00}',
         '[data-part="modal-openrouter-provider-list"] [data-part="modal-title"]{letter-spacing:2px}',
+        '[data-part="modal-hypa-v3"] [data-part="modal-row"]{border-radius:20px}',
+        '[data-part="modal-hypa-v3"] [data-part="modal-title"]{letter-spacing:2px}',
         '[data-part="modal-frame"]{border-radius:24px;background:#5a1f6b}',
     ])('%s is accepted', (css) => {
         const { ok, why } = verdict(css)
@@ -89,7 +93,7 @@ describe('W1-T5b a popups sheet can neither hide a reach overlay name nor style 
     })
 
     it.each(['modal-list', 'modal-loadout', 'modal-easy-panel', 'modal-bookmark-list', 'modal-custom-sidebar-config',
-        'modal-realm-popup', 'modal-realm-frame', 'modal-realm-blocked-creators', 'modal-botpreset', 'modal-iris', 'modal-prompt-diff', 'modal-model-list', 'modal-openrouter-provider-list'])(
+        'modal-realm-popup', 'modal-realm-frame', 'modal-realm-blocked-creators', 'modal-botpreset', 'modal-iris', 'modal-prompt-diff', 'modal-model-list', 'modal-openrouter-provider-list', 'modal-hypa-v3'])(
         'hiding the reach name %s is refused with the declaration-allowlist reason', (name) => {
             const { ok, why } = verdict(`[data-part="${name}"]{display:none}`)
             expect(ok).toBe(false)

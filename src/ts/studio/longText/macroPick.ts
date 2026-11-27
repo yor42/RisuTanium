@@ -24,10 +24,10 @@ export type PickItem = {
 
 /** A second list the field can offer beside the macro picker; the field stays unaware of what the items are. */
 export type PickSource = {
-    trigger(beforeCaret: string): MacroTrigger | null
-    items(): readonly PickItem[]
-    matches?(n: number): string
-    label?(): string
+    trigger: (beforeCaret: string) => MacroTrigger | null
+    items: () => readonly PickItem[]
+    matches?: (n: number) => string
+    label?: () => string
 }
 
 const TRIGGER = /\{\{([^{}:\s]*)$/

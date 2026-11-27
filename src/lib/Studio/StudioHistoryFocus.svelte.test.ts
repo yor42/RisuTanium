@@ -93,6 +93,7 @@ const CHAT = chatOwnerKey('A', 'c1')
 const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
 const basicTarget = { owner: { type: 'character', id: 'A' }, kind: 'basic', item: 'A/basic:0', from: 'chat' } as const
 const displayTarget = { owner: { type: 'character', id: 'A' }, kind: 'display', item: 'A/display:0', from: 'chat' } as const
+const loreTarget = { owner: { type: 'character', id: 'A' }, kind: 'lore', from: 'chat' } as const
 
 // ---------------------------------------------------------------- rigs
 
@@ -230,7 +231,7 @@ function narrow(width: number): void {
     vi.stubGlobal('ResizeObserver', Narrow)
 }
 
-async function screenWithPanel(options: { width?: number; patch?: Partial<Live>; target?: typeof basicTarget | typeof displayTarget } = {}): Promise<Rig> {
+async function screenWithPanel(options: { width?: number; patch?: Partial<Live>; target?: typeof basicTarget | typeof displayTarget | typeof loreTarget } = {}): Promise<Rig> {
     if (options.patch) db.db = fixtureDb(options.patch)
     if (options.width !== undefined) narrow(options.width)
     const rig = makeRig()
@@ -426,6 +427,32 @@ describe('F: focus lands on the first message an Undo, Redo or Restore put back 
         await press('studio-history-undo')
         expect('risutanium_render_when_complete' in live()).toBe(false)
         const box = document.querySelector<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-form-render-when-complete"]')
+        expect(box).not.toBeNull()
+        expect(document.activeElement).toBe(box)
+    })
+
+    test('THF an Undo of a LoreBook+ step focuses the settings box of the lorebook pane', async () => {
+        // The LoreBook+ switch shows only while the app's experimental setting is on.
+        Object.assign(db.db, { useExperimental: true })
+        const rig = await screenWithPanel({ target: loreTarget })
+        // The pane is loaded on first use, so its settings, collapsed, appear a few turns after the screen mounts.
+        for (let turns = 0; turns < 100 && part('studio-lore-settings') === null; turns++) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 20))
+            await settle()
+        }
+        expect(part('studio-lore-settings')).not.toBeNull()
+        expect(part('studio-lore-plus')).toBeNull()
+        expect(rig.service.editField(A, 'lorePlus', true, { coalesceKey: null }).ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        flushSync()
+        await press('studio-history-undo')
+        expect('lorePlus' in live()).toBe(false)
+        // The collapsed settings open for the reveal, which waits on the next frame.
+        for (let turns = 0; turns < 50 && part('studio-lore-plus') === null; turns++) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 20))
+            await settle()
+        }
+        const box = document.querySelector<HTMLElement>('[data-part="studio-lore-settings"] [data-part="studio-lore-plus"]')
         expect(box).not.toBeNull()
         expect(document.activeElement).toBe(box)
     })

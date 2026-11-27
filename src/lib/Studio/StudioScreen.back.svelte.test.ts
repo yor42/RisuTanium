@@ -391,7 +391,7 @@ describe('2h the History panel and the restore sheet are Back layers', () => {
             closeOpenStep: () => {},
             view: (owner: string) => ({
                 ownerKey: owner, phase: 'ready', banner: null, restricted: false, editable: true, persisted: true,
-                done: [], undone: [], deleted: [], restore: null,
+                done: [], undone: [], deleted: [], restore: null, restoreLines: [], restoreNotes: [],
             }),
         } as unknown as OwnerHistoryService)
         setStudioVisitAckForTests(stubAck)

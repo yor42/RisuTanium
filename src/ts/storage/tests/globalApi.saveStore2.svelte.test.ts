@@ -639,11 +639,11 @@ function watchNet(page: Page): { verdicts: string[], scans: () => number } {
     const encoder = page.k.encoder
     const verdicts: string[] = []
     let scans = 0
-    const realVerdict = encoder.verdictOf.bind(encoder)
+    const realVerdict = encoder.verdictOfYielding.bind(encoder)
     const realScan = encoder.netScan.bind(encoder)
-    encoder.verdictOf = (slot) => {
+    encoder.verdictOfYielding = async (slot, pause) => {
         verdicts.push(String((slot as { chaId?: unknown }).chaId))
-        return realVerdict(slot)
+        return realVerdict(slot, pause)
     }
     encoder.netScan = (scanned) => {
         scans += 1

@@ -8,7 +8,7 @@
     type SerializableSummary, 
     summarize,
   } from "src/ts/process/memory/hypav3";
-  import { alertNormalWait } from "src/ts/alert";
+  import { alertConfirm, alertNormalWait } from "src/ts/alert";
   import { isImeComposing } from "src/ts/ime/compositionGuard";
   import { DBState, selectedCharID, hypaV3ModalOpen } from "src/ts/stores.svelte";
   import { language } from "src/lang";
@@ -331,6 +331,15 @@
       await alertNormalWait(language.hypaV3Modal.bulkApplyChangedMessage);
       return;
     }
+
+    if (!(await alertConfirm(fillLang(language.hypaV3Modal.bulkApplyConfirm, { count: sortedIndices.length, removed: sortedIndices.length - 1 })))) return;
+
+    // Re-resolve after the dialog: the panel or the summaries may have changed while it was open.
+    if (!bulkResummaryState || !bulkResummaryState.result) return;
+    const confirmedIndices = bulkResummaryState.heldSummaries
+      .map(summary => hypaV3Data.summaries.indexOf(summary))
+      .sort((a, b) => a - b);
+    if (confirmedIndices.length !== sortedIndices.length || confirmedIndices.some((v, i) => v !== sortedIndices[i])) return;
 
     const minIndex = sortedIndices[0];
     // The merge keeps the earliest source time, or none when any source is untimed; an untimed
@@ -803,13 +812,13 @@
 <!-- hypaV3Data is created by the $effect.pre above, which blocks can run ahead of -->
 {#if hypaV3Data}
   <!-- Modal Backdrop -->
-  <div class="fixed inset-0 z-40 p-1 sm:p-2 bg-black/50">
+  <div data-part="modal-hypa-v3" class="fixed inset-0 z-40 p-1 sm:p-2 bg-black/50">
     <!-- Modal Wrapper -->
     <div class="flex justify-center w-full h-full">
       <!-- Modal Window -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
+      <div data-part="modal-frame"
         class="flex flex-col w-full max-w-3xl p-3 rounded-lg sm:p-6 bg-darkbg {hypaV3Data
           .summaries.length === 0
           ? 'h-fit'
@@ -838,18 +847,18 @@
         />
 
         <!-- Scrollable Container -->
-        <div class="flex flex-col gap-2 overflow-y-auto sm:gap-4" tabindex="-1" bind:this={summaryScroller}>
+        <div data-part="modal-body" class="flex flex-col gap-2 overflow-y-auto sm:gap-4" tabindex="-1" bind:this={summaryScroller}>
           {#if hypaV3Data.summaries.length === 0}
             <!-- Conversion Section -->
             {#if isHypaV2ConversionPossible()}
-              <div
+              <div data-part="modal-controls"
                 class="flex flex-col p-2 border rounded-lg sm:p-4 border-darkborderc bg-bgcolor/50"
               >
                 <div class="flex flex-col items-center">
-                  <div class="my-1 text-center sm:my-2 text-textcolor">
+                  <div data-part="modal-text" class="my-1 text-center sm:my-2 text-textcolor">
                     {language.hypaV3Modal.convertLabel}
                   </div>
-                  <button
+                  <button data-part="modal-action"
                     class="px-4 py-2 my-1 font-semibold transition-colors rounded-md sm:my-2 text-textcolor bg-darkbutton hover:bg-borderc"
                     tabindex="-1"
                     onclick={async () => {
@@ -874,14 +883,14 @@
                 </div>
               </div>
             {:else}
-              <div class="p-4 text-center sm:p-3 md:p-4 text-textcolor2">
+              <div data-part="modal-text" class="p-4 text-center sm:p-3 md:p-4 text-textcolor2">
                 {language.hypaV3Modal.noSummariesLabel}
               </div>
             {/if}
 
             <!-- Search Bar -->
           {:else if searchState}
-            <div class="sticky top-0 p-2 sm:p-3 bg-bgcolor">
+            <div data-part="modal-controls" class="sticky top-0 p-2 sm:p-3 bg-bgcolor">
               <div class="flex items-center gap-2">
                 <div class="relative flex items-center flex-1">
                   <form
@@ -892,7 +901,7 @@
                     }}
                   >
                     <span id="{uid}-search" class="sr-only">{language.search}</span>
-                    <input
+                    <input data-part="modal-field"
                       class="w-full px-2 py-2 border rounded-sm sm:px-4 sm:py-3 border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
                       aria-labelledby="{uid}-search"
                       aria-describedby="{uid}-search"
@@ -913,7 +922,7 @@
                   </form>
 
                   {#if searchState.results.length > 0}
-                    <span
+                    <span data-part="modal-text"
                       class="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 sm:px-3 py-1 sm:py-2 rounded-sm text-sm font-semibold text-textcolor bg-darkbutton/65"
                     >
                       {searchState.currentResultIndex + 1}/{searchState.results
@@ -923,7 +932,7 @@
                 </div>
 
                 <!-- Previous Button -->
-                <button
+                <button data-part="modal-action"
                   class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
                   tabindex="-1"
                   aria-label={language.chatShellFindPrev}
@@ -935,7 +944,7 @@
                 </button>
 
                 <!-- Next Button -->
-                <button
+                <button data-part="modal-action"
                   class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
                   tabindex="-1"
                   aria-label={language.chatShellFindNext}
