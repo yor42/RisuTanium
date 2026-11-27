@@ -127,11 +127,11 @@ interface Seeded {
     mime: string
 }
 
-/** A blob inlay with image fields and a string inlay, both small. */
+/** A blob inlay with image fields and a `created` time, and a string inlay without one (as stored before `created` was recorded), both small. */
 const SEEDED: Seeded[] = [
     {
         id: 'guard-inlay-image.png',
-        fields: { ext: 'png', name: 'guard-image.png', type: 'image', width: 2, height: 3 },
+        fields: { created: 1700000000000, ext: 'png', name: 'guard-image.png', type: 'image', width: 2, height: 3 },
         bytes: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2, 254, 255]),
         mime: 'image/png',
     },

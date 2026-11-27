@@ -12,6 +12,7 @@ import {
     listInlayAssets,
     postInlayAsset,
     removeInlayAsset,
+    saveInlayedSignature,
     setInlayAsset,
     writeInlayImage,
 } from '../inlays'
@@ -336,6 +337,7 @@ describe('postInlayAsset', () => {
 
         const found = await stored('test-uuid-1234')
         expect(found).toMatchObject({
+            created: expect.any(Number),
             data: expect.any(Blob),
             ext: 'mp3',
             name: 'clip.mp3',
@@ -353,6 +355,7 @@ describe('postInlayAsset', () => {
 
         const found = await stored('test-uuid-1234')
         expect(found).toMatchObject({
+            created: expect.any(Number),
             data: expect.any(Blob),
             ext: 'webm',
             name: 'video.webm',
@@ -423,6 +426,7 @@ describe('writeInlayImage', () => {
 
         const found = await stored('custom-id')
         expect(found).toMatchObject({
+            created: expect.any(Number),
             data: expect.any(Blob),
             ext: 'png',
             height: 100,
@@ -638,5 +642,55 @@ describe('set -> remove -> get', () => {
                 expect(await getInlayAsset(id)).toBeNull()
             }),
         )
+    })
+})
+
+describe('saveInlayedSignature', () => {
+    test('stores a signature asset with a created timestamp and returns the id', async () => {
+        const signature: Parameters<typeof saveInlayedSignature>[1] = {
+            signatures: [{ type: 'text', content: 'thought' }],
+            sourceFormat: 0 as Parameters<typeof saveInlayedSignature>[1]['sourceFormat'],
+            source: 'gemini-2.5-pro',
+        }
+
+        expect(await saveInlayedSignature('sig-1', signature)).toBe('sig-1')
+
+        expect(await stored('sig-1')).toMatchObject({
+            created: expect.any(Number),
+            data: JSON.stringify(signature),
+            ext: 'json',
+            name: 'sig-1',
+            type: 'signature',
+        })
+    })
+})
+
+describe('created timestamp', () => {
+    test('a written inlay is stamped within the time of the write', async () => {
+        const before = Date.now()
+        await postInlayAsset({ name: 'clip.mp3', data: new Uint8Array([1]) })
+        const after = Date.now()
+
+        const { created } = await stored('test-uuid-1234')
+        expect(created).toBeGreaterThanOrEqual(before)
+        expect(created).toBeLessThanOrEqual(after)
+    })
+
+    test('compatibility guard: created survives set -> get and appears in the listing and in the plugin-facing read', async () => {
+        await setInlayAsset('with-date', { created: 1700000000000, data: new Blob(['x']), ext: 'png', name: 'a.png', type: 'image' })
+
+        expect(await getInlayAsset('with-date')).toMatchObject({ created: 1700000000000 })
+        const listed = await listInlayAssets()
+        expect(listed).toMatchObject([['with-date', { created: 1700000000000 }]])
+    })
+
+    test('compatibility guard: an inlay stored without created reads back without one and is otherwise unchanged', async () => {
+        await setInlayAsset('no-date', { data: new Blob(['x']), ext: 'png', name: 'old.png', type: 'image', width: 1, height: 2 })
+
+        const read = await getInlayAsset('no-date')
+        expect(read).toMatchObject({ ext: 'png', name: 'old.png', type: 'image', width: 1, height: 2 })
+        expect(read).not.toHaveProperty('created')
+        const [[, summary]] = await listInlayAssets()
+        expect(summary.created).toBeUndefined()
     })
 })
