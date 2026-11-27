@@ -2,9 +2,10 @@
 // stored bytes with the worker judge, mints one blob URL per bundled file, and puts each judged screen sheet into its own
 // gated style element before `#customcss`. Nothing here writes a persisted value or decides when to run; the driver does.
 //
-// Judged is applied: the text that reaches an element is the judged canonical text, except that each resource span is
-// replaced by a blob URL. The shape variant (the allowlisted subset, judged again) is applied the same way, so it too is the
-// judge's own canonical text; when that judgement fails, shape mode applies no sheet. A colour-ready area (COLOUR_READY_AREAS)
+// Judged is applied, plus the app-written fallback tail (effectsFallback.ts): the text that reaches an element is the judged
+// canonical text, except that each resource span is replaced by a blob URL, followed by the tail the effects of that text call
+// for. The shape variant (the allowlisted subset, judged again) is applied the same way, so it too is the judge's own
+// canonical text; when that judgement fails, shape mode applies no sheet. A colour-ready area (COLOUR_READY_AREAS)
 // has a colour variant with its base and a shape variant; every other area has only its shape variant, with no base, in both
 // modes. Each element is created `media="not all"` before insertion and registered with the surface gate, which alone
 // switches it on; this module never writes `all` and never touches `disabled`.
@@ -17,6 +18,7 @@ import type { BuiltinPack } from './builtins'
 import type { ResourceSpan } from './canonical'
 import { COLOUR_READY_AREAS } from './colourReady'
 import { decls } from './csslit'
+import { fallbackTail } from './effectsFallback'
 import type { AreaSheetJudgement } from './index'
 import { intakePack, readVerifiedFile, type IntakeRefusal, type ScreenArea, type VerifiedPack } from './intake'
 import { readJudgement, type JudgeJob, type JudgeResults, type JudgeSession } from './judgeClient'
@@ -305,6 +307,23 @@ function prepareShapeOnlyText(judged: AreaSheetJudgement | null, urlOfTarget: (r
     }
 }
 
+/**
+ * Appends the fallback tail to every text that will reach an element: each element's colour and shape texts and both popups texts.
+ * It runs outside the shape texts' own catch blocks, so a throw in the tail reaches preparePackSheet and no sheet is applied
+ * without its tail.
+ */
+function withFallbackTails(elements: readonly PreparedElement[], popups: PreparedPopups | null): { elements: PreparedElement[]; popups: PreparedPopups | null } {
+    const tailed = (text: string | null): string | null => {
+        if (text === null) return null
+        const tail = fallbackTail(text)
+        return tail === '' ? text : `${text}\n${tail}`
+    }
+    return {
+        elements: elements.map((element) => ({ ...element, text: tailed(element.text), shapeText: tailed(element.shapeText) })),
+        popups: popups === null ? null : { colourText: tailed(popups.colourText), shapeText: tailed(popups.shapeText) },
+    }
+}
+
 async function prepareBuiltin(pack: BuiltinPack, session: JudgeSession, isCurrent: () => boolean): Promise<Prepared | Stale> {
     let judged: Awaited<ReturnType<JudgeSession['judge']>> | null = null
     try {
@@ -335,9 +354,10 @@ async function prepareBuiltin(pack: BuiltinPack, session: JudgeSession, isCurren
     const base = baseOf(variants.light)
     const shapeText = prepareShapeText(chat, text, () => '', variants.shape)
     const chatText = textOrNull(text)
+    const tailed = withFallbackTails([{ area: 'chat', text: chatText, shapeText, base }], null)
     return {
         ok: true, blobs: [], skippedAreas: [], defaultScheme: packDefaultScheme(chat.canonical, base),
-        elements: [{ area: 'chat', text: chatText, shapeText, base }], popups: null,
+        elements: tailed.elements, popups: tailed.popups,
         ...(judgementTriggers(chat) ? { ownColourTrigger: true as const } : {}),
     }
 }
@@ -485,7 +505,8 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
     const colourText = prepareShapeOnlyText(popupsColourJudged, (raw) => urlOfRaw.get(raw))
     const popupsShapeText = prepareShapeOnlyText(popupsShapeJudged, (raw) => urlOfRaw.get(raw))
     const popups: PreparedPopups | null = colourText === null && popupsShapeText === null ? null : { colourText, shapeText: popupsShapeText }
-    return { ok: true, blobs: [...minted], skippedAreas: pack.skippedAreas, defaultScheme, elements, popups, ...(ownColourTrigger ? { ownColourTrigger: true as const } : {}) }
+    const tailed = withFallbackTails(elements, popups)
+    return { ok: true, blobs: [...minted], skippedAreas: pack.skippedAreas, defaultScheme, elements: tailed.elements, popups: tailed.popups, ...(ownColourTrigger ? { ownColourTrigger: true as const } : {}) }
 }
 
 /**

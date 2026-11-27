@@ -746,6 +746,7 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
                     else{
                         const id = v4()
                         await setInlayAsset(id, {
+                            created: Date.now(),
                             name: 'gemini-audio',
                             type: 'audio',
                             data: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
