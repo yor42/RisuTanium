@@ -1,6 +1,89 @@
-# #438 stage handoffs: wrap-up W3-7 (this PR) and the merged stages W3-6b, W3-6a, W3-5, W3-4, W3-3, W3-2, W2, W3-1 and W1
+# #438 stage handoffs: W5 integration run and closeout (this PR) and the merged stages W3-7, W3-6b, W3-6a, W3-5, W3-4, W3-3, W3-2, W2, W3-1 and W1
 
 Each wrap-up stage adds a section; the one under review is first, the merged ones follow. The sections come from their own PRs and were merged here without dropping any.
+
+## #438 stage handoff: W5 integration run and closeout
+
+Branch `claude/438-w5`, PR "Closes #438" (the last #438 stage). Tier 1, records and docs plus the packlint mirror; no application code. Base `B` = c5dd8bc7a (main after PR 857). Decisions MC-4570 to MC-4575 (`Agents/mc/438-w5.md`); also MC-4147, MC-4160, MC-4164, MC-4165, MC-4166, MC-4169, MC-4183, MC-4210, MC-4211, MC-4214, MC-3009, MC-3638, MC-3874, MC-1666. Plan r1 (designer): `%TEMP%/risu-b715/438/w5/w5-plan-r1.md`. Scratch run folders under `%TEMP%/risu-b715/438/w5/`: `pack/` (D1), `pc/` (PC leg), `run/` (Note 9 leg: n0- to n4-result.md, screenshots by row id, `adb-commands.log`, censuses, `signers.txt`), `side-findings.md`.
+
+### What changed
+- `docs/design/chat/checks/th/packlint.mjs`: the mirror catches up with W3-7 (MC-4571): `CRITICAL_PARTS` gains `chat-partial-delete`, `REACH_CHAT` gains `chat-partial-buttons`, `chat-partial-start-edit`, `chat-partial-start-delete`, `chat-code-menu`, `chat-code-menu-copy`, `chat-code-menu-download`.
+- `src/ts/themePack/escapeRoute.test.ts` (TA-2): the mirror holds every engine `CRITICAL_PARTS` and `REACH_CHAT` name (subset, not equality). Regression reproducer: on the base mirror it fails naming `chat-partial-delete`; mutant M2 (drop `chat-code-menu-download` from the mirror's `REACH_CHAT`) fails it too, run through temporary untracked copies. `vitest run src/ts/themePack`: 77 files, 5080 tests pass.
+- `docs/design/THEMING.md`: the overlay bullet leaves "Not covered yet"; a new **Overlays** paragraph states the W3 coverage. `docs/wiki/Theme-Packs.md`: the effects line now says what #751 built (OS reduce-motion and reduce-transparency fallback only; no layering) and the popups line names what is still unparted. `Agents/Theme-Packs.md`: the overlay clause says overlays carry parts.
+- `Agents/mc/438-w5.md`: MC-4570 to MC-4575.
+
+### Build and devices
+- Debug APK of `B` built in the detached worktree `438-w5-apk` (no source copies; the gitignored generated Android files copied in; status and diff empty before the build; after it only the CRLF rewrite of `AndroidManifest.xml` and `gradlew`), SHA-256 `0cf20eb745e5a47d929fc91f16b4fad9364b4fbe3cae375c1f52984e7a22f04a`, pinned as `w5/apk/dv438w5-c5dd8bc-debug.apk`.
+- Note 9 phone 2 (`2ac80128013f7ece`), lease `t438-w5-phone`, synthetic profile seeded through the app UI only, Wi-Fi off throughout, CDP network block read back before any step. The installed build had a throwaway `CN=risu-test` signer; the MC-3874 uninstall and install were used and both digests recorded. Released `--clean`: the end census equals the start census.
+- PC leg: the production dist of `B` (from the same build) on a scratch Node server, Chrome through `launch-chrome.mjs` with the host blocks and the closed proxy, `mock-openai.mjs`. The proxy refused the app's own model-data refresh to `openrouter.ai` and `raw.githubusercontent.com` (8 requests); nothing reached a RisuAI, Realm or Discord host.
+- Test packs (scratch, `zipPack` plus the real intake, D1): `DV438W5` main and no-Home accepted with notes, the critical pack refused for naming `chat-partial-delete`. A v2 main pack corrected the settings rule (W5-23).
+
+### Results
+Verdicts are the session's, from the runners' result files and the screenshots it opened.
+
+| Row | Source rows | Platform | Verdict | Evidence |
+|---|---|---|---|---|
+| PC0 control | live-checks control | PC | PASS | pc-result.md, pc0.png |
+| PC1 to PC3 | DV-W37-1 to -3 | PC | PASS | pc1.png, pc2-before/after.png, pc3.png |
+| PC4 | DV-W37-4 (`{{char}}` failed modal) | PC | PASS | pc4.png |
+| PC5 | DV-W37-5 | PC | PASS: delete confirm built-in while siblings are magenta; No keeps, Yes removes the range | pc5-confirm.png, pc5-after.png |
+| PC6 | DV-W37-6 | PC | PASS: refused, "names the protected part chat-partial-delete" | pc6.png |
+| PC7 | DV-W37-7 PC half | PC | PASS (the shell's message sheet opens over the menu: #861) | pc7-main.png, pc7-main-esc.png, pc7-none.png |
+| PC8 | DV-W37-9 | PC | PASS: legacy and `?nothemepack` built-in; control repeat magenta | pc8-*.png |
+| W5-0 | DV-P method (MC-4147) | Note 9 | PASS: real DocumentsUI pick; held line names settings.css | n0-result.md, p1.png to p3.png, w5-0-outcome.txt |
+| W5-1 | control | Note 9 | PASS | w5-1.png |
+| W5-2 | W2 sidebar | Note 9 | PASS | w5-2a/b.png |
+| W5-3 to W5-5 | DV-W31-1, DV-W31-2, DV-W32-1 | Note 9 | PASS | w5-3*.png, w5-4.png, w5-5*.png |
+| W5-6 | DV-W32-2, DV-W35-1 | Note 9 | PASS (one Back closes the list and the panel together) | w5-6a to c.png |
+| W5-7 to W5-12 | DV-W32-4, DV-W34-1, DV-W34-2, DV-W36a-1 to -4 | Note 9 | PASS | n1-result.md, w5-7a to w5-12.png |
+| W5-13 to W5-15 | DV-W36b-1 to -3 | Note 9 | PASS | n2-result.md |
+| W5-16 | DV-W36b-4 | Note 9 | PASS after setting the auxiliary model to the mock | w5-16a to e.png |
+| W5-17 | DV-W36b-5 | Note 9 | PASS: title, empty text, four Index groups; Rebuild and the toggles are present by design (W3-6b), none pressed | w5-17a/b.png |
+| W5-18 | DV-W36b-6 | Note 9 | PASS: trace tiles, rows 10px | w5-18.png |
+| W5-19 | W3-1 HypaV3Progress | Note 9 | PASS on rerun: pill 4px with HypaV3's experimental implementation (the only path that opens the pill); observer capture, the screenshots missed it | n3-result.md |
+| W5-20 | DV-W31-5 | Note 9 | PASS: padding 6px in the chat shell (8px over classic Settings, where no pack applies) | w5-20a.png |
+| W5-21 | DV-W37-7 phone half | Note 9 | PASS: magenta with the pack, theme colours with None; the message sheet covers the menu (#861) | w5-21a to e.png |
+| W5-22 | DV-W37-8 | Note 9 | PASS | w5-22.png |
+| W5-23 | DV-W31-3 | Note 9 | PASS on rerun with v2 (`settings-section-heading` 3px, colour held); the first run's rule named `settings-section-title`, which no element carries (#862) | n4-result.md, w5-23v2a.png |
+| W5-24 to W5-27 | DV-W32-3, DV-W32-5, DV-W35-2, DV-W35-3 | Note 9 | PASS (SHAPE reads with the New Settings preview on) | n3-result.md |
+| W5-28 | DV-W35-4 | Note 9 | `studio-title` PASS; the preset, Advanced, model-field leg NOT RUN: its only route, the Studio link on the Prompt settings page, did not render on the phone (the link's target resolved to none; cause not traced), so the W3-5 rendered tests stand (MC-4570, by its 'state the device cannot hold' clause) | w5-28a.png |
+| W5-29 | DV-W33-1 | Note 9 | PASS: empty state, SHAPE read, title 8px, focus returns | n3-result.md |
+| W5-30 | DV-W34-3 | Note 9 | PASS | w5-30.png |
+| W5-31 | DV-W31-4, DV-W32-6, DV-W33-2 | Note 9 | PASS: built-in over Home without home.css | n3-result.md |
+| W5-32 | control | Note 9 | PASS | n4-result.md |
+| W5-33 | all stage safe-start rows | Note 9 | PASS: 0 pack style elements, banner shown, still 0 after None | w5-33*.png |
+| W5-34 | all stage pack-free rows | Note 9 | PASS: every recorded value equals W5-33 | w5-34*.png |
+
+Not run: DV-W34-6 IrisModal (nothing opens it, MC-4210); DV-W33-6 RealmFrame (MC-4169, MC-4183); DV-W33-5 RealmPopUp (needs a Realm reply, MC-4570); W5-28's Studio preset leg (above; the route exists in source but its link did not render).
+
+Method deviation: the W3-1 and W3-2 rows said "pixel-equal to base". W5 compared built-in computed values between the safe-start and pack-free legs instead (every stage proved its markup-only diff by strip-equality to the base blobs); no pre-W3 APK was built.
+
+Input routes, recorded per row in the result files: CDP DOM clicks and `Input.dispatchTouchEvent` on the playground (MC-1666); long presses through the guard's `input swipe` (CDP touch does not raise `contextmenu`); the quick menu over Settings by a synthetic Ctrl+E, because the three-finger touch does nothing there; the W5-33 and W5-34 code menus by a synthetic `contextmenu` event.
+
+Guard log (`run/adb-commands.log`): no policy refusal (no exit 89, 93, 95 or 97); 8 usage errors (exit 2, a call completed once without its `--`) and 15 locate misses (exit 6, element out of view, retried after scrolling). One runner saw the lease token in its own tool output because a dispatch file held it; it was written nowhere else, the dispatch files were redacted, and the lease ran to a clean release.
+
+PC-leg deviations (`pc/pc-result.md`): the web build shows no usePlainFetch toggle and the requests reached the mock directly; the provider URL was the full loopback path; the app language was switched to English; Send needed a `chat-send` click.
+
+Phone end state: the pinned APK, the synthetic profile, pack None, the three preview switches off, colour scheme Default, the run's toggles off. Not restored: the auxiliary model (the original Google model is no longer selectable; it reads Custom API), the chat persona (P2) and the five Easy Panel settings that "Run" sets.
+
+### Leftovers
+
+| Leftover | Source | Disposition |
+|---|---|---|
+| packlint mirror behind W3-7 | W3-7 | fixed here (MC-4571) |
+| Effects wiki line stale | #751 | fixed here (MC-4571) |
+| Stale overlay "planned" doc lines | W1 docs | fixed here |
+| Rendered coverage test depends on file order | W2 review | #860 (MC-4572) |
+| Code-block menu covered by the shell's message sheet | W5 PC7, W5-21 | #861 (MC-4573) |
+| `SETTINGS_SAFE` names `settings-section-title` | W5-23 | #862 (MC-4574) |
+| Iris Reset has no confirm | W3-4 | accepted, no ticket (MC-4211) |
+| Category Delete, tag Remove, bulk Apply had no confirm | W3-6a, W3-6b | discharged by #818 (PR 829) |
+| Per-card reroll Apply has no confirm | W3-6a | known limitation, no ticket |
+| Progress pill covers the save-problem button | W3-1 | fixed by #764 (PR 776, 19ddfcfad); the W3-1 limitation lines are superseded |
+| One Back closes ModelList and EasyPanel together | W5-6 | observation, merged behaviour; no ticket |
+| Two partial-edit button wrappers after repeated hovers | PC5 | observation, unverified; no ticket |
+| Settings focus-return fallback | W3-6a | known limitation, benign |
+| `438-w5-apk` worktree | W5 | listed for removal (destructive cleanup, asked; delete its jniLibs link first) |
 
 ## #438 stage handoff: W3-7 PartialEditController modals, TS-built partial-edit buttons and code-block menu, device rows pending
 
