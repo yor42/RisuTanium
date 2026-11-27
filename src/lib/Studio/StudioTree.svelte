@@ -7,6 +7,7 @@
         switch (type) {
             case 'character': return language.studioOwnerCharacter
             case 'chat': return language.studioOwnerThisChat
+            case 'group': return language.studioOwnerRoleGroup
             default: return null
         }
     }
@@ -149,6 +150,12 @@
             const count = shown < owners.length ? shown + 1 : shown
             for (let index = 0; index < shown; index++) pushOwner(owners[index], level, groupId, count, index + 1)
             if (shown < owners.length) pushMore(groupId, level, groupId, owners.length - shown, count, count)
+        }
+
+        // A group visit holds the group alone: no module list, no module, preset or plugin group, no combined group.
+        if (current.character.type === 'group') {
+            pushOwner(current.character, 1, null, 1, 1)
+            return rows
         }
 
         const topCount = 1 + (current.chat ? 1 : 0)

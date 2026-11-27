@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 interface TestCharacter {
     chaId: string
     type: string
+    coldstorage?: string
     chatPage: number
     chats: { id: string }[]
 }
@@ -134,10 +135,10 @@ describe('2m switch on', () => {
 
     test('an ineligible selection or the Beta Mobile GUI shows no row', () => {
         setStudioEnabled(true)
-        db.db.characters[0].type = 'group'
+        db.db.characters[0].coldstorage = 'stub'
         show()
         expect(document.querySelector('[data-part="more-studio"]')).toBeNull()
-        db.db.characters[0].type = 'character'
+        db.db.characters[0].coldstorage = undefined
         flushSync()
         expect(document.querySelector('[data-part="more-studio"]')).not.toBeNull()
         MobileGUI.set(true)

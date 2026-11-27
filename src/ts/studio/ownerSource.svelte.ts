@@ -7,7 +7,7 @@ import { fromStore } from 'svelte/store'
 import { DBState, ReloadGUIPointer, selIdState } from '../stores.svelte'
 import { moduleListOf } from '../process/moduleRefList'
 import { workingPresetsOf, type ItemTextSources } from './itemText'
-import { buildOwnerModel, type OwnerModel, type PresetSource } from './ownerModel'
+import { buildGroupOwnerModel, buildOwnerModel, type OwnerModel, type PresetSource } from './ownerModel'
 
 export interface OwnerSnapshot {
     /** Null when the bound character is no longer the selected, readable character. */
@@ -41,6 +41,11 @@ export function readTextSources(chaId: string): ItemTextSources | null {
  */
 export function readOwnerModel(chaId: string): OwnerModel | null {
     const db = DBState.db
+    const selected = db.characters?.[selIdState.selId]
+    // A group visit has its own one-node model; the character path below never sees a group.
+    if (selected && selected.type === 'group' && !selected.coldstorage && selected.chaId === chaId) {
+        return buildGroupOwnerModel({ chaId, name: selected.name })
+    }
     const character = boundCharacterOf(chaId)
     if (!character) return null
 

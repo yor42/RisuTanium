@@ -33,6 +33,11 @@ export function characterOwnerKey(chaId: string): StoredOwnerKey {
     return `character:${chaId}`
 }
 
+// A group's session owner key: its history is memory-only (sessionKinds.ts) and never reaches the store.
+export function groupOwnerKey(chaId: string): SessionOwnerKey {
+    return sessionOwnerKey('group', chaId)
+}
+
 export function chatOwnerKey(chaId: string, chatId: string): StoredOwnerKey {
     return `chat:${chaId}/${chatId}`
 }

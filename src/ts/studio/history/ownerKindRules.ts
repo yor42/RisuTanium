@@ -9,6 +9,7 @@ export function boundCharacterHides(parsed: ParsedOwnerKey | null): boolean {
     switch (parsed.kind) {
         case 'module':
         case 'preset':
+        case 'group':
             return false
         case 'character':
         case 'chat':
@@ -31,6 +32,7 @@ export function hasChatNote(parsed: ParsedOwnerKey | null): boolean {
         case 'chat':
         case 'module':
         case 'preset':
+        case 'group':
             return false
         default: {
             // Adding an owner kind must decide its note here; the fallback is no note.

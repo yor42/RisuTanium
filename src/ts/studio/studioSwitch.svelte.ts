@@ -34,12 +34,24 @@ function mobileGuiOn(): boolean {
 }
 
 // The switch is checked before any store is read, so with the switch off this touches nothing else.
-export function studioEligible(): boolean {
-    if (!studioSwitch.enabled) return false
-    if (mobileGuiOn()) return false
+// What a visit of the current selection would be about: null when none is offered, 'group' for a loaded group and
+// 'character' for any other loaded selection.
+export function studioVisitKind(): 'character' | 'group' | null {
+    if (!studioSwitch.enabled) return null
+    if (mobileGuiOn()) return null
     const index = selIdState.selId
-    if (index < 0) return false
+    if (index < 0) return null
     const character = DBState.db.characters?.[index]
-    return !!character && character.type !== 'group' && character.chaId !== '§playground'
-        && !character.coldstorage
+    if (!character || character.chaId === '§playground' || character.coldstorage) return null
+    return character.type === 'group' ? 'group' : 'character'
+}
+
+// Character content (Home, content links) is offered only for a character; a group has no such content.
+export function studioEligible(): boolean {
+    return studioVisitKind() === 'character'
+}
+
+// A visit, of a character or of a group, is offered.
+export function studioVisitEligible(): boolean {
+    return studioVisitKind() !== null
 }

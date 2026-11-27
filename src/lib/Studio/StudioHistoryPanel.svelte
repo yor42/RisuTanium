@@ -6,7 +6,7 @@
     import { language } from '../../lang'
     import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
     import { pinnedDesc, withRiskyConfirm } from '../../ts/studio/edit/riskyReplay'
-    import { loreStepText, objItemPreview, objRefusalText } from '../../ts/studio/edit/objListCopy'
+    import { loreStepText, memberStepText, objItemPreview, objRefusalText } from '../../ts/studio/edit/objListCopy'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
     import { createStudioToasts, goneFileText, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
@@ -56,6 +56,8 @@
         switch (parsedOwner.kind) {
             case 'module':
             case 'preset':
+            case 'group':
+                // A session owner's history is its own: no bound-character lookup applies.
                 return owner
             case 'character':
             case 'chat':
@@ -226,7 +228,7 @@
             case 'assetAdd': return language.studioStepAssetAdd(label.count)
             case 'folderCreate': return language.studioStepFolderCreate(label.name)
             case 'folderReorder': return language.studioStepFolderReorder
-            case 'obj':
+            case 'obj': return label.list === 'members' ? memberStepText(label) : loreStepText(label)
             case 'prop': return loreStepText(label)
         }
     }

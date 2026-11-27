@@ -103,6 +103,8 @@ function isModuleOwner(owner: OwnerKey): boolean {
         case 'character':
         case 'chat':
         case 'preset':
+        case 'group':
+            // A group is not a module: its refusals use the generic wording.
             return false
         default: {
             // Adding an owner kind must decide its wording here; the fallback is the generic wording.

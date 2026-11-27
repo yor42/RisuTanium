@@ -84,6 +84,19 @@ export function loreStepText(label: ObjLabel | PropLabel): string {
     }
 }
 
+/**
+ * The History text of one group-member step. The name is the member's own; a member with no character behind it has
+ * none and reads as the missing-member label.
+ */
+export function memberStepText(label: ObjLabel): string {
+    const name = label.name ?? language.studioGroupMemberMissing
+    switch (label.action) {
+        case 'add': return language.studioMembersStepAdd(name)
+        case 'delete': return language.studioMembersStepRemove(name)
+        case 'edit': return label.field === 'active' ? language.studioMembersStepActive(name) : language.studioMembersStepTalk(name)
+        default: return language.studioMembersStepTalk(name)
+    }
+}
 /** The preview of a deleted item: the deleted entry (the folder, for a folder delete) and how many more went with it. */
 export function objItemPreview(item: ObjDeletedItem): string {
     const subject = item.entries.find((e) => isFolderRow(e.entry)) ?? item.entries[0]

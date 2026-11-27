@@ -1,7 +1,7 @@
 // Target grammar of a Studio visit: `owner=<type>:<id>[&kind=<kind>][&item=<id>][&entry=<id>][&from=<origin>]`.
 // Pure: no store, no DOM. Whether the owner, kind and item exist is decided against the owner model.
 
-export type StudioOwnerType = 'character' | 'chat' | 'preset' | 'module' | 'plugin'
+export type StudioOwnerType = 'character' | 'chat' | 'preset' | 'module' | 'plugin' | 'group'
 export type StudioFrom = 'chat' | 'library' | 'settings' | 'home'
 
 export interface StudioOwnerRef {
@@ -23,7 +23,7 @@ export interface StudioTargetError {
     error: 'malformed'
 }
 
-const OWNER_TYPES: readonly StudioOwnerType[] = ['character', 'chat', 'preset', 'module', 'plugin']
+const OWNER_TYPES: readonly StudioOwnerType[] = ['character', 'chat', 'preset', 'module', 'plugin', 'group']
 const ORIGINS: readonly StudioFrom[] = ['chat', 'library', 'settings', 'home']
 const KIND_ALIASES: Readonly<Record<string, string>> = {
     lua: 'scripts',

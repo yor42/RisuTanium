@@ -3,7 +3,7 @@
     import { ArrowLeft, BookmarkCheckIcon, LayoutPanelLeftIcon, SettingsIcon, ToolboxIcon, SplitIcon, WrenchIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import { openStudio, selectedStudioCharacterId } from "src/ts/studio/studioScreen.svelte";
-    import { studioEligible } from "src/ts/studio/studioSwitch.svelte";
+    import { studioVisitEligible } from "src/ts/studio/studioSwitch.svelte";
     import {
         DBState,
         PlaygroundStore,
@@ -73,7 +73,7 @@
                 <SettingsIcon size={18} />
                 <span>{language.chatShellCharacterSettings}</span>
             </button>
-            {#if studioEligible()}
+            {#if studioVisitEligible()}
                 <button class={itemClass} data-part="more-studio" onclick={openInStudio}>
                     <LayoutPanelLeftIcon size={18} />
                     <span>{language.studioOpenIn}</span>
