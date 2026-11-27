@@ -1793,6 +1793,7 @@ export const languageSpanish = {
         "inlayDeselectAll": "Deseleccionar todo",
         "inlayEmpty": "Sin recursos inlay guardados",
         "inlayEmptyDesc": "Las imágenes, audios y videos adjuntos o generados en chats aparecerán aquí",
+        "inlayUnknownDate": "(fecha desconocida)",
         "inlayExplorer": "Explorador de Recursos Inlay",
         "inlaySelectAll": "Seleccionar todo",
         "inlayTotalAssets": "Total {count} recursos",

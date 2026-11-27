@@ -1924,6 +1924,7 @@ export const languageEnglish = {
         inlayDeselectAll: "Deselect All",
         inlayEmpty: "No saved inlay assets",
         inlayEmptyDesc: "Images, audio, and videos attached or generated in chats will appear here",
+        inlayUnknownDate: "(unknown date)",
         inlayExplorer: "Inlay Assets Explorer",
         inlaySelectAll: "Select All",
         inlayDeleteConfirm: "Are you sure you want to delete {name}?",

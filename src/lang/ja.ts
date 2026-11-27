@@ -1925,6 +1925,7 @@ export const languageJapanese = {
         inlayDeselectAll: "すべて選択解除",
         inlayEmpty: "保存されたインレイアセットはありません",
         inlayEmptyDesc: "チャットで添付または生成された画像、音声、動画がここに表示されます",
+        inlayUnknownDate: "(日付不明)",
         inlayExplorer: "インレイアセットエクスプローラー",
         inlaySelectAll: "すべて選択",
         inlayDeleteConfirm: "本当に「{name}」を削除しますか？",

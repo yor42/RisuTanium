@@ -1793,6 +1793,7 @@ export const languageVietnamese = {
         "inlayDeselectAll": "Bỏ chọn tất cả",
         "inlayEmpty": "Không có tài sản nội tuyến đã lưu",
         "inlayEmptyDesc": "Hình ảnh, âm thanh và video được đính kèm hoặc tạo trong trò chuyện sẽ xuất hiện ở đây",
+        "inlayUnknownDate": "(không rõ ngày)",
         "inlayExplorer": "Trình khám phá Tài sản Inlay",
         "inlaySelectAll": "Chọn tất cả",
         "inlayTotalAssets": "Tổng cộng {count} tài sản",

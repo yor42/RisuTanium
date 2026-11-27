@@ -1838,6 +1838,7 @@ export const languageChineseTraditional = {
         "inlayDeselectAll": "取消所有選取",
         "inlayEmpty": "沒有已儲存的內嵌資源",
         "inlayEmptyDesc": "對話中附加或生成的圖片、音訊與影片會顯示在這裡",
+        "inlayUnknownDate": "(日期不明)",
         "inlayExplorer": "內嵌資源瀏覽器",
         "inlaySelectAll": "全部選取",
         "inlayTotalAssets": "共 {count} 個資源",

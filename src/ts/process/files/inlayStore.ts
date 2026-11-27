@@ -17,6 +17,8 @@ import {
 } from './inlayKeys'
 
 export type InlayAsset = {
+    /** Creation time in milliseconds since the Unix epoch; absent on an inlay stored before it was recorded. */
+    created?: number
     data: string | Blob
     /** File extension */
     ext: string

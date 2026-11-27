@@ -1793,6 +1793,7 @@ export const languageChinese = {
         "inlayDeselectAll": "取消全选",
         "inlayEmpty": "没有保存的内联资源",
         "inlayEmptyDesc": "在聊天中附加或生成的图像、音频和视频将显示在这里",
+        "inlayUnknownDate": "(日期未知)",
         "inlayExplorer": "内联资源浏览器",
         "inlaySelectAll": "全选",
         "inlayTotalAssets": "共{count}个资源",

@@ -1793,6 +1793,7 @@ export const languageGerman = {
         "inlayDeselectAll": "Alle abwählen",
         "inlayEmpty": "Keine gespeicherten Inlay-Ressourcen",
         "inlayEmptyDesc": "In Chats angehängte oder generierte Bilder, Audio und Videos werden hier angezeigt",
+        "inlayUnknownDate": "(Datum unbekannt)",
         "inlayExplorer": "Inlay-Ressourcen-Explorer",
         "inlaySelectAll": "Alle auswählen",
         "inlayTotalAssets": "Insgesamt {count} Ressourcen",
