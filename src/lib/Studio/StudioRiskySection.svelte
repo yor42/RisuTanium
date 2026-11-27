@@ -63,10 +63,10 @@
         if (!service || !editable) return
         announcement = ''
         // A flag stored as a non-boolean is replaced by a real boolean through its fix path, whose undo puts the stored
-        // value back: it flips what the engine reads (truthy is on). Once fixed in this visit, keep using the fix path
-        // so the restore point tracks one entry for the property rather than both the fix path and the base path.
+        // value back: it flips what the engine reads (truthy is on). A boolean flag uses the base path; the fix path and
+        // the base path share one restore slot, so the restore point holds one entry either way.
         const fixPath = CHARACTER_RISKY_FIX_PATHS[path]
-        const target: RiskyFlagPath = unreadable(path) || service.view(owner).restore?.fields[fixPath] !== undefined ? fixPath : path
+        const target: RiskyFlagPath = unreadable(path) ? fixPath : path
         if (unreadable(path) ? Boolean(rawOf(path)) : rawOf(path) === true) {
             noted(service.editField(owner, target, false, { coalesceKey: null }))
             return

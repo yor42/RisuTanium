@@ -5,6 +5,7 @@ import { describe, expect, test, vi } from 'vitest'
 import { applyCharacterDefaults } from 'src/ts/storage/characterDefaults'
 import type { character } from 'src/ts/storage/database.svelte'
 import { buildFieldEdit, createLiveReader } from '../../edit/studioSetters'
+import { restoreSlotOf } from '../fieldAccess'
 import type { RestorePoint, SetPath, Step } from '../historyModel'
 import { characterOwnerKey } from '../ownerPhase'
 import type { StoredOwnerRecord } from '../studioHistoryStore'
@@ -40,7 +41,9 @@ function record(): StoredOwnerRecord {
     })
     const fields: RestorePoint['fields'] = {}
     for (const path of FLAGS) {
-        fields[path] = { before: reader.field(path), last: { had: true, value: true } }
+        // A restore point keeps one entry per holder property, under its slot path.
+        const slot = restoreSlotOf(path)
+        fields[slot] = { before: reader.field(slot), last: { had: true, value: true } }
     }
     return { ownerKey: OWNER, touchedAt: 9, done, undone: [], deleted: [], restore: { visitId: 'v1', at: 5, fields } }
 }
@@ -55,7 +58,7 @@ describe('T2-RB: the record of the S2b paths', () => {
     test.each(FLAGS.map((path, index) => [path, index] as const))('%s: a set holding text or a restore field holding text refuses the record whole', (_path, index) => {
         for (const corrupt of [
             (r: StoredOwnerRecord) => { (r.done[index].ops[0] as { after: unknown }).after = { had: true, value: 'yes' } },
-            (r: StoredOwnerRecord) => { (r.restore!.fields[FLAGS[index]] as { last: unknown }).last = { had: true, value: 'yes' } },
+            (r: StoredOwnerRecord) => { (r.restore!.fields[restoreSlotOf(FLAGS[index])] as { last: unknown }).last = { had: true, value: 'yes' } },
         ]) {
             const written = record()
             corrupt(written)
