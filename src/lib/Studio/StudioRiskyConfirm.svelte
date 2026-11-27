@@ -67,7 +67,7 @@
             <h2 data-part="studio-risky-confirm-title" id="studio-risky-confirm-title-{path}" class="text-lg font-bold">{title}</h2>
             <div data-part="studio-risky-confirm-body" id="studio-risky-confirm-body-{path}" class="flex flex-col gap-2 text-sm">
                 <p>{body}</p>
-                {#if path === 'lowLevelAccess'}
+                {#if path === 'lowLevelAccess' || path === 'lowLevelAccessFix'}
                     <p class="font-bold">{language.studioRiskyLowConsequence}</p>
                 {/if}
             </div>

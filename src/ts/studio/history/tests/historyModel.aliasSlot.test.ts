@@ -1,8 +1,8 @@
-// Two registry paths on one holder property are one restore slot. The registry gains the alias rows `lowLevelAccessFix`
+// Two registry paths on one holder property are one restore slot. The real registry holds the alias row `lowLevelAccessFix`
 // over the base `lowLevelAccess`; each test drives the model with ops on both paths over the one property and expects one
 // slot per property: one restore write, one working value, one stored revert op, one restore entry.
 // Regression reproducers except T12, which is a compatibility guard and passes before and after.
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import {
     deriveRestoreWrites,
     noteRestoreWrites,
@@ -14,13 +14,8 @@ import {
     type Step,
 } from '../historyModel'
 import { characterOwnerKey } from '../ownerPhase'
-import { B, BASE, FIX, FOREIGN_ONE, applyWrites, descStep, readerOf, recordOf, setStep, withAliasRows } from './aliasRegistry.test-helpers'
+import { B, BASE, FIX, FOREIGN_ONE, applyWrites, descStep, readerOf, recordOf, setStep } from './aliasRegistry.test-helpers'
 import { createMemoryStudioStore, seedOwner } from './studioStoreDoubles'
-
-vi.mock('../fieldRegistry', async (importOriginal) => {
-    const { withAliasRows: withRows } = await import('./aliasRegistry.test-helpers')
-    return withRows(await importOriginal<typeof import('../fieldRegistry')>())
-})
 
 const OWNER = characterOwnerKey('c1')
 

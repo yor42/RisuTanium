@@ -1,8 +1,8 @@
-// Shared by the restore-slot tests: `withAliasRows` adds two synthetic alias rows over holder properties no real row
-// aliases (`lowLevelAccess`, `utilityBot`), shaped like the rows a later ticket appends, next to the real `biasFix`
-// alias of `bias`; the model fixtures follow.
+// Shared by the restore-slot tests: the real risky-flag fix rows (`lowLevelAccessFix` over `lowLevelAccess`, and so on, and `biasFix` over `bias`)
+// are the aliases of the real registry; `withAliasRows` adds one synthetic alias row over `hideChatIcon`, a holder
+// property no real row aliases, so a test can show the slot mechanism over a group the real registry does not hold.
 // A `vi.mock` of the registry calls `withAliasRows` through a dynamic import, because a mock factory is hoisted above
-// the static imports of its file.
+// the static imports of its file. The model fixtures follow.
 
 import type { FieldFacts, FieldPresentation } from '../fieldRegistry'
 import type { FieldValue, LiveReader, OwnerRecord, SetPath, Step, WriteOp } from '../historyModel'
@@ -13,14 +13,15 @@ export const FIX = 'lowLevelAccessFix' as string as SetPath
 export const BASE = 'lowLevelAccess' as string as SetPath
 export const UTILITY_FIX = 'utilityBotFix' as string as SetPath
 
+export const SYNTH_BASE = 'hideChatIcon' as string as SetPath
+export const SYNTH_ALIAS = 'hideChatIconAlias' as string as SetPath
+
 export const ALIAS_FACTS: Record<string, FieldFacts> = {
-    lowLevelAccessFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'lowLevelAccess', keepForeign: true },
-    utilityBotFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'utilityBot', keepForeign: true },
+    hideChatIconAlias: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'hideChatIcon', keepForeign: true },
 }
 
 const ALIAS_PRESENTATION: Record<string, FieldPresentation> = {
-    lowLevelAccessFix: { labelKey: 'lowLevelAccess', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
-    utilityBotFix: { labelKey: 'utilityBot', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    hideChatIconAlias: { labelKey: 'hideChatIcon', focus: { form: 'studio-display-form', part: 'studio-display-hide-icon' } },
 }
 
 export function withAliasRows(

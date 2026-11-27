@@ -192,6 +192,15 @@ export const FIELD_SPECS = {
     // Studio SC-1: the character's background HTML and CharacterJS. A stored non-string is kept and put back by undo.
     backgroundHTML: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true, keepForeign: true },
     virtualscript: { value: 'text', holders: ['character'], absent: 'delete', editWhenAbsent: true, keepForeign: true },
+    // Studio risky flags stored as a non-boolean: the same holder property as the flag's own row, but a stored value of
+    // another type is kept as a foreign reading, so an edit to a real boolean undoes back to it byte-for-byte. The
+    // original rows stay as they are (they read such a value as absent). `utilityBotFix` is editable when absent and
+    // deletes on undo, unlike `utilityBot` (keep, not editable when absent): no base-path write can record an absent
+    // reading, so a restore through the slot writes absent only where the key is already absent, and the slot accepts every
+    // reading of the base row.
+    lowLevelAccessFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'lowLevelAccess', keepForeign: true },
+    utilityBotFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'utilityBot', keepForeign: true },
+    escapeOutputFix: { value: 'bool', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'escapeOutput', keepForeign: true },
     // #729: character token bias list stored with malformed rows/value. A malformed value is kept as a foreign reading
     // so repairing it is one undoable history step; the original `bias` row stays untouched.
     biasFix: { value: 'biasList', holders: ['character'], absent: 'delete', editWhenAbsent: true, property: 'bias', keepForeign: true },
@@ -322,6 +331,9 @@ export const FIELD_PRESENTATION: { readonly [P in SetPath]: FieldPresentation } 
     // Studio SC-1.
     backgroundHTML: { labelKey: 'backgroundHTML', focus: { form: 'studio-char-html-form', part: 'studio-char-background' } },
     virtualscript: { labelKey: 'charjs', focus: { form: 'studio-scripts-form', part: 'studio-scripts-charjs' } },
+    lowLevelAccessFix: { labelKey: 'lowLevelAccess', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    utilityBotFix: { labelKey: 'utilityBot', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
+    escapeOutputFix: { labelKey: 'escapeOutput', focus: { form: 'studio-risky', part: 'studio-risky-switch', byPath: true } },
     biasFix: { labelKey: 'studioFieldBias', focus: { form: 'studio-advanced-form', part: 'studio-form-bias' } },
 }
 

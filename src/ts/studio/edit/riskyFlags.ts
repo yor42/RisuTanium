@@ -4,12 +4,24 @@
 
 import type { FieldValue, LiveReader, SetPath, WriteOp } from '../history/historyModel'
 
-export const RISKY_FLAG_PATHS = ['lowLevelAccess', 'utilityBot', 'escapeOutput', 'moduleLowLevelAccess'] as const satisfies readonly SetPath[]
+export const RISKY_FLAG_PATHS = ['lowLevelAccess', 'utilityBot', 'escapeOutput', 'moduleLowLevelAccess', 'lowLevelAccessFix', 'utilityBotFix', 'escapeOutputFix'] as const satisfies readonly SetPath[]
 export type RiskyFlagPath = (typeof RISKY_FLAG_PATHS)[number]
 
 // The flags of a character: its question sheet and its switches name these three.
 export const CHARACTER_RISKY_FLAG_PATHS = ['lowLevelAccess', 'utilityBot', 'escapeOutput'] as const satisfies readonly RiskyFlagPath[]
 export type CharacterRiskyFlagPath = (typeof CHARACTER_RISKY_FLAG_PATHS)[number]
+
+// The path that sets a flag stored as a non-boolean to a real boolean (its undo puts the stored value back). It writes
+// the same holder property as the flag, so a turn-on through it asks the same question.
+export const CHARACTER_RISKY_FIX_PATHS = { lowLevelAccess: 'lowLevelAccessFix', utilityBot: 'utilityBotFix', escapeOutput: 'escapeOutputFix' } as const satisfies Record<CharacterRiskyFlagPath, RiskyFlagPath>
+export type CharacterRiskyFixPath = (typeof CHARACTER_RISKY_FIX_PATHS)[CharacterRiskyFlagPath]
+
+const FLAG_OF_FIX_PATH: Record<CharacterRiskyFixPath, CharacterRiskyFlagPath> = { lowLevelAccessFix: 'lowLevelAccess', utilityBotFix: 'utilityBot', escapeOutputFix: 'escapeOutput' }
+
+// The character flag a risky path of a character stands for: the flag itself, or the flag a fix path repairs.
+export function characterFlagOf(path: CharacterRiskyFlagPath | CharacterRiskyFixPath): CharacterRiskyFlagPath {
+    return path in FLAG_OF_FIX_PATH ? FLAG_OF_FIX_PATH[path as CharacterRiskyFixPath] : (path as CharacterRiskyFlagPath)
+}
 
 export function isRiskyFlagPath(path: SetPath): path is RiskyFlagPath {
     return (RISKY_FLAG_PATHS as readonly SetPath[]).includes(path)
@@ -28,6 +40,9 @@ export const RISKY_FLAG_RULE: { readonly [P in RiskyFlagPath]: 'anyWrite' | 'las
     utilityBot: 'anyWrite',
     escapeOutput: 'anyWrite',
     moduleLowLevelAccess: 'lastWrite',
+    lowLevelAccessFix: 'anyWrite',
+    utilityBotFix: 'anyWrite',
+    escapeOutputFix: 'anyWrite',
 }
 
 // The engine's reading of a flag value: stored `true`, or a truthy value of another type (a foreign reading), is on.
