@@ -8,7 +8,7 @@
     type SerializableSummary, 
     summarize,
   } from "src/ts/process/memory/hypav3";
-  import { alertNormalWait } from "src/ts/alert";
+  import { alertConfirm, alertNormalWait } from "src/ts/alert";
   import { isImeComposing } from "src/ts/ime/compositionGuard";
   import { DBState, selectedCharID, hypaV3ModalOpen } from "src/ts/stores.svelte";
   import { language } from "src/lang";
@@ -331,6 +331,15 @@
       await alertNormalWait(language.hypaV3Modal.bulkApplyChangedMessage);
       return;
     }
+
+    if (!(await alertConfirm(fillLang(language.hypaV3Modal.bulkApplyConfirm, { count: sortedIndices.length, removed: sortedIndices.length - 1 })))) return;
+
+    // Re-resolve after the dialog: the panel or the summaries may have changed while it was open.
+    if (!bulkResummaryState || !bulkResummaryState.result) return;
+    const confirmedIndices = bulkResummaryState.heldSummaries
+      .map(summary => hypaV3Data.summaries.indexOf(summary))
+      .sort((a, b) => a - b);
+    if (confirmedIndices.length !== sortedIndices.length || confirmedIndices.some((v, i) => v !== sortedIndices[i])) return;
 
     const minIndex = sortedIndices[0];
     // The merge keeps the earliest source time, or none when any source is untimed; an untimed

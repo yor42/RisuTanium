@@ -15,6 +15,38 @@ name: Desktop draft release
 # latest.json's notes, which the in-app update popup shows. Editing the draft's body afterwards does not
 # change latest.json. The web form takes one line; for several lines run
 #   gh workflow run release-desktop.yml --repo yor42/RisuTanium -f releaseNotes="$(Get-Content -Raw notes.md)"
+#
+# Android (includeAndroid, default off): the same run also builds the universal APK through the reusable
+# android-release-apk.yml, signs it in environment android-release (the key lives only in that workflow's sign job),
+# and, once all six desktop builds and the Android jobs are green, attaches RisuTanium_<version>_android-universal.apk
+# and then latest-android.json to the same draft. release-check runs first in both modes and refuses a run that would
+# collide with an existing release; nothing is ever deleted or overwritten, a conflict prints the commands for you.
+# The signed APK artifact lasts 3 days here: "Re-run failed jobs" after that fails at the download, so run everything again.
+#
+# Cargo.lock is untracked (as upstream has it), so each build resolves its own crate versions. Every build therefore
+# uploads the lock it resolved as a workflow artifact (cargo-lock-<target>, cargo-lock-android-all), and attach-locks
+# attaches them all to the draft as Cargo.lock-<target> and Cargo.lock-android-all (MC-4410). The security-relevant
+# resolved versions (tauri, tauri-plugin-fs, tauri-plugin-dialog, wry, url) of a release are read from those files.
+# attach-locks runs last, after the six builds (and the Android attach when includeAndroid is on) all succeeded, and
+# holds no key. A re-run of a failed run replaces the lock artifacts; attach-locks refuses a draft that already
+# holds a Cargo.lock file and prints the delete commands. Desktop-only runs over a published tag, another commit's
+# draft, or a draft that already holds Cargo.lock files pass release-check but end red at attach-locks, after the builds;
+# clear them by hand first. Lock artifacts last 3 days (Android: as long as the signed APK), so re-run failed jobs
+# within that time.
+#
+# Publish checklist (this workflow never publishes; you do):
+#   1. Read the three script success lines of the reusable workflow (guard, inspect unsigned, inspect signed) and the
+#      release-check and publish success lines. A green step without its line is a failure.
+#   2. The draft holds exactly one APK and one latest-android.json from this run, and no other .apk. It also holds one
+#      Cargo.lock-<target> per desktop target (six) and, with Android, Cargo.lock-android-all.
+#   3. Never publish a draft from a red run, and never publish a draft whose android job failed.
+#   4. Download the draft's own APK and run the SIGNING.md item 6 dumpsys checks on the spare Note 9 (API 29) and the
+#      API 35 emulator, with synthetic data only (MC-3722).
+#   5. Compare the size and version in latest-android.json with the downloaded file.
+#   6. Publish the draft by hand. releases/latest/download/latest-android.json follows the newest non-draft release: a
+#      later desktop-only release hides Android updates until an Android-on release is newest.
+#   7. The first dispatch needs MQ5 answered (are desktop updates, the Docker image and Android all wanted) and the
+#      environment android-release created as SIGNING.md describes.
 on:
   workflow_dispatch:
     inputs:
@@ -23,6 +55,11 @@ on:
         type: string
         required: false
         default: ''
+      includeAndroid:
+        description: Also build, sign and attach the universal Android APK and latest-android.json (main branch only)
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: release-desktop
@@ -37,8 +74,36 @@ env:
   ONNXRUNTIME_NODE_INSTALL_CUDA: skip
 
 jobs:
+  # Refuses a run that would collide with an existing release, before anything is built. No key, no environment.
+  release-check:
+    name: Check the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - id: release-check
+        name: Check the release
+        env:
+          INCLUDE_ANDROID: ${{ inputs.includeAndroid }}
+          RELEASE_NOTES: ${{ inputs.releaseNotes }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node util/androidPublish.mjs check
+
   build-desktop:
     name: Build ${{ matrix.settings.target }}
+    needs: release-check
     permissions:
       contents: write
     strategy:
@@ -143,3 +208,178 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.settings.target }}
           tauriScript: pnpm tauri
+
+      # The lock this build resolved. Runs only after the build succeeded; no secret is read here.
+      - name: Name the resolved Cargo.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lock"
+          cp src-tauri/Cargo.lock "$RUNNER_TEMP/lock/Cargo.lock-${{ matrix.settings.target }}"
+
+      - name: Upload the resolved Cargo.lock
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cargo-lock-${{ matrix.settings.target }}
+          path: ${{ runner.temp }}/lock/Cargo.lock-${{ matrix.settings.target }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 3
+
+  # Called workflow: guard, build, inspect, sign (the only job with the key), inspect again. The four secrets are
+  # passed by name and reach only its sign job, inside environment android-release.
+  android:
+    name: Android release APK
+    if: inputs.includeAndroid
+    needs: release-check
+    uses: ./.github/workflows/android-release-apk.yml
+    with:
+      abi: all
+      signed-retention-days: 3
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    permissions:
+      contents: read
+      actions: read
+
+  # Runs only when all six desktop builds and the Android jobs succeeded (plain needs, no status function). It holds
+  # no key and no environment; it attaches the already signed and inspected APK to this commit's draft.
+  publish:
+    name: Attach the Android files to the draft
+    if: inputs.includeAndroid
+    needs: [release-check, build-desktop, android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - id: check-inputs
+        name: Check what the Android jobs handed over
+        env:
+          ARTIFACT_ID: ${{ needs.android.outputs.signed-artifact-id }}
+          SIGNED_SHA256: ${{ needs.android.outputs.signed-sha256 }}
+        run: |
+          set -euo pipefail
+          case "$ARTIFACT_ID" in
+            '' | *[!0123456789]*)
+              echo "::error::The signed artifact id from the android job is not a number."
+              exit 1
+              ;;
+          esac
+          case "$SIGNED_SHA256" in
+            *[!0123456789abcdef]*)
+              echo "::error::The signed file hash from the android job is not 64 lower-case hex digits."
+              exit 1
+              ;;
+          esac
+          if [ "${#SIGNED_SHA256}" -ne 64 ]; then
+            echo "::error::The signed file hash from the android job is not 64 lower-case hex digits."
+            exit 1
+          fi
+          echo "artifact-id=$ARTIFACT_ID" >> "$GITHUB_OUTPUT"
+
+      - id: download
+        name: Download the signed APK
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ steps.check-inputs.outputs.artifact-id }}
+          path: ${{ runner.temp }}/in
+          merge-multiple: true
+
+      - id: publish
+        name: Attach the signed APK and latest-android.json
+        env:
+          RELEASE_NOTES: ${{ inputs.releaseNotes }}
+          SIGNED_SHA256: ${{ needs.android.outputs.signed-sha256 }}
+          APK_DIR: ${{ runner.temp }}/in
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node util/androidPublish.mjs publish
+
+  # Desktop only (includeAndroid off): runs after all six desktop builds succeeded. No key, no environment. It attaches the
+  # resolved Cargo.lock of each build to this commit's draft.
+  attach-locks:
+    name: Attach the resolved Cargo.lock files to the draft
+    needs: [release-check, build-desktop]
+    if: inputs.includeAndroid == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - id: download
+        name: Download the lock artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: cargo-lock-*
+          path: ${{ runner.temp }}/locks
+          merge-multiple: true
+
+      - id: attach
+        name: Attach the Cargo.lock files
+        env:
+          EXPECTED_LOCKS: Cargo.lock-aarch64-apple-darwin,Cargo.lock-x86_64-apple-darwin,Cargo.lock-x86_64-unknown-linux-gnu,Cargo.lock-aarch64-unknown-linux-gnu,Cargo.lock-x86_64-pc-windows-msvc,Cargo.lock-aarch64-pc-windows-msvc
+          LOCK_DIR: ${{ runner.temp }}/locks
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node util/androidPublish.mjs attach-locks
+
+  # Android on: runs after the six desktop builds and the Android attach succeeded, and adds the Android build's lock.
+  attach-locks-android:
+    name: Attach the resolved Cargo.lock files to the draft (Android on)
+    needs: [release-check, build-desktop, publish]
+    if: inputs.includeAndroid
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - id: download
+        name: Download the lock artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: cargo-lock-*
+          path: ${{ runner.temp }}/locks
+          merge-multiple: true
+
+      - id: attach
+        name: Attach the Cargo.lock files
+        env:
+          EXPECTED_LOCKS: Cargo.lock-aarch64-apple-darwin,Cargo.lock-x86_64-apple-darwin,Cargo.lock-x86_64-unknown-linux-gnu,Cargo.lock-aarch64-unknown-linux-gnu,Cargo.lock-x86_64-pc-windows-msvc,Cargo.lock-aarch64-pc-windows-msvc,Cargo.lock-android-all
+          LOCK_DIR: ${{ runner.temp }}/locks
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node util/androidPublish.mjs attach-locks

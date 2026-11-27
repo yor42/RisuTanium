@@ -35,6 +35,14 @@ export function createDebouncedValue(source: () => string, ms: number): { readon
     }
 }
 
+/**
+ * Normalised text per character slot, shared by every search that passes no
+ * `stats`, so a later Home visit reuses the first one's work. Keyed weakly by the
+ * slot, and each hit is re-checked against the slot's current values, so an
+ * edited name, notes, tags or creator is normalised again.
+ */
+const sharedSearchCache = createSearchCache()
+
 export interface CharacterSearchOptions {
     debounceMs?: number
     stats?: SearchStats
@@ -51,7 +59,7 @@ export interface CharacterSearchOptions {
  * initialisation.
  */
 export function createCharacterSearch(getQuery: () => string, options: CharacterSearchOptions = {}) {
-    const cache = createSearchCache(options.stats)
+    const cache = options.stats ? createSearchCache(options.stats) : sharedSearchCache
     const query = createDebouncedValue(getQuery, options.debounceMs ?? SEARCH_DEBOUNCE_MS)
     const index = $derived.by(() => buildIndex(DBState.db.characters, cache))
     const tokens = $derived(parseQuery(query.value))

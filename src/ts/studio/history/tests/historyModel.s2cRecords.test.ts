@@ -33,7 +33,7 @@ function record(list: unknown = [['tok', 5], ['other', -3]]): StoredOwnerRecord 
         throw new Error('no edit for bias')
     }
     const done: Step[] = [{ id: 'p:1', at: 1, label: built.label, ops: built.ops }]
-    const fields: RestorePoint['fields'] = { bias: { before: reader.field('bias'), last: { had: true, value: list as [string, number][] } } }
+    const fields: RestorePoint['fields'] = { biasFix: { before: reader.field('bias'), last: { had: true, value: list as [string, number][] } } }
     return { ownerKey: OWNER, touchedAt: 9, done, undone: [], deleted: [], restore: { visitId: 'v1', at: 5, fields } }
 }
 
@@ -79,7 +79,7 @@ describe('T2-BI-1: the parse guard of a stored bias list', () => {
         ;(inSet.done[0].ops[0] as { after: unknown }).after = { had: true, value: bad }
         expect(stored(inSet), 'set op').toBeNull()
         const inRestore = record()
-        ;(inRestore.restore!.fields.bias as { last: unknown }).last = { had: true, value: bad }
+        ;(inRestore.restore!.fields.biasFix as { last: unknown }).last = { had: true, value: bad }
         expect(stored(inRestore), 'restore field').toBeNull()
     })
 })

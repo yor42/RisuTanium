@@ -30,6 +30,7 @@ const SettingsMenuIndex = writable(-1)
 const botMakerMode = writable(false)
 const sideBarStore = writable(false)
 const QuickSettings = $state({ open: true })
+const savingStoppedReason = writable('')
 
 // Getters: the statically imported modules are evaluated before these consts are initialised.
 vi.mock('../../ts/stores.svelte', () => ({
@@ -43,11 +44,13 @@ vi.mock('../../ts/stores.svelte', () => ({
     get botMakerMode() { return botMakerMode },
     get sideBarStore() { return sideBarStore },
     get QuickSettings() { return QuickSettings },
+    get savingStoppedReason() { return savingStoppedReason },
 }))
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
 vi.mock('../../ts/alert', () => ({ alertError: vi.fn() }))
 vi.mock('../../ts/process/moduleRefList', () => ({
     moduleListOf: (ids: string[]) => listerOver(db.db.modules)(ids),
+    moduleRefIdsOf: () => db.db.modules.map((row) => row.id),
 }))
 vi.mock('../../ts/alertPrompts', () => ({ pageCovered: () => false }))
 vi.mock('../../ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))
@@ -74,6 +77,7 @@ class ResizeObserverStub {
         ResizeObserverStub.instances.push(this)
     }
     observe(): void {}
+    unobserve(): void {}
     disconnect(): void {
         ResizeObserverStub.instances = ResizeObserverStub.instances.filter((entry) => entry !== this)
     }
@@ -252,12 +256,14 @@ describe('lists read only the entries they show', () => {
         reads.length = 0
 
         selectStudioNode(OWNER, 'lore', 'cha-1/lore:1500')
+        await vi.dynamicImportSettled()
         await settle()
-        expect(part('studio-detail-item')?.textContent).toContain('lore 1500')
+        expect(part('studio-lore-form')).not.toBeNull()
+        expect(part('studio-lore-form-title')?.textContent).toContain('lore 1500')
         expect(reads.filter((index) => index !== 1500)).toHaveLength(0)
     })
 
-    test('T5b the detail of a lore kind with no entry chosen reads no entry', async () => {
+    test('T5b the detail of a lore kind with no entry chosen builds the list model once, reading each entry name at most twice', async () => {
         const reads: number[] = []
         useLore(countingLore(2000, reads))
         openStudio(ownerTarget, null)
@@ -267,9 +273,13 @@ describe('lists read only the entries they show', () => {
         reads.length = 0
 
         selectStudioNode(OWNER, 'lore', null)
+        await vi.dynamicImportSettled()
         await settle()
-        expect(part('studio-detail')).not.toBeNull()
-        expect(reads).toHaveLength(0)
+        expect(part('studio-lore-list')).not.toBeNull()
+        // The list model names every row of the lorebook in one pass (the comment is read for the type check and the
+        // value), so the reads are bounded by two per entry; the rows drawn are windowed, the model is not.
+        expect(reads.length).toBeLessThanOrEqual(2 * 2000)
+        expect(reads.length).toBeGreaterThan(0)
     })
 })
 

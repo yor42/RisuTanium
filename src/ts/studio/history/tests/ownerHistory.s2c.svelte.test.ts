@@ -216,7 +216,7 @@ describe('T2-BI-6: token typing coalesces per row through the string key', () =>
     })
 })
 
-describe('T2-BI-7 (F3, E3): an unreadable live list reads as absent and is never edited or normalized', () => {
+describe('T2-BI-7 (F3, E3): an unreadable live list is never edited or normalized', () => {
     test.each([
         ['a null cell', [['tok', null]]],
         ['a non-finite cell', [['tok', Number.NaN]]],
@@ -244,16 +244,16 @@ describe('T2-BI-7 (F3, E3): an unreadable live list reads as absent and is never
         expect(JSON.stringify(live().bias)).toBe(before)
     })
 
-    test('a restore point lists bias as changed elsewhere, and keeping it leaves the malformed bytes', async () => {
+    test('a restore point lists the bias slot (biasFix) as changed elsewhere, and keeping it leaves the malformed bytes', async () => {
         const service = await ready()
         service.editField(A, 'bias', next(['a', 1]), { coalesceKey: null })
         live().bias = [['a', null]]
         const target = (resolveLiveTarget(A) as { ok: true; target: Parameters<typeof createLiveReader>[0] }).target
         const restore = service.view(A).restore
         expect(restore).not.toBeNull()
-        expect(listChangedElsewhere(restore!, createLiveReader(target))).toEqual(['bias'])
+        expect(listChangedElsewhere(restore!, createLiveReader(target))).toEqual(['biasFix'])
         const before = JSON.stringify(live().bias)
-        service.restore(A, new Set(['bias']))
+        service.restore(A, new Set(['biasFix']))
         expect(JSON.stringify(live().bias)).toBe(before)
     })
 })

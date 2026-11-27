@@ -6,6 +6,7 @@
     import { language } from '../../lang'
     import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
     import { pinnedDesc, withRiskyConfirm } from '../../ts/studio/edit/riskyReplay'
+    import { loreStepText, objItemPreview, objRefusalText } from '../../ts/studio/edit/objListCopy'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
     import { createStudioToasts, goneFileText, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
@@ -177,7 +178,7 @@
     // them; a redo or a revert of a merge says nothing of its own about them.
     function showOutcome(key: OwnerKey, result: StudioResult, before: OwnerFields | null, undone = false): void {
         if (result.ok === false) {
-            message = refusalTextOf(result)
+            message = objRefusalText(result) ?? refusalTextOf(result)
             return
         }
         const goneText = goneFileText(result)
@@ -225,9 +226,8 @@
             case 'assetAdd': return language.studioStepAssetAdd(label.count)
             case 'folderCreate': return language.studioStepFolderCreate(label.name)
             case 'folderReorder': return language.studioStepFolderReorder
-            // Interim text until the lore list UI names these steps.
             case 'obj':
-            case 'prop': return language.loreBook
+            case 'prop': return loreStepText(label)
         }
     }
 
@@ -235,7 +235,7 @@
 
     // An obj item holds rows of a list, not one text: it shows the list's name.
     function itemPreview(item: DeletedItem): string {
-        return 'value' in item ? previewOf(item.value) : language.loreBook
+        return 'value' in item ? previewOf(item.value) : objItemPreview(item)
     }
 
     function previewOf(value: string): string {

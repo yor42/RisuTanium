@@ -23,6 +23,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const workflowDir = path.join(root, '.github', 'workflows')
 const RELEASE = 'android-release-apk.yml'
 const BUILD = 'android-build.yml'
+const DESKTOP = 'release-desktop.yml'
 const REUSABLE_USES = `./.github/workflows/${RELEASE}`
 const FOUR = ['ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD']
 const VARIABLE = 'ANDROID_RELEASE_CERT_SHA256'
@@ -350,6 +351,7 @@ describe('W1: one environment, on sign, with the exact name; no inherited secret
     const call = asObj(asObj(reusable().on).workflow_call)
     expect(names(call.secrets)).toEqual([...FOUR].sort())
     expect(names(jobsOf(caller())['release-apk'].secrets)).toEqual([...FOUR].sort())
+    expect(names(jobsOf(load(DESKTOP)).android.secrets)).toEqual([...FOUR].sort())
     expect(names(stepById(reusable(), 'sign', 'sign').env)).toEqual([...FOUR].sort())
   })
 })
@@ -392,21 +394,28 @@ describe('W3: the reusable is called from one place, by dispatch only', () => {
   test('triggers and interface', () => {
     expect(Object.keys(asObj(reusable().on))).toEqual(['workflow_call'])
     const call = asObj(asObj(reusable().on).workflow_call)
-    expect(Object.keys(call).sort()).toEqual(['inputs', 'secrets'])
+    expect(Object.keys(call).sort()).toEqual(['inputs', 'outputs', 'secrets'])
+    expect(asObj(asObj(call.inputs)['signed-retention-days'])).toMatchObject({ type: 'number', required: true })
+    expect(asObj(asObj(call.inputs)['signed-retention-days']).default).toBeUndefined()
+    // workflow_call outputs take { description, value }; a bare expression is a parse error that only shows at dispatch.
+    expect(call.outputs).toEqual({
+      'signed-artifact-id': { description: expect.any(String), value: '${{ jobs.inspect-signed.outputs.artifact-id }}' },
+      'signed-sha256': { description: expect.any(String), value: '${{ jobs.inspect-signed.outputs.sha256 }}' },
+    })
     expect(asObj(asObj(call.inputs).abi)).toMatchObject({ type: 'string', required: true })
     for (const name of FOUR) expect(asObj(asObj(call.secrets)[name]).required).toBe(true)
     expect(Object.keys(jobsOf(reusable()))).toEqual(['guard', 'build', 'inspect', 'sign', 'inspect-signed'])
   })
-  test('exactly one caller, with the exact condition, inputs and by-name secrets', () => {
+  test('exactly two callers, with the exact condition, inputs and by-name secrets', () => {
     expect(workflowFiles).toContain(RELEASE)
     const callers = workflowFiles.flatMap(f => Object.entries(jobsOf(load(f))).filter(([, j]) => String(j.uses ?? '').includes('android-release-apk')).map(([id]) => `${f}/${id}`))
-    expect(callers).toEqual([`${BUILD}/release-apk`])
+    expect(callers).toEqual([`${BUILD}/release-apk`, `${DESKTOP}/android`])
     expect(Object.keys(asObj(caller().on))).toEqual(['workflow_dispatch'])
     const job = jobsOf(caller())['release-apk']
     for (const key of Object.keys(job)) expect(['name', 'if', 'uses', 'with', 'secrets', 'permissions']).toContain(key)
     expect(job.if).toBe("inputs.build_type == 'release'")
     expect(job.uses).toBe(REUSABLE_USES)
-    expect(job.with).toEqual({ abi: '${{ inputs.abi }}' })
+    expect(job.with).toEqual({ abi: '${{ inputs.abi }}', 'signed-retention-days': 14 })
     expect(job.secrets).toEqual(Object.fromEntries(FOUR.map(n => [n, `\${{ secrets.${n} }}`])))
     expect(jobsOf(caller())['build-android'].if).toBe("inputs.build_type == 'debug'")
   })
@@ -483,6 +492,7 @@ describe('W5: job wiring', () => {
       build: { 'artifact-id': '${{ steps.upload.outputs.artifact-id }}' },
       inspect: { 'artifact-id': '${{ steps.check-inputs.outputs.artifact-id }}', sha256: '${{ steps.inspect.outputs.sha256 }}' },
       sign: { 'artifact-id': '${{ steps.upload.outputs.artifact-id }}', sha256: '${{ steps.check-signed.outputs.sha256 }}' },
+      'inspect-signed': { 'artifact-id': '${{ steps.hand-over.outputs.artifact-id }}', sha256: '${{ steps.hand-over.outputs.sha256 }}' },
     })
   })
   test('ids and hashes travel only along the chain', () => {
@@ -495,6 +505,11 @@ describe('W5: job wiring', () => {
     expect(asObj(stepById(reusable(), 'sign', 'download').with)['artifact-ids']).toBe('${{ needs.inspect.outputs.artifact-id }}')
     expect(asObj(stepById(reusable(), 'inspect-signed', 'inspect').env).EXPECTED_SHA256).toBe('${{ needs.sign.outputs.sha256 }}')
     expect(asObj(stepById(reusable(), 'inspect-signed', 'download').with)['artifact-ids']).toBe('${{ needs.sign.outputs.artifact-id }}')
+    // hand-over is the last step, has no condition (so it runs only after inspect passed) and only echoes the checked values.
+    const overSteps = stepsOf(jobs()['inspect-signed'])
+    expect(overSteps[overSteps.length - 1].id).toBe('hand-over')
+    expect(overSteps[overSteps.length - 1].if).toBeUndefined()
+    expect(asObj(stepById(reusable(), 'inspect-signed', 'hand-over').env)).toEqual({ ARTIFACT_ID: '${{ needs.sign.outputs.artifact-id }}', SIGNED_SHA256: '${{ needs.sign.outputs.sha256 }}' })
   })
   test('the check steps receive exactly the chained values and the variable', () => {
     expect(stepById(reusable(), 'sign', 'check-inputs').env).toEqual({
@@ -517,7 +532,9 @@ describe('W5: job wiring', () => {
     ])
     const upload = (job: string) => asObj(stepById(reusable(), job, 'upload').with)
     expect(upload('build')['retention-days']).toBe(3)
-    expect(upload('sign')['retention-days']).toBe(14)
+    expect(upload('sign')['retention-days']).toBe('${{ inputs.signed-retention-days }}')
+    expect(asObj(jobsOf(caller())['release-apk'].with)['signed-retention-days']).toBe(14)
+    expect(asObj(jobsOf(load(DESKTOP)).android.with)['signed-retention-days']).toBe(3)
     for (const job of ['build', 'sign']) {
       expect(upload(job)['if-no-files-found']).toBe('error')
       expect(String(upload(job).path)).toMatch(/^\$\{\{ runner\.temp \}\}\/[a-z]+\/app-(unsigned|release)\.apk$/)
@@ -549,11 +566,240 @@ describe('W6: documents carry both names and the ref sentence', () => {
 })
 
 // A file hash, no certificate fingerprint. This file is the signing boundary: changing it is a signing-contract change.
-const RELEASE_WORKFLOW_FILE_SHA256 = 'be61e8a575461b1dd1c92a2df5174ed37f0ee83a491703569fe15f02642b14c8'
+const RELEASE_WORKFLOW_FILE_SHA256 = '73ee0d5dc55047961b5aff07506095d8ad2dc8c4ebab9f83287a0f25a58ff82e'
 describe('W7: the release workflow is the reviewed file', () => {
   test('file hash', () => {
     const body = readFileSync(path.join(workflowDir, RELEASE)).toString('latin1').replace(/\r\n/g, '\n')
     expect(createHash('sha256').update(body, 'latin1').digest('hex')).toBe(RELEASE_WORKFLOW_FILE_SHA256)
+  })
+})
+
+// ---------------------------------------------------------------- D1..D7: release-desktop.yml with includeAndroid
+const desktop = () => load(DESKTOP)
+const dJobs = () => jobsOf(desktop())
+
+describe('D1: release-desktop is dispatch-only and includeAndroid is a boolean that defaults off', () => {
+  test('trigger and inputs', () => {
+    expect(Object.keys(asObj(desktop().on))).toEqual(['workflow_dispatch'])
+    const inputs = asObj(asObj(asObj(desktop().on).workflow_dispatch).inputs)
+    expect(Object.keys(inputs)).toEqual(['releaseNotes', 'includeAndroid'])
+    expect(asObj(inputs.includeAndroid)).toMatchObject({ type: 'boolean', required: false, default: false })
+    expect(asObj(desktop().concurrency)).toEqual({ group: 'release-desktop', 'cancel-in-progress': false })
+    expect(desktop().permissions).toEqual({ contents: 'read' })
+  })
+})
+
+describe('D2: job graph, conditions and permissions', () => {
+  test('jobs, needs, conditions, permissions', () => {
+    expect(Object.keys(dJobs())).toEqual(['release-check', 'build-desktop', 'android', 'publish', 'attach-locks', 'attach-locks-android'])
+    expect(Object.fromEntries(Object.entries(dJobs()).map(([k, v]) => [k, needsOf(v)]))).toEqual({
+      'release-check': [],
+      'build-desktop': ['release-check'],
+      android: ['release-check'],
+      publish: ['release-check', 'build-desktop', 'android'],
+      'attach-locks': ['release-check', 'build-desktop'],
+      'attach-locks-android': ['release-check', 'build-desktop', 'publish'],
+    })
+    expect(Object.fromEntries(Object.entries(dJobs()).map(([k, v]) => [k, v.permissions]))).toEqual({
+      'release-check': { contents: 'write' },
+      'build-desktop': { contents: 'write' },
+      android: { contents: 'read', actions: 'read' },
+      publish: { contents: 'write' },
+      'attach-locks': { contents: 'write' },
+      'attach-locks-android': { contents: 'write' },
+    })
+  })
+  test('android and publish run only with includeAndroid, with no status function that could run them after a failure', () => {
+    for (const id of ['android', 'publish']) expect(dJobs()[id].if, id).toBe('inputs.includeAndroid')
+    expect(dJobs()['attach-locks'].if).toBe('inputs.includeAndroid == false')
+    expect(dJobs()['attach-locks-android'].if).toBe('inputs.includeAndroid')
+    expect(dJobs()['release-check'].if).toBeUndefined()
+    expect(dJobs()['build-desktop'].if).toBeUndefined()
+    for (const [id, job] of Object.entries(dJobs())) expect(JSON.stringify(job.if ?? ''), id).not.toMatch(/always|cancelled|failure|success/)
+  })
+})
+
+describe('D3: the android job calls the reusable with the exact inputs and by-name secrets', () => {
+  test('call-only job', () => {
+    const job = dJobs().android
+    for (const key of Object.keys(job)) expect(['name', 'if', 'needs', 'uses', 'with', 'secrets', 'permissions']).toContain(key)
+    expect(job.uses).toBe(REUSABLE_USES)
+    expect(job.needs).toBe('release-check')
+    expect(job.with).toEqual({ abi: 'all', 'signed-retention-days': 3 })
+    expect(job.secrets).toEqual(Object.fromEntries(FOUR.map(n => [n, `\${{ secrets.${n} }}`])))
+  })
+})
+
+describe('D4: release-check and publish hold no key and no environment', () => {
+  test('no environment in the file, no secrets in the two keyless jobs, the token is github.token', () => {
+    expect(keysAnywhere(desktop(), 'environment')).toEqual([])
+    for (const id of ['release-check', 'publish']) {
+      expect(JSON.stringify(dJobs()[id]), id).not.toContain('secrets.')
+      expect(JSON.stringify(dJobs()[id]), id).not.toMatch(/ANDROID_KEY/)
+    }
+    expect(asObj(stepById(desktop(), 'release-check', 'release-check').env).GITHUB_TOKEN).toBe('${{ github.token }}')
+    expect(asObj(stepById(desktop(), 'publish', 'publish').env).GITHUB_TOKEN).toBe('${{ github.token }}')
+  })
+})
+
+describe('D5: checkouts, scripts and notes in the two keyless jobs', () => {
+  test('checkout takes only persist-credentials false; no expression in any run script', () => {
+    for (const id of ['release-check', 'publish']) {
+      const checkouts = stepsOf(dJobs()[id]).filter(s => /^actions\/checkout@/.test(String(s.uses ?? '')))
+      expect(checkouts, id).toHaveLength(1)
+      expect(checkouts[0].with, id).toEqual({ 'persist-credentials': false })
+      for (const step of stepsOf(dJobs()[id]).filter(s => s.run !== undefined)) expect(runOf(step), id).not.toContain('${{')
+    }
+  })
+  test('the node commands and their environments are exactly these', () => {
+    expect(runOf(stepById(desktop(), 'release-check', 'release-check')).replace(/\n$/, '')).toBe('set -euo pipefail\nnode util/androidPublish.mjs check')
+    expect(runOf(stepById(desktop(), 'publish', 'publish')).replace(/\n$/, '')).toBe('set -euo pipefail\nnode util/androidPublish.mjs publish')
+    expect(asObj(stepById(desktop(), 'release-check', 'release-check').env)).toEqual({
+      INCLUDE_ANDROID: '${{ inputs.includeAndroid }}',
+      RELEASE_NOTES: '${{ inputs.releaseNotes }}',
+      GITHUB_TOKEN: '${{ github.token }}',
+    })
+    expect(asObj(stepById(desktop(), 'publish', 'publish').env)).toEqual({
+      RELEASE_NOTES: '${{ inputs.releaseNotes }}',
+      SIGNED_SHA256: '${{ needs.android.outputs.signed-sha256 }}',
+      APK_DIR: '${{ runner.temp }}/in',
+      GITHUB_TOKEN: '${{ github.token }}',
+    })
+    const notes = leaves(desktop()).filter(l => l.value.includes('inputs.releaseNotes')).map(l => l.loc.join('.'))
+    expect(notes).toEqual([
+      'jobs.release-check.steps.2.env.RELEASE_NOTES',
+      'jobs.build-desktop.steps.8.with.releaseBody',
+      'jobs.publish.steps.4.env.RELEASE_NOTES',
+    ])
+  })
+})
+
+describe('D6: the publish job takes the signed id and hash only from the android job outputs', () => {
+  test('wiring', () => {
+    expect(stepsOf(dJobs().publish).map(s => s.id)).toEqual([undefined, undefined, 'check-inputs', 'download', 'publish'])
+    expect(asObj(stepById(desktop(), 'publish', 'check-inputs').env)).toEqual({
+      ARTIFACT_ID: '${{ needs.android.outputs.signed-artifact-id }}',
+      SIGNED_SHA256: '${{ needs.android.outputs.signed-sha256 }}',
+    })
+    expect(asObj(stepById(desktop(), 'publish', 'download').with)['artifact-ids']).toBe('${{ steps.check-inputs.outputs.artifact-id }}')
+    const body = JSON.stringify(dJobs().publish)
+    const refs = body.match(/needs\.[A-Za-z0-9_.-]+/g) ?? []
+    expect(refs.sort()).toEqual(['needs.android.outputs.signed-artifact-id', 'needs.android.outputs.signed-sha256', 'needs.android.outputs.signed-sha256'])
+    expect(body).not.toMatch(/github\.event|\$\{\{[^}]*(?<![\w-])inputs\.(?!releaseNotes)/)
+  })
+  test('publish check-inputs: only a plain number and a 64-digit lower-case hash pass', () => {
+    const run = runOf(stepById(desktop(), 'publish', 'check-inputs'))
+    const ok = makeCase()
+    expect(runShell(ok, run, { ARTIFACT_ID: '4711', SIGNED_SHA256: 'a'.repeat(64) }).status).toBe(0)
+    expect(readFileSync(ok.output, 'utf8')).toBe('artifact-id=4711\n')
+    for (const bad of ['', 'abc', '12 34', HOSTILE]) refused(runShell(makeCase(), run, { ARTIFACT_ID: bad, SIGNED_SHA256: 'a'.repeat(64) }))
+    for (const bad of ['', 'A'.repeat(64), 'a'.repeat(63), 'a'.repeat(65), `${'a'.repeat(64)}\n`, HOSTILE]) {
+      refused(runShell(makeCase(), run, { ARTIFACT_ID: '4711', SIGNED_SHA256: bad }))
+    }
+  })
+})
+
+describe('D7: the header carries the publish checklist', () => {
+  test('lines', () => {
+    const body = text(DESKTOP).replace(/\r\n/g, '\n')
+    for (const needle of [
+      'Publish checklist (this workflow never publishes; you do):',
+      'A green step without its line is a failure.',
+      'Never publish a draft from a red run, and never publish a draft whose android job failed.',
+      'the SIGNING.md item 6 dumpsys checks on the spare Note 9 (API 29) and the',
+      'API 35 emulator, with synthetic data only (MC-3722).',
+      'Compare the size and version in latest-android.json with the downloaded file.',
+      'Publish the draft by hand.',
+      'releases/latest/download/latest-android.json follows the newest non-draft release: a',
+      'later desktop-only release hides Android updates until an Android-on release is newest.',
+      'The first dispatch needs MQ5 answered',
+      'environment android-release created as SIGNING.md describes.',
+    ]) {
+      expect(body, needle).toContain(needle)
+    }
+    expect(body).not.toMatch(/[0-9a-f]{2}(:[0-9a-f]{2}){15,}|\b[0-9a-f]{64}\b/i)
+  })
+})
+
+// ---------------------------------------------------------------- L1: every release build records its resolved Cargo.lock (#814)
+// Cargo.lock is untracked, so each release build resolves its own crate versions; the lock it resolved is uploaded as an
+// artifact and attached to the draft, which is how the resolved tauri, plugin, wry and url versions of a release are read.
+const isTauriBuild = (step: Obj) => /^tauri-apps\/tauri-action@/.test(String(step.uses ?? '')) || /\bpnpm tauri\b/.test(String(step.run ?? ''))
+const isLockUpload = (step: Obj) => /^actions\/upload-artifact@/.test(String(step.uses ?? '')) && String(asObj(step.with).name ?? '').startsWith('cargo-lock-')
+const isLockCopy = (step: Obj) => /\bcp src-tauri\/Cargo\.lock /.test(String(step.run ?? ''))
+const lastIndex = (steps: Obj[], pred: (s: Obj) => boolean) => steps.reduce((at, s, i) => (pred(s) ? i : at), -1)
+const matrixTargets = () =>
+  asArr(asObj(asObj(asObj(dJobs()['build-desktop']).strategy).matrix).settings).map(s => String(asObj(s).target))
+
+describe('L1: every release build uploads the Cargo.lock it resolved', () => {
+  test('each release job that builds with Tauri copies and uploads src-tauri/Cargo.lock after its last build step', () => {
+    for (const [file, expected] of [[DESKTOP, ['build-desktop']], [RELEASE, ['build']]] as const) {
+      const builders = Object.entries(jobsOf(load(file))).filter(([, job]) => stepsOf(job).some(isTauriBuild))
+      expect(builders.map(([id]) => id), file).toEqual(expected)
+      for (const [id, job] of builders) {
+        const steps = stepsOf(job)
+        const built = lastIndex(steps, isTauriBuild)
+        const copy = steps.findIndex(isLockCopy)
+        const up = steps.findIndex(isLockUpload)
+        expect(copy, `${file} ${id} copy`).toBeGreaterThan(built)
+        expect(up, `${file} ${id} upload`).toBeGreaterThan(copy)
+        expect(steps[copy].if, 'the copy runs only after a green build').toBeUndefined()
+        expect(steps[up].if, 'the upload runs only after a green build').toBeUndefined()
+        const withs = asObj(steps[up].with)
+        expect(withs['if-no-files-found']).toBe('error')
+        expect(withs.overwrite).toBe(true)
+        expect(JSON.stringify([steps[copy], steps[up]]), `${file} ${id}`).not.toMatch(/secrets\.|ANDROID_KEY|TAURI_SIGNING/)
+      }
+    }
+  })
+  test('the file and artifact names carry the matrix target (desktop) or the abi (Android)', () => {
+    const d = stepsOf(dJobs()['build-desktop'])
+    expect(runOf(d[d.findIndex(isLockCopy)])).toContain('"$RUNNER_TEMP/lock/Cargo.lock-${{ matrix.settings.target }}"')
+    expect(asObj(d[d.findIndex(isLockUpload)].with)).toMatchObject({
+      name: 'cargo-lock-${{ matrix.settings.target }}',
+      path: '${{ runner.temp }}/lock/Cargo.lock-${{ matrix.settings.target }}',
+    })
+    const a = stepsOf(jobsOf(load(RELEASE)).build)
+    expect(runOf(a[a.findIndex(isLockCopy)])).toContain('"$RUNNER_TEMP/lock/Cargo.lock-android-$ABI"')
+    expect(asObj(a[a.findIndex(isLockCopy)].env)).toEqual({ ABI: '${{ inputs.abi }}' })
+    expect(asObj(a[a.findIndex(isLockUpload)].with)).toMatchObject({
+      name: 'cargo-lock-android-${{ inputs.abi }}',
+      path: '${{ runner.temp }}/lock/Cargo.lock-android-${{ inputs.abi }}',
+    })
+  })
+  test('android-build.yml builds inline only for debug; its release path is the reusable workflow, which uploads the lock', () => {
+    const jobs = jobsOf(load(BUILD))
+    expect(jobs['build-android'].if).toBe("inputs.build_type == 'debug'")
+    for (const [id, job] of Object.entries(jobs)) {
+      if (id !== 'build-android') expect(job.uses, id).toBe(REUSABLE_USES)
+    }
+  })
+  test('the draft gets exactly one lock per matrix target, plus the Android one only when Android is on', () => {
+    const targets = matrixTargets()
+    expect(targets).toHaveLength(6)
+    const desk = targets.map(t => `Cargo.lock-${t}`)
+    expect(asObj(stepById(desktop(), 'attach-locks', 'attach').env).EXPECTED_LOCKS).toBe(desk.join(','))
+    expect(asObj(stepById(desktop(), 'attach-locks-android', 'attach').env).EXPECTED_LOCKS).toBe([...desk, 'Cargo.lock-android-all'].join(','))
+    expect(asObj(dJobs().android.with).abi).toBe('all')
+  })
+  test('both attach jobs hold no key and no environment, take the token from github.token and run the one command', () => {
+    for (const id of ['attach-locks', 'attach-locks-android']) {
+      const job = dJobs()[id]
+      expect(JSON.stringify(job), id).not.toMatch(/secrets\.|ANDROID_KEY|TAURI_SIGNING/)
+      expect(job.environment, id).toBeUndefined()
+      const checkouts = stepsOf(job).filter(s => /^actions\/checkout@/.test(String(s.uses ?? '')))
+      expect(checkouts, id).toHaveLength(1)
+      expect(checkouts[0].with, id).toEqual({ 'persist-credentials': false })
+      for (const step of stepsOf(job).filter(s => s.run !== undefined)) expect(runOf(step), id).not.toContain('${{')
+      expect(asObj(stepById(desktop(), id, 'download').with).pattern, id).toBe('cargo-lock-*')
+      expect(runOf(stepById(desktop(), id, 'attach')).replace(/\n$/, ''), id).toBe('set -euo pipefail\nnode util/androidPublish.mjs attach-locks')
+      expect(asObj(stepById(desktop(), id, 'attach').env), id).toMatchObject({ GITHUB_TOKEN: '${{ github.token }}', LOCK_DIR: '${{ runner.temp }}/locks' })
+    }
+  })
+  test('the Android attach waits for the Android APK attach; the desktop-only one needs no Android job', () => {
+    expect(needsOf(dJobs()['attach-locks-android'])).toContain('publish')
+    expect(needsOf(dJobs()['attach-locks'])).not.toContain('publish')
+    expect(needsOf(dJobs()['attach-locks'])).toContain('build-desktop')
   })
 })
 

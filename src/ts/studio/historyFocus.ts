@@ -123,7 +123,9 @@ function elementFor(scope: ParentNode, target: FocusTarget): HTMLElement | null 
         default: {
             const focus = FIELD_PRESENTATION[target.kind].focus
             if (focus === null || typeof focus !== 'object') return null
-            return scope.querySelector<HTMLElement>(`[data-part="${focus.form}"] [data-part="${focus.part}"]${focus.byPath ? `[data-path="${target.kind}"]` : ''}`)
+            const within = `[data-part="${focus.form}"] [data-part="${focus.part}"]`
+            // A path that repairs a flag stored as a non-boolean is carried by the flag's own element.
+            return scope.querySelector<HTMLElement>(focus.byPath ? `${within}[data-path="${target.kind}"], ${within}[data-fix-path="${target.kind}"]` : within)
         }
     }
 }

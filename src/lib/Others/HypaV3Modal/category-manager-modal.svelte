@@ -10,6 +10,8 @@
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import type { Category, CategoryManagerState, SearchState, FilterState } from "./types";
   import { createCategoryId } from "./utils";
+  import { alertConfirm } from "src/ts/alert";
+  import { fillLang } from "src/lang/fill";
   import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
   interface Props {
@@ -104,8 +106,12 @@
     hypaV3Data.categories = (hypaV3Data.categories || []).map(c => c.id === id ? { ...c, name } : c);
   }
 
-  function deleteCategory(id: string) {
+  async function deleteCategory(id: string) {
     if (id === "") return;
+
+    const target = (hypaV3Data.categories || []).find(c => c.id === id);
+    if (!target) return;
+    if (!(await alertConfirm(fillLang(language.hypaV3Modal.categoryDeleteConfirm, { name: target.name })))) return;
 
     for (const summary of hypaV3Data.summaries) {
       if (summary.categoryId === id) {

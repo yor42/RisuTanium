@@ -2,12 +2,14 @@
     import { onDestroy, onMount, untrack } from 'svelte'
     import { language } from '../../lang'
     import { openStudioModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
+    import { objListChanged, objListEarlierVisit, objListLine, objRefusalText } from '../../ts/studio/edit/objListCopy'
     import { liveReaderOf, resolveOwnerTarget } from '../../ts/studio/edit/ownerTargets'
     import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
     import { resolveRiskyRefusal } from '../../ts/studio/edit/riskyReplay'
     import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
-    import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath, type SetPath } from '../../ts/studio/history/historyModel'
+    import { listChangedElsewhere, RESTORE_PATH_ORDER, type ObjRefusal, type RestorePath, type SetPath } from '../../ts/studio/history/historyModel'
+    import type { ObjListName } from '../../ts/studio/history/objectLists'
     import type { StudioRefusal } from '../../ts/studio/history/ownerHistory.svelte'
     import { hasChatNote as hasChatNoteOf } from '../../ts/studio/history/ownerKindRules'
     import { parseOwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -15,7 +17,7 @@
     import { registerStudioSheetBack } from '../../ts/studio/studioBack.svelte'
     import { placeFocusAfterHistory } from '../../ts/studio/historyFocus'
     import { readOwnerFields } from '../../ts/studio/ownerFields'
-    import { selectedHistoryOwner, setStudioRestoreSheetOpen, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { selectedHistoryOwner, setStudioNotice, setStudioRestoreSheetOpen, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
 
     // The restore sheet over the History panel. It exists only while it is open: it holds the toast stack back
@@ -49,7 +51,10 @@
     // A changed path is kept unless the user chooses to overwrite it.
     let overwritten = $state<RestorePath[]>([])
     // The refused result's reason and the paths it names: a risky-flag refusal's text depends on them.
-    let refusal = $state<{ reason: StudioRefusal; paths?: SetPath[] } | null>(null)
+    let refusal = $state<{ reason: StudioRefusal; paths?: SetPath[]; obj?: ObjRefusal } | null>(null)
+    // The lists this visit changed (one line each) and the lists an earlier visit changed (a note each).
+    const restoreLines = $derived(service && owner !== null ? service.view(owner).restoreLines : [])
+    const restoreNotes = $derived(service && owner !== null ? service.view(owner).restoreNotes : [])
     let cancelButton = $state<HTMLButtonElement | undefined>()
     let layer = $state<HTMLElement | undefined>()
     let confirmButton = $state<HTMLButtonElement | undefined>()
@@ -79,8 +84,11 @@
         const key = owner
         const svc = service
         const keepNow = (): Set<RestorePath> => new Set(changed.filter((path) => !overwritten.includes(path)))
+        // Read at call time, like keepNow: the retry follows the answer to a question, and the lists this visit changed
+        // may differ by then.
+        const linesNow = (): ObjListName[] => (service?.view(key).restoreLines ?? []).map((line) => line.list)
         let before = readOwnerFields(key)
-        let result = svc.restore(key, keepNow())
+        let result = svc.restore(key, keepNow(), { lines: linesNow() })
         if (result.ok === false && result.reason === 'riskyConfirm') {
             const visitId = studioScreen.visitId
             // The question's answer may change what is live: the retry recomputes the kept paths and reads `before` after
@@ -90,7 +98,7 @@
                 result,
                 (confirmed) => {
                     before = readOwnerFields(key)
-                    return svc.restore(key, keepNow(), { confirmed })
+                    return svc.restore(key, keepNow(), { confirmed, lines: linesNow() })
                 },
                 () => !destroyed && studioScreen.visitId === visitId && owner === key,
                 (asker, paths) => {
@@ -108,8 +116,12 @@
             result = settled
         }
         if (result.ok === false) {
-            refusal = { reason: result.reason, paths: result.paths }
+            refusal = { reason: result.reason, paths: result.paths, obj: result.obj }
             return
+        }
+        // A line whose list changed elsewhere was not undone; the fields applied, and the notice says which list stayed.
+        if (result.linesRefused !== undefined && result.linesRefused.length > 0) {
+            setStudioNotice(result.linesRefused.map((list) => objListChanged(list)).join(' '))
         }
         // The sheet unmounts with the close, so the scope is taken from it first; a restore that changed nothing
         // leaves focus to the panel's opener rule.
@@ -143,8 +155,18 @@
                 {/each}
             </ul>
         {/if}
+        {#if restoreLines.length > 0}
+            <ul class="flex flex-col gap-1" data-part="studio-restore-lines">
+                {#each restoreLines as line (line.list)}
+                    <li data-part="studio-restore-line" data-list={line.list} class="text-sm">{objListLine(line.list, line.n)}</li>
+                {/each}
+            </ul>
+        {/if}
+        {#each restoreNotes as list (list)}
+            <p data-part="studio-restore-earlier-note" data-list={list} class="text-sm text-textcolor2">{objListEarlierVisit(list)}</p>
+        {/each}
         {#if refusal}
-            <p role="alert" data-part="studio-restore-refusal" class="text-sm text-draculared">{refusalTextOf(refusal)}</p>
+            <p role="alert" data-part="studio-restore-refusal" class="text-sm text-draculared">{objRefusalText(refusal) ?? refusalTextOf(refusal)}</p>
         {/if}
         <div class="flex justify-end gap-2">
             <button bind:this={cancelButton} type="button" class={buttonClass} data-part="studio-restore-cancel" onclick={() => setStudioRestoreSheetOpen(false)}>{language.cancel}</button>

@@ -370,7 +370,11 @@
         return extra === null ? null : { ...extra, source: 'extra' }
     }
 
-    // An open picker follows the text: it closes when the caret is no longer inside the same `{{`, and filters by
+    // The match count the extra source announces, or the macro picker's wording when it states none. Wrapped, so the
+    // source's method is never called without its object.
+    const extraMatches = (n: number): string => extraPicks?.matches?.(n) ?? language.ltMacroMatches(n)
+
+    // An open picker follows the text: it closes when the caret is no longer inside the same `{{` or `@@`, and filters by
     // the name typed since.
     function refreshPicker(): void {
         if (trigger === null) return
@@ -825,7 +829,7 @@
                 active={activeAt}
                 offset={trigger.start + 2 + trigger.query.length}
                 label={trigger.source === 'extra' ? extraPicks?.label?.() : undefined}
-                matches={trigger.source === 'extra' ? extraPicks?.matches : undefined}
+                matches={trigger.source === 'extra' ? extraMatches : undefined}
                 stack={studioScreen.layout === 'stack'}
                 listId={pickerListId}
                 optionId={pickerOptionId}

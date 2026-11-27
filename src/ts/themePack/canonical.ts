@@ -81,6 +81,11 @@ const COMMENT_NEIGHBOUR = /[ \t\n{};,]/
 // draws; such a number is refused rather than measured. `n` and `n-<digits>` are the an+b forms of :nth-child().
 const NUMBER_UNIT = /^(?:|px|rem|em|vw|vh|vmin|vmax|pt|cm|mm|in|ch|ex|deg|rad|grad|turn|s|ms|fr|x|dpi|dppx|dpcm|n|n-\d+)$/
 
+/** Whether a statement prelude opens a @keyframes block named pack-*: the one at-rule a pack may define besides @media and @font-face (effects.ts judges the block). Case-insensitive, as the browser reads the at-keyword. */
+export function isPackKeyframesPrelude(prelude: string): boolean {
+    return /^@keyframes\s+pack-/.test(prelude.trim().toLowerCase())
+}
+
 /** Tokenises a preprocessed stylesheet (CR, FF and NUL already rewritten) under the strict profile. */
 export function canonicalStylesheet(css: string): CanonicalStylesheet {
     const errors: ProfileError[] = []
@@ -96,7 +101,7 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
     const inResourceFunction = () => stack.length > 0 && RESOURCE_FUNCTIONS.has(stack[stack.length - 1])
     const anyResourceFunction = () => stack.some((name) => RESOURCE_FUNCTIONS.has(name))
     // The blocks open around the current position: a top-level rule or @font-face holds declarations, an @media block holds rules.
-    type Block = 'media' | 'declarations'
+    type Block = 'media' | 'declarations' | 'keyframes'
     const blocks: Block[] = []
     // The canonical text since the last `{`, `}` or `;` outside declarations. It is its own string so that judging a prelude never copies the whole text.
     let preludeText = ''
@@ -201,8 +206,8 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
             const prelude = preludeText.trim().toLowerCase()
             const inside = blocks[blocks.length - 1]
             if (inside === 'declarations') fail('', NESTED_BLOCK_REASON)
-            else if (inside === 'media' && prelude.startsWith('@')) fail('', NESTED_AT_REASON)
-            blocks.push(inside === undefined && prelude.startsWith('@media') ? 'media' : 'declarations')
+            else if ((inside === 'media' || inside === 'keyframes') && prelude.startsWith('@')) fail('', NESTED_AT_REASON)
+            blocks.push(inside === undefined && prelude.startsWith('@media') ? 'media' : inside === undefined && isPackKeyframesPrelude(prelude) ? 'keyframes' : 'declarations')
             emit(ch)
             i++
             preludeText = ''

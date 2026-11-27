@@ -154,9 +154,8 @@ const everyLabel: { [K in StepLabel['kind']]: { labels: StepLabel[], lines: stri
     portraitAdd: { labels: [{ kind: 'portraitAdd' }], lines: ['studioStepPortraitAdd'] },
     portraitRemove: { labels: [{ kind: 'portraitRemove' }], lines: ['studioStepPortraitRemove'] },
     portraitMain: { labels: [{ kind: 'portraitMain' }], lines: ['studioStepPortraitMain'] },
-    // Interim line until the lore list UI names these steps.
-    obj: { labels: [{ kind: 'obj', list: 'lore', action: 'edit', name: null, field: 'content' }], lines: ['loreBook'] },
-    prop: { labels: [{ kind: 'prop', prop: 'loreSettings' }], lines: ['loreBook'] },
+    obj: { labels: [{ kind: 'obj', list: 'lore', action: 'edit', name: null, field: 'content' }], lines: ['studioLoreStepEdit(prompt,)'] },
+    prop: { labels: [{ kind: 'prop', prop: 'loreSettings' }], lines: ['studioLoreStepSettings'] },
 }
 
 describe('the line of every kind of step, after a reload', () => {
