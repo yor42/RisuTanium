@@ -8,7 +8,6 @@
     import { archivedMemberIds, changeCharGeneration, supersedeChangeChar } from 'src/ts/characters'
     import { DBState, selectedCharID } from 'src/ts/stores.svelte'
     import CharListAvatar from '../../Others/CharListAvatar.svelte'
-    import { UPSTREAM_TAG_CLASS } from '../SourceDisclosure.svelte'
     import type { HomeBand } from './homeLayout'
     import type { ShelfStory } from './homeStories'
     import { STORY_DATE_OPTIONS, STORY_RELATIVE_OPTIONS, storyDateTime, storyTime } from './storyTime'
@@ -98,9 +97,6 @@
         if (story.chatLabel !== null) {
             ids.push(`${uid}-c${i}`)
         }
-        if (story.archived) {
-            ids.push(`${uid}-a${i}`)
-        }
         ids.push(`${uid}-t${i}`)
         return ids.join(' ')
     }
@@ -150,9 +146,6 @@
                 {#if entry.type === 'group'}
                     <span aria-hidden="true" class="shrink-0 text-[color:var(--home-ink-2)]"><UsersIcon size={14} /></span>
                     <span id="{uid}-g{i}" hidden>{language.chatShellGroupName(name)}</span>
-                {/if}
-                {#if story.archived}
-                    <span id="{uid}-a{i}" data-part="home-story-archived" class={UPSTREAM_TAG_CLASS}>{language.homeStoryArchived}</span>
                 {/if}
             </span>
             {#if story.chatLabel !== null}

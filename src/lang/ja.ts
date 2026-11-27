@@ -2335,7 +2335,6 @@ export const languageJapanese = {
     homeSideLabel: "発見とコミュニティ",
     homeStoriesHeading: "物語の続きから",
     homeStoryJustNow: "たった今",
-    homeStoryArchived: "アーカイブ済み",
     homeLibraryHeading: "キャラクター",
     homeLibraryAllTrashed: "すべてのキャラクターがゴミ箱に入っています。",
     homeJumpLabel: "移動先",

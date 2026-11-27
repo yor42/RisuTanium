@@ -2200,7 +2200,6 @@ export const languageChinese = {
     "homeSideLabel": "发现与社区",
     "homeStoriesHeading": "继续你的故事",
     "homeStoryJustNow": "刚刚",
-    "homeStoryArchived": "已归档",
     "homeLibraryHeading": "角色",
     "homeLibraryAllTrashed": "所有角色都在垃圾桶中。",
     "homeJumpLabel": "跳转到",

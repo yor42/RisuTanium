@@ -2200,7 +2200,6 @@ export const languageVietnamese = {
     "homeSideLabel": "Khám phá và cộng đồng",
     "homeStoriesHeading": "Tiếp tục câu chuyện của bạn",
     "homeStoryJustNow": "vừa xong",
-    "homeStoryArchived": "Đã lưu trữ",
     "homeLibraryHeading": "Nhân vật",
     "homeLibraryAllTrashed": "Tất cả nhân vật đều nằm trong Thùng rác.",
     "homeJumpLabel": "Chuyển đến",
