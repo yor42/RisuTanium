@@ -2,8 +2,7 @@
 
 /**
  * `SideBarArrow.svelte`: the sidebar toggle at the top-left of the chat area. It renders nothing
- * while the Home phone drawer owns navigation (`homeChrome.phoneDrawer`) and is otherwise the
- * open arrow or the close arrow, as before.
+ * while the Home phone drawer owns navigation or the docked Home rail is already visible.
  *
  * MOCKED: `stores.svelte` with the three stores the arrow reads.
  */
@@ -38,6 +37,7 @@ afterEach(async () => {
         target.remove()
     }
     homeChrome.phoneDrawer = false
+    homeChrome.landing = false
     sideBarStore.set(false)
     sideBarClosing.set(false)
     DynamicGUI.set(false)
@@ -62,6 +62,21 @@ describe('SideBarArrow', () => {
         const openState = mountArrow()
         expect(openState.querySelectorAll('button').length).toBe(1)
         expect(openState.querySelector('button')!.hasAttribute('data-panel-handle')).toBe(false)
+    })
+
+    test('the docked Home rail needs no arrow, and the overlay still has an opener', () => {
+        homeChrome.landing = true
+        const target = mountArrow()
+        expect(target.querySelector('button')).toBeNull()
+
+        sideBarStore.set(true)
+        flushSync()
+        expect(target.querySelector('button')).toBeNull()
+
+        DynamicGUI.set(true)
+        sideBarStore.set(false)
+        flushSync()
+        expect(target.querySelector('[data-panel-handle]')).not.toBeNull()
     })
 
     test('T-612: in overlay mode with the sidebar open the arrow renders no button, since Sidebar draws it in the backdrop strip', () => {
