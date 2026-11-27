@@ -68,6 +68,7 @@ import { assignPresetIds } from 'src/ts/storage/presetMeta'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { RisuModule } from 'src/ts/process/modules'
 import { openStudioModuleId, publishOpenModuleId, resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
+import { resetPresetAckForTests, setPresetAckLoaderForTests } from 'src/ts/studio/edit/presetAck.svelte'
 import { createSaveAck, type ModuleCommitVerdict, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import { compositionStart, composeText } from '../../ts/ime/tests/imeEventSequence'
 import { makeChat, makeCharacter, makeInput, makePreset, residentModule, studioDbOf, stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
@@ -129,6 +130,7 @@ function makeAck(clock: FakeClock): SaveAck {
 const moduleRig = {
     clock: createFakeClock(),
     built: [] as SaveAck[],
+    presetAcks: [] as SaveAck[],
     callbacks: new Set<() => void>(),
     committed: 0,
     verdict: 'saved' as ModuleCommitVerdict,
@@ -155,6 +157,30 @@ function makeModuleAck(clock: FakeClock): SaveAck {
     const ack = createSaveAck(deps, { kind: 'module', verdict: () => moduleRig.verdict })
     vi.spyOn(ack, 'dispose')
     moduleRig.built.push(ack)
+    return ack
+}
+
+// The preset acks the preset loader built: no mark is ever counted, so an edit noted to one reads as not counted.
+function makePresetAck(clock: FakeClock): SaveAck {
+    const deps: SaveAckDeps = {
+        getMarkCount: () => 0,
+        getCommittedMarkCount: () => 0,
+        afterNextCommit: () => {},
+        requestSaveNow: () => {},
+        getPeerSaveCount: () => 0,
+        onStopped: () => () => {},
+        isStopped: () => false,
+        subscribeFailure: () => () => {},
+        currentFailure: () => null,
+        frozenKeys: () => new Set<string>(),
+        isCharacterUnsavable: () => false,
+        onPassStart: () => () => {},
+        visible: () => true,
+        onVisibilityChange: () => () => {},
+        clock,
+    }
+    const ack = createSaveAck(deps, { kind: 'preset', verdict: () => 'saved' })
+    moduleRig.presetAcks.push(ack)
     return ack
 }
 
@@ -185,6 +211,7 @@ function makeRig(): OwnerHistoryService {
     setStudioVisitAckForTests(makeAck(clock))
     moduleRig.clock = clock
     setStudioModuleAckForTests(() => makeModuleAck(clock))
+    setPresetAckLoaderForTests(async () => () => makePresetAck(clock))
     return service
 }
 
@@ -258,6 +285,7 @@ function resetMarks(): void {
 
 beforeEach(() => {
     moduleRig.built.length = 0
+    moduleRig.presetAcks.length = 0
     moduleRig.callbacks.clear()
     moduleRig.committed = 0
     moduleRig.verdict = 'saved'
@@ -278,6 +306,7 @@ beforeEach(() => {
 
 afterEach(async () => {
     await unmountAll()
+    resetPresetAckForTests()
     uninstallDbWriteHook()
     // The pending record lives in device storage and a page-lifetime map; the favourites list is a shared reactive copy.
     localStorage.clear()
@@ -505,7 +534,7 @@ describe('CG3 no module chip outside the module toggle builder', () => {
         expect(moduleRig.built).toHaveLength(0)
     })
 
-    test('the toggles of a preset build no module ack and show no chip', async () => {
+    test('the toggles of a preset build no module ack and show the chip of the preset ack, not of a module or a character', async () => {
         const input = makeInput({
             character: makeCharacter({ chaId: 'A', customModuleToggle: 'ch=Char' } as Parameters<typeof makeCharacter>[0]),
             presets: [makePreset('P0', { toggles: 'p=Preset' })],
@@ -517,8 +546,13 @@ describe('CG3 no module chip outside the module toggle builder', () => {
         assignPresetIds(db.db as unknown as Parameters<typeof assignPresetIds>[0])
         await mountOn({ owner: { type: 'preset', id: '0' }, kind: 'toggles', from: 'chat' })
         expect(part('studio-toggle-builder')).not.toBeNull()
-        expect(part('studio-chip')).toBeNull()
         expect(moduleRig.built).toHaveLength(0)
+        expect(moduleRig.presetAcks).toHaveLength(1)
+        // The injected preset ack counts no mark, so a noted edit reads failed; a null ack would read idle.
+        expect(chipState()).toBe('idle')
+        moduleRig.presetAcks[0].noteEdit((db.db.botPresets[0] as { id?: string }).id ?? '', 0)
+        flushSync()
+        expect(chipState()).toBe('failed')
     })
 
     test('a stub module builds no module ack and shows no chip', async () => {

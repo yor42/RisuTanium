@@ -4,6 +4,7 @@
     import { classicDestinationOf, openInClassicEditor } from '../../ts/studio/classicLinks.svelte'
     import { itemSectionsOf, type TextField } from '../../ts/studio/itemText'
     import { currentModuleAck, currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
+    import { currentPresetAck } from '../../ts/studio/edit/presetAck.svelte'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
     import { MODULE_LIST_KEY, applyStudioTarget, clearStudioSelection, followStudioPreset, openStudioModuleList, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { moduleRowKeys } from '../Setting/Pages/Module/moduleListWindow'
@@ -123,7 +124,7 @@
     const moduleToggleBuilderLive = $derived(openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'toggles')
     const presetToggleBuilderLive = $derived(owner?.type === 'preset' && studioScreen.selectedPresetId !== null && kindNode?.kind === 'toggles')
     const toggleBuilderLive = $derived(characterToggleBuilderLive || moduleToggleBuilderLive || presetToggleBuilderLive)
-    // The advanced form of the preset the selection pinned by id. It is no part of `formLive`: a preset has no save chip.
+    // The advanced form of the preset the selection pinned by id. It is no part of `formLive`: only the preset's toggle builder carries its save chip.
     const presetAdvancedFormLive = $derived(owner?.type === 'preset' && studioScreen.selectedPresetId !== null && kindNode?.kind === 'advanced')
     // A module whose id several rows share: its toggles stay read-only text, as its assets do.
     const moduleToggleShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'toggles')
@@ -285,6 +286,7 @@
                     <StudioToggleBuilder target={{ kind: 'module', moduleId: moduleRawId }} />
                 {/key}
             {:else if presetToggleBuilderLive && studioScreen.selectedPresetId !== null}
+                <StudioStatusChip ack={currentPresetAck(studioScreen.selectedPresetId)} />
                 <!-- Keyed by the pinned id, not the row: a reorder keeps this builder, another preset builds a new one. -->
                 {#key studioScreen.selectedPresetId}
                     <StudioToggleBuilder target={{ kind: 'preset', presetId: studioScreen.selectedPresetId }} />
