@@ -6,6 +6,7 @@
     import { afterFlush } from '../../ts/afterFlush'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { providerLabel, storedConnections } from '../../ts/connections/connections'
+    import { catalogEntry } from '../../ts/connections/providerCatalog'
     import { addCustomModelUnder, customModelsUnder, editCustomModelUnder, ownsCustomModels, removeCustomModelUnder } from '../../ts/connections/customModelsUnder'
     import { connectionKeyHint } from '../../ts/connections/connectionHint'
     import { clearKey, deleteConnection, keyEffectsOf, needsKey, renameConnection, replaceKey, useProxyForCurrent, type KeyEffect } from '../../ts/connections/connectionEditor'
@@ -127,7 +128,7 @@
         const lines = [...effects]
         if (users.kind === 'presets') lines.push(...userLines(users.presets))
         else if (users.kind === 'models') lines.push(...userLines(users.models))
-        else if (users.kind === 'provider') lines.push(fillLang(language.connectionsGlobalEffect, { provider: providerLabel(conn.provider) }))
+        else if (users.kind === 'provider') lines.push(fillLang(catalogEntry(conn.provider)?.group === 'services' ? language.connectionsServiceGlobalEffect : language.connectionsGlobalEffect, { provider: providerLabel(conn.provider) }))
         return {
             severity: 'danger',
             headline: fillLang(language.connectionsDeleteQ, { name: conn.name }),

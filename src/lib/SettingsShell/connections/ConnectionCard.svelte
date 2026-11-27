@@ -1,5 +1,5 @@
 <script module lang="ts">
-    import { CloudIcon, HouseIcon, RouteIcon, ServerIcon } from '@lucide/svelte'
+    import { CloudIcon, HouseIcon, PlugIcon, RouteIcon, ServerIcon } from '@lucide/svelte'
     import { language } from '../../../lang'
     import { fillLang } from '../../../lang/fill'
     import { providerLabel, type Connection } from '../../../ts/connections/connections'
@@ -12,6 +12,7 @@
         route: RouteIcon,
         house: HouseIcon,
         server: ServerIcon,
+        plug: PlugIcon,
     }
 
     /** The icon of a connection's provider; a custom connection has no catalog entry and reads as a server. */

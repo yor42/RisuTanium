@@ -12,13 +12,14 @@
     import { saveAsset, downloadFile, pickedAssetLimitBytes } from "src/ts/globalApi.svelte";
     import { requestWavespeedModels } from "src/ts/process/wavespeedModels";
     import { wavespeedLorasToWrite } from "src/ts/process/wavespeedLoraSync";
-    import { SecretRefError } from "src/ts/secretRef";
+    import { isKeyReadStop, serviceEditorValue, serviceKey, setServiceKey } from 'src/ts/connections/serviceKeys';
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { isTauri } from "src/ts/platform"
     import NumberInput from "src/lib/UI/GUI/NumberInput.svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import KeyListInput from "src/lib/UI/GUI/KeyListInput.svelte";
     import ConnectionsLink from "src/lib/SettingsShell/connections/ConnectionsLink.svelte";
+    import ServiceConnectionRow from "src/lib/SettingsShell/connections/ServiceConnectionRow.svelte";
     import SelectInput from "src/lib/UI/GUI/SelectInput.svelte";
     import OptionInput from "src/lib/UI/GUI/OptionInput.svelte";
     import SliderInput from "src/lib/UI/GUI/SliderInput.svelte";
@@ -158,14 +159,24 @@
      * https://wavespeed.ai/docs/docs-common-api/models
      */
     async function fetchWavespeedModels() {
-        if (!DBState.db.wavespeedImage.key || DBState.db.wavespeedImage.key.trim() === '') {
+        let storedKey: string;
+        try {
+            storedKey = await serviceKey('wavespeedImage.key', DBState.db);
+        } catch (error) {
+            if (isKeyReadStop(error)) {
+                alertError(error.message);
+                return [];
+            }
+            throw error;
+        }
+        if (storedKey.trim() === '') {
             alertError(language.errors.wavespeedKeyMissing);
             return [];
         }
 
         isWavespeedLoading = true;
         try {
-            const result = await requestWavespeedModels(DBState.db.wavespeedImage.key);
+            const result = await requestWavespeedModels(storedKey);
 
             if (!result.ok || !result.data) {
                 alertError('Failed to fetch WaveSpeed models');
@@ -210,7 +221,7 @@
             wavespeedModels = filteredModels;
             alertNormal(fillLang(language.alerts.wavespeedModelsLoaded, { count: filteredModels.length }));
         } catch (error) {
-            if (error instanceof SecretRefError) {
+            if (isKeyReadStop(error)) {
                 alertError(error.message);
             } else {
                 alertError(fillLang(language.errors.fetchModelsFailed, { error: `${error}` }));
@@ -365,7 +376,8 @@
             <span class="text-textcolor mt-2" id="{uid}-f4">Novel AI {language.providerURL}</span>
             <TextInput labelId="{uid}-f4" size="sm" marginBottom placeholder="https://image.novelai.net" bind:value={DBState.db.NAIImgUrl}/>
             <span class="text-textcolor" id="{uid}-f5">{language.apiKey}</span>
-            <TextInput labelId="{uid}-f5" size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>
+            <TextInput labelId="{uid}-f5" size="sm" marginBottom placeholder="pst-..." bind:value={() => serviceEditorValue(DBState.db, 'NAIApiKey'), (v) => { void setServiceKey(DBState.db, 'NAIApiKey', v) }}/>
+            <ServiceConnectionRow service="NAIApiKey" />
 
             <span class="text-textcolor" id="{uid}-v8">{language.model}</span>
             <SelectInput labelId="{uid}-v8" className="mb-4" bind:value={DBState.db.NAIImgModel} >
@@ -734,7 +746,8 @@
 
         {#if DBState.db.sdProvider === 'stability'}
             <span class="text-textcolor" id="{uid}-f6">{fillLang(language.settingsPage.nameApiKey, { name: 'Stability' })}</span>
-            <TextInput labelId="{uid}-f6" size="sm" marginBottom placeholder="..." bind:value={DBState.db.stabilityKey}/>
+            <TextInput labelId="{uid}-f6" size="sm" marginBottom placeholder="..." bind:value={() => serviceEditorValue(DBState.db, 'stabilityKey'), (v) => { void setServiceKey(DBState.db, 'stabilityKey', v) }}/>
+            <ServiceConnectionRow service="stabilityKey" />
 
             <span class="text-textcolor" id="{uid}-v23">{fillLang(language.settingsPage.nameModel, { name: 'Stability' })}</span>
             <SelectInput labelId="{uid}-v23" className="mt-2 mb-4" bind:value={DBState.db.stabilityModel}>
@@ -809,7 +822,8 @@
 
         {#if DBState.db.sdProvider === 'fal'}
             <span class="text-textcolor" id="{uid}-f15">{fillLang(language.settingsPage.nameApiKey, { name: 'Fal.ai' })}</span>
-            <TextInput labelId="{uid}-f15" size="sm" marginBottom placeholder="..." bind:value={DBState.db.falToken}/>
+            <TextInput labelId="{uid}-f15" size="sm" marginBottom placeholder="..." bind:value={() => serviceEditorValue(DBState.db, 'falToken'), (v) => { void setServiceKey(DBState.db, 'falToken', v) }}/>
+            <ServiceConnectionRow service="falToken" />
 
             <span class="text-textcolor mt-4" id="{uid}-v27">{language.settingsPage.width}</span>
             <NumberInput labelId="{uid}-v27" size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.width}/>
@@ -877,7 +891,8 @@
             <TextInput labelId="{uid}-f17" size="sm" marginBottom placeholder="https://api.example.com/v1/images/generations" bind:value={DBState.db.openaiCompatImage.url}/>
 
             <span class="text-textcolor" id="{uid}-f18">{language.apiKey}</span>
-            <TextInput labelId="{uid}-f18" size="sm" marginBottom placeholder="sk-..." hideText bind:value={DBState.db.openaiCompatImage.key}/>
+            <TextInput labelId="{uid}-f18" size="sm" marginBottom placeholder="sk-..." hideText bind:value={() => serviceEditorValue(DBState.db, 'openaiCompatImage.key'), (v) => { void setServiceKey(DBState.db, 'openaiCompatImage.key', v) }}/>
+            <ServiceConnectionRow service="openaiCompatImage.key" />
 
             <span class="text-textcolor" id="{uid}-f19">{language.model}</span>
             <TextInput labelId="{uid}-f19" size="sm" marginBottom placeholder="dall-e-3" bind:value={DBState.db.openaiCompatImage.model}/>
@@ -902,7 +917,8 @@
 
         {#if DBState.db.sdProvider === 'wavespeed'}
             <span class="text-textcolor" id="{uid}-f20">{language.apiKey}</span>
-            <TextInput labelId="{uid}-f20" size="sm" marginBottom placeholder="sk-..." hideText bind:value={DBState.db.wavespeedImage.key}/>
+            <TextInput labelId="{uid}-f20" size="sm" marginBottom placeholder="sk-..." hideText bind:value={() => serviceEditorValue(DBState.db, 'wavespeedImage.key'), (v) => { void setServiceKey(DBState.db, 'wavespeedImage.key', v) }}/>
+            <ServiceConnectionRow service="wavespeedImage.key" />
 
             <span class="text-textcolor">{language.model}</span>
             <button
@@ -1047,7 +1063,8 @@
     <CheckInput bind:check={DBState.db.ttsAutoSpeech} name={language.settingsPage.autoSpeech} className="mt-2"/>
 
     <span class="text-textcolor mt-2" id="{uid}-f21">{fillLang(language.settingsPage.nameApiKeyLower, { name: 'ElevenLabs' })}</span>
-    <TextInput labelId="{uid}-f21" size="sm" marginBottom bind:value={DBState.db.elevenLabKey}/>
+    <TextInput labelId="{uid}-f21" size="sm" marginBottom bind:value={() => serviceEditorValue(DBState.db, 'elevenLabKey'), (v) => { void setServiceKey(DBState.db, 'elevenLabKey', v) }}/>
+    <ServiceConnectionRow service="elevenLabKey" />
 
     <span class="text-textcolor mt-2" id="{uid}-f22">{fillLang(language.settingsPage.nameUrl, { name: 'VOICEVOX' })}</span>
     <TextInput labelId="{uid}-f22" size="sm" marginBottom bind:value={DBState.db.voicevoxUrl}/>
@@ -1056,13 +1073,16 @@
     <KeyListInput labelId="{uid}-keyTts" size="sm" marginBottom unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'openAIKey')} bind:value={() => slotEditorValue(DBState.db, 'openAIKey'), (v) => { void setSlotKey(DBState.db, 'openAIKey', v) }}/>
 
     <span class="text-textcolor mt-2" id="{uid}-f23">{fillLang(language.settingsPage.nameApiKeyLower, { name: 'NovelAI' })}</span>
-    <TextInput labelId="{uid}-f23" size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>
+    <TextInput labelId="{uid}-f23" size="sm" marginBottom placeholder="pst-..." bind:value={() => serviceEditorValue(DBState.db, 'NAIApiKey'), (v) => { void setServiceKey(DBState.db, 'NAIApiKey', v) }}/>
+    <ServiceConnectionRow service="NAIApiKey" />
 
     <span class="text-textcolor" id="{uid}-f24">{fillLang(language.settingsPage.nameKey, { name: 'Huggingface' })}</span>
-    <TextInput labelId="{uid}-f24" size="sm" marginBottom bind:value={DBState.db.huggingfaceKey} placeholder="hf_..."/>
+    <TextInput labelId="{uid}-f24" size="sm" marginBottom bind:value={() => serviceEditorValue(DBState.db, 'huggingfaceKey'), (v) => { void setServiceKey(DBState.db, 'huggingfaceKey', v) }} placeholder="hf_..."/>
+    <ServiceConnectionRow service="huggingfaceKey" />
 
     <span class="text-textcolor" id="{uid}-f25">{fillLang(language.settingsPage.nameApiKey, { name: 'fish-speech' })}</span>
-    <TextInput labelId="{uid}-f25" size="sm" marginBottom bind:value={DBState.db.fishSpeechKey}/>
+    <TextInput labelId="{uid}-f25" size="sm" marginBottom bind:value={() => serviceEditorValue(DBState.db, 'fishSpeechKey'), (v) => { void setServiceKey(DBState.db, 'fishSpeechKey', v) }}/>
+    <ServiceConnectionRow service="fishSpeechKey" />
 
 </Accordion>
 {/if}
@@ -1133,7 +1153,8 @@
             </SelectInput>
             {#if DBState.db.supaModelType === 'davinci' || DBState.db.supaModelType === 'curie' || DBState.db.supaModelType === 'instruct35'}
             <span class="text-textcolor" id="{uid}-f26">{fillLang(language.settingsPage.nameKey, { name: `${language.SuperMemory} OpenAI` })}</span>
-            <TextInput labelId="{uid}-f26" size="sm" marginBottom bind:value={DBState.db.supaMemoryKey}/>
+            <TextInput labelId="{uid}-f26" size="sm" marginBottom bind:value={() => serviceEditorValue(DBState.db, 'supaMemoryKey'), (v) => { void setServiceKey(DBState.db, 'supaMemoryKey', v) }}/>
+            <ServiceConnectionRow service="supaMemoryKey" />
             {/if}
             <span class="text-textcolor"><span id="{uid}-f27">{language.summarizationPrompt}</span> <Help key="summarizationPrompt" /></span>
             <TextAreaInput labelId="{uid}-f27" size="sm" bind:value={DBState.db.supaMemoryPrompt} placeholder={language.settingsPage.leaveBlankDefault}/>
@@ -1366,7 +1387,8 @@
             <NumberInput labelId="{uid}-v60" size="sm" marginBottom bind:value={DBState.db.maxSupaChunkSize} min={100} />
             {#if DBState.db.supaModelType === 'davinci' || DBState.db.supaModelType === 'curie' || DBState.db.supaModelType === 'instruct35'}
                 <span class="text-textcolor" id="{uid}-f31">{fillLang(language.settingsPage.nameKey, { name: `${language.SuperMemory} OpenAI` })}</span>
-                <TextInput labelId="{uid}-f31" size="sm" marginBottom bind:value={DBState.db.supaMemoryKey}/>
+                <TextInput labelId="{uid}-f31" size="sm" marginBottom bind:value={() => serviceEditorValue(DBState.db, 'supaMemoryKey'), (v) => { void setServiceKey(DBState.db, 'supaMemoryKey', v) }}/>
+                <ServiceConnectionRow service="supaMemoryKey" />
             {/if}
             {#if DBState.db.supaModelType !== 'none'}
                 <span class="text-textcolor" id="{uid}-f32">{fillLang(language.settingsPage.namePrompt, { name: language.SuperMemory })}</span>
@@ -1403,21 +1425,24 @@
 
         {#if DBState.db.hypaModel === 'openai3small' || DBState.db.hypaModel === 'openai3large' || DBState.db.hypaModel === 'ada'}
             <span class="text-textcolor" id="{uid}-f33">{fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' })}</span>
-            <TextInput labelId="{uid}-f33" size="sm" marginBottom bind:value={DBState.db.supaMemoryKey}/>
+            <TextInput labelId="{uid}-f33" size="sm" marginBottom bind:value={() => serviceEditorValue(DBState.db, 'supaMemoryKey'), (v) => { void setServiceKey(DBState.db, 'supaMemoryKey', v) }}/>
+            <ServiceConnectionRow service="supaMemoryKey" />
         {/if}
 
         {#if DBState.db.hypaModel === 'custom'}
             <span class="text-textcolor" id="{uid}-f34">URL</span>
             <TextInput labelId="{uid}-f34" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.url}/>
             <span class="text-textcolor" id="{uid}-f35">{language.proxyAPIKey}</span>
-            <TextInput labelId="{uid}-f35" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.key}/>
+            <TextInput labelId="{uid}-f35" size="sm" marginBottom bind:value={() => serviceEditorValue(DBState.db, 'hypaCustomSettings.key'), (v) => { void setServiceKey(DBState.db, 'hypaCustomSettings.key', v) }}/>
+            <ServiceConnectionRow service="hypaCustomSettings.key" />
             <span class="text-textcolor" id="{uid}-f36">{language.proxyRequestModel}</span>
             <TextInput labelId="{uid}-f36" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.model}/>
         {/if}
 
         {#if DBState.db.hypaModel === 'voyageContext3'}
             <span class="text-textcolor" id="{uid}-f37">{fillLang(language.settingsPage.nameApiKey, { name: 'Voyage' })}</span>
-            <TextInput labelId="{uid}-f37" size="sm" marginBottom hideText bind:value={DBState.db.voyageApiKey}/>
+            <TextInput labelId="{uid}-f37" size="sm" marginBottom hideText bind:value={() => serviceEditorValue(DBState.db, 'voyageApiKey'), (v) => { void setServiceKey(DBState.db, 'voyageApiKey', v) }}/>
+            <ServiceConnectionRow service="voyageApiKey" />
         {/if}
 
     </Accordion>

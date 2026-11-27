@@ -15,7 +15,7 @@
     import { postTrashUndo } from "../../ts/libraryUndo";
     import LoreBook from "./LoreBook/LoreBookSetting.svelte";
     import { alertConfirm, alertError, alertNormal, showHypaV2Alert } from "../../ts/alert";
-    import { SecretRefError } from "src/ts/secretRef";
+    import { isKeyReadStop, serviceKey } from "src/ts/connections/serviceKeys";
     import BarIcon from "./BarIcon.svelte";
     import { findCharacterbyId, getAuthorNoteDefaultText, selectMultipleFileObjects, selectSingleFileObject } from "../../ts/util";
     import { beginBusy } from "../../ts/process/memory/busyActions";
@@ -265,9 +265,9 @@
 
     async function getFishSpeechModels() {
         try {
-            fishSpeechModels = await fetchFishSpeechModels(DBState.db.fishSpeechKey);
+            fishSpeechModels = await fetchFishSpeechModels(await serviceKey('fishSpeechKey', DBState.db));
         } catch (error) {
-            if (error instanceof SecretRefError) {
+            if (isKeyReadStop(error)) {
                 alertError(error.message);
             } else {
                 console.error('Error fetching fish speech models:', error);

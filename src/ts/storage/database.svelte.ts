@@ -1656,6 +1656,8 @@ export interface groupChat{
     characters:string[]
     characterTalks:number[]
     characterActive:boolean[]
+    /** Fork-only. Member chaId -> {name, slot}, written when a member joins. Carried by the store2 core and the .bin, never by a card. Absent or malformed reads as empty. */
+    risutanium_members?:unknown
     globalLore: loreBook[]
     autoMode: boolean
     useCharacterLore :boolean

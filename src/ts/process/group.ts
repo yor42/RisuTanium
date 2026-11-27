@@ -6,6 +6,7 @@ import { get } from "svelte/store";
 import { getDatabase, setDatabase } from "../storage/database.svelte";
 import { DBState, selectedCharID } from "../stores.svelte";
 import { restoreArchivedForWrite } from "./coldCharacterAccess";
+import { joinRecord } from "./groupMembers";
 
 export async function addGroupChar(){
     let selectedId = get(selectedCharID)
@@ -49,6 +50,7 @@ export async function addGroupChar(){
                 group.characters.push(res)
                 group.characterTalks.push(1 / 6 * 4)
                 group.characterActive.push(true)
+                joinRecord(group, res, findCharacterbyId(res).name)
             }
         }
     }

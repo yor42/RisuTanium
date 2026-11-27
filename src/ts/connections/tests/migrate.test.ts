@@ -319,3 +319,105 @@ describe('malformed store and failed apply', () => {
         expect(applyPlan(db, plan as Exclude<typeof plan, string>)).toBe(false)
     })
 })
+
+const SERVICE_FIELDS = {
+    elevenLabKey: 'SYN-elevenlabs', huggingfaceKey: 'SYN-huggingface', fishSpeechKey: 'SYN-fishspeech', NAIApiKey: 'SYN-novelai_media',
+    stabilityKey: 'SYN-stability', falToken: 'SYN-fal', supaMemoryKey: 'SYN-memory_openai', voyageApiKey: 'SYN-voyage',
+}
+
+/** The upstream shape of the five nested service containers, siblings included. */
+function serviceContainers(): Record<string, unknown> {
+    return {
+        openaiCompatImage: { url: 'https://img.invalid', key: 'SYN-openai_image', model: 'm', size: '1024x1024', quality: 'auto' },
+        wavespeedImage: { key: 'SYN-wavespeed', reference_image: 'ref', loras: [{ id: 'l1', scale: 1 }] },
+        deeplOptions: { key: 'SYN-deepl', freeApi: true },
+        deeplXOptions: { url: 'http://localhost:1188', token: 'SYN-deeplx' },
+        hypaCustomSettings: { url: 'https://em.invalid', key: 'SYN-embedding_custom', model: 'em' },
+    }
+}
+
+const SERVICE_PROVIDERS = [
+    'elevenlabs', 'huggingface', 'fishspeech', 'novelai_media', 'stability', 'fal', 'openai_image',
+    'wavespeed', 'deepl', 'deeplx', 'memory_openai', 'voyage', 'embedding_custom',
+]
+
+describe('service slots', () => {
+    it('absorbs all 13 service keys into one connection each, clears them and keeps every sibling', () => {
+        const db = makeDb({ ...SERVICE_FIELDS, ...serviceContainers() })
+        expect(migrateConnections(db)).toBe('applied')
+        expect(conns(db).map((c) => c.provider).sort()).toEqual([...SERVICE_PROVIDERS].sort())
+        for (const conn of conns(db)) {
+            expect(conn.key).toBe(`SYN-${conn.provider}`)
+        }
+        for (const field of Object.keys(SERVICE_FIELDS)) {
+            expect((db as unknown as Record<string, unknown>)[field], field).toBe('')
+        }
+        expect(db.openaiCompatImage).toEqual({ url: 'https://img.invalid', key: '', model: 'm', size: '1024x1024', quality: 'auto' })
+        expect(db.wavespeedImage).toEqual({ key: '', reference_image: 'ref', loras: [{ id: 'l1', scale: 1 }] })
+        expect(db.deeplOptions).toEqual({ key: '', freeApi: true })
+        expect(db.deeplXOptions).toEqual({ url: 'http://localhost:1188', token: '' })
+        expect(db.hypaCustomSettings).toEqual({ url: 'https://em.invalid', key: '', model: 'em' })
+    })
+
+    it('appends the service connections after the connections a V3 database already has', () => {
+        const chat: Connection[] = [
+            { id: 'conn-1', name: 'OpenAI', provider: 'openai', key: 'sk-a' },
+            { id: 'conn-2', name: 'Claude', provider: 'anthropic', key: 'sk-b' },
+            { id: 'conn-3', name: 'p', provider: 'reverse_proxy', key: 'PK', url: 'https://p.invalid' },
+        ]
+        const db = makeDb({ connections: structuredClone(chat), proxyConnectionId: 'conn-3', elevenLabKey: 'SYN-elevenlabs', ...serviceContainers() })
+        expect(migrateConnections(db)).toBe('applied')
+        expect(conns(db).slice(0, 3)).toEqual(chat)
+        expect(conns(db).slice(3).map((c) => [c.id, c.provider])).toEqual([
+            ['conn-4', 'elevenlabs'], ['conn-5', 'openai_image'], ['conn-6', 'wavespeed'],
+            ['conn-7', 'deepl'], ['conn-8', 'deeplx'], ['conn-9', 'embedding_custom'],
+        ])
+        expect(db.proxyConnectionId).toBe('conn-3')
+    })
+
+    it('a pending legacy value overwrites the provider connection key and keeps its keyWrapped', () => {
+        const db = makeDb({
+            elevenLabKey: 'SYN-new',
+            connections: [{ id: 'conn-1', name: 'ElevenLabs', provider: 'elevenlabs', key: 'SYN-old', keyWrapped: 'ENV' }],
+        })
+        expect(migrateConnections(db)).toBe('applied')
+        expect(conns(db)).toEqual([{ id: 'conn-1', name: 'ElevenLabs', provider: 'elevenlabs', key: 'SYN-new', keyWrapped: 'ENV' }])
+    })
+
+    it('keeps novelai.token and NAIApiKey apart when they differ', () => {
+        const db = makeDb({ novelai: { token: 'SYN-chat', model: 'm' }, NAIApiKey: 'SYN-media' })
+        expect(migrateConnections(db)).toBe('applied')
+        expect(conns(db).map((c) => [c.provider, c.key])).toEqual([['novelai', 'SYN-chat'], ['novelai_media', 'SYN-media']])
+    })
+
+    it('guard: a second run changes nothing and returns none', () => {
+        const db = makeDb({ ...SERVICE_FIELDS, ...serviceContainers() })
+        expect(migrateConnections(db)).toBe('applied')
+        const once = structuredClone(db)
+        expect(migrateConnections(db)).toBe('none')
+        expect(db).toEqual(once)
+    })
+
+    it('guard: a non-string value and a non-object container are empty, kept and never cleared', () => {
+        const db = makeDb({ elevenLabKey: 5, deeplOptions: 'x', hypaCustomSettings: { key: 7 }, wavespeedImage: [1] })
+        expect(migrateConnections(db)).toBe('none')
+        expect(db).toMatchObject({ elevenLabKey: 5, deeplOptions: 'x', hypaCustomSettings: { key: 7 }, wavespeedImage: [1] })
+        const second = makeDb({ elevenLabKey: 5, falToken: 'SYN-fal', deeplOptions: 'x' })
+        expect(migrateConnections(second)).toBe('applied')
+        expect(second).toMatchObject({ elevenLabKey: 5, deeplOptions: 'x', falToken: '' })
+    })
+
+    it('guard: a malformed store keeps every service legacy value', () => {
+        const db = makeDb({ connections: 'garbage', elevenLabKey: 'SYN-el', ...serviceContainers() })
+        expect(migrateConnections(db)).toBe('skip')
+        expect(db.elevenLabKey).toBe('SYN-el')
+        expect(db.deeplOptions).toEqual({ key: 'SYN-deepl', freeApi: true })
+    })
+
+    it('guard: hypaMemoryKey is untouched', () => {
+        const db = makeDb({ hypaMemoryKey: 'SYN-hypa', elevenLabKey: 'SYN-el' })
+        expect(migrateConnections(db)).toBe('applied')
+        expect(db.hypaMemoryKey).toBe('SYN-hypa')
+        expect(conns(db).map((c) => c.provider)).toEqual(['elevenlabs'])
+    })
+})

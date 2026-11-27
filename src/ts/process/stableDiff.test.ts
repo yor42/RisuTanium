@@ -37,7 +37,7 @@ describe('a reference image the access control list refuses (G)', () => {
   }
 
   const providers: Array<[string, Record<string, unknown>]> = [
-    ['wavespeed character reference', { sdProvider: 'wavespeed', wavespeedImage: { key: 'k', reference_mode: 'character' } }],
+    ['wavespeed character reference', { sdProvider: 'wavespeed', wavespeedImage: { key: '', reference_mode: 'character' }, connections: [{ id: 'conn-1', name: 'WaveSpeed', provider: 'wavespeed', key: 'k' }] }],
     ['novelai character reference', { sdProvider: 'novelai', NAIImgModel: 'nai-diffusion-4-5-full', NAIApiKey: 'k', NAII2I: false, NAIImgConfig: { width: 512, height: 512, reference_mode: 'character', character_image: '' } }],
     ['novelai image to image', { sdProvider: 'novelai', NAIImgModel: 'nai-diffusion-3', NAIApiKey: 'k', NAII2I: true, NAIImgConfig: { width: 512, height: 512, reference_mode: '', image: '' } }],
   ]

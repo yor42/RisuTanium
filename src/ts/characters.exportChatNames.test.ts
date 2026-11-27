@@ -47,10 +47,16 @@ vi.mock(import('./stores.svelte'), () => {
     chats: [chat],
     defaultVariables: '',
   }
+  // The speaker of the third message is a live member: the readers resolve it by chaId.
+  const speaker = {
+    type: 'character',
+    chaId: 'speaker-id',
+    get name() { return state.speakerName },
+  }
   return ({
     DBState: {
       db: {
-        characters: [character],
+        characters: [character, speaker],
         globalChatVariables: {},
         templateDefaultVariables: '',
       },

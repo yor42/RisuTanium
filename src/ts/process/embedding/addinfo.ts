@@ -1,10 +1,11 @@
-import { getDatabase, type Chat, type character } from "src/ts/storage/database.svelte";
+import { getDatabase, type Chat, type character, type groupChat } from "src/ts/storage/database.svelte";
+import { memberName } from "../groupMembers";
 import { HypaProcesser } from '../memory/hypamemory'
 import { getUserName } from "src/ts/util";
 import type { PromptView } from "src/ts/cbs";
 
 /** With a `promptView`, the query is built from the first four messages the prompt sends. */
-export async function additionalInformations(char: character,chats:Chat,promptView?:PromptView){
+export async function additionalInformations(char: character,chats:Chat,promptView?:PromptView,owner?:character|groupChat){
     const processer = new HypaProcesser()
     const db = getDatabase()
 
@@ -21,7 +22,7 @@ export async function additionalInformations(char: character,chats:Chat,promptVi
             }
         }
         const filteredChat = queried.map((chat) => {
-            let name = chat.saying ?? ''
+            let name = chat.saying ? memberName(db.characters, owner, chat.saying) : ''
 
             if(!name){
                 if(chat.role === 'user'){

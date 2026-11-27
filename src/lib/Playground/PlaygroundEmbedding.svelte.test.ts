@@ -53,7 +53,9 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 
 //#endregion
 
+import { language } from 'src/lang'
 import { DBState } from 'src/ts/stores.svelte'
+import { serviceKeyForUi } from 'src/ts/connections/serviceKeys'
 import PlaygroundEmbedding from './PlaygroundEmbedding.svelte'
 
 //#region helpers
@@ -70,8 +72,12 @@ let mounted: Mounted[] = []
 
 function installDb(): void {
     DBState.db = {
-        supaMemoryKey: 'sk-live',
-        hypaCustomSettings: { url: 'http://live.example/v1', key: 'live-key', model: 'live-model' },
+        connections: [
+            { id: 'conn-1', name: 'Memory (OpenAI)', provider: 'memory_openai', key: 'sk-live' },
+            { id: 'conn-2', name: 'Custom embedding', provider: 'embedding_custom', key: 'live-key' },
+        ],
+        supaMemoryKey: '',
+        hypaCustomSettings: { url: 'http://live.example/v1', key: '', model: 'live-model' },
     } as unknown as Database
 }
 
@@ -154,7 +160,7 @@ describe('the embedding page: the OpenAI key and custom URL copies', () => {
         await type(field(target, 'OpenAI API Key'), 'sk-local')
         await chooseModel(target, 'custom')
         await type(field(target, 'URL'), 'http://local.example')
-        expect(DBState.db.supaMemoryKey).toBe('sk-live')
+        expect(serviceKeyForUi('supaMemoryKey', DBState.db)).toBe('sk-live')
         expect(DBState.db.hypaCustomSettings.url).toBe('http://live.example/v1')
     })
 
@@ -200,7 +206,7 @@ describe('the embedding page: the OpenAI key and custom URL copies', () => {
     })
 
     test('guard: a local model runs without a key or URL', async () => {
-        DBState.db.supaMemoryKey = ''
+        DBState.db.connections = []
         DBState.db.hypaCustomSettings.url = ''
         const target = mountPage()
         await run(target)
@@ -215,8 +221,19 @@ describe('the embedding page: the shared custom key and model', () => {
         await chooseModel(target, 'custom')
         await type(field(target, 'Key/Password'), 'new-key')
         await type(field(target, 'Request Model'), 'new-model')
-        expect(DBState.db.hypaCustomSettings.key).toBe('new-key')
+        expect(serviceKeyForUi('hypaCustomSettings.key', DBState.db)).toBe('new-key')
         expect(DBState.db.hypaCustomSettings.model).toBe('new-model')
+    })
+})
+
+describe('the embedding page: the connection row', () => {
+    test('E-PLAY: the custom key editor is followed by the row of its slot; a local model shows none', async () => {
+        const target = mountPage()
+        expect(target.querySelector('[data-part="settings-service-connection"]')).toBeNull()
+        await chooseModel(target, 'custom')
+        const row = target.querySelector('[data-part="settings-service-connection"]')
+        expect(row?.getAttribute('data-slot')).toBe('hypaCustomSettings.key')
+        expect(row?.textContent).toContain(language.connectionsServiceUses.replace('{name}', 'Custom embedding'))
     })
 })
 

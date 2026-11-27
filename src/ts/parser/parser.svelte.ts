@@ -17,6 +17,7 @@ import { get } from 'svelte/store';
 import css, { type CssAtRuleAST } from '@adobe/css-tools'
 import { selectedCharID } from '../stores.svelte';
 import { calcString } from '../process/infunctions';
+import { memberRecord } from '../process/groupMembers';
 import { findCharacterbyId, getPersonaPrompt, getUserIcon, getUserName, pickHashRand, replaceAsync} from '../util';
 import { getInlayRender } from '../process/files/inlays';
 import { getModuleAssets, getModuleLorebooks, getModules } from '../process/modules';
@@ -1928,9 +1929,13 @@ export function risuChatParser(da:string, arg:{
             // own live chat, and never throws.
             const groupChat = arg.subject ? arg.subject.resolve()?.chat : aChara.chats[aChara.chatPage]
             if(groupChat && groupChat.message.length > 0){
-                const gc = findCharacterbyId(groupChat.message.at(-1).saying ?? '')
+                const saying = groupChat.message.at(-1).saying ?? ''
+                const gc = findCharacterbyId(saying)
                 if(gc.name !== 'Unknown Character'){
                     chara = gc
+                }
+                else{
+                    chara = memberRecord(aChara, saying)?.name ?? null
                 }
             }
             else{

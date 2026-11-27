@@ -16,7 +16,7 @@
     let { onclose }: Props = $props()
 
     const uid = $props.id()
-    const GROUP_ORDER: ProviderGroup[] = ['cloud', 'router', 'local', 'compatible']
+    const GROUP_ORDER: ProviderGroup[] = ['cloud', 'router', 'local', 'compatible', 'services']
 
     let provider = $state<ProviderEntry | null>(null)
     let name = $state('')
@@ -48,6 +48,7 @@
             case 'router': return language.connectionsGroupRouter
             case 'local': return language.connectionsGroupLocal
             case 'compatible': return language.connectionsGroupCompatible
+            case 'services': return language.connectionsGroupServices
         }
     }
 
@@ -140,7 +141,7 @@
         <div class="flex flex-col gap-1">
             <span class="text-sm text-textcolor2" id="{uid}-key">{language.connectionsKey}</span>
             <div data-part="settings-connection-key-input">
-                {#if provider.multilineKey}
+                {#if provider.singleKey}
                     <TextInput labelId="{uid}-key" size="sm" hideText bind:value={key} />
                 {:else}
                     <KeyListInput labelId="{uid}-key" size="sm" hideText bind:value={key} />

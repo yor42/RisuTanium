@@ -25,7 +25,18 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const runTranslatorMock = vi.hoisted(() => vi.fn(async (text: string, _reverse: boolean, _from: string, _to: string): Promise<string> => text))
-const dbBox = vi.hoisted(() => ({ db: { huggingfaceKey: 'hf-key' } as Record<string, unknown> }))
+const dbBox = vi.hoisted(() => ({ db: { connections: [{ id: 'conn-1', name: 'Hugging Face', provider: 'huggingface', key: 'hf-key' }] } as Record<string, unknown> }))
+
+// When `seam.value` is set the key seam answers it for every slot, so a reader that bypasses the seam is visible.
+const seam = vi.hoisted(() => ({ value: null as string | null }))
+
+vi.mock(import('../connections/serviceKeys'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return {
+        ...actual,
+        serviceKey: vi.fn(async (...args: Parameters<typeof actual.serviceKey>) => seam.value ?? await actual.serviceKey(...args)),
+    }
+})
 
 vi.mock(import('../alert'), () => ({
     alertError: alertErrorMock,
@@ -158,7 +169,8 @@ beforeEach(() => {
     alertErrorMock.mockReset()
     runTranslatorMock.mockClear()
     runTranslatorMock.mockImplementation(async (text: string) => `JA:${text}`)
-    dbBox.db = { huggingfaceKey: 'hf-key' }
+    dbBox.db = { connections: [{ id: 'conn-1', name: 'Hugging Face', provider: 'huggingface', key: 'hf-key' }] }
+    seam.value = null
 })
 
 afterEach(() => {
@@ -238,6 +250,17 @@ describe('the request to Hugging Face', () => {
         expect(init?.method).toBe('POST')
         expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer hf-key')
         expect(JSON.parse(String(init?.body))).toEqual({ inputs: 'Hello' })
+    })
+
+    test('regression reproducer: the key comes from the service key seam, not from the database field', async () => {
+        dbBox.db = { huggingfaceKey: 'legacy-field-value' }
+        seam.value = 'SYN-from-seam'
+        const fetchMock = replyWith(fakeReply(200))
+
+        await sayTTS(hfCharacter('en'), 'Hello')
+
+        const [, init] = fetchMock.mock.calls[0]
+        expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer SYN-from-seam')
     })
 })
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { canTestConnection, testConnection, type TestFetcher } from '../connectionTest'
-import type { Connection } from '../connections'
+import { GLOBAL_SLOT_PROVIDERS, SERVICE_SLOTS, type Connection } from '../connections'
 
 const conn = (over: Partial<Connection>): Connection => ({ id: 'c1', name: 'n', provider: 'openai', key: '', ...over })
 const signal = () => new AbortController().signal
@@ -52,5 +52,19 @@ describe('testConnection', () => {
         expect(canTestConnection(conn({ provider: 'mistral' }))).toBe(true)
         expect(canTestConnection(conn({ provider: 'novelai' }))).toBe(false)
         expect(canTestConnection(conn({ provider: 'custom', url: 'http://localhost:1234/v1' }))).toBe(true)
+    })
+})
+
+describe('service connections', () => {
+    // A service key may belong to a host the connection does not name (a compatible image server, DeepLX, a custom embedding
+    // server), so a test must never send it to a fixed vendor host. Guard: passes before and after.
+    it('are never tested: no service provider has an endpoint', async () => {
+        const fetcher = vi.fn<TestFetcher>()
+        for (const provider of SERVICE_SLOTS.map((slot) => GLOBAL_SLOT_PROVIDERS[slot])) {
+            const conn: Connection = { id: 'conn-1', name: provider, provider, key: 'SYN-key', url: 'https://svc.invalid' }
+            expect(canTestConnection(conn), provider).toBe(false)
+            expect(await testConnection(conn, 'SYN-key', fetcher, new AbortController().signal)).toEqual({ kind: 'unsupported' })
+        }
+        expect(fetcher).not.toHaveBeenCalled()
     })
 })

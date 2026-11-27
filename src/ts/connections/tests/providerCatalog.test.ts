@@ -22,7 +22,10 @@ vi.mock('src/ts/plugins/apiV3/v3.svelte', () => ({ customV3ProviderMetaStore: []
 
 import { LLMModels } from 'src/ts/model/modellist'
 import { setSlotKey } from '../slotEditor'
+import { GLOBAL_SLOT_PROVIDERS, providerLabel, SERVICE_SLOTS } from '../connections'
 import { addPrefillName, addableProviders, OAICOMP_KIDS, PROVIDER_CATALOG } from '../providerCatalog'
+
+const SERVICE_SLOT_PROVIDERS = SERVICE_SLOTS.map((slot) => GLOBAL_SLOT_PROVIDERS[slot])
 
 function makeDb(): Database {
     return { customModels: [] } as unknown as Database
@@ -50,8 +53,8 @@ describe('addableProviders', () => {
         expect(by.ollama.group).toBe('local')
         expect(by.reverse_proxy).toMatchObject({ group: 'compatible', takesUrl: true })
         expect(by.openai.takesUrl).toBe(false)
-        expect(by.vertex.multilineKey).toBe(true)
-        expect(PROVIDER_CATALOG.filter((e) => e.multilineKey).map((e) => e.provider)).toEqual(['vertex'])
+        expect(by.vertex.singleKey).toBe(true)
+        expect(PROVIDER_CATALOG.filter((e) => e.singleKey).map((e) => e.provider)).toEqual(['vertex', ...SERVICE_SLOT_PROVIDERS])
         expect(by['oaicomp:deepseek'].label).toBe('deepseek')
     })
 })
@@ -73,5 +76,29 @@ describe('addPrefillName', () => {
         expect(addPrefillName(db, 'openai')).toBe('OpenAI 2')
         expect(addPrefillName(db, 'reverse_proxy', 'https://p.invalid/v1')).toBe('p.invalid')
         expect(addPrefillName(db, 'reverse_proxy', 'nonsense')).toBe('Reverse proxy')
+    })
+})
+
+describe('services group', () => {
+    it('C-CAT: lists the 13 service providers in table order, each with the plug icon', () => {
+        const services = PROVIDER_CATALOG.filter((e) => e.group === 'services')
+        expect(services.map((e) => e.provider)).toEqual(SERVICE_SLOT_PROVIDERS)
+        expect(services).toHaveLength(13)
+        expect(services.every((e) => e.icon === 'plug' && !e.takesUrl)).toBe(true)
+        expect(addableProviders(makeDb()).filter((e) => e.group === 'services')).toHaveLength(13)
+    })
+
+    it('C-SINGLE: singleKey is exactly vertex plus the 13 services', () => {
+        const single = PROVIDER_CATALOG.filter((e) => e.singleKey).map((e) => e.provider)
+        expect(single).toHaveLength(14)
+        expect(single).toContain('vertex')
+        expect(PROVIDER_CATALOG.filter((e) => !e.singleKey).every((e) => e.group !== 'services')).toBe(true)
+    })
+
+    it('C-LABEL: every service entry carries its provider label, never the bare id', () => {
+        for (const entry of PROVIDER_CATALOG.filter((e) => e.group === 'services')) {
+            expect(entry.label).toBe(providerLabel(entry.provider))
+            expect(entry.label).not.toBe(entry.provider)
+        }
     })
 })

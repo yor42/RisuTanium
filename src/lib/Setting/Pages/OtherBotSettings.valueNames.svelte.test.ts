@@ -329,7 +329,7 @@ describe('OtherBotSettings image generation value controls are named', () => {
     })
 
     test('WaveSpeed with a LoRA and image-input model: LoRA weights and the reference select', async () => {
-        const target = await render({ sdProvider: 'wavespeed', wavespeedImage: { key: 'k', model: 'm1' } })
+        const target = await render({ sdProvider: 'wavespeed', wavespeedImage: { key: '', model: 'm1' }, connections: [{ id: 'conn-1', name: 'WaveSpeed', provider: 'wavespeed', key: 'k' }] })
         const refresh = Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.trim() === language.settingsPage.refreshModels)
         refresh?.click()
         await settle()

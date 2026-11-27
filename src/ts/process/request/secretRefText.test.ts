@@ -27,6 +27,8 @@ const h = vi.hoisted(() => ({
     resolved: 'SENTINEL-resolved-value',
     resolveCalls: [] as string[],
     fail: false,
+    rejectRead: false,
+    seamValue: null as string | null,
     db: {} as Record<string, unknown>,
     alertError: null as unknown as ReturnType<typeof import('vitest').vi.fn>,
     startModelData: vi.fn(),
@@ -87,6 +89,20 @@ vi.mock('../../globalApi.svelte', () => ({
     }),
 }))
 
+// A stored key that cannot be read right now: the read rejects as a wrapped key does before the vault answers.
+vi.mock('../../connections/serviceKeys', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../connections/serviceKeys')>()
+    const { VaultKeyUnavailableError } = await import('../../connections/keyVaultStore.svelte')
+    return {
+        ...actual,
+        serviceKey: vi.fn(async (...args: Parameters<typeof actual.serviceKey>) => {
+            if (h.rejectRead) {
+                throw new VaultKeyUnavailableError('the saved key cannot be read yet')
+            }
+            return h.seamValue ?? await actual.serviceKey(...args)
+        }),
+    }
+})
 vi.mock('../../storage/database.svelte', () => ({ getDatabase: () => absorbLegacyForTest(h.db) }))
 vi.mock('../../stores.svelte', () => ({
     get DBState() { return { db: absorbLegacyForTest(h.db) } },
@@ -141,6 +157,8 @@ beforeEach(() => {
     h.calls = []
     h.resolveCalls = []
     h.fail = false
+    h.rejectRead = false
+    h.seamValue = null
     h.alertError.mockClear()
     h.startModelData.mockReset()
     h.refreshModelDataNow.mockReset()
@@ -320,6 +338,49 @@ describe.each(readers)('$name', (reader) => {
         const { errorSpy } = await runReader(reader)
         errorSpy.mockRestore()
         expect(reader.calls().length).toBeGreaterThan(0)
+    })
+})
+
+//#endregion
+
+//#region a stored key that cannot be read
+
+describe.each([
+    {
+        name: 'DeepL translator',
+        setKey: (value: string) => { (h.db.deeplOptions as { key: string }).key = value },
+    },
+    {
+        name: 'DeepLX translator',
+        setKey: (value: string) => { h.db.translatorType = 'deeplX'; (h.db.deeplXOptions as { token: string }).token = value },
+    },
+])('$name with a stored key that cannot be read', ({ setKey }) => {
+    test('sends no request and surfaces the failure, never an unauthenticated call', async () => {
+        setKey(PLAIN)
+        h.rejectRead = true
+
+        await runTranslator('hello', false, 'ko', 'en')
+
+        expect(h.calls).toHaveLength(0)
+        expect(h.alertError).toHaveBeenCalledTimes(1)
+        expect(String(h.alertError.mock.calls[0][0])).toContain('the saved key cannot be read yet')
+    })
+})
+
+describe.each([
+    { name: 'DeepL translator', prepare: () => {}, carries: 'DeepL-Auth-Key SYN-seam' },
+    { name: 'DeepLX translator', prepare: () => { h.db.translatorType = 'deeplX' }, carries: 'Bearer SYN-seam' },
+])('$name key comes from the seam', ({ prepare, carries }) => {
+    test('the request carries the seam value, not the database field', async () => {
+        prepare()
+        ;(h.db.deeplOptions as { key: string }).key = 'legacy-field'
+        ;(h.db.deeplXOptions as { token: string }).token = 'legacy-field'
+        h.seamValue = 'SYN-seam'
+
+        await runTranslator('hello', false, 'ko', 'en')
+
+        expect(h.calls).toHaveLength(1)
+        expect(h.calls[0].headers['authorization']).toBe(carries)
     })
 })
 

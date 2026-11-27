@@ -86,3 +86,14 @@ describe('connectionKeyHint', () => {
         }
     })
 })
+
+describe('maskKeyHint single-secret providers', () => {
+    it('a service key is one whole masked value, never split into a rotation list', () => {
+        expect(maskKeyHint('SYN-ABCDEFGH-1234\nSYN-SECOND-LINE-5678', 'elevenlabs')).toEqual({ kind: 'masked', tail: '', count: 1 })
+        expect(maskKeyHint('SYN-ABCDEFGH-1234', 'deepl')).toEqual({ kind: 'masked', tail: '', count: 1 })
+    })
+
+    it('a rotation-list provider still shows a tail and a line count', () => {
+        expect(maskKeyHint('SYN-ABCDEFGH-1234\nSYN-SECOND-LINE-5678', 'openai')).toEqual({ kind: 'masked', tail: '1234', count: 2 })
+    })
+})

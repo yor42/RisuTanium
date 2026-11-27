@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
     mobile: false,
-    db: { hypaModel: 'openai3small', hypaCustomSettings: undefined as undefined | { url?: string, key?: string, model?: string }, supaMemoryKey: 'k', voyageApiKey: 'vk' },
+    db: { hypaModel: 'openai3small', hypaCustomSettings: undefined as undefined | { url?: string, key?: string, model?: string }, supaMemoryKey: '', voyageApiKey: '', connections: [{ id: 'conn-1', name: 'Memory (OpenAI)', provider: 'memory_openai', key: 'k' }, { id: 'conn-2', name: 'Voyage AI', provider: 'voyage', key: 'vk' }] },
     fetch: vi.fn(),
     forage: { getItem: vi.fn(), setItem: vi.fn() },
 }))

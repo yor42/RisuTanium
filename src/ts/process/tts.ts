@@ -20,7 +20,7 @@ import {
 import { createFishSpeechDefaults, createNovelAIVoiceDefaults, createVoicevoxDefaults } from "./ttsDefaults";
 import { SecretRefError, isSecretRef, resolveSecret, secretRefName } from "../secretRef";
 import { AndroidHttpBlockedError, directFetch } from "../network/androidHttp";
-import { currentKey } from "./request/secretKey";
+import { currentKey, currentServiceKey } from "./request/secretKey";
 
 /**
  * True only for an `https:` URL whose hostname is exactly `api.openai.com` (any port, path or
@@ -229,7 +229,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                 break
             }
             case "elevenlab": {
-                const elevenKey = await resolveSecret(db.elevenLabKey)
+                const elevenKey = await resolveSecret(await currentServiceKey('elevenLabKey', db))
                 const da = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${character.ttsSpeech}`, {
                     body: JSON.stringify({
                         text: text,
@@ -388,7 +388,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                 const response = await globalFetch(url, {
                     method: 'GET',
                     headers: {
-                        "Authorization": "Bearer " + await resolveSecret(db.NAIApiKey),
+                        "Authorization": "Bearer " + await resolveSecret(await currentServiceKey('NAIApiKey', db)),
                     },
                     rawResponse: true,
                     abortSignal: signal,
@@ -419,7 +419,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                     }
                 }
                 const url = `https://router.huggingface.co/hf-inference/models/${character.hfTTS.model}`
-                const hfKey = await resolveSecret(db.huggingfaceKey)
+                const hfKey = await resolveSecret(await currentServiceKey('huggingfaceKey', db))
                 if(signal.aborted){
                     return
                 }
@@ -599,7 +599,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${await resolveSecret(db.fishSpeechKey)}`
+                        'Authorization': `Bearer ${await resolveSecret(await currentServiceKey('fishSpeechKey', db))}`
                     },
                     body: body,
                     rawResponse: true,
@@ -658,7 +658,7 @@ export function getWebSpeechTTSVoices() {
 export async function getElevenTTSVoices() {
     let db = getDatabase()
 
-    const elevenKey = await resolveSecret(db.elevenLabKey)
+    const elevenKey = await resolveSecret(await currentServiceKey('elevenLabKey', db))
     const data = await fetch('https://api.elevenlabs.io/v1/voices', {
         headers: {
             'xi-api-key': elevenKey || undefined
@@ -673,7 +673,7 @@ export async function getElevenTTSVoices() {
 /**
  * The Fish Audio voice models of the account behind `fishSpeechKey`. A `${NAME}` reference is
  * resolved here, so the literal is never sent; a failed resolution throws `SecretRefError` before
- * any request is made. Anything that is not an array of items yields an empty list.
+ * any request is made. The caller reads the key through `currentServiceKey`. Anything that is not an array of items yields an empty list.
  */
 export async function fetchFishSpeechModels(fishSpeechKey: string): Promise<{ _id: string, title: string, description: string }[]> {
     const res = await fetch(`https://api.fish.audio/model?self=true`, {

@@ -36,7 +36,7 @@ const fetchBox = vi.hoisted(() => ({
 }))
 
 vi.mock('src/ts/storage/database.svelte', () => ({
-    getDatabase: () => ({ hypaModel: undefined, hypaCustomSettings: { model: dbBox.customModel }, supaMemoryKey: '', voyageApiKey: 'voyage-test-key' }),
+    getDatabase: () => ({ hypaModel: undefined, hypaCustomSettings: { model: dbBox.customModel }, supaMemoryKey: '', voyageApiKey: '', connections: [{ id: 'conn-1', name: 'Voyage AI', provider: 'voyage', key: 'voyage-test-key' }] }),
 }))
 vi.mock('src/ts/globalApi.svelte', () => ({
     globalFetch: (...args: unknown[]) => fetchBox.globalFetch(...args),
