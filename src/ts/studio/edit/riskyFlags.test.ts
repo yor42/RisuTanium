@@ -21,9 +21,9 @@ const on = (path: SetPath): WriteOp => ({ op: 'set', path, value: { had: true, v
 
 describe('T2-RF-11: riskyTurnOnsOf', () => {
     test('the four risky paths, the three of a character and each path\'s rule are the literal lists', () => {
-        expect([...RISKY_FLAG_PATHS]).toEqual(['lowLevelAccess', 'utilityBot', 'escapeOutput', 'moduleLowLevelAccess'])
+        expect([...RISKY_FLAG_PATHS]).toEqual(['lowLevelAccess', 'utilityBot', 'escapeOutput', 'moduleLowLevelAccess', 'lowLevelAccessFix', 'utilityBotFix', 'escapeOutputFix'])
         expect([...CHARACTER_RISKY_FLAG_PATHS]).toEqual(['lowLevelAccess', 'utilityBot', 'escapeOutput'])
-        expect(RISKY_FLAG_RULE).toEqual({ lowLevelAccess: 'anyWrite', utilityBot: 'anyWrite', escapeOutput: 'anyWrite', moduleLowLevelAccess: 'lastWrite' })
+        expect(RISKY_FLAG_RULE).toEqual({ lowLevelAccess: 'anyWrite', utilityBot: 'anyWrite', escapeOutput: 'anyWrite', moduleLowLevelAccess: 'lastWrite', lowLevelAccessFix: 'anyWrite', utilityBotFix: 'anyWrite', escapeOutputFix: 'anyWrite' })
     })
 
     test('a write of true over a live true turns nothing on', () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // A restore to the start of a visit over two registry paths that alias one holder property: after undos that cross
 // visits, the restore returns the visit-start value and reports nothing changed elsewhere. Real service, model and
-// setters over the memory store double; the registry gains the alias row `lowLevelAccessFix` over `lowLevelAccess`.
+// setters over the memory store double, on the real registry rows `lowLevelAccess` and `lowLevelAccessFix`.
 // Regression reproducer (T1).
 import { describe, expect, test, vi } from 'vitest'
 import { selIdState } from 'src/ts/stores.svelte'
@@ -28,12 +28,8 @@ vi.mock('src/ts/stores.svelte', async () => {
         clearCharEmotionCache: () => {},
     }
 })
-vi.mock('../fieldRegistry', async (importOriginal) => {
-    const { withAliasRows } = await import('./aliasRegistry.test-helpers')
-    return withAliasRows(await importOriginal<typeof import('../fieldRegistry')>())
-})
-
-const CONFIRMED = [BASE]
+// A replay of a base-path step asks for the base path and a restore for the slot path (the fix row); both are confirmed.
+const CONFIRMED = [BASE, FIX]
 
 describe('restore over aliased paths', () => {
     test('T1: after undos across visits the restore returns the visit start value with no false changed-elsewhere', async () => {
@@ -65,7 +61,7 @@ describe('restore over aliased paths', () => {
         visit = 'vB'
         expect(service.editField(key, 'desc', 'd1', { coalesceKey: null })).toMatchObject({ ok: true })
         clock.tick(60_000)
-        expect(service.editField(key, BASE, true, { confirmed: CONFIRMED, coalesceKey: null })).toMatchObject({ ok: true })
+        expect(service.editField(key, BASE, true, { confirmed: [BASE], coalesceKey: null })).toMatchObject({ ok: true })
         clock.tick(60_000)
         // Visit C starts at true: turn off through the base row, then undo all four steps.
         visit = 'vC'
