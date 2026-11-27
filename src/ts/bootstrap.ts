@@ -71,6 +71,7 @@ import { fillLang } from "./../lang/fill";
 import { isAndroidTransport } from "./storage/tauriByteTransport";
 import { markCharacterForSave } from "./storage/characterSaveMarks";
 import { configurePageState, requestReconcile, setReconcileTrigger } from "./nativeReply/pageState";
+import { installReplyCanceller } from "./nativeReply/retireOnDelete";
 import { boundedRecoveredReplacers, createReconciler, recoveredText, type ReconcileNotes } from "./nativeReply/reconcile";
 import { reconcileGateOpen } from "./nativeReply/gate";
 import { setParkedReplyAsker, showParkedReplies } from "./nativeReply/parkedDialog";
@@ -929,6 +930,7 @@ function startNativeReply(): void {
         },
         onUnreadable: reconciler.reportUnreadable,
     })
+    installReplyCanceller(store)
     setReconcileTrigger(() => reconciler.request())
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {

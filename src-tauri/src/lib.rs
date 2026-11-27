@@ -516,6 +516,30 @@ async fn native_reply_park(app: AppHandle, key: String) -> Result<(), String> {
         .map_err(|e| format!("the reply task failed: {}", e))?
 }
 
+// Stops the owned request of a reply key and discards its record, for a message
+// the user deleted while the reply was still running.
+#[tauri::command]
+async fn native_reply_cancel(
+    app: AppHandle,
+    key: String,
+    registry: tauri::State<'_, streamed_fetch::FetchRegistry>,
+) -> Result<reply_store::CancelOutcome, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let store = app.state::<reply_store::ReplyStore>().inner().clone();
+    let registry = registry.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.retire_owned(
+            &base,
+            &key,
+            |reply_key| registry.cancel_owned(reply_key),
+            std::time::Duration::from_secs(2),
+            std::time::Duration::from_millis(10),
+        )
+    })
+    .await
+    .map_err(|e| format!("the reply task failed: {}", e))?
+}
+
 #[tauri::command]
 fn cancel_streamed_fetch(id: String, registry: tauri::State<'_, streamed_fetch::FetchRegistry>) {
     registry.cancel(&id);
@@ -711,7 +735,8 @@ pub fn run() {
             native_reply_read_partial,
             native_reply_consume,
             native_reply_discard,
-            native_reply_park
+            native_reply_park,
+            native_reply_cancel
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -140,6 +140,12 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         removeItem: vi.fn(async () => { }),
     },
     saveDb: vi.fn(async () => { }),
+    // The native reply start reads these when it wires the page state.
+    getSaveMarkCount: () => 0,
+    getCommittedSaveMarkCount: () => 0,
+    afterNextSaveCommit: vi.fn(),
+    requestSaveNow: vi.fn(),
+    characterCommitVerdict: vi.fn(() => 'absent'),
     getDbBackups: () => dbBackups.list(),
     buildAssetKeepSet: vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })),
     getBasename: (p: string) => p.split('/').pop(),
@@ -155,6 +161,13 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     requiresFullEncoderReload: { state: false },
     fetchNative: vi.fn(async () => new Response(null, { status: 404 })),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
+
+// The wire does not model the native reply listing, so the reconcile pass is a stand-in; the store, the canceller install and the
+// default invoke over the wire stay real.
+vi.mock(import('src/ts/nativeReply/reconcile'), async (importOriginal) => ({
+    ...(await importOriginal()),
+    createReconciler: () => ({ request: async () => { }, reportUnreadable: () => { } }),
+}) as unknown as typeof import('src/ts/nativeReply/reconcile'))
 
 const { encodeRisuSaveLegacy } = await import('src/ts/storage/risuSave')
 
@@ -346,5 +359,25 @@ describe('loadData() on Android sends no waiting plugin command', () => {
         expect(writesNamingDatabaseDirectory()).toEqual([])
         expect(readsOf('database/dbbackup-1.bin').length, 'the backup reached the decoder through the app command').toBeGreaterThan(0)
         expectNoAssetProtocolUrl()
+    })
+})
+
+describe('the native stop of a deleted running reply on Android (#616)', () => {
+    // W1, new-contract guard: the production install and the default tauri invoke, not a fake store.
+    test('W1: a delete after the boot reaches native_reply_cancel with the key over the wire', async () => {
+        const { loadData } = await freshLoadData()
+        await loadData()
+        const { addRunningReplies, isNativeReplyRunning } = await import('src/ts/nativeReply/runningReplies.svelte')
+        const { retireDeletedReplies } = await import('src/ts/nativeReply/retireOnDelete')
+        const key = '0b9c1a7e-0000-4000-8000-000000000001'
+        addRunningReplies([{ key, target: { chaId: 'a', chatId: 'chat', name: 'A' } }])
+
+        retireDeletedReplies([{ chatId: key }])
+        for (let i = 0; i < 5; i++) {
+            await Promise.resolve()
+        }
+
+        expect(isNativeReplyRunning(key)).toBe(false)
+        expect(wire.callsOf('native_reply_cancel').map((call) => call.args)).toEqual([{ key }])
     })
 })

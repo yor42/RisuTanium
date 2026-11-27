@@ -541,7 +541,9 @@
     }
 
     $effect(() => {
-        const wanted = rows.map((row) => ({ row, use: wantedUse(row, previewed[row.key] === true) }))
+        // Only rows the window holds ask: a row that is off screen asks for nothing until it scrolls near the band.
+        const near = windowHost.mountedKeys
+        const wanted = rows.map((row) => ({ row, use: near.has(row.key) ? wantedUse(row, previewed[row.key] === true) : null }))
         untrack(() => requestUrls(wanted))
     })
 
