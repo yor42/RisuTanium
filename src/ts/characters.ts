@@ -28,6 +28,7 @@ import { createSendSubject, hasWorkIn, originOf, stopWorkIn } from "./process/ch
 import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { forgetChatDrafts, reconcileChatDraftsNow } from "./chatDraftStore";
+import { migrateLoreEntryToV2 } from "./process/loreEntryMigration";
 import { escapeHtmlText } from "./htmlEscape";
 import { keepChatPageOf, openChatOf } from "./chatShell/chatOpen";
 import { chatRecency } from "./chatShell/chatListModel";
@@ -1086,22 +1087,7 @@ export function characterFormatUpdate(indexOrCharacter:number|character, arg:{
 }
 
 export function updateLorebooks(book:loreBook[]){
-    return book.map((v) => {
-        v.bookVersion ??= 1
-        if(v.bookVersion >= 2){
-            return v
-        }
-        if(v.activationPercent){
-            const perc = v.activationPercent
-            v.activationPercent = null
-
-            v.content = `@@probability ${perc}\n${v.content}`
-        }
-        v.content = v.content.replace(/@@@?end/g, '@@depth 0').replace(/\<(char|bot)\>/g, '{{char}}').replace(/\<(user)\>/g, '{{user}}')
-        v.bookVersion = 2
-        return v
-    })
-
+    return book.map(migrateLoreEntryToV2)
 }
 
 export function createBlankChar():character{

@@ -151,9 +151,8 @@ const everyLabel: { [K in StepLabel['kind']]: { labels: StepLabel[], lines: stri
     assetAdd: { labels: [{ kind: 'assetAdd', count: 3 }], lines: ['studioStepAssetAdd(3)'] },
     folderCreate: { labels: [{ kind: 'folderCreate', name: 'New' }], lines: ['studioStepFolderCreate(New)'] },
     folderReorder: { labels: [{ kind: 'folderReorder' }], lines: ['studioStepFolderReorder'] },
-    // Interim line until the lore list UI names these steps.
-    obj: { labels: [{ kind: 'obj', list: 'lore', action: 'edit', name: null, field: 'content' }], lines: ['loreBook'] },
-    prop: { labels: [{ kind: 'prop', prop: 'loreSettings' }], lines: ['loreBook'] },
+    obj: { labels: [{ kind: 'obj', list: 'lore', action: 'edit', name: null, field: 'content' }], lines: ['studioLoreStepEdit(prompt,)'] },
+    prop: { labels: [{ kind: 'prop', prop: 'loreSettings' }], lines: ['studioLoreStepSettings'] },
 }
 
 describe('the line of every kind of step, after a reload', () => {

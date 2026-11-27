@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { language } from '../../lang'
+import { itemLabelOf } from '../../lib/Studio/TreeRow.svelte'
+import type { RisuModule } from '../process/modules'
 import { toAssetList } from '../storage/assetList'
-import { buildOwnerModel, ownerKeyOf, type OwnerModel, type OwnerNode } from './ownerModel'
+import { buildOwnerModel, ownerKeyOf, type LoreLike, type OwnerModel, type OwnerNode } from './ownerModel'
 import { buildMergedView } from './mergedView'
 import { resolveStudioTarget } from './resolveTarget'
 import {
@@ -406,5 +412,40 @@ describe('3i itemsUpTo and itemById agree with items()', () => {
         expect(loreReads).toEqual([0, 1])
         expect(lore?.itemById('cha-1/lore:49')?.name).toBe('l49')
         expect(loreReads).toEqual([0, 1, 49])
+    })
+})
+
+// The folder row the classic `addLorebookFolder` wrote, from the golden of the classic producers.
+const classicFolder: LoreLike = (JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'history/tests/fixtures/loreClassic.golden.json'), 'utf8')) as { blank: { globalLore: LoreLike[] } }).blank.globalLore[1]
+
+describe('T31: the tree names an unnamed folder', () => {
+    test('a folder whose name was cleared in place, as the classic Folder name field writes it, lists as Unnamed Folder', () => {
+        // The classic Folder name field is `TextInput bind:value={value.comment}`, so clearing it assigns '' in place.
+        const cleared = { ...classicFolder }
+        cleared.comment = ''
+        const model = buildOwnerModel(makeInput({ character: makeCharacter({ globalLore: [cleared, ...loreEntries(1)] }) }))
+        const items = model.character.kinds().find((node) => node.kind === 'lore')?.items() ?? []
+        expect(items[0].name).toBe('')
+        expect(itemLabelOf(items[0])).toBe(language.sidebarUi.unnamedFolder)
+        expect(itemLabelOf(items[1])).toBe('lore 0')
+    })
+
+    test('a named folder keeps its name', () => {
+        const model = buildOwnerModel(makeInput({ character: makeCharacter({ globalLore: [classicFolder] }) }))
+        const items = model.character.kinds().find((node) => node.kind === 'lore')?.items() ?? []
+        expect(itemLabelOf(items[0])).toBe(classicFolder.comment)
+    })
+})
+
+describe('T60: a module lorebook that is not a list', () => {
+    test('lists nothing and throws nothing', () => {
+        // A module whose `lorebook` is a plain object is what the repair question is asked about; no editor writes one.
+        const odd = JSON.parse('{"id":"ask","name":"Ask","description":"d","lorebook":{"unexpected":true}}') as RisuModule
+        const model = buildOwnerModel(makeInput({ modules: [odd], enabledModules: ['ask'] }))
+        const loreKind = model.modules[0].kinds().find((node) => node.kind === 'lore')
+        expect(loreKind?.count).toBe(0)
+        expect(loreKind?.items()).toEqual([])
+        expect(loreKind?.itemsUpTo(10)).toEqual({ items: [], total: 0 })
+        expect(loreKind?.itemById('ask/lore:0')).toBeUndefined()
     })
 })

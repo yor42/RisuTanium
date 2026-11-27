@@ -60,9 +60,9 @@ export interface StudioListReturn {
  * - `settingsReturn` is the Settings page index a link from Settings left, or null. Leaving the visit reopens Settings
  *   there; every other end of a visit leaves it null, so only the visit the link opened returns.
  * - `targetPending` is true from the open until a pane that has the model places the target.
- * - `listReturn` is the merged (Combined) list an entry was opened from, with the row that opened it. Back on a phone
+ * - `listReturn` is the list an entry was opened from (a merged list or an owner's lore list), with the row that opened it. Back on a phone
  *   detail returns to that list instead of the tree; any other selection, the list and the end of the visit drop it.
- * - `revealListRow` is the row the list the detail shows (a merged list, or the module list) scrolls into view and
+ * - `revealListRow` is the row the list the detail shows (a merged list, an owner's lore list or the module list) scrolls into view and
  *   focuses once it is shown: after Back from an entry opened there, or after a module's "Show in module list".
  * - The selection, the expanded rows, the extra pages and "hide empty kinds" live here, not in the tree, so a
  *   phone layout that unmounts the tree keeps them for the visit.
@@ -408,6 +408,20 @@ function presetIdOfKey(ownerKey: string): string | null {
  */
 export function followStudioPreset(index: number): void {
     studioScreen.selectedOwnerKey = ownerKeyOf('preset', String(index))
+}
+
+/**
+ * The open list item now sits at another index of the same owner and kind: the item id follows, and so does the list
+ * return row when it named the item (a pane-list or merged-list origin; a tester or toggles reveal id never does).
+ * Nothing is flushed and no sheet closes, so the form mounted for the item keeps its held text and composition.
+ * Called only while an item is open.
+ * No registered flush writes an op that moves a list element (each is a single field edit at its own index), so
+ * `studioDetailBack`, which reads `listReturn` before its leave flush, never sees a return row this would rewrite.
+ */
+export function followStudioItem(itemId: string): void {
+    const back = studioScreen.listReturn
+    if (back !== null && back.rowId === studioScreen.selectedItemId) studioScreen.listReturn = { ...back, rowId: itemId }
+    studioScreen.selectedItemId = itemId
 }
 
 /** Drops the selection, for an owner that no longer exists in the model; `notice` says why the detail emptied. */

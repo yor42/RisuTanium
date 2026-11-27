@@ -8,7 +8,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock('src/ts/studio/history/studioHistoryService.svelte', () => ({
-    getStudioHistoryService: () => ({ view: () => ({ restore: { fields: { desc: 'a', firstMessage: 'b' } } }) }),
+    getStudioHistoryService: () => ({ view: () => ({ restore: { fields: { desc: 'a', firstMessage: 'b' } }, restoreLines: [], restoreNotes: [] }) }),
 }))
 vi.mock('src/ts/studio/studioScreen.svelte', () => ({
     selectedHistoryOwner: () => 'character:A',

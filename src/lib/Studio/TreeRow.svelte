@@ -35,6 +35,7 @@
     // The name an item is listed under: its own name, else what it is.
     export function itemLabelOf(item: StudioItem): string {
         if (item.name !== '') return item.name
+        if (item.kind === 'lore' && item.folder) return language.sidebarUi.unnamedFolder
         if (item.mode !== undefined) return scriptModeLabelOf(item.mode)
         return `${kindLabelOf(item.kind)} ${item.index + 1}`
     }
