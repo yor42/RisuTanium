@@ -21,6 +21,8 @@ export interface RunningReplyEntry {
 
 const running = new Map<string, RunningReplyTarget | null>()
 const waitingForUnit = new Set<string>()
+/** Keys whose message the person deleted while they ran. Memory only: it lives as long as the page. */
+const retired = new Set<string>()
 let version = $state(0)
 
 function sameTarget(a: RunningReplyTarget | null | undefined, b: RunningReplyTarget | null | undefined): boolean {
@@ -85,6 +87,9 @@ export function runningReplyInChat(
 export function addRunningReplies(entries: readonly RunningReplyEntry[]): void {
     let changed = false
     for (const { key, target } of entries) {
+        if (retired.has(key)) {
+            continue
+        }
         if (!running.has(key)) {
             running.set(key, target)
             changed = true
@@ -102,7 +107,9 @@ export function addRunningReplies(entries: readonly RunningReplyEntry[]): void {
 export function setRunningReplies(entries: readonly RunningReplyEntry[]): void {
     const next = new Map<string, RunningReplyTarget | null>()
     for (const { key, target } of entries) {
-        next.set(key, target)
+        if (!retired.has(key)) {
+            next.set(key, target)
+        }
     }
     let changed = next.size !== running.size
     if (!changed) {
@@ -123,6 +130,32 @@ export function setRunningReplies(entries: readonly RunningReplyEntry[]): void {
     version++
 }
 
+/**
+ * Retires the given keys that are running: they leave the map (and the waiting set) at once, and no later add or set brings
+ * them back. Returns the keys it retired; a key that is not running is left alone, so a delete of an ordinary message
+ * retires nothing.
+ */
+export function retireRunningReplies(keys: readonly string[]): string[] {
+    const done: string[] = []
+    for (const key of keys) {
+        if (running.has(key)) {
+            running.delete(key)
+            waitingForUnit.delete(key)
+            retired.add(key)
+            done.push(key)
+        }
+    }
+    if (done.length > 0) {
+        version++
+    }
+    return done
+}
+
+/** Whether the person deleted this key's message while it ran. Not reactive: a write stretch reads it synchronously. */
+export function isRetiredReply(key: string): boolean {
+    return retired.has(key)
+}
+
 /** A recovered reply waited for a send to end: the key stays running until the pass that places it. */
 export function noteWaitingForUnit(key: string): void {
     waitingForUnit.add(key)
@@ -135,5 +168,6 @@ export function takeWaitingForUnit(key: string): boolean {
 export function resetRunningRepliesForTests(): void {
     running.clear()
     waitingForUnit.clear()
+    retired.clear()
     version++
 }

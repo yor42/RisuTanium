@@ -12,7 +12,7 @@ import { encodeReplyBlob, type ReplyBlobBase } from '../blob'
 import { configurePageState, holdInflight, resetPageStateForTests, setReconcileTrigger } from '../pageState'
 import { createReconciler, type ApplyOutcome, type ReconcileDeps } from '../reconcile'
 import {
-    addRunningReplies, isNativeReplyRunning, nativeReplyRunsIn, noteWaitingForUnit, resetRunningRepliesForTests, runningReplyInChat, setRunningReplies,
+    addRunningReplies, isNativeReplyRunning, isRetiredReply, nativeReplyRunsIn, noteWaitingForUnit, resetRunningRepliesForTests, retireRunningReplies, runningReplyInChat, setRunningReplies, takeWaitingForUnit,
 } from '../runningReplies.svelte'
 import type { ReplyListing } from '../store'
 import { relistWhileNativeBlocked, resetRelistForTests } from '../runningRelist.svelte'
@@ -321,5 +321,61 @@ describe('the bounded re-list against the real reconciler', () => {
         await vi.advanceTimersByTimeAsync(600_000)
         expect(r.list).toHaveBeenCalledTimes(2)
         stop()
+    })
+})
+
+describe('retiring running replies (#616)', () => {
+    const target = { chaId: 'cha', chatId: 'chat', name: 'Alice' }
+
+    test('a retired key leaves the map and the waiting set at once and bumps the version once', () => {
+        resetRunningRepliesForTests()
+        addRunningReplies([{ key: K1, target }, { key: K2, target }])
+        noteWaitingForUnit(K1)
+        const seen: boolean[] = []
+        const stop = $effect.root(() => {
+            $effect(() => { seen.push(isNativeReplyRunning(K1)) })
+        })
+        flushSync()
+
+        expect(retireRunningReplies([K1, 'unknown'])).toEqual([K1])
+        flushSync()
+
+        expect(seen).toEqual([true, false])
+        expect(isNativeReplyRunning(K1)).toBe(false)
+        expect(isNativeReplyRunning(K2)).toBe(true)
+        expect(takeWaitingForUnit(K1)).toBe(false)
+        expect(isRetiredReply(K1)).toBe(true)
+        expect(isRetiredReply(K2)).toBe(false)
+        stop()
+    })
+
+    test('a key that is not running is not retired', () => {
+        resetRunningRepliesForTests()
+
+        expect(retireRunningReplies([K1])).toEqual([])
+        expect(isRetiredReply(K1)).toBe(false)
+    })
+
+    test('neither add nor set brings a retired key back', () => {
+        resetRunningRepliesForTests()
+        addRunningReplies([{ key: K1, target }])
+        retireRunningReplies([K1])
+
+        addRunningReplies([{ key: K1, target }, { key: K2, target }])
+        expect(isNativeReplyRunning(K1)).toBe(false)
+        expect(isNativeReplyRunning(K2)).toBe(true)
+        setRunningReplies([{ key: K1, target }, { key: K2, target }])
+        expect(isNativeReplyRunning(K1)).toBe(false)
+        expect(isNativeReplyRunning(K2)).toBe(true)
+    })
+
+    test('the test reset forgets the retired keys', () => {
+        addRunningReplies([{ key: K1, target }])
+        retireRunningReplies([K1])
+
+        resetRunningRepliesForTests()
+        addRunningReplies([{ key: K1, target }])
+
+        expect(isNativeReplyRunning(K1)).toBe(true)
     })
 })
