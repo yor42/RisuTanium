@@ -186,12 +186,12 @@ describe('3g3 the reader re-reads chats[chatPage] when the chat page moves', () 
 })
 
 describe('the bound character', () => {
-    test('a different, grouped or cold selection reads as no model', () => {
+    test('a different or cold selection reads as no model and a group as the group model', () => {
         const db = install({ character: { chaId: 'cha-1' } })
         expect(readOwnerModel('cha-1')).not.toBeNull()
         expect(readOwnerModel('another')).toBeNull()
         db.characters[0].type = 'group'
-        expect(readOwnerModel('cha-1')).toBeNull()
+        expect(readOwnerModel('cha-1')?.character.type).toBe('group')
         db.characters[0].type = 'character'
         db.characters[0].coldstorage = 'cold-1'
         expect(readOwnerModel('cha-1')).toBeNull()

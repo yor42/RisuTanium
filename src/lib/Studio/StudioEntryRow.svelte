@@ -2,7 +2,7 @@
     import { LayoutPanelLeftIcon } from '@lucide/svelte'
     import { language } from '../../lang'
     import { openStudio, selectedStudioCharacterId } from '../../ts/studio/studioScreen.svelte'
-    import { studioEligible } from '../../ts/studio/studioSwitch.svelte'
+    import { studioVisitEligible } from '../../ts/studio/studioSwitch.svelte'
 
     // Opens the selected character in Studio. Back returns focus to this row while it is in the page,
     // else to the first row of this kind.
@@ -14,7 +14,7 @@
     }
 </script>
 
-{#if studioEligible()}
+{#if studioVisitEligible()}
     <button
         type="button"
         data-part="studio-entry"

@@ -7,7 +7,7 @@
     import type { Chat, character, groupChat } from '../../ts/storage/database.svelte'
     import { alertError, showHypaV2Alert } from '../../ts/alert'
     import { openStudio } from '../../ts/studio/studioScreen.svelte'
-    import { studioEligible } from '../../ts/studio/studioSwitch.svelte'
+    import { studioVisitEligible } from '../../ts/studio/studioSwitch.svelte'
     import { exportChat, removeChatConfirmed } from '../../ts/characters'
     import { effectiveJailbreak, effectiveMemory, writeChatJailbreak, writeChatMemory } from '../../ts/parser/chatToggleScope'
     import { chatStats, normalizeChatName, promptHasJailbreakToggle, relativeTime, setChatHideNames, writeChatName, writeChatNote } from '../../ts/chatShell/thisChatEdits'
@@ -385,7 +385,7 @@
                     <span>{language.modules}</span>
                     <span data-part="this-chat-value">{moduleCount}</span>
                 </button>
-                {#if studioEligible()}
+                {#if studioVisitEligible()}
                     <button type="button" data-part="this-chat-studio" data-kind="button" onclick={openInStudio}>{language.studioOpenIn}</button>
                 {/if}
                 <label data-part="this-chat-row">

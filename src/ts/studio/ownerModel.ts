@@ -364,6 +364,34 @@ function retiredVersionOf(version: number | string | undefined): string | undefi
 }
 
 /**
+ * The model of a group visit: the group node alone, with its basic kind. No chat, module, preset or plugin is
+ * listed, so nothing of them can be selected or mounted in the visit.
+ */
+export function buildGroupOwnerModel(group: { chaId: string, name: string }): OwnerModel {
+    const node = makeOwner({
+        type: 'group',
+        id: group.chaId,
+        name: () => group.name,
+        active: true,
+        tags: [],
+        restricted: false,
+        buildKinds: (owner) => [singleKind(owner, 'basic', true)],
+    })
+    return {
+        character: node,
+        chat: null,
+        modules: [],
+        otherModules: [],
+        presets: [],
+        otherPresets: [],
+        plugins: [],
+        owners: [node],
+        ownerOf: (type, id) => type === 'group' && id === node.id ? node : undefined,
+        ownerByKey: (key) => key === node.key ? node : undefined,
+    }
+}
+
+/**
  * Builds the model for the bound character. The context chat is read from the character on every call
  * (`chats[chatPage]`), so a rebuild after a page change follows the new chat, and the active module set is
  * `lister(referencedModuleIds(...))` over the explicit origin.

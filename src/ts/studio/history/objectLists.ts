@@ -5,6 +5,12 @@
 // list-dependent rule (totality, field kinds, kind acceptance, journal lines, mixed revert, session holders, unknown
 // names) reads these tables and nothing else; adding a list is one row in each table.
 
+import type { languageEnglish } from '../../../lang/en'
+
+type LanguageTable = typeof languageEnglish
+// The keys of the language table whose entry has the given type.
+type LanguageKeyOf<T> = { [K in keyof LanguageTable]: LanguageTable[K] extends T ? K : never }[keyof LanguageTable]
+
 export type ObjFieldKind = 'text' | 'number' | 'bool' | 'object' | 'numberOrNull'
 
 export interface ObjListFieldsRow {
@@ -34,6 +40,8 @@ export interface ObjPropRow {
 
 export const OBJ_LIST_HOLDERS = {
     lore: { character: 'globalLore', chat: 'localLore', module: 'lorebook' },
+    // Held by the group session kind alone; the group adapter supplies the three parallel arrays.
+    members: {},
 } as const satisfies Record<string, ObjHolderRow>
 
 export const OBJ_LIST_FIELDS = {
@@ -54,6 +62,8 @@ export const OBJ_LIST_FIELDS = {
         labelOnly: ['probability'],
         refused: [{ field: 'key', whenField: 'mode', equals: 'folder' }],
     },
+    // One group member: the character id is never settable (a changed member is a remove and an insert).
+    members: { fields: { talk: 'number', active: 'bool' }, labelOnly: [], refused: [] },
 } as const satisfies Record<string, ObjListFieldsRow>
 
 // The settable lore fields. Append-only: a record written with a field must stay readable. `id`, `mode` and
@@ -62,15 +72,24 @@ export const LORE_FIELDS = OBJ_LIST_FIELDS.lore.fields
 
 export const OBJ_LIST_IDENTITY = {
     lore: { id: 'id', folder: { whenField: 'mode', equals: 'folder', key: 'key' }, content: true },
+    members: { id: 'chaId', folder: null, content: false },
 } as const satisfies Record<string, ObjIdentityRow>
 
 // Top-level keys the anchor and the content identity leave out.
-export const OBJ_LIST_ANCHOR_EXCLUDED = { lore: ['bookVersion'] } as const satisfies Record<string, readonly string[]>
+export const OBJ_LIST_ANCHOR_EXCLUDED = { lore: ['bookVersion'], members: [] } as const satisfies Record<string, readonly string[]>
 
 // A `textEdit` target under this prefix belongs to the list (the mixed-revert refusal).
-export const OBJ_LIST_ASSET_PREFIX = { lore: 'lore/' } as const satisfies Record<string, string>
+export const OBJ_LIST_ASSET_PREFIX = { lore: 'lore/', members: 'members/' } as const satisfies Record<string, string>
 
-// Plain strings in S7-0; the list UI narrows the type to the language keys when it adds them.
+// The language keys of each list's history messages: line takes the number of undone changes.
+interface ObjListMessageKeys {
+    readonly line: LanguageKeyOf<(n: number) => string>
+    readonly changed: LanguageKeyOf<string>
+    readonly earlierVisit: LanguageKeyOf<string>
+    readonly idTaken: LanguageKeyOf<string>
+    readonly mixed: LanguageKeyOf<string>
+}
+
 export const OBJ_LIST_MESSAGES = {
     lore: {
         line: 'studioLoreRestoreLine',
@@ -79,7 +98,14 @@ export const OBJ_LIST_MESSAGES = {
         idTaken: 'studioLoreRestoreIdTaken',
         mixed: 'studioLoreRevertMixed',
     },
-} as const satisfies Record<string, Readonly<Record<'line' | 'changed' | 'earlierVisit' | 'idTaken' | 'mixed', string>>>
+    members: {
+        line: 'studioMembersRestoreLine',
+        changed: 'studioMembersRestoreChanged',
+        earlierVisit: 'studioMembersRestoreEarlierVisit',
+        idTaken: 'studioMembersRestoreIdTaken',
+        mixed: 'studioMembersRevertMixed',
+    },
+} as const satisfies Record<string, ObjListMessageKeys>
 
 export const OBJ_PROPS = {
     loreSettings: { holders: ['character'], journal: 'lore' },

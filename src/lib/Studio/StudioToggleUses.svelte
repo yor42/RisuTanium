@@ -96,6 +96,8 @@
             case 'character':
                 return DBState.db.characters?.find((character) => character?.chaId === parsed.chaId)?.name ?? parsed.chaId
             case 'chat':
+            case 'group':
+                // A toggle use never lists a group owner; the raw key is the fallback.
                 return key
             case 'preset':
                 return presetNameOf(parsed.id)
@@ -126,6 +128,8 @@
                 return jumpTargetOf('module', parsed.moduleId, usePlaceOf(use.path))
             case 'chat':
             case 'preset':
+            case 'group':
+                // A toggle use never lists a group owner, so there is nothing to jump to.
                 return null
             default: {
                 const unhandled: never = parsed
@@ -147,6 +151,8 @@
             case 'character':
             case 'chat':
             case 'preset':
+            case 'group':
+                // A toggle use never lists a group owner; the character wording is the fallback.
                 return placeLabelOf('character', path)
             default: {
                 const unhandled: never = parsed

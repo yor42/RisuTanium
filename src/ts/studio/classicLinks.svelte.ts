@@ -57,6 +57,7 @@ function characterTabOf(kind: StudioKind | null): number {
  */
 export function classicDestinationOf(ownerType: StudioOwnerType, kind: StudioKind | null): ClassicDestination | null {
     switch (ownerType) {
+        case 'group': return { where: 'character', tab: 0 }
         case 'character': return kind === 'html' ? null : { where: 'character', tab: characterTabOf(kind) }
         case 'chat': return { where: 'character', tab: 3 }
         case 'module': return { where: 'settings', index: SETTINGS_MODULES }

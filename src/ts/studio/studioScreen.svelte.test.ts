@@ -89,13 +89,11 @@ describe('2c studio screen store', () => {
         expect(studioScreen.detailShown).toBe(false)
     })
 
-    test('a refused open changes nothing: switch off, no selection, group, cold stub, missing character', () => {
+    test('a refused open changes nothing: switch off, no selection, cold stub, missing character', () => {
         setStudioEnabled(false)
         expect(openStudio(ownerTarget, null)).toBe(false)
         setStudioEnabled(true)
         selection.selId = -1
-        expect(openStudio(ownerTarget, null)).toBe(false)
-        selection.selId = 2
         expect(openStudio(ownerTarget, null)).toBe(false)
         selection.selId = 0
         db.db.characters[0].coldstorage = 'unit'
@@ -142,11 +140,11 @@ describe('2c studio screen store', () => {
     test('closes when the bound character stops being eligible or disappears', () => {
         openStudio(ownerTarget, null)
         flushSync()
-        db.db.characters[0].type = 'group'
+        db.db.characters[0].coldstorage = 'unit'
         flushSync()
         expect(get(studioOpen)).toBe(false)
 
-        db.db.characters[0].type = 'character'
+        db.db.characters[0].coldstorage = undefined
         openStudio(ownerTarget, null)
         flushSync()
         expect(get(studioOpen)).toBe(true)

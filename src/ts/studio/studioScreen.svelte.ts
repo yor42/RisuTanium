@@ -3,7 +3,7 @@ import { get } from 'svelte/store'
 import { afterFlush } from '../afterFlush'
 import { returnFocusAfterClose } from './layerFocus'
 import { DBState, selIdState, settingsOpen } from '../stores.svelte'
-import { studioEligible } from './studioSwitch.svelte'
+import { studioVisitEligible, studioVisitKind } from './studioSwitch.svelte'
 import { studioOpen } from './studioOpen'
 import { flushStudioFields } from './fieldFlush'
 import { clearClassicLinkRequest } from './classicLinks.svelte'
@@ -13,7 +13,7 @@ import { ownerKeyOf, type OwnerModel, type StudioKind } from './ownerModel'
 import type { StudioLayout } from './studioLayout'
 import type { StudioFrom, StudioTarget } from './studioTarget'
 import { createPageSession } from './history/historyModel'
-import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, parseOwnerKey, type OwnerKey } from './history/ownerPhase'
+import { characterOwnerKey, chatOwnerKey, groupOwnerKey, moduleOwnerKey, parseOwnerKey, type OwnerKey } from './history/ownerPhase'
 import { openStudioModuleId } from './assets/openModuleForm.svelte'
 import { presetOwnerKey } from './edit/presetTarget'
 
@@ -157,7 +157,7 @@ function installWatchers(): void {
         // The visit ends when it can no longer be shown or is no longer about the selected character.
         $effect(() => {
             if (!studioScreen.open) return
-            const eligible = studioEligible()
+            const eligible = studioVisitEligible()
             const selected = eligible ? selectedStudioCharacterId() : null
             if (!eligible || selected !== studioScreen.chaId) untrack(closeStudio)
         })
@@ -176,10 +176,14 @@ function installWatchers(): void {
  */
 export function openStudio(target: StudioTarget, opener: StudioOpener | null, settingsReturn: number | null = null): boolean {
     flushStudioFields('leave')
-    if (!studioEligible()) return false
+    if (!studioVisitEligible()) return false
     if (get(settingsOpen)) return false
     const chaId = selectedStudioCharacterId()
     if (chaId === null) return false
+    // The entries name the selection as a character; a group's visit is about the group, on its one form.
+    if (studioVisitKind() === 'group' && target.owner?.type === 'character' && target.owner.id === chaId) {
+        target = { ...target, owner: { type: 'group', id: chaId }, kind: target.kind ?? 'basic' }
+    }
     installWatchers()
     // A leftover link-out request belongs to an earlier visit and must not open More under this one.
     clearClassicLinkRequest()
@@ -301,6 +305,8 @@ function noticeOwnerKindOf(owner: OwnerKey): 'module' | 'character' {
         case 'character':
         case 'chat':
         case 'preset':
+        case 'group':
+            // A group's notices carry the character wording: it has no module places.
             return 'character'
         default: {
             // Adding an owner kind must decide its place kind here; the fallback is the character wording.
@@ -352,6 +358,7 @@ export function selectedHistoryOwner(): OwnerKey | null {
     if (key === null || chaId === '') return null
     if (key.startsWith(PRESET_KEY_PREFIX)) return studioScreen.selectedPresetId === null ? null : presetOwnerKey(studioScreen.selectedPresetId)
     if (key === ownerKeyOf('character', chaId)) return characterOwnerKey(chaId)
+    if (key === ownerKeyOf('group', chaId)) return groupOwnerKey(chaId)
     const chatPrefix = ownerKeyOf('chat', '')
     if (key.startsWith(chatPrefix) && key.length > chatPrefix.length) return chatOwnerKey(chaId, key.slice(chatPrefix.length))
     return null
