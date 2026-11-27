@@ -7,7 +7,7 @@
  *
  * T1 release-check rows, T2 latest-android.json bytes, T3 the APK URL, T4 the publish order, T5 the draft choice,
  * T6 the re-run rule, T7 the file rules, T8 the upload answers, T9 release and upload address checks, T10 log hygiene,
- * T11 the source has no write verb besides POST.
+ * T11 the source has no write verb besides POST, T12 attach-locks (#814).
  */
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -643,5 +643,130 @@ describe('T11: the real API function and the source', () => {
   test('name helpers', () => {
     expect(androidAssetNames('1.2.3')).toEqual(['RisuTanium_1.2.3_android-universal.apk', 'latest-android.json'])
     expect([isAndroidAsset('x.apk'), isAndroidAsset('X.APK'), isAndroidAsset('latest-android.json'), isAndroidAsset('latest.json'), isAndroidAsset('x.apk.sig')]).toEqual([true, true, true, false, false])
+  })
+})
+
+// ---------------------------------------------------------------- T12
+describe('T12: attach-locks attaches the resolved Cargo.lock files to this commit\'s draft (#814)', () => {
+  // Upload order is the sorted file name order.
+  const NAMES = ['Cargo.lock-aarch64-apple-darwin', 'Cargo.lock-android-all', 'Cargo.lock-x86_64-pc-windows-msvc']
+  const makeLocks = (names: string[] = NAMES, bytes: (name: string) => string = name => `# lock of ${name}\nversion = 4\n`) => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'risu814-locks-'))
+    scratch.push(dir)
+    for (const name of names) writeFileSync(path.join(dir, name), bytes(name))
+    return dir
+  }
+  const lockEnv = (dir: string, over: Record<string, string | undefined> = {}) => baseEnv({ LOCK_DIR: dir, EXPECTED_LOCKS: NAMES.join(','), ...over })
+  const attach = (env: Record<string, string | undefined>, fake: Fake) => run(['attach-locks'], env, fake)
+
+  test('lists, checks the release and its assets, uploads every file as text, then checks again', async () => {
+    const fake = new Fake([release(5), release(1, { tag_name: 'v0.1.0', draft: false })])
+    const r = await attach(lockEnv(makeLocks()), fake)
+    expect(r.code, r.text).toBe(0)
+    expect(fake.kinds()).toEqual(['list', 'list', 'get', 'assets', ...NAMES.map(n => `upload:${n}`), 'get'])
+    expect(fake.uploads.map(u => u.url)).toEqual(NAMES.map(n => `https://uploads.github.com/repos/${REPO}/releases/5/assets?name=${n}`))
+    expect(fake.uploads.every(u => u.contentType === 'text/plain')).toBe(true)
+    expect(fake.uploads[1].body?.toString()).toBe('# lock of Cargo.lock-android-all\nversion = 4\n')
+    expect(r.lines).toEqual([`attach-locks: attached 3 Cargo.lock files (asset ids 9000, 9001, 9002) to draft release id 5 of v${VERSION}.`])
+  })
+  test('works with Android off: the version only has to be a usable tag, and the APK files are never touched', async () => {
+    const fake = new Fake([release(5, { tag_name: 'v0.2.0-rc.1', assets: [asset(70, APK)] })])
+    const r = await run(['attach-locks'], lockEnv(makeLocks(), { INCLUDE_ANDROID: 'false' }), fake, '0.2.0-rc.1')
+    expect(r.code, r.text).toBe(0)
+    expect(fake.uploads).toHaveLength(3)
+    expect(fake.releases[0].assets.some(a => a.name === APK)).toBe(true)
+  })
+  test('a re-run over files already on the draft uploads nothing and prints the delete commands', async () => {
+    const fake = new Fake([release(5, { assets: [asset(77, 'latest.json'), asset(9101, NAMES[1])] })])
+    const r = await attach(lockEnv(makeLocks()), fake)
+    expect(r.code).toBe(1)
+    expect(r.lines.slice(1)).toEqual([deleteLine(9101)])
+    expect(fake.uploads).toHaveLength(0)
+  })
+  test('the draft rules are the publish rules: a race, no draft, a published tag, another commit', async () => {
+    for (const releases of [[release(5), release(6)], [release(1, { tag_name: 'v0.1.0' })], [release(5), release(9, { draft: false })], [release(6, { target_commitish: OTHER })]]) {
+      const fake = new Fake(releases)
+      expect((await attach(lockEnv(makeLocks()), fake)).code).toBe(1)
+      expect(fake.uploads).toHaveLength(0)
+    }
+  })
+  test('the folder must hold exactly the expected regular, non-empty files, checked before any API call', async () => {
+    const cases: [string, string][] = [
+      ['a file is missing', makeLocks(NAMES.slice(1))],
+      ['an extra file', makeLocks([...NAMES, 'Cargo.lock-extra'])],
+      ['a differently named file', makeLocks([NAMES[0], NAMES[1], 'app-release.apk'])],
+      ['an empty file', makeLocks(NAMES, name => (name === NAMES[0] ? '' : 'x'))],
+      ['an oversize file', makeLocks(NAMES, name => (name === NAMES[0] ? 'x'.repeat(4 * 1024 * 1024 + 1) : 'x'))],
+    ]
+    for (const [label, dir] of cases) {
+      const fake = new Fake([release(5)])
+      const r = await attach(lockEnv(dir), fake)
+      expect(r.code, label).toBe(1)
+      expect(fake.calls, label).toHaveLength(0)
+    }
+  })
+  test('the expected list and the environment are checked before any API call', async () => {
+    const dir = makeLocks()
+    for (const over of [
+      { EXPECTED_LOCKS: '' },
+      { EXPECTED_LOCKS: undefined },
+      { EXPECTED_LOCKS: `${NAMES[0]},${NAMES[0]}` },
+      { EXPECTED_LOCKS: '../Cargo.lock-x' },
+      { EXPECTED_LOCKS: 'app-release.apk' },
+      { LOCK_DIR: undefined },
+      { GITHUB_REPOSITORY: 'someone/RisuTanium' },
+      { GITHUB_SHA: 'xyz' },
+    ]) {
+      const fake = new Fake([release(5)])
+      expect((await attach(lockEnv(dir, over), fake)).code, JSON.stringify(over)).toBe(1)
+      expect(fake.calls, JSON.stringify(over)).toHaveLength(0)
+    }
+  })
+  test('an unconfirmed upload is refused and no later file is sent', async () => {
+    const fake = new Fake([release(5)])
+    fake.uploadReply = name => (name === NAMES[0] ? { status: 500, body: null } : null)
+    const r = await attach(lockEnv(makeLocks()), fake)
+    expect(r.code).toBe(1)
+    expect(fake.uploads).toHaveLength(1)
+  })
+  test('a draft that is no longer a draft, or targets another commit, when it is fetched is refused with no upload', async () => {
+    for (const change of [{ draft: false }, { target_commitish: OTHER }, { upload_url: uploadUrl(6) }]) {
+      const fake = new Fake([release(5)])
+      fake.getReply = (_id, _count, current) => ({ ...current, ...change })
+      const r = await attach(lockEnv(makeLocks()), fake)
+      expect(r.code, JSON.stringify(change)).toBe(1)
+      expect(fake.uploads, JSON.stringify(change)).toHaveLength(0)
+    }
+  })
+  test('a lock that is a symbolic link is refused before any API call', async ctx => {
+    const dir = makeLocks(NAMES.slice(1))
+    const target = path.join(dir, NAMES[1])
+    try {
+      symlinkSync(target, path.join(dir, NAMES[0]))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM' && !process.env.CI) {
+        ctx.skip()
+        return
+      }
+      throw error
+    }
+    const fake = new Fake([release(5)])
+    const r = await attach(lockEnv(dir), fake)
+    expect(r.code).toBe(1)
+    expect(fake.calls).toHaveLength(0)
+  })
+  test('a draft that changed during the upload is reported as a failure', async () => {
+    const fake = new Fake([release(5)])
+    fake.getReply = (_id, count, current) => (count >= 2 ? { ...current, draft: false } : current)
+    const r = await attach(lockEnv(makeLocks()), fake)
+    expect(r.code).toBe(1)
+    expect(r.text).toContain('the draft changed during the upload')
+  })
+  test('the log holds fixed text and ids only, never file content', async () => {
+    const fake = new Fake([release(5)])
+    const r = await attach(lockEnv(makeLocks(NAMES, () => MARKER)), fake)
+    expect(r.text).not.toContain('NOTES-MARKER')
+    const bad = await attach(lockEnv(makeLocks(NAMES.slice(1), () => MARKER)), new Fake([release(5)]))
+    expect(bad.text).not.toContain('NOTES-MARKER')
   })
 })

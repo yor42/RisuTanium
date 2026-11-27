@@ -25,6 +25,7 @@ name: Android release APK
 # The environment rule checks the ref a run starts from, not code that the run checks out later.
 #
 # The unsigned artifact lasts 3 days; the signed one lasts 14 or 3 days, set by the caller (signed-retention-days).
+# The build job also uploads src-tauri/Cargo.lock as artifact cargo-lock-android-<abi> (as long as the signed APK), because the lock is untracked.
 # Rule: never install or share an APK from a red run, even though its artifact exists.
 # Setup and the checks before a real-data install: Agents/Tools/device/SIGNING.md.
 on:
@@ -190,6 +191,24 @@ jobs:
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
+
+      # The lock this build resolved (Cargo.lock is untracked), kept for the draft by release-desktop's attach-locks.
+      - name: Name the resolved Cargo.lock
+        env:
+          ABI: ${{ inputs.abi }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lock"
+          cp src-tauri/Cargo.lock "$RUNNER_TEMP/lock/Cargo.lock-android-$ABI"
+
+      - name: Upload the resolved Cargo.lock
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cargo-lock-android-${{ inputs.abi }}
+          path: ${{ runner.temp }}/lock/Cargo.lock-android-${{ inputs.abi }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: ${{ inputs.signed-retention-days }}
 
   inspect:
     needs: build
