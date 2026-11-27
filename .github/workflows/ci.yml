@@ -1,26 +1,15 @@
 name: CI
 
 # Type check, unit tests, production build, and smoke checks of the self-hosting servers.
-# Docs-only and agent-note-only changes skip the run, except docs/design: the theme-pack validator in src bundles its token
-# stylesheets and fixtures, so a change there can break the unit tests. An ordered paths list re-includes it: GitHub forbids
-# paths with paths-ignore on one event, and only paths takes '!' exclusions, where the last matching pattern decides.
-# Markdown stays skipped everywhere.
+# The required status check is the final job, "CI gate" (see docs/workflow/ci-gate.md). A required check never reports on a
+# workflow that a path filter skipped, so this workflow always runs and the "changes" job decides what is heavy: Markdown,
+# Agents/ and docs/ outside docs/design/ skip the heavy jobs, except Agents/Tools, src and theme-packs (tests collect or read
+# files there) and docs/design (the theme-pack validator in src bundles it).
+# The rules live in .github/scripts/ci-relevance.sh and fail toward running everything.
 on:
   push:
     branches: [main]
-    paths:
-      - '**'
-      - '!docs/**'
-      - 'docs/design/**'
-      - '!Agents/**'
-      - '!**/*.md'
   pull_request:
-    paths:
-      - '**'
-      - '!docs/**'
-      - 'docs/design/**'
-      - '!Agents/**'
-      - '!**/*.md'
   workflow_dispatch:
 
 # One run per branch or pull request. A newer push to a pull request cancels the superseded run;
@@ -38,10 +27,45 @@ env:
   ONNXRUNTIME_NODE_INSTALL_CUDA: skip
 
 jobs:
+  # Decides whether the heavy jobs run. A pull request is checked out as its merge with the base, so the first-parent
+  # diff is what merging would change; a push to main is a merge commit of one pull request.
+  changes:
+    name: Decide what to run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      relevant: ${{ steps.decide.outputs.relevant }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      # The decision rules, the gate below and the failure-list script are tested here, so an edit that breaks the rules or the gate text between its markers
+      # turns this job red.
+      - name: Test the CI scripts and the gate
+        run: |
+          bash .github/scripts/ci-relevance.test.sh
+          bash .github/scripts/ci-gate.test.sh
+          bash .github/scripts/vitest-summary.test.sh
+
+      - name: Decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/ci-relevance.sh git "$EVENT" | tee -a "$GITHUB_OUTPUT" | sed 's/^/CI scope: /' >> "$GITHUB_STEP_SUMMARY"
+
   # The full unit test run takes about 25 minutes on one runner, so it is split into three shards.
   # fail-fast is off so one failing shard does not hide failures in the others.
   test:
     name: Unit tests (shard ${{ matrix.shard }}/3)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -66,11 +90,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Naming a reporter drops vitest's automatic github-actions one, so all three are listed: the console log, the
+      # annotations and counts the github-actions reporter writes, and a JSON report for the failure list below.
       - name: Unit tests
-        run: pnpm exec vitest run --shard=${{ matrix.shard }}/3
+        run: pnpm exec vitest run --shard=${{ matrix.shard }}/3 --reporter=default --reporter=github-actions --reporter=json --outputFile.json="$RUNNER_TEMP/vitest-report.json"
+
+      # Lists each failed test with its message in this shard's job summary; it never changes the job result.
+      - name: Failure list in the job summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: node .github/scripts/vitest-summary.mjs "$RUNNER_TEMP/vitest-report.json" "unit tests, shard ${{ matrix.shard }}/3"
 
   check:
     name: Check, build and release check
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -104,6 +138,8 @@ jobs:
 
   node-server:
     name: Node server smoke test
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -155,3 +191,43 @@ jobs:
             exit 1
           fi
           echo "GET / returned index.html"
+
+  # The one check the main ruleset requires. It runs even when an upstream job failed or was skipped (a skipped job
+  # would otherwise count as a pass), and it needs no repository access. It is strict both ways: when the change is
+  # relevant every heavy job must have succeeded, and when it is not every heavy job must have been skipped.
+  gate:
+    name: CI gate
+    if: always()
+    needs: [changes, test, check, node-server]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+
+    steps:
+      - name: Require the jobs the decision called for
+        env:
+          RELEVANT: ${{ needs.changes.outputs.relevant }}
+          RESULT_changes: ${{ needs.changes.result }}
+          RESULT_test: ${{ needs.test.result }}
+          RESULT_check: ${{ needs.check.result }}
+          RESULT_node_server: ${{ needs.node-server.result }}
+        run: |
+          # gate-begin
+          set -u
+          bad=0
+          problem() { echo "::error::$1"; bad=1; }
+          [ "$RESULT_changes" = success ] || problem "the changes job ended $RESULT_changes"
+          case "$RELEVANT" in
+            true) want=success ;;
+            false) want=skipped ;;
+            *) want=''; problem "the changes job gave relevant='$RELEVANT'" ;;
+          esac
+          require() { [ "$2" = "$want" ] || problem "$1 ended $2, expected $want (relevant=$RELEVANT)"; }
+          if [ -n "$want" ]; then
+            require 'Unit tests' "$RESULT_test"
+            require 'Check, build and release check' "$RESULT_check"
+            require 'Node server smoke test' "$RESULT_node_server"
+          fi
+          [ "$bad" -eq 0 ] && echo "CI gate passed (relevant=$RELEVANT)"
+          exit "$bad"
+          # gate-end

@@ -1,0 +1,115 @@
+# Path to label for actions/labeler (.github/workflows/labeler.yml). Only paths that belong to one area are listed; every
+# label already exists, and a label no rule matches is left to be set by hand. Labels are only added, never removed.
+"area:settings":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/lib/Setting/**
+          - src/lib/SettingsShell/**
+          - src/ts/setting/**
+          - src/ts/settingsShell/**
+
+"area:import-export":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/ts/drive/**
+
+"area:storage":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/ts/storage/**
+
+"area:chat":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/lib/ChatScreens/**
+          - src/lib/ChatShell/**
+          - src/ts/chatShell/**
+
+"area:studio":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/lib/Studio/**
+          - src/ts/studio/**
+
+"area:utility-mode":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/lib/Utility/**
+
+"area:theme-packs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - theme-packs/**
+          - src/ts/themePack/**
+
+"area:translation":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/lang/**
+
+"area:android":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src-tauri/gen/android/**
+          - src/ts/android/**
+          - .github/workflows/android-*.yml
+
+"area:desktop":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/ts/tauriDesktop*
+          - .github/workflows/desktop-test-build.yml
+          - .github/workflows/release-desktop.yml
+
+"area:node-server":
+  - changed-files:
+      - any-glob-to-any-file:
+          - server/**
+          - Dockerfile
+          - docker-compose.yml
+          - .github/workflows/docker-*.yml
+          - util/devServerNode*
+
+"area:release":
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/workflows/release-*.yml
+          - .github/workflows/android-release-apk.yml
+          - .github/workflows/docker-publish.yml
+          - util/android*
+          - util/checkReleaseDist.mjs
+          - version.json
+
+"area:dependencies":
+  - changed-files:
+      - any-glob-to-any-file:
+          - pnpm-lock.yaml
+          - pnpm-workspace.yaml
+          - patches/**
+          - src-tauri/Cargo.toml
+          - .github/dependabot.yml
+
+"area:tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - vitest.config.ts
+          - vitest.setup.ts
+          - Agents/Tools/vitest.harness.config.ts
+          - Agents/Tools/full-run/**
+          - Agents/Tools/run-*.mjs
+          - .github/scripts/**
+
+"area:device-tools":
+  - changed-files:
+      - any-glob-to-any-file:
+          - Agents/Tools/device/**
+          - Agents/Tools/device-guard/**
+          - Agents/Tools/tbdriver/**
+          - Agents/Tools/chatshell-cdp/**
+
+"area:tooling":
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+          - .claude/**
+          - docs/workflow/**
