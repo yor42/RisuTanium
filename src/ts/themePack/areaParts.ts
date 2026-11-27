@@ -10,14 +10,20 @@ import { isPopupsPart } from './registries/popups'
 /** The areas whose stylesheets the scope rules judge. */
 export type ScopedArea = 'chat' | 'studio' | 'settings' | 'home' | 'popups'
 
-/** Parts the shell renders from a component under src/lib/ChatScreens/** that the legacy chat screen renders as well. */
-export const SHARED_CHAT_PARTS: readonly string[] = ['notifications-off-notice', 'reply-running-notice']
+/** Parts the shell renders from a component under src/lib/ChatScreens/** that the legacy chat screen renders as well. The partial-edit layers render from ChatScreens/PartialEditController.svelte in the shell rows, the legacy rows and the bookmark rows. */
+export const SHARED_CHAT_PARTS: readonly string[] = [
+    'notifications-off-notice', 'reply-running-notice',
+    'chat-partial-scrim', 'chat-partial-match', 'chat-partial-header', 'chat-partial-title', 'chat-partial-count', 'chat-partial-list', 'chat-partial-option', 'chat-partial-option-meta',
+    'chat-partial-confidence', 'chat-partial-context', 'chat-partial-option-text', 'chat-partial-actions', 'chat-partial-cancel', 'chat-partial-failed', 'chat-partial-message',
+    'chat-partial-dismiss', 'chat-partial-edit', 'chat-partial-meta', 'chat-partial-hint', 'chat-partial-field', 'chat-partial-save',
+    'chat-partial-delete', 'chat-critical-header', 'chat-critical-title',
+]
 
 /** Parts only the legacy chat screen renders: no shell element carries them, so a rule on them could never match the themed screen. */
 export const LEGACY_CHAT_PARTS: readonly string[] = ['chat-messages']
 
 const CHAT_PART_NAMES: readonly string[] = [
-    'chat-action-group', 'chat-ai-law-notice', 'chat-announcer', 'chat-attaching-chip', 'chat-attaching-text', 'chat-attachment-chip', 'chat-cold-loading', 'chat-cold-notice', 'chat-composer',
+    'chat-action-group', 'chat-ai-law-notice', 'chat-announcer', 'chat-attaching-chip', 'chat-attaching-text', 'chat-attachment-chip', 'chat-code-menu', 'chat-code-menu-copy', 'chat-code-menu-download', 'chat-cold-loading', 'chat-cold-notice', 'chat-composer',
     'chat-composer-attaching', 'chat-composer-enter-scope', 'chat-composer-host', 'chat-composer-input', 'chat-composer-persona', 'chat-composer-plus', 'chat-composer-progress',
     'chat-composer-row', 'chat-composer-stop', 'chat-composer-tools', 'chat-composer-translate', 'chat-critical-action', 'chat-critical-body', 'chat-critical-handle',
     'chat-critical-header', 'chat-critical-title', 'chat-customize-action', 'chat-customize-preview', 'chat-drag-handle', 'chat-drop-indicator', 'chat-extras-strip',
@@ -32,7 +38,7 @@ const CHAT_PART_NAMES: readonly string[] = [
     'chat-message-lore-list', 'chat-message-lore-name', 'chat-message-lore-source', 'chat-message-memory-limit', 'chat-message-meta',
     'chat-message-name', 'chat-message-name-row', 'chat-message-render-failed', 'chat-message-retranslate', 'chat-message-spacer', 'chat-message-stage',
     'chat-message-stop-tts', 'chat-message-text', 'chat-message-translate', 'chat-message-translation-edit', 'chat-message-translation-editor', 'chat-message-tts',
-    'chat-move-down', 'chat-move-up', 'chat-new-message', 'chat-order-status', 'chat-persona-settings', 'chat-plugin-panel', 'chat-plugin-panels', 'chat-preset-chip', 'chat-return-chip', 'chat-row',
+    'chat-move-down', 'chat-move-up', 'chat-new-message', 'chat-order-status', 'chat-partial-actions', 'chat-partial-buttons', 'chat-partial-cancel', 'chat-partial-confidence', 'chat-partial-context', 'chat-partial-count', 'chat-partial-delete', 'chat-partial-dismiss', 'chat-partial-edit', 'chat-partial-failed', 'chat-partial-field', 'chat-partial-header', 'chat-partial-hint', 'chat-partial-list', 'chat-partial-match', 'chat-partial-message', 'chat-partial-meta', 'chat-partial-option', 'chat-partial-option-meta', 'chat-partial-option-text', 'chat-partial-save', 'chat-partial-scrim', 'chat-partial-start-delete', 'chat-partial-start-edit', 'chat-partial-title', 'chat-persona-settings', 'chat-plugin-panel', 'chat-plugin-panels', 'chat-preset-chip', 'chat-return-chip', 'chat-row',
     'chat-row-actions', 'chat-row-draft', 'chat-row-editing', 'chat-row-host', 'chat-row-menu', 'chat-row-meta', 'chat-row-name', 'chat-row-name-input', 'chat-row-name-line', 'chat-row-preview', 'chat-row-time',
     'chat-save-guard', 'chat-scrubber', 'chat-scrubber-bubble', 'chat-scrubber-thumb', 'chat-scrubber-track', 'chat-search-character', 'chat-search-character-name', 'chat-search-chat', 'chat-search-chat-name', 'chat-search-chat-preview', 'chat-search-group', 'chat-search-results', 'chat-search-scroller', 'chat-search-status', 'chat-send',
     'chat-sheet', 'chat-sheet-body', 'chat-sheet-handle', 'chat-sheet-item', 'chat-sheet-item-value', 'chat-sheet-layer', 'chat-sheet-scrim', 'chat-sheet-title',

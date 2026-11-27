@@ -1,6 +1,57 @@
-# #438 stage handoffs: wrap-up W3-6b (this PR) and the merged stages W3-6a, W3-5, W3-4, W3-3, W3-2, W2, W3-1 and W1
+# #438 stage handoffs: wrap-up W3-7 (this PR) and the merged stages W3-6b, W3-6a, W3-5, W3-4, W3-3, W3-2, W2, W3-1 and W1
 
 Each wrap-up stage adds a section; the one under review is first, the merged ones follow. The sections come from their own PRs and were merged here without dropping any.
+
+## #438 stage handoff: W3-7 PartialEditController modals, TS-built partial-edit buttons and code-block menu, device rows pending
+
+Branch `claude/438-w3-7`, PR "Refs #438" (last stage of wrap-up W3; the issue stays open). Tier 2, **changes the chat critical list**. Decisions MC-4148 to MC-4169 (MC-4164, MC-4166 order the code-menu theme classes), MC-4210 to MC-4215, MC-2947, MC-2941, MC-3009, MC-3638, MC-3639, MC-3659, MC-3660; no new MC entries (the stage-3 ruling follows MC-4164 and MC-4166). Gates (reports under `%TEMP%/risu-b715/438/w3/`): plan r1 `w37-plan-r1.md`; Gate 1 r1 [EDITORIAL] `w37-g1-r1.md` (F1 to F8 applied by the coder); Gate 2 r1 [EDITORIAL] by a fresh opus-reviewer `w37-g2-r1.md` (E1 to E3 applied). Base c811768da (W3-6b merged).
+
+### What changed
+- `PartialEditController.svelte`: 39 literal `data-part` attributes on the four modals (selection, failed, delete confirm, edit) plus 3 `setAttribute('data-part', ...)` calls in `createButton` for the TS-built wrapper and its two buttons (the block and drag wrappers share them). With every attribute and those 3 lines removed (line endings normalised) the file equals its base blob; still all CRLF.
+- `observer.svelte.ts`: 3 `setAttribute('data-part', ...)` lines for the code menu and its Copy and Download options. Stage 3 (MC-4164, MC-4166, ruled in scope by the orchestrator): colour classes only, `bg-gray-800 -> bg-darkbg`, `border-gray-700 -> border-darkborderc`, `text-gray-300 -> text-textcolor`, `hover:bg-gray-700 -> hover:bg-selected`; layout classes unchanged.
+- Names by class. Critical root: `chat-partial-delete` (the inline delete confirm, `data-part-critical`); inside it only the existing protected `chat-critical-header`, `-title`, `-body` (x2), `-action` (x2). Default reach (21): `chat-partial-scrim`, `-match`, `-failed`, `-edit`, `-header`, `-title`, `-count`, `-list`, `-option`, `-option-meta`, `-confidence`, `-context`, `-option-text`, `-actions`, `-cancel`, `-dismiss`, `-message`, `-meta`, `-hint`, `-field`, `-save`. Registry-only, `REACH_CHAT` (6, TS-built): `chat-partial-buttons`, `-start-edit`, `-start-delete`, `chat-code-menu`, `-copy`, `-download`. No safe leaf.
+- Unclaimed (rendered and asserted unparted): the delete overlay, the delete meta, hint and confidence, the delete button row, every icon and label span, the selection line and method spans, the inline SVGs of the TS buttons, and any element inside the code menu beyond its two options.
+- **Critical-list change.** `engine.ts`: `CRITICAL_PARTS` +`chat-partial-delete` (so every area refuses a selector naming it: "names the protected part chat-partial-delete", proved for chat, popups, settings, home and studio); `REACH_CHAT` +6; rule-2 and rule-4 header comments updated. `SAFE_LEAVES` unchanged.
+- **Census.** `areaParts.ts`: CHAT_PARTS 355 -> 383 (+28), `SHARED_CHAT_PARTS` 2 -> 26, registry-only names 23 -> 27. Values inserted by hand at their sorted positions (the counts above are from the file; `areaParts.test.ts` equals the recomputation with `missing` and `extra` empty). No other area's census or registry changed.
+
+### Tests (class, true counts)
+- New: `partialEditParts.test.ts` (node, 161: reproducers, guards and diagnostic pins), `PartialEditController.parts.svelte.test.ts` (jsdom, 14: R1 to R6 acceptance incl. both TS wrappers, 7 guards), `observer.codeMenu.parts.test.ts` (jsdom, 5: 3 acceptance, 2 guard). 180 new tests plus the 7 of `areaParts.test.ts`: all pass on head.
+- True base (head tests against the HEAD sources of the four app files served in memory): 107 fail, 80 pass of 187 (of the new tests 107 fail, 73 pass; the 73 are 70 guards, 2 diagnostic pins (the user row hidden or made invisible, and the user-row transform) and 1 reproducer-labelled shape that passes on base because it names `chat-critical-action`).
+
+### Evidence and limits
+- 29 named in-memory mutants, one child process each with its own `MUT` env and applied-id log, scratch config under `%TEMP%`, tracked files untouched: all 29 killed, each run printed its own id. Per-mutant record: `%TEMP%/risu-b715/438/w3/scratch/w37-code/mutant-results.txt` (first sweep) and `results/*.json` plus `sweep2.txt` (final sweep).
+- Targeted vitest (`src/ts/themePack`, `src/lib/ChatScreens`, `src/ts/observer*`, `criticalParts`, `observerProducerMarkup`, `ChatShell.layoutStacking`): 186 files, 6302 tests pass; `src/lib/ChatShell` plus `BookmarkList`: 178 files, 1890 pass. `pnpm check`: 0 errors, 5 warnings (none in these files).
+- jsdom proves structure, not looks: no device run, no real pack applied.
+
+### Known limitations (MC-3638, MC-3639, MC-3659, no guard)
+- User rows: the confirm renders inside every message row, so `[data-part="chat-message"][data-role="user"]{display:none}` or `{opacity:0}` (accepted) hides the row with an open confirm. With `opacity:0` the row stays hit-testable and the body-level buttons stay visible, so the confirm opens invisible: a tap on its invisible Yes deletes the range, any other tap cancels. The confirm itself cannot be named. `[data-role="user"] [data-part="<non-critical partial name>"]` takes the safe tier.
+- An effects transform on `[data-part="chat-message"][data-role="user"]` re-anchors every fixed partial-edit overlay to the user row (pre-existing).
+- Non-critical names, including the Delete trigger `chat-partial-start-delete`, accept a transparent colour, clip-path, `width:0` and a covering `::after`; the confirm stays refused.
+- Inherited text properties from `chat-message` (`font-family`, `font-style`, `font-weight`, `letter-spacing`, `text-transform`) reach the unclaimed text inside the confirm (hint, Yes and No labels); colour and size do not (the scoped rules set them).
+- The component's scoped class rules outrank a plain `[data-part]` rule, so a pack needs `!important` for colours; the lint says nothing about it (the plain-paint rule was removed, MC-2370).
+- Open BookmarkList over the colour-mode chat shell: chat.css also restyles the partial-edit layers in its expanded legacy rows (restyle only).
+- The message actions sheet opens alongside the code menu (context menu not stopped; inferred, DV-W37-7 records it).
+- The TS-built elements are named only through `REACH_CHAT` and the DOM tests; a later TS element with no name is unseen.
+- `docs/design/chat/checks/th/packlint.mjs` keeps the old `CRITICAL_PARTS` and `REACH_CHAT` (O-2, not edited): no test compares them beyond the escape names.
+
+### Leftovers
+- Update the `docs/design` packlint mirror (`CRITICAL_PARTS` +`chat-partial-delete`, `REACH_CHAT` +6) in whichever stage next edits packlint.
+
+### Device rows (fold into W5; synthetic data; every-target network block up; PC leg first, Note 9 only for touch)
+Pack fixture: chat.css setting magenta (with `!important`) on `chat-partial-scrim`, `-edit`, `-match`, `-failed`, `-save`, `-cancel`, `-option`, `-buttons`, `-start-edit`, `-start-delete`, `chat-code-menu`, `-copy`, `-download`; chat preview switch on, colour mode. The Settings shell rows are "Hover to edit part of a message" (Input page, Edit group; "Needs a mouse") and "Select text to edit part of it".
+- DV-W37-1 PC: turn on "Hover to edit part of a message"; hover a paragraph of a synthetic reply: buttons in pack colours.
+- DV-W37-2 PC: Edit on a unique paragraph, Save: edit modal in pack colours, text changes once.
+- DV-W37-3 PC: a reply repeating one paragraph; Edit, then Delete: selection list in pack colours.
+- DV-W37-4 PC: a reply whose data is `{{char}}` alone; hover, Edit: failed modal in pack colours, else not-run (R6 is the evidence).
+- DV-W37-5 PC: Delete on a unique paragraph; No, then Delete and Yes: confirm keeps its built-in look while siblings are magenta; No keeps the text, Yes removes the range.
+- DV-W37-6 PC: install a pack with `[data-part="chat-partial-delete"]{border-radius:4px}`: refused at install, "names the protected part chat-partial-delete".
+- DV-W37-7 PC, then Note 9: right-click (PC), long-press (Note 9) a code block; with a pack the menu is in pack colours, with none in theme colours. Record whether the message action sheet also opens.
+- DV-W37-8 Note 9: turn on "Select text to edit part of it"; select at least 5 characters: drag buttons in pack colours.
+- DV-W37-9 PC: the same pack over the legacy chat, then the `?nothemepack` URL flag (the PC safe start; "Start without theme pack" is the Android launcher's): built-in everywhere; DV-W37-1 is the control row in the same run.
+
+### For W5
+- Fold DV-W37-1 to -9 with the W3-6 rows; no row needs a provider reply (MC-4165 PQ-5 does not apply). Not run on the Fold 7 or the Tab S9.
+- The new `chat-partial-delete` name is refused in every area, so a W5 pack fixture must not name it except in DV-W37-6.
 
 ## #438 stage handoff: W3-6b category and tag managers, bulk bar and result, ChroMemoryModal and its tabs, device rows pending
 

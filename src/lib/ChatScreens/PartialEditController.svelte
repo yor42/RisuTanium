@@ -125,6 +125,7 @@
     ): HTMLDivElement {
         const wrapper = document.createElement('div');
         wrapper.className = className;
+        wrapper.setAttribute('data-part', 'chat-partial-buttons');
         wrapper.innerHTML = `
             <button type="button" class="partial-edit-btn partial-edit-btn-edit">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -145,6 +146,7 @@
 
         const editBtn = wrapper.querySelector('.partial-edit-btn-edit')!;
         editBtn.setAttribute('title', language.partialEdit.editButtonTooltip);
+        editBtn.setAttribute('data-part', 'chat-partial-start-edit');
         editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             e.preventDefault();
@@ -153,6 +155,7 @@
 
         const deleteBtn = wrapper.querySelector('.partial-edit-btn-delete')!;
         deleteBtn.setAttribute('title', language.partialEdit.deleteButtonTooltip);
+        deleteBtn.setAttribute('data-part', 'chat-partial-start-delete');
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             e.preventDefault();
@@ -683,38 +686,38 @@
 {#snippet MatchSelectionModal(mode: MatchingMode, matches: RangeResultWithContext[], title: string)}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="partial-edit-overlay" onclick={(e) => { if (e.target === e.currentTarget) cancelMatchSelection(); }}>
-        <div class="partial-match-selection-modal">
-            <div class="match-selection-header">
-                <span class="match-selection-title">{title}</span>
-                <span class="match-count">{matches.length} {language.partialEdit.matchesFound}</span>
+    <div data-part="chat-partial-scrim" class="partial-edit-overlay" onclick={(e) => { if (e.target === e.currentTarget) cancelMatchSelection(); }}>
+        <div data-part="chat-partial-match" class="partial-match-selection-modal">
+            <div data-part="chat-partial-header" class="match-selection-header">
+                <span data-part="chat-partial-title" class="match-selection-title">{title}</span>
+                <span data-part="chat-partial-count" class="match-count">{matches.length} {language.partialEdit.matchesFound}</span>
             </div>
-            <div class="match-list">
+            <div data-part="chat-partial-list" class="match-list">
                 {#each matches as match, i}
                     <!-- svelte-ignore a11y_no_static_element_interactions -->
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
-                    <div class="match-item" onclick={() => selectMatchAtIndex(i)}>
-                        <div class="match-meta">
+                    <div data-part="chat-partial-option" class="match-item" onclick={() => selectMatchAtIndex(i)}>
+                        <div data-part="chat-partial-option-meta" class="match-meta">
                             <span class="match-line">{language.partialEdit.lineNumber(match.lineNumber)}</span>
-                            <span class="match-confidence" class:high-confidence={match.confidence >= 0.95} class:medium-confidence={match.confidence >= 0.7 && match.confidence < 0.95} class:low-confidence={match.confidence < 0.7}>
+                            <span data-part="chat-partial-confidence" class="match-confidence" class:high-confidence={match.confidence >= 0.95} class:medium-confidence={match.confidence >= 0.7 && match.confidence < 0.95} class:low-confidence={match.confidence < 0.7}>
                                 {(match.confidence * 100).toFixed(0)}%
                             </span>
                             <span class="match-method">{match.method}</span>
                         </div>
                         {#if match.contextBefore}
-                            <div class="match-context-before">{match.contextBefore}</div>
+                            <div data-part="chat-partial-context" class="match-context-before">{match.contextBefore}</div>
                         {/if}
-                        <div class="match-text">
+                        <div data-part="chat-partial-option-text" class="match-text">
                             {matchingState.sourceData.slice(match.start, match.end).slice(0, 150)}{matchingState.sourceData.slice(match.start, match.end).length > 150 ? '...' : ''}
                         </div>
                         {#if match.contextAfter}
-                            <div class="match-context-after">{match.contextAfter}</div>
+                            <div data-part="chat-partial-context" class="match-context-after">{match.contextAfter}</div>
                         {/if}
                     </div>
                 {/each}
             </div>
-            <div class="partial-edit-buttons">
-                <button
+            <div data-part="chat-partial-actions" class="partial-edit-buttons">
+                <button data-part="chat-partial-cancel"
                     type="button"
                     class="partial-edit-cancel-btn"
                     onclick={cancelMatchSelection}
@@ -731,14 +734,14 @@
 {#if showMatchFailedModal}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="partial-edit-overlay" onclick={(e) => { if (e.target === e.currentTarget) showMatchFailedModal = false; }}>
-        <div class="partial-match-failed-modal">
-            <div class="partial-match-failed-header">
-                <span class="partial-match-failed-title">{language.partialEdit.matchFailedTitle}</span>
+    <div data-part="chat-partial-scrim" class="partial-edit-overlay" onclick={(e) => { if (e.target === e.currentTarget) showMatchFailedModal = false; }}>
+        <div data-part="chat-partial-failed" class="partial-match-failed-modal">
+            <div data-part="chat-partial-header" class="partial-match-failed-header">
+                <span data-part="chat-partial-title" class="partial-match-failed-title">{language.partialEdit.matchFailedTitle}</span>
             </div>
-            <p class="partial-match-failed-message">{language.partialEdit.matchFailedMessage}</p>
-            <div class="partial-edit-buttons">
-                <button
+            <p data-part="chat-partial-message" class="partial-match-failed-message">{language.partialEdit.matchFailedMessage}</p>
+            <div data-part="chat-partial-actions" class="partial-edit-buttons">
+                <button data-part="chat-partial-dismiss"
                     type="button"
                     class="partial-edit-save-btn"
                     onclick={() => showMatchFailedModal = false}
@@ -756,9 +759,9 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="partial-edit-overlay" onclick={(e) => { if (e.target === e.currentTarget) handleCancelDelete(); }}>
-        <div class="partial-delete-modal">
-            <div class="partial-delete-header">
-                <span class="partial-delete-title">{language.partialEdit.deleteModalTitle}</span>
+        <div data-part="chat-partial-delete" data-part-critical class="partial-delete-modal">
+            <div data-part="chat-critical-header" class="partial-delete-header">
+                <span data-part="chat-critical-title" class="partial-delete-title">{language.partialEdit.deleteModalTitle}</span>
                 <div class="partial-match-meta">
                     <span class="partial-match-hint">
                         {language.partialEdit.matchFound(matchingState.selectedRange.method)}
@@ -768,12 +771,12 @@
                     </span>
                 </div>
             </div>
-            <p class="partial-delete-message">{language.partialEdit.deleteConfirmMessage}</p>
-            <div class="partial-delete-preview">
+            <p data-part="chat-critical-body" class="partial-delete-message">{language.partialEdit.deleteConfirmMessage}</p>
+            <div data-part="chat-critical-body" class="partial-delete-preview">
                 {matchingState.selectedRange ? matchingState.sourceData.slice(matchingState.selectedRange.start, matchingState.selectedRange.end).slice(0, 200) : ''}{matchingState.selectedRange && matchingState.sourceData.slice(matchingState.selectedRange.start, matchingState.selectedRange.end).length > 200 ? '...' : ''}
             </div>
             <div class="partial-edit-buttons">
-                <button
+                <button data-part="chat-critical-action"
                     type="button"
                     class="partial-delete-confirm-btn"
                     onclick={handleConfirmDelete}
@@ -781,7 +784,7 @@
                     <CheckIcon size={14} />
                     <span>{language.partialEdit.deleteYes}</span>
                 </button>
-                <button
+                <button data-part="chat-critical-action"
                     type="button"
                     class="partial-edit-cancel-btn"
                     onclick={handleCancelDelete}
@@ -805,20 +808,20 @@
 {#if isEditing}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="partial-edit-overlay" onclick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}>
-        <div class="partial-edit-modal">
-            <div class="partial-edit-header">
-                <span class="partial-edit-title">{language.partialEdit.editModalTitle}</span>
-                <div class="partial-match-meta">
-                    <span class="partial-match-hint">
+    <div data-part="chat-partial-scrim" class="partial-edit-overlay" onclick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}>
+        <div data-part="chat-partial-edit" class="partial-edit-modal">
+            <div data-part="chat-partial-header" class="partial-edit-header">
+                <span data-part="chat-partial-title" class="partial-edit-title">{language.partialEdit.editModalTitle}</span>
+                <div data-part="chat-partial-meta" class="partial-match-meta">
+                    <span data-part="chat-partial-hint" class="partial-match-hint">
                         {language.partialEdit.matchFound(matchingState.selectedRange.method)}
                     </span>
-                    <span class="partial-match-confidence" class:low-confidence={matchingState.selectedRange.confidence < 0.7}>
+                    <span data-part="chat-partial-confidence" class="partial-match-confidence" class:low-confidence={matchingState.selectedRange.confidence < 0.7}>
                         {(matchingState.selectedRange.confidence * 100).toFixed(0)}%
                     </span>
                 </div>
             </div>
-            <textarea
+            <textarea data-part="chat-partial-field"
                 bind:this={textareaRef}
                 bind:value={editText}
                 class="partial-edit-textarea"
@@ -827,8 +830,8 @@
                 style:font-size="{0.875 * (DBState.db.zoomsize / 100)}rem"
                 style:line-height="{(DBState.db.lineHeight ?? 1.25) * (DBState.db.zoomsize / 100)}rem"
             ></textarea>
-            <div class="partial-edit-buttons">
-                <button
+            <div data-part="chat-partial-actions" class="partial-edit-buttons">
+                <button data-part="chat-partial-save"
                     type="button"
                     class="partial-edit-save-btn"
                     onclick={handleSave}
@@ -837,7 +840,7 @@
                     <CheckIcon size={14} />
                     <span>{language.partialEdit.save}</span>
                 </button>
-                <button
+                <button data-part="chat-partial-cancel"
                     type="button"
                     class="partial-edit-cancel-btn"
                     onclick={handleCancel}

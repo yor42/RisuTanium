@@ -31,11 +31,13 @@ function onCodeContextMenu(e:MouseEvent){
 
     const menu = document.createElement('div')
     menu.id = 'code-contextmenu'
-    menu.setAttribute('class', 'fixed z-50 min-w-[160px] py-2 bg-gray-800 rounded-lg border border-gray-700')
+    menu.setAttribute('class', 'fixed z-50 min-w-[160px] py-2 bg-darkbg rounded-lg border border-darkborderc')
+    menu.setAttribute('data-part', 'chat-code-menu')
 
     const copyOption = document.createElement('div')
     copyOption.textContent = 'Copy'
-    copyOption.setAttribute('class', 'px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 cursor-pointer')
+    copyOption.setAttribute('class', 'px-4 py-2 text-sm text-textcolor hover:bg-selected cursor-pointer')
+    copyOption.setAttribute('data-part', 'chat-code-menu-copy')
     copyOption.addEventListener('click', ()=>{
         copyPlainText(node.textContent, () => {})
         menu.remove()
@@ -43,7 +45,8 @@ function onCodeContextMenu(e:MouseEvent){
 
     const downloadOption = document.createElement('div');
     downloadOption.textContent = 'Download';
-    downloadOption.setAttribute('class', 'px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 cursor-pointer')
+    downloadOption.setAttribute('class', 'px-4 py-2 text-sm text-textcolor hover:bg-selected cursor-pointer')
+    downloadOption.setAttribute('data-part', 'chat-code-menu-download')
     downloadOption.addEventListener('click', ()=>{
         const a = document.createElement('a')
         a.href = URL.createObjectURL(new Blob([node.textContent], {type: 'text/plain'}))

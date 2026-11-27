@@ -6,11 +6,11 @@
 //  0. The text is normalised first: comments removed, CSS escapes decoded (\64isplay is display), upper case folded. Nothing is judged before that.
 //  1. Selectors: only :root / html and [data-*="value"] attribute selectors with :hover, :focus-within, :focus-visible. No tag, class, id, *, :not / :is / :has,
 //     nesting, or attribute operator other than equals. The only pseudo-elements are ::before and ::after, directly ending the last compound. At-rules: only @media. No @keyframes, @import, @font-face, @property, @supports, @layer, @container.
-//  2. A selector may not name a protected surface anywhere (data-part-critical, chat-failed-card, chat-save-guard, chat-critical-body, chat-critical-action, and a critical sheet's own chat-critical-title, -header, -handle).
+//  2. A selector may not name a protected surface anywhere (data-part-critical, chat-failed-card, chat-save-guard, chat-critical-body, chat-critical-action, chat-partial-delete, and chat-critical-title, -header, -handle, which a critical sheet or the partial-delete confirm owns).
 //  3. Token rules: custom properties (and color-scheme) only on :root and on html[data-input=..] / html[data-layout=..] and their combinations (DD-159, they cannot reach a part).
 //     The resulting tokens are checked: critical text keeps 4.5:1 on its surface, critical sizes stay usable (tokenCheck).
 //  4. Every other rule is judged by what its subject can reach. A subject is a SAFE LEAF only if the app guarantees it never contains, is, or sits inside a protected element
-//     (the leaf parts listed below, or anything inside a user or system message: a protected element is only ever in a character message or a sheet). Every other subject
+//     (the leaf parts listed below, or anything inside a user or system message: a protected element is only ever in a character message or a sheet, except the partial-edit delete confirm, which renders inside every message row, user rows included; it is protected by name, and the user-row safe context can still hide the row with it, a known limitation, MC-3638). Every other subject
 //     (an ancestor, a descendant, any subject that names no part, [data-fail], [data-kind], html[...]) may be, hold or sit inside a protected element, and its declarations
 //     are checked against an ALLOWLIST: colours (never transparent or equal to the surface), borders, radii, shadows, font family / style / weight, bounded font size,
 //     bounded spacing, safe widths. Everything else (display, visibility, opacity, transform, clip, filter, position, flex and grid layout, overflow, order, heights, ...) is rejected.
@@ -107,15 +107,18 @@ export const ESCAPE_ROUTE_PARTS: string[] = ['sidebar-settings', 'this-chat-all-
 // The Theme pack row and every part under it (the loader's host and failure line, the row, its tiles), pinned from the census of ThemePackRowLoader.svelte and ThemePackRow.svelte by escapeRoute.test.ts.
 export const THEME_PACK_ROW_CLOSURE: string[] = ['theme-pack-broken', 'theme-pack-checking', 'theme-pack-details', 'theme-pack-entry', 'theme-pack-help', 'theme-pack-icon', 'theme-pack-install', 'theme-pack-load-failed', 'theme-pack-none', 'theme-pack-outcome', 'theme-pack-remove',
     'theme-pack-row', 'theme-pack-row-host', 'theme-pack-tile', 'theme-pack-unreadable', 'tile-glyph', 'tile-ground', 'tile-none-frame', 'tile-none-mark', 'tile-pattern', 'tile-plate']
-export const CRITICAL_PARTS: string[] = ['chat-failed-card', 'chat-save-guard', 'chat-critical-body', 'chat-critical-action', 'chat-critical-title', 'chat-critical-header', 'chat-critical-handle', ...ESCAPE_ROUTE_PARTS, ...THEME_PACK_ROW_CLOSURE]
+export const CRITICAL_PARTS: string[] = ['chat-failed-card', 'chat-save-guard', 'chat-critical-body', 'chat-critical-action', 'chat-critical-title', 'chat-critical-header', 'chat-critical-handle', 'chat-partial-delete', ...ESCAPE_ROUTE_PARTS, ...THEME_PACK_ROW_CLOSURE]
+// chat-partial-delete is the partial-edit delete confirm (MC-2947), marked data-part-critical at its call site.
 // Every part that encloses an escape element in some screen layout. No registry may list one as safe: a safe part may be hidden or moved, which would take the control with it; as a reach part it can only be recoloured, rebordered and respaced.
 // Pinned from the mounted-screen walk in escapeWalk.svelte.test.ts, which is the authority; escapeRoute.test.ts asserts the static census is a subset. Over-inclusion is harmless: a name that encloses an escape element in one layout only loses the safe tier everywhere.
 export const ESCAPE_ANCESTORS: ReadonlySet<string> = new Set(['chat-shell', 'chat-sheet', 'chat-sheet-layer', 'chat-sidebar', 'chat-sidebar-footer', 'settings-display-page', 'home-drawer', 'home-drawer-layer', 'home-landing', 'settings-index', 'settings-page', 'settings-page-scroll', 'settings-section', 'settings-shell', 'settings-view', 'this-chat-body', 'this-chat-group'])
 // DD-243: the reach tier takes the controls a person needs to navigate, stop work, send, apply, undo and see a failed save. A pack may recolour, reborder and respace these parts (DD-155 allowlist);
 // it may not hide, move or re-lay them out, and no pack rule may change an outline. Each registry lists its own part names in `reach`; effective() removes them from the safe list wherever they were.
 //   chat: navigation (the sidebar, the chat list and its rows, the header with its menu), the generation strip that holds Stop, the composer with its field and Send, and the toast and status row that carry Undo.
+//   The partial-edit buttons and the code-block menu are built in TS, so they are chat parts only through this list (MC-4166).
 export const REACH_CHAT: string[] = ['chat-header', 'chat-header-menu', 'chat-gen-strip', 'chat-sidebar', 'chat-sidebar-header', 'chat-sidebar-toggle', 'chat-sidebar-strip', 'chat-list', 'chat-list-row', 'chat-list-row-main', 'chat-list-row-menu',
-    'chat-composer', 'chat-composer-input', 'chat-composer-plus', 'chat-send', 'chat-toast', 'chat-status-row']
+    'chat-composer', 'chat-composer-input', 'chat-composer-plus', 'chat-send', 'chat-toast', 'chat-status-row',
+    'chat-partial-buttons', 'chat-partial-start-edit', 'chat-partial-start-delete', 'chat-code-menu', 'chat-code-menu-copy', 'chat-code-menu-download']
 // parts the app guarantees are never protected, never hold a protected element and never sit inside one
 export const SAFE_LEAVES: Set<string> = new Set(['chat-message-avatar', 'chat-message-name', 'chat-message-badges', 'chat-message-actions', 'chat-message-actions-hover', 'chat-message-actions-float', 'chat-message-spacer', 'chat-message-alts', 'chat-message-name-row',
     'chat-header', 'chat-header-avatar', 'chat-header-title', 'chat-header-menu', 'chat-preset-chip', 'chat-gen-strip', 'chat-sidebar', 'chat-sidebar-header', 'chat-sidebar-toggle', 'chat-sidebar-search', 'chat-sidebar-strip', 'chat-sidebar-footer',
