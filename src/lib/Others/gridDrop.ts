@@ -3,7 +3,7 @@ import { CENTRE_ZONE_FRACTION } from '../SideBars/railConstants'
 import { locate } from '../SideBars/railLayout'
 import { NO_TARGET, type Target, type ZoneCandidate } from '../SideBars/railTarget'
 import type { GridEntry } from './charListOrder'
-import { GRID_GAP_REM, GRID_TILE_REM } from './charListRows'
+import { GRID_SMALL } from './charListRows'
 import type { GridGeometry } from './gridTarget'
 
 /**
@@ -86,13 +86,13 @@ interface RowFrame {
 }
 
 function frameOf(geometry: GridGeometry, rowIndex: number): RowFrame | null {
-    const { rows, layout, contentWidth, remPx } = geometry
+    const { rows, layout, contentWidth, remPx, metrics = GRID_SMALL } = geometry
     const row = rows[rowIndex]
     if (!row || row.cards.length === 0) {
         return null
     }
-    const tile = GRID_TILE_REM * remPx
-    const gap = GRID_GAP_REM * remPx
+    const tile = metrics.tileRem * remPx
+    const gap = metrics.gapRem * remPx
     const count = row.cards.length
     const inset = Math.max(0, (contentWidth - (count * tile + (count - 1) * gap)) / 2)
     return {

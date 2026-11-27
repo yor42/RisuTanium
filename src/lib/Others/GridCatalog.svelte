@@ -24,7 +24,7 @@
     import CharacterNameRow, { replyStateContext, type CharacterReplyState } from "./CharacterNameRow.svelte";
     import CharacterReplyStop from "./CharacterReplyStop.svelte";
     import ReplyStopButton from "./ReplyStopButton.svelte";
-    import { GRID_ROW_FALLBACK_PX, LIST_ROW_FALLBACK_PX, gridSectionRows, listRows } from "./charListRows";
+    import { GRID_HOME, GRID_SMALL, LIST_ROW_FALLBACK_PX, gridSectionRows, listRows } from "./charListRows";
     import { buildGridEntries, folderTileClass, type GridEntry, type SortMode } from "./charListOrder";
     import { loadGridSort, loadLibraryTab, parseGridSort, saveGridSort, saveLibraryTab } from "./gridMemory";
     import SelectInput from "../UI/GUI/SelectInput.svelte";
@@ -102,6 +102,8 @@
 
     let { endGrid = () => {}, studio, variant = 'app' }: Props = $props();
     const homeVariant = untrack(() => variant === 'home');
+    // The Home library's tile is the larger square with the name beneath; the App host keeps the 56 px tile.
+    const gridMetrics = homeVariant ? GRID_HOME : GRID_SMALL;
 
     const uid = $props.id();
     // A dark halo behind a folder tile's icon or name keeps it readable over a bright picture.
@@ -1660,13 +1662,18 @@
     {/if}
 {/snippet}
 
+<!-- The Home tile's name beneath its picture: at most two lines, so a measured row is 100 or 116 px. The picture's button already carries the name for assistive technology. No chat count: an archived stub holds a placeholder chat. -->
+{#snippet tileName(name: string)}
+    <span class="mt-1 w-full text-center text-xs leading-4 text-textcolor2 line-clamp-2 break-words pointer-events-none" data-charlist-tile-name aria-hidden="true">{name}</span>
+{/snippet}
+
 {#snippet gridCard(cardKey: string, position: number, visible: () => boolean)}
     {@const entry = entryByKey.get(cardKey)}
     {#if entry?.kind === 'folder'}
         <!-- The tile is a native button; its picture is decorative and the folder's name is the button's. In edit mode a tap selects it and the corner chevron opens or closes the folder. -->
-        <div class="relative flex items-center text-textcolor" class:opacity-40={dimmedKeys.has(entry.key)}>
+        <div class="relative flex text-textcolor {homeVariant ? 'flex-col items-center w-[4.5rem]' : 'items-center'}" class:opacity-40={dimmedKeys.has(entry.key)}>
             <button
-                class="relative overflow-hidden shrink-0 flex justify-center items-center rounded-md h-14 w-14 min-h-14 shadow-lg border border-selected cursor-pointer hover:border-textcolor2 transition-colors duration-150 {folderTileClass(entry.color)}"
+                class="relative overflow-hidden shrink-0 flex justify-center items-center rounded-md {homeVariant ? 'h-[4.5rem] w-[4.5rem] min-h-[4.5rem]' : 'h-14 w-14 min-h-14'} shadow-lg border border-selected cursor-pointer hover:border-textcolor2 transition-colors duration-150 {folderTileClass(entry.color)}"
                 aria-expanded={entry.open}
                 aria-pressed={editing ? picks.has(entry.key) : undefined}
                 aria-label={entry.name || language.sidebarUi.defaultFolderName}
@@ -1692,6 +1699,9 @@
                 {/if}
                 {@render folderFace(entry.name, entry.open)}
             </button>
+            {#if homeVariant}
+                {@render tileName(entry.name || language.sidebarUi.defaultFolderName)}
+            {/if}
             {#if editing}
                 {@render pickMark(picks.has(entry.key))}
                 <button
@@ -1719,7 +1729,7 @@
         {#if char}
             <!-- The avatar's button is not a prop of CharListAvatar: in edit mode the attachment gives it aria-pressed from the selection. -->
             <div
-                class="flex items-center text-textcolor"
+                class="flex text-textcolor {homeVariant ? 'flex-col items-center w-[4.5rem]' : 'items-center'}"
                 data-part="library-tile"
                 class:relative={badge !== undefined || editing || replyState.writing || replyState.mark !== null}
                 class:opacity-40={dimmedKeys.has(entry.key)}
@@ -1738,6 +1748,7 @@
                 <CharListAvatar
                     src={char.image}
                     {visible}
+                    large={homeVariant}
                     fallbackStyle={char.image ? '' : index === $selectedCharID ? 'background:var(--risu-theme-selected)' : ''}
                     label={char.name || language.settingsPage.unnamed}
                     busy={openingIndex === index}
@@ -1757,6 +1768,9 @@
                         {/if}
                     {/if}
                 </CharListAvatar>
+                {#if homeVariant}
+                    {@render tileName(char.name || language.settingsPage.unnamed)}
+                {/if}
                 {#if editing}
                     {@render pickMark(picks.has(entry.key))}
                 {/if}
@@ -1770,7 +1784,7 @@
                     <span data-part="reply-error-dot" role="img" aria-label={language.chatReplyErrorDot} class="absolute top-0 end-0 size-3 rounded-full bg-draculared pointer-events-none"></span>
                 {/if}
                 {#if badge !== undefined}
-                    <span class="absolute bottom-0 inset-x-0 flex items-center gap-0.5 px-0.5 rounded-b-md bg-darkbg/80 text-textcolor2 text-[10px] leading-tight pointer-events-none">
+                    <span class="absolute inset-x-0 flex items-center gap-0.5 px-0.5 rounded-b-md {homeVariant ? 'top-[4.5rem] -translate-y-full' : 'bottom-0'} bg-darkbg/80 text-textcolor2 text-[10px] leading-tight pointer-events-none">
                         <FolderIcon size={10} class="shrink-0" />
                         <span class="truncate">{badge}</span>
                     </span>
@@ -1891,7 +1905,7 @@
                 {#if libraryEmpty || libraryNoMatch}
                     {@render libraryEmptyState()}
                 {:else}
-                    <CharacterWindow bind:this={gridWindow} attach={attachGrid} class="flex-1 min-h-0 pb-16 select-none [touch-action:pan-y] [-webkit-touch-callout:none]" layout="grid" rows={gridRowsFor} fallbackHeight={GRID_ROW_FALLBACK_PX} resetToken={JSON.stringify([sort, found.query])} rowClass="flex justify-center supports-[justify-content:safe_center]:[justify-content:safe_center] gap-2 pb-2" card={gridCard} />
+                    <CharacterWindow bind:this={gridWindow} attach={attachGrid} class="flex-1 min-h-0 pb-16 select-none [touch-action:pan-y] [-webkit-touch-callout:none]" layout="grid" rows={gridRowsFor} metrics={gridMetrics} fallbackHeight={gridMetrics.fallbackRowPx} resetToken={JSON.stringify([sort, found.query])} rowClass="flex justify-center supports-[justify-content:safe_center]:[justify-content:safe_center] gap-2 pb-2" card={gridCard} />
                 {/if}
                 <button
                     class="absolute bottom-3 right-6 z-10 flex items-center gap-1 px-4 py-2 rounded-full shadow-lg bg-darkbutton hover:bg-selected border border-darkborderc text-textcolor cursor-pointer"

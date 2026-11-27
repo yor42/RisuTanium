@@ -56,6 +56,28 @@ export function listRows(cardKeys: readonly string[]): CharRow[] {
 export const GRID_TILE_REM = 3.5
 export const GRID_GAP_REM = 0.5
 export const GRID_ROW_FALLBACK_PX = 64
+/**
+ * The size of a Grid tile: its width (a tile's picture is square, so also its picture height) and the gap between
+ * tiles and rows, in rem, and the height of a row that has not been measured yet. The Home library's tile is a
+ * larger square picture with the name beneath, so its row is taller than the picture; the measured height of a
+ * mounted row replaces the fallback, which only decides how far the scrollbar is off until then.
+ */
+export interface GridMetrics {
+    tileRem: number
+    gapRem: number
+    fallbackRowPx: number
+}
+
+/** The App host's Grid tile (`h-14 w-14`). */
+export const GRID_SMALL: GridMetrics = { tileRem: GRID_TILE_REM, gapRem: GRID_GAP_REM, fallbackRowPx: GRID_ROW_FALLBACK_PX }
+
+/**
+ * The Home library's tile: a 4.5 rem square (72 px, four columns in the roughly 328 px a 360 px phone leaves) with
+ * the name beneath, clamped to two lines. A row is the picture, 4 px, the name (16 px a line) and the 8 px padding
+ * below: 100 px with a one-line name, 116 px with two; the fallback is the midpoint.
+ */
+export const GRID_HOME: GridMetrics = { tileRem: 4.5, gapRem: GRID_GAP_REM, fallbackRowPx: 108 }
+
 /** `clientWidth` is rounded, so the columns are counted against a width one pixel short of it. */
 export const GRID_WIDTH_MARGIN_PX = 1
 
@@ -63,9 +85,9 @@ export const GRID_WIDTH_MARGIN_PX = 1
  * How many tiles fit in a row of `contentWidthPx` when 1 rem is `remPx`. Never below 1: a
  * container narrower than one tile still shows its tiles, one per row.
  */
-export function gridColumns(contentWidthPx: number, remPx: number): number {
-    const tile = GRID_TILE_REM * remPx
-    const gap = GRID_GAP_REM * remPx
+export function gridColumns(contentWidthPx: number, remPx: number, metrics: GridMetrics = GRID_SMALL): number {
+    const tile = metrics.tileRem * remPx
+    const gap = metrics.gapRem * remPx
     const columns = Math.floor((contentWidthPx - GRID_WIDTH_MARGIN_PX + gap) / (tile + gap))
     return Number.isFinite(columns) ? Math.max(1, columns) : 1
 }
