@@ -652,9 +652,9 @@ describe('a segment follows its own band when another folder changes', () => {
 
 // ---------------------------------------------------------------- thumbnails
 
-describe('thumbnails behave as they did before the list was windowed', () => {
-    // G16
-    test('every thumbnail URL is asked for once at open, and a row mounted later shows the URL of its own file', async () => {
+describe('thumbnails are asked for only near the band', () => {
+    // G16 (regression reproducer: on the base every row asks at open, 200 requests)
+    test('open asks for the mounted rows alone, a row scrolled in asks once and shows the URL of its own file', async () => {
         const { rows, folders, names } = foldered([100, 100])
         install(rows, folders)
         await service.whenReady(A)
@@ -662,14 +662,30 @@ describe('thumbnails behave as they did before the list was windowed', () => {
         await showList()
         await laterTask(30)
         await settle()
-        expect(h.srcCalls).toHaveLength(200)
-        expect(new Set(h.srcCalls).size).toBe(200)
+        const atOpen = h.srcCalls.length
+        expect(atOpen).toBeGreaterThan(0)
+        expect(atOpen).toBeLessThan(100)
+        expect(new Set(h.srcCalls).size).toBe(atOpen)
         const last = names[1][99]
         expect(rowNode(last)).toBeNull()
+        expect(h.srcCalls).not.toContain(`assets/${last}.png`)
         await scrollTo(model, 2 * HEADER + 200 * SLOT)
         await settle()
         const picture = rowNode(last)?.querySelector<HTMLImageElement>('[data-part="studio-thumb"]')
         expect(picture?.getAttribute('src')).toBe(`blob:whole:assets/${last}.png`)
-        expect(h.srcCalls).toHaveLength(200)
+        expect(h.srcCalls).toContain(`assets/${last}.png`)
+        expect(h.srcCalls.length).toBeLessThan(200)
+    })
+
+    // G17 (regression reproducer: on the base 3000 rows ask at open)
+    test('3000 rows ask for a window of thumbnails, not for every row', async () => {
+        install(plainRows(3000))
+        await service.whenReady(A)
+        installBand([3000])
+        await showList()
+        await laterTask(30)
+        await settle()
+        expect(h.srcCalls.length).toBeGreaterThan(0)
+        expect(h.srcCalls.length).toBeLessThan(100)
     })
 })
