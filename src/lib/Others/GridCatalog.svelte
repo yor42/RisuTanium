@@ -1664,7 +1664,7 @@
 
 <!-- The Home tile's name beneath its picture: at most two lines, so a measured row is 100 or 116 px. The picture's button already carries the name for assistive technology. No chat count: an archived stub holds a placeholder chat. -->
 {#snippet tileName(name: string)}
-    <span class="mt-1 w-full text-center text-xs leading-4 text-textcolor2 line-clamp-2 break-words pointer-events-none" data-part="library-tile-name" aria-hidden="true">{name}</span>
+    <span class="mt-1 w-full text-center text-xs leading-4 text-textcolor2 line-clamp-2 break-words pointer-events-none" data-charlist-tile-name aria-hidden="true">{name}</span>
 {/snippet}
 
 {#snippet gridCard(cardKey: string, position: number, visible: () => boolean)}

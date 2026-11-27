@@ -370,7 +370,7 @@ describe('#479: the Home library tile is a larger square with the name beneath a
         })
         const found = tiles(root)
         expect(found.length).toBe(2)
-        expect(found.map((tile) => tile.querySelector('[data-part="library-tile-name"]')?.textContent)).toEqual(['Ann', 'Bob'])
+        expect(found.map((tile) => tile.querySelector('[data-charlist-tile-name]')?.textContent)).toEqual(['Ann', 'Bob'])
         const picture = found[0].querySelector('button') as HTMLElement
         expect(picture.className).toContain('h-[4.5rem]')
         expect(picture.className).not.toContain('h-14')
@@ -386,7 +386,7 @@ describe('#479: the Home library tile is a larger square with the name beneath a
         })
         const found = tiles(root)
         expect(found.length).toBe(1)
-        expect(found[0].querySelector('[data-part="library-tile-name"]')).toBeNull()
+        expect(found[0].querySelector('[data-charlist-tile-name]')).toBeNull()
         expect((found[0].querySelector('button') as HTMLElement).className).toContain('h-14')
     })
 })
