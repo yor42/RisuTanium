@@ -17,6 +17,7 @@ import { writable } from 'svelte/store'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { language } from 'src/lang'
+import { fillLang } from 'src/lang/fill'
 
 //#region module mocks
 
@@ -247,6 +248,13 @@ async function answer(value: boolean): Promise<void> {
     await settle()
 }
 
+/** Clicks Apply and accepts the confirm it opens. */
+async function applyConfirmed(target: HTMLElement): Promise<void> {
+    applyResult(target)!.click()
+    await settle()
+    await answer(true)
+}
+
 beforeEach(() => {
     // Every card falls in the window: these tests are about what a card does, not about which cards are in the page.
     setWindowGeometryForTests(allRowsGeometry())
@@ -414,9 +422,44 @@ describe('the bulk re-summarize apply', () => {
         installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
         const target = await mountModal()
         await selectAndResummarize(target, ['s3', 's4'])
+        await applyConfirmed(target)
+        expect(texts()).toEqual(['s0', 's1', 's2', 'merged', 's5'])
+    })
+
+    test('regression reproducer: Apply opens a confirm naming the merge and removal counts and writes nothing until it is accepted', async () => {
+        installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
+        const target = await mountModal()
+        await selectAndResummarize(target, ['s2', 's3', 's4'])
         applyResult(target)!.click()
         await settle()
-        expect(texts()).toEqual(['s0', 's1', 's2', 'merged', 's5'])
+        expect(confirms.pending.length).toBe(1)
+        expect(confirms.pending[0].message).toBe(fillLang(language.hypaV3Modal.bulkApplyConfirm, { count: 3, removed: 2 }))
+        expect(texts()).toEqual(['s0', 's1', 's2', 's3', 's4', 's5'])
+        await answer(true)
+        expect(texts()).toEqual(['s0', 's1', 'merged', 's5'])
+    })
+
+    test('regression reproducer: declining the Apply confirm writes nothing and keeps the result bar', async () => {
+        installDb(['s0', 's1', 's2', 's3'])
+        const target = await mountModal()
+        await selectAndResummarize(target, ['s1', 's2'])
+        applyResult(target)!.click()
+        await settle()
+        await answer(false)
+        expect(texts()).toEqual(['s0', 's1', 's2', 's3'])
+        expect(canApply(target)).toBe(true)
+    })
+
+    test('a summary deleted while the Apply confirm is open leaves everything as it is', async () => {
+        installDb(['s0', 's1', 's2', 's3'])
+        const target = await mountModal()
+        await selectAndResummarize(target, ['s1', 's2'])
+        applyResult(target)!.click()
+        await settle()
+        data().summaries.splice(2, 1)
+        flushSync()
+        await answer(true)
+        expect(texts()).toEqual(['s0', 's1', 's3'])
     })
 
     describe('creation times', () => {
@@ -446,8 +489,7 @@ describe('the bulk re-summarize apply', () => {
             giveTimes(T)
             const target = await mountModal()
             await selectAndResummarize(target, ['s3', 's4'])
-            applyResult(target)!.click()
-            await settle()
+            await applyConfirmed(target)
             expect(texts()).toEqual(['s0', 's1', 's2', 'merged', 's5'])
             expect(createdAts()).toEqual([T[0], T[1], T[2], NOW - 5 * DAY, T[5]])
         })
@@ -457,8 +499,7 @@ describe('the bulk re-summarize apply', () => {
             installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
             const target = await mountModal()
             await selectAndResummarize(target, ['s3', 's4'])
-            applyResult(target)!.click()
-            await settle()
+            await applyConfirmed(target)
             expect(texts()).toEqual(['s0', 's1', 's2', 'merged', 's5'])
             expect(data().summaries[3]).not.toHaveProperty('createdAt')
         })
@@ -469,8 +510,7 @@ describe('the bulk re-summarize apply', () => {
             giveTimes([undefined, undefined, undefined, NOW - DAY])
             const target = await mountModal()
             await selectAndResummarize(target, ['s2', 's3'])
-            applyResult(target)!.click()
-            await settle()
+            await applyConfirmed(target)
             expect(texts()).toEqual(['s0', 's1', 'merged', 's4', 's5'])
             expect(data().summaries[2]).not.toHaveProperty('createdAt')
         })
@@ -717,8 +757,7 @@ describe('the bulk re-summarize and re-roll runs', () => {
         await finishSummarizerAt(1, 'NEW')
         await finishSummarizerAt(0, 'OLD')
         expect(resultText(target)).toBe('NEW')
-        applyResult(target)!.click()
-        await settle()
+        await applyConfirmed(target)
         expect(texts()).toEqual(['s0', 's1', 'NEW'])
     })
 
@@ -751,8 +790,7 @@ describe('the bulk re-summarize and re-roll runs', () => {
         await finishSummarizerAt(0, 'REROLL')
         expect(canApply(target)).toBe(false)
         await finishSummarizerAt(0, 'NEW')
-        applyResult(target)!.click()
-        await settle()
+        await applyConfirmed(target)
         expect(texts()).toEqual(['NEW', 's1', 's2'])
     })
 })
