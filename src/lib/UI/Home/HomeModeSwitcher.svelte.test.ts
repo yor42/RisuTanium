@@ -152,6 +152,20 @@ describe('HomeModeSwitcher', () => {
         flushSync()
         expect(root.querySelector('fieldset')).toBeNull()
     })
+
+    // Class guard: below 360 px the switcher tightens gap and horizontal padding so three entries fit in two lines while keeping 44 px targets.
+    test('uses tighter sub-360 spacing while keeping the 44 px target floor', () => {
+        const root = mountSwitcher()
+        const group = root.querySelector('fieldset')!
+        expect(group.classList.contains('max-[359.98px]:gap-1.5')).toBe(true)
+        const labels = Array.from(group.querySelectorAll('label'))
+        expect(labels).toHaveLength(3)
+        for (const label of labels) {
+            expect(label.classList.contains('min-h-11')).toBe(true)
+            expect(label.classList.contains('max-[359.98px]:px-2.5')).toBe(true)
+            expect(label.classList.contains('max-[359.98px]:gap-1.5')).toBe(true)
+        }
+    })
 })
 
 /**

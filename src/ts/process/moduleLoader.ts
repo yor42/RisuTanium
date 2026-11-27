@@ -184,15 +184,17 @@ async function loadInto(flight: Flight, residency: Residency): Promise<RisuModul
     // untouched by the repair and keep theirs.
     residency.hydrateModule(repair.changed ? withoutModuleUnit(read) : read)
     refreshModules()
-    // Only a slot the displayed origin references reloads the chat, so a library-wide load (a plugin's getDatabase)
-    // does not remount it once per module.
+    // Only a slot the displayed origin references reloads the chat, so loading unrelated modules does not remount it
+    // once per module. Plugin `getDatabase()` reads stubs into a private copy via `apiV3/moduleStubCopy.svelte.ts`
+    // and installs nothing here unless a lorebook repair must ask the user.
     if (displayReferencesModule(DBState.db.modules[index])) {
         bumpModuleGui()
     }
     return DBState.db.modules[index]
 }
 
-function withoutModuleUnit(read: Extract<ResidencyModuleRead, { status: 'ok' }>): Extract<ResidencyModuleRead, { status: 'ok' }> {
+/** Withholds the module unit's digest for a repaired body so the next save pass writes it. */
+export function withoutModuleUnit(read: Extract<ResidencyModuleRead, { status: 'ok' }>): Extract<ResidencyModuleRead, { status: 'ok' }> {
     const withheld = keyOfRef(read.entry.unit)
     return { ...read, source: { get: (key: string) => key === withheld ? undefined : read.source.get(key) } }
 }

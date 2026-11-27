@@ -89,12 +89,12 @@ export type TargetOwner =
 
 type FieldClass = 'rewritable' | 'flagOnly' | 'excluded'
 
-const V1_EFFECT_TYPES: ReadonlySet<string> = new Set([
+export const V1_EFFECT_TYPES: ReadonlySet<string> = new Set([
     'cutchat', 'modifychat', 'runImgGen', 'extractRegex', 'runLLM', 'checkSimilarity', 'sendAIprompt', 'showAlert',
     'setvar', 'systemprompt', 'impersonate', 'command', 'stop', 'runtrigger', 'runAxLLM',
 ])
 
-const KNOWN_V2_TYPES: readonly triggerEffectV2['type'][] = [
+export const KNOWN_V2_TYPES: readonly triggerEffectV2['type'][] = [
     'v2Header', 'v2If', 'v2Else', 'v2EndIndent', 'v2SetVar', 'v2Loop', 'v2LoopNTimes', 'v2BreakLoop', 'v2RunTrigger',
     'v2ConsoleLog', 'v2StopTrigger', 'v2CutChat', 'v2ModifyChat', 'v2SystemPrompt', 'v2Impersonate', 'v2Command',
     'v2SendAIprompt', 'v2ImgGen', 'v2CheckSimilarity', 'v2RunLLM', 'v2ShowAlert', 'v2ExtractRegex', 'v2GetLastMessage',

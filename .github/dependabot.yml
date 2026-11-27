@@ -34,16 +34,3 @@ updates:
         update-types:
           - minor
           - patch
-
-  # Hono server: its own package and lockfile.
-  - package-ecosystem: npm
-    directory: /server/hono
-    schedule:
-      interval: monthly
-    labels:
-      - dependencies
-    groups:
-      minor-and-patch:
-        update-types:
-          - minor
-          - patch

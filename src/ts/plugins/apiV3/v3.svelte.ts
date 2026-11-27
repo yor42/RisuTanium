@@ -4,7 +4,7 @@ import { copyCharactersWithoutAlt, markPlainResult } from "./pluginCopy.svelte";
 import { modulesCopyAt, readStubBodies } from "./moduleStubCopy.svelte";
 import { ensureCurrentModules } from "src/ts/process/moduleEnsure";
 import { hasModuleStubs, unloadedModulesOf } from "src/ts/process/moduleRefList";
-import { originOf, resolveOriginWithHint, type Origin, type OriginHint } from "src/ts/process/chatOrigin";
+import { createSendSubject, originOf, resolveOriginWithHint, type Origin, type OriginHint } from "src/ts/process/chatOrigin";
 import { createPluginScriptHashGetter, getPluginPermissionKey, PluginPermissionSessionCache, runWithPluginPermission, type PluginPermission } from "./pluginPermissionCache";
 import { getCurrentCharacter, getCurrentChat, getDatabase, type Chat } from "src/ts/storage/database.svelte";
 import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
@@ -1438,6 +1438,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             if(!Number.isInteger(chatID) || chatID < -1 || chatID >= chat.message.length){
                 throw new Error(`Invalid messageIndex: ${chatID}`);
             }
+            const targetMessage = chatID >= 0 ? chat.message[chatID] : undefined;
             const role = options?.role;
             const cbsConditions:CbsConditions = {
                 ...(role ? { chatRole: role } : {}),
@@ -1457,7 +1458,12 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 return parsed;
             }
 
-            return (await processScriptFull(char, parsed, 'editprocess', chatID, cbsConditions)).data;
+            // Bind origin, subject, and messageRef to the chat and message active when parsing started so awaited edit
+            // handlers cannot redirect `@@inject`, `@@repeat_back`, module regex, or variable reads to another chat or shifted message.
+            const origin = originOf(char, chat) ?? undefined;
+            const subject = origin ? createSendSubject(origin, { owner: char, chat }) : undefined;
+            const messageRef = targetMessage ? { index: chatID, message: targetMessage } : null;
+            return (await processScriptFull(char, parsed, 'editprocess', chatID, cbsConditions, origin, subject, messageRef)).data;
         },
         setChatToIndex: async (characterIndex:number, chatIndex:number, chat:any) => {
             await requireDatabaseWritePermission('setChatToIndex')

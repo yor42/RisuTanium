@@ -203,7 +203,7 @@
             onpointerup={hold.stop}
             onpointercancel={hold.stop}
         >
-            <span class="flex items-baseline gap-2">
+            <span data-part="chat-row-name-line" class="flex items-baseline gap-2">
                 <span data-part="chat-row-name" class="grow truncate font-medium">{chat.name || language.settingsPage.unnamed}</span>
                 {#if writing && reordering}
                     <span data-part="reply-writing-badge" role="img" aria-label={language.chatWritingBadge} class="shrink-0 self-center animate-pulse text-textcolor2"><PencilIcon size={14} /></span>
@@ -217,7 +217,7 @@
                     <span data-part="chat-row-time" class="shrink-0 text-xs text-textcolor2">{time}</span>
                 {/if}
             </span>
-            <span class="flex items-center gap-2 text-xs text-textcolor2">
+            <span data-part="chat-row-meta" class="flex items-center gap-2 text-xs text-textcolor2">
                 <span data-part="chat-row-preview" class="grow truncate">{preview}</span>
                 {#if draft}
                     <span data-part="chat-row-draft" class="shrink-0 rounded-sm border border-darkborderc px-1 text-textcolor">{language.chatShellStatusDraft}</span>
@@ -226,7 +226,7 @@
         </button>
         {#if reordering}
             <!-- Siblings of the row button, never inside it: the list's arrow keys rove only over [data-index]. -->
-            <div class="absolute end-1 top-1/2 flex -translate-y-1/2 items-center">
+            <div data-part="chat-row-actions" class="absolute end-1 top-1/2 flex -translate-y-1/2 items-center">
                 <button
                     type="button"
                     data-part="chat-move-up"

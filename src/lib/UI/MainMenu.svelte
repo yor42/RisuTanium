@@ -5,7 +5,7 @@
     import { language } from "src/lang";
     import { createRealmPreview } from "./Realm/realmPreview.svelte";
     import { handleHubHtmlClick, sanitizeHubHtml } from "src/ts/hubHtml";
-    import { upstreamAccepted } from "src/ts/upstreamAgreement";
+    import { upstreamAccepted, verifyUpstreamAccepted } from "src/ts/upstreamAgreement";
     import RealmPanel from "./Realm/RealmPanel.svelte";
     import CommunityList from "./CommunityList.svelte";
     import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
@@ -37,7 +37,7 @@
 
     // The preview state lives in realmPreview.svelte.ts; it is created here so its effects belong to this
     // component and the Realm full view's open/close never refetches.
-    const preview = createRealmPreview(() => $upstreamAccepted);
+    const preview = createRealmPreview(() => $upstreamAccepted, verifyUpstreamAccepted);
 
     // Every two-up class is gated on the Realm panel being shown: without it the side block is a single
     // full-width list, and `col-start-2` in a one-track grid would create an implicit second column. Container
@@ -92,7 +92,7 @@
             <RealmPanel {preview} />
           {/if}
           <CommunityList />
-          {#if preview.announcement && !preview.hidden}
+          {#if $upstreamAccepted && preview.announcement && !preview.hidden}
             <!--
               Gated on preview.hidden, not just a non-empty string: this banner is
               realm-server content too, so hideRealm hides the whole realm
@@ -123,6 +123,6 @@
       </div>
     </div>
   {:else}
-    <div class="w-full flex p-4 flex-col text-textcolor max-w-4xl"><Hub /></div>
+    <div class="w-full flex p-4 flex-col text-textcolor max-w-4xl"><Hub getInitialList={preview.getInitialList} /></div>
   {/if}
 </div>

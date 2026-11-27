@@ -1,7 +1,8 @@
 <script lang="ts">
     import { ChevronDownIcon, ChevronUpIcon } from '@lucide/svelte'
-    import { onDestroy } from 'svelte'
+    import { onDestroy, onMount } from 'svelte'
     import { language } from '../../lang'
+    import { registerStudioField } from '../../ts/studio/fieldFlush'
     import { addEntry, editEntry, moveEntry, removeEntry, withSearchTool, SEARCH_TOOL } from '../../ts/studio/edit/presetLists'
     import { PRESET_FIELDS, presetValueAllowed, type PresetPath } from '../../ts/studio/edit/presetFields'
     import { readPresetField } from '../../ts/studio/edit/presetTarget'
@@ -47,9 +48,15 @@
         return result.ok
     }
 
+    function currentShown(): string[] {
+        const current = readPresetField(presetId, path)
+        return current.had === true && isTextList(current.value) ? current.value : []
+    }
+
     // One whole-list write. `coalesceKey` joins typing in one entry; null makes a step of its own.
     function write(next: string[], coalesceKey: string | null): boolean {
-        if (!service || !editable || !presetValueAllowed(path, next, shown)) return false
+        const liveShown = currentShown()
+        if (!service || !editable || !presetValueAllowed(path, next, liveShown)) return false
         const done = noted(service.editField(owner, path, next, { coalesceKey }))
         if (done && coalesceKey === null) service.closeOpenStep(owner)
         return done
@@ -73,9 +80,10 @@
 
     const inputs = new Map<number, HTMLInputElement>()
     function commitStop(index: number, value: string): void {
-        if (!write(editEntry(shown, index, value), `${path}:${index}`)) {
+        const liveShown = currentShown()
+        if (!write(editEntry(liveShown, index, value), `${path}:${index}`)) {
             const element = inputs.get(index)
-            if (element) element.value = shown[index] ?? ''
+            if (element) element.value = liveShown[index] ?? ''
         }
     }
     const gates = new Map<number, ReturnType<typeof createCompositionGate>>()
@@ -87,6 +95,9 @@
         }
         return gate
     }
+    function flushGates(): void {
+        for (const gate of gates.values()) gate.flush()
+    }
     function onStopInput(index: number, event: Event & { currentTarget: HTMLInputElement }): void {
         inputs.set(index, event.currentTarget)
         gateOf(index).input(event.currentTarget.value, event instanceof InputEvent && event.isComposing)
@@ -95,9 +106,17 @@
         gateOf(index).flush()
         service?.closeOpenStep(owner)
     }
+    onMount(() => registerStudioField(flushGates))
     onDestroy(() => {
-        for (const gate of gates.values()) gate.flush()
-        service?.closeOpenStep(owner)
+        const closing = service
+        queueMicrotask(() => {
+            try {
+                flushGates()
+                closing?.closeOpenStep(owner)
+            } catch (error) {
+                console.error('Studio preset list flush failed', error)
+            }
+        })
     })
 
     function onSearchToggle(event: Event & { currentTarget: HTMLInputElement }): void {

@@ -311,6 +311,16 @@ Test-FixtureHook 'own worktree test-warrior needs an exact grant' (New-WorktreeP
 Test-FixtureHook 'main checkout file from a worktree session' (New-WorktreePayload (Join-Path $repo 'src/main-only.ts') -Cwd $wt)
 Test-FixtureHook 'another worktree from a worktree session' (New-WorktreePayload (Join-Path $wt2 'src/a.ts') -Cwd $wt)
 Test-FixtureHook 'worktree file from a main checkout session' (New-WorktreePayload (Join-Path $wt 'src/a.ts') -Cwd $repo)
+# A denial names the payload cwd and the worktree it resolves to, so a main-checkout cwd is visible at once.
+foreach ($cwdCase in @(
+    @{ Name = 'main-checkout cwd'; Payload = (New-WorktreePayload (Join-Path $wt 'src/a.ts') -Cwd $repo); Cwd = "cwd=$repo;"; Worktree = 'worktree=none' },
+    @{ Name = 'missing cwd'; Payload = (New-WorktreePayload (Join-Path $wt 'src/a.ts')); Cwd = 'cwd=(missing);'; Worktree = 'worktree=none' },
+    @{ Name = 'worktree cwd, target elsewhere'; Payload = (New-WorktreePayload (Join-Path $repo 'src/main-only.ts') -Cwd $wt); Cwd = "cwd=$wt;"; Worktree = "worktree=$wt" }
+)) {
+    $cwdDenial = Invoke-FixtureProcess $guard -InputText ($cwdCase.Payload | ConvertTo-Json -Depth 10 -Compress)
+    if ($cwdDenial.ExitCode -ne 2 -or -not $cwdDenial.Stderr.Contains($cwdCase.Cwd) -or -not $cwdDenial.Stderr.Contains($cwdCase.Worktree)) { throw "Denial for $($cwdCase.Name) must name the cwd and worktree: $($cwdDenial.Stderr)" }
+    $passed++
+}
 foreach ($badCwd in @('', 42, @($wt), 'relative\wt', ($wt + '\..\wt2'), ($wt + ':stream'))) {
     Test-FixtureHook 'malformed cwd falls back to exact grants' (New-WorktreePayload (Join-Path $wt 'src/a.ts') -Cwd $badCwd)
 }

@@ -391,6 +391,17 @@
         onChange: () => { chipState = chip.state },
     })
     let jumpHost = $state<HTMLElement>()
+    let composerHeight = $state(0)
+    $effect(() => {
+        const host = composer
+        if (!host) return
+        const measure = () => { composerHeight = host.offsetHeight }
+        measure()
+        if (typeof ResizeObserver === 'undefined') return
+        const observer = new ResizeObserver(measure)
+        observer.observe(host)
+        return () => observer.disconnect()
+    })
     let jumpOpen = $state(false)
     let jumpOpener = $state<HTMLElement | null>(null)
     // The chat the sheet was opened for; the sheet closes as soon as the shown chat is another one.
@@ -1136,7 +1147,7 @@
     </main>
     {#if SwitchFrame}<SwitchFrame transcript={list} />{/if}
     <div data-part="chat-announcer" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
-    <div bind:this={jumpHost} class="jump-host">
+    <div bind:this={jumpHost} class="jump-host" style:--chat-composer-height={`${composerHeight}px`}>
         {#if Scrubber}{#key chatKeyNow()}<Scrubber count={shownChat?.message.length ?? 0} fraction={scrubFraction} visible={scrubVisible} trackInteractive={scrubInteractive} formatter={scrubFormatter} label={scrubLabel} timeAt={(index) => shownChat?.message[index]?.time} onrelease={(index) => void jumpAndOffer(index, { focus: false })} onpage={scrubPage} onhover={setScrubHover} ondrag={scrubDrag} onwheel={scrubWheel} />{/key}{/if}
         {#if ReturnChip && chipState.origin}<ReturnChip onreturn={() => void returnFromChip()} onhold={(kind, on) => chip.hold(kind, on)} />{/if}
         {#if hintState.count !== null}<LongChatHint line={hintLine(hintState.count)} />{/if}
@@ -1165,10 +1176,10 @@
     [data-part="chat-shell"] { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: transparent; color: var(--nexus-text); }
     /* Under a theme pack the shell is the pack canvas and nothing behind it shows. A translucent canvas is drawn over the pack-immutable black base, the backdrop the install judge flattens it onto; the screenshot export draws the same two layers. */
     :global(:root:where([data-theme-pack-base])) [data-part="chat-shell"] { background-color: var(--surface-pack-backdrop); background-image: linear-gradient(var(--nexus-canvas), var(--nexus-canvas)); }
-    [data-part="chat-composer-host"] { flex: none; }
-    .jump-host { display: contents; }
-    [data-part="chat-header-host"] { position: absolute; inset: 0 0 auto 0; z-index: 1; pointer-events: none; }
-    [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; padding-top: var(--header-height); scroll-padding-top: var(--header-height); }
+    [data-part="chat-composer-host"] { position: relative; z-index: 2; flex: none; }
+    .jump-host { display: contents; --chat-jump-bottom: max(calc(var(--size-34) + env(safe-area-inset-bottom)), calc(var(--chat-composer-height) + var(--space-7))); }
+    [data-part="chat-header-host"] { position: absolute; inset: 0 0 auto 0; z-index: 2; pointer-events: none; }
+    [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; padding-top: var(--header-height); scroll-padding-top: var(--header-height); padding-bottom: var(--size-touch); scroll-padding-bottom: var(--size-touch); }
     [data-part="chat-shell"][data-header-concealed] [data-part="chat-transcript"] { scroll-padding-top: 0; }
     /* While the bar is open both of its rows are reserved: nothing under it is covered, and typing or stepping never moves the view. */
     [data-part="chat-shell"][data-find-open] [data-part="chat-transcript"] { padding-top: calc(var(--header-height) + var(--size-17)); scroll-padding-top: calc(var(--header-height) + var(--size-17)); }

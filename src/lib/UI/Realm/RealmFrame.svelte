@@ -178,10 +178,10 @@
     })
 </script>
 
-<div class="top-0 left-0 z-50 fixed w-full h-full flex flex-col justify-center items-center text-textcolor bg-bgcolor">
-    <div class="bg-darkbg border-b border-b-darkborderc w-full flex p-2">
-        <h1 class="text-2xl font-bold max-w-full overflow-hidden whitespace-nowrap text-ellipsis">{language.uiCommon.uploadToRealm}</h1>
-        <button type="button" aria-label={language.uiCommon.close} class="risu-focus-ring flex size-11 shrink-0 items-center justify-center rounded-md text-textcolor hover:bg-selected/50 ml-auto" onclick={close}>
+<div data-part="modal-realm-frame" class="top-0 left-0 z-50 fixed w-full h-full flex flex-col justify-center items-center text-textcolor bg-bgcolor">
+    <div data-part="modal-header" class="bg-darkbg border-b border-b-darkborderc w-full flex p-2">
+        <h1 data-part="modal-title" class="text-2xl font-bold max-w-full overflow-hidden whitespace-nowrap text-ellipsis">{language.uiCommon.uploadToRealm}</h1>
+        <button type="button" aria-label={language.uiCommon.close} data-part="modal-close" class="risu-focus-ring flex size-11 shrink-0 items-center justify-center rounded-md text-textcolor hover:bg-selected/50 ml-auto" onclick={close}>
             <XIcon aria-hidden="true" />
         </button>
     </div>

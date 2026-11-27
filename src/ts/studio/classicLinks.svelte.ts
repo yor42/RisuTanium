@@ -46,16 +46,18 @@ function characterTabOf(kind: StudioKind | null): number {
         case 'toggles': return 2
         case 'lore': return 3
         case 'scripts':
-        case 'regex':
-        case 'html': return 4
+        case 'regex': return 4
         default: return 0
     }
 }
 
-/** The classic editor of an owner's kind, or null when none edits it. `kind` null means the owner as a whole. */
+/**
+ * The classic editor of an owner's kind, or null when none edits it or Studio offers no link (the character's 배경 HTML
+ * kind has its own form). `kind` null means the owner as a whole.
+ */
 export function classicDestinationOf(ownerType: StudioOwnerType, kind: StudioKind | null): ClassicDestination | null {
     switch (ownerType) {
-        case 'character': return { where: 'character', tab: characterTabOf(kind) }
+        case 'character': return kind === 'html' ? null : { where: 'character', tab: characterTabOf(kind) }
         case 'chat': return { where: 'character', tab: 3 }
         case 'module': return { where: 'settings', index: SETTINGS_MODULES }
         case 'preset': return { where: 'settings', index: kind === 'advanced' ? SETTINGS_PROMPT : SETTINGS_PRESET }

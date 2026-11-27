@@ -66,6 +66,17 @@ md.use(sceneBreakPlugin)
 mdHighlight.use(sceneBreakPlugin)
 mdLiteral.use(sceneBreakPlugin)
 
+// The DOM translator uses the break element itself as the line boundary.
+for (const renderer of [md.renderer, mdHighlight.renderer]) {
+    for (const name of ['softbreak', 'hardbreak'] as const) {
+        const renderBreak = renderer.rules[name]!
+        renderer.rules[name] = (tokens, index, options, env, self) => {
+            const html = renderBreak(tokens, index, options, env, self)
+            return env.omitMarkdownBreakNewline ? html.replace(/\n$/, '') : html
+        }
+    }
+}
+
 type Purifier = typeof DOMPurify
 
 // The chat-body instances and the default instance share these hook functions and their registration order.
@@ -213,7 +224,7 @@ export function risuEscape(text:string){
     })
 }
 
-function renderMarkdown(md:markdownit, data:string, literalText = false){
+function renderMarkdown(md:markdownit, data:string, { literalText = false, forTranslation = false } = {}){
     let quotes = ['“', '”', '‘', '’']
     if(DBState.db?.customQuotes){
         quotes = DBState.db.customQuotesData ?? quotes
@@ -254,7 +265,10 @@ function renderMarkdown(md:markdownit, data:string, literalText = false){
             return match
         }
     })
-    let text = risuUnescape(md.render(data.replace(/“|”/g, '"').replace(/‘|’/g, "'")))
+    const db = DBState.db
+    const omitMarkdownBreakNewline = forTranslation && db.combineTranslation &&
+        db.translatorType !== 'llm' && !(db.translatorType === 'bergamot' && db.htmlTranslation)
+    let text = risuUnescape(md.render(data.replace(/“|”/g, '"').replace(/‘|’/g, "'"), { omitMarkdownBreakNewline }))
 
     if(literalText){
         // Inside a tag (attribute values) the raw match is always escaped text.
@@ -298,8 +312,8 @@ function renderMarkdown(md:markdownit, data:string, literalText = false){
     return text
 }
 
-async function renderHighlightableMarkdown(data:string) {
-    let rendered = renderMarkdown(mdHighlight, data)
+async function renderHighlightableMarkdown(data:string, forTranslation = false) {
+    let rendered = renderMarkdown(mdHighlight, data, { forTranslation })
     const highlightPlaceholders = rendered.match(/<pre-hljs-placeholder lang="(.+?)">(.+?)<\/pre-hljs-placeholder>/gms)
     if (!highlightPlaceholders){
         return rendered
@@ -972,7 +986,8 @@ export async function ParseMarkdown(
     // 'bypass' is for a streamed partial reply: the next chunk replaces its display text, so the script cache neither
     // serves nor keeps it. The last text of a legacy 'off'-mode stream is also parsed this way, so the first later
     // display parse of that message misses once and then stores.
-    scriptCache:'use'|'bypass' = 'use'
+    scriptCache:'use'|'bypass' = 'use',
+    { forTranslation = false } = {},
 ) {
     let firstParsed = ''
     const additionalAssetMode = (mode === 'back') ? 'back' : 'normal'
@@ -1001,7 +1016,7 @@ export async function ParseMarkdown(
 
     data = encodeStyle(data)
     if(mode === 'normal' || mode === 'notrim'){
-        data = await renderHighlightableMarkdown(data)
+        data = await renderHighlightableMarkdown(data, forTranslation)
 
         if(mode === 'notrim'){
             return data
@@ -1211,8 +1226,9 @@ export function sanitizeMarkdownSafe(html:string, arg:{
 
 export function parseMarkdownSafe(data:string, arg:{
     forbidTags?: string[],
+    forTranslation?: boolean,
 } = {}) {
-    return sanitizeMarkdownSafe(renderMarkdown(md, data), arg)
+    return sanitizeMarkdownSafe(renderMarkdown(md, data, { forTranslation: arg.forTranslation }), arg)
 }
 
 
@@ -2177,7 +2193,7 @@ export function applyMarkdownToNode(node: Node) {
     if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent;
         if (text) {
-            let markdown = renderMarkdown(mdLiteral, text, true);
+            let markdown = renderMarkdown(mdLiteral, text, { literalText: true });
             if (markdown !== text) {
                 const span = node.ownerDocument.createElement('span');
                 span.innerHTML = markdown;

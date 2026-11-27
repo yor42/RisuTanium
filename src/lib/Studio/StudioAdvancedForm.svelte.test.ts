@@ -46,6 +46,8 @@ import { refusalText } from 'src/ts/studio/edit/studioToasts'
 import { createMacroIndex } from 'src/ts/studio/longText/macroIndex'
 import { setMacroIndexForTests } from 'src/ts/studio/longText/macroIndexService'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { flushStudioFields } from 'src/ts/studio/fieldFlush'
+import { studioOpen } from 'src/ts/studio/studioOpen'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { languageName } from '../../ts/studio/edit/creatorNotesLanguages'
 import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -447,5 +449,46 @@ describe('T2-CN-UI the creator notes field', () => {
         expect(names[0]).toBe(KO)
         expect(names).not.toContain(EN)
         expect(names).not.toContain(languageName('ja'))
+    })
+})
+
+describe('held composition flush on leave, close, and pagehide', () => {
+    function holdNicknameComposition(text: string): void {
+        const field = line('studio-form-nickname')
+        field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        field.value = text
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, inputType: 'insertCompositionText' }))
+        flushSync()
+    }
+
+    test('reproducer: pagehide writes a held single-line composition while the form stays mounted', async () => {
+        const rig = await mountWith('details')
+        holdNicknameComposition('별명')
+        expect(live().nickname).toBeUndefined()
+        window.dispatchEvent(new Event('pagehide'))
+        flushSync()
+        expect(live().nickname).toBe('별명')
+        expect(stepsOf(rig.service)).toHaveLength(1)
+    })
+
+    test('reproducer: leave flush writes a held single-line composition', async () => {
+        const rig = await mountWith('details')
+        holdNicknameComposition('별명')
+        expect(live().nickname).toBeUndefined()
+        flushStudioFields('leave')
+        flushSync()
+        expect(live().nickname).toBe('별명')
+        expect(stepsOf(rig.service)).toHaveLength(1)
+    })
+
+    test('reproducer: closing Studio via studioOpen writes a held single-line composition', async () => {
+        const rig = await mountWith('details')
+        studioOpen.set(true)
+        holdNicknameComposition('별명')
+        expect(live().nickname).toBeUndefined()
+        studioOpen.set(false)
+        flushSync()
+        expect(live().nickname).toBe('별명')
+        expect(stepsOf(rig.service)).toHaveLength(1)
     })
 })

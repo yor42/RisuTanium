@@ -728,7 +728,7 @@ export function getNodetextToSentence(node: Node): string {
     let result = '';
     for (const child of node.childNodes) {
         if (child.nodeType === Node.TEXT_NODE) {
-            result += child.textContent;
+            result += child.textContent ?? '';
         } else if (child.nodeType === Node.ELEMENT_NODE) {
             if (child.nodeName === 'BR') {
                 result += '\n';

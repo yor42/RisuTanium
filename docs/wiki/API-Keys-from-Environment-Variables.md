@@ -24,7 +24,6 @@ Read this before you rely on the feature.
 |---|---|
 | Desktop app | Yes |
 | Node server | Yes |
-| Hono server | No |
 
 Where it does not work, the app does not replace a reference. A request that needs it fails with an [error message](#error-messages).
 
@@ -210,7 +209,7 @@ See [[Settings Language]]. The page shows these two fields only when the transla
 | Message | What it means |
 |---|---|
 | `Environment variable ${NAME} is unavailable: it is not set, the server does not allow it, or the server refused the request.` | The variable is not set, is empty, has a line break, fails the [name rule](#which-variables-can-be-read), or the server refused the call. All of these look the same on purpose. |
-| `Environment variable ${NAME} cannot be used here: this platform has no access to the server's environment.` | You are on a host with no access to the environment, such as the Hono server. |
+| `Environment variable ${NAME} cannot be used here: this platform has no access to the server's environment.` | The current platform cannot read server environment variables. |
 | `Environment variable ${NAME} is only sent to its own provider, so it was not used for this request.` | OpenAI TTS only: The base URL is not the default OpenAI host. |
 | `A request still contains the environment variable reference ${NAME}. It was not sent.` | A reference reached a plain request, for example from a plugin or from the own TTS key field of a character. The app stopped the request. |
 

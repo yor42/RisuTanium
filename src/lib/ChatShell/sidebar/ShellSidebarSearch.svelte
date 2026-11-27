@@ -199,7 +199,7 @@
 </script>
 
 <div data-part="chat-sidebar-search" class="flex min-h-0 flex-col gap-2 {results ? 'flex-1' : ''}">
-    <div class="relative">
+    <div data-part="chat-sidebar-search-box" class="relative">
         <SearchIcon size={16} class="pointer-events-none absolute start-2 top-1/2 -translate-y-1/2 text-textcolor2" />
         <input
             bind:this={field}
@@ -250,7 +250,7 @@
                             aria-setsize={setsize}
                             onclick={(event) => onpickcharacter(row.entry, event)}
                         >
-                            <span class="truncate font-medium">{labelOf(row.entry)}</span>
+                            <span data-part="chat-search-character-name" class="truncate font-medium">{labelOf(row.entry)}</span>
                         </button>
                     {:else}
                         <button
@@ -266,8 +266,8 @@
                             aria-setsize={setsize}
                             onclick={(event) => onpickchat(row.chat, event)}
                         >
-                            <span class="truncate font-medium">{row.chat.name || language.settingsPage.unnamed}</span>
-                            <span class="truncate text-xs text-textcolor2">{isArchivedChat(row.chat) ? language.chatShellRowArchived : previewLine(row.chat)}</span>
+                            <span data-part="chat-search-chat-name" class="truncate font-medium">{row.chat.name || language.settingsPage.unnamed}</span>
+                            <span data-part="chat-search-chat-preview" class="truncate text-xs text-textcolor2">{isArchivedChat(row.chat) ? language.chatShellRowArchived : previewLine(row.chat)}</span>
                         </button>
                     {/if}
                 {/each}

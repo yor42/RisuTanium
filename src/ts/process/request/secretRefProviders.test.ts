@@ -446,6 +446,20 @@ describe('Vertex service-account key as a reference', () => {
         expect(h.setDatabase).not.toHaveBeenCalled()
     })
 
+    test('a plain-key preview with an expired token mints no token and writes nothing to the database', async () => {
+        const expiredAt = Date.now() - 1000
+        installDb({ ...vertexDb(pem), vertexAccessToken: '', vertexAccessTokenExpires: expiredAt })
+
+        const out = await ask({ previewBody: true })
+
+        expect(out.type).toBe('success')
+        expect(calledNetwork()).toBe(false)
+        expect(h.setDatabase).not.toHaveBeenCalled()
+        expect(DBState.db.vertexAccessToken).toBe('')
+        expect(DBState.db.vertexAccessTokenExpires).toBe(expiredAt)
+        expect(JSON.parse(String(out.result)).headers.Authorization).not.toContain('BEGIN PRIVATE KEY')
+    })
+
     test('an unset reference fails without contacting the token endpoint', async () => {
         installDb(vertexDb(UNSET))
 

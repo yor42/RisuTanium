@@ -544,11 +544,12 @@
     <RecentStrip characters={recent} current={owner} {layout} onpick={pickCharacter} onall={allCharacters} />
     {#if owner}
         <div data-part="chat-sidebar-header" class="flex flex-col gap-2">
-            <h2 class="truncate text-lg font-bold">{owner.name || language.settingsPage.unnamed}</h2>
-            <div class="relative flex gap-1" onfocusout={menuFocusOut}>
-                <button class="grow rounded-md bg-darkbutton px-3 py-2 text-textcolor hover:bg-selected cursor-pointer" onclick={newChat}>{language.newChat}</button>
+            <h2 data-part="chat-sidebar-heading" class="truncate text-lg font-bold">{owner.name || language.settingsPage.unnamed}</h2>
+            <div data-part="chat-sidebar-new-row" class="relative flex gap-1" onfocusout={menuFocusOut}>
+                <button data-part="chat-sidebar-new-chat" class="grow rounded-md bg-darkbutton px-3 py-2 text-textcolor hover:bg-selected cursor-pointer" onclick={newChat}>{language.newChat}</button>
                 <button
                     bind:this={newMenuButton}
+                    data-part="chat-sidebar-new-menu-toggle"
                     class="flex items-center justify-center rounded-md bg-darkbutton px-2 text-textcolor hover:bg-selected cursor-pointer"
                     aria-label={language.chatShellNewChatMenu}
                     aria-haspopup="menu"
@@ -558,14 +559,14 @@
                     <ChevronDownIcon size={18} />
                 </button>
                 {#if newMenuOpen}
-                    <div role="menu" class="absolute right-0 top-full z-10 mt-1 flex min-w-48 flex-col rounded-md border border-darkborderc bg-bgcolor p-1 shadow-lg">
-                        <button role="menuitem" class={menuItemClass} onclick={() => { newMenuOpen = false; void importChat(); }}>{language.chatShellImportChat}</button>
-                        <button role="menuitem" class={menuItemClass} onclick={() => { newMenuOpen = false; void exportAllChats(); }}>{language.chatShellExportAllChats}</button>
+                    <div data-part="chat-sidebar-new-menu" role="menu" class="absolute right-0 top-full z-10 mt-1 flex min-w-48 flex-col rounded-md border border-darkborderc bg-bgcolor p-1 shadow-lg">
+                        <button role="menuitem" data-part="chat-sidebar-import" class={menuItemClass} onclick={() => { newMenuOpen = false; void importChat(); }}>{language.chatShellImportChat}</button>
+                        <button role="menuitem" data-part="chat-sidebar-export-all" class={menuItemClass} onclick={() => { newMenuOpen = false; void exportAllChats(); }}>{language.chatShellExportAllChats}</button>
                     </div>
                 {/if}
             </div>
             <div class="flex flex-col gap-1">
-                <span id="{uid}-sort-label" class="sr-only">{language.chatShellSortLabel}</span>
+                <span id="{uid}-sort-label" data-part="sidebar-sort-label" class="sr-only">{language.chatShellSortLabel}</span>
                 <select
                     data-part="sidebar-sort"
                     class="rounded-md border border-darkborderc bg-darkbutton px-2 py-1 text-textcolor"
@@ -580,7 +581,7 @@
                     <option value="recent">{language.chatShellSortRecent}</option>
                     <option value="manual">{language.chatShellSortManual}</option>
                 </select>
-                <span id="{uid}-sort-help" class="text-xs text-textcolor2">{language.chatShellOnThisDevice}</span>
+                <span id="{uid}-sort-help" data-part="sidebar-sort-help" class="text-xs text-textcolor2">{language.chatShellOnThisDevice}</span>
                 {#if orderAvailable}
                     <button
                         type="button"

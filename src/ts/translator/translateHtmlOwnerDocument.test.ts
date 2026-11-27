@@ -110,6 +110,14 @@ describe('translateHTML element ownership', () => {
     expect(creations.filter((c) => c.kind === 'createElement').length).toBeGreaterThanOrEqual(3)
   })
 
+  it('preserves an authored blank line after a literal break when combining sentences', async () => {
+    const result = await translateHTML('<p style="white-space:pre-wrap">author first<br>&#10;author second</p>', false, '', -1)
+    const paragraph = new DOMParser().parseFromString(result, 'text/html').querySelector('p')!
+    const lines = Array.from(paragraph.querySelectorAll('span'), (line) => line.textContent)
+
+    expect(lines).toEqual(['author firstshown', '', 'author secondshown'])
+  })
+
   it('keeps the translated output for ordinary text', async () => {
     translateText = (text) => `T(${text})`
 

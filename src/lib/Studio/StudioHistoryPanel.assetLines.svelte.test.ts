@@ -151,6 +151,9 @@ const everyLabel: { [K in StepLabel['kind']]: { labels: StepLabel[], lines: stri
     assetAdd: { labels: [{ kind: 'assetAdd', count: 3 }], lines: ['studioStepAssetAdd(3)'] },
     folderCreate: { labels: [{ kind: 'folderCreate', name: 'New' }], lines: ['studioStepFolderCreate(New)'] },
     folderReorder: { labels: [{ kind: 'folderReorder' }], lines: ['studioStepFolderReorder'] },
+    portraitAdd: { labels: [{ kind: 'portraitAdd' }], lines: ['studioStepPortraitAdd'] },
+    portraitRemove: { labels: [{ kind: 'portraitRemove' }], lines: ['studioStepPortraitRemove'] },
+    portraitMain: { labels: [{ kind: 'portraitMain' }], lines: ['studioStepPortraitMain'] },
     obj: { labels: [{ kind: 'obj', list: 'lore', action: 'edit', name: null, field: 'content' }], lines: ['studioLoreStepEdit(prompt,)'] },
     prop: { labels: [{ kind: 'prop', prop: 'loreSettings' }], lines: ['studioLoreStepSettings'] },
 }

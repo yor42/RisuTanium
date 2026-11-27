@@ -107,9 +107,9 @@ Write-KitResult 'KT-4 net-status' (($r.Rc -eq '2') -and ($r.Sent -eq 0) -and $r.
 $r = Invoke-KitGuard @('pick', '--kit', '--serial', $emu, '--state', $state, '--log', $log, '--name', 'x.txt')
 Write-KitResult 'KT-4 pick' (($r.Rc -eq '2') -and ($r.Sent -eq 0) -and -not $r.Log.Contains('INPUT-LOCK') -and $r.Out.Contains('--kit belongs to plain adb calls')) ('-> ' + $r.Rc + ' sent=' + $r.Sent + ' (want 2 sent=0, no INPUT-LOCK)')
 
-# KT-5: only a --kit before -- counts; the same text after -- is part of the adb arguments and the call is judged as before.
+# KT-5: only a --kit before -- counts; the same text after -- is a guard flag in the wrong place and is refused with exit 2 (#668), not read as a kit call.
 $r = Invoke-KitGuard @('--serial', $emu, '--log', $log, '--', 'get-state', '--kit')
-Write-KitResult 'KT-5 --kit after --' (($r.Rc -eq '97') -and ($r.Sent -eq 0) -and $r.Out.Contains('not on the allowlist') -and -not $r.Out.Contains('kit call refused')) ('-> ' + $r.Rc + ' sent=' + $r.Sent + ' (want 97 from the allowlist)')
+Write-KitResult 'KT-5 --kit after --' (($r.Rc -eq '2') -and ($r.Sent -eq 0) -and $r.Out.Contains('--kit is an adbg option and goes before --') -and -not $r.Out.Contains('kit call refused')) ('-> ' + $r.Rc + ' sent=' + $r.Sent + ' (want 2 from the placement check)')
 
 Remove-Item Env:ADBG_FAKE_ADB_SCRIPT; Remove-Item Env:FAKE_CALLS
 'failures=' + $script:failures

@@ -1,7 +1,15 @@
 <script lang="ts">
-  import { hypaV3ProgressStore } from "src/ts/stores.svelte";
+  import { frozenSaveKeysStore, hypaV3ProgressStore, savingStoppedReason } from "src/ts/stores.svelte";
+  import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
+  import { heldSaveStore } from "src/ts/storage/saveHold";
 
   let isExpanded = $state(false);
+  const hasSaveProblem = $derived(
+    $pageStorageModeStore.kind === "read-only" ||
+    Boolean($savingStoppedReason) ||
+    $frozenSaveKeysStore.length > 0 ||
+    $heldSaveStore.length > 0
+  );
 
   const toggleExpand = () => {
     isExpanded = !isExpanded;
@@ -39,7 +47,7 @@
 {:else}
   <button
     data-part="memory-progress-pill"
-    class="fixed top-4 right-4 z-40 bg-darkbg p-2 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center"
+    class="fixed {hasSaveProblem ? 'top-16' : 'top-4'} right-4 z-40 bg-darkbg p-2 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center"
     type="button"
     style="opacity: 0.8;"
     onclick={toggleExpand}

@@ -4,7 +4,7 @@ Read only the part needed by the task. Source and resolved dependencies override
 
 ## Architecture and entry points
 
-RisuAI is a cross-platform AI chat application: Svelte 5/TypeScript frontend, Tauri 2/Rust desktop and Android backend, Vite/Tailwind tooling and pnpm. Self-hosted implementations live in `server/node/` and `server/hono/`. Check [package.json](../../package.json), [Cargo.toml](../../src-tauri/Cargo.toml), the actual build's `src-tauri/Cargo.lock` and relevant installed sources before version-specific claims. Cargo minimum/range specifications do not pin the resolution, and the lock is gitignored.
+RisuAI is a cross-platform AI chat application: Svelte 5/TypeScript frontend, Tauri 2/Rust desktop and Android backend, Vite/Tailwind tooling and pnpm. The self-hosted server lives in `server/node/`. Check [package.json](../../package.json), [Cargo.toml](../../src-tauri/Cargo.toml), the actual build's `src-tauri/Cargo.lock` and relevant installed sources before version-specific claims. Cargo minimum/range specifications do not pin the resolution, and the lock is gitignored.
 
 | Question | Authoritative source / entry point |
 |---|---|
@@ -18,7 +18,7 @@ RisuAI is a cross-platform AI chat application: Svelte 5/TypeScript frontend, Ta
 | Parsing / lorebook / card interchange | [parser.svelte.ts](../../src/ts/parser/parser.svelte.ts), [lorebook.svelte.ts](../../src/ts/process/lorebook.svelte.ts), [characterCards.ts](../../src/ts/characterCards.ts) |
 | Plugins | [plugins.md](../../plugins.md), `src/ts/plugins/`, [migration guide](../../src/ts/plugins/migrationGuide.md) |
 | Theme / translations | [styles.css](../../src/styles.css), `src/lang/`; inspect [colorscheme.ts](../../src/ts/gui/colorscheme.ts) only for theme work |
-| Server behavior | [Node readme](../../server/node/readme.md), [Hono README](../../server/hono/README.md) |
+| Server behavior | [Node readme](../../server/node/readme.md) |
 
 `DBState` is a `$state` object, not a writable store: use `DBState.db`. Actual writable stores such as `selectedCharID` support legitimate `$store` subscriptions. Avoid blanket bans on that syntax. Runes files use `.svelte.ts`. Use precise types; narrowing `unknown` at a real boundary is valid, hiding a type error behind `any`/`unknown` is not.
 

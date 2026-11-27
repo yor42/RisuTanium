@@ -1580,7 +1580,7 @@
         }}>
             <CharListAvatar src={char.image} {visible} busy={openingIndex === index} />
             <div class="flex-1 flex flex-col ml-2 min-w-0">
-                <h4 class="text-textcolor font-bold text-lg mb-1 break-words"><button class="text-start font-bold cursor-pointer rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" aria-busy={openingIndex === index ? 'true' : undefined}><CharacterNameRow chaId={char.chaId} name={char.name || language.settingsPage.unnamed} /></button><CharacterReplyStop chaId={char.chaId} name={char.name || language.settingsPage.unnamed} class="ms-1 inline-flex align-middle" /></h4>
+                <h4 class="text-textcolor font-bold text-lg mb-1 break-words"><button class="text-start font-bold cursor-pointer rounded-sm focus-visible:outline-hidden risu-focus-ring" aria-busy={openingIndex === index ? 'true' : undefined}><CharacterNameRow chaId={char.chaId} name={char.name || language.settingsPage.unnamed} /></button><CharacterReplyStop chaId={char.chaId} name={char.name || language.settingsPage.unnamed} class="ms-1 inline-flex align-middle" /></h4>
                 <CharacterDescription
                     text={parsedDesc['en'] || parsedDesc['xx'] || language.othersUi.noDescription}
                     visible={true}
@@ -1850,7 +1850,7 @@
                         </button>
                         {#if rowForms.iconTrash}
                             <button
-                                class="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-red-600 bg-red-700 text-textcolor risu-on-danger hover:bg-red-600 focus:outline-hidden focus:ring-2 focus:ring-red-600 shadow-xs transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-red-600 bg-red-700 text-textcolor risu-on-danger hover:bg-red-600 focus:outline-hidden risu-focus-ring shadow-xs transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                 aria-label={language.othersUi.editMoveToTrash}
                                 title={language.othersUi.editMoveToTrash}
                                 disabled={picks.size === 0 || trashing}

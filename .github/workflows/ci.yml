@@ -155,32 +155,3 @@ jobs:
             exit 1
           fi
           echo "GET / returned index.html"
-
-  hono-server:
-    name: Hono server type check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # The Hono server is under development; a type error here is reported but does not fail CI.
-    continue-on-error: true
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Set up Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: server/hono/pnpm-lock.yaml
-
-      # server/hono is its own package with its own lockfile, separate from the root install.
-      - name: Install Hono server dependencies
-        working-directory: server/hono
-        run: pnpm install --frozen-lockfile
-
-      - name: Type check
-        working-directory: server/hono
-        run: pnpm exec tsc --noEmit

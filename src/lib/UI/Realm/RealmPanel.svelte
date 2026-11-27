@@ -1,7 +1,7 @@
 <script lang="ts">
     import { DBState, OpenRealmStore, RealmInitialOpenChar } from "src/ts/stores.svelte";
     import { language } from "src/lang";
-    import { askUpstreamAgreement, upstreamAccepted } from "src/ts/upstreamAgreement";
+    import { askUpstreamAgreement, upstreamAccepted, verifyUpstreamAccepted } from "src/ts/upstreamAgreement";
     import { UPSTREAM_TAG_CLASS } from "../SourceDisclosure.svelte";
     import RealmPreviewRow from "./RealmPreviewRow.svelte";
     import type { RealmPreview } from "./realmPreview.svelte";
@@ -61,7 +61,7 @@
     constant, and the status region fills it instead of growing the panel.
   -->
   <div data-part="home-realm-body" class="flex h-[calc(var(--home-realm-list-max)+2*var(--home-space-3))] min-h-0 flex-col">
-    {#if preview.status === 'populated'}
+    {#if $upstreamAccepted && preview.status === 'populated'}
       <!--
         The backing panel is a separate wrapper around the scroller so its padding does not eat into
         the cap. data-realm-preview-list stays on the outer panel so handleCardClick bails on clicks
@@ -74,7 +74,7 @@
           {#each preview.cards.slice(0, 10) as chara}
             <RealmPreviewRow onClick={() => {
               $OpenRealmStore = true
-              if(DBState.db.realmDirectOpen){
+              if(DBState.db.realmDirectOpen && verifyUpstreamAccepted()){
                   $RealmInitialOpenChar = chara
               }
             }} chara={chara} />

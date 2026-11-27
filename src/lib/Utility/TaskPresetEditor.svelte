@@ -113,7 +113,7 @@
                     id="task-preset-instructions"
                     aria-labelledby="task-preset-instructions-label"
                     aria-describedby="task-preset-instructions-label"
-                    class="min-h-40 w-full resize-y rounded-md border border-darkborderc bg-transparent px-4 py-2 text-textcolor focus:border-borderc focus:outline-hidden focus:ring-2 focus:ring-borderc"
+                    class="min-h-40 w-full resize-y rounded-md border border-darkborderc bg-transparent px-4 py-2 text-textcolor focus:border-borderc focus:outline-hidden risu-focus-ring"
                     bind:value={preset.instructions}
                 ></textarea>
 

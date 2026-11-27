@@ -54,7 +54,7 @@ If a pack makes the app hard to use:
 
 - Effects. Packs cannot use transitions, transforms, animations, filters, blur or layering. They are not available yet and are planned. Blur-based looks and a reduced-effects fallback do not exist yet.
 - Some popups and dialogs have no theme parts yet (for example the memory, bookmark and persona lists). Packs reach them only through shared shapes. This is planned.
-- Part of the chat sidebar (the heading, the "New chat" button and menu, the More menu and the row menu buttons) cannot be styled individually yet. This is planned.
+- A few small pieces of the chat sidebar (some label texts and the avatar ring of the recent strip) have no part of their own and cannot be styled individually.
 - The built-in packs only restyle the chat screen. They are planned to be rebuilt.
 - A file named `sidebar.css` (or any other extra `.css` file) in a pack is kept with the pack but never applied. A pack with only `popups.css` is refused.
 

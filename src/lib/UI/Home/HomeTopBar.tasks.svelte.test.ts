@@ -226,17 +226,25 @@ describe('the Tasks button', () => {
         expect(tasks.classList.contains('min-w-11')).toBe(true)
         expect(tasks.classList.contains('min-h-11')).toBe(true)
 
-        for (const band of ['mid', 'wide'] as const) {
-            const root = mountBar(band)
-            const tasksButton = buttonOf(root)!
-            const chipButton = root.querySelector('[data-part="home-persona-chip"]')!
-            expect(chipButton.parentElement!.contains(tasksButton), band).toBe(true)
-            expect([
-                before(root.querySelector('[data-part="home-brand"]')!, root.querySelector('fieldset')!),
-                before(root.querySelector('fieldset')!, tasksButton),
-                before(tasksButton, chipButton),
-            ], band).toEqual([true, true, true])
-        }
+        const mid = mountBar('mid')
+        const midTasks = buttonOf(mid)!
+        const midChip = mid.querySelector('[data-part="home-persona-chip"]')!
+        expect(midChip.parentElement!.contains(midTasks), 'mid').toBe(true)
+        expect([
+            before(mid.querySelector('[data-part="home-brand"]')!, midTasks),
+            before(midTasks, midChip),
+            before(midChip, mid.querySelector('fieldset')!),
+        ], 'mid').toEqual([true, true, true])
+
+        const wide = mountBar('wide')
+        const wideTasks = buttonOf(wide)!
+        const wideChip = wide.querySelector('[data-part="home-persona-chip"]')!
+        expect(wideChip.parentElement!.contains(wideTasks), 'wide').toBe(true)
+        expect([
+            before(wide.querySelector('[data-part="home-brand"]')!, wide.querySelector('fieldset')!),
+            before(wide.querySelector('fieldset')!, wideTasks),
+            before(wideTasks, wideChip),
+        ], 'wide').toEqual([true, true, true])
     })
 })
 
@@ -573,9 +581,8 @@ describe('the Tasks dialog', () => {
         expect(dialogOf()).toBeNull()
     })
 
-    // The switch between the wide and the mid layout of a wide band changes classes on the same nodes, so an open
-    // dialog, its focused Stop and the inert page behind it survive; only the layout assertion is red on the base.
-    test('T-S6-61: a width switch of the wide bar keeps the dialog, the focused Stop and Back', () => {
+    // Changing the wide bar's layout retains the Tasks dialog and restores focus if the switcher remounts.
+    test('T-S6-61: a width switch of the wide bar preserves focus in the switcher and Tasks dialog', async () => {
         watches = []
         let barWidth = 811
         const original = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth')
@@ -600,6 +607,25 @@ describe('the Tasks dialog', () => {
                 flushSync()
             }
             expect(bar.getAttribute('data-layout')).toBe('mid')
+
+            const roleplay = () => root.querySelector<HTMLInputElement>('input[name="home-mode"][value="rp"]')!
+            roleplay().focus()
+            expect(document.activeElement).toBe(roleplay())
+            deliver(1275)
+            await tick()
+            expect(bar.getAttribute('data-layout')).toBe('wide')
+            expect(document.activeElement === roleplay(), 'switcher focus after widening').toBe(true)
+            deliver(811)
+            await tick()
+            expect(bar.getAttribute('data-layout')).toBe('mid')
+            expect(document.activeElement === roleplay(), 'switcher focus after narrowing').toBe(true)
+
+            roleplay().blur()
+            await tick()
+            deliver(1275)
+            await tick()
+            expect(document.activeElement).toBe(document.body)
+            deliver(811)
 
             const button = openDialog(root)
             const dialog = dialogOf()!

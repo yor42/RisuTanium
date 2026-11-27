@@ -146,6 +146,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
+    data-part="modal-bookmark-list"
     class="fixed top-0 left-0 w-full h-full z-30 bg-black/50 flex justify-center items-center"
     onclick={(event) => {
         if (event.target === event.currentTarget) {
@@ -158,11 +159,12 @@
         }
     }}
 >
-    <div class="bg-darkbg p-3 rounded-md flex flex-col max-w-4xl w-full max-h-[90%] overflow-y-auto">
-        <div class="flex items-center text-textcolor mb-4">
-            <h2 class="text-xl font-bold">{language.bookmarks}</h2>
-            <div class="ml-auto flex items-center gap-2">
+    <div data-part="modal-frame" class="bg-darkbg p-3 rounded-md flex flex-col max-w-4xl w-full max-h-[90%] overflow-y-auto">
+        <div data-part="modal-header" class="flex items-center text-textcolor mb-4">
+            <h2 data-part="modal-title" class="text-xl font-bold">{language.bookmarks}</h2>
+            <div data-part="modal-controls" class="ml-auto flex items-center gap-2">
                 <button
+                    data-part="modal-action"
                     class="text-textcolor2 hover:text-textcolor"
                     onclick={toggleExpandAll}
                     title={expandAll ? language.collapseAll : language.expandAll}
@@ -174,19 +176,20 @@
                         <BookOpenCheckIcon size={20} aria-hidden="true" />
                     {/if}
                 </button>
-                <button class="text-textcolor2 hover:text-textcolor" aria-label={language.uiCommon.close} onclick={close}>
+                <button data-part="modal-close" class="text-textcolor2 hover:text-textcolor" aria-label={language.uiCommon.close} onclick={close}>
                     <XIcon size={24} aria-hidden="true"/>
                 </button>
             </div>
         </div>
         
         {#if bookmarkedMessages.length === 0}
-            <p class="text-textcolor2">{language.noBookmarks}</p>
+            <p data-part="modal-text" class="text-textcolor2">{language.noBookmarks}</p>
         {:else}
-            <div class="flex flex-col gap-2">
+            <div data-part="modal-list" class="flex flex-col gap-2">
                 {#each bookmarkedMessages as msg (msg.chatId)}
                     <div class="border border-darkborderc rounded-lg">
-                        <div 
+                        <div
+                            data-part="modal-row"
                             class="flex items-center p-3 cursor-pointer hover:bg-selected transition-colors"
                             onclick={() => toggleExpand(msg.chatId)}
                             onkeydown={(e) => {
@@ -200,15 +203,15 @@
                             tabindex="0"
                             aria-expanded={expandAll || expandedBookmarks.has(msg.chatId)}
                         >
-                            <span class="grow text-left truncate">{chara.chats[chara.chatPage].bookmarkNames?.[msg.chatId] || msg.data.substring(0, 30) + '...'}</span>
-                            <div class="shrink-0 flex items-center gap-2 ml-2">
-                                <button class="text-textcolor2 hover:text-textcolor" title={language.goToChat} aria-label={language.goToChat} onclick={(e) => { e.stopPropagation(); goToChat(msg.originalIndex); }}>
+                            <span data-part="modal-text" class="grow text-left truncate">{chara.chats[chara.chatPage].bookmarkNames?.[msg.chatId] || msg.data.substring(0, 30) + '...'}</span>
+                            <div data-part="modal-controls" class="shrink-0 flex items-center gap-2 ml-2">
+                                <button data-part="modal-action" class="text-textcolor2 hover:text-textcolor" title={language.goToChat} aria-label={language.goToChat} onclick={(e) => { e.stopPropagation(); goToChat(msg.originalIndex); }}>
                                     <ArrowRightIcon size={20} aria-hidden="true" />
                                 </button>
-                                <button class="text-textcolor2 hover:text-textcolor" aria-label={language.chatShellRename} onclick={(e) => { e.stopPropagation(); editName(msg.chatId); }}>
+                                <button data-part="modal-action" class="text-textcolor2 hover:text-textcolor" aria-label={language.chatShellRename} onclick={(e) => { e.stopPropagation(); editName(msg.chatId); }}>
                                     <PencilIcon size={16} aria-hidden="true" />
                                 </button>
-                                <button class="text-textcolor2 hover:text-draculared" aria-label={language.remove} onclick={(e) => { e.stopPropagation(); removeBookmark(msg.chatId); }}>
+                                <button data-part="modal-action" class="text-textcolor2 hover:text-draculared" aria-label={language.remove} onclick={(e) => { e.stopPropagation(); removeBookmark(msg.chatId); }}>
                                     <TrashIcon size={16} aria-hidden="true" />
                                 </button>
                             </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { tick, untrack } from "svelte";
-    import { downloadRisuHub, getRisuHub, type hubType } from "src/ts/characterCards";
+    import { downloadRisuHub, getRisuHub, type RisuHubResult, type hubType } from "src/ts/characterCards";
     import { handleHubHtmlClick, sanitizeHubHtml } from "src/ts/hubHtml";
     import { ArrowLeft, ArrowRight, SearchIcon } from "@lucide/svelte";
     import { alertInput } from "src/ts/alert";
@@ -10,7 +10,15 @@
     import { DBState, OpenRealmStore, RealmInitialOpenChar } from "src/ts/stores.svelte";
     import RealmPopUp from "./RealmPopUp.svelte";
     import RealmBlockedCreators from "./RealmBlockedCreators.svelte";
-    import { askUpstreamAgreement, upstreamAccepted } from "src/ts/upstreamAgreement";
+    import { askUpstreamAgreement, upstreamAccepted, verifyUpstreamAccepted } from "src/ts/upstreamAgreement";
+    import { realmBlockListKey } from "src/ts/realmBlocking";
+
+    interface Props {
+        // The default list (recommended, first page, no search), when the caller already asked for it.
+        getInitialList?: () => Promise<RisuHubResult> | null;
+    }
+
+    let { getInitialList }: Props = $props();
 
     // Whether the upstream-services agreement still needs confirming is read
     // directly from `$upstreamAccepted` in the template below, not tracked
@@ -26,6 +34,7 @@
     let page = $state(0)
     let sort = $state('recommended')
 
+    let searchDraft = $state('')
     let search = $state('')
     let blockedCreatorsOpen = $state(false)
     let nsfw = $state(false)
@@ -60,23 +69,33 @@
     // reaches `getRisuHub` through this path until acceptance, in any tab. The acceptance effect
     // further down calls this too, since its own `$upstreamAccepted` check already decides when a
     // call is warranted.
-    async function getHub(){
-        if(!$upstreamAccepted){
+    async function getHub(shareInitial = false){
+        if(!$upstreamAccepted || !verifyUpstreamAccepted()){
             return
         }
 
+        const query = { search, page, nsfw, sort }
         const generation = ++hubGeneration
         hubStatus = 'pending'
 
-        const result = await getRisuHub({
-            search: search,
-            page: page,
-            nsfw: nsfw,
-            sort: sort
-        })
+        const known = shareInitial && query.search === '' && query.page === 0 && !query.nsfw && query.sort === 'recommended'
+            ? getInitialList?.()
+            : null
+        let result: RisuHubResult | null = null
+        if (known) {
+            const cached = await known
+            if (generation !== hubGeneration || !verifyUpstreamAccepted()) return
 
-        if(generation !== hubGeneration){
-            return
+            if (cached.ok && cached.cards.length > 0 &&
+                getInitialList?.() === known &&
+                cached.blockedCreatorsKey === realmBlockListKey(DBState.db.blockedRealmCreators ?? [])) {
+                result = cached
+            }
+        }
+
+        if (!result) {
+            result = await getRisuHub(query)
+            if (generation !== hubGeneration || !verifyUpstreamAccepted()) return
         }
 
         if(result.ok !== true){
@@ -145,14 +164,21 @@
     // value), so this never becomes a second, redundant call alongside one `getHub()` already made.
     $effect(() => {
         if($upstreamAccepted){
-            untrack(() => { acceptanceLoad = getHub() })
+            untrack(() => { acceptanceLoad = getHub(true) })
+        } else {
+            hubGeneration++
+            hubStatus = 'pending'
+            charas = []
+            hubAnnouncement = ''
+            openedData = null
         }
     })
 
     $effect(() => {
-        if($RealmInitialOpenChar){
-            openedData = $RealmInitialOpenChar
+        const initial = $RealmInitialOpenChar
+        if(initial){
             $RealmInitialOpenChar = null
+            if (verifyUpstreamAccepted()) openedData = initial
         }
     })
 
@@ -185,7 +211,7 @@
         <div class="flex w-full max-w-2xl min-w-0 grow items-stretch sm:w-auto">
             <span id="{uid}-search" class="sr-only">{language.hubSearchLabel}</span>
             <input
-                bind:value={search}
+                bind:value={searchDraft}
                 aria-labelledby="{uid}-search"
                 aria-describedby="{uid}-search"
                 placeholder={language.hubSearchLabel}
@@ -195,6 +221,7 @@
                 type="button"
                 aria-label={language.search}
                 onclick={() => {
+                    search = searchDraft
                     if(sort === 'random' || sort === 'recommended'){
                         sort = ''
                     }
@@ -244,7 +271,7 @@
             onclick={importFromUrlOrId}
         >{language.uiCommon.importCharacterFromUrlOrId}</button>
     </div>
-    {#if hubAnnouncement}
+    {#if $upstreamAccepted && hubAnnouncement}
         <section class="mx-4 rounded-xl bg-darkbg p-4 text-textcolor" aria-labelledby="hub-announcement-title">
             <h2 id="hub-announcement-title" class="mb-2 text-lg font-bold">{language.hubAnnouncementTitle}</h2>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -279,7 +306,7 @@
         {:else if hubStatus === 'failed'}
             <div role="status" aria-live="polite" class="flex w-full flex-wrap items-center justify-center gap-3 px-4 text-textcolor2">
                 <span>{language.hubLoadFailed}</span>
-                <button type="button" class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50" onclick={getHub}>{language.hubRetry}</button>
+                <button type="button" class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50" onclick={() => getHub()}>{language.hubRetry}</button>
             </div>
         {:else if hubStatus === 'empty'}
             <div role="status" aria-live="polite" class="flex w-full justify-center px-4 text-textcolor2">{language.hubEmpty}</div>
@@ -294,7 +321,9 @@
                 <div class="grid w-full grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-4 px-4 {hubStatus === 'pending' ? 'opacity-60' : ''}">
                     {#key charas}
                         {#each charas as chara}
-                            <RisuHubIcon onClick={() =>{openedData = chara}} chara={chara} />
+                            <RisuHubIcon onClick={() => {
+                                if (verifyUpstreamAccepted()) openedData = chara
+                            }} chara={chara} />
                         {/each}
                     {/key}
                 </div>
@@ -335,7 +364,7 @@
     {/if}
 </div>
 
-{#if openedData}
+{#if $upstreamAccepted && openedData}
     <RealmPopUp bind:openedData={openedData} onBlock={(creatorId) => {
         charas = charas.filter((card) => card.creator !== creatorId)
         if(charas.length === 0 && hubStatus === 'populated'){
@@ -347,5 +376,5 @@
 {#if blockedCreatorsOpen}
     <RealmBlockedCreators onClose={() => {
         blockedCreatorsOpen = false
-    }} onUnblock={getHub} />
+    }} onUnblock={() => getHub()} />
 {/if}

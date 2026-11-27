@@ -284,6 +284,7 @@ test('P8 writeOpFor gives the op shape the history replay of each path uses', ()
     expect(writeOpFor('character', 'systemPrompt', 'v')).toEqual({ op: 'set', path: 'systemPrompt', value: { had: true, value: 'v' } })
     expect(writeOpFor('character', 'depth_prompt/prompt', 'v')).toEqual({ op: 'set', path: 'depth_prompt.prompt', value: { had: true, value: 'v' } })
     expect(writeOpFor('character', 'newGenData/prompt', 'v')).toEqual({ op: 'set', path: 'newGenData.prompt', value: { had: true, value: 'v' } })
+    expect(writeOpFor('character', 'backgroundHTML', 'v')).toEqual({ op: 'set', path: 'backgroundHTML', value: { had: true, value: 'v' } })
     for (const path of ['desc', 'lore/0/content', 'regex/1/out', 'backgroundEmbedding', 'trigger/0/effect/0/value']) {
         expect(writeOpFor('module', path, 'v')).toEqual({ op: 'textSet', target: path, value: 'v' })
     }

@@ -200,7 +200,7 @@ describe('getRisuHub -- success shapes', () => {
 
         const result = await getRisuHub(arg)
 
-        expect(result).toEqual({ ok: true, cards, additionalHTML: '' })
+        expect(result).toEqual({ ok: true, cards, additionalHTML: '', blockedCreatorsKey: '[]' })
     })
 
     test('200 with { cards }: ok, cards carried', async () => {
@@ -209,7 +209,7 @@ describe('getRisuHub -- success shapes', () => {
 
         const result = await getRisuHub(arg)
 
-        expect(result).toEqual({ ok: true, cards, additionalHTML: '' })
+        expect(result).toEqual({ ok: true, cards, additionalHTML: '', blockedCreatorsKey: '[]' })
     })
 
     test('200 with { additionalHTML, cards }: ok, the announcement is carried through', async () => {
@@ -220,7 +220,7 @@ describe('getRisuHub -- success shapes', () => {
 
         const result = await getRisuHub(arg)
 
-        expect(result).toEqual({ ok: true, cards, additionalHTML: '<p>hello</p>' })
+        expect(result).toEqual({ ok: true, cards, additionalHTML: '<p>hello</p>', blockedCreatorsKey: '[]' })
     })
 })
 
@@ -239,7 +239,22 @@ describe('getRisuHub -- blocked creators', () => {
 
         const result = await getRisuHub(arg)
 
-        expect(result).toEqual({ ok: true, cards: [otherCard, anonymousCard], additionalHTML: '' })
+        expect(result).toEqual({ ok: true, cards: [otherCard, anonymousCard], additionalHTML: '', blockedCreatorsKey: '["creator-a"]' })
+    })
+
+    test('the filter key describes the block list used after the response body resolves', async () => {
+        DBState.db.blockedRealmCreators = [{ id: 'creator-a', name: 'A' }]
+        let finishBody!: (cards: unknown) => void
+        const body = new Promise((resolve) => { finishBody = resolve })
+        vi.mocked(fetch).mockResolvedValue({ status: 200, json: () => body } as Response)
+
+        const pending = getRisuHub(arg)
+        DBState.db.blockedRealmCreators = [{ id: 'creator-b', name: 'B' }]
+        finishBody([blockedCard, otherCard])
+        const result = await pending
+        DBState.db.blockedRealmCreators = [{ id: 'creator-a', name: 'A' }]
+
+        expect(result).toMatchObject({ ok: true, cards: [blockedCard], blockedCreatorsKey: '["creator-b"]' })
     })
 
     test('a { cards } body drops cards of blocked creators and keeps the rest', async () => {
@@ -250,7 +265,7 @@ describe('getRisuHub -- blocked creators', () => {
 
         const result = await getRisuHub(arg)
 
-        expect(result).toEqual({ ok: true, cards: [otherCard, anonymousCard], additionalHTML: '<p>hi</p>' })
+        expect(result).toEqual({ ok: true, cards: [otherCard, anonymousCard], additionalHTML: '<p>hi</p>', blockedCreatorsKey: '["creator-a"]' })
     })
 })
 
@@ -320,7 +335,7 @@ describe('getRisuHub -- timeout', () => {
         vi.mocked(fetch).mockResolvedValue(jsonResponse(200, []))
 
         const result = await getRisuHub(arg)
-        expect(result).toEqual({ ok: true, cards: [], additionalHTML: '' })
+        expect(result).toEqual({ ok: true, cards: [], additionalHTML: '', blockedCreatorsKey: '[]' })
 
         // If the timer were still live, advancing past its 8s bound would be
         // harmless to observe directly (getRisuHub has already returned) --

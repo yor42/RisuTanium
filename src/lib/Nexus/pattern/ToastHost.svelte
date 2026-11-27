@@ -19,7 +19,7 @@
     // The host is fixed for the component's lifetime; the suspension follows `covered` through the closure.
     // svelte-ignore state_referenced_locally
     host.suspendWhile(() => covered)
-    // An open focus-trapping overlay holds the timers only; the stack stays visible.
+    // An open focus-trapping overlay holds timers and yields stacking/pointer interaction to the modal layer while staying visible behind its scrim.
     // svelte-ignore state_referenced_locally
     host.pauseWhile(() => modalLayerOpen())
 
@@ -128,7 +128,7 @@
         // only the pre-update snapshot and the origin, so it holds whether or not the engine fires `focusout` on
         // removal. While suspended the stack is inert and focus is left alone. A reopened task hands focus to its
         // card, so its removal skips the return.
-        if (!skipReturn && hadFocus !== null && root !== undefined && !root.contains(document.activeElement) && !host.suspended) {
+        if (!skipReturn && hadFocus !== null && root !== undefined && !root.contains(document.activeElement) && !host.suspended && !host.paused) {
             if (origin !== null && origin.isConnected && !root.contains(origin)) {
                 origin.focus()
             }
@@ -163,7 +163,7 @@
     data-part="toast-host"
     data-suspended={host.suspended ? '' : undefined}
     data-paused={host.paused ? '' : undefined}
-    inert={host.suspended}
+    inert={host.suspended || host.paused}
     style:visibility={host.suspended ? 'hidden' : undefined}
     onfocusin={onFocusIn}
     onfocusout={onFocusOut}
@@ -321,6 +321,15 @@
         display: flex;
         flex-direction: column;
         gap: var(--pattern-toast-gap);
+        pointer-events: none;
+    }
+
+    .toast-stack[data-paused] {
+        z-index: calc(var(--pattern-z-layer) - 1);
+    }
+
+    .toast-stack[data-paused] .toast,
+    .toast-stack[data-paused] [data-part="task-toast-more"] {
         pointer-events: none;
     }
 

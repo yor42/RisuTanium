@@ -233,6 +233,9 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 //#endregion
 
 import { characterURLImport as runCharacterURLImport, importCharacterFile, importOpenedFiles as runImportOpenedFiles } from 'src/ts/characterCards'
+import { get } from 'svelte/store'
+import { SettingsMenuIndex, settingsOpen } from 'src/ts/stores.svelte'
+import { studioOpen } from 'src/ts/studio/studioOpen'
 import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
 import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
 import { CharXImporter } from 'src/ts/process/processzip'
@@ -1293,5 +1296,49 @@ describe('the charx low-level-access prompt label (feature tests)', () => {
         expect(vi.mocked(readModule).mock.calls[0][1]?.beforeAssets).toBeUndefined()
         expect(vi.mocked(readModule).mock.calls[0][1]?.progress).toBeDefined()
         expect(h.prompts).toEqual([`Label line\n${language.lowLevelAccessConfirm}`])
+    })
+})
+
+describe('module import completion while Studio is open (#754)', () => {
+    beforeEach(() => {
+        studioOpen.set(false)
+        vi.mocked(settingsOpen.set).mockClear()
+        vi.mocked(SettingsMenuIndex.set).mockClear()
+    })
+
+    afterEach(() => {
+        studioOpen.set(false)
+    })
+
+    test('importOpenedFiles of a .risum stays in Studio instead of opening Settings over it', async () => {
+        studioOpen.set(true)
+        h.isTauri = true
+        h.tauriFiles['/tmp/from-studio.risum'] = new U8([111, 0])
+        await importOpenedFiles(['/tmp/from-studio.risum'])
+        expect(h.modules).toHaveLength(1)
+        expect(get(studioOpen)).toBe(true)
+        expect(settingsOpen.set).not.toHaveBeenCalled()
+        expect(SettingsMenuIndex.set).not.toHaveBeenCalled()
+    })
+
+    test('#import_module= stays in Studio instead of opening Settings over it', async () => {
+        studioOpen.set(true)
+        const moduleJson = Buffer.from(JSON.stringify({ name: 'link in studio' })).toString('base64')
+        setUrl('/#import_module=' + encodeURIComponent(moduleJson))
+        await characterURLImport()
+        expect(h.modules).toHaveLength(1)
+        expect(get(studioOpen)).toBe(true)
+        expect(settingsOpen.set).not.toHaveBeenCalled()
+        expect(SettingsMenuIndex.set).not.toHaveBeenCalled()
+    })
+
+    test('guard: when Studio is closed, module import still opens Settings > Modules', async () => {
+        studioOpen.set(false)
+        h.isTauri = true
+        h.tauriFiles['/tmp/outside-studio.risum'] = new U8([111, 0])
+        await importOpenedFiles(['/tmp/outside-studio.risum'])
+        expect(h.modules).toHaveLength(1)
+        expect(SettingsMenuIndex.set).toHaveBeenCalledWith(14)
+        expect(settingsOpen.set).toHaveBeenCalledWith(true)
     })
 })

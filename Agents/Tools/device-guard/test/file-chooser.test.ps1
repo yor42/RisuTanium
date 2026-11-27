@@ -545,10 +545,11 @@ try {
     }
     Row 'FC-26' {
         $r = Invoke-Raw (@('--serial', $pg[1], '--log', $log, '--', 'pick', '--name', 't38-encrypted.rtb'))
-        Chk 'FC-26 plain -- pick stays 97' $r '97' ''
+        Chk 'FC-26 plain pick with misplaced --name' $r '2' '--name is an adbg option and goes before --'
+        Test-Result 'FC-26 misplaced --name sends no adb call' ($r.calls.Count -eq 0) ''
         $r = Invoke-Raw (@('--serial', $pg[1], '--log', $log, '--', 'file-chooser', '--x'))
-        Chk 'FC-26 -- file-chooser after -- stays 97' $r '97' 'verb is not in the Note 9 verb set'
-        Test-Result 'FC-26 no adb call' ($r.calls.Count -eq 0) ''
+        Chk 'FC-26 plain file-chooser with misplaced --x' $r '2' '--x is an adbg option and goes before --'
+        Test-Result 'FC-26 misplaced --x sends no adb call' ($r.calls.Count -eq 0) ''
     }
     Row 'FC-28' {
         $r = Invoke-Fc -Cdp @{ errorMethods = @($mOn) }

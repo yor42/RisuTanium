@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { onDestroy } from 'svelte'
+    import { onDestroy, onMount } from 'svelte'
     import { language } from '../../lang'
     import { downloadFile } from '../../ts/globalApi.svelte'
     import { selectSingleFile } from '../../ts/util'
+    import { registerStudioField } from '../../ts/studio/fieldFlush'
     import { addRow, deleteRow, duplicateIndexes, editToken, editValue } from '../../ts/studio/edit/biasRows'
     import { PRESET_FIELDS, presetValueAllowed } from '../../ts/studio/edit/presetFields'
     import { clampPresetBias, parseBiasFile } from '../../ts/studio/edit/presetLists'
@@ -63,11 +64,22 @@
         return result.ok
     }
 
+    function currentRows(): BiasRow[] {
+        const current = readPresetField(presetId, PATH)
+        return current.had === true && isBiasList(current.value) ? current.value : []
+    }
+    function isCurrentUnreadable(): boolean {
+        const raw = presetStoredValue(presetId, PATH)
+        return Array.isArray(raw) && !isBiasList(raw)
+    }
+
     function write(next: BiasRow[], coalesceKey: string | null): boolean {
+        const liveRows = currentRows()
+        const liveUnreadable = isCurrentUnreadable()
         // Only rows the form changed are range-checked: a stored value outside the range (classic and an import keep
         // one) never blocks an edit of another row.
-        const changed = next.filter((row) => !rows.some((kept) => kept[0] === row[0] && kept[1] === row[1]))
-        if (!service || !editable || unreadable || !presetValueAllowed(PATH, changed)) return false
+        const changed = next.filter((row) => !liveRows.some((kept) => kept[0] === row[0] && kept[1] === row[1]))
+        if (!service || !editable || liveUnreadable || !presetValueAllowed(PATH, changed)) return false
         const done = noted(service.editField(owner, PATH, next, { coalesceKey }))
         if (done && coalesceKey === null) service.closeOpenStep(owner)
         return done
@@ -75,9 +87,10 @@
 
     const elements = new Map<number, HTMLInputElement>()
     function commitToken(index: number, value: string): void {
-        if (!write(editToken(rows, index, value), `${PATH}:${index}:token`)) {
+        const liveRows = currentRows()
+        if (!write(editToken(liveRows, index, value), `${PATH}:${index}:token`)) {
             const element = elements.get(index)
-            if (element) element.value = rows[index]?.[0] ?? ''
+            if (element) element.value = liveRows[index]?.[0] ?? ''
         }
     }
     const gates = new Map<number, ReturnType<typeof createCompositionGate>>()
@@ -89,6 +102,9 @@
         }
         return gate
     }
+    function flushGates(): void {
+        for (const gate of gates.values()) gate.flush()
+    }
     function onTokenInput(index: number, event: Event & { currentTarget: HTMLInputElement }): void {
         elements.set(index, event.currentTarget)
         gateOf(index).input(event.currentTarget.value, event instanceof InputEvent && event.isComposing)
@@ -97,9 +113,17 @@
         gateOf(index).flush()
         service?.closeOpenStep(owner)
     }
+    onMount(() => registerStudioField(flushGates))
     onDestroy(() => {
-        for (const gate of gates.values()) gate.flush()
-        service?.closeOpenStep(owner)
+        const closing = service
+        queueMicrotask(() => {
+            try {
+                flushGates()
+                closing?.closeOpenStep(owner)
+            } catch (error) {
+                console.error('Studio preset bias flush failed', error)
+            }
+        })
     })
 
     function onValueChange(index: number, event: Event & { currentTarget: HTMLInputElement }): void {

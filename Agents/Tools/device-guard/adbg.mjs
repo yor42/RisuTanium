@@ -294,7 +294,7 @@ import { basename, dirname, isAbsolute, resolve } from 'node:path'
 import { lstatSync, readdirSync } from 'node:fs'
 
 const argv = process.argv.slice(2)
-const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'tap-home', 'swipe', 'hold', 'proc-tasks', 'net-status', 'file-chooser'].includes(argv[0]) ? argv.shift() : 'adb'
+const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'tap-home', 'swipe', 'hold', 'proc-tasks', 'net-status', 'file-chooser', 'apk-readback'].includes(argv[0]) ? argv.shift() : 'adb'
 const sep = argv.indexOf('--')
 const opts = sep < 0 ? argv : argv.slice(0, sep)
 const rest = sep < 0 ? [] : argv.slice(sep + 1)
@@ -306,11 +306,35 @@ const statePath = opt('--state')
 const ownPorts = (opt('--own-ports') ?? '').split(',').filter((p) => /^\d{2,5}$/.test(p))
 const logLine = (text) => { if (log) appendFileSync(log, `${now()} ${text}\n`) }
 const die = (code, msg) => { logLine(`REFUSED/ERROR exit=${code}: ${JSON.stringify(msg)}`); console.error(`adbg: ${msg}`); process.exit(code) }
+// Guard-only options belong before `--`. Logcat also uses --pid, --file and --id.
+const GUARD_ONLY_FLAGS = new Set([
+  '--serial', '--log', '--state', '--out', '--own-package', '--own-ports', '--kit', '--scope-file', '--myfiles',
+  '--name', '--x', '--y', '--dx', '--dy', '--to-x', '--to-y', '--delay-ms', '--duration-ms', '--max-age',
+  '--png', '--label', '--box', '--port', '--selector', '--text', '--url-contains', '--timeout-s', '--expect-sha256',
+])
+if (sub === 'adb') {
+  const misplaced = rest.map((arg) => arg.split('=', 1)[0]).find((flag) => GUARD_ONLY_FLAGS.has(flag))
+  if (misplaced !== undefined) {
+    die(2, `${misplaced} is an adbg option and goes before --; use it with its documented adbg verb`)
+  }
+}
 if (!log) { console.error('adbg: --log is required'); process.exit(2) }
 // r21: --kit (before `--` only) marks a plain adb call built by the device kit. It can only refuse: the serial check sits in the plain adb path,
 // and every other verb rejects the flag here, before the locate-lock exit hook below is registered.
 const kit = opts.includes('--kit')
 if (kit && sub !== 'adb') die(2, '--kit belongs to plain adb calls (routed kit scripts use no other verb)')
+// On plain adb calls --own-ports is a comma list of single ports. A range would otherwise be dropped by the filter above and every port
+// refused as not own; the other verbs keep their own --own-ports checks.
+const rawOwnPorts = (opt('--own-ports') ?? '')
+if (sub === 'adb' && rawOwnPorts !== '' && rawOwnPorts.split(',').some((p) => !/^\d{2,5}$/.test(p))) {
+  die(2, `--own-ports takes a comma list of ports such as 9465,9466,6271, not a range or another form (got ${JSON.stringify(rawOwnPorts)})`)
+}
+if (sub === 'adb') {
+  // adb forwards and reverses are removed one port per call: there is no range form, and the own-ports list is comma-separated.
+  if ((rest[0] === 'forward' || rest[0] === 'reverse') && rest.slice(1).some((x) => /^tcp:\d+[-,]\d+/.test(x))) {
+    die(2, `${rest[0]} takes one tcp:<port> per call; a range or list such as ${rest.slice(1).find((x) => /^tcp:\d+[-,]\d+/.test(x))} is not accepted. Remove each own port with its own call (--remove tcp:<port>); --own-ports is the comma list 9465,9466,...`)
+  }
+}
 
 // Tests may set ADBG_FAKE_ADB_SCRIPT to a Node script that stands in for adb; the allowlist still applies.
 const spawnAdb = (args, options) => process.env.ADBG_FAKE_ADB_SCRIPT
@@ -1294,6 +1318,31 @@ if (sub === 'net-status') {
   logLine(`net-status ${line}`)
   console.log(line)
   process.exit([wifiEnabled, associated, validated].includes('unknown') ? 4 : 0)
+}
+
+if (sub === 'apk-readback') {
+  // Read-only read-back of the installed base.apk of the one pinned package (#668): `pm path` then `sha256sum` of the base.apk it names, the
+  // same two reads the plain allowlist accepts for the own package. No signer is read: the guard cannot pull from /data/app, and the signer
+  // of the pinned APK comes from `apksigner verify --print-certs` on the host. Same bytes give the same signer; a different hash is the
+  // cue to look at the install failure text. Allowed on every serial class because both reads are.
+  needSerial()
+  if (sep >= 0) die(2, 'apk-readback takes no adb arguments after --')
+  if (ownPackage !== null && ownPackage !== PG_PACKAGE) die(2, `apk-readback is pinned to ${PG_PACKAGE}; --own-package must be that id or absent`)
+  const expectIdx = opts.indexOf('--expect-sha256')
+  const expect = expectIdx < 0 ? null : (opts[expectIdx + 1] ?? '').toLowerCase()
+  if (expect !== null && !/^[0-9a-f]{64}$/.test(expect)) die(2, '--expect-sha256 needs a 64-digit hex sha256')
+  const pm = runAdb(['shell', `pm path ${PG_PACKAGE}`], true)
+  const apkPath = pm.code === 0 ? pm.out.split(/\r?\n/).map((l) => l.trim().replace(/^package:/, '')).find((l) => l.endsWith('/base.apk')) : undefined
+  const pathOk = apkPath !== undefined && /^\/data\/app\/([A-Za-z0-9._=~-]+\/)?[A-Za-z0-9._=~-]+\/base\.apk$/.test(apkPath) && apkPath.includes(`/${PG_PACKAGE}-`) && !apkPath.includes('..')
+  if (!pathOk) die(4, `apk-readback: ${PG_PACKAGE} has no readable installed base.apk on ${serial}`)
+  const sum = runAdb(['shell', `sha256sum ${apkPath}`], true)
+  const hash = sum.code === 0 ? (sum.out.trim().split(/\s+/)[0] ?? '') : ''
+  if (!/^[0-9a-f]{64}$/.test(hash)) die(4, `apk-readback: sha256sum of the installed base.apk failed on ${serial}`)
+  const match = expect === null ? '' : expect === hash ? ' match=yes' : ' match=no'
+  const line = `package=${PG_PACKAGE} base_apk_sha256=${hash}${match}`
+  logLine(`apk-readback ${line}`)
+  console.log(line)
+  process.exit(match === ' match=no' ? 4 : 0)
 }
 
 if (sub === 'offset') {

@@ -12,7 +12,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import DOMPurify from 'dompurify'
 import type { Config } from 'dompurify'
-import { trimMarkdown, sanitizeMarkdownSafe, trimPurifiersForTests, ParseMarkdown } from '../parser.svelte'
+import { trimMarkdown, sanitizeMarkdownSafe, trimPurifiersForTests, ParseMarkdown, parseMarkdownSafe } from '../parser.svelte'
 
 //#region module mocks
 
@@ -28,6 +28,9 @@ const mockState = vi.hoisted(() => ({
     globalChatVariables: {},
     templateDefaultVariables: '',
     hideAllImages: false,
+    combineTranslation: false,
+    translatorType: 'deepl',
+    htmlTranslation: false,
   },
 }))
 
@@ -60,6 +63,45 @@ vi.mock(import('../../stores.svelte'), () => {
 //#endregion
 
 const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html').body
+describe('Markdown breaks in Combine Translation input', () => {
+  it.each(['first\nsecond', 'first  \nsecond'])('only drops the generated newline from a Markdown break in %j', async (source) => {
+    mockState.db.combineTranslation = true
+    try {
+      const display = await ParseMarkdown(source)
+      const chatInput = await ParseMarkdown(source, null, 'normal', -1, {}, 'use', { forTranslation: true })
+      const exportInput = parseMarkdownSafe(source, { forTranslation: true })
+      expect(parse(display).querySelector('br')?.nextSibling?.textContent).toBe('\nsecond')
+      expect(parse(chatInput).querySelector('br')?.nextSibling?.textContent).toBe('second')
+      expect(parse(exportInput).querySelector('br')?.nextSibling?.textContent).toBe('second')
+    } finally {
+      mockState.db.combineTranslation = false
+    }
+  })
+
+  it('keeps authored newlines and whole-HTML translation inputs', async () => {
+    mockState.db.combineTranslation = true
+    try {
+      const authored = '<p style="white-space:pre-wrap">first<br>&#10;second</p>'
+      const chatInput = await ParseMarkdown(authored, null, 'normal', -1, {}, 'use', { forTranslation: true })
+      const exportInput = parseMarkdownSafe(authored, { forTranslation: true })
+      expect(parse(chatInput).querySelector('br')?.nextSibling?.textContent).toBe('\nsecond')
+      expect(parse(exportInput).querySelector('br')?.nextSibling?.textContent).toBe('\nsecond')
+
+      mockState.db.translatorType = 'llm'
+      expect(parse(parseMarkdownSafe('first\nsecond', { forTranslation: true })).querySelector('br')?.nextSibling?.textContent).toBe('\nsecond')
+
+      mockState.db.translatorType = 'bergamot'
+      mockState.db.htmlTranslation = true
+      const wholeHtml = await ParseMarkdown('first\nsecond', null, 'normal', -1, {}, 'use', { forTranslation: true })
+      expect(parse(wholeHtml).querySelector('br')?.nextSibling?.textContent).toBe('\nsecond')
+    } finally {
+      mockState.db.combineTranslation = false
+      mockState.db.translatorType = 'deepl'
+      mockState.db.htmlTranslation = false
+    }
+  })
+})
+
 const encodeStyle = (css: string) => `<risu-style>${Buffer.from(css).toString('hex')}</risu-style>`
 
 const setHideAllImages = (value: boolean) => {

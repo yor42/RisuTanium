@@ -53,7 +53,7 @@
             bind:this={field}
             type="text"
             role="combobox"
-            class="min-h-11 min-w-0 rounded-md bg-darkbutton px-3 text-textcolor placeholder:text-textcolor2 outline-none focus-visible:ring-2 focus-visible:ring-textcolor2"
+            class="min-h-11 min-w-0 rounded-md bg-darkbutton px-3 text-textcolor placeholder:text-textcolor2 outline-none risu-focus-ring"
             class:grow={phone}
             class:w-64={!phone}
             data-part="settings-search-input"

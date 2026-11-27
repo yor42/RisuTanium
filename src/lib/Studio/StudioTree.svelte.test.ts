@@ -441,6 +441,22 @@ describe('4e row menu', () => {
         expect(get(CharConfigSubMenu)).toBe(3)
     })
 
+    test('the character 배경 HTML kind row has no menu, and the lore kind row keeps its own', async () => {
+        openStudio(ownerTarget, null)
+        show(StudioTree)
+        const html = row(`k:${CHARACTER}/html`)!
+        expect(html).not.toBeNull()
+        html.focus()
+        press(html, 'F10', { shiftKey: true })
+        await settle()
+        expect(document.querySelector('[data-part="studio-row-menu"]')).toBeNull()
+        const lore = row(`k:${CHARACTER}/lore`)!
+        lore.focus()
+        press(lore, 'F10', { shiftKey: true })
+        await settle()
+        expect(document.querySelector('[data-part="studio-row-menu"]')).not.toBeNull()
+    })
+
     test('a group row has no menu', async () => {
         openStudio(ownerTarget, null)
         show(StudioTree)

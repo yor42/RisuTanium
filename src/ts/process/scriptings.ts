@@ -712,10 +712,10 @@ export async function runScripted(code:string, arg:{
                         return `{{inlayed::${imgid}}}`
                     }
                     
-                    console.warn('Failed to create character image inlay')
+                    console.warn('Failed to create persona image inlay')
                     return ''
                 } catch (error) {
-                    console.error('Error in getCharacterImageMain:', error)
+                    console.error('Error in getPersonaImageMain:', error)
                     return ''
                 }
             })

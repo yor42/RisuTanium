@@ -65,11 +65,18 @@ afterEach(() => {
 
 describe('4e destinations', () => {
     const characterTabs: [StudioKind, number][] = [
-        ['basic', 0], ['display', 1], ['advanced', 2], ['toggles', 2], ['lore', 3], ['scripts', 4], ['regex', 4], ['html', 4],
+        ['basic', 0], ['display', 1], ['advanced', 2], ['toggles', 2], ['lore', 3], ['scripts', 4], ['regex', 4],
     ]
 
     test.each(characterTabs)('character %s opens character settings tab %i', (kind, tab) => {
         expect(classicDestinationOf('character', kind)).toEqual({ where: 'character', tab })
+    })
+
+    test('the character 배경 HTML kind has its own Studio form, so it offers no classic link', () => {
+        expect(classicDestinationOf('character', 'html')).toBeNull()
+        expect(openInClassicEditor('character', 'html')).toBe(false)
+        expect(get(studioOpen)).toBe(true)
+        expect(get(CharConfigSubMenu)).toBe(0)
     })
 
     test('the chat lore opens the lorebook tab, whatever the kind asked', () => {

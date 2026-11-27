@@ -22,11 +22,12 @@
 </script>
 
 {#if entries.length > 0}
-    <fieldset class="mt-2 flex flex-wrap items-center gap-2 border-0 p-0">
+    <!-- Below 360 px tighter gap and horizontal padding keep three open entries within two lines instead of three. -->
+    <fieldset class="mt-2 flex flex-wrap items-center gap-2 max-[359.98px]:gap-1.5 border-0 p-0">
         <legend class="sr-only">{language.homeModeSwitcherLabel}</legend>
         {#each entries as entry (entry.mode)}
             <label
-                class="flex min-h-11 items-center gap-2 rounded-md border px-4 py-2 {entry.current
+                class="flex min-h-11 items-center gap-2 max-[359.98px]:gap-1.5 rounded-md border px-4 max-[359.98px]:px-2.5 py-2 {entry.current
                     ? 'border-selected bg-selected/30 text-textcolor'
                     : 'border-borderc/10 bg-darkbg text-textcolor2'} {entry.held ? 'opacity-60' : 'cursor-pointer hover:bg-selected/50'}"
             >

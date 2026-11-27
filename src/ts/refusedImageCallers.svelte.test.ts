@@ -1,20 +1,30 @@
 // @vitest-environment happy-dom
 
 /**
- * (G) A caller that has no handler of its own for a refused image read: the playground image generator.
+ * (G) A caller that handles a refused image read in its own press handler: the playground image generator.
  *
  * Mounts the REAL `PlaygroundImageGen.svelte` with `generateAIImage` rejecting with each access control list string and
- * presses the button. The press handler does not catch, so the rejection escapes to the process unhandled-rejection
- * path (the page's `unhandledrejection` event, which bootstrap routes to the error alert), and no image is shown.
- * The runner's own rejection listeners are set aside for the case and restored, so the deliberate rejection is neither
- * reported as a test error nor lost.
+ * presses the button. The press handler catches the rejection, reports the exact refusal string through `alertError`,
+ * clears the generating spinner, and shows no image.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import type { Database } from 'src/ts/storage/database.svelte'
 
 const h = vi.hoisted(() => ({
     generate: vi.fn(async (): Promise<string | null> => null),
+    alertError: vi.fn(),
 }))
+
+vi.mock(import('src/ts/stores.svelte'), () => {
+    const state = $state({ db: {} as unknown as Database })
+    const selIdState = $state({ selId: -1 })
+    return { DBState: state, selIdState } as unknown as typeof import('src/ts/stores.svelte')
+})
+
+vi.mock(import('src/ts/alert'), () => ({
+    alertError: h.alertError,
+}) as unknown as typeof import('src/ts/alert'))
 
 vi.mock(import('src/ts/process/stableDiff'), () => ({
     generateAIImage: h.generate,
@@ -35,19 +45,10 @@ const REFUSALS = [
 
 let target: HTMLElement
 let app: Record<string, unknown>
-let runnerListeners: Array<(...args: unknown[]) => void> = []
-const escaped: unknown[] = []
-
-function onUnhandled(reason: unknown): void {
-    escaped.push(reason)
-}
 
 beforeEach(() => {
     h.generate.mockReset()
-    escaped.length = 0
-    runnerListeners = process.listeners('unhandledRejection') as Array<(...args: unknown[]) => void>
-    process.removeAllListeners('unhandledRejection')
-    process.on('unhandledRejection', onUnhandled)
+    h.alertError.mockReset()
     target = document.createElement('div')
     document.body.appendChild(target)
     app = mount(PlaygroundImageGen, { target, props: {} }) as unknown as Record<string, unknown>
@@ -57,14 +58,10 @@ beforeEach(() => {
 afterEach(async () => {
     await unmount(app as never)
     target.remove()
-    process.off('unhandledRejection', onUnhandled)
-    for (const listener of runnerListeners) {
-        process.on('unhandledRejection', listener)
-    }
 })
 
 describe('the playground image generator when the access control list refuses a read (G)', () => {
-    test.each(REFUSALS)('the rejection escapes unhandled with the exact string and no image is shown: %s', async (refusal) => {
+    test.each(REFUSALS)('the refusal is reported through alertError with the exact string, clears the spinner, and shows no image: %s', async (refusal) => {
         h.generate.mockRejectedValue(refusal)
 
         target.querySelector('button')!.click()
@@ -73,7 +70,9 @@ describe('the playground image generator when the access control list refuses a 
         flushSync()
 
         expect(h.generate).toHaveBeenCalledTimes(1)
-        expect(escaped).toEqual([refusal])
+        expect(h.alertError).toHaveBeenCalledTimes(1)
+        expect(h.alertError).toHaveBeenCalledWith(refusal)
+        expect(target.querySelector('.loadmove')).toBeNull()
         expect(target.querySelector('img')).toBeNull()
     })
 })

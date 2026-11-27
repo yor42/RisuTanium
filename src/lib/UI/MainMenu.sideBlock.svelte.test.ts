@@ -224,6 +224,13 @@ describe('the Community and source list rows', () => {
             const icon = row.querySelector(':scope > [data-part="home-row-icon"]')
             expect(icon?.classList.contains('shrink-0'), row.className).toBe(true)
         }
+        // Community rows align to the top of the first line so wrapped titles keep the icon beside line one.
+        const communityRows = Array.from(aside.querySelectorAll<HTMLElement>('section[data-part="home-community"] > ul > li button'))
+        expect(communityRows).toHaveLength(4)
+        for (const row of communityRows) {
+            expect(row.classList.contains('items-start'), row.className).toBe(true)
+            expect(row.classList.contains('py-2.5'), row.className).toBe(true)
+        }
     })
 })
 

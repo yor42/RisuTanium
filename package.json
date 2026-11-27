@@ -19,8 +19,7 @@
     "tauri": "tauri",
     "runserver": "node server/node/server.cjs",
     "sync": "node electron/sync",
-    "electron": "node electron/dist/electron",
-    "hono:build": "vite build --sourcemap && node server/hono/src/utils/postbuild.js"
+    "electron": "node electron/dist/electron"
   },
   "dependencies": {
     "@adobe/css-tools": "4.4.4",

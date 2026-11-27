@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { onDestroy, untrack } from 'svelte'
+    import { onDestroy, onMount, untrack } from 'svelte'
     import { language } from '../../lang'
     import { refusalText } from '../../ts/studio/edit/studioToasts'
+    import { registerStudioField } from '../../ts/studio/fieldFlush'
     import { isUsableContainer, slotOf } from '../../ts/studio/history/fieldAccess'
     import { FIELD_PRESENTATION, type SetPath } from '../../ts/studio/history/fieldRegistry'
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
@@ -74,10 +75,11 @@
         }
     })
 
-    const live = $derived.by(() => {
+    function liveOwner() {
         const found = DBState.db.characters?.find((candidate) => candidate?.chaId === chaId)
         return found && found.type !== 'group' ? found : undefined
-    })
+    }
+    const live = $derived.by(liveOwner)
     const previewSource = (): PreviewSourceInput => ({ owner: live ?? null, chat: live?.chats?.[live.chatPage] ?? null, globals: DBState.db.globalChatVariables ?? {} })
     const view = $derived(service ? service.view(owner) : null)
     const hidden = $derived(live === undefined || live.license === 'private' || view?.restricted === true)
@@ -86,9 +88,10 @@
     // The live text of a path as a string. A key or container that is absent (or not a string) reads as empty: an
     // absent container is the empty text of its seed, and a write to an absent required key is refused by the service.
     function readText(path: TextPath): string {
-        if (!live) return ''
+        const current = liveOwner()
+        if (!current) return ''
         const { container, key } = slotOf(path)
-        const holder = live as unknown as Record<string, unknown>
+        const holder = current as unknown as Record<string, unknown>
         const box = container === null ? holder : holder[container]
         if (!isUsableContainer(box)) return ''
         const value = box[key]
@@ -146,7 +149,9 @@
     }
     function commitLine(path: TextPath, value: string): void {
         const element = inputs[path]
-        const result = service && editable ? service.editText(owner, path, value, 'typing') : null
+        const active = getStudioHistoryService()
+        const canEdit = active?.view(owner)?.editable === true
+        const result = active && canEdit ? active.editText(owner, path, value, 'typing') : null
         if ((result === null || !noted(result)) && element) element.value = readText(path)
     }
     const gates = new Map<TextPath, ReturnType<typeof createCompositionGate>>()
@@ -159,6 +164,10 @@
         return gate
     }
 
+    function flushGates(): void {
+        for (const gate of gates.values()) gate.flush()
+    }
+
     function onLineInput(path: TextPath, event: Event & { currentTarget: HTMLInputElement }): void {
         gateOf(path).input(event.currentTarget.value, event instanceof InputEvent && event.isComposing)
     }
@@ -168,9 +177,19 @@
         service?.closeOpenStep(owner)
     }
 
+    onMount(() => registerStudioField(flushGates))
+    // Held compositions flush through the registered field on leave, close, and page hide; a teardown microtask flushes
+    // any remaining held composition after Svelte completes unmount.
     onDestroy(() => {
-        for (const gate of gates.values()) gate.flush()
-        service?.closeOpenStep(owner)
+        const closing = getStudioHistoryService()
+        queueMicrotask(() => {
+            try {
+                flushGates()
+                closing?.closeOpenStep(owner)
+            } catch (error) {
+                console.error('Studio advanced form flush failed', error)
+            }
+        })
     })
 
     const longSpecs = $derived(section === 'prompts' ? PROMPTS : DETAIL_LONG)

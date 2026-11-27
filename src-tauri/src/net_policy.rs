@@ -99,6 +99,10 @@ fn classify_v6(bytes: [u8; 16]) -> Kind {
     if zero_until(10) && bytes[10] == 0xff && bytes[11] == 0xff {
         return embedded(12);
     }
+    // ::ffff:0:0:0/96 (SIIT, IPv4-translated): the IPv4 address sits in bytes 12 to 15.
+    if zero_until(8) && bytes[8] == 0xff && bytes[9] == 0xff && bytes[10] == 0 && bytes[11] == 0 {
+        return embedded(12);
+    }
     // 64:ff9b::/96 (NAT64) and the local-use 64:ff9b:1::/48.
     if bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b {
         if bytes[4..12].iter().all(|byte| *byte == 0) {
@@ -229,6 +233,10 @@ mod tests {
             ("::ffff:127.0.0.1", Kind::Loopback),
             ("::ffff:10.0.0.1", Kind::Private),
             ("::ffff:8.8.8.8", Kind::Public),
+            ("::ffff:0:a00:5", Kind::Private),
+            ("::ffff:0:7f00:1", Kind::Loopback),
+            ("::ffff:0:0:0", Kind::Loopback),
+            ("::ffff:0:808:808", Kind::Public),
             ("64:ff9b::a00:1", Kind::Private),
             ("64:ff9b::808:808", Kind::Public),
             ("64:ff9b:1::1", Kind::Private),

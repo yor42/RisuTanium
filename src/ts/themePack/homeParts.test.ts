@@ -172,6 +172,19 @@ const FOREIGN: ReadonlyMap<string, string> = new Map<string, string>([
     ['reply-writing-badge', 'a reply status part the chat shell rows render as well'],
     ['trash-days-left', 'the trash row countdown of the shared catalog'],
     ['trash-empty', 'the trash empty state of the shared catalog'],
+    ['modal-realm-popup', 'the Realm card popup (popups overlay; RealmMain renders it inside Home, App renders it over any screen)'],
+    ['modal-realm-blocked-creators', 'the Realm blocked-creators dialog (popups overlay; RealmMain renders it inside Home)'],
+    ['modal-frame', 'the popups overlay vocabulary, rendered inside Home by the Realm popup and the blocked-creators dialog'],
+    ['modal-header', 'the popups overlay vocabulary, rendered inside Home by the Realm popup and the blocked-creators dialog'],
+    ['modal-title', 'the popups overlay vocabulary, rendered inside Home by the Realm popup and the blocked-creators dialog'],
+    ['modal-text', 'the popups overlay vocabulary, rendered inside Home by the Realm popup and the blocked-creators dialog'],
+    ['modal-action', 'the popups overlay vocabulary, rendered inside Home by the Realm popup and the blocked-creators dialog'],
+    ['modal-close', 'the popups overlay vocabulary, rendered inside Home by the Realm popup and the blocked-creators dialog'],
+    ['modal-body', 'the popups overlay vocabulary, rendered inside Home by the Realm popup'],
+    ['modal-footer', 'the popups overlay vocabulary, rendered inside Home by the Realm popup'],
+    ['modal-controls', 'the popups overlay vocabulary, rendered inside Home by the Realm popup'],
+    ['modal-list', 'the popups overlay vocabulary, rendered inside Home by the Realm popup and the blocked-creators dialog'],
+    ['modal-row', 'the popups overlay vocabulary, rendered inside Home by the Realm blocked-creators dialog'],
 ])
 
 describe('Home census: the rendered Home parts', () => {

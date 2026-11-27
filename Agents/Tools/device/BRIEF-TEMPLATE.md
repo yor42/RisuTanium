@@ -7,7 +7,7 @@ Placeholders:
 | Placeholder | Meaning |
 |---|---|
 | `<serial>` | the leased phone's serial, from the grant (`serial`) |
-| `<ports>` | the run's own ports, from the grant (`ports.min` to `ports.max`), at most the range the lease names |
+| `<ports>` | the run's own ports as a comma-separated list (for example `6271,6272`; `--own-ports` accepts individual ports only), chosen from the grant's `ports.min`..`ports.max` |
 | `<run>` | the run folder under `%TEMP%` (absolute) |
 | `<request>` | the lease request id |
 | `<token>` | the lease token; it is in the brief only |
@@ -77,7 +77,7 @@ Always, in addition:
 - `shell pm clear io.github.yor42.risutanium`.
 - Reinstall of the pinned APK (`install -r <apk>`), then read the device `base.apk` hash back as live-checks "State and data" says.
 - `uninstall` of the `dev.risu.*` packages the census (section 8) finds.
-- On a Note 9 only (MC-3874): when `install -r <apk>` fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because the installed `io.github.yor42.risutanium` is signed with a different key than the pinned APK, `uninstall io.github.yor42.risutanium` (no `-k`, one call) and then `install -r <apk>`. This destroys the app's data, so it needs synthetic data only on that phone. Record the old signer and the new signer (certificate SHA-256, read from the installed `base.apk` and the pinned APK with `apksigner verify --print-certs`, or the signer the install step reports) in the result before the uninstall. Stop and report instead on any other serial, on the Fold 7 and the Tab S9, on any other failure, or when the phone holds data that is not synthetic.
+- On a Note 9 only (MC-3874): when `install -r <apk>` fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because the installed `io.github.yor42.risutanium` is signed with a different key than the pinned APK, `uninstall io.github.yor42.risutanium` (no `-k`, one call) and then `install -r <apk>`. This destroys the app's data, so it needs synthetic data only on that phone. Before the uninstall, record the install step's `INSTALL_FAILED_UPDATE_INCOMPATIBLE` output (including any signer detail it reports) and the pinned APK's SHA-256 (plus its certificate SHA-256 from `apksigner verify --print-certs` if available on the host) in the result; section 2's default forms do not include pulling or inspecting the installed `base.apk`, so do not invent an unlisted adb call for it. Stop and report instead on any other serial, on the Fold 7 and the Tab S9, on any other failure, or when the phone holds data that is not synthetic.
 
 Never a factory reset, never another package, never a settings reset beyond restoring the values the run changed.
 

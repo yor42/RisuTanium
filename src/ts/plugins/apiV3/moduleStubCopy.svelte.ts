@@ -1,7 +1,7 @@
-import { keyOfRef, type ModuleEntry } from 'src/ts/storage/store2/format'
+import type { ModuleEntry } from 'src/ts/storage/store2/format'
 import { acquireModule, ModuleAmbiguousError, ModuleLoadError } from 'src/ts/storage/store2/moduleAcquire'
 import { sameEntryUnits, slotIsRecordedStub } from 'src/ts/storage/store2/moduleStubMatch'
-import type { Residency, ResidencyModuleRead } from 'src/ts/storage/store2/residency'
+import type { Residency } from 'src/ts/storage/store2/residency'
 import { getResidency } from 'src/ts/storage/store2/residencyActive'
 import { isModuleStub } from 'src/ts/storage/moduleStub'
 import type { RisuModule } from 'src/ts/process/modules'
@@ -46,8 +46,6 @@ export interface StubBodies {
     release(): void
 }
 
-type ReadOk = Extract<ResidencyModuleRead, { status: 'ok' }>
-
 let pass: StubPass | null = null
 
 function textOf(error: unknown): string {
@@ -78,12 +76,6 @@ function stubIdsOf(slots: readonly RisuModule[]): string[] {
 /** The module is a stub in the live list now, whatever else holds the id. */
 function stubHolds(id: string): boolean {
     return liveSlots().some((slot) => slot.id === id && isModuleStub(slot))
-}
-
-/** The loader's own marker for a repaired body: its module unit must not be digested, so the next pass writes it. */
-function withoutModuleUnit(read: ReadOk): ReadOk {
-    const withheld = keyOfRef(read.entry.unit)
-    return { ...read, source: { get: (key: string) => key === withheld ? undefined : read.source.get(key) } }
 }
 
 /** Brings the module in through the loader (which installs it and asks the person when it must) and lets go of it at once. */
@@ -117,7 +109,13 @@ async function readOne(current: StubPass, id: string, stub: RisuModule): Promise
         return
     }
     const changed = need === 'migrate' && (await repair.repairModuleLorebook(body)).changed
-    residency.hydrateModule(changed ? withoutModuleUnit(read) : read)
+    if (changed) {
+        // Loaded lazily alongside the repair module for the same reason: `moduleLoader` statically imports it.
+        const { withoutModuleUnit } = await import('src/ts/process/moduleLoader')
+        residency.hydrateModule(withoutModuleUnit(read))
+    } else {
+        residency.hydrateModule(read)
+    }
     current.bodies.set(id, { entry: read.entry, body })
 }
 

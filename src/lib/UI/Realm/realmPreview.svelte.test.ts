@@ -41,6 +41,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 
 import { createRealmPreview, type RealmPreview } from './realmPreview.svelte'
 import { DBState } from 'src/ts/stores.svelte'
+import { realmBlockListKey } from 'src/ts/realmBlocking'
 
 function makeChara(name: string): hubType {
     return {
@@ -61,7 +62,10 @@ function makeChara(name: string): hubType {
 }
 
 function populated(name: string, additionalHTML = ''): RisuHubResult {
-    return { ok: true, cards: [makeChara(name)], additionalHTML }
+    return {
+        ok: true, cards: [makeChara(name)], additionalHTML,
+        blockedCreatorsKey: realmBlockListKey(DBState.db.blockedRealmCreators ?? []),
+    }
 }
 
 async function settle() {
@@ -77,7 +81,7 @@ let dispose: (() => void) | null = null
 
 function create() {
     dispose = $effect.root(() => {
-        preview = createRealmPreview(() => accepted)
+        preview = createRealmPreview(() => accepted, () => accepted)
     })
     flushSync()
 }
@@ -230,5 +234,78 @@ describe('createRealmPreview', () => {
 
         window.dispatchEvent(new Event('online'))
         expect(hubMock.getRisuHub).toHaveBeenCalledTimes(1)
+    })
+
+    test('getInitialList shares the in-flight and populated request, and drops failed/empty results', async () => {
+        create()
+        const inFlight = preview.getInitialList()
+        expect(inFlight).not.toBeNull()
+
+        hubMock.pending[0](populated('shared', '<p>banner</p>'))
+        await settle()
+        expect(preview.getInitialList()).toBe(inFlight)
+        await expect(inFlight).resolves.toEqual(populated('shared', '<p>banner</p>'))
+
+        // A failed reload clears the cached entry so RealmMain retries fresh.
+        void preview.load()
+        hubMock.pending[1]({ ok: false, reason: 'network' } satisfies RisuHubResult)
+        await settle()
+        expect(preview.getInitialList()).toBeNull()
+
+        // An empty reload also clears the cached entry.
+        void preview.load()
+        hubMock.pending[2]({ ok: true, cards: [], additionalHTML: '' } satisfies RisuHubResult)
+        await settle()
+        expect(preview.getInitialList()).toBeNull()
+    })
+
+    test('does not cache cards filtered while the request-start block list was temporarily changed', async () => {
+        const blocked = [{ id: 'creator-a', name: 'A' }]
+        DBState.db.blockedRealmCreators = blocked
+        try {
+            create()
+            DBState.db.blockedRealmCreators = []
+            hubMock.pending[0]({
+                ok: true,
+                cards: [{ ...makeChara('A'), creator: 'creator-a' }],
+                additionalHTML: '',
+                blockedCreatorsKey: '[]',
+            })
+            await settle()
+            DBState.db.blockedRealmCreators = blocked
+
+            expect(preview.getInitialList()).toBeNull()
+            expect(preview.cards).toEqual([])
+        } finally {
+            DBState.db.blockedRealmCreators = []
+        }
+    })
+
+    test('getInitialList invalidates when blockedRealmCreators changes or after 5 minutes', async () => {
+        vi.useFakeTimers()
+        try {
+            vi.setSystemTime(new Date('2026-11-25T00:00:00Z'))
+            DBState.db.blockedRealmCreators = []
+            create()
+            hubMock.pending[0](populated('shared'))
+            await settle()
+            expect(preview.getInitialList()).not.toBeNull()
+
+            // Changing blocked creators invalidates the cached promise.
+            DBState.db.blockedRealmCreators = [{ id: 'c1', name: 'Blocked' }]
+            expect(preview.getInitialList()).toBeNull()
+
+            // Reload under the new blocked list, then advance past the 5-minute TTL.
+            void preview.load()
+            hubMock.pending[1](populated('fresh'))
+            await settle()
+            expect(preview.getInitialList()).not.toBeNull()
+
+            vi.advanceTimersByTime(5 * 60 * 1000 + 1)
+            expect(preview.getInitialList()).toBeNull()
+        } finally {
+            vi.useRealTimers()
+            DBState.db.blockedRealmCreators = []
+        }
     })
 })

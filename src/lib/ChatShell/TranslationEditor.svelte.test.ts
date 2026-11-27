@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { compile } from 'svelte/compiler'
+import postcss from 'postcss'
 import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
 import { flushSync, mount, unmount } from 'svelte'
 import { draftContentOrphanGate } from '../../ts/draftContentOrphanGate'
@@ -81,5 +85,99 @@ describe('TranslationEditor surface', () => {
         flushSync()
         expect(target.querySelector('[data-part="chat-message-draft-restored"]')?.textContent).toContain('Restored')
         expect(target.querySelector('textarea')?.value).toBe('kept')
+    })
+
+    test('auto-grows and shrinks with content, preserves transcript scrollTop, and caps height at 60dvh', async () => {
+        let currentScrollHeight = 160
+        const transcript = document.createElement('div')
+        transcript.setAttribute('data-part', 'chat-transcript')
+        transcript.scrollTop = 250
+        document.body.appendChild(transcript)
+
+        try {
+            const deps: MessageEditorDeps = {
+                getMessage: () => 'base', setMessage: () => {}, getIdx: () => 0,
+                currentMessageIdentity: () => ({ kind: 'msg', chatKey: 'chat', chatId: 'row', index: 0 }),
+                getTranslationCacheKey: async () => 'source',
+                translationOpenToken: () => ({ identity: 'row', row: undefined, data: 'base', closeEpoch: chatSurface.closeEpoch }),
+                translationOpenCurrent: (token) => token.closeEpoch === chatSurface.closeEpoch,
+                isDestroyed: () => false,
+                onTranslationCacheWritten: written,
+            }
+            let editor!: ReturnType<typeof createMessageEditorController>
+            destroyRoot = $effect.root(() => { editor = createMessageEditorController(deps) })
+            target = document.createElement('div')
+            transcript.appendChild(target)
+            app = mount(TranslationEditor, { target, props: { editor } })
+            await editor.loadTranslationForEdit()
+            flushSync()
+
+            const installStubs = (field: HTMLTextAreaElement): void => {
+                field.style.borderTopWidth = '1px'
+                field.style.borderBottomWidth = '1px'
+                Object.defineProperty(field, 'scrollHeight', {
+                    configurable: true,
+                    get: () => {
+                        if (field.style.height === '0px') transcript.scrollTop = 100
+                        return currentScrollHeight
+                    },
+                })
+            }
+
+            const textarea = target.querySelector('textarea')!
+            installStubs(textarea)
+
+            textarea.value = 'translated long text'
+            textarea.dispatchEvent(new Event('input', { bubbles: true }))
+            flushSync()
+            expect(textarea.style.height).toBe('162px')
+            expect(transcript.scrollTop).toBe(250)
+
+            currentScrollHeight = 84
+            textarea.value = 'short'
+            textarea.dispatchEvent(new Event('input', { bubbles: true }))
+            flushSync()
+            expect(textarea.style.height).toBe('86px')
+
+            // Zero scrollHeight clears height to '' rather than collapsing to '0px'.
+            currentScrollHeight = 0
+            textarea.value = 'hidden check'
+            textarea.dispatchEvent(new Event('input', { bubbles: true }))
+            flushSync()
+            expect(textarea.style.height).toBe('')
+
+            // Programmatic translation revert re-measures height without an input event.
+            chatSurface.closeEpoch += 1
+            flushSync()
+            currentScrollHeight = 190
+            await editor.loadTranslationForEdit()
+            flushSync()
+            const reopened = target.querySelector('textarea')!
+            installStubs(reopened)
+            reopened.value = 'reopened translation'
+            reopened.dispatchEvent(new Event('input', { bubbles: true }))
+            flushSync()
+            expect(reopened.style.height).toBe('192px')
+
+            currentScrollHeight = 90
+            target.querySelector<HTMLButtonElement>('[data-part="chat-message-draft-restored"] button')!.click()
+            flushSync()
+            expect(reopened.value).toBe('cached')
+            expect(reopened.style.height).toBe('92px')
+
+            const filePath = path.resolve(process.cwd(), 'src/lib/ChatShell/TranslationEditor.svelte')
+            const { css } = compile(readFileSync(filePath, 'utf8'), { filename: 'TranslationEditor.svelte', generate: 'client', css: 'external' })
+            const maxHeights: string[] = []
+            let overflowY: string | undefined
+            postcss.parse(css?.code ?? '').walkRules((rule) => {
+                if (!rule.selector.includes('textarea')) return
+                rule.walkDecls('max-height', (decl) => { maxHeights.push(decl.value) })
+                rule.walkDecls('overflow-y', (decl) => { overflowY = decl.value })
+            })
+            expect(maxHeights).toEqual(['60vh', '60dvh'])
+            expect(overflowY).toBe('auto')
+        } finally {
+            transcript.remove()
+        }
     })
 })
