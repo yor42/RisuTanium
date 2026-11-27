@@ -23,7 +23,7 @@
     aria-label={label}
     title={label}
     {tabindex}
-    class="flex min-h-6 min-w-6 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected cursor-pointer {className}"
+    class="flex min-h-6 min-w-6 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor focus-visible:outline-hidden risu-focus-ring cursor-pointer {className}"
     onpointerdown={stop}
     oncontextmenu={stop}
     onclick={(event) => {

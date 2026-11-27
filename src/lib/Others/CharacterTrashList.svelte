@@ -38,12 +38,12 @@
                 <CharacterDescription text={parsedDesc['en'] || parsedDesc['xx'] || language.othersUi.noDescription} visible={true} />
                 <div class="flex flex-wrap gap-2 justify-end">
                     <span class="text-sm text-textcolor2 mr-auto whitespace-nowrap" data-part="trash-days-left">{language.trashDaysLeft(daysLeft)}</span>
-                    <button class="hover:text-textcolor text-textcolor2 rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" aria-label={language.trashRestore} title={language.trashRestore} onclick={() => {
+                    <button class="hover:text-textcolor text-textcolor2 rounded-md focus-visible:outline-hidden risu-focus-ring" aria-label={language.trashRestore} title={language.trashRestore} onclick={() => {
                         restoreCharacterFromTrash(char)
                     }}>
                         <Undo2Icon />
                     </button>
-                    <button class="hover:text-draculared text-textcolor2 rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" aria-label={language.trashDeletePermanently} title={language.trashDeletePermanently} onclick={() => {
+                    <button class="hover:text-draculared text-textcolor2 rounded-md focus-visible:outline-hidden risu-focus-ring" aria-label={language.trashDeletePermanently} title={language.trashDeletePermanently} onclick={() => {
                         removeChar(char, char.name, 'permanent')
                     }}>
                         <TrashIcon />

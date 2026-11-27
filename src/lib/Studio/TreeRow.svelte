@@ -108,7 +108,7 @@
     data-part="studio-row"
     data-row-id={id}
     data-row-kind={rowKind}
-    class="studio-row flex w-full cursor-pointer items-center gap-1 pe-2 text-start outline-none hover:bg-selected focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-textcolor2"
+    class="studio-row flex w-full cursor-pointer items-center gap-1 pe-2 text-start outline-none hover:bg-selected risu-focus-ring-inset"
     class:bg-selected={selected}
     class:text-textcolor2={rowKind === 'more'}
     style:padding-inline-start="calc(0.5rem + {level - 1} * 1rem)"

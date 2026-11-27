@@ -1141,7 +1141,7 @@
         {:else if lv.hypaV3}
             <span class="max-w-full mb-6 text-sm text-wrap wrap-break-word text-textcolor2">{language.hypaV3Settings.descriptionLabel}</span>
             <span class="text-textcolor" id="{uid}-v44">{language.settingsPage.preset}</span>
-            <select class={"risu-select border border-darkborderc focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus:ring-borderc focus:ring-2 focus:outline-hidden transition-colors duration-200 text-md px-4 py-2 mb-1"}
+            <select class={"risu-select border border-darkborderc focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus:outline-hidden risu-focus-ring transition-colors duration-200 text-md px-4 py-2 mb-1"}
                 aria-labelledby="{uid}-v44"
                 aria-describedby="{uid}-v44"
                 bind:value={DBState.db.hypaV3PresetId}
