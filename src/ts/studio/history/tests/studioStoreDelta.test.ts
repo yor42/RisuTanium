@@ -368,41 +368,46 @@ describe('T-S6b the walk keeps what the oracle keeps, at every cap', () => {
         expect(storedRecord(store.shared, A)!.record).toEqual(secondKept)
     })
 
-    test('a new visit with a smaller restore point puts the steps that fit again', async () => {
+    test('a new visit with a smaller restore point puts the restore point that fits now, the steps staying as they were', async () => {
         const ownerCap = 6000
         const store = doubleAt(ownerCap)
-        const first = recordOf(A, 1, steps('g', 8, 60), { restore: restoreOf('v1', 40, 6) })
+        const first = recordOf(A, 1, steps('g', 4, 60), { restore: restoreOf('v1', 400, 6) })
         await loadThenSave(store, first)
         const firstKept = walkOracle(first, ownerCap)
-        expect(firstKept.restore).not.toBeNull()
+        // The restore point gives way; every step stays.
+        expect(firstKept.restore).toBeNull()
+        expect(firstKept.done.length).toBe(4)
 
         const second = { ...first, touchedAt: 2, restore: restoreOf('v2', 5) }
         expect(await store.save(A, second, new Set([A]))).toMatchObject({ kind: 'ok' })
         const secondKept = walkOracle(second, ownerCap)
+        expect(secondKept.restore).not.toBeNull()
         const summary = lastWrite(store, A)
         const before = partsOf(firstKept)
         const after = partsOf(secondKept)
-        expect(without(after, before).filter((part) => part !== RESTORE_PART).length).toBeGreaterThan(0)
-        expect(summary.puts).toEqual([...without(after, before), 'h', 'i', 'r'].sort())
+        expect(without(after, before)).toEqual([RESTORE_PART])
+        expect(summary.puts).toEqual([...without(after, before), 'h', 'i'].sort())
         expect(storedRecord(store.shared, A)!.record).toEqual(secondKept)
     })
 
-    test('a restore point larger than the owner cap leaves the owner stored empty; a later smaller one puts everything that fits again', async () => {
-        const ownerCap = 2000
+    test('a restore point larger than the owner cap is the only thing dropped; a later smaller one is stored beside the steps', async () => {
+        const ownerCap = 3000
         const store = doubleAt(ownerCap)
-        const first = recordOf(A, 1, steps('g', 4, 20), { restore: restoreOf('v1', 40, 12) })
+        const first = recordOf(A, 1, steps('g', 2, 20), { restore: restoreOf('v1', 40, 40) })
         expect(storedSizeOf({ ...first, done: [], undone: [], deleted: [] }, A, Infinity)).toBeGreaterThan(ownerCap)
         expect(await loadThenSave(store, first)).toEqual({ kind: 'ok', asided: false, trimmed: true })
-        const empty = storedRecord(store.shared, A)!
-        expect(empty.record).toEqual({ ownerKey: A, touchedAt: 1, done: [], undone: [], deleted: [], restore: null })
-        expect(empty.record).toEqual(walkOracle(first, ownerCap))
-        expect(await createMemoryStudioStore({ shared: store.shared, capBytes: ownerCap * 2 }).load(A)).toEqual({ kind: 'ok', record: empty.record })
+        const stored = storedRecord(store.shared, A)!
+        expect(stored.record.restore).toBeNull()
+        expect(stored.record.done.length).toBeGreaterThan(0)
+        expect(stored.record).toEqual(walkOracle(first, ownerCap))
+        expect(await createMemoryStudioStore({ shared: store.shared, capBytes: ownerCap * 2 }).load(A)).toEqual({ kind: 'ok', record: stored.record })
 
         const second = { ...first, touchedAt: 2, restore: restoreOf('v2', 3) }
         expect(await store.save(A, second, new Set([A]))).toMatchObject({ kind: 'ok' })
         const kept = walkOracle(second, ownerCap)
-        expect(kept.done.length).toBeGreaterThan(0)
-        expect(lastWrite(store, A).puts).toEqual([...partsOf(kept), 'h', 'i'].sort())
+        expect(kept.restore).not.toBeNull()
+        expect(kept.done).toEqual(stored.record.done)
+        expect(lastWrite(store, A).puts).toEqual(['h', 'i', 'r'].sort())
         expect(storedRecord(store.shared, A)!.record).toEqual(kept)
     })
 })
