@@ -188,7 +188,7 @@ Reused keys (bare words such as `copy`, `remove`, `export`, `import`, `name`, `a
 ## 9. Decisions this spec applies
 
 - **Inherited:** MC-4044 (the ticket), MC-4030, MC-3896, MC-3890, MC-1758, MC-3894, MC-3902, MC-175/223/774/350 (compatibility), DD-157.
-- **2026-11-28 answers (ids from lane A):** **D5** hotkey slots: badge and assignment in the Studio list (swap confirm, same plan as Hotkeys). **D6** delete: classic's confirm, last-preset refusal and gone handling; undo waits for #148. **D7** export: file and bundle export in Studio; Realm upload and compare stay in classic. **D8** folders: manage them (create, rename, delete, move; grouped display). **D9** (a) delete of a non-active preset keeps the active preset (a deliberate difference from classic); (b) list management lives in a "Manage presets" sheet from the Presets group header.
+- **2026-11-28 answers (ids from lane A):** **D5** (MC-4724) hotkey slots: badge and assignment in the Studio list (swap confirm, same plan as Hotkeys). **D6** (MC-4725) delete: classic's confirm, last-preset refusal and gone handling; undo waits for #148. **D7** (MC-4726) export: file and bundle export in Studio; Realm upload and compare stay in classic. **D8** (MC-4727) folders: manage them (create, rename, delete, move; grouped display). **D9** (MC-4728) (a) delete of a non-active preset keeps the active preset (a deliberate difference from classic); (b) list management lives in a "Manage presets" sheet from the Presets group header.
 
 ## 10. Open questions (maintainer)
 

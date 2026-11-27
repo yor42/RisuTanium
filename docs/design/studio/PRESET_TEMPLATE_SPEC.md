@@ -156,7 +156,7 @@ Reused keys: `usePromptTemplate`, `promptTemplate`, `template`, `name`, `type`, 
 ## 9. Decisions this spec applies
 
 - **Inherited:** MC-3971, MC-4030, MC-3972, MC-3973 and MC-3974 (value kinds, whole-list steps), MC-3975 (staged PRs), MC-3979, MC-4031 (prompt options shown whatever the template), MC-4038, MC-4042 pattern.
-- **2026-11-28 answers (ids from lane A):** **D3** the switch is one-way as in classic; Studio adds no "stop using template" (parity only). **D4** "Add item" asks for the type first (a picker), and a plain item is the primary choice.
+- **2026-11-28 answers (ids from lane A):** **D3** (MC-4722) the switch is one-way as in classic; Studio adds no "stop using template" (parity only). **D4** (MC-4723) "Add item" asks for the type first (a picker), and a plain item is the primary choice.
 
 ## 10. Open questions (maintainer)
 
