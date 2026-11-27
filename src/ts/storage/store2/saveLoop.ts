@@ -810,6 +810,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let netJudgeStartedAt: number | null = null
     let netYieldCalledAt: number | null = null
     let netResumedAt: number | null = null
+    /** The time the current slot's verdict spent waiting between its stages; `spanBMs` leaves it out. */
+    let netVerdictWaitedMs = 0
     /**
      * The characters the latest attempts whose commit landed could not encode. A character leaves it when a pass encodes
      * it, or when it is no longer in the database; an attempt whose commit did not land changes nothing here.
@@ -1390,9 +1392,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         // A pass that neither measures nor races keeps the budget's own default yield.
         const budget = requestHook || (MEASURE && gaps !== null) ? createYieldBudget({ yieldFn, skip }) : createYieldBudget({ skip })
         // A full or module tick on a hidden Android page ends at the first yield after a pass becomes due, within the
-        // consecutive-cut limit. A verdict tick (it names a character) is never cut: its only yield sits after that
-        // character's unit, so a cut would save almost nothing. The check reads the page rule live, so a tick that has
-        // become visible is not cut.
+        // consecutive-cut limit. A verdict tick (it names a character) is never cut: it names the one character the
+        // verdict found different, and a cut would leave that difference unsaved until the redo. A full tick that
+        // the round-robin gave a resident stays cuttable and can be cut between the stages of that character's emit;
+        // the redo takes the same scope. The check reads the page rule live, so a tick that has become visible is not cut.
         const cuttable = requestHook && netChaId === null && cutTicks < CUT_TICKS_LIMIT
         const cutNow = (): void => {
             if (cuttable && pageSkip() && port.isDue()) {
@@ -2306,7 +2309,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      * or refusing come before any verdict, because a verdict reads only the acknowledged encoding of one character.
      * The peer is read here, never through `checkPeer`: a failed read must not leave `peerSignal` set, and the full tick
      * it falls back to reads again and reports the failure itself. A slot that reaches the verdict yields once first and
-     * re-checks only what the yield can change: a pass became due, or the database object was replaced.
+     * re-checks only what the yield can change: a pass became due, or the database object was replaced. The verdict
+     * itself waits between the stages of its emit (`verdictOfYielding`) and re-checks the database object after it.
      */
     async function netDecision(): Promise<NetDecision> {
         // A dirty page is activity: edit marks that no marked pass has taken yet keep the base cadence, and a bump here is
@@ -2460,8 +2464,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         // One yield before the verdict, so the work above and the work below are separate stretches of the event loop. It
         // sits before the `netIndex` advance: a slot that leaves at `dueAfterYield` or `dbChanged` uses no resident's turn.
-        // This loop is suspended during the yield, so `previous`'s identity, `pendingKey`, the shadow map, `netIndex`,
-        // `cleanVerdictAt`, `lastModuleNetAt`, `unsavable`, `park` and `consent` cannot change; `pageHidden` is the
+        // This loop is suspended during this yield and during every wait inside the verdict, so `previous`'s identity,
+        // `pendingKey`, the shadow map, `netIndex`, `cleanVerdictAt`, `lastModuleNetAt`, `unsavable`, `park` and
+        // `consent` cannot change: their writers (`adopt`, `acknowledge`, `keepAsPending`, `adoptIfCurrent` through
+        // `judge`, `fastForward` and `pruneShadows`) run only from this loop, and the verdicts' own shadow writes
+        // (`judgePage`'s `slotUnchanged` can outlive its race as a detached continuation) stop at its `cancelled`
+        // guard, which must be kept. `verdictOfYielding` also answers `unknown` if `previous` moved or an attempt
+        // became pending. The live character is read before the verdict's first wait. `pageHidden` is the
         // page's and is read after it (a sweep is taken at the loop top, never inside a slot); character loads may fill missing unit digests
         // in place, which depends only on the bytes and does not change a verdict. The write lock is not held across it.
         // `pruneMs` ends at the yield (the `noResident` check falls inside it) and `checksMs` is closed up to it; a later
@@ -2553,13 +2562,40 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
         }
         const verdictStartedAt = MEASURE ? performance.now() : 0
-        const verdict = encoder.verdictOf(slot)
+        // The verdict waits between the stages of its emit, on the budget the passes use: a stage reached less than the
+        // budget after the last wait does not yield, and a hidden page never does (a frozen page would hold the slot).
+        // The budget clock is the port's, as for the pre-verdict yield's re-checks.
+        const budgetPause = createYieldBudget({
+            now: () => port.now(),
+            yieldFn: () => (port.yieldNow !== undefined ? port.yieldNow() : yieldToEventLoop()),
+            skip: () => port.yieldImmediately?.() === true,
+        }).maybeYield
+        const pause = MEASURE
+            ? async (): Promise<void> => {
+                const waitStartedAt = performance.now()
+                try {
+                    await budgetPause()
+                } finally {
+                    netVerdictWaitedMs += performance.now() - waitStartedAt
+                }
+            }
+            : budgetPause
+        const verdict = await encoder.verdictOfYielding(slot, pause)
+        // A different database object appeared while the verdict waited: it judged a database this slot did not scan, so
+        // it neither passes nor starts a clean clock. `isDue` is not asked again: a verdict answered for the instant it
+        // read is still true, a dirty one's pass covers a change no mark names, and the marked pass follows this slot.
+        if (port.getDatabase() !== db) {
+            if (MEASURE) {
+                noteNetSlotEnd('dbChanged')
+            }
+            return { kind: 'none' }
+        }
         if (verdict === 'clean') {
             cleanVerdictAt.set(chaId, port.now())
         }
         if (MEASURE) {
             const verdictDoneAt = performance.now()
-            noteNetSlotPart('verdictMs', verdictDoneAt - verdictStartedAt)
+            noteNetSlotPart('verdictMs', verdictDoneAt - verdictStartedAt - netVerdictWaitedMs)
             noteSignalVerdict(chaId, verdict, verdictDoneAt)
             noteNetSlotEnd(verdict === 'clean' ? 'verdictClean' : verdict === 'dirty' ? 'verdictDirty' : 'verdictUnknown', verdict)
         }
@@ -2579,6 +2615,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             netJudgeStartedAt = null
             netYieldCalledAt = null
             netResumedAt = null
+            netVerdictWaitedMs = 0
             noteNetSlotBegin()
         }
         scanRan = false
@@ -2606,8 +2643,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             if (netJudgeStartedAt !== null) {
                 noteNetSlotPart('spanAMs', (netYieldCalledAt ?? decisionEndAt) - netJudgeStartedAt)
                 if (netYieldCalledAt !== null && netResumedAt !== null) {
-                    noteNetSlotPart('yieldMs', netResumedAt - netYieldCalledAt)
-                    noteNetSlotPart('spanBMs', decisionEndAt - netResumedAt)
+                    // The waits inside the verdict are yields too: `spanBMs` keeps meaning main-thread work, and the
+                    // slot's time is still the sum of its parts.
+                    noteNetSlotPart('yieldMs', netResumedAt - netYieldCalledAt + netVerdictWaitedMs)
+                    noteNetSlotPart('spanBMs', decisionEndAt - netResumedAt - netVerdictWaitedMs)
                 }
             }
             noteSignalSlotClock(decisionStartedAt, decisionEndAt)

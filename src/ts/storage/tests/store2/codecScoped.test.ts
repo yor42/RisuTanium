@@ -363,18 +363,24 @@ describe('new behaviour: whole-resident mode and yielding', () => {
         expect(lists.encoded.sort()).toEqual([chaIdOf(db, 1), chaIdOf(db, 3)].sort())
     })
 
-    test('yields once after each encoded character and never inside the codec on its own', async () => {
+    test('yields between the stages of each encoded character and once after it, and never inside the codec on its own', async () => {
+        // A character's emit yields between its stages (see `characterSteps`), so the count per character is the
+        // same for every character of this fixture and greater than the one yield after the character; the count
+        // is taken from one character and the whole pass must be that many times the number of characters.
         const db = buildSmall(5)
         const first = encodeWith(db)
         let yields = 0
-        const lists = counting()
-        const gate = { modules: false, characters: 'all' as const, yield: async () => { yields++ ; expect(yields).toBe(lists.encoded.length) } }
-        await encodeScoped(db, scopedOptions(2, first, lists.lists), gate)
-        expect(yields).toBe(5)
+        await encodeScoped(db, scopedOptions(2, first), { modules: false, characters: new Set([chaIdOf(db, 0)]), yield: async () => { yields++ } })
+        const perCharacter = yields
+        expect(perCharacter).toBeGreaterThan(2)
 
         yields = 0
-        await encodeScoped(db, scopedOptions(2, first), { modules: false, characters: new Set([chaIdOf(db, 0)]), yield: async () => { yields++ } })
-        expect(yields).toBe(1)
+        const lists = counting()
+        const gate = { modules: false, characters: 'all' as const, yield: async () => { yields++ } }
+        await encodeScoped(db, scopedOptions(2, first, lists.lists), gate)
+        expect(lists.encoded.length).toBe(5)
+        expect(yields).toBe(5 * perCharacter)
+
         yields = 0
         await encodeScoped(db, scopedOptions(2, first), { modules: false, characters: new Set(), yield: async () => { yields++ } })
         expect(yields).toBe(0)

@@ -178,9 +178,9 @@ describe('reproducer (mechanism, synthetic unmarked edit): an edit no mark saw i
             beforeStart: (started) => {
                 kit = started.k
                 const encoder = started.k.encoder
-                const real = encoder.verdictOf.bind(encoder)
-                encoder.verdictOf = (slot) => {
-                    const verdict = real(slot)
+                const real = encoder.verdictOfYielding.bind(encoder)
+                encoder.verdictOfYielding = async (slot, pause) => {
+                    const verdict = await real(slot, pause)
                     if (verdict === 'dirty') {
                         dirtySeen = true
                     }
@@ -323,6 +323,7 @@ describe('new behaviour: a mark that arrives while the Reload check runs is not 
             peer,
             beforeStart: (started) => {
                 const encoder = started.k.encoder
+                // The Reload check's judgement asks the synchronous `verdictOf` of the parked page.
                 const real = encoder.verdictOf.bind(encoder)
                 encoder.verdictOf = (slot) => {
                     const verdict = real(slot)

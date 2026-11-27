@@ -1134,10 +1134,10 @@ describe('the slot decides as the three old calls did (D2)', () => {
         const entries = (world.kit.context.previous.objects?.shards ?? []).flatMap(shard => shard.entries)
         mutate(db, entries)
         const judged: string[] = []
-        const real = world.encoder.verdictOf
-        world.encoder.verdictOf = (slot) => {
+        const real = world.encoder.verdictOfYielding
+        world.encoder.verdictOfYielding = async (slot, pause) => {
             judged.push(String((slot as { chaId?: unknown }).chaId))
-            return real(slot)
+            return real(slot, pause)
         }
         let expected: NetSlotReason | 'verdict'
         let first: string | null = null
