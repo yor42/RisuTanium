@@ -18,7 +18,7 @@ describe('readLtmSettings', () => {
     test('new rule: a bad shape reads as the defaults', () => {
         const bad: unknown[] = [undefined, null, 'x', 7, [], { budgetTokens: '9' }, { budgetTokens: 0 }, { budgetTokens: 1.5 }, { budgetTokens: -3 }, { budgetTokens: NaN }, {}]
         for (const raw of bad) {
-            expect(readLtmSettings(raw, 8192), JSON.stringify(raw)).toEqual({ budgetTokens: fallback, shadow: false, searchLore: SEARCH_LORE_DEFAULT, loreRecallCap: LORE_RECALL_CAP_DEFAULT })
+            expect(readLtmSettings(raw, 8192), JSON.stringify(raw)).toEqual({ budgetTokens: fallback, shadow: false, searchLore: SEARCH_LORE_DEFAULT, loreRecallCap: LORE_RECALL_CAP_DEFAULT, retrieval: 'lexical' })
         }
     })
 
@@ -124,6 +124,33 @@ describe('writeLtmSettings', () => {
         const db: { ltmSettings?: unknown } = { ltmSettings: 'garbage' }
         writeLtmSettings(db, { budgetTokens: null })
         expect(db.ltmSettings).toEqual({})
+    })
+})
+
+describe('retrieval mode (S3)', () => {
+    test('R6 regression reproducer: only the exact string hybrid reads as hybrid; everything else is lexical', () => {
+        expect(readLtmSettings({ retrieval: 'hybrid' }, 8192).retrieval).toBe('hybrid')
+        expect(readLtmSettings({ retrieval: 'lexical' }, 8192).retrieval).toBe('lexical')
+        for (const v of ['Hybrid', 'HYBRID', ' hybrid', true, 1, null, undefined, {}, [], ['hybrid'], 'dense']) {
+            expect(readLtmSettings({ retrieval: v }, 8192).retrieval, JSON.stringify(v)).toBe('lexical')
+        }
+        expect(readLtmSettings({}, 8192).retrieval).toBe('lexical')
+        expect(readLtmSettings(undefined, 8192).retrieval).toBe('lexical')
+    })
+
+    test('R6 regression reproducer: the writer stores retrieval and keeps unknown keys; a bad value is not stored', () => {
+        const db: { ltmSettings?: unknown } = { ltmSettings: { budgetTokens: 900, future: { a: [1] } } }
+        writeLtmSettings(db, { retrieval: 'hybrid' })
+        expect(db.ltmSettings).toEqual({ budgetTokens: 900, future: { a: [1] }, retrieval: 'hybrid' })
+        writeLtmSettings(db, { shadow: true })
+        expect(db.ltmSettings).toEqual({ budgetTokens: 900, future: { a: [1] }, retrieval: 'hybrid', shadow: true })
+        writeLtmSettings(db, { retrieval: 'lexical' })
+        expect((db.ltmSettings as { retrieval: string }).retrieval).toBe('lexical')
+        writeLtmSettings(db, { retrieval: 'dense' as 'hybrid' })
+        expect((db.ltmSettings as { retrieval: string }).retrieval).toBe('lexical')
+        const bare: { ltmSettings?: unknown } = {}
+        writeLtmSettings(bare, { retrieval: 'hybrid' })
+        expect(bare.ltmSettings).toEqual({ retrieval: 'hybrid' })
     })
 })
 

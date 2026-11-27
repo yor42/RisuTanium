@@ -67,6 +67,11 @@ export class ChatUnitIndex {
         return this.flat.length
     }
 
+    /** The indexed units in D0 order, then by offset: the live array, never to be mutated by the caller. */
+    units(): readonly IndexedUnit[] {
+        return this.flat
+    }
+
     reconcile(d0: readonly MessageRecord[]): Reconcile {
         const keys = recordKeysOf(d0)
         const before = this.flat.length
@@ -145,15 +150,16 @@ export class ChatUnitIndex {
         }
     }
 
-    /** The S0 `rare` ranker: scored units best first (newer wins a tie), then every unscored unit, newest first. */
-    rank(queryText: string, share: number): { order: IndexedUnit[], terms: string[] } {
+    /** The S0 `rare` ranker: scored units best first (newer wins a tie), then every unscored unit, newest first. `scored` counts the leading units that scored above zero. */
+    rank(queryText: string, share: number): { order: IndexedUnit[], terms: string[], scored: number } {
         const terms = rareTerms(this.bm25, queryText, share)
         const s = this.bm25.scoreTokens(terms)
         const ids: number[] = []
         for (let i = 0; i < this.flat.length; i++) if (s[i] > 0) ids.push(i)
         ids.sort((a, b) => s[b] - s[a] || b - a)
+        const scored = ids.length
         const seen = new Set(ids)
         for (let i = this.flat.length - 1; i >= 0; i--) if (!seen.has(i)) ids.push(i)
-        return { order: ids.map((i) => this.flat[i]), terms }
+        return { order: ids.map((i) => this.flat[i]), terms, scored }
     }
 }

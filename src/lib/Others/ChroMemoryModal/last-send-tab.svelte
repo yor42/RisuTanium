@@ -62,6 +62,24 @@
     return flat.length > EXCERPT_CHARS ? flat.slice(0, EXCERPT_CHARS) + "…" : flat;
   }
 
+  function denseReasonText(reason: string | null): string {
+    switch (reason) {
+      case "timeout": return language.chroMemoryDenseReasonTimeout;
+      case "auth": return language.chroMemoryDenseReasonAuth;
+      case "local-model-on-phone": return language.chroMemoryDenseReasonPhoneLocal;
+      default: return language.chroMemoryDenseReasonError;
+    }
+  }
+
+  function denseText(d: NonNullable<ChroMemoryTrace["dense"]>): string {
+    switch (d.state) {
+      case "building": return language.chroMemoryDenseBuilding;
+      case "paused": return fillLang(language.chroMemoryDensePaused, { reason: denseReasonText(d.reason) });
+      case "off": return language.chroMemoryDenseOff;
+      default: return fillLang(language.chroMemoryDenseCount, { vectors: d.vectors, units: d.units });
+    }
+  }
+
   const fillPercent = $derived(trace && trace.budgetTokens > 0 ? Math.min(100, (trace.T / trace.budgetTokens) * 100) : 0);
 </script>
 
@@ -115,6 +133,9 @@
     {#if trace.countCapped}
       <div>{fillLang(language.chroMemoryCountCapped, { count: trace.countCap })}</div>
     {/if}
+    {#if trace.dense}
+      <div><span>{language.chroMemoryDense}:</span> <span class="text-textcolor">{denseText(trace.dense)}</span></div>
+    {/if}
   </div>
 
   {#if trace.items.length > 0}
@@ -124,7 +145,7 @@
         <li class="p-2 border rounded-md border-darkborderc">
           <div class="flex flex-wrap items-baseline justify-between gap-x-2">
             <span class="font-semibold text-textcolor">{item.source.chatId === FIRST_MESSAGE_ID ? language.chroMemoryItemFirst : `#${item.source.index}`}</span>
-            <span class="tabular-nums text-textcolor2">{fillLang(language.chroMemoryItemMeta, { tokens: item.tokens, rank: item.rank.lexical })}</span>
+            <span class="tabular-nums text-textcolor2">{fillLang(language.chroMemoryItemMeta, { tokens: item.tokens, rank: item.rank.fused ?? item.rank.lexical })}</span>
           </div>
           {#if excerpt}
             <div class="mt-1 text-textcolor2 wrap-break-word">{excerpt}</div>
