@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { characterIdProblem, isCharacterEntry, isUsableCharacterId } from './characterIds'
+import { remapMemberKeys } from '../process/groupMembers'
 
 /**
  * Makes the `characters` of a decoded tree ones the save can hold, before the
@@ -160,6 +161,11 @@ function remapReferences(
         const members = slot.characters
         if (Array.isArray(members) && changesIds(members, remaps)) {
             own(i).characters = mapIds(members, remaps)
+        }
+        const memberMap = slot.risutanium_members
+        const remappedMap = remapMemberKeys(memberMap, remaps)
+        if (remappedMap !== memberMap) {
+            own(i).risutanium_members = remappedMap
         }
         const chats = slot.chats
         if (!Array.isArray(chats)) {

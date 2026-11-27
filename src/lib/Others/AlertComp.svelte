@@ -29,6 +29,7 @@
     import { getFetchData } from 'src/ts/globalApi.svelte';
     import { alertStore, selectedCharID } from "src/ts/stores.svelte";
     import { tokenize } from "src/ts/tokenizer";
+    import { memberName } from "src/ts/process/groupMembers";
     import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
     import ModuleChatMenu from "../Setting/Pages/Module/ModuleChatMenu.svelte";
     import SelectCharGrid from "./SelectCharGrid.svelte";
@@ -48,6 +49,15 @@
     import { ownScheme } from '../UI/ownScheme.svelte';
 
     const uid = $props.id();
+
+    // The speaker of a message: the resolved name with the id in parentheses; a message with no saying shows as it always did.
+    function sayingLabel(saying: string | undefined): string | undefined {
+        if(!saying){
+            return saying
+        }
+        const owner = DBState.db.characters[$selectedCharID]
+        return `${memberName(DBState.db.characters, owner, saying)} (${saying})`
+    }
 
     // Severity per alert type: the edge colour and the shape of the mark. A wait is a notice that also carries the sweep.
     function severityOf(type: alertData['type']): PatternSeverity {
@@ -881,7 +891,7 @@
                         <dt>GenID</dt>
                         <dd>{$alertGenerationInfoStore.genInfo.generationId}</dd>
                         <dt>{language.alertComp.saying}</dt>
-                        <dd>{DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].saying}</dd>
+                        <dd>{sayingLabel(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].saying)}</dd>
                         <dt>{language.alertComp.size}</dt>
                         <dd>{JSON.stringify(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx]).length} {language.alertComp.bytes}</dd>
                         <dt>{language.alertComp.time}</dt>

@@ -3,7 +3,8 @@
     import { XIcon, TrashIcon, PencilIcon, BookOpenCheckIcon, BookLockIcon, ArrowRightIcon } from "@lucide/svelte";
     import Chat from "../ChatScreens/Chat.svelte";
     import { useCharImageLookups } from "src/ts/media/charImageLookups";
-    import { findCharacterbyId, getUserName, getUserIcon } from "src/ts/util";
+    import { getUserName, getUserIcon } from "src/ts/util";
+    import { liveMember, memberName } from "src/ts/process/groupMembers";
     import { createSimpleCharacter, bookmarkListOpen, DBState, selectedCharID, ScrollToMessageStore } from "src/ts/stores.svelte";
     import { language } from "src/lang";
     import { alertInput } from "src/ts/alert";
@@ -56,7 +57,7 @@
 
                 let speaker = null;
                 if (chara.type === 'group' && message.saying) {
-                    speaker = findCharacterbyId(message.saying);
+                    speaker = liveMember(DBState.db.characters, message.saying) ?? { name: memberName(DBState.db.characters, chara, message.saying) };
                 }
                 
                 return { ...message, speaker };

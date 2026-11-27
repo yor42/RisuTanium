@@ -503,3 +503,72 @@ describe('repairCharacterTree: a copy keeps every list that did not change (P3)'
         expect(live).toEqual(before)
     })
 })
+
+describe('repairCharacterTree: group member record keys follow the member remap (#283)', () => {
+    // The record is hand-built in the shape joinRecord writes: group.risutanium_members[chaId] = {name, slot 0..7}.
+    function groupOf(memberId: string): Entry {
+        return {
+            chaId: 'g', type: 'group', name: 'g', chats: [],
+            characters: [memberId], characterTalks: [1], characterActive: [true],
+            risutanium_members: { [memberId]: { name: 'Alice', slot: 3 } },
+        }
+    }
+
+    test('(T20, guard over hand-built data: no producer writes a record under an unusable id) boot and restore re-key a record whose member id is replaced', async () => {
+        for (const mode of ['boot', 'restore'] as const) {
+            const tree = { characters: [character('config'), groupOf('config')] }
+            const replacedIds = new Map<string, string>()
+            await repairCharacterTree(tree, mode, { replacedIds })
+            const fresh = tree.characters[0].chaId as string
+            expect(fresh).toMatch(/^[0-9a-f-]{36}$/)
+            const group = tree.characters[1] as Entry
+            expect(group.characters).toEqual([fresh])
+            expect(group.risutanium_members).toEqual({ [fresh]: { name: 'Alice', slot: 3 } })
+            expect(Object.hasOwn(group.risutanium_members as Entry, 'config')).toBe(false)
+        }
+    })
+
+    test('(T21a, regression reproducer) an export copy re-keys the record of a replaced reserved id and the page group and map stay as they were', async () => {
+        const live = { characters: [character('kv:foo'), groupOf('kv:foo')] as Entry[] }
+        const pageGroup = live.characters[1]
+        const pageMap = pageGroup.risutanium_members
+        const before = JSON.stringify(live)
+        const copy = { characters: live.characters }
+
+        await repairCharacterTree(copy, 'export', { reservedBlockNames: new Set(['kv:foo']) })
+
+        const fresh = copy.characters[0].chaId as string
+        expect(fresh).not.toBe('kv:foo')
+        const out = copy.characters[1] as Entry
+        expect(out.characters).toEqual([fresh])
+        expect(out.risutanium_members).toEqual({ [fresh]: { name: 'Alice', slot: 3 } })
+        expect(out).not.toBe(pageGroup)
+        expect(JSON.stringify(live)).toBe(before)
+        expect(pageGroup.risutanium_members).toBe(pageMap)
+        expect(Object.keys(pageMap as Entry)).toEqual(['kv:foo'])
+    })
+
+    test('(T21b, regression reproducer) followReplacedIds with a carried remap re-keys the record on a copy only', () => {
+        const live = { characters: [character('n1'), groupOf('kv:foo')] as Entry[] }
+        const pageGroup = live.characters[1]
+        const pageMap = pageGroup.risutanium_members
+        const before = JSON.stringify(live)
+        const tree = { characters: live.characters }
+
+        followReplacedIds(tree, new Map([['kv:foo', 'n1']]), () => false)
+
+        const out = tree.characters[1] as Entry
+        expect(out.characters).toEqual(['n1'])
+        expect(out.risutanium_members).toEqual({ n1: { name: 'Alice', slot: 3 } })
+        expect(JSON.stringify(live)).toBe(before)
+        expect(pageGroup.risutanium_members).toBe(pageMap)
+    })
+
+    test('(guard) a map with no key that changes stays the same object, and a group without a map gains none', async () => {
+        const map = { keep: { name: 'K', slot: 0 } }
+        const tree = { characters: [character('config'), { ...groupOf('keep'), risutanium_members: map }, { chaId: 'h', type: 'group', name: 'h', chats: [], characters: ['config'] }] as Entry[] }
+        await repairCharacterTree(tree, 'boot')
+        expect((tree.characters[1] as Entry).risutanium_members).toBe(map)
+        expect(Object.hasOwn(tree.characters[2] as Entry, 'risutanium_members')).toBe(false)
+    })
+})

@@ -12,6 +12,7 @@ import { getImageType } from "./media";
 import { CharEmotion, DBState, OpenRealmStore, selectedCharID } from "./stores.svelte";
 import { AppendableBuffer, changeChatTo, checkCharOrder, downloadFile, getFileSrc, pickedAssetLimitBytes, requiresFullEncoderReload } from "./globalApi.svelte";
 import { updateInlayScreen } from "./process/inlayScreen";
+import { memberName } from "./process/groupMembers";
 import { firstMessageOf } from "./process/firstMessage";
 import { ensureCurrentModulesOrAlert, ensureModulesOrAlert } from "./process/moduleEnsure";
 import { hasModuleStubs, unloadedModulesOf } from "./process/moduleRefList";
@@ -533,7 +534,7 @@ export async function exportChat(page:number){
             const paintYield = createPaintYield()
             let i = 0
             for(const v of chat.message){
-                const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
+                const name = v.saying ? memberName(db.characters, char, v.saying) : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
                 const parsed = await htmlChatParse(v.data)
                 chatContentHTML += `<div class="chat">
                     <h2>${escapeHtmlText(name)}</h2>
@@ -632,7 +633,7 @@ export async function exportChat(page:number){
             const paintYield = createPaintYield()
             let i = 0
             for(const v of chat.message){
-                const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
+                const name = v.saying ? memberName(db.characters, char, v.saying) : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
                 const parsed = await htmlChatParse(v.data)
                 chatContentHTML += `<tr>
                     <td>${escapeHtmlText(name)}</td>
@@ -674,7 +675,7 @@ export async function exportChat(page:number){
             
             let stringl = chat.message.map((v) => {
                 if(v.saying){
-                    return `--${findCharacterbyId(v.saying).name}\n${v.data}`
+                    return `--${memberName(db.characters, char, v.saying)}\n${v.data}`
                 }
                 else{
                     return `--${v.role === 'char' ? char.name : getUserName()}\n${v.data}`
