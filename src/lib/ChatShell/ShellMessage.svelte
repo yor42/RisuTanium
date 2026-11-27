@@ -99,6 +99,7 @@
     import MessageEditor from './MessageEditor.svelte'
     import TranslationEditor from './TranslationEditor.svelte'
     import MessageMeta from './MessageMeta.svelte'
+    import { codeBlockOf } from '../../ts/codeBlockTarget'
     import AlternativesRow from './AlternativesRow.svelte'
     import ReplyLoreUse from './ReplyLoreUse.svelte'
     import { chatSurface, isChatSurfaceInstalled } from '../ChatScreens/chatSurface.svelte'
@@ -584,7 +585,8 @@
         swipe.down(sample(event))
         clearTimeout(longPressTimer)
         const opener = bodyRoot ?? (event.currentTarget as HTMLElement)
-        longPressTimer = setTimeout(() => { if (swipe) { swipe.cancel(); clearTimeout(armTimer); armTimer = undefined; longPressRing = false; peek = null; openActions(opener, pointerStart) } }, 500)
+        // A hold on a code block belongs to the code block's own menu; the row's sheet stays on the More actions button and the rest of the row.
+        longPressTimer = codeBlockOf(target) !== null ? undefined : setTimeout(() => { if (swipe) { swipe.cancel(); clearTimeout(armTimer); armTimer = undefined; longPressRing = false; peek = null; openActions(opener, pointerStart) } }, 500)
         setTimeout(() => { if (longPressTimer) longPressRing = true }, 200)
     }
     // The body follows the finger one to one where a reply exists, pulls with resistance toward a new reply, and stops at a rubber band where nothing can happen.
@@ -832,7 +834,7 @@
 
 <!-- The article keeps the transcript semantics and is a tab stop and the focus target of message navigation, so its key and context-menu events and the captured clicks and submits of rich message content must reach it; the swipe gesture listens here too, so it starts on the message's own parts (SWIPE_START_PARTS) except on an interactive descendant, and the body moves. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} style:touch-action="pan-y" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={onPointerCancel} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
+<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} style:touch-action="pan-y" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={onPointerCancel} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (codeBlockOf(event.target) !== null) return; if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
     {#if disabled === true}<div data-part="chat-message-divider" data-kind="disabled"></div>{/if}
     <div data-part="chat-message-name-row">
         <div data-part="chat-message-meta">

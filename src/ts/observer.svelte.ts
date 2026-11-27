@@ -1,5 +1,6 @@
 import { globalFetch } from "./globalApi.svelte";
 import { copyPlainText } from "./chatCopy";
+import { codeBlockOf } from "./codeBlockTarget";
 import { isWellFormedBgm, parseBgmControl, type BgmControl } from "./bgmControl";
 import { connectedMessageRoots, messageRootOf, onMessageRootsChanged } from "./messageRootRegistry";
 
@@ -12,11 +13,7 @@ const FALLBACK_CODE_EXTENSION = 'txt';
 const BGM_HOLD_MS = 2000;
 
 function onCodeContextMenu(e:MouseEvent){
-    const target = e.target;
-    if(!(target instanceof Element)){
-        return;
-    }
-    const node = target.closest('[x-hl-lang]');
+    const node = codeBlockOf(e.target);
     const hlLang = node?.getAttribute('x-hl-lang');
     if(!node || !hlLang){
         return;
