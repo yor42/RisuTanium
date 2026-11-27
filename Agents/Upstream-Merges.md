@@ -572,3 +572,28 @@ No persisted shape, `.bin`, save or plugin data changes (`MC-175`).
 
 - None.
 - **Next merge:** `git log --no-merges 979bb8d27..upstream/main`. Move the suffix in `appSubVer` and `version.json` only when upstream bumps.
+
+## 2026-11-27 — merge of upstream/main `e81b12038`
+
+Merge commit: the commit that records upstream as merged, last on this branch. Parents: the port commits' head and `e81b12038`. Like the earlier merges it is `git merge -s ours`: its tree equals the tree of the commit before it. After this merge, `git rev-list --count HEAD..upstream/main` is 0.
+
+**Upstream range:** `979bb8d27..e81b12038`: 14 commits, 3 non-merge (`b980582e6`, `2501f8647`, `053f6243f`) and 11 merges. `e81b12038` is upstream's PR merge of #1259 "Record inlay creation timestamp". The other 10 merge upstream `main` into that feature branch and add no change of their own. The net diff `git diff 979bb8d27 upstream/main` touches four files only: `inlays.ts`, `inlays.test.ts`, `PlaygroundInlayExplorer.svelte`, `risuai.d.ts`. None of the three hashes was on `main` (`git log --grep` on the first 8 characters found nothing). Upstream did not bump its version (`package.json` is unchanged in the range), so the suffix stays; `parseToggleSyntax` is unchanged (`const [key, value, type, option] = line.split('=')`, #467 check). **Last upstream commit merged: `e81b12038`.**
+
+**Why.** The ticket asked for the port-then-`-s ours` flow (`MC-2976`, precedent `MC-2341`).
+
+### Disposition
+
+| Upstream commit | Disposition | Reason / where |
+|---|---|---|
+| `b980582e6` feat: Record inlay creation timestamp, `053f6243f` (`created` in `saveInlayedSignature`, plugin type) | TAKEN-ADAPTED | Ported by hand: the fork's writers are in `inlays.ts` over `inlayStore.ts`, not upstream's direct `setItem` calls. `created: Date.now()` is recorded in `postInlayAsset` (audio, video), `writeInlayImage` (so `createInlay` and every V3 and Lua image path), `saveInlayedSignature` and, fork-only, the Gemini audio write in `google.ts`. `InlayAsset.created?` and `InlayAssetForPlugin.created?` added. Copies and `.bin`/`.rtb` restores keep the stored value. |
+| `2501f8647` feat: Display inlay creation datetime in the explorer, `053f6243f` (default locale) | TAKEN-ADAPTED | Explorer shows `new Date(created).toLocaleString()` and moves size onto the type chip. The fork's "(unknown date)" is the localized key `playground.inlayUnknownDate` (all 7 locales) where upstream hardcodes English. The fork's localized Delete label is kept. |
+| `e81b12038` and the 10 branch merges | NO CHANGE OF THEIR OWN | The PR merge's first-parent diff is the three commits above. |
+
+### Persistence
+
+`created` is an optional additive field of the inlay record's `fields` map, so there is no migration and no format step (`MC-175`, `MC-774`). `.bin` export and import (`inlayBackupExport`, `inlayBackupCodec`, `inlayBackupImport`), `.rtb` (`rtb/inlayEntries`, `rtbRestoreCopy`) and the sweep copy `fields` verbatim. Guards: `inlayStore2RoundTrip` (one seeded inlay with `created`, one without, through Settings and start-up import), `inlayEntries` (`.rtb` meta with and without it) and `inlays.test.ts` (an inlay without it reads back unchanged). An upstream `.bin` inlay with `created` reaches the same `fields` path, and one without it reads as "(unknown date)".
+
+### Follow-ups
+
+- None.
+- **Next merge:** `git log --no-merges e81b12038..upstream/main`. Move the suffix in `appSubVer` and `version.json` only when upstream bumps.

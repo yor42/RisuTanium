@@ -676,7 +676,7 @@ describe('created timestamp', () => {
         expect(created).toBeLessThanOrEqual(after)
     })
 
-    test('compatibility guard: created survives set -> get and appears in the listing and in the plugin-facing read', async () => {
+    test('compatibility guard: created survives set -> get and appears in the listing and in getInlayAsset', async () => {
         await setInlayAsset('with-date', { created: 1700000000000, data: new Blob(['x']), ext: 'png', name: 'a.png', type: 'image' })
 
         expect(await getInlayAsset('with-date')).toMatchObject({ created: 1700000000000 })
