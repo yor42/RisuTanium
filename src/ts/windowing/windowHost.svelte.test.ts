@@ -564,6 +564,37 @@ describe('a segment whose top is not read mounts no rows', () => {
         view.stop()
     })
 
+    test('a segment read without layout mounts its rows when its root gains layout, with no other trigger', async () => {
+        // A list inside a hidden tab panel has no mounted row to start an observer from; the host must
+        // already watch the root, or nothing re-reads once the panel is shown.
+        const hidden = new Set<number>([0])
+        const view = mountList({ segments: [keys(100)], hidden })
+        await settle()
+        expect(view.keysInPage()).toEqual([])
+        vi.advanceTimersByTime(WIDEN_DELAY_MS)
+        runFrames()
+        await settle()
+        expect(view.keysInPage()).toEqual([])
+
+        hidden.delete(0)
+        const root = view.target.querySelector('[data-testid=root]') as HTMLElement
+        for (const observer of FakeResizeObserver.instances) {
+            if (observer.observed.has(root)) {
+                observer.report({ target: root })
+            }
+        }
+        await settle()
+        expect(view.keysInPage().length).toBeGreaterThan(0)
+        expect(view.keysInPage()[0]).toBe('k0')
+
+        // Rows mounted by that read are observed one frame later, as on any other read.
+        const row = view.target.querySelector('[data-window-key=k0]') as HTMLElement
+        runFrames()
+        await settle()
+        expect(FakeResizeObserver.instances.some((observer) => observer.observed.has(row))).toBe(true)
+        view.stop()
+    })
+
     test('a reveal into a segment that stays unmeasured still resolves and mounts the row', async () => {
         const view = mountList({ segments: [keys(100)], hidden: new Set([0]) })
         await settle()
