@@ -43,3 +43,5 @@ node node_modules/vitest/vitest.mjs run --config Agents/Tools/vitest.harness.con
 ```
 
 Run only that one file: a run of the whole `Agents/Tools/save-gen/` folder rewrites other goldens.
+
+These downloadable packs are separate from the bundled built-ins. The steps for adding a bundled built-in pack (docs sheets, the `themePackBundled.harness.ts` row, `builtins.ts`, the `BUILTIN_ROWS` data row) are in `docs/design/THEMING.md`, "Adding a built-in pack".

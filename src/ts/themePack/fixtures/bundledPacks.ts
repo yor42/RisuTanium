@@ -12,6 +12,26 @@ import { manifestText, validPackFiles, zipPack } from './packBuilder'
 // A path, not a URL object: a jsdom test environment replaces `URL`, and node:fs rejects its instances.
 const BUNDLED = join(dirname(fileURLToPath(import.meta.url)), '..', 'bundled')
 
+/** What each bundled archive carries, as data. A new bundled pack is one row here; the generic rows read it. */
+export interface BuiltinRow {
+    slug: string
+    id: string
+    modes: readonly ('light' | 'dark')[]
+    /** The areas whose sheet the archive carries. */
+    areas: readonly ThemeArea[]
+    /** Bundled files beyond the sheets (fonts, images). */
+    files: number
+    /** Resources the judged sheets hold. */
+    resources: number
+}
+
+export const BUILTIN_ROWS: readonly BuiltinRow[] = [
+    { slug: 'origin-navy', id: 'builtin:origin-navy', modes: ['dark'], areas: ['chat'], files: 0, resources: 0 },
+    { slug: 'banana-cocoa', id: 'builtin:banana-cocoa', modes: ['light'], areas: ['chat'], files: 0, resources: 0 },
+    { slug: 'scratch-white', id: 'builtin:scratch-white', modes: ['light'], areas: ['chat'], files: 0, resources: 0 },
+    { slug: 'office-sheet', id: 'builtin:office-sheet', modes: ['light'], areas: ['chat'], files: 0, resources: 0 },
+]
+
 /** The bundled archive's bytes. */
 export function builtinArchiveBytesForTests(slug: string): Uint8Array {
     return new Uint8Array(readFileSync(join(BUNDLED, `${slug}.risutheme`)))

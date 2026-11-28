@@ -1,7 +1,7 @@
 /**
  * Generator of the bundled built-in theme packs `src/ts/themePack/bundled/<slug>.risutheme` for Origin Navy, Banana Cocoa,
- * Scratch White and Office Sheet: each archive holds a manifest and exactly the built-in chat sheet of docs/design/chat/themes
- * (preprocessed to LF, as preprocessCss does), and nothing else. Built with the shared builder src/ts/themePack/fixtures/packBuilder.ts (fflate
+ * Scratch White and Office Sheet: each archive holds a manifest and, for each area its SPECS row names, the docs sheet of
+ * docs/design/<area>/themes (preprocessed to LF, as preprocessCss does), plus the fonts and extra files that row names. Built with the shared builder src/ts/themePack/fixtures/packBuilder.ts (fflate
  * zipSync, deflate level 9, a local-field DOS time so the bytes are the same in every time zone, fixed entry order).
  *
  * Writes only through `writeGoldenFile` (exclusive create, refused under any repository) and only when
@@ -27,13 +27,23 @@ interface BundledSpec {
     readonly slug: string
     readonly name: string
     readonly modes: readonly ('light' | 'dark')[]
+    /** The areas whose docs sheet (docs/design/<area>/themes/<slug>.css) the archive carries. */
+    readonly areas: readonly BundledArea[]
+    /** Manifest `fonts` entries, as data. */
+    readonly fonts?: readonly Record<string, unknown>[]
+    /** Extra archive entries (fonts, images) as repository-relative source paths keyed by archive path, written after the sheets. */
+    readonly files?: Readonly<Record<string, string>>
 }
 
+/** The area sheets in archive entry order. */
+const AREA_ORDER = ['chat', 'settings', 'studio', 'home'] as const
+type BundledArea = (typeof AREA_ORDER)[number]
+
 const SPECS: readonly BundledSpec[] = [
-    { slug: 'origin-navy', name: 'Origin Navy', modes: ['dark'] },
-    { slug: 'banana-cocoa', name: 'Banana Cocoa', modes: ['light'] },
-    { slug: 'scratch-white', name: 'Scratch White', modes: ['light'] },
-    { slug: 'office-sheet', name: 'Office Sheet', modes: ['light'] },
+    { slug: 'origin-navy', name: 'Origin Navy', modes: ['dark'], areas: ['chat'] },
+    { slug: 'banana-cocoa', name: 'Banana Cocoa', modes: ['light'], areas: ['chat'] },
+    { slug: 'scratch-white', name: 'Scratch White', modes: ['light'], areas: ['chat'] },
+    { slug: 'office-sheet', name: 'Office Sheet', modes: ['light'], areas: ['chat'] },
 ]
 
 /** The same input-stream preprocessing as preprocessCss in src/ts/themePack/index.ts, kept local so the harness does not load the validator. */
@@ -45,7 +55,7 @@ function sha256(bytes: Uint8Array): string {
     return createHash('sha256').update(bytes).digest('hex')
 }
 
-/** Entry order: manifest.json, chat.css. The sheet is the preprocessed docs sheet, so the working tree's CRLF never reaches the pack. */
+/** Entry order: manifest.json, the area sheets in AREA_ORDER, then the extra files. Each sheet is the preprocessed docs sheet, so the working tree's CRLF never reaches the pack. */
 function buildPack(spec: BundledSpec): Uint8Array {
     const manifest = {
         kind: 'risutheme',
@@ -56,15 +66,20 @@ function buildPack(spec: BundledSpec): Uint8Array {
         license: 'GPL-3.0',
         attribution: 'RisuTanium contributors',
         modes: spec.modes,
-        fonts: [],
+        fonts: spec.fonts ?? [],
     }
-    const sheet = preprocess(readFileSync(`${ROOT}docs/design/chat/themes/${spec.slug}.css`, 'utf8'))
-    expect(sheet.includes('\r'), `${spec.slug} still holds a CR`).toBe(false)
-    return zipPack({ 'manifest.json': `${JSON.stringify(manifest, null, 2)}\n`, 'chat.css': sheet })
+    const entries: Record<string, string | Uint8Array> = { 'manifest.json': `${JSON.stringify(manifest, null, 2)}\n` }
+    for (const area of AREA_ORDER.filter((a) => spec.areas.includes(a))) {
+        const sheet = preprocess(readFileSync(`${ROOT}docs/design/${area}/themes/${spec.slug}.css`, 'utf8'))
+        expect(sheet.includes('\r'), `${spec.slug} ${area} still holds a CR`).toBe(false)
+        entries[`${area}.css`] = sheet
+    }
+    for (const [archivePath, source] of Object.entries(spec.files ?? {})) entries[archivePath] = new Uint8Array(readFileSync(`${ROOT}${source}`))
+    return zipPack(entries)
 }
 
 describe.skipIf(!GENERATE)('bundled built-in theme pack generation (THEMEPACK_BUNDLED_GENERATE=1)', () => {
-    test('writes the four bundled .risutheme archives', () => {
+    test('writes one .risutheme archive per SPECS row', () => {
         const dir = goldenOutDir()
         for (const spec of SPECS) {
             const bytes = buildPack(spec)

@@ -1,0 +1,24 @@
+/* Settings' fixed base while a pack paints the Settings screens (H-7.3). The gate sets data-theme-pack-base and data-theme-pack-area="settings"
+   only while Settings is in COLOUR_READY_AREAS and its pack sheet is on; until then no rule here matches. The values are the
+   registry's reference scheme (docs/design/settings/theme-tokens.css), the colours the pack was judged against, so a role the
+   pack leaves unset resolves to a judged value whatever scheme the user runs. The role defaults in settings-roles.css sit at
+   zero specificity, so this block wins in any import order; SettingsShell still imports it last. A pack's own :root, in the
+   body, still wins. --settings-text-2 is the one role lifted above the reference scheme's raw secondary text (#64748b is
+   2:1 on the selected fill): it carries no pair, so the base itself keeps the secondary labels readable. */
+:root:where([data-theme-pack-base][data-theme-pack-area="settings"]) {
+    --settings-canvas: #282a36;
+    --settings-panel: #21222c;
+    --settings-raised: #374151;
+    --settings-selected: #44475a;
+    --settings-hover: #44475a;
+    --settings-focus: #44475a;
+    --settings-on-selected: #f8f8f2;
+    --settings-text: #f8f8f2;
+    --settings-text-2: #b8bfd0;
+    --settings-swatch: #f8f8f2;
+    --settings-swatch-2: #64748b;
+    --settings-border-strong: #6272a4;
+    --settings-border-subtle: #4b5563;
+    --settings-danger: #ff5555;
+    --settings-danger-fill: #ff5555;
+}

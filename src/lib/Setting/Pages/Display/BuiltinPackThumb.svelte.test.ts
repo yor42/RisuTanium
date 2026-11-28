@@ -27,7 +27,12 @@ afterEach(() => {
 })
 
 describe('built-in pack thumbnails', () => {
-    test.each(BUILTIN_PACKS.map((pack) => [pack.slug, pack] as const))('%s has a drawn thumbnail on its ground colour', (slug, pack) => {
+    // Every built-in carries a drawing (ThemePackRow T2b-10 refuses one without); this row pins the four shipped ones.
+    test('the four shipped built-ins stay drawn', () => {
+        for (const slug of ['origin-navy', 'banana-cocoa', 'scratch-white', 'office-sheet']) expect(hasBuiltinThumb(slug), slug).toBe(true)
+    })
+
+    test.each(BUILTIN_PACKS.filter((pack) => hasBuiltinThumb(pack.slug)).map((pack) => [pack.slug, pack] as const))('%s has a drawn thumbnail on its ground colour', (slug, pack) => {
         expect(hasBuiltinThumb(slug)).toBe(true)
         const svg = draw(slug)
         expect(svg.getAttribute('data-thumb')).toBe(slug)

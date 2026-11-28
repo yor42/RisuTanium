@@ -1,0 +1,18 @@
+/* Studio's fixed base while a pack paints the Studio screen (H-7.3). The gate sets data-theme-pack-base and data-theme-pack-area="studio"
+   only while Studio is in COLOUR_READY_AREAS and its pack sheet is on; until then no rule here matches. The values are the
+   registry's reference scheme (docs/design/studio/studio-tokens.css), the colours the pack was judged against, so a role the
+   pack leaves unset resolves to a judged value whatever scheme the user runs. The role defaults in studio-roles.css sit at
+   zero specificity, so this block wins in any import order; StudioScreen still imports it last. A pack's own :root, in the
+   body, still wins. --studio-fg-2 is the one role lifted above the reference scheme's raw secondary text (#64748b is
+   2:1 on the selected fill): it carries no pair, so the base itself keeps the secondary labels readable. */
+:root:where([data-theme-pack-base][data-theme-pack-area="studio"]) {
+  --studio-fg: #f8f8f2;
+  --studio-fg-2: #b8bfd0;
+  --studio-canvas: #282a36;
+  --studio-surface: #21222c;
+  --studio-surface-raised: #374151;
+  --studio-selected: #44475a;
+  --studio-edge: #6272a4;
+  --studio-edge-strong: #4b5563;
+  --studio-danger: #ff5555;
+}

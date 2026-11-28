@@ -167,7 +167,8 @@ describe('S2: the app shape tokens in the reserved and allowed name sets', () =>
     const STEPS = ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']
     const SHAPE = [...STEPS.map((step) => `--ui-radius-${step}`), '--ui-radius', '--ui-border-width']
     // |A_tok(area)| before S2; the ten shape names are the whole delta, and the --ui- namespace holds nothing else.
-    const SIZE_BEFORE = { chat: 207, studio: 310 }
+    // Studio's count includes its nine settable colour roles (--studio-fg .. --studio-danger): 310 + 9.
+    const SIZE_BEFORE = { chat: 207, studio: 319 }
 
     it('G9: T holds the radius and hairline names the scale now maps, and no --ui- name', () => {
         const mapped = ['--default-border-width', '--border-width-1', '--radius', ...STEPS.map((step) => `--radius-${step}`)]

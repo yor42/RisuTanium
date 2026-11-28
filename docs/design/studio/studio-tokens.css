@@ -323,6 +323,22 @@
 
   /* ---- ladder: scale factors ---- */
   --studio-scale-press: 0.96;
+
+  /* ---- ROLE colour: the colours the Studio markup reads (src/styles/studio-roles.css); each defaults to the scheme role of the same Tailwind name ---- */
+  --studio-fg: var(--risu-theme-textcolor); --studio-fg-2: var(--risu-theme-textcolor2);
+  --studio-canvas: var(--risu-theme-bgcolor); --studio-surface: var(--risu-theme-darkbg); --studio-surface-raised: var(--risu-theme-darkbutton);
+  --studio-selected: var(--risu-theme-selected); --studio-edge: var(--risu-theme-borderc); --studio-edge-strong: var(--risu-theme-darkborderc); --studio-danger: var(--risu-theme-draculared);
+
+  /* ---- the colour scheme (the app's nine names; the reference values a role is judged against, the upstream defaultColorScheme) ---- */
+  --risu-theme-bgcolor: #282a36;
+  --risu-theme-darkbg: #21222c;
+  --risu-theme-borderc: #6272a4;
+  --risu-theme-selected: #44475a;
+  --risu-theme-draculared: #ff5555;
+  --risu-theme-textcolor: #f8f8f2;
+  --risu-theme-textcolor2: #64748b;
+  --risu-theme-darkborderc: #4b5563;
+  --risu-theme-darkbutton: #374151;
 }
 html.rm, html.nexus-low-power { --studio-dur-fast: 0s; }
 html.rm { --studio-dur-quick: 0s; --studio-dur-base: 0s; }   /* M5: reduced motion removes the animation (0 s), it does not shorten it; a pack that sets --risu-animation-speed cannot bring it back */

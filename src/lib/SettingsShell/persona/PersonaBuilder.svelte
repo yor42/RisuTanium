@@ -165,7 +165,7 @@
         {#if step < STEPS}
             <button type="button" class="min-h-11 px-4 ml-auto rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover)" onclick={next}>{language.settingsShellPersonaBuilderNext}</button>
         {:else}
-            <button type="button" class="min-h-11 px-4 ml-auto rounded-md bg-(--settings-selected) text-(--settings-text)" onclick={onfinish}>{language.settingsShellPersonaBuilderCreate}</button>
+            <button type="button" class="min-h-11 px-4 ml-auto rounded-md bg-(--settings-selected) text-(--settings-on-selected)" onclick={onfinish}>{language.settingsShellPersonaBuilderCreate}</button>
         {/if}
     </div>
 </div>

@@ -545,7 +545,7 @@
                                 <span class="text-xs text-(--settings-text-2) truncate" data-part="settings-persona-usage">{countText(row.persona, active)}</span>
                             </span>
                             {#if active}
-                                <span class="ml-auto shrink-0 px-2 rounded-md bg-(--settings-selected) text-sm" data-part="settings-persona-active">{language.settingsShellPersonaActive}</span>
+                                <span class="ml-auto shrink-0 px-2 rounded-md bg-(--settings-selected) text-(--settings-on-selected) text-sm" data-part="settings-persona-active">{language.settingsShellPersonaActive}</span>
                             {/if}
                         </button>
                         <button

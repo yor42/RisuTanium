@@ -180,7 +180,7 @@
         {/if}
         {#if updateVersion}
             <span class="text-sm text-(--settings-text) px-2" data-part="settings-plugin-update-chip">{fillLang(language.pluginsPage.updateChip, { version: updateVersion })}</span>
-            <button type="button" class="px-3 min-h-11 rounded-md bg-(--settings-selected) text-(--settings-text)" data-part="settings-plugin-update" onclick={update}>{language.pluginsPage.updateAction}</button>
+            <button type="button" class="px-3 min-h-11 rounded-md bg-(--settings-selected) text-(--settings-on-selected)" data-part="settings-plugin-update" onclick={update}>{language.pluginsPage.updateAction}</button>
         {/if}
         <span class="grow"></span>
         {#if runnable && hasArgs}

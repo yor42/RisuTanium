@@ -6,9 +6,10 @@
  * source further down does not change it unless the reader is redeclared too. These are guards of the
  * helper itself and pass on any base.
  */
+import path from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { cr, parseConcrete } from 'src/ts/themePack/colour'
-import { CascadeModel, chatShellCssImports, classCandidates, compileAppStyles, compileRules, compositeHex, normaliseColours, withPackElement } from './cascadeModel'
+import { CascadeModel, chatShellCssImports, classCandidates, compileAppStyles, compileRules, compositeHex, normaliseColours, readRepoFile, withPackElement } from './cascadeModel'
 
 function mount(html: string): HTMLElement {
     document.body.innerHTML = html
@@ -284,5 +285,85 @@ describe('classCandidates paren syntax (#908)', () => {
         expect(fill).not.toBeNull()
         expect(text).not.toBeNull()
         expect(cr(text!, fill!)).toBeLessThan(4.5)
+    })
+})
+
+// H-7.3 order semantics of the role defaults and the area bases, run over the CSS imports each shell file really lists (read from its
+// source, in order). The role defaults sit at zero specificity (`:where(:root, [data-own-scheme])`), so a base block at `:root:where(...)`
+// wins whatever the import order; with no base attribute, or with another area's, the roles follow the user's scheme.
+describe('the area role bases (H-7.3)', () => {
+    const PIN = '#f8f8f2'
+    const AREAS = [
+        { area: 'home', file: 'src/lib/UI/Home/HomeShell.svelte', role: '--home-fg', canvasRole: '--home-canvas', canvasPin: '#282a36' },
+        { area: 'settings', file: 'src/lib/SettingsShell/SettingsShell.svelte', role: '--settings-text', canvasRole: '--settings-canvas', canvasPin: '#282a36' },
+        { area: 'studio', file: 'src/lib/Studio/StudioScreen.svelte', role: '--studio-fg', canvasRole: '--studio-canvas', canvasPin: '#282a36' },
+        { area: 'popups', file: 'src/App.svelte', role: '--overlay-fg', canvasRole: '--overlay-canvas', canvasPin: null },
+    ] as const
+    const BASED = AREAS.filter((a) => a.area !== 'popups')
+
+    /** The stylesheets a shell file imports for their side effect, as repo-relative paths in source order. */
+    const importsOf = (svelteFile: string): string[] => {
+        const dir = path.posix.dirname(svelteFile)
+        return [...readRepoFile(svelteFile).matchAll(/^\s*import\s+'([^']+\.css)';?\s*$/gm)].map((m) => path.posix.normalize(path.posix.join(dir, m[1])))
+    }
+    const modelOf = (files: readonly string[], packCss = ''): CascadeModel => new CascadeModel(compileRules([
+        ...files.map((file) => ({ name: file, css: readRepoFile(file) })),
+        { name: 'pack', css: packCss },
+    ]))
+    const mountP = (text = '#111111', canvas = '#eeeeee'): HTMLElement => {
+        const root = document.documentElement
+        root.style.setProperty('--risu-theme-textcolor', text)
+        root.style.setProperty('--risu-theme-bgcolor', canvas)
+        document.body.innerHTML = '<div class="home-root studio-root overlay-host"><p id="p"></p></div>'
+        return document.getElementById('p') as HTMLElement
+    }
+    const base = (area: string): void => {
+        document.documentElement.setAttribute('data-theme-pack-base', '')
+        document.documentElement.setAttribute('data-theme-pack-area', area)
+    }
+
+    afterEach(() => {
+        const root = document.documentElement
+        root.removeAttribute('data-theme-pack-base')
+        root.removeAttribute('data-theme-pack-area')
+        root.removeAttribute('style')
+    })
+
+    test.each(AREAS)('T2: $area roles follow the scheme with no base, and an own-scheme island follows its own scheme (compatibility guard: passes before and after)', ({ file, role }) => {
+        const p = mountP()
+        const files = importsOf(file)
+        expect(modelOf(files).custom(p, role)).toBe('#111111')
+        document.body.innerHTML = '<div data-own-scheme style="--risu-theme-textcolor:#222222"><p id="q"></p></div>'
+        expect(modelOf(files).custom(document.getElementById('q') as HTMLElement, role)).toBe('#222222')
+    })
+
+    test.each(BASED)('T3/T4: $area with the base and its area attribute is pinned under any scheme, by the real import order', ({ area, file, role, canvasRole, canvasPin }) => {
+        const files = importsOf(file)
+        base(area)
+        for (const [text, canvas] of [['#111111', '#eeeeee'], ['#abcdef', '#012345']]) {
+            const p = mountP(text, canvas)
+            expect(modelOf(files).custom(p, role), `${role} under ${text}`).toBe(PIN)
+            expect(modelOf(files).custom(p, canvasRole), `${canvasRole} under ${canvas}`).toBe(canvasPin)
+        }
+    })
+
+    test.each(BASED)('T1: $area base wins with the base stylesheet imported before the role defaults', ({ area, file, role }) => {
+        const files = importsOf(file)
+        const baseFile = files.find((f) => f.endsWith(`${area}-pack-base.css`))
+        expect(baseFile, `${area} imports its base`).toBeDefined()
+        base(area)
+        const reversed = [baseFile as string, ...files.filter((f) => f !== baseFile)]
+        expect(modelOf(reversed).custom(mountP(), role)).toBe(PIN)
+    })
+
+    test.each(BASED)('T5: $area base with another area attribute leaves the roles on the scheme (compatibility guard)', ({ file, role }) => {
+        const files = importsOf(file)
+        base('chat')
+        expect(modelOf(files).custom(mountP(), role)).toBe('#111111')
+    })
+
+    test.each(BASED)('$area: a pack :root declaration still beats the base', ({ area, file, role }) => {
+        base(area)
+        expect(modelOf(importsOf(file), `:root{${role}:#abcdef}`).custom(mountP(), role)).toBe('#abcdef')
     })
 })

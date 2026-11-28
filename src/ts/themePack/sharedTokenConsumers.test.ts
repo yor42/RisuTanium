@@ -24,6 +24,9 @@ const isTestFile = (rel: string): boolean => /\.test\.|test-helpers|testHost|(^|
 const AREA_DIRECTORY = /^src\/(lib\/ChatShell\/|lib\/ChatScreens\/|ts\/chatShell\/|lib\/Studio\/|ts\/studio\/)/
 const VALIDATOR_DIRECTORY = /^src\/ts\/themePack\//
 
+// A read is `var(--x)` or the Tailwind paren utility `bg-(--x)`; both resolve the token at paint time.
+const READ = /(?:var\(|-\()\s*(--[\w-]+)/g
+
 const files = walk(SRC).map((file) => ({ rel: relative(file), text: fs.readFileSync(file, 'utf8') })).filter((f) => !isTestFile(f.rel))
 const outside = files.filter((f) => !AREA_DIRECTORY.test(f.rel) && !VALIDATOR_DIRECTORY.test(f.rel))
 const tokens = new Set<string>([...allowedTokenNames('chat'), ...allowedTokenNames('studio')])
@@ -32,7 +35,7 @@ const tokens = new Set<string>([...allowedTokenNames('chat'), ...allowedTokenNam
 const derivedFrom: Record<string, Set<string>> = {}
 for (const f of files.filter((file) => file.rel.endsWith('.css'))) {
     for (const declaration of f.text.matchAll(/(--[\w-]+)\s*:([^;{}]*)/g)) {
-        for (const read of declaration[2].matchAll(/var\(\s*(--[\w-]+)/g)) {
+        for (const read of declaration[2].matchAll(READ)) {
             if (!tokens.has(read[1]) || declaration[1] === read[1]) continue
             derivedFrom[declaration[1]] ??= new Set()
             derivedFrom[declaration[1]].add(read[1])
@@ -46,7 +49,7 @@ const addConsumer = (token: string, rel: string): void => {
     if (!recomputed[token].includes(rel)) recomputed[token].push(rel)
 }
 for (const f of outside) {
-    for (const m of f.text.matchAll(/var\(\s*(--[\w-]+)/g)) {
+    for (const m of f.text.matchAll(READ)) {
         if (tokens.has(m[1])) addConsumer(m[1], f.rel)
         for (const token of derivedFrom[m[1]] ?? []) addConsumer(token, f.rel)
     }
@@ -70,6 +73,12 @@ describe('T0a-25: the outside readers of the tokens a stylesheet may set', () =>
         expect(SHARED_TOKEN_CONSUMERS['--dur-base-nominal']).toEqual(expect.arrayContaining(['src/lib/SideBars/Sidebar.svelte', 'src/lib/SettingsShell/SettingsShellPage.svelte']))
     })
 
+    it('T13: a reader that uses the Tailwind paren utility counts (the toast host reads --nexus-surface-flat that way)', () => {
+        expect(READ.test('class="bg-(--x-y)"')).toBe(true)
+        READ.lastIndex = 0
+        expect(SHARED_TOKEN_CONSUMERS['--nexus-surface-flat']).toEqual(expect.arrayContaining(['src/lib/Nexus/pattern/ToastHost.svelte']))
+    })
+
     it('the list names real tokens and real files', () => {
         for (const [name, list] of Object.entries(SHARED_TOKEN_CONSUMERS)) {
             expect(tokens.has(name), name).toBe(true)
@@ -79,7 +88,7 @@ describe('T0a-25: the outside readers of the tokens a stylesheet may set', () =>
     })
 
     it('no source outside the validator reads a --pack-* helper', () => {
-        const readers = files.filter((f) => !VALIDATOR_DIRECTORY.test(f.rel) && /var\(\s*--pack-/.test(f.text)).map((f) => f.rel)
+        const readers = files.filter((f) => !VALIDATOR_DIRECTORY.test(f.rel) && /(?:var\(|-\()\s*--pack-/.test(f.text)).map((f) => f.rel)
         expect(readers).toEqual([])
     })
 })
