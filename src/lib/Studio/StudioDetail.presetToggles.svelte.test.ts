@@ -57,7 +57,7 @@ vi.mock('src/ts/process/moduleRefList', () => ({
 vi.mock('src/ts/alertPrompts', () => ({ pageCovered: () => false }))
 vi.mock('src/ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))
 vi.mock('src/ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
-vi.mock('src/ts/alert', () => ({ alertError: vi.fn() }))
+vi.mock('src/ts/alert', () => ({ alertError: vi.fn(), alertConfirm: vi.fn(async () => true) }))
 vi.mock('src/lang', async () => {
     const helpers = await import('src/ts/studio/studioFixtures.test-helpers')
     const base = helpers.studioLanguageMock()
@@ -67,6 +67,7 @@ vi.mock('src/lang', async () => {
 
 import { resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { changeToPreset } from 'src/ts/storage/database.svelte'
+import { deletePresetById } from 'src/ts/studio/presetListActions'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWriteHook'
 import { assignPresetIds } from 'src/ts/storage/presetMeta'
@@ -532,6 +533,40 @@ describe('T9 the preview of a preset', () => {
         expect(part('studio-tg-preview-not-in-chat')?.textContent).toBe('studioTgPreviewNotInChat')
         expect(parts('studio-tg-preview-row').filter((row) => row.hasAttribute('data-current'))).toEqual([])
         expect(parts('studio-tg-preview-row').map((row) => row.dataset.key)).toEqual(['a', 'ch'])
+        expect(working()).toBe('a=Zero\n')
+    })
+})
+
+describe('L-a6 a preset deleted from the Manage presets sheet while its form is open', () => {
+    test('typing since the last write is dropped, the selection clears with the gone notice and no other preset changes', async () => {
+        await mountOn(presetToggles(1))
+        await showText()
+        const gone = idOf(1)
+        typeInText('b=One\nunsent=1')
+        expect(await deletePresetById(gone)).toEqual({ ok: true })
+        await settle()
+        expect(studioScreen.selectedOwnerKey).toBeNull()
+        expect(studioScreen.notice).toBe('studioRefusalPresetGone')
+        expect(part('studio-toggle-builder')).toBeNull()
+        expect(db.db.botPresets.map((preset) => preset.customPromptTemplateToggle)).toEqual(['a=Zero\n', 'c=Two\n'])
+        expect(working()).toBe('a=Zero\n')
+    })
+
+    test('a different preset whose index shifts keeps its form, and its next edit lands in it', async () => {
+        await mountOn(presetToggles(2))
+        await showText()
+        const pinned = idOf(2)
+        expect(await deletePresetById(idOf(1))).toEqual({ ok: true })
+        await settle()
+        expect(studioScreen.selectedPresetId).toBe(pinned)
+        expect(studioScreen.selectedOwnerKey).toBe('preset:1')
+        expect(part('studio-toggle-builder')).not.toBeNull()
+        // The builder follows the preset to its new row; its view may start again from the list.
+        if (!part('studio-toggle-textarea')) await showText()
+        typeInText('c=Two\nz=Z')
+        await settle()
+        expect(slot(1)).toBe('c=Two\nz=Z')
+        expect(slot(0)).toBe('a=Zero\n')
         expect(working()).toBe('a=Zero\n')
     })
 })

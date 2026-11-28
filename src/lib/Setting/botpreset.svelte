@@ -10,6 +10,7 @@
     import TextInput from "../UI/GUI/TextInput.svelte";
     import { prebuiltPresets } from "src/ts/process/templates/templates";
     import { freshPresetMeta, slotBadgeFor } from "src/ts/storage/presetMeta";
+    import { movePresetIndex } from "src/ts/storage/presetListOps";
     import { openRealmUpload } from "src/ts/characterCards";
     import PromptDiffModal from "../Others/PromptDiffModal.svelte";
     import { RISU_PRESET_DRAG_TYPE } from "src/ts/dragTypes";
@@ -83,26 +84,7 @@
     let secondPresetId = $state<number | null>(null);
 
     function movePreset(fromIndex: number, toIndex: number) {
-        if (fromIndex === toIndex) return;
-        if (fromIndex < 0 || toIndex < 0 || fromIndex >= DBState.db.botPresets.length || toIndex > DBState.db.botPresets.length) return;
-
-        let botPresets = [...DBState.db.botPresets];
-        const movedItem = botPresets.splice(fromIndex, 1)[0];
-        if (!movedItem) return;
-
-        const adjustedToIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
-        botPresets.splice(adjustedToIndex, 0, movedItem);
-
-        const currentId = DBState.db.botPresetsId;
-        if (currentId === fromIndex) {
-            DBState.db.botPresetsId = adjustedToIndex;
-        } else if (fromIndex < currentId && adjustedToIndex >= currentId) {
-            DBState.db.botPresetsId = currentId - 1;
-        } else if (fromIndex > currentId && adjustedToIndex <= currentId) {
-            DBState.db.botPresetsId = currentId + 1;
-        }
-
-        DBState.db.botPresets = botPresets;
+        movePresetIndex(DBState.db, fromIndex, toIndex);
     }
 
     function isPresetDrag(e: DragEvent) {

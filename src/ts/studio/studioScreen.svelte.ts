@@ -81,6 +81,8 @@ export const studioScreen = $state({
     searchOpen: false,
     historyOpen: false,
     restoreSheetOpen: false,
+    // The "Manage presets" sheet over the tree. UI state only: it holds no preset data.
+    presetSheetOpen: false,
     togglePreviewOpen: false,
     toggleEditorPageOpen: false,
     settingsReturn: null as number | null,
@@ -124,6 +126,7 @@ function resetVisitState(): void {
     studioScreen.searchOpen = false
     studioScreen.historyOpen = false
     studioScreen.restoreSheetOpen = false
+    studioScreen.presetSheetOpen = false
     studioScreen.togglePreviewOpen = false
     studioScreen.toggleEditorPageOpen = false
     studioScreen.settingsReturn = null
@@ -375,6 +378,11 @@ export function setStudioHistoryOpen(open: boolean): void {
 /** Opens or closes the restore sheet. It opens only while the History panel is open. */
 export function setStudioRestoreSheetOpen(open: boolean): void {
     studioScreen.restoreSheetOpen = open && studioScreen.historyOpen
+}
+
+/** Opens or closes the "Manage presets" sheet over the tree. */
+export function setStudioPresetSheetOpen(open: boolean): void {
+    studioScreen.presetSheetOpen = open
 }
 
 /**

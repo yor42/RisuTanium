@@ -558,3 +558,31 @@ describe('T9-TREE: the module list entry', () => {
         expect(document.querySelector('[data-part="studio-row-menu"]')).toBeNull()
     })
 })
+
+describe('the Manage presets entry', () => {
+    test('it is the first child of the Presets group, an action row that opens the sheet and selects nothing', () => {
+        openStudio(ownerTarget, null)
+        show(StudioTree)
+        click(row('g:presets'))
+        const ids = Array.from(document.querySelectorAll<HTMLElement>('[data-part="studio-row"]')).map((element) => element.dataset.rowId)
+        expect(ids.indexOf('a:presetList')).toBe(ids.indexOf('g:presets') + 1)
+        const entry = row('a:presetList')!
+        expect(entry.textContent).toContain('studioPresetListManage')
+        expect(entry.hasAttribute('aria-expanded')).toBe(false)
+        expect(entry.hasAttribute('aria-selected')).toBe(false)
+        const before = studioScreen.selectedOwnerKey
+        click(entry)
+        expect(studioScreen.presetSheetOpen).toBe(true)
+        expect(studioScreen.selectedOwnerKey).toBe(before)
+    })
+
+    test('the owners below it keep their own sizes: the set counts the entry', () => {
+        openStudio(ownerTarget, null)
+        show(StudioTree)
+        click(row('g:presets'))
+        expect(row('a:presetList')?.getAttribute('aria-posinset')).toBe('1')
+        const setSize = Number(row('a:presetList')?.getAttribute('aria-setsize'))
+        expect(row('o:preset:0')?.getAttribute('aria-posinset')).toBe('2')
+        expect(row('o:preset:0')?.getAttribute('aria-setsize')).toBe(String(setSize))
+    })
+})
