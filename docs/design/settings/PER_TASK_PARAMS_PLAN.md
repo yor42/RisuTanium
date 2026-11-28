@@ -36,7 +36,7 @@ Writers assign new `taskModes` and block objects inside the existing container t
 
 ### Stages
 - **S1a** steps 1-6 and the step 10 strip. Only `setAllTaskModes` writes, so no mix exists and the key never leaves the fork. Critical contracts: persisted preset shape, `.bin` translation, request resolution: opus-reviewer Gate 2.
-- **S1b** steps 7-9, warning strings (en + 7 locales by translator, localeParity, MC-058). Settled by MC-5094..5096 (N2, N4, N5). Merges before S2. opus-reviewer.
+- **S1b** steps 7-9 and 10b (preset files), warning strings (en + 7 locales by translator, localeParity, MC-058). Settled by MC-5094..5096 (N2, N4, N5). Merges before S2. opus-reviewer.
 - **S2** classic rows: one row per task ("Same as main" / "Own", `setTaskMode` with `copyIntoEmpty`); a task's editor while `own`; `overrides` while any is `own`; N7 text. 8 locales. Native Sonnet Gate 2.
 - **S3** #706 stage f: four mode rows replace `presetSepParamsEnabled`, writing through `setTaskMode` as one history step (modes, flag, copied block); `taskModes` is a sentinel for the generic container paths (never shown, never a `SetPath` target). Lane A routes the spec revision.
 
@@ -63,6 +63,9 @@ Base for every reproducer: `d98ee549c`, with the key a plain property inside the
 | T-R11 | A7 flag off and on, root and every slot | new-behaviour test (S1a; fails on base only because the fixture holds the key) | base `.bin` keeps `taskModes`, expected absent | export harness |
 | T-R13 | S1a: the classic checkbox and EasyPanel run call the helper (modes and flag change together; run keeps a mix) | new-behaviour test (S1a) | base writes the flag alone | component tests |
 | T-R12 | preset file and bundle strip | new-behaviour test (S1a; fails on base only because the fixture holds the key) | base output keeps the key | `downloadPreset` 'return', `buildPresetBundlePayload` |
+| T-R14 | S1b preset file (`downloadPreset` 'return', `.json`, `.risup`, Realm) and bundle entry with the flag on and a mix: copies for `same` tasks, no key; bundle entry equals the single export (N4, MC-5095) | reproducer (S1b) | base keeps the `same` tasks' dormant blocks, expected copies | `downloadPreset` 'return', `buildPresetBundlePayload` |
+| T-R15 | S1b flag-off record in a `.bin` and in a preset file: no copy, blocks byte-identical, key absent (N1, MC-5094) | guard (passes before and after apart from the strip) | n/a | export harness, `downloadPreset` |
+| T-R16 | S1b warning: a `same` task whose stored non-empty block equals the copy gives no entry; a differing block gives one; an unrepresentable main value (thinkingTokens null) gives one; cancel writes no file; the same entries appear for a preset-file export (N2, N5) | reproducer (S1b) | base shows no `taskParameters` entry | `binLeaveOut` plus the export and preset-export confirms |
 | T-C1 | A1 16 cells | guard | n/a | census 2 |
 | T-C2 | A9 | guard | n/a | mirror-made db |
 | T-C3 | I4 round trip | guard | n/a | `upstreamPresetMirror.ts` |
@@ -101,6 +104,6 @@ Settled by the maintainer (2026-11-28, MC-5094..MC-5096):
 
 **N7 draft (English only, for the maintainer when S2 is planned; the translator writes the locales).** Shown under the per-task rows while "per-model parameters" is on: "Per-model parameters are on: every task uses the values saved for its model, whichever mode it is set to. Choosing Own for a task turns this on for all of them." Wording is a proposal, not a decision.
 
-**Edits #706 stage f needs (lane A owns the spec revision):** `PRESET_SEPARATE_PARAMS_SPEC.md` line 9 scope: replace "`seperateParametersEnabled` and `seperateParameters`" with the four task modes (`seperateParameters.taskModes`) plus the container blocks and `overrides`; the flag is derived, not a row. Line 20 (setPreset seeding): the container moves whole, so `taskModes` travels with it; no new seeding. Container adapter and extraction guard S-a: skip `taskModes` as a block key, never a `SetPath` target, written only through `setTaskMode` as one history step with the flag and a copied block. Rows: four mode rows ("Same as main" / "Own") replace the flag row; import and export per purpose never carry `taskModes`. Line 84: MC-4043 and MC-4721 read as superseded by MC-5092. Stage f follows S1a (needs `taskParameterModes.ts`).
+**Edits #706 stage f needs (lane A owns the spec revision):** `PRESET_SEPARATE_PARAMS_SPEC.md` line 9 scope: replace "`seperateParametersEnabled` and `seperateParameters`" with the four task modes (`seperateParameters.taskModes`) plus the container blocks and `overrides`; the flag is derived, not a row. Line 20 (setPreset seeding): the container moves whole, so `taskModes` travels with it; no new seeding. Container adapter and extraction guard S-a: skip `taskModes` as a block key, never a `SetPath` target, written only through `setTaskMode` as one history step with the flag and a copied block. Rows: four mode rows ("Same as main" / "Own") replace the flag row; import and export per purpose never carry `taskModes`. Lines 84-85 (inherited list and 2026-11-28 answers): MC-4043 and MC-4721 read as superseded by MC-5092. Stage f follows S1a (needs `taskParameterModes.ts`).
 
 Other: the missing-block `TypeError` (U4) is a follow-up candidate.
