@@ -8,6 +8,8 @@
     import HomeJumpRow from './HomeJumpRow.svelte'
     import HomeLibrary from './HomeLibrary.svelte'
     import '../../../styles/home-tokens.css'
+    import '../../../styles/home-roles.css'
+    import '../../../styles/home-pack-base.css'
     import NexusNetworkBackground from '../../Nexus/network/NexusNetworkBackground.svelte'
     import { chatSurface } from '../../ChatScreens/chatSurface.svelte'
     import { coversPage } from 'src/ts/alertEscape'
