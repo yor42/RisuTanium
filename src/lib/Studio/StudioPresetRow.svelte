@@ -18,6 +18,8 @@
         folderId: string | undefined
         moveOpen: boolean
         slotOpen: boolean
+        selecting: boolean
+        selected: boolean
         first: boolean
         last: boolean
         onopen: () => void
@@ -26,6 +28,8 @@
         oncopy: () => void
         onrename: () => void
         onmoveopen: () => void
+        onselect: () => void
+        onexport: () => void
         onslotopen: () => void
         onslot: (slot: number | null) => void
         onup: () => void
@@ -38,7 +42,7 @@
         onrenamecancel: () => void
     }
 
-    let { id, active, slot, highlighted, menuOpen, renaming, renameText, busy, folders, folderId, moveOpen, slotOpen, first, last, onopen, onmenu, onuse, oncopy, onrename, onmoveopen, onslotopen, onslot, onup, ondown, ondropon, onmoveto, ondelete, onrenametext, onrenamesubmit, onrenamecancel }: Props = $props()
+    let { id, active, slot, highlighted, menuOpen, renaming, renameText, busy, folders, folderId, moveOpen, slotOpen, selecting, selected, first, last, onopen, onmenu, onuse, oncopy, onrename, onmoveopen, onselect, onexport, onslotopen, onslot, onup, ondown, ondropon, onmoveto, ondelete, onrenametext, onrenamesubmit, onrenamecancel }: Props = $props()
 
     const name = $derived(presetNameOf(id))
     const DRAG_TYPE = 'application/x-risu-studio-preset'
@@ -48,6 +52,11 @@
 
 <li data-part="studio-preset-row" data-preset-id={id} data-active={active ? 'true' : undefined} class="flex flex-col rounded-md border border-darkborderc" class:bg-selected={highlighted} ondragover={(event) => { if (event.dataTransfer?.types.includes(DRAG_TYPE)) event.preventDefault() }} ondrop={(event) => { const source = event.dataTransfer?.getData(DRAG_TYPE); if (source) { event.preventDefault(); ondropon(source) } }}>
     <div class="flex items-stretch">
+        {#if selecting}
+            <label class="flex min-h-11 min-w-11 cursor-pointer items-center justify-center">
+                <input type="checkbox" data-part="studio-preset-select" checked={selected} aria-label={name} onchange={onselect} />
+            </label>
+        {/if}
         <span data-part="studio-preset-drag" role="img" draggable="true" aria-label={language.studioPresetDragHandle(name)} class="hidden min-w-8 cursor-grab items-center justify-center text-textcolor2 [@media(pointer:fine)]:flex" ondragstart={(event) => { event.dataTransfer?.setData(DRAG_TYPE, id) }}>
             <GripVerticalIcon size={16} aria-hidden="true" />
         </span>
@@ -92,6 +101,7 @@
                 <button type="button" role="menuitem" data-part="studio-preset-up" class={itemClass} disabled={busy || first} onclick={onup}>{language.chatShellMoveUp}</button>
                 <button type="button" role="menuitem" data-part="studio-preset-down" class={itemClass} disabled={busy || last} onclick={ondown}>{language.chatShellMoveDown}</button>
                 <button type="button" role="menuitem" data-part="studio-preset-move" class={itemClass} disabled={busy} onclick={onmoveopen}>{language.studioPresetMoveToFolder}</button>
+                <button type="button" role="menuitem" data-part="studio-preset-export" class={itemClass} disabled={busy} onclick={onexport}>{language.export}</button>
                 <button type="button" role="menuitem" data-part="studio-preset-delete" class="{itemClass} text-draculared" disabled={busy} onclick={ondelete}>{language.remove}</button>
             {/if}
         </div>

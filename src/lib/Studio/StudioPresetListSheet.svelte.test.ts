@@ -19,10 +19,13 @@ const confirms = vi.hoisted(() => {
         ask: (message: string) => new Promise<boolean>((settle) => { pending.push({ message, settle }) }),
     }
 })
+const exportCalls = vi.hoisted(() => ({ single: vi.fn(), bundle: vi.fn(), pick: vi.fn() }))
 const history = vi.hoisted(() => ({
     editText: vi.fn((..._args: unknown[]) => ({ ok: true }) as { ok: boolean, reason?: string }),
     closeOpenStep: vi.fn(),
 }))
+
+vi.mock(import('src/ts/studio/presetListActions'), async (importOriginal) => ({ ...(await importOriginal()), exportPresetById: exportCalls.single, exportBundleByIds: exportCalls.bundle, importPresetsFromPicker: exportCalls.pick }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -587,5 +590,103 @@ describe('slots and reorder in the sheet (stage c)', () => {
         await toastHost.activate(toastHost.visible[0].id)
         await settle()
         expect(DBState.db.botPresets[1].folderId).toBeUndefined()
+    })
+})
+
+describe('export and import in the sheet (stage d)', () => {
+    const part = (target: HTMLElement, name: string) => target.querySelector<HTMLElement>(`[data-part="${name}"]`)
+    const ticks = (target: HTMLElement) => [...target.querySelectorAll<HTMLInputElement>('[data-part="studio-preset-select"]')]
+
+    beforeEach(() => {
+        resetToastHostForTests()
+        exportCalls.single.mockReset().mockResolvedValue({ ok: true })
+        exportCalls.bundle.mockReset().mockResolvedValue({ ok: true })
+        exportCalls.pick.mockReset().mockResolvedValue({ ok: true })
+    })
+
+    test('the row Export passes the id of that row', async () => {
+        installDb(['P0', 'P1', 'P2'], 0)
+        const target = await mountSheet()
+        await menuAction(target, 'P1', 'studio-preset-export')
+        expect(exportCalls.single).toHaveBeenCalledTimes(1)
+        expect(exportCalls.single).toHaveBeenCalledWith(idOf('P1'))
+    })
+
+    test('select mode shows a checkbox per row, and Export selected sends the ticked ids in list order', async () => {
+        installDb(['P0', 'P1', 'P2'], 0)
+        const target = await mountSheet()
+        expect(ticks(target).length).toBe(0)
+        await click(part(target, 'studio-preset-select-mode'))
+        expect(ticks(target).length).toBe(3)
+        expect((part(target, 'studio-preset-export-selected') as HTMLButtonElement).disabled).toBe(true)
+        await click(ticks(target)[2])
+        await click(ticks(target)[0])
+        await click(part(target, 'studio-preset-export-selected'))
+        expect(exportCalls.bundle).toHaveBeenCalledWith([idOf('P0'), idOf('P2')])
+        expect(ticks(target).length).toBe(0)
+    })
+
+    test('Select all ticks every row and a second press clears them; Cancel leaves select mode', async () => {
+        installDb(['P0', 'P1'], 0)
+        const target = await mountSheet()
+        await click(part(target, 'studio-preset-select-mode'))
+        await click(part(target, 'studio-preset-select-all'))
+        expect(ticks(target).every((box) => box.checked)).toBe(true)
+        await click(part(target, 'studio-preset-select-all'))
+        expect(ticks(target).some((box) => box.checked)).toBe(false)
+        await click(part(target, 'studio-preset-select-cancel'))
+        expect(ticks(target).length).toBe(0)
+    })
+
+    test('a selection survives a reorder: the ids exported are the ticked presets', async () => {
+        installDb(['P0', 'P1', 'P2'], 0)
+        const target = await mountSheet()
+        await click(part(target, 'studio-preset-select-mode'))
+        await click(ticks(target)[1])
+        const selectedId = idOf('P1')
+        DBState.db.botPresets = [DBState.db.botPresets[1], DBState.db.botPresets[0], DBState.db.botPresets[2]]
+        await settle()
+        await click(part(target, 'studio-preset-export-selected'))
+        expect(exportCalls.bundle).toHaveBeenCalledWith([selectedId])
+    })
+
+    test('a selected preset that was deleted is not exported', async () => {
+        installDb(['P0', 'P1', 'P2'], 0)
+        const target = await mountSheet()
+        await click(part(target, 'studio-preset-select-mode'))
+        await click(ticks(target)[1])
+        await click(ticks(target)[2])
+        const kept = idOf('P2')
+        DBState.db.botPresets = DBState.db.botPresets.filter((p) => p.name !== 'P1')
+        await settle()
+        await click(part(target, 'studio-preset-export-selected'))
+        expect(exportCalls.bundle).toHaveBeenCalledWith([kept])
+    })
+
+    test('a second tap while an export runs does nothing, and the guard releases after a failure', async () => {
+        installDb(['P0'], 0)
+        const target = await mountSheet()
+        let release: (value: { ok: true }) => void = () => {}
+        exportCalls.pick.mockReturnValueOnce(new Promise((resolve) => { release = resolve }))
+        await click(part(target, 'studio-preset-import'))
+        await click(part(target, 'studio-preset-import'))
+        expect(exportCalls.pick).toHaveBeenCalledTimes(1)
+        release({ ok: true })
+        await settle()
+        exportCalls.pick.mockRejectedValueOnce(new Error('boom'))
+        const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
+        await click(part(target, 'studio-preset-import'))
+        quiet.mockRestore()
+        await click(part(target, 'studio-preset-import'))
+        expect(exportCalls.pick).toHaveBeenCalledTimes(3)
+    })
+
+    test('the sheet offers Import and a classic button, and no Realm or compare control', async () => {
+        installDb(['P0'], 0)
+        const target = await mountSheet()
+        expect(part(target, 'studio-preset-import')).not.toBeNull()
+        expect(part(target, 'studio-preset-classic-button')).not.toBeNull()
+        const parts = [...target.querySelectorAll('[data-part]')].map((el) => el.getAttribute('data-part') ?? '')
+        expect(parts.filter((p) => /realm|compare|upload/i.test(p))).toEqual([])
     })
 })
