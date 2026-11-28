@@ -651,6 +651,7 @@
                 fixed={item.options?.fixed}
                 multiple={item.options?.multiple}
                 disableable={item.options?.disableable}
+                memoryKey={id}
                 bind:value={() => numberOf(path) ?? DISABLED_NUMBER, (value) => writeNumber(path, value, numberOf(path) === null)}
             />
         </div>
