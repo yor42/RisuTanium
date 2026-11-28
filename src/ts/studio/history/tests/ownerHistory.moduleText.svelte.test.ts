@@ -308,11 +308,27 @@ describe('C9: a module that is not the open one, a shared id or a stub is refuse
         expect(harness.replaced).toBe(0)
     })
 
-    test('two resident slots with one id: duplicate-module-id', async () => {
+    test('two resident slots with one id: the edit, undo and redo land on the first holder only', async () => {
         putModules(makeModule('M1', { customModuleToggle: 'a=A' }), makeModule('M1', { customModuleToggle: 'b=B' }))
+        await ready()
+        const second = slot(1)
+        const secondJson = JSON.stringify(second)
+        expect(edit('a=C')).toEqual({ ok: true })
+        expect(slot(0).customModuleToggle).toBe('a=C')
+        expect(harness.service.undo(M1)).toMatchObject({ ok: true })
+        expect(slot(0).customModuleToggle).toBe('a=A')
+        expect(harness.service.redo(M1)).toMatchObject({ ok: true })
+        expect(slot(0).customModuleToggle).toBe('a=C')
+        expect(slot(1)).toBe(second)
+        expect(JSON.stringify(second)).toBe(secondJson)
+        expect(harness.replaced).toBe(3)
+    })
+
+    test('a later copy is never the open module: its write is refused with nothing written', async () => {
+        putModules(makeModule('M1', { customModuleToggle: 'a=A' }), makeModule('M1', { customModuleToggle: 'b=B' }))
+        harness.openModule = null
         const before = JSON.stringify(DBState.db.modules)
-        expect(edit('a=C')).toEqual({ ok: false, reason: 'duplicate-module-id' })
-        expect(harness.service.undo(M1)).toEqual({ ok: false, reason: 'duplicate-module-id' })
+        expect(edit('a=C')).toEqual({ ok: false, reason: 'not-selected' })
         expect(JSON.stringify(DBState.db.modules)).toBe(before)
         expect(harness.replaced).toBe(0)
     })

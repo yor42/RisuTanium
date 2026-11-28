@@ -254,12 +254,14 @@ describe('module writes (copy-on-write)', () => {
         expect(next.lorebook).toEqual({})
     })
 
-    test('a stub and a shared id are refused by the module resolve', () => {
+    test('a stub is refused and a shared id resolves to its first holder by the module resolve', () => {
         const open = () => 'M'
         DBState.db.modules = [stubModule('M')] as unknown as typeof DBState.db.modules
         expect(resolveLiveTarget(moduleOwnerKey('M'), open)).toEqual({ ok: false, reason: 'gone' })
         DBState.db.modules = [moduleOf(), moduleOf()] as unknown as typeof DBState.db.modules
-        expect(resolveLiveTarget(moduleOwnerKey('M'), open)).toEqual({ ok: false, reason: 'duplicate-module-id' })
+        expect(resolveLiveTarget(moduleOwnerKey('M'), open)).toMatchObject({ ok: true, target: { index: 0 } })
+        DBState.db.modules = [stubModule('M'), moduleOf()] as unknown as typeof DBState.db.modules
+        expect(resolveLiveTarget(moduleOwnerKey('M'), open)).toEqual({ ok: false, reason: 'gone' })
         DBState.db.modules = [moduleOf()] as unknown as typeof DBState.db.modules
         expect(resolveLiveTarget(moduleOwnerKey('M'), open).ok).toBe(true)
     })

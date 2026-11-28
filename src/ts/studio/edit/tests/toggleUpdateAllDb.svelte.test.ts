@@ -300,14 +300,74 @@ describe('the reach (DB3)', () => {
         expect(ownersOf({ kind: 'module', moduleId: 'M2' })).toEqual(['character:c1', 'module:M2', 'module:M1'])
     })
 
-    test('a stub is not loaded; a loaded module sharing its id with a stub or another module is a shared id; both are never read', () => {
+    test('a stub is not loaded; the first holder of a shared id is an owner even when a later slot is a stub or a twin', () => {
         seed([moduleRow('M1'), stubModule('S1'), moduleRow('M3'), stubModule('M3'), moduleRow('M4'), moduleRow('M4')], [character('c1')], ['M1', 'S1', 'M3', 'M4'])
         const reach = readUpdateReach(CHARACTER, 'c1')
-        expect(reach.owners.map((owner) => owner.key)).toEqual(['character:c1', 'module:M1'])
-        expect(reasonsOf()).toEqual([['Module S1', 'notLoaded'], ['Module M3', 'sharedId'], ['Module M4', 'sharedId']])
+        expect(reach.owners.map((owner) => owner.key)).toEqual(['character:c1', 'module:M1', 'module:M3', 'module:M4'])
+        expect(reasonsOf()).toEqual([['Module S1', 'notLoaded']])
+    })
+
+    test('a stub first holder of a shared id is not loaded and never read, whatever follows it', () => {
+        seed([stubModule('M3'), moduleRow('M3')], [character('c1')], ['M3'])
+        expect(ownersOf()).toEqual(['character:c1'])
+        expect(reasonsOf()).toEqual([['Module M3', 'notLoaded']])
         const port = createUpdateDbPort()
         expect(port.read({ kind: 'module', moduleId: 'M3' }, 'lore/0/content')).toBe('gone')
         expect(port.write({ kind: 'module', moduleId: 'M3' }, [{ path: 'lore/0/content', value: 'x' }])).toBe(false)
+    })
+
+    test('the first holder of a shared id is reached and written; its twin is never touched', () => {
+        seed([moduleRow('X'), moduleRow('X')], [character('c1')], ['X'])
+        const twin = modulesOf()[1]
+        const twinJson = JSON.stringify(twin)
+        expect(ownersOf()).toEqual(['character:c1', 'module:X'])
+        const port = createUpdateDbPort()
+        expect(port.write({ kind: 'module', moduleId: 'X' }, [{ path: 'lore/0/content', value: 'changed' }])).toBe(true)
+        expect((modulesOf()[0] as unknown as { lorebook: { content: string }[] }).lorebook[0].content).toBe('changed')
+        expect(modulesOf()[1]).toBe(twin)
+        expect(JSON.stringify(twin)).toBe(twinJson)
+    })
+
+    test('a later copy that is active only through its namespace is unreached as a shared id and is never read or written', () => {
+        seed([moduleRow('X'), moduleRow('X', { namespace: 'ns' })], [character('c1')], [])
+        DBState.db.moduleIntergration = 'ns'
+        const reach = readUpdateReach(CHARACTER, 'c1')
+        expect(reach.owners.map((owner) => owner.key)).toEqual(['character:c1'])
+        expect(reach.unreached).toEqual([{ name: 'Module X', reason: 'sharedId' }])
+        const copy = modulesOf()[1]
+        const copyJson = JSON.stringify(copy)
+        const port = createUpdateDbPort()
+        expect(port.write({ kind: 'module', moduleId: 'X#1' }, [{ path: 'lore/0/content', value: 'x' }])).toBe(false)
+        expect(modulesOf()[1]).toBe(copy)
+        expect(JSON.stringify(copy)).toBe(copyJson)
+    })
+
+    test('the builder target is the first holder and a later copy is active through its namespace: the copy is reported as a shared id, not merged into the target', () => {
+        seed([moduleRow('X'), moduleRow('X', { namespace: 'ns' })], [character('c1')], [])
+        DBState.db.moduleIntergration = 'ns'
+        const reach = readUpdateReach({ kind: 'module', moduleId: 'X' }, 'c1')
+        expect(reach.owners.map((owner) => owner.key)).toEqual(['character:c1', 'module:X'])
+        expect(reach.unreached).toEqual([{ name: 'Module X', reason: 'sharedId' }])
+    })
+
+    test('the module that is the builder target and its own active node are one owner', () => {
+        seed([moduleRow('X'), moduleRow('X')], [character('c1')], ['X'])
+        const reach = readUpdateReach({ kind: 'module', moduleId: 'X' }, 'c1')
+        expect(reach.owners.map((owner) => owner.key)).toEqual(['character:c1', 'module:X'])
+        expect(reach.unreached).toEqual([])
+    })
+
+    test('collision edge: the row whose stored id is "X#1" after two rows of X is a first holder and an owner', () => {
+        seed([moduleRow('X'), moduleRow('X'), moduleRow('X#1')], [character('c1')], ['X', 'X#1'])
+        const reach = readUpdateReach({ kind: 'module', moduleId: 'X#1' }, 'c1')
+        expect(reach.owners.map((owner) => owner.key)).toEqual(['character:c1', 'module:X#1', 'module:X'])
+        expect(reach.unreached).toEqual([])
+        const port = createUpdateDbPort()
+        expect(port.write({ kind: 'module', moduleId: 'X#1' }, [{ path: 'lore/0/content', value: 'changed' }])).toBe(true)
+        const rows = modulesOf() as unknown as { id: string, lorebook: { content: string }[] }[]
+        expect(rows[2].lorebook[0].content).toBe('changed')
+        expect(rows[0].lorebook[0].content).toBe(BEFORE('m-X'))
+        expect(rows[1].lorebook[0].content).toBe(BEFORE('m-X'))
     })
 
     test('a private character is restricted and none of its text is read', () => {
@@ -338,15 +398,18 @@ describe('the reach (DB3)', () => {
         expect(reach.unreached.map((entry) => entry.reason)).toEqual(['notLoaded'])
     })
 
-    test('the reason of a stub toggle owner follows its own slots, not the enabled list: a lone stub is not loaded, a stub with another slot of its id is a shared id', () => {
+    test('the reason of a stub toggle owner follows its first holder, not the enabled list: a stub first holder is not loaded, a resident first holder is an owner', () => {
         const own: ToggleTarget = { kind: 'module', moduleId: 'S1' }
         seed([stubModule('S1')], [character('c1')], [])
         expect(reasonsOf(own).map((entry) => entry[1])).toEqual(['notLoaded'])
-        for (const slots of [[stubModule('S1'), moduleRow('S1')], [stubModule('S1'), stubModule('S1')], [moduleRow('S1'), stubModule('S1')]]) {
+        for (const slots of [[stubModule('S1'), moduleRow('S1')], [stubModule('S1'), stubModule('S1')]]) {
             seed(slots, [character('c1')], [])
-            expect(reasonsOf(own).map((entry) => entry[1])).toEqual(['sharedId'])
+            expect(reasonsOf(own).map((entry) => entry[1])).toEqual(['notLoaded'])
             expect(ownersOf(own)).toEqual(['character:c1'])
         }
+        seed([moduleRow('S1'), stubModule('S1')], [character('c1')], [])
+        expect(reasonsOf(own)).toEqual([])
+        expect(ownersOf(own)).toEqual(['character:c1', 'module:S1'])
     })
 
     test('a module regex pattern that runs macros is listed and never written', () => {

@@ -3,8 +3,8 @@
 
 import { language } from '../../../lang'
 import { DBState } from '../../stores.svelte'
-import { moduleRowOf } from '../assets/openModuleForm.svelte'
 import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
+import { firstModuleHolderIndex } from './assetSetters'
 import { characterFlagOf, type CharacterRiskyFixPath, type CharacterRiskyFlagPath } from './riskyFlags'
 
 /**
@@ -14,9 +14,10 @@ import { characterFlagOf, type CharacterRiskyFixPath, type CharacterRiskyFlagPat
 export function lowLevelAskName(owner: OwnerKey): string {
     const parsed = parseOwnerKey(owner)
     if (parsed === null || parsed.kind !== 'module') return language.modules
-    const row = moduleRowOf(DBState.db.modules, parsed.moduleId)
+    // The owner key carries the raw stored id, so the row is its first holder.
+    const index = firstModuleHolderIndex(DBState.db.modules, parsed.moduleId)
     // A stored name may be of another type; only a string is shown.
-    const name = row === null ? undefined : DBState.db.modules[row.index]?.name
+    const name = index === null ? undefined : DBState.db.modules[index]?.name
     return typeof name === 'string' && name.trim() !== '' ? name : language.modules
 }
 

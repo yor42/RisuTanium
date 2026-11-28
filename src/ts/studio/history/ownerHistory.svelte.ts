@@ -1278,7 +1278,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     function applyStudioWrite(owner: OwnerKey, intent: Intent): StudioResult {
         cancelWarm()
         releaseStaleJournals()
-        // A module or session owner that is not selected, shares its id, is a stub or is gone is refused before its
+        // A module or session owner that is not selected (a later copy of a shared id never is), is a stub or is gone is refused before its
         // lifecycle starts, so no slot, claim, load or save is made for it.
         const storedKey = parseStoredOwnerKey(owner)
         if (storedKey === null || storedKey.kind === 'module') {

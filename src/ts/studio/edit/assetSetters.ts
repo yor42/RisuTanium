@@ -386,6 +386,12 @@ export function moduleSlotsWithId(modules: readonly unknown[] | undefined, id: s
     return slots
 }
 
+// The slot of the first module holding `id` (stubs included), or null when no slot holds it. This is the slot the runtime and the store2 handle `id#0` pick, so Studio edits it and treats every later holder as read-only.
+export function firstModuleHolderIndex(modules: readonly unknown[] | undefined, id: string): number | null {
+    const holders = moduleSlotsWithId(modules, id)
+    return holders.length === 0 ? null : holders[0].index
+}
+
 // ---------------------------------------------------------------- retained paths
 
 export type RetainedPairs = [string, string][]

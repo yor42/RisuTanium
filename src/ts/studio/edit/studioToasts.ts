@@ -15,7 +15,6 @@ export function refusalText(reason: StudioRefusal): string {
         case 'loading': return language.studioRefusalLoading
         case 'not-selected': return language.studioRefusalNotSelected
         case 'duplicate-id': return language.studioRefusalDuplicateId
-        case 'duplicate-module-id': return language.studioAssetModuleSharedId
         case 'group':
         case 'restricted': return language.studioRefusalRestricted
         case 'gone': return language.studioRefusalGone
@@ -132,7 +131,6 @@ export function refusalTextOf(result: { reason: StudioRefusal; name?: string; li
         switch (result.reason) {
             case 'not-selected': return language.studioRefusalModuleNotSelected
             case 'gone': return language.studioRefusalModuleGone
-            case 'duplicate-module-id': return language.studioRefusalModuleSharedId
         }
     }
     if (result.reason === 'asset-file-unchecked' && result.name !== undefined) {

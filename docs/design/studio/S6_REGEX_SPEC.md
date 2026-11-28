@@ -99,10 +99,10 @@ MC-4030: "studio is planned to replace classic. so studio must be feature comple
 | Private character: classic shows "not allowed" | `CharConfigPanel.svelte:307, :423-427` | no form (`studioSetters.ts:54-57`); parity holds | — |
 | Module `regex ??= []` on opening the submenu | `ModuleMenu.svelte:238` | not an operation: viewing writes nothing (E3); the first insert creates the list (E8) | — |
 
-**Interim link-outs (MC-4050; follow-ups #713 and #714):**
+**Interim link-outs (MC-4050; follow-up #713; #714 removed the shared-id one):**
 - field edits on an element that is not a well-formed entry (§2.1). Classic shows an object such as `{comment: 'x', in: 123, out: '', type: 'editinput'}` and fails on `null`, a string or an object without `comment` (`RegexData.svelte:96` reads `value.comment.length`). Repair in Studio is #713;
 - a list that is not JSON-safe (§2.1 M-c), #713;
-- a module whose id another slot shares: Studio refuses writes for every module kind (`studioSetters.ts:84-86`), while classic edits the module it opened. Studio-wide, #714.
+- a module whose id another slot shares: Studio edits the first holder; a later copy is read-only until it is given its own id (#714).
 
 **Outside S6 (other kinds on the same classic screens):** character `backgroundHTML` and trigger scripts (`CharConfigPanel.svelte:807-808, :840-841`), module `backgroundEmbedding` (`ModuleMenu.svelte:308`; Studio's module `html` kind, `ownerModel.ts:344`). They are per-item fields (MC-4043), so their parity belongs to the stages of those kinds.
 
@@ -164,7 +164,7 @@ These come from upstream data through the unchecked classic or upstream import (
 **Placement (SLICE1 §2-3; details are design defaults).**
 - Selecting an owner's `regex` kind shows its **list view**; selecting an item shows its **item editor**.
 - On phones (< 600 px) these are full-screen detail screens; Back goes item → list → tree.
-- For a live owner they replace the read-only text and note (`StudioDetail.svelte:214-215, :258-259`). A private, stub or shared-id owner keeps today's notices (`StudioDetail.svelte:193-201, :232-234`).
+- For a live owner they replace the read-only text and note (`StudioDetail.svelte:214-215, :258-259`). A private, stub or later-copy owner keeps today's notices (`StudioDetail.svelte:193-201, :232-234`).
 - "Open in classic editor" stays.
 
 **List view.**
@@ -320,7 +320,7 @@ Each requires opus-reviewer at Gate 2 for the stages that change it (§8).
 | F3 | An edit drops an unknown key, writes `undefined`, or adds a key by viewing. | E1-E3. | T2-T4 |
 | F4 | An active-preset edit lands in the slot, or an inactive one in the working copy. | The live copy is decided by id per write. | T17 |
 | F5 | A preset write mutates the shared array or is not marked. | E7; mark test. | T18, T19 |
-| F6 | A module write reaches a stub or a shared id, or mutates the live module in place. | Module guards; `writeLiveModule`. | T15 |
+| F6 | A module write reaches a stub or a later copy of a shared id (the first holder is written, #714), or mutates the live module in place. | Module guards; `writeLiveModule`. | T15 |
 | F7 | A flag toggle corrupts an action token. | E6. | T6 |
 | F8 | The stage select overwrites an unknown stage. | E5. | T5 |
 | F9 | A deleted entry is lost or misplaced within the cap. | S7 §4.4; §4. | T11, T39 |
@@ -393,7 +393,7 @@ Try it never writes to a chat, a store, the emotion state or the database.
 **Hosts.** The list toolbar of the character, module and preset hosts (every preset, MC-3993). Import is guarded twice.
 - **Before the picker opens,** the owner must be editable. Each of these shows the existing refusal, and no picker opens:
   - a private character;
-  - a stub or shared-id module;
+  - a stub or a later copy of a shared id;
   - a group;
   - a gone preset;
   - a list that is not JSON-safe (M-c).
@@ -461,7 +461,7 @@ RRs stay **DESIGNED, NOT DEMONSTRATED** until their pre-fix run is recorded. The
 | T8 | Move (4 kinds) and undo. Duplicate inserts a deep-equal copy after the original. Editing the copy leaves the original unchanged. Undo of the duplicate, then of an edit of the original, both apply. | NB | n/a | 5 entries, one with an unknown key | S6b |
 | T11 | Delete, 3 edits, then restore from the deleted list: the entry returns at its index (clamped), deep-equal. For a **module** owner in `ready`, the record is saved and reloaded through `readOwner` between the delete and the restore, and the history and the deleted item survive. Same for a character. Preset until the page closes. | NB | n/a | unknown key; real store | S6b |
 | T14a/b/c | Composed `.bin` round trip (`SaveLocalBackup`, `LoadLocalBackup`) of lists that were (a) edited, (b) added to, deleted from, moved and duplicated, (c) imported into through the service. They come back deep-equal, with unknown keys and unreadable elements. | CG (classic data passes before and after; the property is that Studio output stays upstream-shaped) | n/a | harness like `drive/tests/presetMetaBinRoundTrip.svelte.test.ts` | a: S6a, b: S6b, c: S6e |
-| T15 | Module: a write is refused for a stub, a shared id, or a module that is not open. A landed write makes a new module object and array, leaves the old object unchanged, and notifies the ack. | NB | n/a | 2 modules sharing an id, a stub | S6a |
+| T15 | Module: a write is refused for a stub, a later copy of a shared id, or a module that is not open; a shared id writes its first holder. A landed write makes a new module object and array, leaves the old object unchanged, and notifies the ack. | NB | n/a | 2 modules sharing an id, a stub | S6a |
 | T17 | Preset: an active edit changes only `db.presetRegex`; an inactive edit changes only its slot; both survive switching away and back. The session holder row is accepted (R6). | NB | n/a | presetFixture | S6c |
 | T18 | An active preset edit assigns a fresh array; the shared slot is unchanged until `saveCurrentPreset`. | NB | n/a | slot sharing the array, as `setPreset` leaves it | S6c |
 | T19 | Preset writes count marks through the real hook; a refused write marks nothing. | NB | n/a | as `presetWriteMark.svelte.test.ts` | S6c |
@@ -475,7 +475,7 @@ RRs stay **DESIGNED, NOT DEMONSTRATED** until their pre-fix run is recorded. The
 | T27 | File-level refusals (not JSON, `type` not `'regex'`, `data` not an array) give a notice and no write, step or mark. An empty `data` shows the empty notice. | NB | n/a | byte fixtures | S6e |
 | T28 | A file with 2 good and 2 bad entries (`null` at 2, `in: 123` at 4) is refused whole (MC-3997). The notice reads "2", with the position-2 "not an object" reason, localised. | NB | n/a | that file | S6e |
 | T29 | Import is one step. Undo removes exactly the imported entries; after an outside edit of a non-imported row, undo still applies. After an outside move of an imported row, undo writes nothing (`precondition`). Redo re-adds. | NB | n/a | 3-entry file | S6e |
-| T30 | Import guards: no picker for a private character, a stub or shared-id module, or a list that is not JSON-safe. An owner gone or deselected while the picker is open, or history still `loading` when it resolves, gets the existing refusal and no write. | NB | n/a | delayed picker mock | S6e |
+| T30 | Import guards: no picker for a private character, a stub or a later copy of a shared id, or a list that is not JSON-safe. An owner gone or deselected while the picker is open, or history still `loading` when it resolves, gets the existing refusal and no write. | NB | n/a | delayed picker mock | S6e |
 | T31 | Import into the active preset assigns a fresh `db.presetRegex`; into an inactive preset, a fresh slot array. Marks as T19. | NB | n/a | presetFixture | S6e |
 | T32 | Export passes the live copy: the active preset's working list, not its lagging slot; an inactive slot; a module's `regex ?? []`. A `false` from `downloadFile` shows nothing. | NB | n/a | a preset whose copy and slot differ | S6e |
 | T34 | Restore to when Studio opened (MC-4051), cases (a)-(i) and (h') listed below the table. | NB | n/a | 3 entries; 300 × 20 KB for (f); one 25 KB entry for (g), (h), (h') | S6a, (d) S6b |
@@ -583,7 +583,7 @@ Each PR carries all 8 locales for its keys (MC-058).
 | MC-3999 | Try it does not run an entry whose stage never runs; it says so | §6.2, T22 |
 | MC-4030 | Studio replaces classic, so it must be feature complete; a link out is interim only, with a follow-up | §1.1 |
 | MC-4043 | App-wide settings beside a form stay in Settings; per-item fields must be in Studio | §1.1 |
-| MC-4050 | The three link-outs (unreadable entry, non-JSON-safe list, shared-id module) are interim; follow-ups #713, #714 | §1.1, §2.1 |
+| MC-4050 | The three link-outs (unreadable entry, non-JSON-safe list, shared-id module) were interim; #713 and #714 removed the first and last | §1.1, §2.1 |
 | MC-4051 | Restore-to-open covers an entry list for this session only; no whole list in the stored restore point; after a reload, steps and deleted items remain | §4, §5.3, T34, M43 |
 | MC-4052 | The store keep walk is verified and filed separately as #716, not fixed in #684 | §4, §5.5, K10 |
 

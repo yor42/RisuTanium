@@ -57,6 +57,8 @@ vi.mock('../../ts/process/moduleRefList', () => ({
 vi.mock('../../ts/process/moduleLoader', () => ({ loadModuleStubsOf: async () => ({ kind: 'refused' }), loadModule: async () => null }))
 vi.mock('../../ts/process/moduleLorebookRepair', () => ({ lorebookRepairNeed: () => 'none' }))
 vi.mock('../../ts/alert', () => ({ alertMd: vi.fn() }))
+// The re-id helper's module reaches the conversion and alert code, which this suite does not exercise; the re-id has its own suites.
+vi.mock('../../ts/process/moduleListOps', () => ({ giveModuleCopyOwnId: vi.fn() }))
 vi.mock('../../lang', async () => {
     const helpers = await import('../../ts/studio/studioFixtures.test-helpers')
     const base = helpers.studioLanguageMock()
@@ -378,24 +380,47 @@ describe('4d text of the chat, a resident module and a preset', () => {
         expect(values).toContain('MODULE-OUT')
     })
 
-    test('a module whose id is shared keeps the read-only regex text', () => {
+    // Regression reproducer: the first holder of a shared id used to keep the read-only regex text.
+    test('the first holder of a shared id opens the regex editor and shows no banner', async () => {
         setFull(makeInput({
             character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
             modules: [
                 residentModule('res', { regex: [{ comment: 'r', in: 'MODULE-IN', out: 'MODULE-OUT', type: 'editdisplay' }] }),
-                residentModule('res', { regex: [{ comment: 'r', in: 'MODULE-IN', out: 'MODULE-OUT', type: 'editdisplay' }] }),
+                residentModule('res', { regex: [{ comment: 'r', in: 'LATER-IN', out: 'LATER-OUT', type: 'editdisplay' }] }),
             ],
         }))
         openStudio(ownerItem('module', 'res', 'regex', 'res/regex:0'), null)
         show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
+        expect(part('studio-regex-form')).not.toBeNull()
+        expect(part('studio-module-shared-copy')).toBeNull()
+        expect(Array.from(document.querySelectorAll('textarea')).map((field) => field.value)).toContain('MODULE-IN')
+    })
+
+    test('a later copy of a shared id keeps the read-only regex text and shows the banner with its own id button', async () => {
+        setFull(makeInput({
+            character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
+            modules: [
+                residentModule('res', { regex: [{ comment: 'r', in: 'MODULE-IN', out: 'MODULE-OUT', type: 'editdisplay' }] }),
+                residentModule('res', { regex: [{ comment: 'r', in: 'LATER-IN', out: 'LATER-OUT', type: 'editdisplay' }] }),
+            ],
+        }))
+        openStudio(ownerItem('module', 'res#1', 'regex', 'res#1/regex:0'), null)
+        show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
         flushSync()
         expect(part('studio-regex-form')).toBeNull()
-        expect(part('studio-detail-text')?.textContent).toContain('MODULE-IN')
+        expect(part('studio-detail-text')?.textContent).toContain('LATER-IN')
+        expect(part('studio-module-shared-copy')?.textContent).toBe('studioModuleSharedIdCopy')
+        expect(part('studio-module-own-id')).not.toBeNull()
     })
 
     // T30(e), a compatibility guard: the import button exists only in the mounted editable pane. The control step proves the
     // button is reachable in this harness, so the three absences are not a harness gap.
-    test('T30e the regex import button is on an unshared loaded module and on none of a private character, a stub and a shared id', async () => {
+    test('T30e the regex import button is on a loaded module and the first holder of a shared id, and on none of a private character, a stub and a later copy', async () => {
         const regex = [{ comment: 'r', in: 'MODULE-IN', out: 'MODULE-OUT', type: 'editdisplay' }]
         const settleDetail = async (): Promise<void> => {
             await vi.dynamicImportSettled()
@@ -435,6 +460,12 @@ describe('4d text of the chat, a resident module and a preset', () => {
             modules: [residentModule('res', { regex }), residentModule('res', { regex })],
         }))
         openStudio({ owner: { type: 'module', id: 'res' }, kind: 'regex', from: 'chat' }, null)
+        show()
+        await settleDetail()
+        expect(part('studio-regex-import')).not.toBeNull()
+        await remount()
+
+        openStudio({ owner: { type: 'module', id: 'res#1' }, kind: 'regex', from: 'chat' }, null)
         show()
         await settleDetail()
         expect(part('studio-regex-import')).toBeNull()

@@ -349,7 +349,7 @@ export const kindRowId = (ownerKey: string, kind: StudioKind): string => `k:${ow
 /**
  * The history owner of the selected owner: the bound character, the chat of its current page, or the module the
  * detail has selected. A module is the owner only while the selection is that module's own row (the first row of its
- * id) and the detail publishes the id, which it does not while the module is unloaded or another module shares it.
+ * id) and the detail publishes the id, which it does not while the module is unloaded or is a later copy of a shared id.
  * Null for every other selection (presets, plugins, another character, an unpublished module) and for no selection. Whether that chat has a
  * unique id is checked where the history is read.
  */
@@ -487,7 +487,7 @@ export function openStudioModuleList(revealKey: string | null = null): void {
  * after any push of `row`, because the owner is looked up in it. False when `model` has no owner for the row, in which
  * case nothing changes.
  */
-export function openStudioModuleOwner(model: OwnerModel, row: { id: string }, kind: StudioKind): boolean {
+export function openStudioModuleOwner(model: OwnerModel, row: { id: string }, kind: StudioKind | null): boolean {
     // The first row holding an id keeps it; a later row with the same id gets a row-suffixed owner id (see the owner model).
     const used = new Set<string>()
     let ownerId: string | null = null

@@ -31,11 +31,11 @@
         // The module's stored id and the place of its slot in the module list.
         moduleId: string
         slotIndex: number
-        // A module whose id another row shares: the values of the given slot only, no control writes.
-        readOnlyShared?: boolean
+        // A later copy of a shared id: the values of the given slot only, no control writes.
+        readOnlyCopy?: boolean
     }
 
-    let { section, moduleId, slotIndex, readOnlyShared = false }: Props = $props()
+    let { section, moduleId, slotIndex, readOnlyCopy = false }: Props = $props()
 
     const owner = moduleOwnerKey(untrack(() => moduleId))
     const NAME: TextPath = 'moduleName'
@@ -49,23 +49,23 @@
     $effect(() => {
         if (service) {
             untrack(() => {
-                if (readOnlyShared) return
+                if (readOnlyCopy) return
                 beginOwnerVisit(owner)
                 beginModuleAck(moduleId)
             })
-        } else if (!readOnlyShared) {
+        } else if (!readOnlyCopy) {
             ensureStudioHistory()
         }
     })
 
-    // The shared view reads the given slot only: a search by id would pick the first holder, which can be another row.
+    // The later-copy view reads the given slot only: a search by id would pick the first holder, which is another row.
     const live = $derived.by((): RisuModule | undefined => {
         const modules = DBState.db.modules ?? []
         const at = modules[slotIndex]
-        const found = at && at.id === moduleId ? at : readOnlyShared ? undefined : modules.find((row) => row?.id === moduleId)
+        const found = at && at.id === moduleId ? at : readOnlyCopy ? undefined : modules.find((row) => row?.id === moduleId)
         return found && !isModuleStub(found) ? found : undefined
     })
-    const view = $derived(service && !readOnlyShared ? service.view(owner) : null)
+    const view = $derived(service && !readOnlyCopy ? service.view(owner) : null)
     const editable = $derived(view?.editable === true && live !== undefined)
 
     const nameRead = $derived(readStored(live?.name, 'text'))
@@ -194,7 +194,7 @@
     onDestroy(() => {
         destroyed = true
         for (const ask of [...asks]) ask.cancel()
-        if (readOnlyShared) return
+        if (readOnlyCopy) return
         const closing = service
         queueMicrotask(() => {
             try {
@@ -291,9 +291,8 @@
 
 {#if live}
     {#if section === 'advanced'}
-        <section data-part="studio-module-advanced-form" class="mx-auto flex w-full max-w-3xl flex-col gap-3" aria-busy={editable || readOnlyShared ? undefined : 'true'}>
-            {#if readOnlyShared}
-                <p role="status" data-part="studio-module-shared" class="rounded-md border border-darkborderc p-2 text-sm text-textcolor2">{language.studioRefusalModuleSharedId}</p>
+        <section data-part="studio-module-advanced-form" class="mx-auto flex w-full max-w-3xl flex-col gap-3" aria-busy={editable || readOnlyCopy ? undefined : 'true'}>
+            {#if readOnlyCopy}
                 <dl data-part="studio-module-shared-values" class="flex flex-col gap-2">
                     <div><dt class="font-bold">{language.name}</dt><dd data-part="studio-module-shared-name" class="break-words">{nameRead.text}</dd></div>
                     <div><dt class="font-bold">{language.description}</dt><dd data-part="studio-module-shared-description" class="whitespace-pre-wrap break-words">{descriptionRead.text}</dd></div>
@@ -377,9 +376,8 @@
             {/if}
         </section>
     {:else}
-        <section data-part="studio-module-html-form" class="mx-auto flex w-full max-w-3xl flex-col gap-2" aria-busy={editable || readOnlyShared ? undefined : 'true'}>
-            {#if readOnlyShared}
-                <p role="status" data-part="studio-module-shared" class="rounded-md border border-darkborderc p-2 text-sm text-textcolor2">{language.studioRefusalModuleSharedId}</p>
+        <section data-part="studio-module-html-form" class="mx-auto flex w-full max-w-3xl flex-col gap-2" aria-busy={editable || readOnlyCopy ? undefined : 'true'}>
+            {#if readOnlyCopy}
                 <p class="font-bold">{language.backgroundHTML}</p>
                 <pre data-part="studio-module-shared-background" class="whitespace-pre-wrap break-words rounded-md border border-darkborderc bg-darkbg p-3 font-sans">{backgroundRead.text}</pre>
                 {@render foreignNote(backgroundRead.foreign)}

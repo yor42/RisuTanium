@@ -453,7 +453,7 @@ describe('the history owner of the selection', () => {
             expect(selectedHistoryOwner()).toBeNull()
         })
 
-        test('is not the owner while the detail publishes no id, which a shared id does, or once the detail is closed', () => {
+        test('is not the owner while the detail publishes no id, which a later copy of a shared id does, or once the detail is closed', () => {
             openOn('module:res')
             publishOpenModuleId(null)
             expect(selectedHistoryOwner()).toBeNull()

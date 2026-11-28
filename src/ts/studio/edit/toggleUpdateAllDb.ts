@@ -4,7 +4,8 @@
 //
 // Invariants:
 // - A character is an owner only when `resolveLiveTarget` accepts it (selected, one holder, not a group, not private,
-//   not archived); a module only when exactly one slot holds its id and that slot is not a stub.
+//   not archived); a module only when its slot is the first holder of its id and that slot is not a stub. A later copy
+//   of a shared id is unreached.
 // - The live module object is never mutated: a write assigns a new object to its slot.
 // - A landed character write marks the character once; a landed module write marks `modules` and arms `settle`.
 import { markDbWrite } from '../../storage/characterSaveMarks'
@@ -18,7 +19,8 @@ import { primeStudioModuleSlots, studioModuleSlotReplaced } from '../history/stu
 import { readOwnerModel } from '../ownerSource.svelte'
 import type { ToggleTarget } from '../toggleBuilder.svelte'
 import { writeOpFor, type Unreached, type UpdatePort, type UpdateReach, type UseOwner, type UseOwnerRef } from '../toggleUpdateAll'
-import { moduleSlotsWithId } from './assetSetters'
+import { moduleRowOf, type ModuleRowRef } from '../assets/openModuleForm.svelte'
+import { firstModuleHolderIndex } from './assetSetters'
 import { applyCharacterWrites, buildWrittenModule, isModuleTarget, resolveLiveTarget, writeLiveModule, type SetterRefusal } from './studioSetters'
 
 function unreachedReason(refusal: SetterRefusal): Unreached['reason'] {
@@ -34,7 +36,7 @@ function characterNameOf(chaId: string): string {
 
 /**
  * The owners an update of this toggle owner's renames reads: the bound character when a Studio write may address it,
- * the toggle owner module, and every active module that is resident and has a unique id. Every other owner is named
+ * the toggle owner module, and every active module that is resident and is the first holder of its id. Every other owner is named
  * in `unreached` with the reason, and none of its text is read.
  */
 export function readUpdateReach(target: ToggleTarget, chaId: string): UpdateReach {
@@ -63,23 +65,29 @@ export function readUpdateReach(target: ToggleTarget, chaId: string): UpdateReac
         unreached.push({ name: characterNameOf(chaId), reason: unreachedReason(character.reason) })
     }
 
-    const seen = new Set<string>()
-    const addModule = (id: string, name: string, stubNode: boolean) => {
-        if (seen.has(id)) {
+    // Keyed by slot index: a target and its own active node are one slot, and a later copy is its own slot.
+    const seen = new Set<number>()
+    const addModule = (row: ModuleRowRef | null, name: string, stubNode: boolean) => {
+        if (row === null || seen.has(row.index)) {
             return
         }
-        seen.add(id)
+        seen.add(row.index)
         if (stubNode) {
             unreached.push({ name, reason: 'notLoaded' })
             return
         }
-        const slots = moduleSlotsWithId(DBState.db.modules, id)
-        // A slot count other than one covers a shared id and a row-suffixed owner id; a stub slot is the `writeLiveModule` refusal.
-        if (slots.length !== 1 || isModuleStub(slots[0].module)) {
+        const slot = DBState.db.modules[row.index]
+        // A later copy of a shared id stays unreached; only the first holder is an owner, and it is the slot `writeLiveModule` writes.
+        if (row.index !== firstModuleHolderIndex(DBState.db.modules, row.id)) {
             unreached.push({ name, reason: 'sharedId' })
             return
         }
-        const live = slots[0].module as Parameters<typeof buildWrittenModule>[0]
+        if (isModuleStub(slot)) {
+            unreached.push({ name, reason: 'notLoaded' })
+            return
+        }
+        const id = row.id
+        const live = slot as Parameters<typeof buildWrittenModule>[0]
         owners.push({
             ref: { kind: 'module', moduleId: id },
             key: moduleOwnerKey(id),
@@ -92,13 +100,14 @@ export function readUpdateReach(target: ToggleTarget, chaId: string): UpdateReac
         })
     }
     if (target.kind === 'module') {
-        const ownSlots = moduleSlotsWithId(DBState.db.modules, target.moduleId)
-        const own = ownSlots[0]?.module as { name?: string } | undefined
-        // A lone stub slot is a module that is not loaded, as it is for an active node.
-        addModule(target.moduleId, own?.name ?? target.moduleId, ownSlots.length === 1 && isModuleStub(own))
+        // The builder target carries the raw id, so its row is the first holder of that id.
+        const firstIndex = firstModuleHolderIndex(DBState.db.modules, target.moduleId)
+        const own = firstIndex === null ? undefined : DBState.db.modules[firstIndex] as { name?: string } | undefined
+        addModule(firstIndex === null ? null : { id: target.moduleId, index: firstIndex }, own?.name ?? target.moduleId, isModuleStub(own))
     }
     for (const node of model.modules) {
-        addModule(node.id, node.name, node.stub)
+        // A node id is an owner id (`id` or `id#row`), resolved by the row rule.
+        addModule(moduleRowOf(DBState.db.modules, node.id), node.name, node.stub)
     }
     if (owners.some((owner) => owner.ref.kind === 'module')) {
         void primeStudioModuleSlots()

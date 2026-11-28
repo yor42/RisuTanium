@@ -405,15 +405,26 @@ describe('resolveLiveTarget: the module branch', () => {
         expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))).toEqual({ ok: false, reason: 'gone' })
     })
 
-    test('a shared id refuses even when one holder is a stub, and a lone stub is gone; no stub body key is read', () => {
+    test('a shared id resolves to its first holder; a stub first holder and a lone stub are gone; no stub body key is read', () => {
         const reads: string[] = []
         putModules({ id: 'M1' }, watchBodyKeys(stubModule('M1'), reads))
-        expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))).toEqual({ ok: false, reason: 'duplicate-module-id' })
-        putModules({ id: 'M1' }, { id: 'M1' })
-        expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))).toEqual({ ok: false, reason: 'duplicate-module-id' })
+        const stubSecond = resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))
+        expect(stubSecond.ok && isModuleTarget(stubSecond.target) && stubSecond.target.index).toBe(0)
+        putModules({ id: 'M1', name: 'first' }, { id: 'M1', name: 'second' })
+        const shared = resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))
+        expect(shared.ok && isModuleTarget(shared.target) && shared.target.index).toBe(0)
+        expect(shared.ok && isModuleTarget(shared.target) && shared.target.module.name).toBe('first')
+        putModules(watchBodyKeys(stubModule('M1'), reads), { id: 'M1' })
+        expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))).toEqual({ ok: false, reason: 'gone' })
         putModules(watchBodyKeys(stubModule('M1'), reads))
         expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))).toEqual({ ok: false, reason: 'gone' })
         expect(reads).toEqual([])
+    })
+
+    test('a later copy is never published, so its owner is not selected', () => {
+        putModules({ id: 'M1' }, { id: 'M1' })
+        expect(resolveLiveTarget(moduleOwnerKey('M1'), open(null))).toEqual({ ok: false, reason: 'not-selected' })
+        expect(resolveLiveTarget(moduleOwnerKey('M1#1'), open('M1'))).toEqual({ ok: false, reason: 'not-selected' })
     })
 })
 
@@ -546,7 +557,27 @@ describe('the asset reader and the asset owner writes', () => {
         expect(Object.hasOwn(live, ASSET_FOLDER_KEY)).toBe(true)
     })
 
-    test('writeLiveModule assigns the slot once and refuses a stub or a shared id', () => {
+    test('writeLiveModule writes only the first holder of a shared id and refuses a stub first holder', () => {
+        const first = { id: 'M', name: 'first' } as unknown as RisuModule
+        const second = { id: 'M', name: 'second' } as unknown as RisuModule
+        DBState.db.modules = [first, second]
+        expect(writeLiveModule('M', (module) => ({ ...module, name: 'renamed' }))).toBe(true)
+        expect(DBState.db.modules[0].name).toBe('renamed')
+        expect(DBState.db.modules[1]).toBe(second)
+        expect(second.name).toBe('second')
+
+        DBState.db.modules = [{ id: 'M', name: 'a' }, stubModule('M')] as unknown as typeof DBState.db.modules
+        expect(writeLiveModule('M', (module) => ({ ...module, name: 'x' }))).toBe(true)
+        expect(DBState.db.modules[0].name).toBe('x')
+
+        const resident = { id: 'M', name: 'late' }
+        DBState.db.modules = [stubModule('M'), resident] as unknown as typeof DBState.db.modules
+        expect(writeLiveModule('M', (module) => ({ ...module, name: 'x' }))).toBe(false)
+        expect(DBState.db.modules[1]).toBe(resident)
+        expect(resident.name).toBe('late')
+    })
+
+    test('writeLiveModule assigns the slot once and refuses a lone stub or a missing id', () => {
         const live = { id: 'M', name: 'M', assets: rows() } as unknown as RisuModule
         DBState.db.modules = [live]
         const list = DBState.db.modules
@@ -555,8 +586,6 @@ describe('the asset reader and the asset owner writes', () => {
         expect(DBState.db.modules[0].name).toBe('renamed')
         expect(DBState.db.modules[0]).not.toBe(live)
 
-        DBState.db.modules = [{ id: 'M', name: 'a' }, stubModule('M')] as unknown as typeof DBState.db.modules
-        expect(writeLiveModule('M', (module) => ({ ...module, name: 'x' }))).toBe(false)
         DBState.db.modules = [stubModule('M')] as unknown as typeof DBState.db.modules
         expect(writeLiveModule('M', (module) => ({ ...module, name: 'x' }))).toBe(false)
         DBState.db.modules = [] as unknown as typeof DBState.db.modules

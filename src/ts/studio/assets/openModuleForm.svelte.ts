@@ -14,14 +14,15 @@ let withdrawnNow: string | null = null
 let counter = 0
 let current = 0
 
-/** The raw id of the selected module, or null when none is selected, it is not loaded or private, or its id is shared by several modules. */
+/** The raw id of the selected module, or null when none is selected, it is not loaded or private, or it is a later copy of an id several modules share. */
 export function openStudioModuleId(): string | null {
     return published
 }
 
 /**
  * Sets the published id and returns the token of this publish. The detail publishes the selected module's id, or null
- * while the id is shared; its teardown clears with the token it was given.
+ * while a later copy of a shared id is selected (only the first holder is published); its teardown clears with the
+ * token it was given.
  */
 export function publishOpenModuleId(id: string | null): number {
     counter += 1

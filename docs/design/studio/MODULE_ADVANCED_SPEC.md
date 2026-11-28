@@ -59,7 +59,7 @@ Each of them is edited in Studio whatever its stored state: present and typed, a
 - Fields Studio never writes: `cjs`, `mcp`, `icon`, `risutanium_asset_folders` and `risutanium_asset_retained`. Every Studio write keeps them, because the module write makes a shallow copy of the whole object (`studioSetters.ts:577`). T5-KEYS pins this. None of them is a ModuleMenu field.
 - No per-field search entries and no `field=` deep links (no owner has them yet).
 
-**MCP modules are editable** in these forms (MC-1639). **A module whose id another row shares is read-only, with a reason** (MC-1639, `studioRefusalModuleSharedId`). That is an error state of the data, not a parity gap: classic edits only the first holder of an id.
+**MCP modules are editable** in these forms (MC-1639). **Of a shared id, the first holder is editable; a later copy is read-only with a reason** (MC-1639 as amended by #714, `studioModuleSharedIdCopy`). The later copy offers "Give this copy its own ID" (`studioModuleOwnId`), which gives that one row a new id; the first module keeps its id and no reference is rewritten. Classic edits only the first holder of an id.
 
 ### 1.2 Inventory
 
@@ -115,19 +115,19 @@ The `lowLevelAble` coupling is the trigger editor's reading of the flag. It belo
 One component, `StudioModuleAdvancedForm.svelte`, has a `section: 'advanced' | 'html'` prop, as `StudioAdvancedForm` does. Its props are the primitives `moduleId` and `slotIndex`, as `StudioModuleAssetForm` gets them (`StudioDetail.svelte:253-257`).
 
 **Live module (F8).** The form never keeps the module object it mounted with:
-- **Editable mode:** it reads the module on every render through a derived lookup over `DBState.db.modules`, by id at the given slot. When the slot no longer holds that id, it searches by id. The id is unique in this mode (the mount condition requires `!moduleIdShared`), so the search finds the one holder or none.
-- **Shared view (`readOnlyShared`, G5):** it reads **only** the slot `moduleRowOf` gave (`StudioDetail.svelte:61-63`). When that slot no longer holds the id, it shows no values. It never searches by id, because two or more rows hold the id and a search would pick the first holder, which can be another row.
+- **Editable mode:** it reads the module on every render through a derived lookup over `DBState.db.modules`, by id at the given slot. When the slot no longer holds that id, it searches by id. This mode shows the first holder of the id (the mount condition requires `!moduleLaterCopy`), so the search finds that holder or none.
+- **Later-copy view (`readOnlyCopy`, G5):** it reads **only** the slot `moduleRowOf` gave (`StudioDetail.svelte:61-63`). When that slot no longer holds the id, it shows no values. It never searches by id, because two or more rows hold the id and a search would pick the first holder, which can be another row.
 - A Studio write replaces the slot object (`studioSetters.ts:678-681`). A form that held the mounted object would show stale values after its own first write.
 
 **Mount conditions in `StudioDetail` (E6):**
-- `moduleAdvancedFormLive = openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'advanced'`
-- `moduleHtmlFormLive = openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'html'`
+- `moduleAdvancedFormLive = openableModuleId !== null && !moduleLaterCopy && kindNode?.kind === 'advanced'`
+- `moduleHtmlFormLive = openableModuleId !== null && !moduleLaterCopy && kindNode?.kind === 'html'`
 
 These are the same condition as the module toggle builder (`StudioDetail.svelte:116`). The form mounts on the **kind**, not the item, so it also mounts while the html kind has no item. Each form shows the module status chip (`currentModuleAck()`) and is keyed by `ownerKey`.
 
 **Shared view:**
-- `moduleAdvancedShared` and `moduleHtmlShared` are the same conditions with `moduleIdShared` true.
-- They mount the same component with `readOnlyShared`. It shows the values as plain text with the switches disabled, plus the status line `studioRefusalModuleSharedId`.
+- `moduleAdvancedCopy` and `moduleHtmlCopy` are the same conditions with `moduleLaterCopy` true.
+- They mount the same component with `readOnlyCopy`. It shows the values as plain text with the switches disabled, plus the status line `studioModuleSharedIdCopy` and the button `studioModuleOwnId`. Only a later copy of a shared id mounts this way; the first holder is editable.
 - No write path is offered.
 
 **Suppressed while either form or either shared view is mounted, as `toggleBuilderLive` suppresses them today:**
@@ -183,7 +183,7 @@ The wording names the module (section 5).
 | History loading, or another page holds the owner | The form is read-only (`readonly`, `aria-busy`), as S1 does (`StudioAdvancedForm.svelte:77-78, 176`). |
 | Stub (not loaded) | No form. Today's not-loaded or loading line (`StudioDetail.svelte:196-201`). The model gives a stub no kinds (`ownerModel.ts:331`). |
 | Load refused | "Not loaded" stays. The classic link reads `studioOpenModules`: an error-state link, follow-up #709 (section 1.3). |
-| Shared id | The read-only view and `studioRefusalModuleSharedId` (section 2.1). |
+| Shared id | The first holder is editable. A later copy gets the read-only view, `studioModuleSharedIdCopy` and the button `studioModuleOwnId` (section 2.1). |
 | **A value stored absent or in another type (MC-4030)** | The field is **editable**. It shows the value as the engine reads it, with the note `studioModAdvValueForeign(stored)` when the stored value is of another type. See section 2.5. |
 | Write refused at write time | The control goes back to the live value. The section's refusal line shows `refusalTextOf(result, owner)`, as in S1 (`StudioAdvancedForm.svelte:110-120, 213-215`). |
 | Low-level confirm pending | The switch shows the engine reading from before the press and the sheet is open (section 3.5). |
@@ -571,7 +571,7 @@ Anything else refuses the record whole, as today.
 
 ## 5. en.ts keys (English only)
 
-**Existing keys reused:** `name`, `description`, `namespace`, `hideChatIcon`, `lowLevelAccess`, `backgroundHTML`, help `namespace`, help `lowLevelAccess`, help `backgroundHTML`, `cancel`, `studioRefusalModuleSharedId`, `studioNotLoaded`, `studioAssetModuleLoading`, `studioOpenModules`, `studioOpenClassic`.
+**Existing keys reused:** `name`, `description`, `namespace`, `hideChatIcon`, `lowLevelAccess`, `backgroundHTML`, help `namespace`, help `lowLevelAccess`, help `backgroundHTML`, `cancel`, `studioNotLoaded`, `studioAssetModuleLoading`, `studioOpenModules`, `studioOpenClassic`.
 
 **New keys: 18.** Revision 2 drops `studioModAdvValueClassicOnly` and adds `studioModAdvValueForeign`. The build PR carries all 7 other locales and passes `localeParity` (MC-058).
 
@@ -670,7 +670,7 @@ Anything else refuses the record whole, as today.
 | T5-FORM (G2) | Mount for a loaded module: every control reflects the store. Edit name, description and hideIcon; each write lands. **Then a change that does not come from the DOM:** undo each edit through the history service (and, separately, land a second write through the service, not the DOM). Each control shows the undone or new live value. A refused write restores the control and shows the refusal line. | A | `origin/main`: `studio-detail-readonly` shown, no form | same, plus new `StudioDetail.moduleAdvanced.svelte.test.ts` |
 | T5-FOREIGN-FORM (replaces T5-CLASSIC) | On the *nameless*, *converted* and *foreign-typed* fixtures: every control is enabled. `lowLevelAccess: 1` shows the switch **on** with `studioModAdvValueForeign('1')`; pressing it writes `false` with no sheet, and the note goes. `hideIcon: {x: 1}` shows on with the note. `namespace: null` and `name: 5` show empty inputs with the note; typing and committing writes a string. `name` absent and `description` undefined show empty inputs without the note and accept typing. No `studioModAdvValueClassicOnly` key exists. | A | no form | `StudioModuleAdvancedForm` test |
 | T5-HTML (F5) | The 배경 HTML kind with an empty embedding mounts `studio-module-html-form`, with no `studioEmptyKind` note and no `studio-detail-text`. Typing writes `backgroundEmbedding` as `typing` steps. The kind gains its item after the first non-blank write and the form stays mounted. On `backgroundEmbedding: 0` the field shows empty with the foreign note, and typing writes a string. | A | `origin/main`: `studioEmptyKind` and the read-only note shown | `StudioDetail.moduleAdvanced` |
-| T5-SHARED (G5) | Shared id on both kinds: values shown read-only, `studioRefusalModuleSharedId` shown, no control writable. **Then** replace the shown slot with another module (different id) while a second row still holds the shared id: the view shows no values, never the other holder's. | A | `origin/main`: read-only note only, no values | same |
+| T5-SHARED (G5) | Shared id on both kinds, later copy: values shown read-only, `studioModuleSharedIdCopy` and `studioModuleOwnId` shown, no form control writable; the first holder is editable (#714). **Then** replace the shown slot with another module (different id) while a second row still holds the shared id: the view shows no values, never the other holder's. | A | `origin/main`: read-only note only, no values | same |
 | T5-STUB | Stub selected: no form, the loading or not-loaded line, the link reads `studioOpenModules` | C (passes before and after) | none | same |
 | T5-FOCUS | After undo of each module field, focus lands on its control (`[data-part=<form>] [data-part=<part>]`). Includes an undo that writes back a foreign object value. | A | no element (and `readOwnerFields` returns `null` for modules, E10) | extend `StudioHistoryFocus.svelte.test.ts` |
 | T5-FOCUS-RO | `readOwnerFields(moduleOwnerKey)` returns the module's values while its id is published, and `null` when it is not. Two reads of an unchanged foreign object value compare equal (`changedFieldTarget` returns `null`). **H5:** `changedFieldTarget` returns `moduleName`, in both directions, between a foreign `5` and the typed `'5'`, and between a foreign `true` and the typed `'true'`. | A | `origin/main`: always `null` | extend `ts/studio/historyFocus.s1.test.ts` or a new `ownerFields.test.ts` |
@@ -720,7 +720,7 @@ Anything else refuses the record whole, as today.
 | The shared view falls back to a search by id (G5) | T5-SHARED (the other holder's values are shown) |
 | The low-level switch reads only `typeof === 'boolean'` (shows off for `1`) | T5-FOREIGN-FORM |
 | A foreign value makes the field read-only (revision 1's fallback) | T5-FOREIGN-FORM |
-| The mount condition drops `!moduleIdShared` | T5-SHARED |
+| The mount condition drops `!moduleLaterCopy` | T5-SHARED |
 | The html mount does not suppress `studioEmptyKind` | T5-HTML |
 | `readOwnerFields` keeps the open-module-free resolution | T5-FOCUS, T5-FOCUS-RO |
 | `readOwnerFields` reports a foreign reading untagged, as its value or its JSON text (H5) | T5-FOCUS-RO (the `5`/`'5'` and `true`/`'true'` cases for the text; the two-reads case for the value) |
@@ -731,7 +731,7 @@ Anything else refuses the record whole, as today.
 - a module record holding a new path or a foreign value is partly read by the previous build;
 - an undo leaves `lowLevelAccess: undefined` or `false` where the key was absent;
 - an undo does not put back the stored value (absent `name`, `lowLevelAccess: 1`, `namespace: null`, an object), or aliases the record's value into the database;
-- a write lands on a stub or on one of two shared-id slots;
+- a write lands on a stub or on a later copy of a shared id;
 - **any route** (direct, undo, redo, revert, restore; after a replace-import too; an undo back to a truthy foreign value) turns the engine reading of `lowLevelAccess` on with no confirm;
 - a refused confirm moves the history position;
 - a merge step and a form edit on `backgroundEmbedding` replay against each other, or Update-All stops writing it;
@@ -813,7 +813,7 @@ Anything else refuses the record whole, as today.
 | G3.3 No stale check on a re-run revert or restore | **ADDRESSED** as an accepted property, stated in §3.5. | §3.5 |
 | G3.4 Cancel refuses the whole action | **ADDRESSED.** Marked **(design default)**. | §3.5 |
 | G4 T5-GUARD-STALE must go through the helper | **ADDRESSED.** The row now calls `runWithLowLevelConfirm` with a pending ask, lands an edit, resolves Turn on and asserts `targetChanged` with nothing landed. T5-HOST-KEY is no longer named for that mutant. | §6 |
-| G5 The shared view must not search by id | **ADDRESSED.** Verified `moduleRowOf` gives the slot (`StudioDetail.svelte:61-63`). In `readOnlyShared` mode the form reads only that slot and shows nothing when it no longer holds the id. T5-SHARED gains the moved-slot case and a mutant. | §2.1, §6 |
+| G5 The shared view must not search by id | **ADDRESSED.** Verified `moduleRowOf` gives the slot (`StudioDetail.svelte:61-63`). In `readOnlyCopy` mode the form reads only that slot and shows nothing when it no longer holds the id. T5-SHARED gains the moved-slot case and a mutant. | §2.1, §6 |
 
 Also changed in revision 2, outside the r1 findings: MC-4030 (sections 1.3, 2.4, 2.5, 3.1, 3.5, 3.8, 5, 6), MC-4043 and MC-3985 (sections 1.1, 1.3, 8). The guard predicate change in section 3.5 follows from E11 and is new for Gate 1 to check.
 

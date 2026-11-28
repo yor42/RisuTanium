@@ -155,7 +155,20 @@ describe('R2-ROUTE: a landed module write tells the ack of that module', () => {
         expect(ack.calls).toEqual([])
     })
 
-    test('a refused write (not selected, gone, a shared id) calls no ack', () => {
+    test('a write of a shared id lands on its first holder and tells the ack once; the later copy is untouched', () => {
+        const ack = recorder()
+        service.setModuleAck('M1', ack)
+        modules().push(moduleOf('M1', 'copy'))
+        const copy = modules()[2]
+        expect(service.editText(M1, 'customModuleToggle', 'a=B', 'single')).toEqual({ ok: true })
+        expect(modules()[0].customModuleToggle).toBe('a=B')
+        expect(modules()[2]).toBe(copy)
+        expect(copy.customModuleToggle).toBe('copy')
+        expect(ack.calls).toHaveLength(1)
+        expect(ack.calls[0].id).toBe('M1')
+    })
+
+    test('a refused write (not selected, gone) calls no ack', () => {
         const ack = recorder()
         const other = recorder()
         service.setModuleAck('M1', ack)
@@ -165,10 +178,7 @@ describe('R2-ROUTE: a landed module write tells the ack of that module', () => {
         // Gone: the open module has no row.
         open = 'M9'
         expect(service.editText(moduleOwnerKey('M9'), 'customModuleToggle', 'x', 'single')).toMatchObject({ ok: false })
-        // A shared id.
         open = 'M1'
-        modules().push(moduleOf('M1', 'copy'))
-        expect(service.editText(M1, 'customModuleToggle', 'a=B', 'single')).toMatchObject({ ok: false, reason: 'duplicate-module-id' })
         expect(ack.calls).toEqual([])
         expect(other.calls).toEqual([])
     })
@@ -176,11 +186,11 @@ describe('R2-ROUTE: a landed module write tells the ack of that module', () => {
     test('a write the live module refuses after the target was accepted is gone and calls no ack', () => {
         const ack = recorder()
         service.setModuleAck('M1', ack)
-        // A second row with the module's id appears after the target was accepted and before the live write.
-        beforeWrite = () => { modules().push(moduleOf('M1', 'copy')) }
+        // The module's row is removed after the target was accepted and before the live write.
+        beforeWrite = () => { modules().splice(0, 1) }
         expect(service.editText(M1, 'customModuleToggle', 'a=B', 'single')).toMatchObject({ ok: false, reason: 'gone' })
         expect(beforeWrite).toBeNull()
         expect(ack.calls).toEqual([])
-        expect(modules()[0].customModuleToggle).toBe('a=A')
+        expect(modules().map((row) => row.id)).toEqual(['M2'])
     })
 })

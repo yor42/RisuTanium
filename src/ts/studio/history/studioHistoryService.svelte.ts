@@ -129,7 +129,7 @@ async function build(): Promise<Loaded> {
             scheduleIdle: history.browserIdleScheduler(),
             onModuleSlotReplaced: productionModuleSlotPort,
             // A module write is accepted only while the Studio detail has that module selected and publishes its id (loaded,
-            // not restricted, id not shared); otherwise every module write is refused as not selected.
+            // not restricted, the first holder of its id); otherwise every module write is refused as not selected.
             openModuleId: openStudioModuleId,
             // Loaded when a replay first needs it: the asset file reader reaches the storage layer.
             openAssetFileReader: async () => (await import('../assets/assetFileState')).openAssetFileReader(),

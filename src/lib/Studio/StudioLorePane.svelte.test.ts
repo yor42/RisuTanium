@@ -178,6 +178,43 @@ describe('TL1: the row always-active toggle', () => {
     })
 })
 
+describe('T3-LORE-PANE: a module host over a shared id', () => {
+    const sharedWorld = (): void => {
+        DBState.db = {
+            characters: [{ chaId: 'A', type: 'character', chats: [{ id: 'c1', note: '', fmIndex: -1, localLore: [] }], chatPage: 0, globalLore: [] }],
+            modules: [residentModule('m1', { lorebook: [row(0), row(1)] as never }), residentModule('m1', { lorebook: [row(2), row(3)] as never })],
+        } as unknown as typeof DBState.db
+    }
+    const lorebookOf = (index: number) => (DBState.db.modules as unknown as { lorebook: { alwaysActive: boolean }[] }[])[index].lorebook
+
+    // Regression reproducer: a shared id used to make the pane read-only for every holder.
+    test('the first holder is editable: a row toggle lands on its slot and leaves the later copy alone', async () => {
+        const rig = makeModuleRig()
+        sharedWorld()
+        const token = publishOpenModuleId('m1')
+        await mountPane({ ownerType: 'module', ownerId: 'm1', moduleId: 'm1', moduleSlotIndex: 0, moduleLaterCopy: false })
+        await rig.service.whenReady(moduleOwnerKey('m1'))
+        flushSync()
+        await vi.waitFor(() => expect((inRow('@1', 'studio-lore-row-toggle') as HTMLButtonElement).disabled).toBe(false))
+        await click(inRow('@1', 'studio-lore-row-toggle'))
+        expect(lorebookOf(0)[1].alwaysActive).toBe(true)
+        expect(lorebookOf(1).every((entry) => entry.alwaysActive === false)).toBe(true)
+        expect(rig.service.view(moduleOwnerKey('m1')).done).toHaveLength(1)
+        clearOpenModuleId(token)
+    })
+
+    // Compatibility guard (passes before and after): a later copy shows its own rows and writes nothing.
+    test('a later copy shows its own rows read-only, begins no history and writes nothing', async () => {
+        const rig = makeModuleRig()
+        sharedWorld()
+        await mountPane({ ownerType: 'module', ownerId: 'm1#1', moduleId: 'm1', moduleSlotIndex: 1, moduleLaterCopy: true })
+        await settle()
+        expect(rowLabels()).toEqual(['Row 2', 'Row 3'])
+        expect((inRow('@1', 'studio-lore-row-toggle') as HTMLButtonElement).disabled).toBe(true)
+        expect(rig.service.view(moduleOwnerKey('m1')).done).toHaveLength(0)
+        expect(lorebookOf(1).every((entry) => entry.alwaysActive === false)).toBe(true)
+    })
+})
 describe('TF: focus after a delete', () => {
     test('(a) the next visible row is a collapsed folder whose children follow it', async () => {
         await startCharacter([row(0), row(1), folderRow('K', 'F'), { ...row(2), folder: 'K' }])

@@ -2,7 +2,7 @@
 /**
  * The toggle builder of a resident module under the real Studio screen, with the real publish of the open module's id,
  * the real history service on the memory doubles and the real write hook. The builder exists exactly while the detail
- * publishes the module's id; a module whose id several rows share keeps its read-only text and says why.
+ * publishes the module's id; the first holder of an id several rows share has the builder, and a later copy keeps its read-only text and offers its own id.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -38,6 +38,8 @@ vi.mock('src/ts/stores.svelte', async () => {
     }
 })
 vi.mock('src/ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
+// The re-id helper's module reaches the conversion code, which this suite does not exercise.
+vi.mock('src/ts/interchangeability', () => ({ convertModuleToCharacter: vi.fn() }))
 vi.mock('src/ts/process/modules', () => ({ refreshModules: vi.fn() }))
 vi.mock('src/ts/process/moduleGuiBump', () => ({ bumpModuleGui: vi.fn() }))
 vi.mock('src/ts/process/moduleRefList', () => ({
@@ -379,13 +381,24 @@ describe('CG-C2m a preset mounts the builder of its toggles', () => {
 })
 
 describe('R-C13d a module whose id several rows share', () => {
-    test('keeps its read-only text, mounts no builder, publishes nothing and says why', async () => {
+    // Regression reproducer: the first holder used to keep the read-only text and no builder.
+    test('the first holder mounts the builder, publishes its id and shows no banner', async () => {
         db.db.modules[1] = residentModule('M1', { customModuleToggle: 'dup=Dup' })
         await mountOn(moduleToggles('M1'))
+        expect(part('studio-toggle-builder')).not.toBeNull()
+        expect(openStudioModuleId()).toBe('M1')
+        expect(part('studio-module-shared-copy')).toBeNull()
+    })
+
+    // Compatibility guard on the read-only text (passes before and after); the banner is the new part.
+    test('a later copy keeps its read-only text, mounts no builder, publishes nothing and offers its own id', async () => {
+        db.db.modules[1] = residentModule('M1', { customModuleToggle: 'dup=Dup' })
+        await mountOn(moduleToggles('M1#1'))
         expect(part('studio-toggle-builder')).toBeNull()
         expect(openStudioModuleId()).toBeNull()
-        expect(part('studio-detail-text')?.textContent).toContain('m1=One')
-        expect(part('studio-toggle-module-shared')?.textContent).toBe('studioRefusalModuleSharedId')
+        expect(part('studio-detail-text')?.textContent).toContain('dup=Dup')
+        expect(part('studio-module-shared-copy')?.textContent).toBe('studioModuleSharedIdCopy')
+        expect(part('studio-module-own-id')).not.toBeNull()
     })
 })
 
@@ -563,10 +576,10 @@ describe('CG3 no module chip outside the module toggle builder', () => {
         expect(moduleRig.built).toHaveLength(0)
     })
 
-    test('a duplicate module id builds no module ack and shows no chip', async () => {
+    test('a later copy of a shared id builds no module ack and shows no chip', async () => {
         db.db.modules[1] = residentModule('M1', { customModuleToggle: 'dup=Dup' })
-        await mountOn(moduleToggles('M1'))
-        expect(part('studio-toggle-module-shared')).not.toBeNull()
+        await mountOn(moduleToggles('M1#1'))
+        expect(part('studio-toggle-builder')).toBeNull()
         expect(part('studio-chip')).toBeNull()
         expect(moduleRig.built).toHaveLength(0)
     })
@@ -639,16 +652,19 @@ describe('R-C13 refusals of a module builder, in module wording', () => {
         expect(tracker.modules).toBe(false)
     })
 
-    test('(d) a shared id is refused in the list with the shared-id wording and nothing is written', async () => {
+    // Regression reproducer: a shared id used to mount no builder and show the shared-id wording.
+    test('(d) a shared id: the first holder deletes a row and the write lands on slot 0 only', async () => {
         db.db.modules[1] = residentModule('M1', { customModuleToggle: 'dup=Dup' })
         await mountModuleBuilder()
         resetMarks()
         const row = parts('studio-toggle-row')[0]
         row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true }))
         flushSync()
-        expect(part('studio-toggle-error')?.textContent).toBe('studioRefusalModuleSharedId')
-        expect(slotText(0)).toBe('m1=One')
-        expect(tracker.modules).toBe(false)
+        await settle()
+        expect(part('studio-toggle-error')).toBeNull()
+        expect(slotText(0)).not.toBe('m1=One')
+        expect(slotText(1)).toBe('dup=Dup')
+        expect(tracker.modules).toBe(true)
     })
 
     test('(t) the Undo of a delete after the module stopped being the published one says so, and the module keeps its text', async () => {

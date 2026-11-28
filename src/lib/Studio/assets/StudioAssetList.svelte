@@ -164,10 +164,10 @@
         // The character's id; unused by a module's list.
         chaId?: string
         // A module's list: the module's stored id and the place of its slot in the module list. The slot is read by place
-        // so a module whose id is shared shows its own rows.
+        // so a later copy of a shared id shows its own rows.
         moduleId?: string
         moduleIndex?: number
-        // True while another module holds this module's id: the rows, folders and finder show and every change is off.
+        // True for a later copy of a shared id (an earlier module holds the id): the rows, folders and finder show and every change is off.
         readOnly?: boolean
         // The toast host of the delete toasts; the app's own host when absent (tests pass one on a fake clock).
         host?: ToastHost
@@ -232,8 +232,8 @@
     })
 
     const service = $derived(getStudioHistoryService())
-    // A module whose id is shared starts no history lifecycle: its form changes nothing, and the service would claim and
-    // load a record for an id that names more than one module.
+    // A later copy of a shared id starts no history lifecycle: its form changes nothing, and the service would claim and
+    // load the first holder's record for it.
     $effect(() => {
         const key = owner
         if (service) {

@@ -5,6 +5,7 @@ import { checkCharOrder } from '../globalApi.svelte'
 import { convertModuleToCharacter } from '../interchangeability'
 import type { character, Database } from '../storage/database.svelte'
 import { DBState } from '../stores.svelte'
+import { isModuleStub } from '../storage/moduleStub'
 import { exportModule, exportModuleLegacy, refreshModules, type RisuModule } from './modules'
 import { useModuleRow } from './moduleUse'
 import { matchesModuleRef } from './moduleRefs'
@@ -44,6 +45,48 @@ export function removeModuleRow(row: RisuModule): boolean {
     }
     refreshModules()
     return true
+}
+
+export type ModuleCopyIdState = 'ok' | 'gone' | 'stub' | 'not-shared' | 'first-holder'
+
+/**
+ * Whether `row` can be given its own id. Only a resident later holder of an id several rows share qualifies: the first
+ * holder keeps the id every reference resolves to, and a stub is never acquired. The row is found by reference.
+ */
+export function moduleCopyIdState(modules: readonly RisuModule[], row: RisuModule): ModuleCopyIdState {
+    const index = modules.indexOf(row)
+    if (index === -1) {
+        return 'gone'
+    }
+    if (isModuleStub(row)) {
+        return 'stub'
+    }
+    const first = modules.findIndex((other) => other.id === row.id)
+    if (first === index && !modules.some((other, at) => at > index && other.id === row.id)) {
+        return 'not-shared'
+    }
+    return first === index ? 'first-holder' : 'ok'
+}
+
+/**
+ * Gives the later copy `row` a fresh id and changes nothing else: the row is replaced by a shallow copy with only `id`
+ * different, and no reference (`enabledModules`, characters, chats, Module Integration) is rewritten. Refuses with null,
+ * writing nothing, unless `moduleCopyIdState` is `ok` or when the minted id is already held by any row. Returns the slot as
+ * it is stored.
+ */
+export function giveModuleCopyOwnId(row: RisuModule, mint: () => string = v4): RisuModule | null {
+    const modules = DBState.db.modules
+    if (moduleCopyIdState(modules, row) !== 'ok') {
+        return null
+    }
+    const fresh = mint()
+    if (modules.some((other) => other.id === fresh)) {
+        return null
+    }
+    const index = modules.indexOf(row)
+    DBState.db.modules[index] = { ...row, id: fresh }
+    refreshModules()
+    return DBState.db.modules[index]
 }
 
 /** Turns the global enable of module id `id` on or off; turning off removes the first occurrence. */

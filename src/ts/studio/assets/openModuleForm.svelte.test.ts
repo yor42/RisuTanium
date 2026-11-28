@@ -30,7 +30,7 @@ describe('the published id of the selected module', () => {
         expect(openStudioModuleId()).toBe('B')
     })
 
-    test('a form that publishes null for a shared id is read back as no open module', () => {
+    test('a form that publishes null for a later copy of a shared id is read back as no open module', () => {
         publishOpenModuleId('A')
         publishOpenModuleId(null)
         expect(openStudioModuleId()).toBeNull()

@@ -399,12 +399,13 @@ describe('T5-SLOT: a write is refused with nothing written or marked when the sl
         unchanged(before)
     })
 
-    test('two slots sharing the id', async () => {
+    test('a later copy of a shared id is never the open module', async () => {
         put(createShaped(), { ...createShaped(), name: 'second' })
+        harness.openModule = null
         tracker.modules = false
         const before = JSON.stringify(db.db.modules)
-        expect(text('moduleName', 'N')).toEqual({ ok: false, reason: 'duplicate-module-id' })
-        expect(flag(true)).toEqual({ ok: false, reason: 'duplicate-module-id' })
+        expect(text('moduleName', 'N')).toEqual({ ok: false, reason: 'not-selected' })
+        expect(flag(true)).toEqual({ ok: false, reason: 'not-selected' })
         unchanged(before)
     })
 
@@ -427,6 +428,25 @@ describe('T5-MARK: a landed edit replaces exactly one slot and the save machiner
         expect(slot()).not.toBe(old)
         expect(slot(1)).toBe(other)
         expect(old.name).toBe('')
+        expect(harness.replaced).toBe(1)
+        expect(tracker.modules).toBe(true)
+        expect(harness.noted).toBe(1)
+    })
+})
+
+describe('T5-SHARED: a shared id is written at its first holder and the later copy is marked and touched by nothing', () => {
+    test('the first holder is replaced, the later copy keeps its identity, one mark and one ack', async () => {
+        put(createShaped(), { ...createShaped(), name: 'second' })
+        await ready()
+        const first = slot()
+        const copy = slot(1)
+        const copyJson = JSON.stringify(copy)
+        tracker.modules = false
+        expect(text('moduleName', 'N')).toEqual({ ok: true })
+        expect(slot()).not.toBe(first)
+        expect(slot().name).toBe('N')
+        expect(slot(1)).toBe(copy)
+        expect(JSON.stringify(copy)).toBe(copyJson)
         expect(harness.replaced).toBe(1)
         expect(tracker.modules).toBe(true)
         expect(harness.noted).toBe(1)
