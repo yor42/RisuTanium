@@ -23,6 +23,8 @@ const h = vi.hoisted(() => ({
     replies: [] as Array<{ status: number, body: unknown }>,
 }))
 
+// The token service is not under test here: a Vertex request gets a fixed token.
+vi.mock('../vertexToken', () => ({ vertexAccessToken: async () => ({ kind: 'token', token: 'cached-token' }), vertexTokenTicket: () => 0 }))
 vi.mock('localforage', () => ({ default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}), removeItem: vi.fn(async () => {}) }) } }))
 vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((p: string) => p), invoke: vi.fn() }))
 vi.mock('@tauri-apps/api/path', () => ({ appDataDir: vi.fn(async () => '/appdata'), join: vi.fn(async (...p: string[]) => p.join('/')), basename: vi.fn(async (p: string) => p.split('/').pop()) }))
