@@ -11,7 +11,8 @@ import { CascadeModel, compileAppStyles, compileRules, readRepoFile, type RuleSe
 const ROOT_SCHEME: Record<string, string> = { bgcolor: '#010203', darkbg: '#111213', textcolor: '#212223', textcolor2: '#313233', borderc: '#414243', darkborderc: '#515253', darkbutton: '#616263', selected: '#717273', draculared: '#818283' }
 const OWN_SCHEME: Record<string, string> = { bgcolor: '#a1a2a3', darkbg: '#b1b2b3', textcolor: '#c1c2c3', textcolor2: '#d1d2d3', borderc: '#e1e2e3', darkborderc: '#f1f2f3', darkbutton: '#919293', selected: '#818283', draculared: '#717273' }
 const ROLE_OF: Record<string, string> = { bgcolor: 'canvas', darkbg: 'surface', textcolor: 'fg', textcolor2: 'fg-2', borderc: 'edge', darkborderc: 'edge-strong', darkbutton: 'surface-raised', selected: 'selected', draculared: 'danger' }
-const CLASSES = ['bg-bgcolor', 'bg-darkbg', 'bg-darkbg/50', 'bg-darkbutton', 'bg-selected', 'text-textcolor', 'text-textcolor2', 'text-draculared', 'border-borderc', 'border-darkborderc', 'border-borderc/20', 'hover:bg-selected', 'ring-selected']
+// built at run time: a literal here would be scanned by Tailwind and add a rule the stylesheet-additivity test refuses
+const CLASSES = ['bg-bgcolor', 'bg-darkbg', 'bg-darkbg/50', 'bg-darkbutton', 'bg-selected', 'text-textcolor', 'text-textcolor2', 'text-draculared', 'border-borderc', 'border-darkborderc', ['border-borderc', '20'].join('/'), 'hover:bg-selected', 'ring-selected']
 
 let rules: RuleSet
 beforeAll(async () => {
