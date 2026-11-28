@@ -5,7 +5,7 @@
 - Migration is a read rule (MC-5090): a missing or unreadable mode reads as the flag says; a flag that disagrees with the modes wins. The stored flag always equals "any task own" (MC-5092).
 - `.bin`: the key is stripped from the root and every slot from S1a on; from S1b a `same` task's block in a flag-on record becomes a copy of that record's main values (MC-5091). Flag-off records are untouched (N1).
 - Slices: S1a engine + strip (no mix can exist), S1b synthesis + warning, S2 classic per-task rows, S3 Studio via #706 stage f.
-- Needs maintainer: N2, N4, N5, N7, UI timing. N1, N3, N6 are settled recommendations.
+- Maintainer answers 2026-11-28 are recorded (MC-5094..5096); only the N7 wording awaits review at S2 planning.
 
 ## Requirements and scope
 In scope: key, read rule, resolution, the two flag writers, classic filter, `.bin` strip and translation with warning, preset files (N4), S2, S3 hand-over. Out of scope: `overrides` semantics and the by-model switch (MC-5093), the missing-block `TypeError` (census U4), the Models page row (DS-082, reuses the S1 helpers), EasyPanel parameter tabs beyond "run".
@@ -29,14 +29,14 @@ Census section 5 lists every container reader (COMPLETE for its query). Only `Se
 8. **Copy rule** `mainValuesAsBlock(record)`: only the eleven block-path keys, from their main fields (census 4). Values verbatim, `null` copied, absent stays absent; a slot's constant switch fallbacks apply as `setPreset` loads them. The display-only thinking-type members are never copied.
 9. **Rule P and the warning (S1b).** `representable(parameter, value)` is the table T-D1 produces: strict and data-only, compared on the `data` object `applyParameters` returns (an own `undefined` key differs from an absent one), for all eleven keys regardless of model (N5). Expected unrepresentable: `thinkingTokens` `null`. One leave-out kind `taskParameters` (preset, task, parameter or "replaced block") lists unrepresentable main values of `same` tasks in flag-on records and, per N2, replaced non-empty blocks that differ from the copy. Pattern: `binLeaveOut.ts:26, 39, 77-78`, `backuplocal.ts:986, 1013, 1018`, `dataLeaveOutSheet.ts:84, 119`. Cancel writes no file.
 10. **Settings report** (`SettingsExportButtons.svelte`, `risutanium-settings-report.json`) is diagnostic, never imported, and exempt from the strip.
-10b. **Preset files.** S1a: `downloadPreset` (`database.svelte.ts:2638-2642`) and `buildPresetBundlePayload` (`presetBundle.ts:83`) apply `withoutTaskModes` after `withoutPresetMeta`, so a bundle entry still equals a single export. S1b: N4.
+10b. **Preset files.** S1a: `downloadPreset` (`database.svelte.ts:2638-2642`) and `buildPresetBundlePayload` (`presetBundle.ts:83`) apply `withoutTaskModes` after `withoutPresetMeta`, so a bundle entry still equals a single export. S1b (N4, MC-5095): the same per-record translation as step 7 (copies for `same` tasks only when the flag is on, key absent), and the step 9 warning covers a preset file as it covers a `.bin`.
 
 ### Dirty tracking and order
 Writers assign new `taskModes` and block objects inside the existing container together with the flag, synchronously; the root and `botPresets` effects deep-read both (`dbChangeEffects.svelte.ts:132-138, 251-262`). Flag and container share the lock group and the fast-forward record (decided whole), so only the `.rtb` dropped-container case separates flag from modes, and the disagreement rule covers it (census R13).
 
 ### Stages
 - **S1a** steps 1-6 and the step 10 strip. Only `setAllTaskModes` writes, so no mix exists and the key never leaves the fork. Critical contracts: persisted preset shape, `.bin` translation, request resolution: opus-reviewer Gate 2.
-- **S1b** steps 7-9, warning strings (en + 7 locales by translator, localeParity, MC-058). Blocked by N2, N5 (N4 for preset files). Merges before S2. opus-reviewer.
+- **S1b** steps 7-9, warning strings (en + 7 locales by translator, localeParity, MC-058). Settled by MC-5094..5096 (N2, N4, N5). Merges before S2. opus-reviewer.
 - **S2** classic rows: one row per task ("Same as main" / "Own", `setTaskMode` with `copyIntoEmpty`); a task's editor while `own`; `overrides` while any is `own`; N7 text. 8 locales. Native Sonnet Gate 2.
 - **S3** #706 stage f: four mode rows replace `presetSepParamsEnabled`, writing through `setTaskMode` as one history step (modes, flag, copied block); `taskModes` is a sentinel for the generic container paths (never shown, never a `SetPath` target). Lane A routes the spec revision.
 
@@ -96,16 +96,11 @@ REOPENED: P1 resolution identical upstream and fork (U1); P2 skip asymmetry (`sh
 ## Open items
 Superseding notes for lane A: MC-4721/MC-4043 now read "the four per-task modes are preset fields inside the container; stage f writes them through the shared helper"; ENGINE_CHANGES.md row 4-4 and SLICE4_SPEC.md:264 ("a task with a non-empty block becomes own") are superseded by MC-5090.
 
-Settled recommendations (lane A may confirm):
-- **N1** Flag-off export synthesizes nothing; literal synthesis would overwrite MC-5090's dormant blocks and break upstream round trips (MC-175).
-- **N3** No leave-out line for the lost "same" link, as MC-5091 reads.
-- **N6** "Own" copies main values only into an empty block; a non-empty block is kept.
+Settled by the maintainer (2026-11-28, MC-5094..MC-5096):
+- **N1** flag-off export synthesizes nothing (amends MC-5091, MC-5094). **N2** a `taskParameters` line when a replaced stored block differs from the copy. **N3** no line for the lost "same" link. **N4** preset files (`.json`, `.risup`, Realm, bundles) use the `.bin` translation and carry no key (step 10b). **N5** rule P strict and data-only. **N6** copy only into an empty block. **UI timing** S2 in this ticket, S3 with #706 stage f. No question blocks S1a or S1b.
 
-Needs maintainer:
-- **N2** A mixed export replaces a `same` task's non-empty block: recommend a `taskParameters` line only when it differs from the copy. Blocks S1b.
-- **N4** Preset files (`.json`, `.risup`, Realm 'return', bundles); upstream would show and keep the key. (a) `.bin` translation, no key (recommended; fork-to-fork preset files lose the link, `.rtb` stays lossless); (b) translation plus the key (upstream shows a raw `taskModes` editor while the flag is on); (c) as stored minus the key (upstream sends the blocks of `same` tasks). S1a's strip suits (a) and (c).
-- **N5** Rule P strict and data-only (recommended) versus model-aware. Blocks S1b.
-- **N7** With by-model on, S2 rows say that per-model values apply to every task and that the first "own" arms them (`shared.ts:190-198`). Blocks S2 text.
-- **UI timing**: recommend S2 in this ticket; alternative S1 only, controls in #706 f and the Models page.
+**N7 draft (English only, for the maintainer when S2 is planned; the translator writes the locales).** Shown under the per-task rows while "per-model parameters" is on: "Per-model parameters are on: every task uses the values saved for its model, whichever mode it is set to. Choosing Own for a task turns this on for all of them." Wording is a proposal, not a decision.
+
+**Edits #706 stage f needs (lane A owns the spec revision):** `PRESET_SEPARATE_PARAMS_SPEC.md` line 9 scope: replace "`seperateParametersEnabled` and `seperateParameters`" with the four task modes (`seperateParameters.taskModes`) plus the container blocks and `overrides`; the flag is derived, not a row. Line 20 (setPreset seeding): the container moves whole, so `taskModes` travels with it; no new seeding. Container adapter and extraction guard S-a: skip `taskModes` as a block key, never a `SetPath` target, written only through `setTaskMode` as one history step with the flag and a copied block. Rows: four mode rows ("Same as main" / "Own") replace the flag row; import and export per purpose never carry `taskModes`. Line 84: MC-4043 and MC-4721 read as superseded by MC-5092. Stage f follows S1a (needs `taskParameterModes.ts`).
 
 Other: the missing-block `TypeError` (U4) is a follow-up candidate.
