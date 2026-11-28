@@ -18,6 +18,7 @@ import { leadingLazyDotCannotMatch } from "./regexEarlyReject";
 import { MEASURE } from "./memory/measureFlag";
 import { noteScriptPass, type ScriptCacheOutcome } from "./chatPhaseRing";
 import { firstMessageOf } from "./firstMessage";
+import { effectiveRegexFlag } from "./effectiveRegexFlag";
 
 const dreg = /{{data}}/g
 const randomness = /\|\|\|/g
@@ -26,6 +27,7 @@ export type ScriptMode = 'editinput'|'editoutput'|'editprocess'|'editdisplay'
 
 type pScript = {
     script: customscript,
+    flags: string
     order: number
     actions: string[]
 }
@@ -194,7 +196,7 @@ function generateScriptCacheKey(scripts: customscript[], data: string, mode: Scr
         if(script.type !== mode){
             continue
         }
-        hash += `${script.flag?.includes('<cbs>') ? risuChatParser(script.in, { chatID: chatID, cbsConditions, subject, promptView }) : script.in}|||${script.out}${chatID}|||${script.flag ?? ''}|||${script.ableFlag ? 1 : 0}`;
+        hash += `${typeof script.flag === 'string' && script.flag.includes('<cbs>') ? risuChatParser(script.in, { chatID: chatID, cbsConditions, subject, promptView }) : script.in}|||${script.out}${chatID}|||${script.flag ?? ''}|||${script.ableFlag ? 1 : 0}`;
     }
     return hash;
 }
@@ -545,21 +547,9 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
 
             let outScript2 = script.out.replaceAll("$n", "\n")
             let outScript = outScript2.replace(dreg, "$&")
-            let flag = 'g'
-            if(script.ableFlag){
-                flag = script.flag || 'g'
-            }
+            const flag = pscript.flags
             if(outScript.endsWith('>') && !pscript.actions.includes('no_end_nl')){
                 outScript += '\n'
-            }
-            //remove unsupported flag
-            flag = flag.trim().replace(/[^dgimsuvy]/g, '')
-
-            //remove repeated flags
-            flag = flag.split('').filter((v, i, a) => a.indexOf(v) === i).join('')
-            
-            if(flag.length === 0){
-                flag = 'u'
             }
 
             let input = script.in
@@ -748,37 +738,18 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
     let parsedScripts:pScript[] = []
     let orderChanged = false
     for (const script of scripts){
-        if(script.ableFlag && script.flag?.includes('<')){
-            const rregex = /<(.+?)>/g
-            const scriptData = safeStructuredClone(script)
-            let order = 0
-            const actions:string[] = []
-            scriptData.flag = scriptData.flag?.replace(rregex, (v:string, p1:string) => {
-                const meta = p1.split(',').map((v) => v.trim())
-                for(const m of meta){
-                    if(m.startsWith('order ')){
-                        order = parseInt(m.substring(6))
-                        orderChanged = true
-                    }
-                    else{
-                        actions.push(m)
-                    }
-                }
-
-                return ''
-            })
+        try {
+            const eff = effectiveRegexFlag(script.flag, script.ableFlag)
             parsedScripts.push({
-                script: scriptData,
-                order,
-                actions
+                script,
+                flags: eff.flags,
+                order: eff.order,
+                actions: eff.actions
             })
-            continue
+            orderChanged ||= eff.orderSet
+        } catch (error) {
+            console.error(error)
         }
-        parsedScripts.push({
-            script,
-            order: 0,
-            actions: []
-        })
     }
 
     if(orderChanged){

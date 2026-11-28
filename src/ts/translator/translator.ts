@@ -23,6 +23,7 @@ import { selectedCharID } from "../stores.svelte"
 import { getModuleRegexScripts } from "../process/modules"
 import { getNodetextToSentence, sleep } from "../util"
 import { processScriptFull } from "../process/scripts"
+import { effectiveRegexFlag } from "../process/effectiveRegexFlag"
 import { isGeneratingIn, type RunSubject } from "../process/chatOrigin"
 import localforage from "localforage"
 import sendSound from '../../etc/send.mp3'
@@ -801,41 +802,13 @@ export function applyEdittransRegex(
               continue
           }
 
-          let flag = script.ableFlag ? (script.flag ?? '') : ''
-
-          let order = 0
-          const actions: string[] = []
-
-          //parse custom flags, same as processScriptFull
-          flag = flag.replace(/<(.+?)>/g, (v: string, p1: string) => {
-              const meta = p1.split(',').map((v) => v.trim())
-              for (const m of meta) {
-                  if (m.startsWith('order ')) {
-                      order = parseInt(m.substring(6))
-                      orderChanged = true
-                  }
-                  else {
-                      actions.push(m)
-                  }
-              }
-
-              return ''
-          })
-
-          //a flag text with no regex flags left, once the tags are removed, is global
-          flag = flag || 'g'
-
-          //remove unsupported flag
-          flag = flag.trim().replace(/[^dgimsuvy]/g, '')
-
-          //remove repeated flags
-          flag = flag.split('').filter((v, i, a) => a.indexOf(v) === i).join('')
-
-          if (flag.length === 0) {
-              flag = 'u'
+          try {
+              const eff = effectiveRegexFlag(script.flag, script.ableFlag)
+              parsedScripts.push({ script, flag: eff.flags, order: eff.order, actions: eff.actions })
+              orderChanged ||= eff.orderSet
+          } catch (error) {
+              console.error(error)
           }
-
-          parsedScripts.push({ script, flag, order, actions })
       }
 
       if (orderChanged) {
