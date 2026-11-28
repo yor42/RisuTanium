@@ -3,7 +3,7 @@ import { language } from 'src/lang'
 import { alertError } from 'src/ts/alert'
 import { registerBackHandler } from 'src/ts/backHandlers'
 import { recordCaughtError } from 'src/ts/caughtErrors'
-import { changeChar, changeCharGeneration, characterFormatUpdate, supersedeChangeChar } from 'src/ts/characters'
+import { alertGroupMembersNotLoaded, archivedMemberIds, changeChar, changeCharGeneration, characterFormatUpdate, restoreGroupMembers, supersedeChangeChar } from 'src/ts/characters'
 import { restoreColdCharacter, type ColdRestoreOutcome } from 'src/ts/process/coldCharacterRestore'
 import { namedRestoreFailureText, restoreFailureName } from 'src/ts/process/coldRestoreText'
 import type { character, groupChat } from 'src/ts/storage/database.svelte'
@@ -33,14 +33,15 @@ let homeVisit: HomeVisit | null = null
 let stopVisitEnd: (() => void) | null = null
 
 /**
- * Whether the control is offered for this slot: `studioEligible()` for one character once it is loaded, without
- * selecting it (the switch on, not Beta Mobile GUI, not a group, not the playground), and a trashed character is
- * never offered. An archived stub is offered: the open loads it first (`startStudioFromHome`).
+ * Whether the control is offered for this slot: `studioVisitKind()` for a character or a group once it is
+ * loaded, without selecting it (the switch on, not Beta Mobile GUI, not the playground), and a trashed one is
+ * never offered. An archived stub, and a group with an archived member, are offered: the open loads them first
+ * (`startStudioFromHome`).
  */
 export function homeStudioAvailable(slot: character | groupChat | undefined): boolean {
     if (!slot) return false
     if (!studioSwitch.enabled || get(MobileGUI)) return false
-    return slot.type !== 'group' && slot.chaId !== '§playground' && !slot.trashTime
+    return slot.chaId !== '§playground' && !slot.trashTime
 }
 
 // Leaves the state a failed open must leave: nothing selected, the landing's library revealed.
@@ -82,13 +83,16 @@ function installVisitEnd(): void {
  * the open: a flush there would show the opened character's chat uncovered and clear its new-reply mark and
  * notification. The pick keeps the last interaction. `changeChar` is not awaited: for a warm, non-group slot
  * it selects before its first await, so an archived slot is refused here before any `changeChar`; the cold
- * entry is `startStudioFromHome`, which loads the slot and then calls this with the loaded slot's index.
+ * entry is `startStudioFromHome`, which loads the slot and then calls this with the loaded slot's index. A group
+ * with an archived member is refused the same way unless `membersHandled`: its members were just restored, so
+ * `changeChar` does not wait on them again (a member that could not load stays archived).
  */
-export function openStudioFromHome(index: number, opener: HTMLElement): boolean {
+export function openStudioFromHome(index: number, opener: HTMLElement, membersHandled = false): boolean {
     const slot = DBState.db.characters?.[index]
     if (!slot || !homeStudioAvailable(slot) || slot.coldstorage) return false
+    if (!membersHandled && slot.type === 'group' && archivedMemberIds(slot).length > 0) return false
     installVisitEnd()
-    void changeChar(index, { keepInteraction: true, quiet: true }).catch(onHomeStudioPickError)
+    void changeChar(index, { keepInteraction: true, quiet: true, membersHandled }).catch(onHomeStudioPickError)
     // `openStudio` binds through `selIdState`, so that is what must already name this slot.
     if (selIdState.selId !== index || DBState.db.characters[index] !== slot) {
         supersedeChangeChar()
@@ -134,9 +138,11 @@ function clearIfPending(request: ColdOpenRequest): void {
  */
 export function startStudioFromHome(index: number, opener: HTMLElement): boolean | Promise<boolean> {
     cancelHomeStudioOpen()
-    const stub = DBState.db.characters?.[index]
-    if (!stub?.coldstorage) return openStudioFromHome(index, opener)
-    return openArchivedStudioFromHome(stub, opener)
+    const slot = DBState.db.characters?.[index]
+    if (!slot || !(slot.coldstorage || (slot.type === 'group' && archivedMemberIds(slot).length > 0))) {
+        return openStudioFromHome(index, opener)
+    }
+    return openArchivedStudioFromHome(slot, opener)
 }
 
 async function openArchivedStudioFromHome(stub: character | groupChat, opener: HTMLElement): Promise<boolean> {
@@ -152,8 +158,21 @@ async function openArchivedStudioFromHome(stub: character | groupChat, opener: H
     pending = request
     try {
         let outcome: ColdRestoreOutcome
+        let failedMembers: string[] = []
         try {
-            outcome = await restoreColdCharacter(stub)
+            // A loaded group with an archived member skips the first read and goes straight to its members.
+            outcome = stub.coldstorage
+                ? await restoreColdCharacter(stub)
+                : { status: 'restored', character: stub, installedHere: false }
+            // Members are restored as `changeChar` does, after the group itself is installed and formatted.
+            if (outcome.status === 'restored' && outcome.character.type === 'group') {
+                const group = outcome.character
+                if (outcome.installedHere) {
+                    const groupIndex = DBState.db.characters.indexOf(group)
+                    if (groupIndex !== -1) characterFormatUpdate(groupIndex)
+                }
+                failedMembers = await restoreGroupMembers(group)
+            }
         } finally {
             request.releaseBack()
         }
@@ -171,7 +190,7 @@ async function openArchivedStudioFromHome(stub: character | groupChat, opener: H
         // The call that made the install formats it, whether or not this request goes on to open. A request that
         // joined another caller's restore does not format here: `changeChar` and the send's member restore each
         // format for every call they serve.
-        if (outcome.installedHere) characterFormatUpdate(index)
+        if (outcome.installedHere && outcome.character.type !== 'group') characterFormatUpdate(index)
         if (!isCurrentRequest(request) || changeCharGeneration() !== request.generation) {
             clearIfPending(request)
             return false
@@ -183,7 +202,9 @@ async function openArchivedStudioFromHome(stub: character | groupChat, opener: H
             return false
         }
         pending = null
-        return openStudioFromHome(index, opener)
+        // `changeChar` tells the user of members that could not load only when it is current; so does this open.
+        alertGroupMembersNotLoaded(failedMembers)
+        return openStudioFromHome(index, opener, loaded.type === 'group')
     } catch (error) {
         console.error('Open in Studio could not load the character:', error)
         recordCaughtError('home.studio', error)

@@ -414,7 +414,7 @@ describe('the open of an archived character', () => {
         expect(slot(1).lastInteraction).toBe(LONG_AGO)
         expect(alertError).not.toHaveBeenCalled()
         expect(vi.mocked(changeChar)).toHaveBeenCalledTimes(1)
-        expect(vi.mocked(changeChar)).toHaveBeenCalledWith(1, { keepInteraction: true, quiet: true })
+        expect(vi.mocked(changeChar)).toHaveBeenCalledWith(1, { keepInteraction: true, quiet: true, membersHandled: false })
     })
 
     test('F T34 (I2): no flush falls between the select and the open, under the natural flushes', async () => {
@@ -662,9 +662,7 @@ describe('the open of an archived character', () => {
         expect(get(studioOpen)).toBe(false)
     })
 
-    test('F: a tap on an unavailable archived slot (a group, a trashed one, Beta Mobile GUI) reads nothing and registers nothing', async () => {
-        DBState.db.characters.push(buildColdStub(fullCharacter('team', { type: 'group', characters: [] }), 'unit-team', []))
-        expect(await tap(3)).toBe(false)
+    test('F: a tap on an unavailable archived slot (a trashed one, Beta Mobile GUI) reads nothing and registers nothing', async () => {
         slot(1).trashTime = 5
         expect(await tap(1)).toBe(false)
         slot(1).trashTime = undefined
@@ -865,5 +863,86 @@ describe('a store2 page (a residency is registered)', () => {
         expect(harness.verdictCalls).toContain('alpha')
         expect(getPutBackCounters().clean).toBe(1)
         expect(slot(1).coldstorage).toBe('u-alpha')
+    })
+})
+
+describe('the open of a group with an archived member', () => {
+    function installGroup(archivedMemberKeys: string[] = ['alpha']): void {
+        const group = fullCharacter('grp', { type: 'group', characters: ['alpha', 'zero'], scenario: '' })
+        const all = [fullCharacter('zero', { scenario: '' }), group, ...archivedMemberKeys.map((key) => buildColdStub(fulls[key], `unit-${key}`, []))]
+        DBState.db = { characters: all } as unknown as Database
+    }
+
+    test('F G1: the member loads first, then Studio opens on the group, keeping its last interaction', async () => {
+        installGroup()
+        const opened = tap(1)
+        await drain()
+
+        expect(get(selectedCharID)).toBe(-1)
+        expect(get(studioOpen)).toBe(false)
+        expect(slot(2).coldstorage).toBe('unit-alpha')
+
+        await land('alpha')
+
+        expect(await opened).toBe(true)
+        expect(slot(2).coldstorage).toBeUndefined()
+        expect(selIdState.selId).toBe(1)
+        expect(get(studioOpen)).toBe(true)
+        expect(studioScreen.target.owner).toEqual({ type: 'group', id: 'grp' })
+        expect(slot(1).lastInteraction).toBe(LONG_AGO)
+        expect(alertError).not.toHaveBeenCalled()
+    })
+
+    test('F G2: a member that cannot load alerts once and the group still opens, the member staying archived', async () => {
+        installGroup()
+        const opened = tap(1)
+        await land('alpha', { status: 'error', error: new Error('unreadable') })
+
+        expect(await opened).toBe(true)
+        expect(slot(2).coldstorage).toBe('unit-alpha')
+        expect(get(studioOpen)).toBe(true)
+        expect(selIdState.selId).toBe(1)
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(alertError).mock.calls[0][0]).toContain('alpha name')
+        expect(vi.mocked(changeChar)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(changeChar)).toHaveBeenCalledWith(1, { keepInteraction: true, quiet: true, membersHandled: true })
+    })
+
+    test('F G5: an archived group loads, then its archived member loads and Studio opens on the group', async () => {
+        const team = fullCharacter('team', { type: 'group', characters: ['alpha'] })
+        fulls.team = team
+        DBState.db = { characters: [buildColdStub(team, 'unit-team', []), buildColdStub(fulls.alpha, 'unit-alpha', [])] } as unknown as Database
+        const opened = tap(0)
+        await land('team')
+        expect(get(studioOpen)).toBe(false)
+        await land('alpha')
+
+        expect(await opened).toBe(true)
+        expect(slot(0).coldstorage).toBeUndefined()
+        expect(slot(1).coldstorage).toBeUndefined()
+        expect(selIdState.selId).toBe(0)
+        expect(studioScreen.target.owner).toEqual({ type: 'group', id: 'team' })
+        expect(slot(0).lastInteraction).toBe(LONG_AGO)
+        expect(alertError).not.toHaveBeenCalled()
+    })
+
+    test('F G3: Back while the member loads opens nothing and the load goes on', async () => {
+        installGroup()
+        const opened = tap(1)
+        await drain()
+        expect(dispatchBack()).toBe(true)
+        await land('alpha')
+
+        expect(await opened).toBe(false)
+        expect(get(studioOpen)).toBe(false)
+        expect(get(selectedCharID)).toBe(-1)
+        expect(liveBack()).toBe(0)
+    })
+
+    test('G G4: openStudioFromHome alone refuses a group with an archived member', () => {
+        installGroup()
+        expect(openStudioFromHome(1, opener())).toBe(false)
+        expect(get(selectedCharID)).toBe(-1)
+        expect(get(studioOpen)).toBe(false)
     })
 })

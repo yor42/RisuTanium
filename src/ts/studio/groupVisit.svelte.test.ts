@@ -171,9 +171,9 @@ describe('openStudio names the group target', () => {
     })
 })
 
-describe('T2 Home offers no entry for a group (compatibility guard)', () => {
-    test('homeStudioAvailable is false for a group and unchanged for a character', () => {
-        expect(homeStudioAvailable(db.db.characters[1] as never)).toBe(false)
+describe('T2 Home offers a group entry (S8 follow-up #859)', () => {
+    test('homeStudioAvailable is true for a loaded group and unchanged for a character', () => {
+        expect(homeStudioAvailable(db.db.characters[1] as never)).toBe(true)
         expect(homeStudioAvailable(db.db.characters[0] as never)).toBe(true)
         expect(homeStudioAvailable({ ...db.db.characters[0], trashTime: 1 } as never)).toBe(false)
     })

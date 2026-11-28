@@ -403,9 +403,11 @@ describe('availability', () => {
             return studioEligible()
         }
 
-        for (const index of [0, 1, 2]) {
+        // A group is offered here although `studioEligible()` (character content) is not: its visit is `studioVisitEligible()`.
+        for (const index of [0, 2]) {
             expect(homeStudioAvailable(slot(index)), `slot ${index}`).toBe(eligibleAt(index))
         }
+        expect(homeStudioAvailable(slot(1))).toBe(true)
         expect(homeStudioAvailable(slot(0))).toBe(true)
         expect(homeStudioAvailable(slot(3))).toBe(false)
 
@@ -419,7 +421,7 @@ describe('availability', () => {
         expect(homeStudioAvailable(slot(0))).toBe(false)
     })
 
-    test('R T30: an archived stub is available (the open loads it first); a group, a trashed or a playground stub, the switch off and Beta Mobile GUI still are not', () => {
+    test('R T30: an archived stub is available (the open loads it first); a trashed or a playground stub, the switch off and Beta Mobile GUI still are not', () => {
         const stubOf = (source: character): character => buildColdStub(source, `unit-${source.chaId}`, [])
         installDb([
             stubOf(warmCharacter('normal')),
@@ -430,7 +432,7 @@ describe('availability', () => {
 
         expect(slot(0).coldstorage).toBe('unit-normal')
         expect(homeStudioAvailable(slot(0))).toBe(true)
-        expect(homeStudioAvailable(slot(1))).toBe(false)
+        expect(homeStudioAvailable(slot(1))).toBe(true)
         expect(homeStudioAvailable(slot(2))).toBe(false)
         expect(homeStudioAvailable(slot(3))).toBe(false)
 
@@ -443,7 +445,7 @@ describe('availability', () => {
     })
 
     test('G T3b: an open of a slot that is not available changes nothing', () => {
-        installDb([warmCharacter('group', { type: 'group' }), warmCharacter('cold', { coldstorage: 'unit-cold' })])
+        installDb([warmCharacter('playground', { chaId: '§playground' }), warmCharacter('cold', { coldstorage: 'unit-cold' })])
 
         expect(openStudioFromHome(0, opener())).toBe(false)
         expect(openStudioFromHome(1, opener())).toBe(false)
