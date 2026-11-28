@@ -86,9 +86,9 @@
     }
 </script>
 
-<div class="flex flex-col gap-2" data-part="settings-slot-key" data-slot={keySlot} bind:this={root}>
+<div class="flex flex-col gap-2" data-slot-key="field" data-slot={keySlot} bind:this={root}>
     {#if chip !== ''}
-        <span class="inline-flex items-center gap-1 self-start max-w-full px-3 py-1 rounded-full bg-darkbutton text-textcolor text-sm font-mono" data-part="settings-slot-key-chip">
+        <span class="inline-flex items-center gap-1 self-start max-w-full px-3 py-1 rounded-full bg-darkbutton text-textcolor text-sm font-mono" data-slot-key="chip">
             {#if hint.kind === 'ref'}
                 <VariableIcon class="shrink-0" size={14} aria-hidden="true" />
             {:else}
@@ -97,7 +97,7 @@
             <span class="truncate">{chip}</span>
         </span>
     {:else}
-        <span class="flex items-center gap-1 text-sm text-draculared" data-part="settings-slot-key-alert">
+        <span class="flex items-center gap-1 text-sm text-draculared" data-slot-key="alert">
             <CircleAlertIcon class="shrink-0" size={14} aria-hidden="true" />
             <span>{keyStateText(hint, false, language.connectionsKeyMissing)}</span>
         </span>
@@ -108,7 +108,7 @@
             <button
                 type="button"
                 class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected disabled:opacity-50 risu-focus-ring"
-                data-part="settings-slot-key-save"
+                data-slot-key="save"
                 disabled={busy || newKey.trim() === ''}
                 onclick={() => { void save() }}
             >{language.uiCommon.save}</button>
@@ -125,7 +125,7 @@
             <button
                 type="button"
                 class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected disabled:opacity-50 risu-focus-ring"
-                data-part="settings-slot-key-replace"
+                data-slot-key="replace"
                 disabled={busy}
                 onclick={openReplace}
             >{language.connectionsChangeKey}</button>
@@ -133,7 +133,7 @@
                 <button
                     type="button"
                     class="min-h-11 px-4 rounded-md bg-darkbutton text-draculared hover:bg-selected disabled:opacity-50 risu-focus-ring"
-                    data-part="settings-slot-key-remove"
+                    data-slot-key="remove"
                     disabled={busy}
                     onclick={(event) => { confirming = event.currentTarget }}
                 >{language.connectionsClearKey}</button>
@@ -141,7 +141,7 @@
         </div>
     {/if}
     {#if error !== ''}
-        <p class="text-sm text-draculared" role="alert" data-part="settings-slot-key-error">{error}</p>
+        <p class="text-sm text-draculared" role="alert" data-slot-key="error">{error}</p>
     {/if}
 </div>
 

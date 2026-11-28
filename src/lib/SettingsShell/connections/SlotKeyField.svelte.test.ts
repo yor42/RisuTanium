@@ -56,7 +56,7 @@ function mountField(): void {
 }
 
 function button(part: string): HTMLButtonElement | null {
-    return document.querySelector<HTMLButtonElement>(`[data-part="settings-slot-key-${part}"]`)
+    return document.querySelector<HTMLButtonElement>(`[data-slot-key="${part}"]`)
 }
 
 beforeEach(() => {
@@ -76,7 +76,7 @@ describe('SlotKeyField', () => {
     test('shows a last-four chip and no field holds the saved key', async () => {
         mountField()
         await settle()
-        expect(document.querySelector('[data-part="settings-slot-key-chip"]')?.textContent).toContain('1234')
+        expect(document.querySelector('[data-slot-key="chip"]')?.textContent).toContain('1234')
         expect(document.querySelector('input')).toBeNull()
         expect(everything()).not.toContain(KEY)
         expect(everything()).not.toContain('SYNTH-custom')
