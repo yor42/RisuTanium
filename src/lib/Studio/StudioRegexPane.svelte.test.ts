@@ -256,6 +256,8 @@ describe('T35 (UI): unreadable and inert rows', () => {
             expect(entry.textContent).toContain('Unreadable entry')
             expect(entry.querySelector('input, select, textarea, button')).toBeNull()
         }
+        // The row menu sits beside the entry, not inside it: every unreadable and inert row has one.
+        expect(parts('studio-regex-row-menu')).toHaveLength(5)
         expect(unreadable[0].textContent).toContain('x')
         expect(unreadable[0].textContent).toContain(language.studioRegexWhyField('in'))
         expect(unreadable[2].textContent).toContain(language.studioRegexWhyNotObject)
@@ -266,6 +268,19 @@ describe('T35 (UI): unreadable and inert rows', () => {
         await settle()
         expect(liveList('character')[4].comment).toBe('renamed')
         expect(liveList('character').slice(0, 4)).toEqual(list.slice(0, 4))
+    })
+
+    test('Remove on an inert row writes one step and the list shrinks; undo restores it', async () => {
+        const list: unknown[] = [addShape('a'), null, 'text', addShape('b')]
+        await start('character', list)
+        await mountRegex('character')
+        await click(parts('studio-regex-row-menu')[1])
+        await click(part('studio-regex-delete'))
+        expect(liveList('character')).toEqual([list[0], 'text', list[3]])
+        expect(parts('studio-regex-unreadable')).toHaveLength(1)
+        expect(doneOf('character')).toHaveLength(1)
+        expect(service.undo(ownerOf('character'))).toEqual({ ok: true })
+        expect(liveList('character')).toEqual(list)
     })
 })
 

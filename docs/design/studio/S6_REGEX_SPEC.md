@@ -148,7 +148,7 @@ Fork-only fields: none.
 These come from upstream data through the unchecked classic or upstream import (§0), so Studio handles them without loss (MC-175, MC-223). They are not fork-local corruption (MC-011).
 
 - **M-a: an object that is not a well-formed entry** (a required key missing, or a key of the wrong type) is a read-only row: "Unreadable entry" with the reason, plus the name when `comment` is a string. It offers **Delete and Move** (`objRemove`/`objInsert` carry any object, S7 §4.1). Field edits and Duplicate are refused with `precondition` (design default D7: Studio does not multiply data it cannot edit). Try it is not offered. Editing it in Studio is #713 (MC-4050).
-- **M-b: an element that is not an object** (`null`, a string, a number, an array) is an **inert** row: "Unreadable entry" with the reason and no action. No op is ever planned with it as its subject, because S7's ops carry objects only. Ops on the other rows of the same list must still plan and apply (R1). Classic cannot show or delete such an element either (§1.1). Repair is #713. (Design default D7; it replaces draft 4's JSON-value payloads.)
+- **M-b: an element that is not an object** (`null`, a string, a number, an array) is an **inert** row: "Unreadable entry" with the reason, and a row menu that offers Remove only (one `nonEntry` step with no Recently Deleted item, #713); Move and Duplicate are never planned with it as their subject, because S7's ops carry objects only. Ops on the other rows of the same list must still plan and apply (R1). Classic cannot show or delete such an element either (§1.1). Repair is #713. (Design default D7; it replaces draft 4's JSON-value payloads.)
 - **M-c: a list that is not JSON-safe is read-only as a whole (deep rule).** A list is JSON-safe when every element, at every depth, is `null`, a boolean, a finite number, a string, an array or a plain object whose own keys all hold JSON-safe values. So `undefined` anywhere (an element, or a key holding `undefined`), a function, a symbol, a bigint, a non-finite number, a non-plain object or a cycle makes it not JSON-safe.
   - Reason: S7's anchor and copies use `JSON.stringify` semantics (`NaN` becomes `null`, an `undefined` key is lost; S7 §4.1). An undo or restore of a copy would therefore write a changed value, against MC-175.
   - The list view says the list cannot be edited in Studio and offers the classic editor (interim, MC-4050, #713). No op, journal entry or import is made for it.
@@ -226,10 +226,10 @@ Each operation is one owner-history step (SLICE1 §5), planned and replayed by `
 | Import (MC-3996) | append the file's entries | one `objInsert` per entry, one step | `import` with `count` |
 | Field edit | one key changed | `objSet(i, field, before, after, anchors)`; turning custom flags on with `flag` absent or empty is two `objSet` in one step | `edit` with `field` |
 
-On an M-a row only Delete and Move apply; an M-b row and every row of an M-c list get no operation (§2.1).
+On an M-a row only Delete and Move apply; an M-b row offers Remove only (#713), and every row of an M-c list gets no operation (§2.1).
 
 **Delete.**
-- DD-100 and SLICE1 §5 ("never asks first", `SLICE1_SPEC.md:76, :111, :116`): no confirm; one toast per delete, with Undo; focus moves to the next row, or else the previous one.
+- DD-100 and SLICE1 §5 ("never asks first", `SLICE1_SPEC.md:76, :111, :116`): no confirm; one toast per delete, with Undo (removing a non-object element, #713, shows no toast: it has no deleted item, and History undoes it); focus moves to the next row, or else the previous one.
 - **Later edits (DD-100).** The deleted item stays in History's deleted list after later edits until Studio closes. The list is capped at `MAX_DELETED = 50`, and S7's obj and greeting items count together (`historyModel.ts:21`; S7 §4.4).
 - **Reload (MC-1119 answer 6).** Survival across a reload is "kept on this device with a size cap, oldest evicted first". It holds only while the owner's history is stored: a character or module owner in the `ready`, writable phase.
   - In `memoryOnly` (another tab holds the claim, or the store is unwritable), and for every preset, the item lasts until the page closes: nothing is saved outside `ready` (`ownerHistory.svelte.ts:1118-1120, :1189-1196`). The banners say so: the memory-only phase banner, and `studioBannerPresetSession` for presets (MC-3892).
@@ -257,7 +257,7 @@ S6 defines no op, deleted-item shape, anchor, planner or journal of its own. All
 - **Coalescing** follows S7 §4.2: typing in one key of one entry within `COALESCE_MS`.
 - **Records hold no live objects.** Every `entry` an op records is a fresh plain copy, never a live object or proxy. A Svelte proxy keeps its writes in its own sources (svelte 5.57.3 `src/internal/client/proxy.js:271-339`), so a recorded proxy would follow later classic edits.
 - **Duplicate and import copies** are deep copies made through canonical JSON (`JSON.parse`), so a `__proto__` key stays an own property.
-- **No op on an M-b element or an M-c list** (§2.1).
+- **No op on an M-b element except Remove (#713), and none on an M-c list** (§2.1).
 
 ### 5.3 Restore to when Studio opened (MC-4051)
 
@@ -479,7 +479,7 @@ RRs stay **DESIGNED, NOT DEMONSTRATED** until their pre-fix run is recorded. The
 | T31 | Import into the active preset assigns a fresh `db.presetRegex`; into an inactive preset, a fresh slot array. Marks as T19. | NB | n/a | presetFixture | S6e |
 | T32 | Export passes the live copy: the active preset's working list, not its lagging slot; an inactive slot; a module's `regex ?? []`. A `false` from `downloadFile` shows nothing. | NB | n/a | a preset whose copy and slot differ | S6e |
 | T34 | Restore to when Studio opened (MC-4051), cases (a)-(i) and (h') listed below the table. | NB | n/a | 3 entries; 300 × 20 KB for (f); one 25 KB entry for (g), (h), (h') | S6a, (d) S6b |
-| T35 | Malformed elements, built through the real `importRegex`. M-a objects (`{comment:'x', in: 123, out:'', type:'editinput'}`, an object without `comment`) show as unreadable: edit and duplicate are refused, Try it is not offered, delete and move land, the record parses after save and reload (character and module), and undo restores the element exactly. M-b elements (`null`, `"text"`) are inert rows with no action. | NB | n/a | classic-import fixture | S6a (rows, refusals), S6b (delete, move) |
+| T35 | Malformed elements, built through the real `importRegex`. M-a objects (`{comment:'x', in: 123, out:'', type:'editinput'}`, an object without `comment`) show as unreadable: edit and duplicate are refused, Try it is not offered, delete and move land, the record parses after save and reload (character and module), and undo restores the element exactly. M-b elements (`null`, `"text"`) are inert rows whose only action is Remove (#713). | NB | n/a | classic-import fixture | S6a (rows, refusals), S6b (delete, move) |
 | T36 | A list holding a value that is not JSON-safe is read-only as a whole: no op, no journal entry, no import, and the classic link is shown. Values tried: `NaN`, an `undefined` element, `flag: undefined`, a nested `{x: {y: undefined}}`, injected in memory. | NB | n/a | in-memory list | S6a |
 | T38 | **Regex holder rows.** Character and module records hold each regex shape: `objSet` for every field (`{had:false}` on `flag` and `ableFlag`), `objInsert`/`objRemove` with `content` counts, the obj deleted item, and every label action. Each is saved through the real store and parses after `readOwner`. A record with `ownerKey` rewritten to a `chat:` key, one shape per record, is refused by `parseOwnerRecord` called directly (R3; review 3 E-g). An `objSet` on a field outside the regex table is refused. Scratch evidence for Gate 2, as S7 T6: 71882fe16's `parseOwnerRecord` returns null for each shape. | NB (the scratch part is diagnostic) | n/a | records written by the service | S6a, extended in S6b and S6e |
 | T39 | **Realistic size.** A 300 × 20 KB list on a character and on a module gets one field edit and one delete, then a save and `readOwner`. The deleted item and both steps are present, and the stored restore point holds no list. The S6b part also records the plan time of Add, Move, Duplicate and the undo of a Delete on that list (`content` counts over every row). | NB (the timings are measurements for Gate 2) | n/a | synthetic 300 × 20 KB | field part S6a, delete part S6b |
@@ -538,7 +538,7 @@ Draft 4's M11-M13, M22, M32, M36-M38, M40 and M42 tested S6's own seam. They are
 | M39 the JSON-safe check is shallow | M-c | T36 |
 | M41 Try it shows replaced text for a directive entry, or treats `@@foo` as a directive | §6.2 | T22 |
 | M43 a regex list is written into the stored restore point | MC-4051 | T34 (e), T39 |
-| M44 an op is offered on an M-b element | §2.1 | T35, T41 |
+| M44 an op other than Remove is offered on an M-b element | §2.1 | T35, T41 |
 | M45 an `objSet` on a field outside the regex table is accepted | §5.1 | T38 |
 | M46 the anchor or counts read a non-object element as an object (throws) | R1 | T41 |
 | M47 a revert range mixing `regex/` text and regex obj ops is planned | R5 | T42 |
@@ -599,7 +599,7 @@ None. R1-R9 (§5.7) were requests to #685, answered in S7 r6; they are not produ
 - **D4:** after a name, stage or replace edit, at any stage, the chat refreshes with one `ReloadGUIPointer` bump when the step closes. This is classic parity (`RegexData.svelte:114-120, :131-133`); the build checks whether the chat re-renders without it.
 - **D5:** the order note and the order chip show only for entries with `ableFlag` on and an `order` meta.
 - **D6:** export is disabled for an empty list; import does no duplicate detection; the import toast has no Undo button.
-- **D7:** an M-a element offers Delete and Move only; an M-b element is inert (§2.1).
+- **D7:** an M-a element offers Delete and Move only; an M-b element is inert and offers Remove only (§2.1, #713).
 - **D8:** a list that is not JSON-safe, by the deep rule, is read-only as a whole, with the classic link (§2.1 M-c).
 - **D10:** the list heading carries classic's `regexScript` help (§1.1).
 
