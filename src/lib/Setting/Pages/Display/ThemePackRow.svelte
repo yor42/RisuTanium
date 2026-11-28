@@ -177,6 +177,7 @@
                         {#if modesLabel(pack.modes)}<span>{modesLabel(pack.modes)}</span>{/if}
                         <span>{language.themePackLicense(pack.license)}</span>
                         <span>{language.themePackAttribution(pack.attribution)}</span>
+                        <span>{language.themePackShipsWithApp}</span>
                     </div>
                 </details>
             </div>

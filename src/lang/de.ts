@@ -4143,6 +4143,7 @@ export const languageGerman = {
     "themePackSize": (size: string) => `Größe: ${size}`,
     "themePackLicense": (license: string) => `Lizenz: ${license}`,
     "themePackAttribution": (attribution: string) => `Urheberhinweis: ${attribution}`,
+    "themePackShipsWithApp": "Wird mit der App geliefert und mit ihr aktualisiert. Es kann nicht entfernt werden.",
     "themePackDetails": "Details",
     "themePackDetailsFor": (name: string) => `Details: ${name}`,
     "themePackFonts": "Schriftlizenzen",

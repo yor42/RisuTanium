@@ -16,9 +16,9 @@ Note: Theme packs are a RisuTanium feature. Upstream RisuAI has no equivalent.
 4. The app checks the pack and shows the result: "Installed", "Installed with warnings" or notes about what it found. If the check refuses the file, the app tells you why and installs nothing.
 5. Select the pack under **Theme pack** to turn it on. Choosing **None** turns packs off.
 
-The built-in packs are listed as **Built in** and need no file or warning.
+The built-in packs are listed first as **Built in** and need no file or warning. They ship with the app, update with it and cannot be removed.
 
-<!-- src/lang/en.ts themePackInstall, themePackRiskConfirm, themePackInstalled, themePackRefusedHeader, themePackBuiltIn, themePackNone; MC-3641, MC-4147 -->
+<!-- src/lang/en.ts themePackInstall, themePackRiskConfirm, themePackInstalled, themePackRefusedHeader, themePackBuiltIn, themePackShipsWithApp, themePackNone; MC-3641, MC-4147, MC-4706 -->
 
 ## Which screens a pack styles, and when
 
@@ -56,6 +56,7 @@ If a pack makes the app hard to use:
 - A few pieces inside popups have no part of their own (for example the comparison view of the prompt comparison dialog and the text-area autocomplete popover). The popup list of the old (non-preview) chat screen has no parts.
 - A few small pieces of the chat sidebar (some label texts and the avatar ring of the recent strip) have no part of their own and cannot be styled individually.
 - The built-in packs only restyle the chat screen. They are planned to be rebuilt.
+- A built-in pack is read from the app's own files each time it is applied. If that read fails (for example a self-hosted page that lost its connection), the pack-broken notice shows and the app's own colours stay until the page is reloaded.
 - A file named `sidebar.css` (or any other extra `.css` file) in a pack is kept with the pack but never applied. A pack with only `popups.css` is refused.
 
 <!-- MC-4149, MC-4160, MC-4161, MC-3871, MC-3123; src/ts/themePack/intake.ts -->

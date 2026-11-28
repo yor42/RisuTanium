@@ -280,7 +280,10 @@ describe('T4-3 the list', () => {
         const builtin = entryOf(target, BUILTIN_PACKS[0].id)
         expect(builtin.querySelector('[data-part="theme-pack-remove"]')).toBeNull()
         expect(builtin.textContent).toContain(language.themePackBuiltIn)
+        expect(builtin.textContent).toContain(language.themePackShipsWithApp)
         expect(builtin.textContent).not.toContain(language.themePackSize('0.0 KiB'))
+        // The ships line belongs to the built-in details only.
+        expect(entryOf(target, 'light').textContent).not.toContain(language.themePackShipsWithApp)
     })
 
     test('T1-2 the details, the font licenses and Remove sit inside one disclosure per installed pack; a built-in has no Remove', () => {
@@ -330,6 +333,13 @@ describe('T4-3 the list', () => {
         const unreadable = cards[cards.length - 1]
         expect(unreadable.querySelector('input')).toBeNull()
         expect(unreadable.querySelector('[data-part="theme-pack-remove"]')).not.toBeNull()
+    })
+
+    test('MC-4706 the bundled built-ins are listed first, in listing order, ahead of every installed pack', () => {
+        setPacks([recordOf('a'), recordOf('b')])
+        const target = show()
+        const ids = [...target.querySelectorAll<HTMLElement>('[data-part="theme-pack-entry"]')].map((entry) => entry.getAttribute('data-pack-id'))
+        expect(ids).toEqual([...BUILTIN_PACKS.map((pack) => pack.id), 'a', 'b'])
     })
 
     test('T2b-10 an installed pack draws its record colours on the tile, a pack without colours a neutral one, and no pack colour leaves the svg', () => {

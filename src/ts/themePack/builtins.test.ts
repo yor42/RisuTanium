@@ -1,5 +1,6 @@
 // @vitest-environment node
-// The built-in packs: metadata and chat sheet equal the frozen golden packs they were built from. T3B-1.
+// The built-in packs: the bundled archives, their pins, and the listing that points at them. T3B-1.
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { strFromU8, unzipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
@@ -7,17 +8,29 @@ import * as builtinsModule from './builtins'
 import { BUILTIN_PACKS, builtinPackById } from './builtins'
 import { cr, parseHexColour, type Rgba } from './colour'
 import { decls } from './csslit'
-import { judgeAreaSheet, preprocessCss, THEME_AREAS, type ThemeArea } from './index'
+import { builtinArchiveBytesForTests, builtinSheetForTests } from './fixtures/bundledPacks'
+import { judgeAreaSheet, judgePackSheets, preprocessCss, THEME_AREAS, type ThemeArea } from './index'
+import { intakePackBytes, type PackJudge, type VerifiedPack } from './intake'
 import { deriveTileColours } from './tileColours'
 
 const GOLDENS = new URL('./goldens/', import.meta.url)
+const BUNDLED_README = readFileSync(new URL('./bundled/README.md', import.meta.url), 'utf8')
+const judge: PackJudge = async (sheets) => judgePackSheets(sheets)
 
 interface GoldenManifest { id: string; name: string; version: string; license: string; attribution: string; modes: string[] }
 
-function golden(slug: string): { manifest: GoldenManifest; chat: string } {
+function golden(slug: string): { manifest: GoldenManifest } {
     const entries = unzipSync(new Uint8Array(readFileSync(new URL(`${slug}.risutheme`, GOLDENS))))
-    return { manifest: JSON.parse(strFromU8(entries['manifest.json'])) as GoldenManifest, chat: strFromU8(entries['chat.css']) }
+    return { manifest: JSON.parse(strFromU8(entries['manifest.json'])) as GoldenManifest }
 }
+
+async function acceptedBundled(slug: string): Promise<VerifiedPack> {
+    const result = await intakePackBytes(builtinArchiveBytesForTests(slug), judge)
+    if (result.ok === false) throw new Error(`bundled ${slug} refused: ${JSON.stringify(result.refusals)}`)
+    return result.pack
+}
+
+const EACH_PACK = BUILTIN_PACKS.map((pack) => [pack.slug, pack] as const)
 
 describe('T3B-1 the built-in packs', () => {
     it('are exactly the four chat themes, with the ids the settings and I2 use', () => {
@@ -25,36 +38,50 @@ describe('T3B-1 the built-in packs', () => {
         expect(BUILTIN_PACKS.map((pack) => pack.slug)).toEqual(['origin-navy', 'banana-cocoa', 'scratch-white', 'office-sheet'])
     })
 
-    it.each(BUILTIN_PACKS.filter((pack) => ['origin-navy', 'banana-cocoa'].includes(pack.slug)).map((pack) => [pack.slug, pack] as const))('%s: the metadata equals its golden manifest and the sheet equals its golden chat.css', (slug, pack) => {
-        const { manifest, chat } = golden(slug)
-        expect(manifest.id).toBe(`risutanium.${slug}`)
-        expect({ name: pack.name, version: pack.version, license: pack.license, attribution: pack.attribution, modes: [...pack.modes] })
-            .toEqual({ name: manifest.name, version: manifest.version, license: manifest.license, attribution: manifest.attribution, modes: manifest.modes })
-        expect(preprocessCss(pack.chatCss)).toBe(chat)
+    // The golden packs are frozen bytes of an earlier pack layout: only the pack id is shared, so a later edit of a sheet or a
+    // version never reaches back into them (MC-2540).
+    it.each(['origin-navy', 'banana-cocoa'])('%s: the bundled manifest id equals the id of its golden manifest', async (slug) => {
+        const bundled = await acceptedBundled(slug)
+        expect(golden(slug).manifest.id).toBe(`risutanium.${slug}`)
+        expect(bundled.manifest.packId).toBe(golden(slug).manifest.id)
     })
 
-    it.each(BUILTIN_PACKS.map((pack) => [pack.slug, pack] as const))('%s: the chat sheet is accepted by the validator and bundles no file', (_slug, pack) => {
-        const judged = judgeAreaSheet('chat', pack.chatCss)
-        expect(judged.result.errors).toEqual([])
-        expect(judged.result.ok).toBe(true)
-        expect(judged.resources).toHaveLength(0)
+    // Build-time guard: the bytes that run are the bytes judged here, so a sheet that gains a note or a refusal fails this test
+    // instead of breaking a built-in at runtime. A note is a validator defect to fix, not a reason to tone a pack down (MC-3419).
+    it.each(EACH_PACK)('%s: the bundled archive passes the intake with every sheet judged ok, no note, no skipped area and no bundled file', async (slug) => {
+        const accepted = await acceptedBundled(slug)
+        expect(accepted.skippedAreas).toEqual([])
+        expect(Object.keys(accepted.sheets)).toEqual(['chat'])
+        for (const [area, sheet] of Object.entries(accepted.sheets)) {
+            expect(sheet.result.errors, area).toEqual([])
+            expect(sheet.result.ok, area).toBe(true)
+            expect(sheet.result.notes, area).toBeUndefined()
+            expect(sheet.resources, area).toHaveLength(0)
+        }
+        expect(accepted.files.size).toBe(0)
     })
 
-    // Compatibility guard (passes before and after the notes channel): a shipped sheet has neither errors nor notes.
-    it.each(BUILTIN_PACKS.map((pack) => [pack.slug, pack] as const))('%s: the chat sheet judgement carries no notes', (_slug, pack) => {
-        expect(judgeAreaSheet('chat', pack.chatCss).result.notes).toBeUndefined()
-    })
-
-    it('carry a chat sheet only: no studio, settings or home sheet is bundled or exported', () => {
+    it('carry a listing of the archive and its pins only: the module exports no sheet text', () => {
         expect(Object.keys(builtinsModule).sort()).toEqual(['BUILTIN_PACKS', 'builtinPackById'])
         for (const pack of BUILTIN_PACKS) {
-            expect(Object.keys(pack).sort()).toEqual(['attribution', 'chatCss', 'id', 'license', 'mainColor', 'modes', 'name', 'secondaryColor', 'slug', 'version'])
+            expect(Object.keys(pack).sort()).toEqual(['archive', 'attribution', 'id', 'license', 'mainColor', 'modes', 'name', 'secondaryColor', 'slug', 'version'])
+            expect(Object.keys(pack.archive).sort()).toEqual(['sha256', 'size', 'url'])
         }
     })
 
-    it.each(BUILTIN_PACKS.map((pack) => [pack.slug, pack] as const))('%s: the tile colours equal what the install derives from the judged sheet', (_slug, pack) => {
-        const judged = judgeAreaSheet('chat', pack.chatCss)
-        expect(deriveTileColours(judged.canonical)).toEqual({ main: pack.mainColor, secondary: pack.secondaryColor })
+    it.each(EACH_PACK)('%s: the listing equals the bundled manifest', async (slug, pack) => {
+        const { manifest } = await acceptedBundled(slug)
+        expect({ id: pack.id, name: pack.name, version: pack.version, license: pack.license, attribution: pack.attribution, modes: [...pack.modes] })
+            .toEqual({ id: `builtin:${slug}`, name: manifest.name, version: manifest.version, license: manifest.license, attribution: manifest.attribution, modes: manifest.modes })
+        expect(manifest.packId).toBe(`risutanium.${slug}`)
+    })
+
+    // The tile follows the install rule (themePackInstallFlow tileColoursOf): both manifest colours if given, else derived from the judged chat sheet.
+    it.each(EACH_PACK)('%s: the tile colours follow the install rule over the bundled archive', async (slug, pack) => {
+        const { manifest, sheets } = await acceptedBundled(slug)
+        const given = { main: manifest.tile.main.kind === 'ok' ? manifest.tile.main.value : undefined, secondary: manifest.tile.secondary.kind === 'ok' ? manifest.tile.secondary.value : undefined }
+        const derived = given.main !== undefined && given.secondary !== undefined ? {} : deriveTileColours(sheets.chat?.canonical ?? '')
+        expect({ main: pack.mainColor, secondary: pack.secondaryColor }).toEqual({ main: given.main ?? derived.main, secondary: given.secondary ?? derived.secondary })
     })
 
     it('builtinPackById matches the id exactly and nothing else', () => {
@@ -66,6 +93,19 @@ describe('T3B-1 the built-in packs', () => {
     })
 })
 
+describe('T2 the archive pins agree in the listing, the file and the README', () => {
+    it.each(EACH_PACK)('%s: size and SHA-256', (slug, pack) => {
+        const bytes = builtinArchiveBytesForTests(slug)
+        expect(bytes.length).toBe(pack.archive.size)
+        expect(createHash('sha256').update(bytes).digest('hex')).toBe(pack.archive.sha256)
+        expect(BUNDLED_README).toContain(pack.archive.sha256)
+        expect(BUNDLED_README).toContain(`${pack.archive.size} bytes`)
+    })
+
+    it.each(EACH_PACK)('%s: the listing URL names the bundled file', (slug, pack) => {
+        expect(pack.archive.url).toContain(`${slug}.risutheme`)
+    })
+})
 const NEW_BUILTINS = [
     { slug: 'scratch-white', name: 'Scratch White', index: 2, mainColor: '#1f4aa8', secondaryColor: '#fdfdfa' },
     { slug: 'office-sheet', name: 'Office Sheet', index: 3, mainColor: '#1a55ba', secondaryColor: '#f3f4f6' },
@@ -97,14 +137,15 @@ describe('MC-2521 the reference-free built-ins', () => {
 
     it.each(NEW_BUILTINS)('$slug: the chat sheet is the docs sheet, registers no font and names no message font', ({ slug }) => {
         const pack = builtinPackById(`builtin:${slug}`)
-        expect(pack?.chatCss).toBe(docsSheet('chat', slug))
-        const judged = judgeAreaSheet('chat', pack?.chatCss ?? '')
+        expect(pack).not.toBeNull()
+        expect(builtinSheetForTests(slug, 'chat')).toBe(preprocessCss(docsSheet('chat', slug)))
+        const judged = judgeAreaSheet('chat', builtinSheetForTests(slug, 'chat'))
         expect(judged.fontFaceBlocks).toHaveLength(0)
         expect(judged.resources).toHaveLength(0)
     })
 
     it('Scratch White names no message font: message text keeps the user font', () => {
-        const css = builtinPackById('builtin:scratch-white')?.chatCss ?? ''
+        const css = builtinSheetForTests('scratch-white', 'chat')
         expect(css.length).toBeGreaterThan(0)
         expect(decls(css).filter((d) => d.prop === '--chat-message-font')).toEqual([])
     })
@@ -162,8 +203,12 @@ describe('MC-2522/MC-2523 the designed palette and contrast of the new chat shee
     })
 })
 
-describe('MC-2521 each built-in chat sheet is the downloadable pack chat.css (the Scratch White pack adds the font block)', () => {
+describe('T8 each bundled chat sheet is the docs sheet, and the downloadable pack chat.css matches it (the Scratch White pack adds the font block)', () => {
     const packEntries = (slug: string): Record<string, Uint8Array> => unzipSync(new Uint8Array(readFileSync(new URL(`../../../theme-packs/${slug}.risutheme`, import.meta.url))))
+
+    it.each(BUILTIN_PACKS.map((pack) => pack.slug))('%s: the bundled chat.css is the preprocessed docs sheet', (slug) => {
+        expect(builtinSheetForTests(slug, 'chat')).toBe(preprocessCss(docsSheet('chat', slug)))
+    })
 
     it.each(NEW_BUILTINS)('$slug: the pack manifest equals the built-in metadata', ({ slug }) => {
         const pack = builtinPackById(`builtin:${slug}`)
@@ -173,16 +218,12 @@ describe('MC-2521 each built-in chat sheet is the downloadable pack chat.css (th
             .toEqual({ name: pack?.name, version: pack?.version, license: pack?.license, attribution: pack?.attribution, modes: [...(pack?.modes ?? [])] })
     })
 
-    it('office-sheet: the pack chat.css equals the built-in chat sheet', () => {
-        const pack = builtinPackById('builtin:office-sheet')
-        expect(pack).not.toBeNull()
-        expect(strFromU8(packEntries('office-sheet')['chat.css'])).toBe(preprocessCss(pack?.chatCss ?? ''))
+    it('office-sheet: the pack chat.css equals the bundled chat sheet', () => {
+        expect(strFromU8(packEntries('office-sheet')['chat.css'])).toBe(builtinSheetForTests('office-sheet', 'chat'))
     })
 
-    it('scratch-white: the pack chat.css is the built-in chat sheet plus exactly the font block', () => {
-        const pack = builtinPackById('builtin:scratch-white')
-        expect(pack).not.toBeNull()
+    it('scratch-white: the pack chat.css is the bundled chat sheet plus exactly the font block', () => {
         const block = readFileSync(new URL('../../../theme-packs/scratch-white.chat-font.css', import.meta.url), 'utf8')
-        expect(strFromU8(packEntries('scratch-white')['chat.css'])).toBe(preprocessCss(pack?.chatCss ?? '') + preprocessCss(block))
+        expect(strFromU8(packEntries('scratch-white')['chat.css'])).toBe(builtinSheetForTests('scratch-white', 'chat') + preprocessCss(block))
     })
 })

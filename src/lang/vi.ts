@@ -4140,6 +4140,7 @@ export const languageVietnamese = {
     "themePackSize": (size: string) => `Kích thước: ${size}`,
     "themePackLicense": (license: string) => `Giấy phép: ${license}`,
     "themePackAttribution": (attribution: string) => `Ghi công: ${attribution}`,
+    "themePackShipsWithApp": "Đi kèm với ứng dụng và được cập nhật cùng ứng dụng. Không thể xóa.",
     "themePackDetails": "Chi tiết",
     "themePackDetailsFor": (name: string) => `Chi tiết: ${name}`,
     "themePackFonts": "Giấy phép phông chữ",

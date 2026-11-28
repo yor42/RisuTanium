@@ -101,6 +101,7 @@ import { installThemePack } from './install'
 import { intakePackBytes } from './intake'
 import { listThemePacks } from './packRecord'
 import { BUILTIN_PACKS } from './builtins'
+import { builtinSheetForTests } from './fixtures/bundledPacks'
 import { resetPackSheetForTests } from './apply'
 import {
     adoptActivePackScheme, cancelPackSchemeRequest, pendingPackSchemeRequestForTests, resetThemePackApplyForTests, startThemePackApply, themePackApplyState,
@@ -320,7 +321,7 @@ describe('turn-on, the live scheme and the mode (T1, T2, T4, T13, T29)', () => {
     for (const pack of BUILTIN_PACKS) {
         it(`T4 guard: ${pack.slug} in colour mode applies today's judged text with today's base`, async () => {
             await turnOn(pack.id)
-            expect(packText()).toBe(judgeAreaSheet('chat', pack.chatCss, undefined, 'chat').canonical)
+            expect(packText()).toBe(judgeAreaSheet('chat', builtinSheetForTests(pack.slug, 'chat'), undefined, 'chat').canonical)
             expect(baseAttribute()).toBe(pack.modes.length === 1 && pack.modes[0] === 'light' ? 'light' : '')
         })
     }

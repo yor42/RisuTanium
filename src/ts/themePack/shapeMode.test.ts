@@ -9,6 +9,7 @@ import { strFromU8, unzipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
 import { allowedTokenNames } from './appThemeNames'
 import { BUILTIN_PACKS } from './builtins'
+import { builtinSheetForTests } from './fixtures/bundledPacks'
 import { classify, decls } from './csslit'
 import { judgeAreaSheet } from './index'
 import { PROP_ALLOW, isAllowedProperty } from './scope'
@@ -62,7 +63,7 @@ describe('T5 shapeOnlySheet', () => {
     it('keeps the geometry of a real built-in and drops its canvas', () => {
         const scratch = BUILTIN_PACKS.find((pack) => pack.slug === 'scratch-white')
         if (scratch === undefined) throw new Error('scratch-white is missing')
-        const canonical = judgeAreaSheet('chat', scratch.chatCss).canonical
+        const canonical = judgeAreaSheet('chat', builtinSheetForTests(scratch.slug, 'chat')).canonical
         const shape = shapeOnlySheet(canonical)
         expect(shape).toContain('--pack-paper: #fdfdfa')
         expect(shape).toContain('--radius-bubble')
@@ -74,7 +75,7 @@ describe('T5 shapeOnlySheet', () => {
 
     it('never adds a character and is deterministic', () => {
         for (const pack of BUILTIN_PACKS) {
-            const canonical = judgeAreaSheet('chat', pack.chatCss).canonical
+            const canonical = judgeAreaSheet('chat', builtinSheetForTests(pack.slug, 'chat')).canonical
             const once = shapeOnlySheet(canonical)
             expect(shapeOnlySheet(canonical)).toBe(once)
             const kept = canonical.split('')
@@ -203,7 +204,7 @@ describe('T6 the stripped text of every real producer and hostile row is judged 
     interface Input { label: string, css: string, requireOk: boolean }
     const inputs: Input[] = []
 
-    for (const pack of BUILTIN_PACKS) inputs.push({ label: `built-in ${pack.slug}`, css: pack.chatCss, requireOk: true })
+    for (const pack of BUILTIN_PACKS) inputs.push({ label: `built-in ${pack.slug}`, css: builtinSheetForTests(pack.slug, 'chat'), requireOk: true })
     for (const file of ['origin-navy.risutheme', 'banana-cocoa.risutheme']) {
         const files = unzipSync(new Uint8Array(readFileSync(new URL(`./goldens/${file}`, import.meta.url))))
         const key = Object.keys(files).find((name) => name.endsWith('chat.css'))

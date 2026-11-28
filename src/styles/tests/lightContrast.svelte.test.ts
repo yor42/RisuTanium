@@ -86,6 +86,7 @@ vi.mock('src/ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
 
 import { colorSchemeList, colorSchemePresets, updateColorScheme, updateTextThemeAndCSS } from 'src/ts/gui/colorscheme'
 import { BUILTIN_PACKS } from 'src/ts/themePack/builtins'
+import { builtinSheetForTests } from 'src/ts/themePack/fixtures/bundledPacks'
 import { buildAppliedText, commitPackSheet, resetPackSheetForTests } from 'src/ts/themePack/apply'
 import { judgeAreaSheet } from 'src/ts/themePack/index'
 import { declareSurface, installThemePackGate, resetThemePackGateForTests } from 'src/ts/themePack/surfaceGate.svelte'
@@ -404,8 +405,7 @@ describe('the task toast text', () => {
             installThemePackGate(() => false)
             declareSurface('chat')
             if (variant !== 'none') {
-                const builtin = BUILTIN_PACKS.find((p) => p.id === variant)!
-                const judged = judgeAreaSheet('chat', builtin.chatCss, undefined, 'chat')
+                const judged = judgeAreaSheet('chat', builtinSheetForTests(variant.replace(/^builtin:/, ''), 'chat'), undefined, 'chat')
                 expect(judged.result.ok).toBe(true)
                 expect(commitPackSheet(chatCommitInput(buildAppliedText(judged, () => '')))).toEqual({ ok: true })
             }

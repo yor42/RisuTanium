@@ -1,4 +1,4 @@
-// The apply core of an installed theme pack: reads the stored archive, checks its hash, runs the merged intake over the
+// The apply core of an installed theme pack (or of a bundled built-in, which takes the same path over pinned bytes): reads the stored archive, checks its hash, runs the merged intake over the
 // stored bytes with the worker judge, mints one blob URL per bundled file, and puts each judged screen sheet into its own
 // gated style element before `#customcss`. Nothing here writes a persisted value or decides when to run; the driver does.
 //
@@ -15,6 +15,7 @@ import { getAppStore } from '../storage/store/appStore'
 import type { ColorScheme } from '../gui/colorscheme'
 import type { SchemeTone } from '../gui/surfaceTone'
 import type { BuiltinPack } from './builtins'
+import { readBundledArchive } from './bundledArchive'
 import type { ResourceSpan } from './canonical'
 import { COLOUR_READY_AREAS } from './colourReady'
 import { decls } from './csslit'
@@ -324,44 +325,6 @@ function withFallbackTails(elements: readonly PreparedElement[], popups: Prepare
     }
 }
 
-async function prepareBuiltin(pack: BuiltinPack, session: JudgeSession, isCurrent: () => boolean): Promise<Prepared | Stale> {
-    let judged: Awaited<ReturnType<JudgeSession['judge']>> | null = null
-    try {
-        judged = await session.judge({ chat: pack.chatCss })
-    } catch (error) {
-        if (import.meta.env.DEV) {
-            console.error('theme pack judge failed', error)
-        }
-    }
-    if (!isCurrent()) {
-        return STALE
-    }
-    const chat = judged?.areas?.chat
-    if (!chat || typeof chat.result?.ok !== 'boolean') {
-        return failure('couldNotCheck')
-    }
-    if (!chat.result.ok) {
-        return failure('refused', [{ code: 'sheetRefused', sheet: 'chat.css', errors: chat.result.errors }])
-    }
-    if (chat.resources.length > 0) {
-        return failure('refused')
-    }
-    const text = buildAppliedText(chat, () => '')
-    const variants = await judgeVariants(pack.modes, chat, NO_SHAPE_ONLY_SHEETS, null, session, isCurrent)
-    if ('stale' in variants) {
-        return variants
-    }
-    const base = baseOf(variants.light)
-    const shapeText = prepareShapeText(chat, text, () => '', variants.shape)
-    const chatText = textOrNull(text)
-    const tailed = withFallbackTails([{ area: 'chat', text: chatText, shapeText, base }], null)
-    return {
-        ok: true, blobs: [], skippedAreas: [], defaultScheme: packDefaultScheme(chat.canonical, base),
-        elements: tailed.elements, popups: tailed.popups,
-        ...(judgementTriggers(chat) ? { ownColourTrigger: true as const } : {}),
-    }
-}
-
 /**
  * Mints one blob URL for each target of `spans` that has none yet, in text order. Answers a failure or stale outcome to return,
  * or null when every span has a URL. The URLs are pushed to `minted` as they are made, so a later failure revokes them.
@@ -419,7 +382,46 @@ async function prepareArchive(key: string, session: JudgeSession, isCurrent: () 
         return failure('files')
     }
 
-    const stored = bytes
+    return prepareVerified(bytes, session, isCurrent, minted)
+}
+
+/**
+ * Reads a bundled built-in archive and applies it as an installed archive: the bytes must be present, have the pinned size and the pinned SHA-256,
+ * so the bytes that run are the bytes the build-time test judged; a mismatch is damaged files. A read that throws could not be checked.
+ * Any refused sheet breaks the whole pack, as for an installed archive.
+ */
+async function prepareBuiltin(pack: BuiltinPack, session: JudgeSession, isCurrent: () => boolean, minted: string[]): Promise<Prepared | Stale> {
+    let bytes: Uint8Array | null = null
+    let readFailed = false
+    try {
+        bytes = await readBundledArchive(pack.archive.url)
+    } catch (error) {
+        readFailed = true
+        if (import.meta.env.DEV) {
+            console.error('theme pack bundled archive read failed', error)
+        }
+    }
+    if (!isCurrent()) {
+        return STALE
+    }
+    if (readFailed) {
+        return failure('couldNotCheck')
+    }
+    if (bytes === null || bytes.length !== pack.archive.size) {
+        return failure('files')
+    }
+    const hash = await sha256Hex(bytes)
+    if (!isCurrent()) {
+        return STALE
+    }
+    if (hash !== pack.archive.sha256) {
+        return failure('files')
+    }
+    return prepareVerified(bytes, session, isCurrent, minted)
+}
+
+/** The intake, minting and element preparation over archive bytes whose hash the caller has already checked. */
+async function prepareVerified(stored: Uint8Array, session: JudgeSession, isCurrent: () => boolean, minted: string[]): Promise<Prepared | Stale> {
     const source = rangeSourceFrom({ size: stored.length, read: async (start, end) => stored.subarray(start, end) })
     const intake = await intakePack(source, session.judge)
     if (!isCurrent()) {
@@ -518,7 +520,7 @@ export async function preparePackSheet(source: ApplySource, session: JudgeSessio
     const minted: string[] = []
     try {
         const outcome = source.kind === 'builtin'
-            ? await prepareBuiltin(source.pack, session, isCurrent)
+            ? await prepareBuiltin(source.pack, session, isCurrent, minted)
             : await prepareArchive(source.key, session, isCurrent, minted)
         if (outcome.ok === false) {
             revokeAll(minted)

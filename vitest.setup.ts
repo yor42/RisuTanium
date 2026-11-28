@@ -11,6 +11,28 @@ vi.mock('wasmoon/dist/glue.wasm?url', async () => {
   return { default: fileURLToPath(import.meta.resolve('wasmoon/dist/glue.wasm')) }
 })
 
+// A bundled built-in archive's URL is a dev-server path (`/src/...`) under Vitest, which no Node fetch can read. Read those
+// from the checkout; any other URL (a `data:` URL a test supplies) goes to the real reader.
+vi.mock('./src/ts/themePack/bundledArchive', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./src/ts/themePack/bundledArchive')>()
+  return {
+    ...actual,
+    readBundledArchive: async (url: string): Promise<Uint8Array | null> => {
+      if (!url.startsWith('/src/')) {
+        return actual.readBundledArchive(url)
+      }
+      const { readFile } = await import('node:fs/promises')
+      const { fileURLToPath } = await import('node:url')
+      const { dirname, resolve } = await import('node:path')
+      try {
+        return new Uint8Array(await readFile(resolve(dirname(fileURLToPath(import.meta.url)), `.${url}`)))
+      } catch {
+        return null
+      }
+    },
+  }
+})
+
 // Tests that mount Svelte transitions rely on `Element.prototype.animate` being
 // absent: components feature-detect it and collapse their transition to zero
 // duration, which finishes synchronously. happy-dom's own Animation never

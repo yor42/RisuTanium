@@ -110,7 +110,7 @@ import { resetPackSheetForTests } from '../../ts/themePack/apply'
 import { resetThemePackApplyForTests, startThemePackApply, themePackApplyState } from '../../ts/themePack/activePack.svelte'
 import { LIGHT_BASE_JUDGE_PREFIX } from '../../ts/themePack/lightBase'
 import { manifestText, zipPack } from '../../ts/themePack/fixtures/packBuilder'
-import { BUILTIN_PACKS } from '../../ts/themePack/builtins'
+import { builtinSheetForTests } from '../../ts/themePack/fixtures/bundledPacks'
 import { declareSurface, installThemePackGate, resetThemePackGateForTests } from '../../ts/themePack/surfaceGate.svelte'
 
 // ---- fixtures
@@ -184,9 +184,7 @@ async function applyBuiltinThroughDriver(id: string): Promise<void> {
 }
 
 function chatOf(id: string): string {
-    const found = BUILTIN_PACKS.find((pack) => pack.id === id)
-    if (!found) throw new Error(`no built-in ${id}`)
-    return found.chatCss
+    return builtinSheetForTests(id.replace(/^builtin:/, ''), 'chat')
 }
 
 /** Stores an archive the way install does and makes it the active pack through the real driver. */

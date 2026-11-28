@@ -60,6 +60,7 @@ import { updateColorScheme } from '../../ts/gui/colorscheme'
 import { packBaseTone } from '../../ts/gui/surfaceTone'
 import { BUILTIN_PACKS, type BuiltinPack } from '../../ts/themePack/builtins'
 import { buildAppliedText, commitPackSheet, preparePackSheet, resetPackSheetForTests } from '../../ts/themePack/apply'
+import { builtinSheetForTests, syntheticBuiltinOfSheetForTests } from '../../ts/themePack/fixtures/bundledPacks'
 import { chatCommitInput, chatElementOf } from '../../ts/themePack/fixtures/packCommit'
 import { TOKEN_FILES, tokenFile } from '../../ts/themePack/tokens'
 import { judgeAreaSheet, judgePackSheets } from '../../ts/themePack/index'
@@ -244,7 +245,7 @@ function pack(id: string): BuiltinPack {
 
 /** A built-in through the real path: judge, applied text, commit (which syncs the real gate). */
 function applyBuiltin(builtin: BuiltinPack): void {
-    const judged = judgeAreaSheet('chat', builtin.chatCss, undefined, 'chat')
+    const judged = judgeAreaSheet('chat', builtinSheetForTests(builtin.slug, 'chat'), undefined, 'chat')
     expect(judged.result.ok).toBe(true)
     expect(commitPackSheet(chatCommitInput(buildAppliedText(judged, () => '')))).toEqual({ ok: true })
 }
@@ -455,7 +456,7 @@ describe('TP4: without a pack nothing is marked and the chat follows the scheme'
 
     test('an empty pack sheet, through the prepare step and the active-pack mapping, commits null', async () => {
         applyBuiltin(pack('builtin:origin-navy'))
-        const empty: BuiltinPack = { id: 'builtin:empty', slug: 'empty', name: 'Empty', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: '/* nothing */' }
+        const empty = syntheticBuiltinOfSheetForTests('/* nothing */', { slug: 'empty' })
         const prepared = await preparePackSheet({ kind: 'builtin', pack: empty }, judgeSessionOverForTests(async (sheets) => judgePackSheets(sheets)), () => true)
         expect('stale' in prepared).toBe(false)
         if ('stale' in prepared || !prepared.ok) throw new Error('the empty sheet was not prepared')

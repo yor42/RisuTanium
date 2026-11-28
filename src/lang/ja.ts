@@ -4283,6 +4283,7 @@ export const languageJapanese = {
     themePackSize: (size: string) => `サイズ: ${size}`,
     themePackLicense: (license: string) => `ライセンス: ${license}`,
     themePackAttribution: (attribution: string) => `表示（クレジット）: ${attribution}`,
+    themePackShipsWithApp: "アプリに同梱されており、アプリと一緒に更新されます。削除できません。",
     themePackDetails: "詳細",
     themePackDetailsFor: (name: string) => `詳細: ${name}`,
     themePackFonts: "フォントのライセンス",

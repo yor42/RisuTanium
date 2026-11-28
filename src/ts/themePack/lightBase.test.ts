@@ -14,6 +14,7 @@
 import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { BUILTIN_PACKS } from './builtins'
+import { builtinSheetForTests } from './fixtures/bundledPacks'
 import { cr, parseConcrete } from './colour'
 import { judgeAreaSheet, judgePackSheets, type PackSheetsJudgement } from './index'
 import type { PackJudge } from './intake'
@@ -35,9 +36,7 @@ vi.mock('../globalApi.svelte', () => ({ getFileSrc: vi.fn() }))
 const realJudge: PackJudge = async (sheets) => judgePackSheets(sheets)
 
 function chatOf(id: string): string {
-    const found = BUILTIN_PACKS.find((pack) => pack.id === id)
-    if (!found) throw new Error(`no built-in ${id}`)
-    return found.chatCss
+    return builtinSheetForTests(id.replace(/^builtin:/, ''), 'chat')
 }
 
 function store(modes: readonly string[], chat: string): string {
@@ -115,7 +114,7 @@ describe('the judge prefix', () => {
         const lights = BUILTIN_PACKS.filter((pack) => wantsLightBase(pack.modes))
         expect(lights.map((pack) => pack.id).sort()).toEqual(['builtin:banana-cocoa', 'builtin:office-sheet', 'builtin:scratch-white'])
         for (const pack of lights) {
-            const canonical = judgeAreaSheet('chat', pack.chatCss, undefined, 'chat').canonical
+            const canonical = judgeAreaSheet('chat', builtinSheetForTests(pack.slug, 'chat'), undefined, 'chat').canonical
             const whole = judgeAreaSheet('chat', `${LIGHT_BASE_JUDGE_PREFIX}\n${canonical}`, undefined, 'chat')
             expect(whole.result.ok, pack.id).toBe(true)
         }

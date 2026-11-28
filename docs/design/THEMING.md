@@ -28,7 +28,7 @@ What the two light packs were drawn around, and what the validator does now (che
 - A chat shadow reaches at most 64 px past its element, so the Office Sheet page shadow could be softer now. The built-in sheet keeps its short 1 px shadow.
 - A `max-width` of 320 px (or 20 rem) or more, or 50% or more, is accepted without a note; a smaller one installs with a layout note. The Office Sheet page can therefore be narrower than the transcript and sit centred like a print page.
 
-Pack loading, the theme picker, bundled fonts and images are built (install from file under Display settings). Finished packs are not: the four built-in packs are chat-only and are rebuilt in #654 (MC-3871), where the other acceptance packs (Terran Eclipse and the rest) are also written.
+Pack loading, the theme picker, bundled fonts and images are built (install from file under Display settings). Finished packs are not: the four built-in packs are chat-only and are rebuilt in #654 (MC-3871), where the other acceptance packs (Terran Eclipse and the rest) are also written. The built-ins are bundled `.risutheme` archives in `src/ts/themePack/bundled/`, pinned by size and SHA-256 in `builtins.ts` and read on every apply through the same intake as an installed archive; a built-in whose file is missing, differs from its pin or is refused shows the pack-broken notice, and a test judges every bundled archive at build time so that cannot ship.
 
 ## What a pack covers today
 
@@ -67,7 +67,7 @@ Status 2026-11-24 (#438, MC-4162). Every statement was read from `src/ts/themePa
 
 **Not covered yet (planned, not built).**
 - Effects (#751, MC-2942, MC-4149): `transition`, `animation` with top-level `@keyframes pack-<area>-*` blocks in the same sheet, `transform`, `translate`, `scale`, `rotate`, `transform-origin`, `filter` and `backdrop-filter` are admitted, with literal values only (no `var()`, `calc()`, `url()`) and bounds: transitions up to 1 s plus 0.5 s delay, animations 170 ms per keyframe offset up to 20 s, at most 10 iterations or `infinite`, translate up to 64 px, scale 0.5 to 1.5, filter blur up to 8 px, backdrop blur up to 24 px. Animation, transform and filter apply on the safe tier only; backdrop-filter also on named reach parts that are not escape-route ancestors; reach parts take colour and shadow transitions only. Anything outside the bounds keeps its former refusal. Layering (`z-index`, isolation) and fixed or sticky position stay refused (MC-3422); layering is not a pack capability (MC-4243). Effects reach non-chat screens as accepted shape (motion) and take effect for blur only where the screen is colour-ready (MC-3121).
-- The four built-in packs are chat-only; their rebuild is #654 (MC-3871).
+- The four built-in packs are chat-only archives for now (each holds a manifest and its chat sheet); their rebuild with the other screens, fonts and images is #654 (MC-3871).
 
 ## Contract refinements (2026-10-27)
 

@@ -102,7 +102,7 @@ vi.mock('./worker/spawnJudgeWorker', async () => {
 
 import { DBState, SafeModeStore } from '../stores.svelte'
 import { PACK_SCHEME_NAME, updateTextThemeAndCSS } from '../gui/colorscheme'
-import { builtinPackById } from './builtins'
+import { builtinSheetForTests } from './fixtures/bundledPacks'
 import { judgeAreaSheet } from './index'
 import { LIGHT_BASE_JUDGE_PREFIX } from './lightBase'
 import { shapeOnlySheet } from './shapeMode'
@@ -1008,7 +1008,7 @@ describe('S4a empty: every element\'s applied text is null (MC-3121, MC-3127)', 
 })
 
 describe('S4-0 one judge worker per apply', () => {
-    const scratchWhite = builtinPackById('builtin:scratch-white')!
+    const scratchWhiteSheet = builtinSheetForTests('scratch-white', 'chat')
 
     it('S0-R1: applying a light built-in spawns one worker', async () => {
         startThemePackApply()
@@ -1022,12 +1022,12 @@ describe('S4-0 one judge worker per apply', () => {
         activate('builtin:scratch-white')
         await until(() => status().phase === 'applied', 'the apply')
         expect(channel.posts).toHaveLength(2)
-        const canonical = judgeAreaSheet('chat', scratchWhite.chatCss, undefined, 'chat').canonical
+        const canonical = judgeAreaSheet('chat', scratchWhiteSheet, undefined, 'chat').canonical
         const shape = shapeOnlySheet(canonical)
         expect(shape).not.toBe(canonical)
         expect(shape.trim()).not.toBe('')
         const jobsOf = (post: unknown): unknown => (post as { jobs?: unknown }).jobs
-        expect(jobsOf(channel.posts[0])).toEqual([{ label: 'chat', area: 'chat', text: scratchWhite.chatCss }])
+        expect(jobsOf(channel.posts[0])).toEqual([{ label: 'chat', area: 'chat', text: scratchWhiteSheet }])
         expect(jobsOf(channel.posts[1])).toEqual([
             { label: 'chat#light', area: 'chat', text: `${LIGHT_BASE_JUDGE_PREFIX}\n${canonical}` },
             { label: 'chat#shape', area: 'chat', text: shape },
