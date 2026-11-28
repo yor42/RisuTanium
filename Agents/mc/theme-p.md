@@ -17,3 +17,11 @@
 - Tag: decisions (lane A). Date: 2026-11-28. Exact times: UNKNOWN. Related: `MC-5061`, `MC-3007`, `MC-4707`.
 
 **Result.** Lane A approved keeping P as designed. Named leftover for the join PR (the first pack shipping a popups colour): amend the popups registry so `popups.css` may set the nine `--overlay-*` roles, add a popups base block selected by the area attribute, and add the popups contrast pairs. THEMING.md H-7.11 carries the author guidance.
+\r
+
+### MC-5063 - #654 stage P: gate dispositions, 2026-11-28
+
+- Tag: findings. Date: 2026-11-28. Exact times: UNKNOWN. Related: `#654`, `MC-2746`, `MC-5060`.
+
+**Gate 1** (native Sonnet, adversarial-reviewer): APPROVE, four editorial notes. Taken: the host also sets `color: var(--overlay-fg)` so text with no own class follows the role, and the stale comment in `home-roles.css` is updated; a row pins the colour declaration. **Gate 2** (a fresh native Sonnet adversarial-reviewer, not `opus-reviewer`: the controller admits `opus-reviewer` only for a named critical contract or a dispute, and this change names none): APPROVE, no substantive finding; scenarios (popup unreadable or escape lost, a role nothing reads, a visible change with no pack, display:contents changing layout, stacking, focus or inert) refuted against source and the compiled Tailwind output; the mutant (one remap line removed) fails two rows. Known limitations, editorial: elements appended directly to `document.body` (preset drag image, grid drag ghost, portal consumers) sit outside the host and will not follow a future pack's overlay roles; `[data-own-scheme]` in the role defaults is unread on an island (mirrors Home).
+**Not run:** `pnpm check` (the checkout cannot load its vite config through the node_modules junction; CI runs it) and `packBase.svelte.test.ts` (oxide, environmental). Device rows from the diff (MC-2713): none; the change is invisible and no screen is edited, a Note 9 row would only repeat the no-pack paint, which the identity rows prove.
