@@ -52,6 +52,7 @@ import type { SkippedLegacyEntry } from 'src/ts/storage/store2/legacy/lenient'
 import type { IncompleteItem } from 'src/ts/storage/store2/legacy/resolve'
 import type { ColdUnitRead } from 'src/ts/storage/store2/legacy/storeReader'
 import { createSaveEncoder } from 'src/ts/storage/store2/saveEncoder'
+import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import { getActiveStore2Save, getModuleLoader, resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
 import { resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import type { Store2Session } from 'src/ts/storage/store2/session'
@@ -545,6 +546,35 @@ describe('new behaviour: row 5, a normal store2 profile', () => {
         expect(getStore2BootSession()).toBe(result.session)
         expect(getPageStorageMode()).toEqual({ kind: 'store2' })
         expect(test.rounds()).toBe(1)
+    })
+
+    test('a boot reads each unit key once over the whole round: the tree read of the session is not repeated by the load', async () => {
+        const world = await seedWorld(richProfile())
+        const seen: string[] = []
+        const test = rig({ memory: world.memory, hooks: { beforeReadUnits: (_call, keys) => { seen.push(...keys) } } })
+        expectStoreResult(await test.dispatch())
+
+        const counts = new Map<string, number>()
+        for (const key of seen) {
+            counts.set(key, (counts.get(key) ?? 0) + 1)
+        }
+        expect(counts.get(world.manifestKey)).toBe(1)
+        for (const shard of world.tree.manifest.shards) {
+            expect(counts.get(keyOfRef(shard))).toBe(1)
+        }
+        expect([...counts].filter(([, count]) => count > 1)).toEqual([])
+    })
+
+    test('the opened database is the assembly of a byte read that was handed nothing', async () => {
+        const world = await seedWorld(richProfile())
+        const test = rig({ memory: world.memory })
+        const result = expectStoreResult(await test.dispatch())
+
+        const fresh = await readTreeBytes(world.memory, world.manifestKey)
+        if (fresh.status !== 'ok') {
+            throw new Error(`The fresh read is ${fresh.status}.`)
+        }
+        expect(result.database).toEqual(assembleDatabase(fresh.tree.manifest, fresh.tree.source))
     })
 
     test('it registers the module loader and gives the save context the module valve, and a page that does not open registers neither', async () => {

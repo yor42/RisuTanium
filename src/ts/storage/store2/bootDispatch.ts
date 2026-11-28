@@ -3,7 +3,7 @@ import { setPageStorageMode } from '../pageStorageMode'
 import type { AppStoreKind } from '../store/appStore'
 import type { CompareToken, Store2Backend, UnitWrite } from './backend/types'
 import type { SessionDecision } from './session'
-import { reflushTopLevel, Store2Session } from './session'
+import { reflushTopLevel, Store2Session, takeBootTreeUnits } from './session'
 import { activateStore2Save, setModuleLoader, type ModuleStubLoad, type Store2Lineage, type Store2SaveContext } from './saveActive'
 import type { RisuModule } from '../../process/modules'
 import type { Store2PeerHandler } from './saveLoop'
@@ -267,6 +267,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         let read
         try {
             read = await readTreeBytes(backend, manifestKey, {
+                known: takeBootTreeUnits(session, manifestKey) ?? undefined,
                 resident: (input) => {
                     planned.resident = residentSetOf(input)
                     return planned.resident

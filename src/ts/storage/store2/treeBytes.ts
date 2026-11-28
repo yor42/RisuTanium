@@ -88,6 +88,11 @@ export interface TreeBytesOptions {
     residentModules?: (input: ResidentPlanInput) => ReadonlySet<string> | null
     /** Awaited between batches of reads, so a long read hands the thread back. */
     yield?: () => Promise<void>
+    /**
+     * Framed bytes already read from this manifest's tree (`readTree`'s manifest and units): they are not read again but are
+     * checked like any other unit. The caller's map is copied, never changed.
+     */
+    known?: ReadonlyMap<string, Uint8Array>
 }
 
 /** The commit key could not be read again before a finding was acted on: never `moved`, never damage. */
@@ -149,10 +154,10 @@ interface ByteReader {
     load(keys: readonly string[]): Promise<BytesBatch>
 }
 
-function createByteReader(backend: Store2Backend, yieldBetween: (() => Promise<void>) | undefined): ByteReader {
-    const bytes = new Map<string, Uint8Array>()
+function createByteReader(backend: Store2Backend, yieldBetween: (() => Promise<void>) | undefined, known?: ReadonlyMap<string, Uint8Array>): ByteReader {
+    const bytes = new Map<string, Uint8Array>(known)
     const source: UnitSource = { get: key => bytes.get(key) }
-    const attempted = new Set<string>()
+    const attempted = new Set<string>(known?.keys())
 
     async function load(keys: readonly string[]): Promise<BytesBatch> {
         const pending = [...new Set(keys)].filter(key => !attempted.has(key) && isStore2Key(key))
@@ -229,7 +234,7 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
     if (refused !== null) {
         return { status: 'structure', manifestKey, keys: [manifestKey], reason: refused.status === 'damaged' ? refused.reason : `${manifestKey} is not a manifest key.`, tree: 'damaged' }
     }
-    const reader = createByteReader(backend, options.yield)
+    const reader = createByteReader(backend, options.yield, options.known)
     const { bytes, source, load } = reader
 
     const manifestLoad = await load([manifestKey])
