@@ -1,0 +1,3 @@
+### MC-4762 - #885: PC vector load is about 32 ms against a 1 s hard PC budget; Note 9 split not measured
+
+On the PC the real load functions (dim 1536, 4,802 units, 8 chunks, in-memory store, 15 runs) take about 32 ms median, about 3% of the 1 s budget that the maintainer ruled hard on the PC and soft on the Note 9 (MC-4761). The 1.6 s Note 9 figure therefore needs a per-stage trace from a Note 9 build (IPC reads, copies, scan); no code is changed. The issue's "dim 1536" and "about 18 MiB" cannot both hold (4,802 x 1536 x 4 B is 28 MiB; 18 MiB fits dim about 1024), so the dim of the Note 9 run must be confirmed by the device-run session before any fix. Details: `Agents/Findings-2026-11-28-885-chromemory-vector-load.md`.
