@@ -11,7 +11,7 @@ import { backupNoticeHeader, downloadNotice } from "../exportNotice";
 import { encodeRisuSaveStreamed, type StreamedRisuSave } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { assertNoModuleStubs } from "../storage/moduleStub";
-import { withoutTaskModes } from "../storage/taskParameterModes";
+import { translateTaskParameters, type TaskParameterLeaveOut } from "../storage/taskParameterModes";
 import { assertNoForeignModuleStubs, snapshotModuleList } from "./exportModules";
 import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport, ensureGestureForWriter, openWriterOutsideBusy, runExport, type ExportSession, type ExportShellCard } from "./exportShell";
 import type { RisuModule } from "../process/modules";
@@ -271,14 +271,15 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // new arrays, so a preset or model added or deleted while the export runs cannot shift the indices the projection is
     // joined on. The migration over the projection sets no flag; the page's database is never changed.
     if (Array.isArray(plain.botPresets)) {
-        // The per-task modes key is fork-only and sits inside each container; a record that holds it becomes a new record with
-        // a new container without it, a record that does not keeps the page's own object. A record that held the key is
-        // never the page's own, so the page is never changed; a keyless record is shared as it is everywhere in this copy.
-        plain.botPresets = plain.botPresets.map((preset) => withoutTaskModes(preset))
+        // Upstream has no per-task mode: translateTaskParameters removes the fork-only modes key from each container and, with the
+        // flag on, turns each `same` task's block into a copy of the record's main values. The copy is taken before this function's first
+        // await; the export confirm judged the page earlier. A record that is translated is a new record with a new container, so the
+        // page is never changed; a record that holds no key and needs no copy keeps the page's own object, as everywhere in this copy.
+        plain.botPresets = plain.botPresets.map((preset) => translateTaskParameters(preset, 'slot').record)
     }
-    const rootWithoutModes = withoutTaskModes(plain)
-    if (rootWithoutModes !== plain) {
-        plain.seperateParameters = rootWithoutModes.seperateParameters
+    const rootTranslated = translateTaskParameters(plain, 'working').record
+    if (rootTranslated !== plain) {
+        plain.seperateParameters = rootTranslated.seperateParameters
     }
     if (Array.isArray(plain.customModels)) {
         plain.customModels = [...plain.customModels]
@@ -997,7 +998,39 @@ async function confirmOmitPresetLocks(session: ExportSession, ids: readonly stri
 }
 
 /**
- * The fork-only consent before the writer opens: the nine per-kind prompts, or one answer to `options.askLeaveOut` that
+ * What the per-task translation of `exportCopyOf` cannot carry, one line per preset, task and parameter (or replaced block),
+ * from the same pure translation the copy runs. The working settings are named after the selected preset; the same line
+ * from the working settings and from its saved slot is listed once. Both lists are empty when nothing is lost.
+ */
+function taskParameterLeaveOut(db: Database): { presets: string[], lines: string[] } {
+    const presets = new Set<string>()
+    const lines = new Set<string>()
+    const add = (name: string, leftOut: readonly TaskParameterLeaveOut[]) => {
+        for (const entry of leftOut) {
+            presets.add(name)
+            lines.add(`${name} / ${entry.task} / ${entry.parameter === 'replacedBlock' ? language.backupTaskParametersReplacedBlock : entry.parameter}`)
+        }
+    }
+    const slots = Array.isArray(db.botPresets) ? db.botPresets : []
+    add(String(slots[db.botPresetsId]?.name ?? ''), translateTaskParameters(db, 'working').leftOut)
+    for (const slot of slots) {
+        add(String(slot?.name ?? ''), translateTaskParameters(slot, 'slot').leftOut)
+    }
+    return { presets: [...presets], lines: [...lines] }
+}
+
+/**
+ * Asks, before the writer opens, whether to create the backup with the per-task parameter translation (a `.bin` has no
+ * per-task mode: `same` tasks are written as copies of the main values, a differing stored block is replaced, and a main value
+ * upstream cannot hold is left out). True when nothing is lost or the person confirms; declining writes nothing.
+ */
+async function confirmOmitTaskParameters(session: ExportSession, left: { lines: readonly string[] }): Promise<boolean> {
+    const present = left.lines.length > 0
+    return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupTaskParametersConfirm(shownPromptNames(left.lines), left.lines.length)))
+}
+
+/**
+ * The fork-only consent before the writer opens: the ten per-kind prompts, or one answer to `options.askLeaveOut` that
  * names every present kind. A summary with nothing in it asks nothing. An unanswered summary (`null`) falls back to the
  * per-kind prompts, so a sheet that could not be shown never turns the consent silent. `true` when the export may go on.
  */
@@ -1019,11 +1052,12 @@ async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupEx
         && await confirmOmitChroMemory(session, chroMemoryLeftOut(db, vectors))
         && await confirmOmitChatDrafts(session, chatDraftsLeftOut(db))
         && await confirmOmitPresetLocks(session, forkOnlyLockIds(db))
+        && await confirmOmitTaskParameters(session, taskParameterLeaveOut(db))
     const ask = options.askLeaveOut
     if (ask === undefined) {
         return await perKind()
     }
-    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), workspaces: workspaceLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db, vectors), chatDrafts: chatDraftsLeftOut(db), presetLocks: forkOnlyLockIds(db) })
+    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), workspaces: workspaceLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db, vectors), chatDrafts: chatDraftsLeftOut(db), presetLocks: forkOnlyLockIds(db), taskParameters: taskParameterLeaveOut(db) })
     if (summary.length === 0) {
         return true
     }

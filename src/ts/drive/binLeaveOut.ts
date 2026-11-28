@@ -24,6 +24,8 @@ export type BinLeaveOutEntry =
     | { kind: 'chatDrafts', drafts: number, hintChats: number }
     /** Preset field locks with no upstream flag (`presetFieldLocks`): the ids of the groups that are on. */
     | { kind: 'presetLocks', ids: readonly string[] }
+    /** What the per-task parameter translation cannot carry: the presets it concerns and one line per preset, task and parameter or replaced block. */
+    | { kind: 'taskParameters', presets: readonly string[], lines: readonly string[] }
 
 export interface BinLeaveOutInput {
     /** Every chat that loses fork-only data, as the export labelled them. */
@@ -37,6 +39,8 @@ export interface BinLeaveOutInput {
     chatDrafts: { drafts: number, hintChats: number }
     /** The fork-only preset lock groups that are on; empty means the entry is absent. */
     presetLocks: readonly string[]
+    /** What the per-task parameter translation leaves out; no lines means the entry is absent. */
+    taskParameters: { presets: readonly string[], lines: readonly string[] }
 }
 
 /** The kinds the chat table names, in table order. */
@@ -76,6 +80,9 @@ export function binLeaveOutSummary(input: BinLeaveOutInput): BinLeaveOutEntry[] 
     }
     if (input.presetLocks.length > 0) {
         summary.push({ kind: 'presetLocks', ids: input.presetLocks })
+    }
+    if (input.taskParameters.lines.length > 0) {
+        summary.push({ kind: 'taskParameters', presets: input.taskParameters.presets, lines: input.taskParameters.lines })
     }
     return summary
 }
