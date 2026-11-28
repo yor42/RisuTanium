@@ -23,9 +23,11 @@
         editable: boolean
         service: OwnerHistoryService | null
         owner: OwnerKey | null
+        // Set by Add: the name field takes focus once when the form mounts.
+        focusName?: boolean
     }
 
-    let { index, readLive, editable, service, owner }: Props = $props()
+    let { index, readLive, editable, service, owner, focusName = false }: Props = $props()
 
     const uid = $props.id()
     // Joins this form instance's typing into steps: the index alone would let a later form revive an earlier step.
@@ -101,6 +103,13 @@
 
     // ------------------------------------------------------------- name
     let nameInput = $state<HTMLInputElement | undefined>()
+    let focusedNew = false
+    $effect(() => {
+        if (focusName && nameInput && !focusedNew) {
+            focusedNew = true
+            nameInput.focus()
+        }
+    })
     // The name this form last saw stored: a build refuses when the live name differs, so a row that moved under the
     // editor is never renamed by mistake. It follows the live name once the live name changes.
     let expectedName = untrack(() => name)

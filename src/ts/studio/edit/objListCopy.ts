@@ -7,6 +7,7 @@ import { OBJ_LIST_MESSAGES, type ObjListName } from '../history/objectLists'
 import type { ObjDeletedItem, ObjLabel, PropLabel } from '../history/objectListOps'
 import type { LoreDecoratorCopy } from '../longText/loreDecorators'
 import { displayNameOf, isFolderRow } from './loreListModel'
+import { classifyRegexRow, type RegexReason, type RegexRowClass } from './regexEntry'
 
 /** The restore sheet's line: "undo n changes" for the list. */
 export function objListLine(list: ObjListName, n: number): string {
@@ -110,15 +111,47 @@ function regexFieldText(field: string | undefined): string {
     }
 }
 
+function regexReasonText(reason: RegexReason): string {
+    switch (reason.key) {
+        case 'studioRegexWhyNotObject': return language.studioRegexWhyNotObject
+        case 'studioRegexWhyField': return language.studioRegexWhyField(reason.field)
+        case 'studioRegexWhyFlag': return language.studioRegexWhyFlag
+        case 'studioRegexWhyAbleFlag': return language.studioRegexWhyAbleFlag
+    }
+}
+
+/** Why a regex row cannot be edited, in one sentence; empty for a readable row. */
+export function regexUnreadableText(row: RegexRowClass): string {
+    if (row.kind === 'ok') return ''
+    const reasons = row.kind === 'inert' ? [row.reason] : row.reasons
+    return language.studioRegexUnreadable(reasons.map(regexReasonText).join(', '))
+}
+
 /** The History text of one regex script step. A step without a name shows what it is (an unnamed script). */
 export function regexStepText(label: ObjLabel): string {
     const name = label.name ?? language.sidebarUi.unnamedScript
     if (label.action === 'edit') return language.studioRegexStepEdit(regexFieldText(label.field), name)
-    return language.studioRegexStepOther(name)
+    switch (label.action) {
+        case 'add': return language.studioRegexStepAdd(name)
+        case 'delete': return language.studioRegexStepDelete(name)
+        case 'move': return language.studioRegexStepMove(name)
+        case 'duplicate': return language.studioRegexStepDuplicate(name)
+        default: return language.studioRegexStepOther(name)
+    }
 }
 
 /** The preview of a deleted item: the deleted entry (the folder, for a folder delete) and how many more went with it. */
 export function objItemPreview(item: ObjDeletedItem): string {
+    if (item.list === 'regex') {
+        const entry = item.entries[0]?.entry
+        const row = classifyRegexRow(entry)
+        if (row.kind !== 'ok') {
+            const unreadableName = row.kind === 'unreadable' ? row.name : null
+            return unreadableName !== null && unreadableName !== '' ? `${unreadableName}: ${regexUnreadableText(row)}` : regexUnreadableText(row)
+        }
+        const name = (entry as Record<string, unknown>).comment
+        return typeof name === 'string' && name !== '' ? name : language.sidebarUi.unnamedScript
+    }
     const subject = item.entries.find((e) => isFolderRow(e.entry)) ?? item.entries[0]
     if (subject === undefined) return language.loreBook
     const folder = isFolderRow(subject.entry)
