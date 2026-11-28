@@ -214,7 +214,7 @@ interface Trip {
     pageModule: unknown
 }
 
-async function trip(withListOps = false): Promise<Trip> {
+async function trip(withListOps = false, importFile: Uint8Array | null = null): Promise<Trip> {
     const locks = new FakeLockManagerCore()
     Object.defineProperty(window.navigator, 'locks', { value: new FakeTabLockManagerView(locks, 'this'), configurable: true })
     h.db = seed()
@@ -256,6 +256,15 @@ async function trip(withListOps = false): Promise<Trip> {
     await service.whenReady(moduleOwnerKey(MOD))
     editList(service, characterOwnerKey(CHA), withListOps)
     editList(service, moduleOwnerKey(MOD), withListOps)
+    if (importFile !== null) {
+        const { runRegexImport } = await import('../regexFileActions')
+        for (const owner of [characterOwnerKey(CHA), moduleOwnerKey(MOD)]) {
+            await runRegexImport(() => true, (op) => service.objEdit(owner, op.build), {
+                pick: async () => ({ name: 'regex.json', data: importFile }),
+                toast: () => { },
+            })
+        }
+    }
     const live = h.db as unknown as { characters: { customscript: unknown }[]; modules: { regex: unknown }[] }
     const pageCharacter = JSON.parse(JSON.stringify(live.characters[0].customscript))
     const pageModule = JSON.parse(JSON.stringify(live.modules[0].regex))
@@ -331,5 +340,31 @@ describe('T14b (class CG) add, duplicate, move and delete through the real .bin 
         const savedModule = result.saved.modules.find((module) => module.id === MOD) as unknown as { regex: unknown }
         expect(savedCharacter.customscript).toEqual(listOpsList())
         expect(savedModule.regex).toEqual(listOpsList())
+    })
+})
+
+/** The bytes `exportRegex` writes (`{type:'regex', data}` as UTF-8 JSON), built the same way: the harness has no download. */
+const importedFile = (): Uint8Array => new TextEncoder().encode(JSON.stringify({ type: 'regex', data: importedEntries() }))
+
+/** Two upstream-shaped entries: one with an unknown key and one with a stage this build does not know. */
+const importedEntries = (): Entry[] => [
+    { comment: 'imp1', in: 'a', out: 'b', type: 'editinput', x_future: { k: [1, 'two'] } },
+    { comment: 'imp2', in: 'c', out: 'd', type: 'edit_future' },
+]
+
+describe('T14c (class CG) a Studio import through the real .bin export and import', () => {
+    test('the imported entries, unknown key and unknown stage included, follow the edited list in the export and in the import', async () => {
+        const result = await trip(false, importedFile())
+        const expected = [...editedList(), ...importedEntries()]
+        expect(result.pageCharacter).toEqual(expected)
+        expect(result.pageModule).toEqual(expected)
+        const exportedCharacter = result.exported.characters.find((slot) => slot.chaId === CHA) as unknown as { customscript: unknown }
+        const exportedModule = result.exported.modules.find((module) => module.id === MOD) as unknown as { regex: unknown }
+        expect(exportedCharacter.customscript).toEqual(expected)
+        expect(exportedModule.regex).toEqual(expected)
+        const savedCharacter = result.saved.characters.find((slot) => slot.chaId === CHA) as unknown as { customscript: unknown }
+        const savedModule = result.saved.modules.find((module) => module.id === MOD) as unknown as { regex: unknown }
+        expect(savedCharacter.customscript).toEqual(expected)
+        expect(savedModule.regex).toEqual(expected)
     })
 })

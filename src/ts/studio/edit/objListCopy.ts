@@ -136,8 +136,14 @@ export function regexStepText(label: ObjLabel): string {
         case 'delete': return language.studioRegexStepDelete(name)
         case 'move': return language.studioRegexStepMove(name)
         case 'duplicate': return language.studioRegexStepDuplicate(name)
+        case 'import': return language.studioRegexStepImport(label.count ?? 0)
         default: return language.studioRegexStepOther(name)
     }
+}
+
+/** The notice for an import file with entries that are not regex entries: how many, the first one's place and why it failed. */
+export function regexImportBadText(count: number, position: number, reasons: readonly RegexReason[]): string {
+    return language.studioRegexImportBadEntry(count, position, reasons.map(regexReasonText).join(', '))
 }
 
 /** The preview of a deleted item: the deleted entry (the folder, for a folder delete) and how many more went with it. */

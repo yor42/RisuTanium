@@ -15,6 +15,7 @@ import {
     objListLine,
     objListMixed,
     objRefusalText,
+    regexImportBadText,
     regexStepText,
 } from '../objListCopy'
 
@@ -107,6 +108,20 @@ describe('regex step and deleted-item text', () => {
         expect(regexStepText(label('move', 'Alpha'))).toBe(language.studioRegexStepMove('Alpha'))
         expect(regexStepText(label('duplicate', null))).toBe(language.studioRegexStepDuplicate(language.sidebarUi.unnamedScript))
         expect(regexStepText(label('add', 'Alpha'))).not.toBe(regexStepText(label('delete', 'Alpha')))
+    })
+
+    test('an import step says how many scripts it added, not the unnamed fallback', () => {
+        const step: ObjLabel = { kind: 'obj', list: 'regex', action: 'import', name: null, count: 3 }
+        expect(regexStepText(step)).toBe(language.studioRegexStepImport(3))
+        expect(regexStepText(step)).toBe('Imported 3 scripts')
+        expect(regexStepText(step)).not.toBe(language.studioRegexStepOther(language.sidebarUi.unnamedScript))
+    })
+
+    test('the bad import entry notice names the count, the first position and every reason of that entry', () => {
+        expect(regexImportBadText(2, 2, [{ key: 'studioRegexWhyNotObject' }])).toBe('2 entries are not regex entries; first: entry 2, not an object')
+        expect(regexImportBadText(1, 4, [{ key: 'studioRegexWhyField', field: 'in' }, { key: 'studioRegexWhyFlag' }]))
+            .toBe(language.studioRegexImportBadEntry(1, 4, `${language.studioRegexWhyField('in')}, ${language.studioRegexWhyFlag}`))
+        expect(language.studioRegexImportBadEntry(1, 4, 'x')).toContain('1 entry')
     })
 
     test('a deleted regex row previews as its name, else the unnamed script; an unreadable one says so', () => {

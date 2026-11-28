@@ -163,6 +163,25 @@ export function regexAdd(): RegexOp {
     })
 }
 
+/**
+ * Appends every entry of an accepted import file, in file order, as one step. The entries are completed (copied, content
+ * counts taken on the working copy) by the service, so twins inside one file are counted correctly. An absent list reads as empty.
+ */
+export function regexImport(entries: readonly unknown[]): RegexOp {
+    return makeListOp((_id, live) => {
+        const rows = liveRows(live)
+        if (rows === null || entries.length === 0) return NO_PLAN
+        const index = rows.length
+        const drafts: ObjDraft[] = []
+        for (let k = 0; k < entries.length; k++) {
+            const entry = plainEntry(entries[k])
+            if (entry === null) return NO_PLAN
+            drafts.push({ op: 'objInsert', list: 'regex', index: index + k, entry })
+        }
+        return { result: { ok: true, label: listLabel('import', null, entries.length), drafts, coalesceKey: null }, index, deletedId: null }
+    })
+}
+
 /** Inserts a deep copy after the row. Only a readable row is copied (D7: Studio does not multiply data it cannot edit). */
 export function regexDuplicate(expected: unknown, hint: number, twins = 1): RegexOp {
     const text = canonicalJson(expected)

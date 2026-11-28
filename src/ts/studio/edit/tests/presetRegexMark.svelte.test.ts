@@ -28,7 +28,11 @@ import { DBState } from 'src/ts/stores.svelte'
 import { changeToPreset } from 'src/ts/storage/database.svelte'
 import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWriteHook'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
-import { presetAdapter } from '../presetTarget'
+import { presetAdapter, presetOwnerKey } from '../presetTarget'
+import { runRegexImport } from '../regexFileActions'
+import { createOwnerHistoryService, type OwnerHistoryService } from 'src/ts/studio/history/ownerHistory.svelte'
+import { createFakeClock } from 'src/ts/studio/history/tests/historyTestKit.test-helpers'
+import { createClaimDouble, createMemoryStudioStore } from 'src/ts/studio/history/tests/studioStoreDoubles'
 import { presetNamed, seedPresetDb, slotText } from './presetFixture.test-helpers'
 
 type Row = { comment: string; in: string; out: string; type: string }
@@ -93,6 +97,60 @@ describe('T19: marks per copy', () => {
         expect(slotRegex(1)).toHaveLength(3)
         expect(scheduled).toBeGreaterThan(0)
         expect(tracker.botPreset).toBe(true)
+        expect(tracker.character).toEqual([])
+    })
+})
+
+describe('T31: an import marks as a regex write does', () => {
+    // The file flow over the real service, so the write reaches the real hook through the preset adapter.
+    function importInto(index: number, bytes: Uint8Array): Promise<void> {
+        const service: OwnerHistoryService = createOwnerHistoryService({
+            store: createMemoryStudioStore({ pageSession: 'p1' }),
+            claim: createClaimDouble(),
+            clock: createFakeClock(1000),
+            pageSession: 'p1',
+            getVisitId: () => 'v1',
+            getMarkCount: () => scheduled,
+            registerLeaveFlush: () => () => {},
+        })
+        const owner = presetOwnerKey(ids[index])
+        return runRegexImport(() => true, (op) => service.objEdit(owner, op.build), {
+            pick: async () => ({ name: 'regex.json', data: bytes }),
+            toast: () => { },
+        })
+    }
+    const fileOf = (rows: Row[]): Uint8Array => new TextEncoder().encode(JSON.stringify({ type: 'regex', data: rows }))
+
+    test('an import into the active preset counts a mark with no preset flag and no character', async () => {
+        resetCounters()
+        await importInto(0, fileOf([row('I0'), row('I1')]))
+        expect(workingRegex()).toHaveLength(4)
+        expect(scheduled).toBeGreaterThan(0)
+        expect(tracker.botPreset).toBe(false)
+        expect(tracker.character).toEqual([])
+    })
+
+    test('an import into an inactive preset counts a mark and sets the preset flag, with no character', async () => {
+        resetCounters()
+        await importInto(1, fileOf([row('I0'), row('I1')]))
+        expect(slotRegex(1)).toHaveLength(4)
+        expect(scheduled).toBeGreaterThan(0)
+        expect(tracker.botPreset).toBe(true)
+        expect(tracker.character).toEqual([])
+    })
+
+    test('a refused import marks nothing and changes nothing, active or inactive', async () => {
+        const before = JSON.stringify([DBState.db.presetRegex, DBState.db.botPresets.map((slot) => (slot as unknown as { regex?: unknown }).regex)])
+        resetCounters()
+        const notRegex = new TextEncoder().encode(JSON.stringify({ type: 'lore', data: [row('x')] }))
+        const badEntry = new TextEncoder().encode(JSON.stringify({ type: 'regex', data: [row('good'), null] }))
+        for (const index of [0, 1]) {
+            await importInto(index, notRegex)
+            await importInto(index, badEntry)
+        }
+        expect(JSON.stringify([DBState.db.presetRegex, DBState.db.botPresets.map((slot) => (slot as unknown as { regex?: unknown }).regex)])).toBe(before)
+        expect(scheduled).toBe(0)
+        expect(tracker.botPreset).toBe(false)
         expect(tracker.character).toEqual([])
     })
 })

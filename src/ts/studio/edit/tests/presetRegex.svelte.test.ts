@@ -39,6 +39,7 @@ import { SESSION_OWNER_KINDS } from 'src/ts/studio/history/sessionKinds'
 import { createFakeClock } from 'src/ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from 'src/ts/studio/history/tests/studioStoreDoubles'
 import { resetStudioScreenForTests } from 'src/ts/studio/studioScreen.svelte'
+import { runRegexImport } from '../regexFileActions'
 import { regexAdd, regexDelete, regexFieldEdit, type RegexOp } from '../regexListOps'
 import { presetNamed, seedPresetDb } from './presetFixture.test-helpers'
 
@@ -54,6 +55,12 @@ const regexOf = (index: number): Row[] => (DBState.db.botPresets[index] as unkno
 const working = (): Row[] => DBState.db.presetRegex as unknown as Row[]
 const names = (rows: Row[]): unknown[] => rows.map((entry) => entry.comment)
 const edit = (index: number, op: RegexOp) => service.objEdit(keys[index], op.build)
+
+// The file flow over the real service: the bytes are the classic export shape, the notices are dropped.
+const importInto = (index: number, rows: Row[]): Promise<void> => runRegexImport(() => true, (op) => edit(index, op), {
+    pick: async () => ({ name: 'regex.json', data: new TextEncoder().encode(JSON.stringify({ type: 'regex', data: rows })) }),
+    toast: () => { },
+})
 
 // A: active, its working list and its slot list are distinct arrays (the shape a load produces). B: inactive. C: no key.
 function seed(): void {
@@ -178,6 +185,41 @@ describe('T18: the working array is never edited in place', () => {
         saveCurrentPreset()
         expect(regexOf(0)).toEqual(working())
         expect(regexOf(0)).toHaveLength(shared.length + 1)
+    })
+
+    test('T31a: an import into the active preset assigns a new db.presetRegex and leaves the sharing slot unchanged', async () => {
+        changeToPreset(0, false)
+        const shared = regexOf(0)
+        expect(DBState.db.presetRegex).toBe(shared)
+        const sharedJson = JSON.stringify(shared)
+        await importInto(0, [row('I0', { x_future: { a: 1 } }), row('I1', { type: 'edit_future' })])
+        expect(working()).not.toBe(shared)
+        expect(regexOf(0)).toBe(shared)
+        expect(JSON.stringify(shared)).toBe(sharedJson)
+        expect(names(working())).toEqual([...names(shared), 'I0', 'I1'])
+        expect(working()[shared.length].x_future).toEqual({ a: 1 })
+    })
+
+    test('T31b: an import into the active preset whose copy differs from its slot appends to the copy only', async () => {
+        const slot = regexOf(0)
+        const workingBefore = working()
+        const slotJson = JSON.stringify(slot)
+        await importInto(0, [row('I0')])
+        expect(working()).not.toBe(workingBefore)
+        expect(names(working())).toEqual(['A0', 'A1', 'I0'])
+        expect(regexOf(0)).toBe(slot)
+        expect(JSON.stringify(slot)).toBe(slotJson)
+    })
+
+    test('T31c: an import into an inactive preset gives its slot a new array and leaves the working copy alone', async () => {
+        const slotBefore = regexOf(1)
+        const workingBefore = working()
+        const workingJson = JSON.stringify(workingBefore)
+        await importInto(1, [row('I0'), row('I1')])
+        expect(regexOf(1)).not.toBe(slotBefore)
+        expect(names(regexOf(1))).toEqual(['B0', 'B1', 'B2', 'I0', 'I1'])
+        expect(working()).toBe(workingBefore)
+        expect(JSON.stringify(working())).toBe(workingJson)
     })
 
     test('T18b: an active field edit leaves the sharing slot row and its unknown key as they were', () => {

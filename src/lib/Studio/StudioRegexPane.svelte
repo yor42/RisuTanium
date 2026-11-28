@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { untrack } from 'svelte'
+    import { onDestroy, untrack } from 'svelte'
     import { language } from '../../lang'
     import { openInClassicEditor } from '../../ts/studio/classicLinks.svelte'
     import { afterFlush } from '../../ts/afterFlush'
@@ -195,6 +195,48 @@
         focusRequest = { index: index < count - 1 ? index : index > 0 ? index - 1 : null, control: 'name' }
     }
 
+    // The pane is keyed by its owner, so a selection change destroys it; a pick that resolves afterwards writes nothing.
+    let importing = $state(false)
+    let destroyed = false
+    onDestroy(() => { destroyed = true })
+
+    // The history key of this pane's owner, built from its props because `owner` is null once the owner is gone; the
+    // refusal text picks its preset or module wording from it.
+    function goneOwnerKey(): OwnerKey | undefined {
+        if (ownerType === 'preset') return presetId === null ? undefined : presetOwnerKey(presetId)
+        if (ownerType === 'character') return characterOwnerKey(chaId)
+        return moduleId === null ? undefined : moduleOwnerKey(moduleId)
+    }
+
+    // The picker opens only for an owner that can take the write now. After the pick, the write goes through the pane's own
+    // runner, which re-reads owner, editable and service; an owner that went away during the pick shows the gone text.
+    async function importScripts(): Promise<void> {
+        if (!(service && owner !== null && editable && listClass.kind === 'rows' && !importing)) return
+        importing = true
+        try {
+            const { runRegexImport } = await import('../../ts/studio/edit/regexFileActions')
+            await runRegexImport(
+                () => !destroyed,
+                (op) => {
+                    if (owner === null) {
+                        refusal = refusalTextOf({ reason: 'gone' }, goneOwnerKey())
+                        return { ok: false, reason: 'gone' }
+                    }
+                    return runOp(op)
+                },
+            )
+        } finally {
+            importing = false
+        }
+    }
+
+    async function exportScripts(): Promise<void> {
+        const list = readLive()
+        if (!Array.isArray(list) || list.length === 0) return
+        const { runRegexExport } = await import('../../ts/studio/edit/regexFileActions')
+        await runRegexExport(list)
+    }
+
     function openClassic(): void {
         openInClassicEditor(ownerType, 'regex')
     }
@@ -228,6 +270,9 @@
                 {focusRequest}
                 onopen={openRow}
                 onadd={addScript}
+                onimport={importScripts}
+                onexport={exportScripts}
+                {importing}
                 onmove={moveScript}
                 onduplicate={duplicateScript}
                 ondelete={deleteScript}

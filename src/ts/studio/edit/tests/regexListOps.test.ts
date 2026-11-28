@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'vitest'
 import type { LiveReader } from '../../history/historyModel'
 import type { ObjBuildResult } from '../../history/ownerHistory.svelte'
-import { newRegexEntry, regexAdd, regexDelete, regexDuplicate, regexMove, regexTwinCount, type RegexOp } from '../regexListOps'
+import { newRegexEntry, regexAdd, regexDelete, regexDuplicate, regexImport, regexMove, regexTwinCount, type RegexOp } from '../regexListOps'
 
 type Row = Record<string, unknown>
 
@@ -47,6 +47,49 @@ describe('the copy rule (M10)', () => {
         expect(result).toMatchObject({ ok: true, coalesceKey: null })
         if (result.ok !== true) return
         expect(result.drafts).toEqual([{ op: 'objInsert', list: 'regex', index: 0, entry: newRegexEntry() }])
+    })
+})
+
+describe('the import builder', () => {
+    test('one insert per entry, appended after the live rows in file order, under one import label with the count', () => {
+        const live = [named(0), named(1)]
+        const file = [named(7), named(8), named(9)]
+        const result = build(regexImport(file), live)
+        expect(result).toMatchObject({ ok: true, coalesceKey: null, label: { kind: 'obj', list: 'regex', action: 'import', name: null, count: 3 } })
+        if (result.ok !== true) return
+        expect(result.drafts).toEqual([
+            { op: 'objInsert', list: 'regex', index: 2, entry: file[0] },
+            { op: 'objInsert', list: 'regex', index: 3, entry: file[1] },
+            { op: 'objInsert', list: 'regex', index: 4, entry: file[2] },
+        ])
+    })
+
+    test('an absent list reads as empty and the first entry lands at 0', () => {
+        const result = build(regexImport([named(1)]), [])
+        expect(result).toMatchObject({ ok: true, drafts: [{ op: 'objInsert', index: 0 }] })
+    })
+
+    test('the entries are fresh plain copies that keep unknown keys and an own __proto__', () => {
+        const entry = JSON.parse('{"comment":"a","in":"","out":"","type":"edit_future","x_future":[1],"__proto__":{"k":1}}') as Row
+        const result = build(regexImport([entry]), [])
+        if (result.ok !== true) throw new Error('refused')
+        const draft = result.drafts[0]
+        if (draft.op !== 'objInsert') throw new Error('no insert')
+        expect(draft.entry).not.toBe(entry)
+        expect(Object.hasOwn(draft.entry, '__proto__')).toBe(true)
+        expect(draft.entry).toEqual(entry)
+    })
+
+    test('twins inside one file are two inserts at consecutive indices', () => {
+        const result = build(regexImport([named(5), named(5)]), [named(5)])
+        if (result.ok !== true) throw new Error('refused')
+        expect(result.drafts.map((d) => (d.op === 'objInsert' ? d.index : -1))).toEqual([1, 2])
+    })
+
+    test('a list that is not an array or not JSON-safe is refused, and so is an empty file', () => {
+        expect(build(regexImport([named(1)]), 'text')).toEqual(REFUSED)
+        expect(build(regexImport([named(1)]), [{ ...named(0), x: Number.NaN }])).toEqual(REFUSED)
+        expect(build(regexImport([]), [])).toEqual(REFUSED)
     })
 })
 

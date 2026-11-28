@@ -393,6 +393,53 @@ describe('4d text of the chat, a resident module and a preset', () => {
         expect(part('studio-detail-text')?.textContent).toContain('MODULE-IN')
     })
 
+    // T30(e), a compatibility guard: the import button exists only in the mounted editable pane. The control step proves the
+    // button is reachable in this harness, so the three absences are not a harness gap.
+    test('T30e the regex import button is on an unshared loaded module and on none of a private character, a stub and a shared id', async () => {
+        const regex = [{ comment: 'r', in: 'MODULE-IN', out: 'MODULE-OUT', type: 'editdisplay' }]
+        const settleDetail = async (): Promise<void> => {
+            await vi.dynamicImportSettled()
+            await Promise.resolve()
+            flushSync()
+        }
+        const remount = async (): Promise<void> => {
+            await unmount(app!)
+            host!.remove()
+        }
+        setFull(makeInput({
+            character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
+            modules: [residentModule('res', { regex })],
+        }))
+        openStudio({ owner: { type: 'module', id: 'res' }, kind: 'regex', from: 'chat' }, null)
+        show()
+        await settleDetail()
+        expect(part('studio-regex-import')).not.toBeNull()
+        await remount()
+
+        setDb({ license: 'private', customscript: [typedRegex('Fix', 'IN', 'OUT')] })
+        openStudio({ owner: { type: 'character', id: 'cha-1' }, kind: 'regex', from: 'chat' }, null)
+        show()
+        await settleDetail()
+        expect(part('studio-regex-import')).toBeNull()
+        await remount()
+
+        setFull(makeInput({ modules: [stubModule('stub')] }))
+        openStudio({ owner: { type: 'module', id: 'stub' }, kind: 'regex', from: 'chat' }, null)
+        show()
+        await settleDetail()
+        expect(part('studio-regex-import')).toBeNull()
+        await remount()
+
+        setFull(makeInput({
+            character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
+            modules: [residentModule('res', { regex }), residentModule('res', { regex })],
+        }))
+        openStudio({ owner: { type: 'module', id: 'res' }, kind: 'regex', from: 'chat' }, null)
+        show()
+        await settleDetail()
+        expect(part('studio-regex-import')).toBeNull()
+    })
+
     test('the active preset shows its working regex and toggles', () => {
         setFull(makeInput({
             presets: [makePreset('P0', { regex: [regexBody('pr', 'PRESET-IN', 'PRESET-OUT')], toggles: 'PRESET-TOGGLE' })],
