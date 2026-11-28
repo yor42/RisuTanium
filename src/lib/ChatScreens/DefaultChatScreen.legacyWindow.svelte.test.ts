@@ -487,3 +487,36 @@ describe('the window of the legacy list when the reader is back at the latest me
         expect(h.chatsProps!.loadPages).toBe(120)
     })
 })
+
+describe('the window of the legacy list on touch input', () => {
+    afterEach(() => {
+        delete document.documentElement.dataset.input
+    })
+
+    test('R T2b a touch reader far from the newest row, composer visible, keeps the grown window', async () => {
+        document.documentElement.dataset.input = 'touch'
+        h.realChats = true
+        const root = await showScreen(300)
+        await growTo(root, 6)
+        expect(h.chatsProps!.loadPages).toBe(120)
+        const host = listOf(root).querySelector<HTMLElement>(':scope > [data-part="chat-messages"]')
+        expect(host, 'the message list host').not.toBeNull()
+        const newest = host!.firstElementChild as HTMLElement
+        newest.getBoundingClientRect = () => ({ top: 5000, bottom: 5100, left: 0, right: 0, width: 0, height: 100, x: 0, y: 5000, toJSON: () => ({}) })
+
+        scrollAtBottom(root)
+
+        expect(h.chatsProps!.loadPages).toBe(120)
+    })
+
+    test('G T2c touch input with the newest row in view still trims', async () => {
+        document.documentElement.dataset.input = 'touch'
+        h.realChats = true
+        const root = await showScreen(300)
+        await growTo(root, 6)
+
+        scrollAtBottom(root)
+
+        expect(h.chatsProps!.loadPages).toBe(100)
+    })
+})

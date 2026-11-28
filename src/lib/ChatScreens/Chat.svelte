@@ -52,6 +52,7 @@
     import AutoresizeArea from "../UI/GUI/TextAreaResizable.svelte"
     import ChatBody from './ChatBody.svelte'
     import { viewportWidthThisTask } from './chatViewportWidth'
+    import { senderInitial } from './senderInitial'
     import PopupButton from "../UI/PopupButton.svelte";
     import PartialEditController from './PartialEditController.svelte';
     import { getLLMCache } from "../../ts/translator/translator"
@@ -787,7 +788,7 @@
 {/snippet}
 
 {#snippet iconButtons(options:{applyTextColors?:boolean} = {})}
-    <div class="grow flex flex-wrap items-center justify-end" class:text-textcolor2={options?.applyTextColors !== false}>
+    <div data-classic-actions class="grow flex flex-wrap items-center justify-end" class:text-textcolor2={options?.applyTextColors !== false}>
         {#if isComment}
             <button
                 class="flex items-center hover:text-blue-500 transition-colors button-icon-remove"
@@ -912,7 +913,7 @@
             {#if siblingCount > 1}
                 <span class="flex items-center text-xs text-textcolor2">{siblingIndex}/{siblingCount}</span>
             {/if}
-            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} aria-label={willGenerate ? language.chatShellNewReply : language.chatShellNextReply} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+            <button class={['flex items-center disabled:opacity-40 transition-colors button-icon-reroll', willGenerate ? 'text-amber-400' : 'enabled:hover:text-blue-500']} data-generates={willGenerate ? 'true' : undefined} aria-label={willGenerate ? language.chatShellNewReply : language.chatShellNextReply} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
                 <ArrowRight size={22}/>
             </button>
         {/if}
@@ -923,7 +924,7 @@
             </button>
         {/if}
         {#if isLastRow}
-            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} aria-label={willGenerate ? language.chatShellNewReply : language.chatShellNextReply} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+            <button class={['flex items-center disabled:opacity-40 transition-colors button-icon-reroll', willGenerate ? 'text-amber-400' : 'enabled:hover:text-blue-500']} data-generates={willGenerate ? 'true' : undefined} aria-label={willGenerate ? language.chatShellNewReply : language.chatShellNextReply} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
                 <RefreshCcwIcon size={20}/>
             </button>
         {:else if siblingCount > 1}
@@ -945,11 +946,11 @@
             {#if firstMessage && DBState.db.swipe && DBState.db.showFirstMessagePages}
                 <span class="flex items-center text-xs text-textcolor2">{currentPage}/{totalPages}</span>
             {/if}
-            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" class:dyna-icon={rerollIcon === 'dynamic'} aria-label={language.chatShellNextReply} onclick={onReroll}>
+            <button class={['flex items-center transition-colors button-icon-reroll', willGenerate ? 'text-amber-400' : 'hover:text-blue-500']} class:dyna-icon={rerollIcon === 'dynamic'} data-generates={willGenerate ? 'true' : undefined} aria-label={language.chatShellNextReply} onclick={onReroll}>
                 <ArrowRight size={22}/>
             </button>
         {:else}
-            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" class:dyna-icon={rerollIcon === 'dynamic'} aria-label={language.reroll} onclick={onReroll}>
+            <button class={['flex items-center transition-colors button-icon-reroll', willGenerate ? 'text-amber-400' : 'hover:text-blue-500']} class:dyna-icon={rerollIcon === 'dynamic'} data-generates={willGenerate ? 'true' : undefined} aria-label={language.reroll} onclick={onReroll}>
                 <RefreshCcwIcon size={20}/>
             </button>
         {/if}
@@ -1008,6 +1009,12 @@
     {/if}
 {/snippet}
 
+{#snippet senderInitialMark()}
+    {#if senderInitial(name) !== ''}
+        <span aria-hidden="true" class="text-bgcolor font-semibold select-none" style={`font-size:${DBState.db.iconsize * 3.5 / 100 / 2}rem;line-height:1`}>{senderInitial(name)}</span>
+    {/if}
+{/snippet}
+
 {#snippet senderIcon(options:{rounded?:boolean,styleFix?:string} = {})}
     {#if !blankMessage && !$HideIconStore}
         {#if DBState.db.characters[selIdState.selId]?.chaId === "§playground"}
@@ -1022,22 +1029,22 @@
         {:else}
             {#if iconMounted}
             {#await img}
-                <div class="shadow-lg bg-textcolor2" style={options?.styleFix ??`height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`}
+                <div class="shadow-lg bg-textcolor2 flex items-center justify-center" style={options?.styleFix ??`height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`}
                 class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}></div>
             {:then m}
                 {#if largePortrait && (!options?.rounded)}
-                    <div class="shadow-lg bg-textcolor2" style={m + (options?.styleFix ?? `height:${DBState.db.iconsize * 3.5 / 100 / 0.75}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`)}
-                    class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}></div>
+                    <div class="shadow-lg bg-textcolor2 flex items-center justify-center" style={m + (options?.styleFix ?? `height:${DBState.db.iconsize * 3.5 / 100 / 0.75}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`)}
+                    class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}>{#if !m}{@render senderInitialMark()}{/if}</div>
                 {:else}
-                    <div class="shadow-lg bg-textcolor2" style={m + (options?.styleFix ?? `height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`)}
-                    class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}></div>
+                    <div class="shadow-lg bg-textcolor2 flex items-center justify-center" style={m + (options?.styleFix ?? `height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`)}
+                    class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}>{#if !m}{@render senderInitialMark()}{/if}</div>
                 {/if}
             {:catch}
-                <div class="shadow-lg bg-textcolor2" style={options?.styleFix ??`height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`}
-                class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}></div>
+                <div class="shadow-lg bg-textcolor2 flex items-center justify-center" style={options?.styleFix ??`height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`}
+                class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}>{@render senderInitialMark()}</div>
             {/await}
             {:else}
-                <div class="shadow-lg bg-textcolor2" style={options?.styleFix ??`height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`}
+                <div class="shadow-lg bg-textcolor2 flex items-center justify-center" style={options?.styleFix ??`height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`}
                 class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}></div>
             {/if}
         {/if}

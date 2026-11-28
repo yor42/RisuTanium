@@ -23,10 +23,10 @@ import { DynamicGUI, sideBarClosing, sideBarStore } from 'src/ts/stores.svelte'
 
 const mounted: { instance: unknown, target: HTMLElement }[] = []
 
-function mountArrow(): HTMLElement {
+function mountArrow(props: { placement?: 'floating' | 'header', yieldOnPhone?: boolean } = {}): HTMLElement {
     const target = document.createElement('div')
     document.body.appendChild(target)
-    mounted.push({ instance: mount(SideBarArrow, { target }), target })
+    mounted.push({ instance: mount(SideBarArrow, { target, props }), target })
     flushSync()
     return target
 }
@@ -100,5 +100,26 @@ describe('SideBarArrow', () => {
         homeChrome.phoneDrawer = false
         flushSync()
         expect(target.querySelector('button')).not.toBeNull()
+    })
+
+    test('R T1d the header placement is a static 44px control, the floating one overlays the corner', () => {
+        const floating = mountArrow().querySelector('button')!
+        expect(floating.className).toContain('absolute')
+        const header = mountArrow({ placement: 'header' }).querySelector('button')!
+        expect(header.className).not.toContain('absolute')
+        expect(header.className).toContain('h-11')
+        expect(header.className).toContain('w-11')
+        expect(header.className).toContain('shrink-0')
+        sideBarStore.set(true)
+        const open = mountArrow({ placement: 'header' }).querySelector('button')!
+        expect(open.className).not.toContain('absolute')
+    })
+
+    test('R T1d only a floating arrow that yields carries the yield marker', () => {
+        expect(mountArrow().querySelector('[data-classic-arrow-yield]')).toBeNull()
+        expect(mountArrow({ yieldOnPhone: true }).querySelector('[data-classic-arrow-yield]')).not.toBeNull()
+        expect(mountArrow({ placement: 'header', yieldOnPhone: true }).querySelector('[data-classic-arrow-yield]')).toBeNull()
+        sideBarStore.set(true)
+        expect(mountArrow({ yieldOnPhone: true }).querySelector('[data-classic-arrow-yield]')).not.toBeNull()
     })
 })

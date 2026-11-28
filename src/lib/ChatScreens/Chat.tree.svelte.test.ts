@@ -403,7 +403,7 @@ describe('the generating arrow', () => {
     test('only the last row, with no later sibling, styles forward and marks it', () => {
         const chat = setup(pathOf(['u1', 'user', 1], ['c2', 'char', 3]), [record('c1', 'char', 2, 'u1')])
         const { root } = mountRow(chat, 1)
-        expect(forward(root)!.classList.contains('text-draculared')).toBe(true)
+        expect(forward(root)!.classList.contains('text-amber-400')).toBe(true)
         expect(forward(root)!.getAttribute('data-generates')).toBe('true')
         expect(forward(root)!.disabled).toBe(false)
     })
@@ -411,7 +411,7 @@ describe('the generating arrow', () => {
     test('the last row with a later sibling steps instead: no styling, no mark', () => {
         const chat = setup(pathOf(['u1', 'user', 1], ['c1', 'char', 2]), [record('c2', 'char', 3, 'u1')])
         const { root } = mountRow(chat, 1)
-        expect(forward(root)!.classList.contains('text-draculared')).toBe(false)
+        expect(forward(root)!.classList.contains('text-amber-400')).toBe(false)
         expect(forward(root)!.hasAttribute('data-generates')).toBe(false)
         expect(forward(root)!.disabled).toBe(false)
     })
@@ -419,7 +419,7 @@ describe('the generating arrow', () => {
     test('a non-last row never carries the styling', () => {
         const chat = twoSiblingChat()
         const { root } = mountRow(chat, 1)
-        expect(forward(root)!.classList.contains('text-draculared')).toBe(false)
+        expect(forward(root)!.classList.contains('text-amber-400')).toBe(false)
         expect(forward(root)!.hasAttribute('data-generates')).toBe(false)
     })
 
@@ -427,7 +427,7 @@ describe('the generating arrow', () => {
         const chat = setup([message('c1', 'char', 2)], undefined)
         const { root } = mountRow(chat, 0)
         expect(forward(root)!.disabled).toBe(true)
-        expect(forward(root)!.classList.contains('text-draculared')).toBe(false)
+        expect(forward(root)!.classList.contains('text-amber-400')).toBe(false)
         expect(forward(root)!.hasAttribute('data-generates')).toBe(false)
     })
 
@@ -436,7 +436,41 @@ describe('the generating arrow', () => {
         const { root } = mountRow(chat, 1)
         expect(back(root)).toBeNull()
         expect(forward(root)!.querySelector('svg.lucide-refresh-ccw')).not.toBeNull()
-        expect(forward(root)!.classList.contains('text-draculared')).toBe(true)
+        expect(forward(root)!.classList.contains('text-amber-400')).toBe(true)
+    })
+
+    test('the generating arrow carries no blue hover, with Swipe on or off', () => {
+        const chat = setup(pathOf(['u1', 'user', 1], ['c2', 'char', 3]), undefined)
+        expect(forward(mountRow(chat, 1).root)!.classList.contains('enabled:hover:text-blue-500')).toBe(false)
+        const off = setup(pathOf(['u1', 'user', 1], ['c2', 'char', 3]), undefined, { swipe: false })
+        expect(forward(mountRow(off, 1).root)!.classList.contains('enabled:hover:text-blue-500')).toBe(false)
+    })
+
+    test('guard: a stepping arrow keeps the blue hover and a greeting arrow is never amber', () => {
+        const chat = setup(pathOf(['u1', 'user', 1], ['c1', 'char', 2]), [record('c2', 'char', 3, 'u1')])
+        expect(forward(mountRow(chat, 1).root)!.classList.contains('enabled:hover:text-blue-500')).toBe(true)
+        const greeting = setup([], undefined)
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mountedTargets.push(target)
+        mountedInstances.push(mount(Chat, {
+            target,
+            props: { idx: -1, message: 'hello', isLastMemory: false, firstMessage: true, altGreeting: true, rerollIcon: 'dynamic', currentPage: 1, totalPages: 2, onReroll: vi.fn(), unReroll: vi.fn(), onStep: vi.fn(), getTreeView: () => treeView(greeting as never) },
+        }))
+        flushSync()
+        expect(forward(target)!.classList.contains('text-amber-400')).toBe(false)
+        expect(forward(target)!.hasAttribute('data-generates')).toBe(false)
+        expect(forward(target)!.classList.contains('hover:text-blue-500')).toBe(true)
+    })
+})
+
+describe('the action row marker', () => {
+    test('R T6b the inline action buttons sit in a marked wrapper', () => {
+        const chat = setup(pathOf(['u1', 'user', 1], ['c2', 'char', 3]), undefined)
+        const { root } = mountRow(chat, 1)
+        const wrapper = root.querySelector('[data-classic-actions]')
+        expect(wrapper).not.toBeNull()
+        expect(wrapper!.contains(forward(root))).toBe(true)
     })
 })
 
@@ -603,5 +637,23 @@ describe('guards for the other mounts of Chat', () => {
         forward(target)!.click()
         expect(unReroll).toHaveBeenCalledTimes(1)
         expect(onReroll).toHaveBeenCalledTimes(1)
+    })
+
+    test('the old-handler last row that would generate is amber and marked, with Swipe on or off', () => {
+        for (const swipe of [true, false]) {
+            const chat = setup(pathOf(['u1', 'user', 1], ['c2', 'char', 3]), undefined, { swipe })
+            const target = document.createElement('div')
+            document.body.appendChild(target)
+            mountedTargets.push(target)
+            mountedInstances.push(mount(Chat, {
+                target,
+                props: { idx: 1, message: chat.message[1].data, isLastMemory: false, rerollIcon: 'dynamic', onReroll: vi.fn(), unReroll: vi.fn() },
+            }))
+            flushSync()
+            const arrow = forward(target)!
+            expect(arrow.classList.contains('text-amber-400')).toBe(true)
+            expect(arrow.getAttribute('data-generates')).toBe('true')
+            expect(arrow.classList.contains('hover:text-blue-500')).toBe(false)
+        }
     })
 })

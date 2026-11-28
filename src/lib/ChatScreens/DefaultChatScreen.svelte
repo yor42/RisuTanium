@@ -7,7 +7,7 @@
     import ReplyRunningNotice from './ReplyRunningNotice.svelte';
     import { CameraIcon, DatabaseIcon, DicesIcon, GlobeIcon, ImagePlusIcon, LanguagesIcon, Laugh, MenuIcon, MicOffIcon, PackageIcon, Plus, RefreshCcwIcon, ReplyIcon, Send, StepForwardIcon, XIcon, BrainIcon, ArrowDown, SparkleIcon } from "@lucide/svelte";
     import { selectedCharID, PlaygroundStore, createSimpleCharacter, hypaV3ModalOpen, ScrollToMessageStore, additionalChatMenu, additionalFloatingActionButtons, easyPanelStore, chatPanelStore } from "../../ts/stores.svelte";
-    import { onDestroy, untrack } from 'svelte';
+    import { onDestroy, untrack, type Snippet } from 'svelte';
     import { afterFlush } from '../../ts/afterFlush';
     import Chat from "./Chat.svelte";
     import { DBState } from 'src/ts/stores.svelte';
@@ -65,6 +65,7 @@
     import { chatSurface } from './chatSurface.svelte';
     import { streamTextHold } from 'src/ts/chatShell/streamTextHold';
     import { holdRowLayout, releaseRowHoldAfterFrames } from 'src/ts/gui/legacyRowVisibility';
+    import { touchInput } from 'src/ts/gui/classicChatLayout';
 
     const loadPlaygroundMenu = () => import('../Playground/PlaygroundMenu.svelte').then(m => m.default);
     
@@ -72,11 +73,31 @@
         openModuleList?: boolean;
         openChatList?: boolean;
         customStyle?: string;
+        // The sidebar toggle the phone header carries, passed by the screen that owns the sidebar arrow.
+        phoneHeaderToggle?: Snippet;
     }
 
     // The first-message icon is read through a hold that lasts as long as this screen.
     const lookups = useCharImageLookups()
     let openMenu = $state(false)
+    // The composer row's measured height, which positions the touch side menu above it; 0 until measured.
+    let composerHeight = $state(0)
+    let composerRow = $state<HTMLElement>()
+    let rootEle = $state<HTMLElement>()
+    $effect(() => {
+        const row = composerRow
+        if(!row){
+            return
+        }
+        const measure = () => { composerHeight = row.offsetHeight }
+        measure()
+        if(typeof ResizeObserver === 'undefined'){
+            return
+        }
+        const observer = new ResizeObserver(measure)
+        observer.observe(row)
+        return () => observer.disconnect()
+    })
     let loadPages = $state(getInitialChatLoadPages(DBState.db))
     // Stage A (A-lite) of the chat-list-window plan: bounds loadPages back to
     // its initial value on a chat-identity change, but only when no message
@@ -92,7 +113,7 @@
     let showNewMessageButton = $state(false)
     let chatsInstance: any = $state()
     let isScrollingToMessage = $state(false)
-    let { openModuleList = $bindable(false), openChatList = $bindable(false), customStyle = '' }: Props = $props();
+    let { openModuleList = $bindable(false), openChatList = $bindable(false), customStyle = '', phoneHeaderToggle }: Props = $props();
     // Ids of the composer textareas' naming elements stay unique across mounted screens.
     const composerUid = $props.id()
 
@@ -519,47 +540,50 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="w-full h-full relative" style={customStyle} onclick={() => {
+<div class="w-full h-full relative" bind:this={rootEle} style={customStyle} onclick={() => {
     openMenu = false
 }}>
-    
+    {#if $selectedCharID >= 0 && currentCharacter && !currentCharacter.coldstorage}
+        <button type="button" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-2 focus:rounded-md focus:bg-selected focus:text-textcolor" onclick={() => { inputEle?.focus() }}>{language.classicChatSkipToMessageBox}</button>
+        <button type="button" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-2 focus:rounded-md focus:bg-selected focus:text-textcolor" onclick={() => { rootEle?.querySelector<HTMLElement>('[data-part="chat-messages"]')?.focus({ preventScroll: true }) }}>{language.classicChatSkipToMessages}</button>
+    {/if}
     {#if showNewMessageButton}
         {#if (DBState.db.newMessageButtonStyle === 'bottom-center' || !DBState.db.newMessageButtonStyle)}
-            <button class="absolute bottom-16 left-1/2 -translate-x-1/2 bg-selected text-textcolor ring-1 ring-borderc px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={scrollToBottom}>
+            <button class="absolute bottom-16 left-1/2 -translate-x-1/2 bg-selected text-textcolor ring-1 ring-borderc px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors" data-classic-tap onclick={scrollToBottom}>
                 <ArrowDown size={16} aria-hidden="true" />
                 <span>{language.newMessage}</span>
             </button>
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'bottom-right'}
-            <button class="absolute bottom-20 right-4 bg-selected text-textcolor ring-1 ring-borderc px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={scrollToBottom}>
+            <button class="absolute bottom-20 right-4 bg-selected text-textcolor ring-1 ring-borderc px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors" data-classic-tap onclick={scrollToBottom}>
                 <ArrowDown size={16} aria-hidden="true" />
                 <span>{language.newMessage}</span>
             </button>
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'bottom-left'}
-            <button class="absolute bottom-20 left-4 bg-selected text-textcolor ring-1 ring-borderc px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={scrollToBottom}>
+            <button class="absolute bottom-20 left-4 bg-selected text-textcolor ring-1 ring-borderc px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors" data-classic-tap onclick={scrollToBottom}>
                 <ArrowDown size={16} aria-hidden="true" />
                 <span>{language.newMessage}</span>
             </button>
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'floating-circle'}
-            <button class="absolute bottom-36 right-4 bg-selected text-textcolor ring-1 ring-borderc w-12 h-12 rounded-full shadow-lg z-50 flex items-center justify-center hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={scrollToBottom} aria-label={language.newMessage} title={language.newMessage}>
+            <button class="absolute bottom-36 right-4 bg-selected text-textcolor ring-1 ring-borderc w-12 h-12 rounded-full shadow-lg z-50 flex items-center justify-center hover:ring-2 hover:ring-textcolor2 transition-colors" data-classic-tap onclick={scrollToBottom} aria-label={language.newMessage} title={language.newMessage}>
                 <ArrowDown size={20} aria-hidden="true" />
             </button>
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'right-center'}
-            <button class="absolute top-1/2 right-2 -translate-y-1/2 bg-selected text-textcolor ring-1 ring-borderc px-2 py-3 rounded-l-lg shadow-lg z-50 flex flex-col items-center gap-1 hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={scrollToBottom}>
+            <button class="absolute top-1/2 right-2 -translate-y-1/2 bg-selected text-textcolor ring-1 ring-borderc px-2 py-3 rounded-l-lg shadow-lg z-50 flex flex-col items-center gap-1 hover:ring-2 hover:ring-textcolor2 transition-colors" data-classic-tap onclick={scrollToBottom}>
                 <ArrowDown size={14} aria-hidden="true" />
                 <span class="text-xs writing-mode-vertical">{language.newMessage}</span>
             </button>
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'top-bar'}
-            <button class="absolute top-2 left-1/2 -translate-x-1/2 bg-selected text-textcolor ring-1 ring-borderc px-6 py-1.5 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors text-sm" onclick={scrollToBottom}>
+            <button class="absolute top-2 left-1/2 -translate-x-1/2 bg-selected text-textcolor ring-1 ring-borderc px-6 py-1.5 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors text-sm" data-classic-tap data-classic-pill="top" onclick={scrollToBottom}>
                 <ArrowDown size={14} aria-hidden="true" />
                 <span>{language.newMessage}</span>
             </button>
@@ -582,12 +606,20 @@
                 <PlaygroundMenu />
             {/await}
         {/if}
-    {:else if !currentCharacter || currentCharacter.coldstorage}
-        <!-- An archived placeholder holds no chat and no first messages: the chat below reads both. `changeChar`
-             restores an archived character before it selects it, so only a selection written around it lands here. -->
+    {:else if !currentCharacter}
         <div class="h-full w-full"></div>
     {:else}
-        <div class="h-full w-full flex flex-col-reverse overflow-y-auto relative default-chat-screen" onscroll={(e) => {
+        <div class="h-full w-full flex flex-col">
+        <header data-classic-header class="items-center gap-2 h-12 shrink-0 border-b border-darkborderc bg-bgcolor text-textcolor">
+            {@render phoneHeaderToggle?.()}
+            <span class="truncate min-w-0 grow text-lg">{currentCharacter.name}</span>
+        </header>
+        {#if currentCharacter.coldstorage}
+        <!-- An archived placeholder holds no chat and no first messages: the chat below reads both. `changeChar`
+             restores an archived character before it selects it, so only a selection written around it lands here. -->
+        <div class="flex-1 min-h-0 flex items-center justify-center p-4 text-center text-textcolor2">{language.classicChatUnavailable}</div>
+        {:else}
+        <div class="flex-1 min-h-0 w-full flex flex-col-reverse overflow-y-auto relative default-chat-screen" onscroll={(e) => {
             // A hidden list reports zero metrics, which would read as scrolled to the top and grow the loaded pages.
             if(chatSurface.hidden){
                 return
@@ -602,7 +634,7 @@
             const chatTarget = e.target as HTMLElement;
             // With a fixed composer the message list is found by its data-part marker, never by position or class:
             // the optional rows around it (notice, translate, files, stickers) shift child indexes and share styling classes.
-            const chatsContainer = (DBState.db.fixedChatTextarea && chatTarget.querySelector(':scope > [data-part="chat-messages"]')) || chatTarget.children[0];
+            const chatsContainer = ((DBState.db.fixedChatTextarea || touchInput()) && chatTarget.querySelector(':scope > [data-part="chat-messages"]')) || chatTarget.children[0];
             const lastEl = chatsContainer?.firstElementChild;
             const isAtBottom = lastEl ? lastEl.getBoundingClientRect().top <= chatTarget.getBoundingClientRect().bottom + 100 : true;
             if(isAtBottom){
@@ -624,6 +656,8 @@
             }
         }}>
             <div
+                    data-classic-composer
+                    bind:this={composerRow}
                     class="{DBState.db.fixedChatTextarea ? 'sticky pt-2 pb-2 right-0 bottom-0 bg-bgcolor' : 'mt-2 mb-2'} flex items-stretch w-full"
                     style="{DBState.db.fixedChatTextarea ? 'z-index:29;' : ''}"
             >
@@ -849,7 +883,7 @@
                                         {language.uiCommon.audioTagUnsupported}
                                     </audio>
                                 {/if}
-                                <button class="absolute -right-1 -top-1 p-1 bg-darkbg text-textcolor rounded-md transition-colors hover:text-draculared focus:text-draculared" onclick={() => {
+                                <button class="absolute -right-1 -top-1 p-1 bg-darkbg text-textcolor rounded-md transition-colors hover:text-draculared focus:text-draculared" data-classic-tap onclick={() => {
                                     const id = file
                                     writeDraft((record) => { record.fileInput.splice(i, 1) })
                                     warnOnReject('DefaultChatScreen: draft render release failed', forgetInlayRender(id))
@@ -860,7 +894,7 @@
                         {:catch}
                             <div class="relative">
                                 <div class="max-w-24 max-h-24">{file}</div>
-                                <button class="absolute -right-1 -top-1 p-1 bg-darkbg text-textcolor rounded-md transition-colors hover:text-draculared focus:text-draculared" onclick={() => {
+                                <button class="absolute -right-1 -top-1 p-1 bg-darkbg text-textcolor rounded-md transition-colors hover:text-draculared focus:text-draculared" data-classic-tap onclick={() => {
                                     const id = file
                                     writeDraft((record) => { record.fileInput.splice(i, 1) })
                                     warnOnReject('DefaultChatScreen: draft render release failed', forgetInlayRender(id))
@@ -991,6 +1025,13 @@
                 bind:hasNewUnreadMessage={showNewMessageButton}
             />
 
+            {#if currentChat.length === 0 && (currentCharacter.type === 'group' || currentCharacter.chaId === '§playground')}
+                <div data-classic-empty class="ml-auto mr-auto mt-4 mb-2 text-center text-textcolor2 max-w-2/3 wrap-break-word">
+                    <div>{language.classicChatEmpty}</div>
+                    <div class="text-sm">{language.classicChatEmptyHint}</div>
+                </div>
+            {/if}
+
             {#if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message.length <= loadPages}
                 {#if DBState.db.characters[$selectedCharID].type !== 'group' }
                     {#key chatSurface.rebuildEpoch}
@@ -1047,7 +1088,7 @@
             {/if}
 
             {#if openMenu}
-                <div class="{DBState.db.fixedChatTextarea ? 'fixed' : 'absolute'} right-2 bottom-16 p-5 bg-darkbg flex flex-col gap-3 text-textcolor rounded-md" onclick={(e) => {
+                <div data-classic-menu style={composerHeight > 0 ? `--classic-composer-h:${composerHeight}px` : undefined} class="{DBState.db.fixedChatTextarea ? 'fixed' : 'absolute'} right-2 bottom-16 p-5 bg-darkbg flex flex-col gap-3 text-textcolor rounded-md" onclick={(e) => {
                     e.stopPropagation()
                 }}>
                     {#if DBState.db.characters[$selectedCharID].type === 'group'}
@@ -1210,6 +1251,8 @@
                 </div>
 
             {/if}
+        </div>
+        {/if}
         </div>
 
     {/if}
