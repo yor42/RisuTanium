@@ -14,7 +14,7 @@
 import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { BUILTIN_PACKS } from './builtins'
-import { builtinSheetForTests } from './fixtures/bundledPacks'
+import { BUILTIN_ROWS, builtinSheetForTests } from './fixtures/bundledPacks'
 import { cr, parseConcrete } from './colour'
 import { judgeAreaSheet, judgePackSheets, type PackSheetsJudgement } from './index'
 import type { PackJudge } from './intake'
@@ -112,7 +112,8 @@ describe('the judge prefix', () => {
 
     test('TD5: every light built-in passes the base-first concatenation', () => {
         const lights = BUILTIN_PACKS.filter((pack) => wantsLightBase(pack.modes))
-        expect(lights.map((pack) => pack.id).sort()).toEqual(['builtin:banana-cocoa', 'builtin:office-sheet', 'builtin:scratch-white'])
+        expect(lights.map((pack) => pack.id).sort()).toEqual(BUILTIN_ROWS.filter((row) => wantsLightBase(row.modes)).map((row) => row.id).sort())
+        expect(lights.length).toBeGreaterThanOrEqual(3)
         for (const pack of lights) {
             const canonical = judgeAreaSheet('chat', builtinSheetForTests(pack.slug, 'chat'), undefined, 'chat').canonical
             const whole = judgeAreaSheet('chat', `${LIGHT_BASE_JUDGE_PREFIX}\n${canonical}`, undefined, 'chat')

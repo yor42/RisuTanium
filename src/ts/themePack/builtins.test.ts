@@ -8,7 +8,7 @@ import * as builtinsModule from './builtins'
 import { BUILTIN_PACKS, builtinPackById } from './builtins'
 import { cr, parseHexColour, type Rgba } from './colour'
 import { decls } from './csslit'
-import { builtinArchiveBytesForTests, builtinSheetForTests } from './fixtures/bundledPacks'
+import { BUILTIN_ROWS, builtinArchiveBytesForTests, builtinSheetForTests } from './fixtures/bundledPacks'
 import { judgeAreaSheet, judgePackSheets, preprocessCss, THEME_AREAS, type ThemeArea } from './index'
 import { intakePackBytes, type PackJudge, type VerifiedPack } from './intake'
 import { deriveTileColours } from './tileColours'
@@ -33,9 +33,14 @@ async function acceptedBundled(slug: string): Promise<VerifiedPack> {
 const EACH_PACK = BUILTIN_PACKS.map((pack) => [pack.slug, pack] as const)
 
 describe('T3B-1 the built-in packs', () => {
-    it('are exactly the four chat themes, with the ids the settings and I2 use', () => {
-        expect(BUILTIN_PACKS.map((pack) => pack.id)).toEqual(['builtin:origin-navy', 'builtin:banana-cocoa', 'builtin:scratch-white', 'builtin:office-sheet'])
-        expect(BUILTIN_PACKS.map((pack) => pack.slug)).toEqual(['origin-navy', 'banana-cocoa', 'scratch-white', 'office-sheet'])
+    it('are exactly the BUILTIN_ROWS data rows, with the ids the settings and I2 use', () => {
+        expect(BUILTIN_PACKS.map((pack) => pack.id)).toEqual(BUILTIN_ROWS.map((row) => row.id))
+        expect(BUILTIN_PACKS.map((pack) => pack.slug)).toEqual(BUILTIN_ROWS.map((row) => row.slug))
+        expect(BUILTIN_PACKS.map((pack) => [...pack.modes])).toEqual(BUILTIN_ROWS.map((row) => [...row.modes]))
+    })
+
+    it('the four shipped packs stay listed in order (a compatibility pin: ids are stored in settings)', () => {
+        expect(BUILTIN_PACKS.slice(0, 4).map((pack) => pack.id)).toEqual(['builtin:origin-navy', 'builtin:banana-cocoa', 'builtin:scratch-white', 'builtin:office-sheet'])
     })
 
     // The golden packs are frozen bytes of an earlier pack layout: only the pack id is shared, so a later edit of a sheet or a
@@ -48,17 +53,19 @@ describe('T3B-1 the built-in packs', () => {
 
     // Build-time guard: the bytes that run are the bytes judged here, so a sheet that gains a note or a refusal fails this test
     // instead of breaking a built-in at runtime. A note is a validator defect to fix, not a reason to tone a pack down (MC-3419).
-    it.each(EACH_PACK)('%s: the bundled archive passes the intake with every sheet judged ok, no note, no skipped area and no bundled file', async (slug) => {
+    it.each(BUILTIN_ROWS.map((row) => [row.slug, row] as const))('%s: the bundled archive passes the intake with every sheet judged ok, no note, no skipped area, and the areas, files and resources its row names', async (slug, row) => {
         const accepted = await acceptedBundled(slug)
         expect(accepted.skippedAreas).toEqual([])
-        expect(Object.keys(accepted.sheets)).toEqual(['chat'])
+        expect(Object.keys(accepted.sheets).sort()).toEqual([...row.areas].sort())
+        let resources = 0
         for (const [area, sheet] of Object.entries(accepted.sheets)) {
             expect(sheet.result.errors, area).toEqual([])
             expect(sheet.result.ok, area).toBe(true)
             expect(sheet.result.notes, area).toBeUndefined()
-            expect(sheet.resources, area).toHaveLength(0)
+            resources += sheet.resources.length
         }
-        expect(accepted.files.size).toBe(0)
+        expect(resources).toBe(row.resources)
+        expect(accepted.files.size).toBe(row.files)
     })
 
     it('carry a listing of the archive and its pins only: the module exports no sheet text', () => {
@@ -85,8 +92,7 @@ describe('T3B-1 the built-in packs', () => {
     })
 
     it('builtinPackById matches the id exactly and nothing else', () => {
-        expect(builtinPackById('builtin:origin-navy')).toBe(BUILTIN_PACKS[0])
-        expect(builtinPackById('builtin:banana-cocoa')).toBe(BUILTIN_PACKS[1])
+        BUILTIN_ROWS.forEach((row, index) => expect(builtinPackById(row.id), row.id).toBe(BUILTIN_PACKS[index]))
         for (const id of ['builtin:nope', 'origin-navy', 'builtin:origin-navy ', 'BUILTIN:ORIGIN-NAVY', 'builtin:', '', 'archive:origin-navy']) {
             expect(builtinPackById(id), id).toBeNull()
         }
@@ -206,8 +212,9 @@ describe('MC-2522/MC-2523 the designed palette and contrast of the new chat shee
 describe('T8 each bundled chat sheet is the docs sheet, and the downloadable pack chat.css matches it (the Scratch White pack adds the font block)', () => {
     const packEntries = (slug: string): Record<string, Uint8Array> => unzipSync(new Uint8Array(readFileSync(new URL(`../../../theme-packs/${slug}.risutheme`, import.meta.url))))
 
-    it.each(BUILTIN_PACKS.map((pack) => pack.slug))('%s: the bundled chat.css is the preprocessed docs sheet', (slug) => {
-        expect(builtinSheetForTests(slug, 'chat')).toBe(preprocessCss(docsSheet('chat', slug)))
+    const SHEET_CASES = BUILTIN_ROWS.flatMap((row) => row.areas.map((area) => [row.slug, area] as const))
+    it.each(SHEET_CASES)('%s: the bundled %s sheet is the preprocessed docs sheet', (slug, area) => {
+        expect(builtinSheetForTests(slug, area)).toBe(preprocessCss(docsSheet(area, slug)))
     })
 
     it.each(NEW_BUILTINS)('$slug: the pack manifest equals the built-in metadata', ({ slug }) => {

@@ -2,8 +2,8 @@
    only while Home is in COLOUR_READY_AREAS and its pack sheet is on; until then no rule here matches. The values are the
    registry's reference scheme (docs/design/home/home-tokens.css), the colours the pack was judged against, so a role the
    pack leaves unset resolves to a judged value whatever scheme the user runs. HomeShell imports this file after
-   home-roles.css, which holds the role defaults it must beat: both sit at :root specificity, so the later one wins and the
-   base must stay last. A pack's own :root, in the body, still wins. --home-fg-2 is the one role lifted above the reference scheme's raw secondary text (#64748b is
+   home-roles.css, which holds the role defaults it must beat: those sit at zero specificity (:where), so this block wins in any
+   import order. A pack's own :root, in the body, still wins. --home-fg-2 is the one role lifted above the reference scheme's raw secondary text (#64748b is
    2:1 on the selected fill): it carries no pair, so the base itself keeps the drawer and mode labels readable. */
 :root:where([data-theme-pack-base][data-theme-pack-area="home"]) {
   --home-fg: #f8f8f2;

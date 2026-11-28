@@ -269,7 +269,7 @@ describe('T6 the stripped text of every real producer and hostile row is judged 
 describe('S1 the studio shape token list (MC-3121)', () => {
     const STEPS = ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']
     const SHAPE_APP = [...STEPS.map((step) => `--ui-radius-${step}`), '--ui-radius', '--ui-border-width']
-    const COLOUR_FAMILY = /color|colour|-rgb$|alpha|tint|-bg$|shadow|selection|^--studio-(on-|knob|lt-hl|diff-|syn-)|^--nexus-(canvas|surface|text|accent|warm|edge)|^--opacity-/
+    const COLOUR_FAMILY = /color|colour|-rgb$|alpha|tint|-bg$|shadow|selection|^--studio-(on-|knob|lt-hl|diff-|syn-)|^--studio-(fg|fg-2|canvas|surface|surface-raised|selected|edge|edge-strong|danger)$|^--nexus-(canvas|surface|text|accent|warm|edge)|^--opacity-/
     // Studio's geometry role tokens (R6b): every pack-settable studio name that is not a colour, alpha or tint family.
     const STUDIO_GEOMETRY = [...allowedTokenNames('studio')].filter((name) => name.startsWith('--studio-') && !COLOUR_FAMILY.test(name)).sort()
     // A Tailwind arbitrary-value utility that sets a size, gap or inset and nothing painted.

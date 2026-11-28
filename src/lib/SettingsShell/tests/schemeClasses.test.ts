@@ -41,10 +41,18 @@ function expectedRole(pre: string, kind: string, name: string): string {
     if (!role) throw new Error(`no role for ${pre}${kind}-${name}`)
     return role
 }
-// The text drawn on a selected fill reads its own role where a class: directive sits beside class:bg-selected. Two static buttons (PersonaBuilder Create, PluginRow Update) pair bg-selected with the text role; unjudged until the join.
+// The text drawn on a selected fill reads its own role where a class: directive sits beside class:bg-selected.
 const ON_SELECTED: Readonly<Record<string, number>> = {
     [`${ROOT}/SettingsShellIndex.svelte`]: 2,
     [`${ROOT}/SettingsShellPage.svelte`]: 1,
+}
+// Static (unvariant) fills on the selected role that draw text: the text beside the fill reads the on-selected role. The census holds a
+// text-textcolor right after the fill for the two buttons (converted), and none for the persona active chip, whose text class is new (added).
+// Each file pins how many it has, so a new static selected fill that keeps the text role fails here.
+const STATIC_ON_SELECTED: Readonly<Record<string, { convert: number, add: number }>> = {
+    [`${ROOT}/persona/PersonaBuilder.svelte`]: { convert: 1, add: 0 },
+    [`${ROOT}/plugins/PluginRow.svelte`]: { convert: 1, add: 0 },
+    [`${ROOT}/PersonasShellPage.svelte`]: { convert: 0, add: 1 },
 }
 
 function shellFiles(dir = ROOT, out: string[] = []): string[] {
@@ -78,7 +86,10 @@ describe('Settings shell scheme-class census (H-7.2)', () => {
         for (const [file, list] of Object.entries(base)) {
             if (pending(file)) continue
             let onSelected = 0
-            const expected = list.map((token) => {
+            const staticPin = STATIC_ON_SELECTED[file]
+            const staticSeen = { convert: 0, add: 0 }
+            const expected: string[] = []
+            list.forEach((token, index) => {
                 const m = /^((?:[\w[\]:&>*=.-]*:)?)(bg|text|border|ring|outline)-(\w+?)(\/\d+)?$/.exec(token)
                 if (!m) throw new Error(token)
                 let role = expectedRole(m[1], m[2], m[3])
@@ -86,8 +97,19 @@ describe('Settings shell scheme-class census (H-7.2)', () => {
                     role = 'on-selected'
                     onSelected++
                 }
-                return `${m[1]}${m[2]}-(--settings-${role})${m[4] ?? ''}`
+                // the text class right after a static selected fill is that fill's text
+                if (staticPin && m[2] === 'text' && m[3] === 'textcolor' && m[1] === '' && list[index - 1] === 'bg-selected') {
+                    role = 'on-selected'
+                    staticSeen.convert++
+                }
+                expected.push(`${m[1]}${m[2]}-(--settings-${role})${m[4] ?? ''}`)
+                // a static selected fill with no text class of its own gains one (the persona active chip)
+                if (staticPin && token === 'bg-selected' && staticPin.add > staticSeen.add && list[index + 1] !== 'text-textcolor') {
+                    expected.push('text-(--settings-on-selected)')
+                    staticSeen.add++
+                }
             })
+            if (staticPin) expect(staticSeen, file).toEqual(staticPin)
             const source = read(file)
             const actual = [...source.matchAll(ROLE)].map((m) => prefixAt(source, m.index!) + m[0])
             expect(actual, file).toEqual(expected)

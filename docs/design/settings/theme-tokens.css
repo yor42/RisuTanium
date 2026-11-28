@@ -290,6 +290,25 @@
   --settings-surface-opaque: #0e0f2a;                          /* the opaque colour that stands for the glass surface and the flat header in low power and with reduced transparency */
   --settings-surface-raised-opaque: #1a1c42;                   /* ... for the raised surface (buttons, fields, chips) */
   --switcher-min-height: 240px; --switcher-max-height: 560px;       /* the clamp of the anchored switcher popover, read by slice2.js (settingsTheme.num) */
+
+  /* ---- ROLE colour: the colours the Settings shell markup reads (src/styles/settings-roles.css); each defaults to the scheme role of the same Tailwind name ---- */
+  --settings-canvas: var(--risu-theme-bgcolor); --settings-panel: var(--risu-theme-darkbg); --settings-raised: var(--risu-theme-darkbutton);
+  --settings-selected: var(--risu-theme-selected); --settings-hover: var(--risu-theme-selected); --settings-focus: var(--risu-theme-selected);
+  --settings-on-selected: var(--risu-theme-textcolor); --settings-text: var(--risu-theme-textcolor); --settings-text-2: var(--risu-theme-textcolor2);
+  --settings-swatch: var(--risu-theme-textcolor); --settings-swatch-2: var(--risu-theme-textcolor2);
+  --settings-border-strong: var(--risu-theme-borderc); --settings-border-subtle: var(--risu-theme-darkborderc);
+  --settings-danger: var(--risu-theme-draculared); --settings-danger-fill: var(--risu-theme-draculared);
+
+  /* ---- the colour scheme (the app's nine names; the reference values a role is judged against, the upstream defaultColorScheme) ---- */
+  --risu-theme-bgcolor: #282a36;
+  --risu-theme-darkbg: #21222c;
+  --risu-theme-borderc: #6272a4;
+  --risu-theme-selected: #44475a;
+  --risu-theme-draculared: #ff5555;
+  --risu-theme-textcolor: #f8f8f2;
+  --risu-theme-textcolor2: #64748b;
+  --risu-theme-darkborderc: #4b5563;
+  --risu-theme-darkbutton: #374151;
 }
 
 /* DS-073: in low-power mode (html.nexus-low-power, mirrored as data-power by theme.js) and with prefers-reduced-transparency, the glass surfaces become opaque tokens. These selectors weigh one

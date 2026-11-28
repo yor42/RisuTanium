@@ -3,7 +3,7 @@
 // (studio-roles.css) on .studio-root, each role defaults to the scheme role it replaces, and nothing outside the Studio root
 // changes. These rows fail when a scheme name is read inside Studio with no role behind it (a colour variant nothing reads),
 // when a role default drifts from the scheme or the remap leaks (a visible change with no pack), when the root loses its
-// class or the file its import (Studio unreadable under a later base), or when a role becomes pack-settable before the join.
+// class or the file its import (Studio unreadable under a later base), or when a role stops being pack-settable.
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -42,7 +42,7 @@ const rolesCss = read('src/styles/studio-roles.css')
 const screen = read('src/lib/Studio/StudioScreen.svelte')
 
 describe('H-7.1 role tokens', () => {
-    const app = declarations(rolesCss, ':root, [data-own-scheme]')
+    const app = declarations(rolesCss, ':where(:root, [data-own-scheme])')
 
     it('declares exactly the nine roles, each the plain scheme role its Tailwind name read, with no derived name', () => {
         expect([...app.keys()].sort()).toEqual(ROLES.map((r) => r.role).sort())
@@ -55,7 +55,7 @@ describe('H-7.1 role tokens', () => {
         const expected = ROLES.map(({ scheme, role }) => [`--color-${scheme}`, `var(${role})`])
         expect([...map.entries()].sort()).toEqual(expected.sort())
         const selectors = [...rolesCss.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{/g)].map((m) => m[1].replace(/\s+/g, ' ').trim())
-        expect(selectors).toEqual([':root, [data-own-scheme]', '.studio-root'])
+        expect(selectors).toEqual([':where(:root, [data-own-scheme])', '.studio-root'])
     })
 
     it('src/styles.css maps each scheme name to its scheme role, so the remap is the identity with no pack', () => {
@@ -73,7 +73,7 @@ describe('H-7.1 role tokens', () => {
             for (const entry of readdirSync(dir, { withFileTypes: true })) {
                 const full = path.join(dir, entry.name)
                 if (entry.isDirectory()) { if (entry.name !== 'node_modules') stack.push(full); continue }
-                if (!/\.(css|svelte|ts)$/.test(entry.name) || /\.test\.|studio-roles\.css$/.test(entry.name)) continue
+                if (!/\.(css|svelte|ts)$/.test(entry.name) || /\.test\.|studio-roles\.css$|studio-pack-base\.css$/.test(entry.name)) continue
                 if (decl.test(readFileSync(full, 'utf8'))) offenders.push(posix(full))
             }
         }
@@ -150,8 +150,40 @@ describe('H-7.3 wiring', () => {
         expect(COLOUR_READY_AREAS.has('studio')).toBe(false)
     })
 
-    it('the roles are not pack-settable until the join, so a sheet cannot set a name nothing applies', () => {
-        for (const { role } of ROLES) expect(judgeAreaSheet('studio', `:root { ${role}: #ffffff; }`).result.ok, role).toBe(false)
+    it('T7: every role is pack-settable, the base is imported after the roles, and an unlisted studio name is still refused', () => {
+        for (const { role } of ROLES) expect(judgeAreaSheet('studio', `:root { ${role}: #ffffff; }`).result.ok, role).toBe(true)
+        expect(judgeAreaSheet('studio', ':root { --studio-bogus-name: #ffffff; }').result.ok).toBe(false)
+        const order = ['studio-tokens.css', 'studio-roles.css', 'studio-pack-base.css'].map((f) => screen.indexOf(`styles/${f}`))
+        expect(order.every((i) => i > 0)).toBe(true)
+        expect([...order].sort((a, b) => a - b)).toEqual(order)
+    })
+
+    it('T10s: text equal to a fill it sits on, and a translucent fill, are notes on the role', () => {
+        const same = judgeAreaSheet('studio', ':root { --studio-fg: #44475a; --studio-selected: #44475a; }')
+        expect(same.result.ok).toBe(true)
+        expect(same.result.notes?.some((n) => n.rule === 'contrast')).toBe(true)
+        for (const bg of ['canvas', 'surface', 'surface-raised', 'selected']) {
+            const v = judgeAreaSheet('studio', `:root { --studio-fg: #f8f8f2; --studio-${bg}: #f8f8f2; }`)
+            expect(v.result.notes?.some((n) => n.rule === 'contrast' && n.prop === '--studio-fg' && n.why.includes(`the ${bg} role`)), `fg on ${bg}`).toBe(true)
+        }
+        for (const bg of ['canvas', 'surface']) {
+            const v = judgeAreaSheet('studio', `:root { --studio-danger: #ff5555; --studio-${bg}: #ff5555; }`)
+            expect(v.result.notes?.some((n) => n.rule === 'contrast' && n.prop === '--studio-danger' && n.why.includes(`the ${bg} role`)), `danger on ${bg}`).toBe(true)
+        }
+        for (const bg of ['canvas', 'surface', 'surface-raised', 'selected']) {
+            const v = judgeAreaSheet('studio', `:root { --studio-${bg}: rgb(0 0 0 / 0.4); }`)
+            expect([...(v.result.notes ?? []), ...v.result.errors].some((n) => n.prop === `--studio-${bg}`), bg).toBe(true)
+        }
+    })
+
+    it('the base declares exactly the nine roles under the area-qualified selector and pins the reference scheme', () => {
+        const base = declarations(read('src/styles/studio-pack-base.css'), ':root:where([data-theme-pack-base][data-theme-pack-area="studio"])')
+        expect([...base.keys()].sort()).toEqual(ROLES.map((r) => r.role).sort())
+        const docs = declarations(read('docs/design/studio/studio-tokens.css'), ':root')
+        for (const { scheme, role } of ROLES) {
+            expect(docs.get(role), role).toBe(`var(--risu-theme-${scheme})`)
+            if (role !== '--studio-fg-2') expect(base.get(role), role).toBe(docs.get(`--risu-theme-${scheme}`))
+        }
     })
 })
 

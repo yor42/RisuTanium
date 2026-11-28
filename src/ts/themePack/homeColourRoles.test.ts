@@ -43,7 +43,7 @@ const baseCss = read('src/styles/home-pack-base.css')
 const BASE_SELECTOR = ':root:where([data-theme-pack-base][data-theme-pack-area="home"])'
 
 describe('H-7.1 role tokens', () => {
-    const app = declarations(rolesCss, ':root, [data-own-scheme]')
+    const app = declarations(rolesCss, ':where(:root, [data-own-scheme])')
     const registry = declarations(registryTokens, ':root')
 
     it('each role aliases the scheme role its Tailwind name read, in the app and in the registry', () => {

@@ -3,7 +3,7 @@
    border-borderc/10, ...) reads var(--color-<scheme name>), so the host re-points those names at one shared role family. With no pack each
    role is the scheme role its name already was, so nothing changes; the host also sets the inherited text colour. A later popups base block or pack then recolours every overlay and the
    shared controls inside it without touching them on any screen. */
-:root, [data-own-scheme] {
+:where(:root, [data-own-scheme]) {
   /* roles the overlay host's scheme utilities read (overlay-roles.css); each defaults to the scheme role of the same Tailwind name */
   --overlay-fg: var(--risu-theme-textcolor);
   --overlay-fg-2: var(--risu-theme-textcolor2);

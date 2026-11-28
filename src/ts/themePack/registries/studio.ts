@@ -24,6 +24,7 @@ export interface StudioRegistry extends RegistryInput {
     strictSafe: boolean
     settable: RegExp[]
     pairs: ContrastPair[]
+    opaque: string[]
     transparentOk: string[]
 }
 
@@ -100,6 +101,8 @@ export const STUDIO_MAXIMUMS: Record<string, string | number> = {
 // ceiling above is settable by that. The internal ladders (--studio-sz-*, --studio-sp-*, --studio-font-*, --studio-leading-*, --studio-radius-N, --studio-opacity-*, --studio-scale-*, --studio-z-*) are not, unless listed with a bound.
 // The two ring tokens and three widths are listed with limits here: ring size 1 to 8 px, tree 160 to 480 px, side column 240 to 560 px. (--risu-animation-speed stays unlisted: not pack-settable.)
 export const STUDIO_SETTABLE: RegExp[] = [/^--studio-(?:[a-z0-9-]+-rgb|[a-z0-9-]+-bg|on-(?:accent|danger|warning)|knob|lt-hl-\d+|diff-(?:add|del)|syn-[a-z]+)$/,
+    // the nine surface roles Studio's markup reads (studio-roles.css); the base (studio-pack-base.css) gives an unset one a judged value
+    /^--studio-(?:fg|fg-2|canvas|surface|surface-raised|selected|edge|edge-strong|danger)$/,
     /^--studio-(?:header-height|tree-width|side-width|splitter-width|tree-head-height|tree-row-height(?:-fine|-owner|-owner-fine)?|tab-height|dialog-width|menu-width|search-width|toast-max-width|content-max-width|gutter-width|code-card-min-height|code-min-height|skip-hidden-offset|size-touch(?:-sm|-lg)?|radius-row|radius-card)$/]
 // DD-260: ceilings for the Studio size role tokens that have no other (px; the sheet-height rule judges the sum)
 for (const [n, v] of Object.entries({ '--studio-splitter-width': '24px', '--studio-tree-head-height': '96px', '--studio-tree-row-height': '96px', '--studio-tree-row-height-fine': '96px', '--studio-tree-row-height-owner': '120px', '--studio-tree-row-height-owner-fine': '120px',
@@ -120,13 +123,18 @@ export const STUDIO_PAIRS: ContrastPair[] = [['--studio-on-accent', '--nexus-acc
 STUDIO_PAIRS.push(['--studio-ok-rgb', '--nexus-canvas', 3, 'the canvas (status mark)'], ['--studio-info-rgb', '--nexus-canvas', 3, 'the canvas (status mark)'], ['--studio-warm-rgb', '--nexus-canvas', 3, 'the canvas (status mark)'])
 // the channels the tints and veils are drawn from keep the text readable on them. They need not equal --nexus-canvas: Banana Cocoa veils in white on a blue canvas.
 STUDIO_PAIRS.push(['--nexus-text', '--studio-canvas-rgb', 4.5, 'the canvas veil'], ['--nexus-text', '--studio-sheet-rgb', 4.5, 'the sheet tint'], ['--nexus-ring', '--studio-sheet-rgb', 3, 'the sheet tint'])
+// the surface roles: the foreground role on each fill it is drawn over, and the danger role as text on the two flat fills (--studio-fg-2 and the edges carry no pair; the base lifts --studio-fg-2 itself)
+for (const fill of ['canvas', 'surface', 'surface-raised', 'selected']) STUDIO_PAIRS.push(['--studio-fg', `--studio-${fill}`, 4.5, `the ${fill} role`])
+for (const fill of ['canvas', 'surface']) STUDIO_PAIRS.push(['--studio-danger', `--studio-${fill}`, 4.5, `the ${fill} role`])
+// the fills a role pair names must resolve to alpha 1
+export const STUDIO_OPAQUE: string[] = ['--studio-canvas', '--studio-surface', '--studio-surface-raised', '--studio-selected']
 // DD-260 / DD-256 geometry models, calibrated against rendered pages at 360x640 touch. The ancestry is the real DOM ancestry: shell > body > main > form-host > (form > risky section | tgb-banners > carry-over | tgb-merged > section > alert),
 // shell > sheet-root > the sheet, shell > toast-box > the Undo toast. A sheet has max-height 86% and its .studio-critical-content scrolls, so the rule judges the room left for the scroller (fixed: grab bar and title).
 export const STUDIO_CHAINS: GeometryChain[] = [{ name: 'the form chain (studio-shell > studio-body > studio-main > studio-form-host > studio-form)', parts: ['studio-shell', 'studio-body', 'studio-main', 'studio-form-host', 'studio-form'], defaults: { 'studio-form-host': 24 } }, { name: 'the banner chain (studio-form-host > studio-tgb-banners)', parts: ['studio-shell', 'studio-body', 'studio-main', 'studio-form-host', 'studio-tgb-banners'], defaults: { 'studio-form-host': 24 } }, { name: 'the merged-section chain (studio-form-host > studio-tgb-merged > studio-tgb-merged-section)', parts: ['studio-shell', 'studio-body', 'studio-main', 'studio-form-host', 'studio-tgb-merged', 'studio-tgb-merged-section'], defaults: { 'studio-form-host': 24, 'studio-tgb-merged-section': 18 } }, { name: 'the sheet root', parts: ['studio-sheet-root'] }, { name: 'the toast box', parts: ['studio-toast-box'] }]
 export const STUDIO_SHEET_TERMS = (p: SheetRef): SheetTerm[] => [{ px: 24 }, { text: { chars: p.title, size: '--studio-font-lg', lead: 1.5, hfixed: 32 } }, { px: 28 }, { text: { chars: p.body, size: '--studio-font-md', lead: 1.5, hfixed: 40 } }, { px: p.extra || 0 }, { px: 4 }, { t: '--studio-size-touch-lg', n: p.nBtn }, { px: 2 * (p.nBtn - 1) + 4 }]
 export const STUDIO_SHEET_REF: SheetRef = { title: 24, body: 180, nBtn: 4, extra: 251 }
 export const STUDIO_SHEETS: GeometrySheet[] = [{ name: 'studio protected sheet', terms: STUDIO_SHEET_TERMS(STUDIO_SHEET_REF), fixed: [{ px: 24 }, { text: { chars: STUDIO_SHEET_REF.title, size: '--studio-font-lg', lead: 1.5, hfixed: 32 } }], cap: 550 }]
-export const STUDIO_REGISTRY: StudioRegistry = { fixedWidth: ['studio-sheet-root'], chains: STUDIO_CHAINS, sheets: STUDIO_SHEETS, critical: STUDIO_CRITICAL, safe: STUDIO_SAFE, reach: STUDIO_REACH, controls: STUDIO_REACH, surfaces: STUDIO_SURFACES, tokens: STUDIO_TOKENS, minimums: STUDIO_MINIMUMS, maximums: STUDIO_MAXIMUMS, strictSafe: false, settable: STUDIO_SETTABLE, pairs: STUDIO_PAIRS, transparentOk: ['--studio-count-error-bg'] }
+export const STUDIO_REGISTRY: StudioRegistry = { fixedWidth: ['studio-sheet-root'], chains: STUDIO_CHAINS, sheets: STUDIO_SHEETS, critical: STUDIO_CRITICAL, safe: STUDIO_SAFE, reach: STUDIO_REACH, controls: STUDIO_REACH, surfaces: STUDIO_SURFACES, tokens: STUDIO_TOKENS, minimums: STUDIO_MINIMUMS, maximums: STUDIO_MAXIMUMS, strictSafe: false, settable: STUDIO_SETTABLE, pairs: STUDIO_PAIRS, opaque: STUDIO_OPAQUE, transparentOk: ['--studio-count-error-bg'] }
 
 /* DD-195: the colour part, which the shared lint's per-token pass cannot do. The risky section's tint is the danger channel at --studio-form-risky-tint-alpha over the canvas. Its heading is drawn in --nexus-danger; the warning in
    --nexus-text; the explanations in --nexus-text-secondary. Each must keep 4.5:1 on THAT tinted surface in the worst case the pack allows, and --nexus-danger-rgb (the tint's channel) must be the colour of --nexus-danger. */

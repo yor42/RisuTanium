@@ -3,6 +3,7 @@
     import { afterFlush } from '../../ts/afterFlush'
     import '../../styles/studio-tokens.css'
     import '../../styles/studio-roles.css'
+    import '../../styles/studio-pack-base.css'
     import { language } from '../../lang'
     import { alertError } from '../../ts/alert'
     import { dispatchBack } from '../../ts/backHandlers'

@@ -2,7 +2,7 @@
    so Studio re-points those names at its own roles on .studio-root. With no pack each role is the scheme role its name already was, so nothing changes; a later Studio base block or sheet
    then recolours Studio, and the shared controls it renders (WindowedSegment, NumberInput, SegmentedControl, Help ...), without touching them on any other screen.
    Studio components rendered outside the Studio root (StudioToggleLink, StudioEntryRow) keep the scheme. An element portalled out of the root would keep it too: none exists, and a scan test keeps it so. */
-:root, [data-own-scheme] {
+:where(:root, [data-own-scheme]) {
   /* roles Studio's scheme utilities read (studio-roles.css); each defaults to the scheme role of the same Tailwind name */
   --studio-fg: var(--risu-theme-textcolor);
   --studio-fg-2: var(--risu-theme-textcolor2);

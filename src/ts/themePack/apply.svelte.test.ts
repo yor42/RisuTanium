@@ -14,7 +14,8 @@ import { shapeOnlySheet, shapeTokenNames } from './shapeMode'
 import { judgeAreaSheet, type PackSheetsJudgement } from './index'
 import { BUILTIN_PACKS, builtinPackById } from './builtins'
 import { judgeSessionOverForTests, openJudgeSession, type JudgeRequest, type JudgeSession, type JudgeWorkerLike } from './judgeClient'
-import type { IntakeRefusal, PackJudge } from './intake'
+import { SCREEN_AREAS, type IntakeRefusal, type PackJudge } from './intake'
+import { COLOUR_READY_AREAS } from './colourReady'
 import { handleJudgeRequest, type JudgeResponse } from './worker/judgeHandler'
 import {
     BLOB_URL_PATTERN, brokenReasonOf, buildAppliedText, commitPackSheet, preparePackSheet, resetPackSheetForTests, setPackSheetColours,
@@ -24,7 +25,7 @@ import studioScratchWhite from '../../../docs/design/studio/themes/scratch-white
 import { declareSurface, installThemePackGate, registerThemePackElement, resetThemePackGateForTests } from './surfaceGate.svelte'
 import { getFileSrc } from '../globalApi.svelte'
 import { packBaseTone } from '../gui/surfaceTone'
-import { builtinSheetForTests, syntheticBuiltinForTests, syntheticBuiltinOfSheetForTests } from './fixtures/bundledPacks'
+import { BUILTIN_ROWS, builtinSheetForTests, syntheticBuiltinForTests, syntheticBuiltinOfSheetForTests } from './fixtures/bundledPacks'
 import { chatCommitInput, chatElementOf } from './fixtures/packCommit'
 import {
     CHAT_SHEET, concat, fakeFont, manifestText, PLAIN_CHAT_SHEET, PNG_1X1, utf8, validPackFiles, zipPack, type PackFile,
@@ -683,9 +684,18 @@ describe('D-AP the bundled built-in archive path (the installed-archive intake o
     })
 
     it('AP-4c the shipped listing carries the same pins the files have (the setup reader serves the bundled bytes)', async () => {
-        for (const pack of BUILTIN_PACKS) {
+        expect(BUILTIN_PACKS.map((pack) => pack.id)).toEqual(BUILTIN_ROWS.map((row) => row.id))
+        for (const row of BUILTIN_ROWS) {
+            const pack = builtinPackById(row.id)!
             const prepared = accepted(await prepare({ kind: 'builtin', pack }))
-            expect(prepared.elements.map((element) => element.area)).toEqual(['chat'])
+            const areas = prepared.elements.map((element) => element.area)
+            // the elements are a subsequence of the carried areas in screen order (a carried shape-only area may add one),
+            // and every colour-ready carried area has its element
+            const carried = SCREEN_AREAS.filter((area) => row.areas.includes(area))
+            expect(carried.filter((area) => areas.includes(area)), row.id).toEqual(areas)
+            for (const area of carried.filter((a) => COLOUR_READY_AREAS.has(a))) {
+                expect(areas, `${row.id} ${area}`).toContain(area)
+            }
         }
     })
 })

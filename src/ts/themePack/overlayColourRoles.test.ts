@@ -39,7 +39,7 @@ const rolesCss = read('src/styles/overlay-roles.css')
 
 describe('H-7.1 overlay role tokens', () => {
     it('each role aliases the scheme role its Tailwind name read, at the root and on an own-scheme island', () => {
-        const app = declarations(rolesCss, ':root, [data-own-scheme]')
+        const app = declarations(rolesCss, ':where(:root, [data-own-scheme])')
         expect(app.size).toBe(ROLES.length)
         for (const { scheme, role } of ROLES) expect(app.get(role), role).toBe(`var(--risu-theme-${scheme})`)
     })
