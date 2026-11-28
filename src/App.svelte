@@ -49,6 +49,7 @@
     import { installReplyNotifications } from './ts/android/replyNotifications.svelte';
     import { startVisibleChatWatcher } from './ts/process/mcp/serverChatGrants.svelte';
     import ToastHost from './lib/Nexus/pattern/ToastHost.svelte';
+    import './styles/overlay-roles.css';
     import TaskHost from './lib/Nexus/pattern/TaskHost.svelte';
     import { coversPage } from './ts/alertEscape';
     import { installAlertFocusReturn } from './ts/alertFocusReturn';
@@ -315,6 +316,8 @@
     </AlertInertScope>
     <!-- Outside every inert scope and the screen chain, so the escape is live over the boot screen and over boot alerts. -->
     <BootPackEscape />
+    <!-- display:contents keeps layout unchanged; the host only carries the overlay roles (overlay-roles.css) to every overlay below it. -->
+    <div class="overlay-host" style="display: contents">
     {#if $alertStore.type !== 'none'}
         <AlertComp />
     {/if}
@@ -362,4 +365,5 @@
     {/if}
     </AlertInertScope>
     <ToastHost covered={coversPage($alertStore.type)} />
+    </div>
 </main>
