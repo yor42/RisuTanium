@@ -3,13 +3,13 @@
     import { language } from "src/lang";
     import Button from "src/lib/UI/GUI/Button.svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
-    import KeyListInput from "src/lib/UI/GUI/KeyListInput.svelte";
+    import SlotKeyField from "src/lib/SettingsShell/connections/SlotKeyField.svelte";
     import ConnectionsLink from "src/lib/SettingsShell/connections/ConnectionsLink.svelte";
     import CustomModelFields from "./CustomModelFields.svelte";
     import Accordion from "src/lib/UI/Accordion.svelte";
     import { PlusIcon, TrashIcon, ArrowUp, ArrowDown } from "@lucide/svelte";
     import { v4 } from "uuid";
-    import { customModelUrlValue, setCustomModelUrl, setSlotKey, slotEditorValue, slotKeyTemporarilyUnavailable } from "src/ts/connections/slotEditor";
+    import { customModelUrlValue, setCustomModelUrl } from "src/ts/connections/slotEditor";
 
     const uid = $props.id();
     let openedModels = $state(new Set<string>());
@@ -81,7 +81,7 @@
             <CustomModelFields modelId={model.id} idPrefix={uid} idSuffix="-{index}">
                 {#snippet between()}
                     <span class="text-textcolor" id="{uid}-key-{index}">{language.proxyAPIKey}</span>
-                    <KeyListInput labelId="{uid}-key-{index}" size={"sm"} unavailable={slotKeyTemporarilyUnavailable(DBState.db, `customModels:${model.id}`)} bind:value={() => slotEditorValue(DBState.db, `customModels:${model.id}`), (v) => { void setSlotKey(DBState.db, `customModels:${model.id}`, v) }}/>
+                    <SlotKeyField keySlot={`customModels:${model.id}`} labelId="{uid}-key-{index}" />
                     <ConnectionsLink />
                 {/snippet}
             </CustomModelFields>
