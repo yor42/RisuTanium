@@ -9,6 +9,8 @@ import { CascadeModel, compileRules, readRepoFile as read } from '../../styles/t
 
 const HLJS = read('node_modules/highlight.js/styles/atom-one-dark.min.css')
 const SHELL = read('src/lib/ChatShell/ShellMessage.svelte')
+// the two role tokens the rule reads, as the app declares them
+const TOKENS = ':root{' + read('src/styles/chat-tokens.css').match(/--color-code-block-bg:[^;]*;\s*--color-code-block-text:[^;]*;/)![0] + '}'
 const PROSE = '.prose pre{background-color:var(--tw-prose-pre-bg);color:var(--tw-prose-pre-code)}'
 // the component's own pack-base rules, global selectors unwrapped
 const packRules = [...SHELL.matchAll(/^\s*(:global\(:root\[data-theme-pack-base\]\)[^{\n]*\{[^}\n]*\})/gm)].map((m) => m[1].replace(/:global\(([^()]*)\)/g, '$1'))
@@ -23,7 +25,7 @@ function pre(pack: boolean): { model: CascadeModel, el: Element } {
     document.documentElement.toggleAttribute('data-theme-pack-base', pack)
     document.body.innerHTML = '<div data-part="chat-message-body" class="prose"><pre class="hljs"><code>x</code></pre></div>'
     const css = `:root{--tw-prose-pre-bg:${pack ? 'transparent' : '#111111'};--tw-prose-pre-code:currentColor}` + packRules.join('\n')
-    const model = new CascadeModel(compileRules([{ name: 'hljs', css: HLJS }, { name: 'prose', css: PROSE }, { name: 'shell', css }]))
+    const model = new CascadeModel(compileRules([{ name: 'hljs', css: HLJS }, { name: 'tokens', css: TOKENS }, { name: 'prose', css: PROSE }, { name: 'shell', css }]))
     return { model, el: document.querySelector('pre')! }
 }
 

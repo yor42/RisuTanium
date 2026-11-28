@@ -14,9 +14,9 @@ const declarations = (css: string) => {
 }
 
 describe('T chat token port', () => {
-    test('the design block parses and defines each of its 345 names once', () => {
+    test('the design block parses and defines each of its 347 names once', () => {
         const names = declarations(read('src/styles/chat-tokens.css'))
-        expect(names).toHaveLength(345)
+        expect(names).toHaveLength(347)
         expect(new Set(names).size).toBe(names.length)
     })
     test('durations multiply by the unitless --chat-motion and no chat or pattern CSS multiplies by the seconds-valued --risu-animation-speed', () => {
