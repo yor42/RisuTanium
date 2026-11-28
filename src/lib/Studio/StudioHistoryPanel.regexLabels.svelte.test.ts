@@ -176,6 +176,18 @@ describe('T24: regex step texts', () => {
         expect(regexStepText({ kind: 'obj', list: 'regex', action: 'move', name: null })).toBe(`Moved "${languageEnglish.sidebarUi.unnamedScript}"`)
     })
 
+    test('an import label with a count reads as the regex import step', async () => {
+        const service = makeService()
+        await service.whenReady(A)
+        apply(service, (id, live) => {
+            const built = regexStageEdit(0, 'editdisplay').build(id, live)
+            return built.ok ? { ...built, label: { ...built.label, action: 'import', count: 3 } } : built
+        })
+        await mountPanel(service)
+        expect(stepTexts()).toEqual([languageEnglish.studioRegexStepImport(3)])
+        expect(regexStepText({ kind: 'obj', list: 'regex', action: 'import', count: 3, name: null })).toBe(languageEnglish.studioRegexStepImport(3))
+    })
+
     test('a lorebook edit in the same history keeps the lorebook wording', async () => {
         const service = makeService()
         await service.whenReady(A)

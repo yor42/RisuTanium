@@ -1,6 +1,6 @@
 # Studio S6: regex editing (spec)
 
-Status: **draft 6, spec only** (2026-11-23), for yor42/RisuTanium #684 (stage S6 of #651, MC-3900). MC-3902: no S6 build starts before this spec merges. Build status: S6a (read-only list, form), S6b (add, delete, move, duplicate; drag reorder, D2, deferred as a UI-only follow-up), S6c (preset regex lists, active and inactive) and S6d (validation and Try it) are built; S6e is not.
+Status: **draft 6, spec only** (2026-11-23), for yor42/RisuTanium #684 (stage S6 of #651, MC-3900). MC-3902: no S6 build starts before this spec merges. Build status: S6a (read-only list, form), S6b (add, delete, move, duplicate; drag reorder, D2, deferred as a UI-only follow-up), S6c (preset regex lists, active and inactive), S6d (validation and Try it) and S6e (regex JSON import and export) are built.
 - Draft 5 follows the senior-advisor direction after Gate 1 round 3. It drops S6's own history seam in favour of the S7 object-list op family ([S7_LORE_SPEC.md](S7_LORE_SPEC.md) §4, #685); keeps only the regex rows and rules; lists requests to that seam (§5.7); and folds in MC-4050..4052 and review 3's editorial findings.
 - Draft 6 answers Gate 1 round 4 (S6, E-m..E-p) under `advisor-2.md`: R9 (journal tail-merge); S6's statements about seam internals become requirements on S7-0 with S6-owned tests (§5.3, §5.5); the S7-0 dependency is stated once (§8).
 - Draft 4 answered review 2 (S4, E-a..E-f) and added classic parity (§1.1). Draft 3 answered review 1 and folded in MC-3997..3999. Draft 2 folded in MC-3990..3996 and added S6e.

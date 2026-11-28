@@ -14,7 +14,7 @@
 </script>
 
 <script lang="ts">
-    import { EllipsisIcon, PlusIcon } from '@lucide/svelte'
+    import { DownloadIcon, EllipsisIcon, PlusIcon, UploadIcon } from '@lucide/svelte'
     import { onDestroy, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
@@ -43,13 +43,17 @@
         focusRequest: RegexFocusRequest | null
         onopen: (index: number) => void
         onadd: () => void
+        onimport: () => void
+        onexport: () => void
+        // True while the file picker or an import is pending; the import button is off so a second tap opens no second picker.
+        importing: boolean
         onmove: (target: RegexTarget, move: RegexMove) => void
         onduplicate: (target: RegexTarget) => void
         ondelete: (target: RegexTarget) => void
         onfocused: () => void
     }
 
-    let { classes, readRows, editable, focusRequest, onopen, onadd, onmove, onduplicate, ondelete, onfocused }: Props = $props()
+    let { classes, readRows, editable, focusRequest, onopen, onadd, onimport, onexport, importing, onmove, onduplicate, ondelete, onfocused }: Props = $props()
 
     const rowKeys = $derived(classes.map((_, index) => String(index)))
 
@@ -276,6 +280,8 @@
     <h3 data-part="studio-regex-heading" class="font-bold">{language.regexScript} <Help key="regexScript" /></h3>
     <div class="flex flex-wrap items-center gap-2" data-part="studio-regex-toolbar">
         <button type="button" data-part="studio-regex-add" class="{buttonClass} flex items-center gap-1" disabled={!editable} onclick={onadd}><PlusIcon size={16} aria-hidden="true" /><span>{language.studioRegexAdd}</span></button>
+        <button type="button" data-part="studio-regex-import" data-testid="studio-regex-import" class="{buttonClass} flex items-center gap-1" disabled={!editable || importing} onclick={onimport}><UploadIcon size={16} aria-hidden="true" /><span>{language.import}</span></button>
+        <button type="button" data-part="studio-regex-export" data-testid="studio-regex-export" class="{buttonClass} flex items-center gap-1" disabled={classes.length === 0} onclick={onexport}><DownloadIcon size={16} aria-hidden="true" /><span>{language.export}</span></button>
     </div>
     {#if classes.length === 0}
         <p data-part="studio-regex-empty" class="text-textcolor2">{language.sidebarUi.noScripts}</p>
