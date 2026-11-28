@@ -13,6 +13,7 @@
     import { exceedsActualMax, formatTokenCount } from '../../ts/model/modelData/openrouterData'
     import { pickPresetIcon } from '../../ts/presetIcon'
     import { refusalTextOf } from '../../ts/studio/edit/studioToasts'
+    import { isLocked, type LockGroupId } from '../../ts/storage/presetLocks'
     import { FIELD_PRESENTATION, type SetPath } from '../../ts/studio/history/fieldRegistry'
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
@@ -27,6 +28,7 @@
     import { DBState, SettingsMenuIndex, settingsOpen } from '../../ts/stores.svelte'
     import type { SettingContext, SettingItem } from '../../ts/setting/types'
     import ModelDataRefresh from '../Setting/Pages/Model/ModelDataRefresh.svelte'
+    import PresetLockSwitch from '../Setting/PresetLockSwitch.svelte'
     import ModelList from '../UI/ModelList.svelte'
     import NumberInput from '../UI/GUI/NumberInput.svelte'
     import SegmentedControl from '../UI/GUI/SegmentedControl.svelte'
@@ -212,8 +214,6 @@
     const schemaCheck = $derived(schemaOn && textOf('presetJsonSchema') !== '' ? checkSchemaText(textOf('presetJsonSchema')) : null)
     const showsStops = $derived(modelTakesStopStrings(presetEffectiveModel(id) ?? ''))
     const showsInstruct = $derived((presetEffectiveModel(id) ?? '').startsWith('openrouter'))
-    const fallbackKept = $derived(!active && DBState.db.doNotChangeFallbackModels === true)
-    const auxKept = $derived(DBState.db.doNotChangeSeperateModels === true)
     // Classic's parameter rows for this preset's own model; null while the preset is gone.
     const paramContext = $derived(presetParamContext(id))
     const paramRows = $derived(paramContext === null ? [] : visiblePresetParams(paramContext))
@@ -468,6 +468,15 @@
             onresult={onFieldResult}
         />
         {@render notSet(path)}
+    </div>
+{/snippet}
+
+{#snippet lockRow(group: LockGroupId)}
+    <div data-part="studio-preset-lock" data-lock={group} class="flex flex-col gap-1">
+        <PresetLockSwitch id={group} />
+        {#if isLocked(DBState.db, group)}
+            <p role="status" data-part="studio-preset-lock-note" class="text-sm text-textcolor2">{active ? language.presetLockNoteActive : language.presetLockNoteInactive}</p>
+        {/if}
     </div>
 {/snippet}
 
@@ -729,9 +738,7 @@
                         {:else if section === 'model'}
                             {@render modelField('presetAiModel', false)}
                             {@render modelField('presetSubModel', false)}
-                            {#if auxKept}
-                                <p role="status" data-part="studio-preset-aux-note" class="text-sm text-textcolor2">{active ? language.studioPresetAuxNotSaved : language.studioPresetAuxKept}</p>
-                            {/if}
+                            {@render lockRow('auxModels')}
                             {#each AUX_PATHS as path (path)}
                                 {@render modelField(path, true)}
                             {/each}
@@ -741,6 +748,8 @@
                             <p data-part="studio-preset-provider-classic" class="text-sm text-textcolor2">{language.studioPresetProviderClassic}</p>
                             <button type="button" data-part="studio-preset-provider-classic-button" class={BUTTON_CLASS} onclick={() => openInClassicEditor('preset', null)}>{language.studioOpenClassic}</button>
                         {:else if section === 'parameters'}
+                            {@render lockRow('sampling')}
+                            {@render lockRow('reasoning')}
                             {#if paramContext}
                                 {#each paramRows as row (row.path)}
                                     {#if row.item.type === 'number'}
@@ -799,9 +808,7 @@
                                 <button type="button" data-part="studio-preset-toggles-row" class={BUTTON_CLASS} onclick={openToggles}>{language.studioPresetTogglesRow(language.customPromptTemplateToggle, toggleCount)}</button>
                             </div>
                         {:else if section === 'fallback'}
-                            {#if fallbackKept}
-                                <p role="status" data-part="studio-preset-fallback-kept" class="text-sm text-textcolor2">{language.studioPresetFallbackKept}</p>
-                            {/if}
+                            {@render lockRow('fallbackModels')}
                             {@render boolField('presetFallbackWhenBlank')}
                             {@render listField('presetFallbackModel', 'models')}
                             {@render listField('presetFallbackMemory', 'models')}

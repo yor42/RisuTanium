@@ -236,18 +236,33 @@ describe('S4a-T12: what the form shows for the preset\'s own settings', () => {
     })
 })
 
-describe('S4a-T13: the fallback-kept note', () => {
-    test('shown for an inactive preset with the switch on, not for the active one and not with the switch off', async () => {
+describe('S4a-T13: the lock note of the fallback section (compatibility guard; the removed fallback-kept part is gone)', () => {
+    const row = () => document.querySelector<HTMLElement>('[data-part="studio-preset-lock"][data-lock="fallbackModels"]')
+    const note = () => row()?.querySelector<HTMLElement>('[data-part="studio-preset-lock-note"]') ?? null
+
+    test('the row sits in the fallback section; the note shows while locked, inactive text for another preset and active text for the active one, none unlocked', async () => {
+        await mountPreset(1)
+        expect(row()?.closest('[data-section]')?.getAttribute('data-section')).toBe('fallback')
+        expect(note()).toBeNull()
+        await unmountAll()
         dbBag().doNotChangeFallbackModels = true
         await mountPreset(1)
-        expect(part('studio-preset-fallback-kept')?.textContent).toBe('studioPresetFallbackKept')
+        expect(note()?.textContent).toBe('presetLockNoteInactive')
         await unmountAll()
         await mountPreset(0)
-        expect(part('studio-preset-fallback-kept')).toBeNull()
+        expect(note()?.textContent).toBe('presetLockNoteActive')
         await unmountAll()
         dbBag().doNotChangeFallbackModels = false
         await mountPreset(1)
+        expect(note()).toBeNull()
         expect(part('studio-preset-fallback-kept')).toBeNull()
+    })
+
+    test('the row switch writes the legacy flag and the note follows it', async () => {
+        await mountPreset(1)
+        toggle(row()?.querySelector<HTMLInputElement>('input[type="checkbox"]') as HTMLInputElement)
+        expect(dbBag().doNotChangeFallbackModels).toBe(true)
+        expect(note()).not.toBeNull()
     })
 })
 

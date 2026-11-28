@@ -46,6 +46,8 @@
     import { selectSingleFile } from "src/ts/util";
     import { getModelInfo, LLMFlags, LLMFormat, LLMProvider } from "src/ts/model/modellist";
     import { resolveClaudeThinkingType } from "src/ts/model/types";
+    import { isLocked } from "src/ts/storage/presetLocks";
+    import PresetLocksPanel from "../PresetLocksPanel.svelte";
     import RegexList from "src/lib/SideBars/Scripts/RegexList.svelte";
     import SettingRenderer from "../SettingRenderer.svelte";
     import { allBasicParameterItems } from "src/ts/setting/botSettingsParamsData";
@@ -134,7 +136,11 @@
         }
     });
 
+    // A locked reasoning group keeps its value as it is: the request resolves the thinking type at use.
     $effect(() => {
+        if (isLocked(DBState.db, 'reasoning')) {
+            return
+        }
         const resolved = resolveClaudeThinkingType(modelInfo.flags, DBState.db.thinkingType)
         if (resolved !== DBState.db.thinkingType) {
             DBState.db.thinkingType = resolved
@@ -505,6 +511,7 @@
 {/if}
 
 {#if submenu === 1 || submenu === -1}
+    <PresetLocksPanel />
     <!-- Data-driven basic parameters -->
     <SettingRenderer items={allBasicParameterItems} {modelInfo} {subModelInfo} />
     {#if DBState.db.aiModel === 'textgen_webui' || DBState.db.aiModel === 'mancer' || DBState.db.aiModel.startsWith('local_') || DBState.db.aiModel.startsWith('hf:::')}

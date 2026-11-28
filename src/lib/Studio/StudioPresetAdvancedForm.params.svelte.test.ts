@@ -448,21 +448,71 @@ describe('S4b-T10: a drag is one step and the switch is its own', () => {
     })
 })
 
-describe('S4b-T8: the auxiliary model notes', () => {
-    test('the kept note shows for an inactive preset with the switch on, the not-saved note for the active one, none with the switch off', async () => {
-        dbBag().doNotChangeSeperateModels = true
+const lockRow = (id: string) => document.querySelector<HTMLElement>(`[data-part="studio-preset-lock"][data-lock="${id}"]`)
+const lockNote = (id: string) => lockRow(id)?.querySelector<HTMLElement>('[data-part="studio-preset-lock-note"]') ?? null
+const lockCheck = (id: string) => lockRow(id)?.querySelector<HTMLInputElement>('input[type="checkbox"]') ?? null
+
+describe('S4b-T8: the lock rows and their notes (compatibility guard for the stage 4 UI; the removed note parts are gone)', () => {
+    test('L10: the parameters section holds the sampling and reasoning rows, the model section the auxiliary one, the fallback section the fallback one, and no row exists for separate parameters', async () => {
         await mountPreset(1)
-        expect(part('studio-preset-aux-note')?.textContent).toBe(languageEnglish.studioPresetAuxKept)
-        await unmountAll()
-        await mountPreset(0)
-        expect(part('studio-preset-aux-note')?.textContent).toBe(languageEnglish.studioPresetAuxNotSaved)
-        await unmountAll()
-        dbBag().doNotChangeSeperateModels = false
-        await mountPreset(1)
-        expect(part('studio-preset-aux-note')).toBeNull()
+        expect(lockRow('auxModels')?.closest('[data-section]')?.getAttribute('data-section')).toBe('model')
+        expect(lockRow('fallbackModels')?.closest('[data-section]')?.getAttribute('data-section')).toBe('fallback')
+        expect(lockRow('sampling')?.closest('[data-section]')?.getAttribute('data-section')).toBe('parameters')
+        expect(lockRow('reasoning')?.closest('[data-section]')?.getAttribute('data-section')).toBe('parameters')
+        expect(lockRow('separateParameters')).toBeNull()
+        expect(document.querySelectorAll('[data-part="studio-preset-lock"]')).toHaveLength(4)
     })
 
-    test('regression (#149 stage 1): with the switch on, switching to the preset and away keeps the slot\'s own models (the note copy is rewritten in stage 4)', async () => {
+    test('L10: the note shows only while the group is locked, with the active text for the active preset and the inactive text for another', async () => {
+        for (const id of ['auxModels', 'fallbackModels', 'sampling', 'reasoning']) {
+            await mountPreset(1)
+            expect(lockNote(id), `${id} unlocked`).toBeNull()
+            expect(lockCheck(id)?.checked).toBe(false)
+            await unmountAll()
+        }
+        dbBag().doNotChangeSeperateModels = true
+        dbBag().doNotChangeFallbackModels = true
+        dbBag().presetFieldLocks = ['sampling', 'reasoning']
+        for (const id of ['auxModels', 'fallbackModels', 'sampling', 'reasoning']) {
+            await mountPreset(1)
+            expect(lockNote(id)?.textContent, `${id} inactive`).toBe(languageEnglish.presetLockNoteInactive)
+            expect(lockCheck(id)?.checked).toBe(true)
+            await unmountAll()
+            await mountPreset(0)
+            expect(lockNote(id)?.textContent, `${id} active`).toBe(languageEnglish.presetLockNoteActive)
+            await unmountAll()
+        }
+        dbBag().presetFieldLocks = ['reasoning']
+        await mountPreset(1)
+        expect(lockNote('sampling')).toBeNull()
+        expect(lockNote('reasoning')).not.toBeNull()
+    })
+
+    test('L17: with sampling locked, an active preset\'s sampling edit writes the live value, an inactive preset\'s edit writes its slot only', async () => {
+        dbBag().presetFieldLocks = ['sampling']
+        slotBag(2).aiModel = 'openrouter'
+        slotBag(2).min_p = 0.5
+        dbBag().min_p = 0.2
+        await mountPreset(2)
+        const inactive = field('presetMinP')?.querySelector<HTMLElement>('[role="slider"]')
+        expect(inactive).toBeTruthy()
+        inactive?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+        flushSync()
+        expect(slotBag(2).min_p).toBeCloseTo(0.51, 5)
+        expect(dbBag().min_p).toBe(0.2)
+        await unmountAll()
+
+        const before = dbBag().temperature
+        await mountPreset(0)
+        const active = field('presetTemperature')?.querySelector<HTMLElement>('[role="slider"]')
+        expect(active).toBeTruthy()
+        active?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+        flushSync()
+        expect(dbBag().temperature).not.toBe(before)
+        expect(dbBag().presetFieldLocks).toEqual(['sampling'])
+    })
+
+    test('regression (#149 stage 1): with the switch on, switching to the preset and away keeps the slot\'s own models', async () => {
         dbBag().doNotChangeSeperateModels = true
         expect(service.editText(owner(1), 'presetAuxMemory', 'edited', 'single')).toEqual({ ok: true })
         changeToPreset(1)
