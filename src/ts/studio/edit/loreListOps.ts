@@ -66,7 +66,7 @@ const REFUSED: Plan = { result: { ok: false, reason: 'precondition' }, landing: 
 const UNCHANGED: Plan = { result: { ok: false, reason: 'unchanged' }, landing: null }
 const ID_TRIES = 8
 
-function makeOp(run: (id: string, live: LiveReader) => Plan): LoreOp {
+export function makeOp(run: (id: string, live: LiveReader) => Plan): LoreOp {
     let landing: LoreLanding | null = null
     return {
         build: (id, live) => {
@@ -78,11 +78,11 @@ function makeOp(run: (id: string, live: LiveReader) => Plan): LoreOp {
     }
 }
 
-function labelOf(action: ObjAction, name: string | null, extra: { count?: number; field?: string } = {}): ObjLabel {
+export function labelOf(action: ObjAction, name: string | null, extra: { count?: number; field?: string } = {}): ObjLabel {
     return { kind: 'obj', list: 'lore', action, name, ...(extra.count === undefined ? {} : { count: extra.count }), ...(extra.field === undefined ? {} : { field: extra.field }) }
 }
 
-function ready(label: ObjLabel, drafts: ObjDraft[], coalesceKey: string | null, landing: LoreLanding): Plan {
+export function ready(label: ObjLabel, drafts: ObjDraft[], coalesceKey: string | null, landing: LoreLanding): Plan {
     return { result: { ok: true, label, drafts, coalesceKey }, landing }
 }
 
@@ -101,7 +101,7 @@ function find(live: LiveReader, t: LoreTracked, hint: number): Found | null {
     return isLoreRow(row) ? { rows, i, row } : null
 }
 
-function plainRow(value: unknown): ObjEntry | null {
+export function plainRow(value: unknown): ObjEntry | null {
     const plain = toPlainJson(value)
     return plain !== undefined && isJsonObject(plain) ? plain : null
 }
