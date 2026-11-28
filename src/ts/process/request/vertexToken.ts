@@ -7,11 +7,14 @@ import type { Database } from 'src/ts/storage/database.svelte'
 import { pkcs8FromPem, RsaKeyError, signRs256 } from './rs256Signer'
 
 /*
- * The Vertex access token: its mint, both caches, the in-flight de-duplication and the invalidation.
+ * The Vertex access token: its mint, the memory cache, the in-flight de-duplication and the invalidation.
  *
- * - A plain service-account key keeps its token in the database (`vertexAccessToken` and
- *   `vertexAccessTokenExpires`), as before.
- * - A referenced key (`${NAME}`) keeps its token in memory only; the database is never written for it.
+ * - A minted token lives in memory only, for a plain service-account key and for a referenced one
+ *   (`${NAME}`) alike. The database is never written for it: `vertexAccessToken` and
+ *   `vertexAccessTokenExpires` stay in the type for upstream's `.bin` and are always empty, and a value an
+ *   older build stored is never read (`legacyVertexToken.ts` clears it at load). A restart mints once.
+ * - The cache holds one token, tagged with the credential it was minted for (the reference, or a digest of
+ *   the plain key) and the email, so a replaced key never receives the old key's token.
  * - One token request runs per credential: concurrent callers with the same email and key join the
  *   same attempt, and the attempt leaves the table when it settles, success or failure.
  * - `invalidateVertexToken` bumps a generation. An attempt that started before the bump still
@@ -23,8 +26,8 @@ import { pkcs8FromPem, RsaKeyError, signRs256 } from './rs256Signer'
  * the ticket, not the generation at service entry, is what an attempt compares against: any
  * invalidation after the ticket was taken, including one during the key read, makes the attempt stale.
  *
- * The transport and the database module are loaded on demand, so that importing this module (the
- * connection editor does) does not pull in the network layer or the database module.
+ * The transport is loaded on demand, so that importing this module (the connection editor does) does
+ * not pull in the network layer.
  */
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -33,16 +36,14 @@ const CACHE_MS = 3500 * 1000
 
 export type VertexTokenResult = { kind: 'token', token: string } | { kind: 'incomplete' }
 
-type VertexTokenFields = Pick<Database, 'vertexClientEmail' | 'vertexAccessToken' | 'vertexAccessTokenExpires'>
+type VertexTokenFields = Pick<Database, 'vertexClientEmail'>
 
 let generation = 0
-let memoryToken: { reference: string, email: string, token: string, expires: number } | null = null
+let memoryToken: { credential: string, email: string, token: string, expires: number } | null = null
 const inFlight = new Map<string, Promise<string>>()
 
 type TransportModule = typeof import('src/ts/globalApi.svelte')
-type DatabaseModule = typeof import('src/ts/storage/database.svelte')
 let transportModule: Promise<TransportModule> | null = null
-let databaseModule: Promise<DatabaseModule> | null = null
 
 /** One import per module however many attempts run at once; a failed import is retried by the next call. */
 function loadTransport(): Promise<TransportModule> {
@@ -51,14 +52,6 @@ function loadTransport(): Promise<TransportModule> {
         throw error
     })
     return transportModule
-}
-
-function loadDatabase(): Promise<DatabaseModule> {
-    databaseModule ??= import('src/ts/storage/database.svelte').catch((error: unknown) => {
-        databaseModule = null
-        throw error
-    })
-    return databaseModule
 }
 
 /** Same encoding as `base64url` in util.ts, kept here because util.ts pulls in a large import graph. */
@@ -153,6 +146,14 @@ function shared(key: string, attempt: () => Promise<string>): Promise<string> {
     return pending
 }
 
+/** The cached token when it was minted for exactly this credential and email and has not expired. */
+function cachedToken(credential: string, email: string): string | null {
+    if (memoryToken && memoryToken.credential === credential && memoryToken.email === email && memoryToken.expires > Date.now()) {
+        return memoryToken.token
+    }
+    return null
+}
+
 /** The current invalidation generation. Taken synchronously before the private key read begins. */
 export function vertexTokenTicket(): number {
     return generation
@@ -172,39 +173,39 @@ export async function vertexAccessToken(db: VertexTokenFields, privateKey: strin
             return { kind: 'incomplete' }
         }
         const reference = privateKey.trim()
-        if (memoryToken && memoryToken.reference === reference && memoryToken.email === email && memoryToken.expires > Date.now()) {
-            return { kind: 'token', token: memoryToken.token }
+        const credential = 'ref:' + reference
+        const cached = cachedToken(credential, email)
+        if (cached) {
+            return { kind: 'token', token: cached }
         }
         const token = await shared(['ref', started, email, reference].join('\u0000'), async () => {
             const minted = await mintToken(email, await resolveSecret(privateKey))
             registerSensitive(minted, reference + ':token')
             if (started === generation) {
-                memoryToken = { reference, email, token: minted, expires: Date.now() + CACHE_MS }
+                memoryToken = { credential, email, token: minted, expires: Date.now() + CACHE_MS }
             }
             return minted
         })
         return { kind: 'token', token }
     }
 
-    if (db.vertexAccessTokenExpires < Date.now()) {
-        if (!email || !privateKey) {
-            return { kind: 'incomplete' }
-        }
-        const token = await shared(['plain', started, email, fingerprint(privateKey)].join('\u0000'), async () => {
-            const minted = await mintToken(email, privateKey)
-            registerSensitive(minted, redactionToken(minted))
-            const { getDatabase, setDatabase } = await loadDatabase()
-            if (started === generation) {
-                const stored = getDatabase()
-                stored.vertexAccessToken = minted
-                stored.vertexAccessTokenExpires = Date.now() + CACHE_MS
-                setDatabase(stored)
-            }
-            return minted
-        })
-        return { kind: 'token', token }
+    if (!email || !privateKey) {
+        return { kind: 'incomplete' }
     }
-    return { kind: 'token', token: db.vertexAccessToken }
+    const credential = 'plain:' + fingerprint(privateKey)
+    const cached = cachedToken(credential, email)
+    if (cached) {
+        return { kind: 'token', token: cached }
+    }
+    const token = await shared(['plain', started, email, credential].join('\u0000'), async () => {
+        const minted = await mintToken(email, privateKey)
+        registerSensitive(minted, redactionToken(minted))
+        if (started === generation) {
+            memoryToken = { credential, email, token: minted, expires: Date.now() + CACHE_MS }
+        }
+        return minted
+    })
+    return { kind: 'token', token }
 }
 
 /**

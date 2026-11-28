@@ -605,8 +605,7 @@ export function setDatabase(data:StoredDatabase){
     data.customAPIFormat ??= LLMFormat.OpenAICompatible
     data.systemContentReplacement ??= `system: {{slot}}`
     data.systemRoleReplacement ??= 'user'
-    data.vertexAccessToken ??= ''
-    data.vertexAccessTokenExpires ??= 0
+    dropStoredVertexToken(data)
     data.vertexClientEmail ??= ''
     data.vertexPrivateKey ??= ''
     data.vertexRegion ??= 'global'
@@ -2634,6 +2633,7 @@ import type { SerializableHypaV3Data } from '../process/memory/hypav3';
 import { defaultHotkeys, type Hotkey } from '../defaulthotkeys';
 import type { OpenAIChat } from '../process/index.svelte';
 import type { Loadout } from '../loadout';
+import { dropStoredVertexToken } from './legacyVertexToken';
 
 export async function downloadPreset(id:number, type:'json'|'risupreset'|'return' = 'json'){
     saveCurrentPreset()

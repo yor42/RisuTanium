@@ -457,7 +457,7 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
     else if(arg.modelInfo.format === LLMFormat.VertexAIGemini){
         // A request preview never acquires or renews a credential and never writes the database.
         if(arg.previewBody){
-            headers['Authorization'] = "Bearer " + (db.vertexAccessToken || '')
+            headers['Authorization'] = "Bearer "
         }
         else{
             const answer = await vertexAccessToken(db, vertexPrivateKey, vertexTicket)
