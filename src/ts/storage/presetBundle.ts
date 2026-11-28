@@ -4,6 +4,7 @@ import { safeStructuredClone } from '../polyfill'
 import { shareSafePreset } from '../shareStrip'
 import type { botPreset, Database } from './database.svelte'
 import { createPresetFolder, presetFolderOf, withoutPresetMeta } from './presetMeta'
+import { withoutTaskModes } from './taskParameterModes'
 
 /**
  * A preset bundle is the payload of a `.risup` envelope whose `type` is `presetBundle`. Every entry is what a single
@@ -80,7 +81,7 @@ export function buildPresetBundlePayload(db: Pick<Database, 'presetFolders'>, pr
     }
     const entries: PresetBundleEntry[] = presets.map((p) => {
         const folderName = presetFolderOf(db, p)?.name
-        const exported = shareSafePreset(withoutPresetMeta(safeStructuredClone(p)))
+        const exported = shareSafePreset(withoutTaskModes(withoutPresetMeta(safeStructuredClone(p))))
         const entry: PresetBundleEntry = { preset: exported }
         const folder = typeof folderName === 'string' ? cutFolderName(folderName) : ''
         if (folder !== '') {

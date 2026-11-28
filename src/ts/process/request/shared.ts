@@ -1,4 +1,5 @@
-import { getDatabase } from 'src/ts/storage/database.svelte'
+import { getDatabase, type SeparateParameters } from 'src/ts/storage/database.svelte'
+import { effectiveTaskModes } from 'src/ts/storage/taskParameterModes'
 import { parseAdditionalParamJsonValue } from './additionalParams'
 import { language } from 'src/lang'
 import { fillLang } from 'src/lang/fill'
@@ -187,19 +188,43 @@ export function applyParameters(
         return ['low', 'medium', 'high'][verbosity] ?? 'medium'
     }
 
-    if (db.seperateParametersEnabled && (modelMode !== 'model' || db.seperateParametersByModel)) {
-        let sepParams = db.seperateParameters[modelMode]
-        if (db.seperateParametersByModel){
-            sepParams = db.seperateParameters.overrides[arg.modelId]
-
-            if(!sepParams){
-                throw new Error(fillLang(language.errors.separateParamsMissing, { modelId: `${arg.modelId}`, modelMode: `${modelMode}` }))
+    // A task reads its own block only when its mode is `own`; a `same` task, and the main model without by-model, read the
+    // main values. By-model keeps precedence for the four tasks; the sub-model only requires its per-model entry and then follows the mode of `otherAx`.
+    let usesBlock = false
+    let sepParams: SeparateParameters
+    if (db.seperateParametersEnabled) {
+        const modes = effectiveTaskModes(db)
+        const missingOverride = () => new Error(fillLang(language.errors.separateParamsMissing, { modelId: `${arg.modelId}`, modelMode: `${modelMode}` }))
+        if (modelMode === 'model') {
+            if (db.seperateParametersByModel) {
+                sepParams = db.seperateParameters.overrides[arg.modelId]
+                if(!sepParams){
+                    throw missingOverride()
+                }
+                usesBlock = true
             }
         }
-        if (modelMode === 'submodel') {
-            sepParams = db.seperateParameters['otherAx']
-        }
+        else {
+            if (db.seperateParametersByModel){
+                sepParams = db.seperateParameters.overrides[arg.modelId]
 
+                if(!sepParams){
+                    throw missingOverride()
+                }
+                usesBlock = modelMode !== 'submodel'
+            }
+            if (modelMode === 'submodel') {
+                usesBlock = modes.otherAx === 'own'
+                sepParams = db.seperateParameters['otherAx']
+            }
+            else if (!db.seperateParametersByModel) {
+                usesBlock = modes[modelMode] === 'own'
+                sepParams = db.seperateParameters[modelMode]
+            }
+        }
+    }
+
+    if (usesBlock) {
         for (const parameter of parameters) {
             let value: number | string = 0
             if (isReasoningCapabilityParameter(parameter)) {
