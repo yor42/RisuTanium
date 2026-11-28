@@ -200,8 +200,8 @@ describe('S4a-T14: the intents carry their own kind of path', () => {
     })
 })
 
-describe('S4a-T13: the overwrite arm of the fallback note', () => {
-    test('with the global switch on, an edit of an inactive preset is replaced when it is switched to and away again', () => {
+describe('S4a-T13: the fallback lock keeps an inactive preset\'s edit (#149 stage 1; was the overwrite arm)', () => {
+    test('with the global switch on, an edit of an inactive preset survives being switched to and away again', () => {
         dbBag().doNotChangeFallbackModels = true
         dbBag().fallbackWhenBlankResponse = false
         expect(service.editValue(keys[1], 'presetFallbackWhenBlank', true)).toEqual({ ok: true })
@@ -209,7 +209,7 @@ describe('S4a-T13: the overwrite arm of the fallback note', () => {
         changeToPreset(1)
         expect(dbBag().fallbackWhenBlankResponse).toBe(false)
         changeToPreset(2)
-        expect(slotBag(1).fallbackWhenBlankResponse).toBe(false)
+        expect(slotBag(1).fallbackWhenBlankResponse).toBe(true)
     })
 })
 

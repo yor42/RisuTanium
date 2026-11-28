@@ -462,12 +462,11 @@ describe('S4b-T8: the auxiliary model notes', () => {
         expect(part('studio-preset-aux-note')).toBeNull()
     })
 
-    test('the kept note says switching to the preset and away clears the models, and that is what happens', async () => {
-        expect(languageEnglish.studioPresetAuxKept).toContain('away again clears them')
+    test('regression (#149 stage 1): with the switch on, switching to the preset and away keeps the slot\'s own models (the note copy is rewritten in stage 4)', async () => {
         dbBag().doNotChangeSeperateModels = true
         expect(service.editText(owner(1), 'presetAuxMemory', 'edited', 'single')).toEqual({ ok: true })
         changeToPreset(1)
         changeToPreset(2)
-        expect(slotBag(1).seperateModels).toBeNull()
+        expect((slotBag(1).seperateModels as Record<string, string>).memory).toBe('edited')
     })
 })

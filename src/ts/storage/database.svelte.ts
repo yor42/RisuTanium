@@ -29,6 +29,7 @@ import { isTauri, isNodeServer } from "src/ts/platform"
 import { blankSecretRef } from '../secretRef'
 import { shareSafePreset } from '../shareStrip'
 import { safeStructuredClone } from '../polyfill';
+import { isLocked, lockedGroups, type LockHost } from './presetLocks';
 import { AssetList, toAssetList } from './assetList';
 import {
     DEFAULT_CHAT_LOAD_ADDITIONAL_PAGES,
@@ -1266,6 +1267,8 @@ export interface Database{
         model: string[]
     }
     doNotChangeFallbackModels: boolean
+    /** Fork-only preset field locks beyond the three upstream flags (ids of locked groups); see storage/presetLocks.ts. Never in a `.bin`. */
+    presetFieldLocks?: string[]
     fallbackWhenBlankResponse: boolean
     customModels: {
         id: string
@@ -2320,12 +2323,15 @@ export const defaultSdDataFunc = () =>{
 type PresetOmittedSourceFields = 'currentPluginProvider' | 'textgenWebUIStreamURL' | 'textgenWebUIBlockingURL' | 'koboldURL' | 'proxyConnectionId'
 
 /**
- * The database fields presetFromWorkingSettings reads: the preset record's working fields, plus doNotChangeSeperateModels.
+ * The database fields the preset builders read: the preset record's working fields, plus the lock state `savedPresetFor` reads.
  * The connection and endpoint fields are optional, so a caller that never reads them need not supply them.
  */
-export type WorkingPresetSource = Pick<Database, Exclude<typeof PRESET_RECORD_FIELDS[number], PresetOmittedSourceFields> | 'doNotChangeSeperateModels'>
-    & Partial<Pick<Database, PresetOmittedSourceFields>>
-/** A preset holding the working settings of `db` under `name`, in the shape `saveCurrentPreset` stores. */
+export type WorkingPresetSource = Pick<Database, Exclude<typeof PRESET_RECORD_FIELDS[number], PresetOmittedSourceFields>>
+    & Partial<Pick<Database, PresetOmittedSourceFields>> & LockHost
+/**
+ * A preset holding the working settings of `db` under `name`: every group, locked or not, because a lock governs switching
+ * and saving into an existing slot, not creating a preset (a new preset is what the user was running).
+ */
 export function presetFromWorkingSettings(db:WorkingPresetSource, name:string, image:string):botPreset{
     return {
         name,
@@ -2402,8 +2408,8 @@ export function presetFromWorkingSettings(db:WorkingPresetSource, name:string, i
         adaptiveThinkingEffort: db.adaptiveThinkingEffort ?? 'high',
         deepseekReasoningEffort: db.deepseekReasoningEffort ?? 'high',
         outputImageModal: db.outputImageModal ?? false,
-        seperateModelsForAxModels: db.doNotChangeSeperateModels ? false : db.seperateModelsForAxModels ?? false,
-        seperateModels: db.doNotChangeSeperateModels ? null : safeStructuredClone(db.seperateModels),
+        seperateModelsForAxModels: db.seperateModelsForAxModels ?? false,
+        seperateModels: safeStructuredClone(db.seperateModels),
         modelTools: safeStructuredClone(db.modelTools),
         fallbackModels: safeStructuredClone(db.fallbackModels),
         fallbackWhenBlankResponse: db.fallbackWhenBlankResponse ?? false,
@@ -2430,10 +2436,22 @@ export function appendWorkingSettingsPreset(db:Database){
 /**
  * The preset that replaces `slot` when the working settings are saved into it: the rebuilt settings with the slot's
  * id, folder and hotkey slot carried over. The page save and the fast-forward replay both use it, so a concurrent
- * switch compares equal on both sides.
+ * switch compares equal on both sides. A locked group is not saved: the saved preset keeps what the slot holds of it
+ * (absent when the slot holds nothing), so a lock never erases or overwrites the slot's own value.
  */
 export function savedPresetFor(db:WorkingPresetSource, slot:botPreset):botPreset{
-    return carryPresetMeta(presetFromWorkingSettings(db, slot.name, slot.image ?? ''), slot)
+    const saved = carryPresetMeta(presetFromWorkingSettings(db, slot.name, slot.image ?? ''), slot)
+    for(const group of lockedGroups(db)){
+        for(const key of group.slotKeys){
+            if(Object.hasOwn(slot, key)){
+                Reflect.set(saved, key, safeStructuredClone(slot[key]))
+            }
+            else{
+                Reflect.deleteProperty(saved, key)
+            }
+        }
+    }
+    return saved
 }
 
 export function saveCurrentPreset(){
@@ -2545,7 +2563,9 @@ export function setPreset(db:Database, newPres: botPreset){
     db.extractJson = newPres.extractJson ?? ''
     db.groupOtherBotRole = newPres.groupOtherBotRole ?? 'user'
     db.groupTemplate = newPres.groupTemplate ?? ''
-    db.seperateParametersEnabled = newPres.seperateParametersEnabled ?? false
+    if(!isLocked(db, 'separateParameters')){
+        db.seperateParametersEnabled = newPres.seperateParametersEnabled ?? false
+    }
     db.customAPIFormat = safeStructuredClone(newPres.customAPIFormat) ?? LLMFormat.OpenAICompatible
     db.systemContentReplacement = newPres.systemContentReplacement ?? ''
     db.systemRoleReplacement = newPres.systemRoleReplacement ?? 'user'
@@ -2559,7 +2579,7 @@ export function setPreset(db:Database, newPres: botPreset){
     db.adaptiveThinkingEffort = newPres.adaptiveThinkingEffort ?? 'high'
     db.deepseekReasoningEffort = newPres.deepseekReasoningEffort ?? 'high'
     db.outputImageModal = newPres.outputImageModal ?? false
-    if(!db.doNotChangeSeperateModels){
+    if(!isLocked(db, 'auxModels')){
         db.seperateModelsForAxModels = newPres.seperateModelsForAxModels ?? false
         db.seperateModels = safeStructuredClone(newPres.seperateModels) ?? {
             memory: '',
@@ -2568,7 +2588,7 @@ export function setPreset(db:Database, newPres: botPreset){
             otherAx: ''
         }
     }
-    if(!db.doNotChangeFallbackModels){
+    if(!isLocked(db, 'fallbackModels')){
         db.fallbackModels = safeStructuredClone(newPres.fallbackModels) ?? {
             memory: [],
             emotion: [],
@@ -2578,7 +2598,7 @@ export function setPreset(db:Database, newPres: botPreset){
         }
         db.fallbackWhenBlankResponse = newPres.fallbackWhenBlankResponse ?? false
     }
-    if(db.disableSeperateParameterChangeOnPresetChange){
+    if(isLocked(db, 'separateParameters')){
         db.seperateParameters = safeStructuredClone(db.seperateParameters)
     }
     else{

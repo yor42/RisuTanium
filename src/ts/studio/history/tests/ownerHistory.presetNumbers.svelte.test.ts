@@ -237,13 +237,13 @@ describe('S4b-T7/T8: the auxiliary models container', () => {
         expect(slotBag(1).seperateModels).toEqual({ memory: '', emotion: 'emo', translate: '', otherAx: '' })
     })
 
-    test('save and overwrite arm: with the global switch on, switching to the preset and away stores null over the edit', () => {
+    test('save arm (#149 stage 1): with the global switch on, switching to the preset and away keeps the edit', () => {
         dbBag().doNotChangeSeperateModels = true
         expect(service.editText(keys[1], 'presetAuxMemory', 'edited', 'single')).toEqual({ ok: true })
         expect((slotBag(1).seperateModels as Record<string, string>).memory).toBe('edited')
         changeToPreset(1)
         changeToPreset(2)
-        expect(slotBag(1).seperateModels).toBeNull()
+        expect((slotBag(1).seperateModels as Record<string, string>).memory).toBe('edited')
     })
 })
 

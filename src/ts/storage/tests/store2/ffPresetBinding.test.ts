@@ -43,7 +43,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     readImage: vi.fn(),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
-import { presetFromWorkingSettings, setPreset, type botPreset, type Database } from 'src/ts/storage/database.svelte'
+import { presetFromWorkingSettings, savedPresetFor, setPreset, type botPreset, type Database } from 'src/ts/storage/database.svelte'
 import { setFastForwardHostForTest } from 'src/ts/storage/store2/fastForward'
 import { bootB, ffSetup, ffTeardown, ffWorld, runLoopWorld, runSpyOf, signal, takenBy, type LoopWorld } from './ffFixtures'
 
@@ -122,6 +122,42 @@ describe('the preset record over the real database functions', () => {
         expect(b.db.botPresetsId).toBe(2)
         const read = await page.freeze()
         expect(read.db.botPresetsId).toBe(2)
+        expect(world.crashed).toEqual([])
+    })
+
+    test('P2 with a preset field lock on, two pages that each switched presets from one base agree and park nothing', async () => {
+        const fallback = (name: string) => ({ memory: [name], emotion: [], translate: [], otherAx: [], model: [] })
+        const { memory, page } = await ffWorld()
+        await page.commitEdit((db) => {
+            Reflect.set(db, 'NAIsettings', {})
+            Reflect.set(db, 'doNotChangeFallbackModels', true)
+            Reflect.set(db, 'fallbackModels', fallback('live'))
+            db.botPresets.forEach((slot, index) => { db.botPresets[index] = { ...slot, fallbackModels: fallback(`slot ${index}`) } })
+        })
+        const b = await bootB(memory)
+        const world = runLoopWorld(b.context, b.db)
+        const run = runSpyOf(b)
+        const saved = firstSave(world)
+        const switchLocked = (db: Database, to: number): void => {
+            const from = db.botPresetsId
+            db.botPresets[from] = savedPresetFor(db, db.botPresets[from])
+            setPreset(db, db.botPresets[to] as botPreset)
+            db.botPresetsId = to
+        }
+        switchLocked(b.db, 2)
+        world.tracker.botPreset = true
+        world.state.dirty = true
+        world.state.due = true
+        await page.commitEdit((db) => { switchLocked(db, 1) })
+        signal(world)
+        await saved
+        await takenBy(b, memory, 0)
+        expect(run).toHaveBeenCalled()
+        expect(await run.mock.results[0].value).toEqual({ kind: 'applied' })
+        expect(b.peer.asked).toEqual([])
+        expect(b.peer.clean).toEqual([])
+        expect(b.db.botPresetsId).toBe(2)
+        expect(b.db.fallbackModels.memory).toEqual(['live'])
         expect(world.crashed).toEqual([])
     })
 })

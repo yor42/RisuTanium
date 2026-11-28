@@ -582,7 +582,7 @@ describe('T25 (guard, pure part): a file written from the real producers reads b
         expect('dynamicOutput' in read.fields).toBe(false)
         const carried = read.presets!.find((entry) => entry.id === 'second-id')!
         expect(carried.promptTemplate).toBeNull()
-        expect(carried.seperateModels).toBeNull()
+        expect(carried.seperateModels).toEqual(second.seperateModels)
         expect(carried.localStopStrings).toBeNull()
         // A device with the same ids and array templates takes the null the producer stored.
         const device = deviceOf({
@@ -637,5 +637,78 @@ describe('T25 (guard, pure part): a file written from the real producers reads b
         const { records } = buildSettingsRecords(sourceOf(db))
         expect(JSON.stringify(records)).not.toContain(SENTINEL)
         expect(strings(records)).not.toContain('connections')
+    })
+})
+
+describe('#149 stage 1 (guard): preset field locks in the settings file', () => {
+    const SLOT_FALLBACK = { memory: ['slot'], emotion: [], translate: [], otherAx: [], model: [] }
+    const LIVE_FALLBACK = { memory: ['live'], emotion: [], translate: [], otherAx: [], model: [] }
+    const SLOT_MODELS = { memory: 'slot', emotion: '', translate: '', otherAx: '' }
+    const SLOT_PARAMS = { memory: { temperature: 2 }, emotion: {}, translate: {}, otherAx: {}, overrides: {} }
+
+    function lockedDb(flags: Fields): Database {
+        const db = realisticDb()
+        const record = asRecord(db)
+        Object.assign(record, {
+            fallbackModels: LIVE_FALLBACK, fallbackWhenBlankResponse: true,
+            seperateModels: { memory: 'live', emotion: '', translate: '', otherAx: '' }, seperateModelsForAxModels: true,
+            seperateParameters: { memory: { temperature: 1 }, emotion: {}, translate: {}, otherAx: {}, overrides: {} },
+            seperateParametersEnabled: true,
+            doNotChangeSeperateModels: false, doNotChangeFallbackModels: false, disableSeperateParameterChangeOnPresetChange: false,
+            ...flags,
+        })
+        db.botPresets = [preset({
+            id: 'slot-id', name: 'Slot', fallbackModels: SLOT_FALLBACK, fallbackWhenBlankResponse: false,
+            seperateModels: SLOT_MODELS, seperateModelsForAxModels: false, seperateParameters: SLOT_PARAMS, seperateParametersEnabled: false,
+        })]
+        db.botPresetsId = 0
+        return db
+    }
+
+    function exportedSlot(db: Database): Fields {
+        const built = buildSettingsRecords(sourceOf(db))
+        const read = readOf(Object.fromEntries(built.records.map((entry) => [entry.key, entry.value])))
+        return asRecord(read.presets![0])
+    }
+
+    test('L7: presetFieldLocks is carried as an array, a wrong kind is dropped and counted', () => {
+        const db = realisticDb()
+        asRecord(db).presetFieldLocks = ['sampling', 'future-id']
+        const read = readOf(Object.fromEntries(buildSettingsRecords(sourceOf(db)).records.map((entry) => [entry.key, entry.value])))
+        expect(read.fields.presetFieldLocks).toEqual(['sampling', 'future-id'])
+        for (const wrong of ['sampling', { sampling: true }, 1, true]) {
+            const bad = readOf({ presetFieldLocks: wrong })
+            expect('presetFieldLocks' in bad.fields).toBe(false)
+            expect(bad.dropped).toBe(1)
+        }
+    })
+
+    test('L7: a database without the list writes no record for it', () => {
+        const db = realisticDb()
+        delete asRecord(db).presetFieldLocks
+        expect(buildSettingsRecords(sourceOf(db)).records.some((entry) => entry.key === 'presetFieldLocks')).toBe(false)
+    })
+
+    test('L16: the lock state is read from the source (every flag and the list), and nothing else is added', () => {
+        expect([...PRESET_SOURCE_FIELDS]).toEqual(expect.arrayContaining([
+            'doNotChangeSeperateModels', 'doNotChangeFallbackModels', 'disableSeperateParameterChangeOnPresetChange', 'presetFieldLocks',
+        ]))
+    })
+
+    test.each([
+        ['doNotChangeSeperateModels', { seperateModels: SLOT_MODELS, seperateModelsForAxModels: false }],
+        ['doNotChangeFallbackModels', { fallbackModels: SLOT_FALLBACK, fallbackWhenBlankResponse: false }],
+        ['disableSeperateParameterChangeOnPresetChange', { seperateParameters: SLOT_PARAMS, seperateParametersEnabled: false }],
+    ])('L16 regression: with %s on, the exported slot holds the slot\'s own values of the group', (flag, own) => {
+        const slot = exportedSlot(lockedDb({ [flag]: true }))
+        expect(slot).toMatchObject(own)
+    })
+
+    test('L16: with every lock off, the exported slot holds the working values', () => {
+        const slot = exportedSlot(lockedDb({}))
+        expect(slot).toMatchObject({
+            fallbackModels: LIVE_FALLBACK, fallbackWhenBlankResponse: true, seperateModelsForAxModels: true,
+            seperateParametersEnabled: true,
+        })
     })
 })

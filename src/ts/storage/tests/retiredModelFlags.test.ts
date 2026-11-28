@@ -52,14 +52,14 @@ describe('PR1: preset save and apply keep the flag and the slots', () => {
         expect(upstream.seperateModels).toEqual(fork.seperateModels)
     })
 
-    test('compatibility guard (passes before and after): preset save of a profile that keeps its models writes false and no slots', () => {
+    test('regression (fails on base): a new preset built from a profile that keeps its models holds the working models; upstream erases them (a lock governs switching, MC-4811)', () => {
         const db = working({ seperateModelsForAxModels: true, seperateModels: { ...SLOTS }, doNotChangeSeperateModels: true })
 
         const fork = presetFromWorkingSettings(db, 'P0', '')
         upstreamSaveCurrentPreset(db)
 
-        expect(fork.seperateModelsForAxModels).toBe(false)
-        expect(fork.seperateModels).toBeNull()
+        expect(fork.seperateModelsForAxModels).toBe(true)
+        expect(fork.seperateModels).toEqual(SLOTS)
         expect(db.botPresets[0].seperateModelsForAxModels).toBe(false)
         expect(db.botPresets[0].seperateModels).toBeNull()
     })
