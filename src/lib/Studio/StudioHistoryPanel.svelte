@@ -6,7 +6,7 @@
     import { language } from '../../lang'
     import { askRiskyTurnOn, type RiskyAsk } from '../../ts/studio/edit/riskyConfirm.svelte'
     import { pinnedDesc, withRiskyConfirm } from '../../ts/studio/edit/riskyReplay'
-    import { loreStepText, memberStepText, objItemPreview, objRefusalText } from '../../ts/studio/edit/objListCopy'
+    import { loreStepText, memberStepText, objItemPreview, objRefusalText, regexStepText } from '../../ts/studio/edit/objListCopy'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
     import { createStudioToasts, goneFileText, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import { fieldLabelKey } from '../../ts/studio/history/fieldAccess'
@@ -228,7 +228,9 @@
             case 'assetAdd': return language.studioStepAssetAdd(label.count)
             case 'folderCreate': return language.studioStepFolderCreate(label.name)
             case 'folderReorder': return language.studioStepFolderReorder
-            case 'obj': return label.list === 'members' ? memberStepText(label) : loreStepText(label)
+            case 'obj':
+                if (label.list === 'members') return memberStepText(label)
+                return label.list === 'regex' ? regexStepText(label) : loreStepText(label)
             case 'prop': return loreStepText(label)
         }
     }

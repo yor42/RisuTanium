@@ -97,6 +97,26 @@ export function memberStepText(label: ObjLabel): string {
         default: return language.studioMembersStepTalk(name)
     }
 }
+
+function regexFieldText(field: string | undefined): string {
+    switch (field) {
+        case 'comment': return language.name
+        case 'in': return language.studioRegexFind
+        case 'out': return language.studioRegexReplace
+        case 'type': return language.studioRegexStage
+        case 'flag': return language.sidebarUi.flagsHeading
+        case 'ableFlag': return language.customFlags
+        default: return field ?? language.regexScript
+    }
+}
+
+/** The History text of one regex script step. A step without a name shows what it is (an unnamed script). */
+export function regexStepText(label: ObjLabel): string {
+    const name = label.name ?? language.sidebarUi.unnamedScript
+    if (label.action === 'edit') return language.studioRegexStepEdit(regexFieldText(label.field), name)
+    return language.studioRegexStepOther(name)
+}
+
 /** The preview of a deleted item: the deleted entry (the folder, for a folder delete) and how many more went with it. */
 export function objItemPreview(item: ObjDeletedItem): string {
     const subject = item.entries.find((e) => isFolderRow(e.entry)) ?? item.entries[0]

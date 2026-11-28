@@ -144,6 +144,9 @@
     const moduleAssetFormLive = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub && kindNode?.kind === 'display' && moduleRawId !== null && moduleSlotIndex !== null)
     // The lorebook pane of a loaded owner's lore kind: the list while no entry is selected, the entry's form otherwise.
     const lorePaneLive = $derived(owner !== undefined && !owner.restricted && !owner.stub && kindNode?.kind === 'lore' && (owner.type !== 'module' || openableModuleId !== null))
+    // The regex pane of a loaded character, or of a loaded module while its id is unshared and published. Chat, group, preset,
+    // private, not-loaded and shared-id owners keep the read-only view.
+    const regexPaneLive = $derived(owner !== undefined && !owner.restricted && !owner.stub && kindNode?.kind === 'regex' && (owner.type === 'character' || (owner.type === 'module' && openableModuleId !== null && !moduleIdShared)))
 
     const MODULE_KEY_PREFIX = ownerKeyOf('module', '')
 
@@ -264,16 +267,16 @@
             {/if}
             {#if kindNode}
                 <p data-part="studio-detail-kind" class="font-bold">{kindLabelOf(kindNode.kind)}</p>
-                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive && !toggleBuilderLive && !moduleFormMounted && !lorePaneLive && !charHtmlFormLive}
+                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive && !toggleBuilderLive && !moduleFormMounted && !lorePaneLive && !regexPaneLive && !charHtmlFormLive}
                     <p class="text-textcolor2">{language.studioEmptyKind}</p>
-                {:else if (kindNode.kind === 'lore' && !lorePaneLive) || kindNode.kind === 'regex'}
+                {:else if (kindNode.kind === 'lore' && !lorePaneLive) || (kindNode.kind === 'regex' && !regexPaneLive)}
                     <p class="text-textcolor2">{language.studioItemCount(kindNode.count)}</p>
                 {/if}
             {/if}
-            {#if item && !lorePaneLive}
+            {#if item && !lorePaneLive && !regexPaneLive}
                 <p data-part="studio-detail-item" class="break-words font-bold">{itemLabelOf(item)}</p>
             {/if}
-            {#if itemText && !toggleBuilderLive && !moduleFormMounted && !presetAdvancedFormLive && !lorePaneLive && !charHtmlFormLive}
+            {#if itemText && !toggleBuilderLive && !moduleFormMounted && !presetAdvancedFormLive && !lorePaneLive && !regexPaneLive && !charHtmlFormLive}
                 <pre data-part="studio-detail-text" class="whitespace-pre-wrap break-words rounded-md border border-darkborderc bg-darkbg p-3 font-sans">{itemText.shown}</pre>
                 {#if itemText.cut}
                     <p data-part="studio-detail-truncated" class="text-sm text-textcolor2">{language.studioTruncated(DETAIL_TEXT_LIMIT)}</p>
@@ -358,6 +361,16 @@
                         <LorePane ownerType={owner.type} ownerId={owner.id} chaId={studioScreen.chaId} moduleId={moduleRawId} {moduleSlotIndex} moduleShared={moduleIdShared} itemId={studioScreen.selectedItemId} />
                     {:catch}
                         <p role="alert" data-part="studio-lore-pane-load-failed" class="text-sm text-draculared">{language.error}</p>
+                    {/await}
+                {/key}
+            {:else if regexPaneLive && (owner.type === 'character' || owner.type === 'module')}
+                <!-- Keyed by the owner: another owner builds the pane again. Loaded on first use: the pane reaches the help layer, which no other detail form needs. -->
+                {#key ownerKey}
+                    {#await import('./StudioRegexPane.svelte') then loaded}
+                        {@const RegexPane = loaded.default}
+                        <RegexPane ownerType={owner.type} ownerId={owner.id} chaId={studioScreen.chaId} moduleId={moduleRawId} {moduleSlotIndex} itemId={studioScreen.selectedItemId} />
+                    {:catch}
+                        <p role="alert" data-part="studio-regex-pane-load-failed" class="text-sm text-draculared">{language.error}</p>
                     {/await}
                 {/key}
             {:else if groupFormLive}

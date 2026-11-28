@@ -6,7 +6,7 @@
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
     listerOver,
     loreBody,
@@ -134,6 +134,10 @@ function installHistoryStub(): void {
     setStudioVisitAckForTests(stubAck)
 }
 
+beforeAll(async () => {
+    await loadRegexPane()
+})
+
 beforeEach(() => {
     localStorage.clear()
     resetStudioScreenForTests()
@@ -203,6 +207,16 @@ function setFull(input: ReturnType<typeof makeInput>): void {
 const ownerItem = (type: 'character' | 'chat' | 'module' | 'preset', id: string, kind: string, itemId: string) =>
     ({ owner: { type, id }, kind, item: itemId, from: 'chat' }) as const
 
+// The regex pane is loaded once before any test: loading it for the first time in the middle of a test raises an initialisation-order error under vitest. The module loader goes first.
+async function loadRegexPane(): Promise<void> {
+    await import('../../ts/process/modules')
+    await import('./StudioRegexPane.svelte')
+    await vi.dynamicImportSettled()
+}
+
+// A regex script as classic's add button stores it: the editor opens only rows whose required keys are all text.
+const typedRegex = (comment: string, find: string, out: string) => ({ comment, in: find, out, type: 'editinput', ableFlag: false, flag: '' })
+
 const luaScripts = [{ effect: [{ type: 'triggerlua', code: 'print("lua-body")' }] }]
 
 // A chat's lore entry as the app stores it; the owner model's own type only names the fields it lists.
@@ -224,7 +238,6 @@ describe('4d text of each kind of the bound character', () => {
     })
 
     const cases: [string, string, string[]][] = [
-        ['regex', 'cha-1/regex:0', ['IN-PATTERN', 'OUT-TEXT']],
         ['scripts', 'cha-1/scripts:0', ['print("lua-body")']],
         ['html', 'cha-1/html:0', ['<div>BACKGROUND</div>']],
         ['basic', 'cha-1/basic:0', ['DESC-TEXT', 'FIRST-TEXT']],
@@ -271,20 +284,41 @@ describe('4d text of each kind of the bound character', () => {
         expect(part('studio-detail-text')?.textContent).toContain('v2Header')
     })
 
-    test('regex text with markup stays text', () => {
-        setFull(makeInput({ character: makeCharacter({ customscript: [regexBody('Fix', MARKUP, MARKUP)], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }) }))
+    // A live character's regex item opens its editor (loaded on first use): the text sits in fields, never as markup.
+    test('regex opens its editor with its find and replace text, not the text view', async () => {
+        setFull(makeInput({ character: makeCharacter({ customscript: [typedRegex('Fix', 'IN-PATTERN', 'OUT-TEXT')], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }) }))
         openStudio(ownerItem('character', 'cha-1', 'regex', 'cha-1/regex:0'), null)
         show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
+        expect(part('studio-regex-form')).not.toBeNull()
+        expect(part('studio-regex-find')).not.toBeNull()
+        expect(part('studio-detail-text')).toBeNull()
+        expect(part('studio-detail-readonly')).toBeNull()
+        expect(part('studio-detail-classic')).not.toBeNull()
+        const values = Array.from(document.querySelectorAll('textarea')).map((field) => field.value)
+        expect(values).toContain('IN-PATTERN')
+        expect(values).toContain('OUT-TEXT')
+    })
+
+    test('regex text with markup stays text', async () => {
+        setFull(makeInput({ character: makeCharacter({ customscript: [typedRegex('Fix', MARKUP, MARKUP)], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }) }))
+        openStudio(ownerItem('character', 'cha-1', 'regex', 'cha-1/regex:0'), null)
+        show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
         expect(document.querySelector('img')).toBeNull()
-        expect(part('studio-detail-text')?.querySelector('b')).toBeNull()
+        expect(part('studio-regex-form')?.querySelector('b')).toBeNull()
         expect((window as unknown as { __studioProbe?: number }).__studioProbe).toBeUndefined()
-        expect(part('studio-detail-text')?.textContent).toContain(MARKUP)
+        expect(Array.from(document.querySelectorAll('textarea')).map((field) => field.value)).toContain(MARKUP)
     })
 
     test('reading the text writes nothing', () => {
         setFull(makeInput({ character: character() }))
         const before = JSON.stringify(db.db)
-        openStudio(ownerItem('character', 'cha-1', 'regex', 'cha-1/regex:0'), null)
+        openStudio(ownerItem('character', 'cha-1', 'scripts', 'cha-1/scripts:0'), null)
         show()
         expect(JSON.stringify(db.db)).toBe(before)
     })
@@ -307,10 +341,7 @@ describe('4d text of the chat, a resident module and a preset', () => {
     })
 
     const moduleCases: [string, string, string][] = [
-        ['regex', 'res/regex:0', 'MODULE-IN'],
         ['scripts', 'res/scripts:0', 'module-lua'],
-        // The replacement half of the same regex entry.
-        ['regex', 'res/regex:0', 'MODULE-OUT'],
     ]
 
     test.each(moduleCases)('a resident module %s shows its text', (kind, itemId, expected) => {
@@ -327,6 +358,39 @@ describe('4d text of the chat, a resident module and a preset', () => {
         openStudio(ownerItem('module', 'res', kind, itemId), null)
         show()
         expect(part('studio-detail-text')?.textContent).toContain(expected)
+    })
+
+    // A loaded module with an unshared id opens the regex editor; its find and replace text sit in fields.
+    test('a resident module regex opens its editor with its find and replace text', async () => {
+        setFull(makeInput({
+            character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
+            modules: [residentModule('res', { regex: [{ comment: 'r', in: 'MODULE-IN', out: 'MODULE-OUT', type: 'editdisplay' }] })],
+        }))
+        openStudio(ownerItem('module', 'res', 'regex', 'res/regex:0'), null)
+        show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
+        expect(part('studio-regex-form')).not.toBeNull()
+        expect(part('studio-detail-text')).toBeNull()
+        const values = Array.from(document.querySelectorAll('textarea')).map((field) => field.value)
+        expect(values).toContain('MODULE-IN')
+        expect(values).toContain('MODULE-OUT')
+    })
+
+    test('a module whose id is shared keeps the read-only regex text', () => {
+        setFull(makeInput({
+            character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
+            modules: [
+                residentModule('res', { regex: [{ comment: 'r', in: 'MODULE-IN', out: 'MODULE-OUT', type: 'editdisplay' }] }),
+                residentModule('res', { regex: [{ comment: 'r', in: 'MODULE-IN', out: 'MODULE-OUT', type: 'editdisplay' }] }),
+            ],
+        }))
+        openStudio(ownerItem('module', 'res', 'regex', 'res/regex:0'), null)
+        show()
+        flushSync()
+        expect(part('studio-regex-form')).toBeNull()
+        expect(part('studio-detail-text')?.textContent).toContain('MODULE-IN')
     })
 
     test('the active preset shows its working regex and toggles', () => {
@@ -382,11 +446,11 @@ describe('4d the private licence', () => {
 })
 
 describe('4d the combined view in the detail', () => {
-    test('a combined selection shows the list read-only, and opening a row shows that item', () => {
+    test('a combined selection shows the list read-only, and opening a row shows that item', async () => {
         setFull(makeInput({
             character: makeCharacter({
                 chats: [makeChat({ id: 'chat-1', name: 'First chat' })],
-                customscript: [regexBody('Fix', 'COMBINED-IN', 'COMBINED-OUT')],
+                customscript: [typedRegex('Fix', 'COMBINED-IN', 'COMBINED-OUT')],
             }),
         }))
         openStudio({ from: 'chat' }, null)
@@ -399,8 +463,11 @@ describe('4d the combined view in the detail', () => {
         expect(part('studio-detail-classic')).toBeNull()
         document.querySelector<HTMLElement>('[data-part="studio-combined-row"]')?.click()
         flushSync()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
         expect(part('studio-combined')).toBeNull()
-        expect(part('studio-detail-text')?.textContent).toContain('COMBINED-IN')
+        expect(Array.from(document.querySelectorAll('textarea')).map((field) => field.value)).toContain('COMBINED-IN')
     })
 })
 
@@ -558,8 +625,8 @@ describe('the live forms and the save chip in the detail', () => {
     })
 
     test('other kinds of the character and the bare character keep the read-only note and have no form', () => {
-        setDb({ customscript: [regexBody('Fix', 'IN-PATTERN', 'OUT-TEXT')] })
-        openStudio(ownerItem('character', 'cha-1', 'regex', 'cha-1/regex:0'), null)
+        setDb({ triggerscript: luaScripts })
+        openStudio(ownerItem('character', 'cha-1', 'scripts', 'cha-1/scripts:0'), null)
         show()
         flushSync()
         expect(part('studio-character-form')).toBeNull()
@@ -795,7 +862,7 @@ describe('CU-4 the combined branch of the detail by kind', () => {
         setFull(makeInput({
             character: makeCharacter({
                 chats: [makeChat({ id: 'chat-1', name: 'First chat' })],
-                customscript: [regexBody('Fix', 'COMBINED-IN', 'COMBINED-OUT')],
+                customscript: [typedRegex('Fix', 'COMBINED-IN', 'COMBINED-OUT')],
             }),
         }))
         openStudio({ from: 'chat' }, null)

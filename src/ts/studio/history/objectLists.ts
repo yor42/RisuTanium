@@ -20,6 +20,8 @@ export interface ObjListFieldsRow {
     readonly labelOnly: readonly string[]
     // `field` is refused on an entry whose `whenField` is `equals`.
     readonly refused: readonly { readonly field: string; readonly whenField: string; readonly equals: string }[]
+    // Fields that hold a present value on both sides of every `objSet`: `{ had: false }` is refused for them.
+    readonly required?: readonly string[]
 }
 
 export interface ObjIdentityRow {
@@ -42,6 +44,8 @@ export const OBJ_LIST_HOLDERS = {
     lore: { character: 'globalLore', chat: 'localLore', module: 'lorebook' },
     // Held by the group session kind alone; the group adapter supplies the three parallel arrays.
     members: {},
+    // Regex scripts are held by characters and modules; a chat has none.
+    regex: { character: 'customscript', module: 'regex' },
 } as const satisfies Record<string, ObjHolderRow>
 
 export const OBJ_LIST_FIELDS = {
@@ -64,6 +68,13 @@ export const OBJ_LIST_FIELDS = {
     },
     // One group member: the character id is never settable (a changed member is a remove and an insert).
     members: { fields: { talk: 'number', active: 'bool' }, labelOnly: [], refused: [] },
+    // The four required keys are always present text; `flag` and `ableFlag` are optional upstream keys.
+    regex: {
+        fields: { comment: 'text', in: 'text', out: 'text', type: 'text', flag: 'text', ableFlag: 'bool' },
+        required: ['comment', 'in', 'out', 'type'],
+        labelOnly: [],
+        refused: [],
+    },
 } as const satisfies Record<string, ObjListFieldsRow>
 
 // The settable lore fields. Append-only: a record written with a field must stay readable. `id`, `mode` and
@@ -73,13 +84,14 @@ export const LORE_FIELDS = OBJ_LIST_FIELDS.lore.fields
 export const OBJ_LIST_IDENTITY = {
     lore: { id: 'id', folder: { whenField: 'mode', equals: 'folder', key: 'key' }, content: true },
     members: { id: 'chaId', folder: null, content: false },
+    regex: { id: null, folder: null, content: true },
 } as const satisfies Record<string, ObjIdentityRow>
 
 // Top-level keys the anchor and the content identity leave out.
-export const OBJ_LIST_ANCHOR_EXCLUDED = { lore: ['bookVersion'], members: [] } as const satisfies Record<string, readonly string[]>
+export const OBJ_LIST_ANCHOR_EXCLUDED = { lore: ['bookVersion'], members: [], regex: [] } as const satisfies Record<string, readonly string[]>
 
 // A `textEdit` target under this prefix belongs to the list (the mixed-revert refusal).
-export const OBJ_LIST_ASSET_PREFIX = { lore: 'lore/', members: 'members/' } as const satisfies Record<string, string>
+export const OBJ_LIST_ASSET_PREFIX = { lore: 'lore/', members: 'members/', regex: 'regex/' } as const satisfies Record<string, string>
 
 // The language keys of each list's history messages: line takes the number of undone changes.
 interface ObjListMessageKeys {
@@ -104,6 +116,13 @@ export const OBJ_LIST_MESSAGES = {
         earlierVisit: 'studioMembersRestoreEarlierVisit',
         idTaken: 'studioMembersRestoreIdTaken',
         mixed: 'studioMembersRevertMixed',
+    },
+    regex: {
+        line: 'studioRegexRestoreLine',
+        changed: 'studioRegexRestoreChanged',
+        earlierVisit: 'studioRegexRestoreEarlierVisit',
+        idTaken: 'studioRegexRestoreTaken',
+        mixed: 'studioRegexRevertMixed',
     },
 } as const satisfies Record<string, ObjListMessageKeys>
 

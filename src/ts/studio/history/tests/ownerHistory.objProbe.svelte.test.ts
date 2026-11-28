@@ -112,7 +112,7 @@ describe('T58: lines are per list', () => {
 
     test('a list the character does not hold in this world is refused as an unreadable list', () => {
         const result = service.objEdit(A, build(
-            [{ op: 'objInsert', list: 'regex' as 'lore', index: 0, entry: { x: 'a' } }],
+            [{ op: 'objInsert', list: 'members' as 'lore', index: 0, entry: { x: 'a' } }],
             { kind: 'obj', list: 'lore', action: 'add', name: null },
         ))
         expect(result).toEqual({ ok: false, reason: 'precondition' })
