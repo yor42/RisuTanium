@@ -1,7 +1,7 @@
 // Home's registry for chat's pack-install validator (DD-149, DD-155, DD-159; the shared engine is used unchanged, the way Settings and Studio do it).
 // A registry is { critical, safe, surfaces, tokens, minimums, maximums, strictSafe, positionable } (DS-075, DD-161, DD-182, DD-195). Everything below comes from the page as it stands
 // (home/render.js, app.js, lib.js, home.css, home-tokens.css) and from home/checks/_census.out.txt (114 parts over 20 page states); lint-home.mjs re-verifies the part tiers in a real browser.
-// lintHome(css, name) = chat.lintPack(css, name, HOME_REGISTRY) plus homeSupplement(css): three gaps of the shared validator (resources, alias tokens, the primary button pair); section 7 below.
+// lintHome(css, name) = chat.lintPack(css, name, HOME_REGISTRY) plus homeSupplement(css): three gaps of the shared validator (non-bundled resources, alias tokens, the primary button pair); section 7 below.
 import * as chat from '../engine'
 import type { ContrastPair, LintError, LintResult, NameMatch, NoteKind, RegistryInput, Rgba, SurfaceCheck, TokenMap } from '../engine'
 import type { GeometryChain, GeometrySheet, SheetTerm } from '../geometry'
@@ -198,7 +198,7 @@ export const HOME_REGISTRY: HomeRegistry = { fixedWidth: ['home-dialog'], chains
 // ---- 7. SUPPLEMENT: three gaps that chat's validator leaves open (each is a hostile case in lint-home.mjs). lintHome(css, name) is chat.lintPack(css, name, HOME_REGISTRY) plus this pass
 // (nothing it rejects is accepted here, nothing chat rejects is accepted by the supplement).
 //   a. url(), image-set(), src(): the shared lint checks url() on the reach tier only, so `[data-part="home-greeting"] { background-image: url(https://...) }` (safe tier) and `cursor: url()` (reach tier) pass. Packs
-//      carry no resources (THEMING: images and fonts are out of scope), so any of them anywhere is rejected.
+//      may carry bundled images and fonts (MC-1351, as in the other areas) but not a remote or non-bundled one, so any of those anywhere is rejected.
 //   b. alias tokens that a critical surface reads in place of the shared token the surfaces check judges: --home-dialog-bg (the sheet; a pack could make it transparent), --home-danger-edge, --home-danger-edge-strong,
 //      --home-warning-edge (the cue of the warning notes) and --home-danger-text. They are locked: a pack sets their sources (--color-surface-sheet, --nexus-danger-rgb, --home-warning-rgb) and the checks above judge those.
 //   c. --home-on-accent on --nexus-accent: the label of the primary button of every critical dialog is --home-on-accent on --nexus-accent. The surfaces list cannot express a token-on-token pair, so it is checked here (4.5:1).
@@ -224,7 +224,11 @@ export function homeSupplement(css: string): LintError[] {
         errs.push(rule ? { selector, prop, why, rule } : { selector, prop, why })
     }
     const text = chat.normalise(css)
-    for (const m of text.matchAll(/(?<![\w-])(url|image-set|image|src|element)\s*\(/g)) fail('(stylesheet)', m[1] + '()', `${m[1]}() loads or draws a resource: a pack carries none (images and fonts are out of scope, THEMING.md)`)
+    // A bundled image or font is a relative path the archive carries (MC-1351, as in the other areas); a scheme or a host, and every form that draws another element or image, is refused.
+    for (const m of text.matchAll(/(?<![\w-])(url|image-set|image|src|element)\s*\(([^)]*)/g)) {
+        if ((m[1] === 'url' || m[1] === 'image-set') && !/[a-z][a-z0-9+.-]*:|\/\//i.test(m[2])) continue
+        fail('(stylesheet)', m[1] + '()', `${m[1]}() loads or draws a resource from outside the pack: a pack may only point at its own bundled fonts and images (MC-1351)`)
+    }
     const T: TokenMap = new Map(APP_TOKENS)
     const own: Decl[] = []
     for (const d of decls(text)) {

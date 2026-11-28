@@ -831,12 +831,22 @@ describe('Home the home sheet is an applied area (MC-3007, MC-3121, MC-3123)', (
         expect(Object.keys(spy.calls[0])).toEqual(['home'])
     })
 
-    it('I-H4: a home.css naming an image is refused by the home reason, and an image it names is not a way around it', async () => {
-        const css = '[data-part="home-greeting"]{background-image:url(images/a.png)}'
+    it('I-H4: a home.css naming a bundled image is accepted and carries that image, as chat does', async () => {
+        const css = '[data-part="home-greeting"]::before{content:"";display:block;height:8px;background-image:url(images/a.png)}'
         const { result } = await run(zipPack(validPackFiles({ 'home.css': css, 'images/a.png': PNG_1X1 })))
-        const errors = homeErrors(css)
-        expect(errors.length).toBeGreaterThan(0)
-        expect(refusalsOf(result)).toEqual([{ code: 'sheetRefused', sheet: 'home.css', errors }])
+        expect(homeErrors(css)).toEqual([])
+        expect(packOf(result).sheets.home?.resources).toHaveLength(1)
+    })
+
+    it('I-H4b: a home.css that names a remote image or an element() is still refused', async () => {
+        for (const css of [
+            '[data-part="home-greeting"]{background-image:url(https://example.invalid/a.png)}',
+            '[data-part="home-greeting"]{background-image:element(#x)}',
+        ]) {
+            const { result } = await run(zipPack(validPackFiles({ 'home.css': css, 'images/a.png': PNG_1X1 })))
+            expect(homeErrors(css).length, css).toBeGreaterThan(0)
+            expect(refusalsOf(result), css).toHaveLength(1)
+        }
     })
 
     it('I-H5: refused chat, home and popups sheets list three refusals in one verdict, in the order chat, home, popups', async () => {
