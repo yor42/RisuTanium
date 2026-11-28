@@ -2833,6 +2833,7 @@ export const languageVietnamese = {
     "studioRegexWhyFlag": "flag không phải là văn bản",
     "studioRegexWhyAbleFlag": "ableFlag không phải là true hoặc false",
     "studioRegexListNotEditable": "Danh sách này chứa các giá trị mà Studio không thể chỉnh sửa an toàn. Hãy dùng trình chỉnh sửa cổ điển để thay đổi.",
+    "studioRegexPresetNotInChat": "Preset này chưa được kích hoạt nên regex của nó không chạy trong cuộc trò chuyện này.",
     "studioRegexRestoreLine": (n: number) => `Regex: hoàn tác ${n} thay đổi`,
     "studioRegexRestoreEarlierVisit": "Các thay đổi regex kể từ đó không được hoàn tác ở đây. Hãy dùng Lịch sử để hoàn tác.",
     "studioRegexRestoreChanged": "Các script regex đã được thay đổi ở nơi khác kể từ đó nên được giữ nguyên. Hãy dùng Lịch sử để hoàn tác từng bước.",

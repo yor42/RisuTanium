@@ -2833,6 +2833,7 @@ export const languageKorean = {
     "studioRegexWhyFlag": "flag가 텍스트가 아님",
     "studioRegexWhyAbleFlag": "ableFlag가 true 또는 false가 아님",
     "studioRegexListNotEditable": "이 목록에는 스튜디오에서 안전하게 편집할 수 없는 값이 들어 있습니다. 클래식 편집기에서 변경하세요.",
+    "studioRegexPresetNotInChat": "이 프리셋은 활성화되어 있지 않아 이 채팅에서는 정규식이 실행되지 않습니다.",
     "studioRegexRestoreLine": (n: number) => `정규식: 변경 ${n}건 실행 취소`,
     "studioRegexRestoreEarlierVisit": "그 이후의 정규식 변경은 여기서 되돌리지 않습니다. 기록에서 실행 취소하세요.",
     "studioRegexRestoreChanged": "그 이후 정규식 스크립트가 다른 곳에서 변경되어 그대로 둡니다. 기록에서 단계별로 실행 취소하세요.",

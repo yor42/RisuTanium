@@ -2970,6 +2970,7 @@ export const languageJapanese = {
     studioRegexWhyFlag: "flagがテキストではありません",
     studioRegexWhyAbleFlag: "ableFlagがtrueまたはfalseではありません",
     studioRegexListNotEditable: "このリストにはStudioで安全に編集できない値が含まれています。変更するにはクラシックエディタを使ってください。",
+    studioRegexPresetNotInChat: "このプリセットは有効ではないため、このチャットでは正規表現が実行されません。",
     studioRegexRestoreLine: (n: number) => `正規表現：${n}件の変更を元に戻す`,
     studioRegexRestoreEarlierVisit: "それ以降の正規表現の変更は、ここでは元に戻されません。履歴で元に戻してください。",
     studioRegexRestoreChanged: "その後正規表現スクリプトが別の場所で変更されたため、そのままにします。履歴で操作を1つずつ元に戻してください。",

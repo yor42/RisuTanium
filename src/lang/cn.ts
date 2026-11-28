@@ -2833,6 +2833,7 @@ export const languageChinese = {
     "studioRegexWhyFlag": "flag 不是文本",
     "studioRegexWhyAbleFlag": "ableFlag 不是 true 或 false",
     "studioRegexListNotEditable": "此列表包含 Studio 无法安全编辑的值。请使用经典编辑器进行更改。",
+    "studioRegexPresetNotInChat": "此预设未启用，因此其正则不会在此聊天中运行。",
     "studioRegexRestoreLine": (n: number) => `正则：撤销 ${n} 项更改`,
     "studioRegexRestoreEarlierVisit": "此后对正则的更改不会在这里撤销。请在历史记录中撤销。",
     "studioRegexRestoreChanged": "此后正则脚本已在别处被更改，因此保持原样。请在历史记录中逐步撤销。",

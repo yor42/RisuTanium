@@ -5,6 +5,7 @@
     import { itemSectionsOf, type TextField } from '../../ts/studio/itemText'
     import { currentModuleAck, currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
     import { currentPresetAck } from '../../ts/studio/edit/presetAck.svelte'
+    import { presetStateOf } from '../../ts/studio/edit/presetTarget'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
     import { MODULE_LIST_KEY, applyStudioTarget, clearStudioSelection, followStudioPreset, openStudioModuleList, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { moduleRowKeys } from '../Setting/Pages/Module/moduleListWindow'
@@ -144,9 +145,9 @@
     const moduleAssetFormLive = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub && kindNode?.kind === 'display' && moduleRawId !== null && moduleSlotIndex !== null)
     // The lorebook pane of a loaded owner's lore kind: the list while no entry is selected, the entry's form otherwise.
     const lorePaneLive = $derived(owner !== undefined && !owner.restricted && !owner.stub && kindNode?.kind === 'lore' && (owner.type !== 'module' || openableModuleId !== null))
-    // The regex pane of a loaded character, or of a loaded module while its id is unshared and published. Chat, group, preset,
-    // private, not-loaded and shared-id owners keep the read-only view.
-    const regexPaneLive = $derived(owner !== undefined && !owner.restricted && !owner.stub && kindNode?.kind === 'regex' && (owner.type === 'character' || (owner.type === 'module' && openableModuleId !== null && !moduleIdShared)))
+    // The regex pane of a loaded character, of a loaded module while its id is unshared and published, or of the preset the
+    // selection pinned by id. Chat, group, private, not-loaded and shared-id owners keep the read-only view.
+    const regexPaneLive = $derived(owner !== undefined && !owner.restricted && !owner.stub && kindNode?.kind === 'regex' && (owner.type === 'character' || (owner.type === 'module' && openableModuleId !== null && !moduleIdShared) || (owner.type === 'preset' && studioScreen.selectedPresetId !== null && presetStateOf(studioScreen.selectedPresetId) !== null)))
 
     const MODULE_KEY_PREFIX = ownerKeyOf('module', '')
 
@@ -369,6 +370,16 @@
                     {#await import('./StudioRegexPane.svelte') then loaded}
                         {@const RegexPane = loaded.default}
                         <RegexPane ownerType={owner.type} ownerId={owner.id} chaId={studioScreen.chaId} moduleId={moduleRawId} {moduleSlotIndex} itemId={studioScreen.selectedItemId} />
+                    {:catch}
+                        <p role="alert" data-part="studio-regex-pane-load-failed" class="text-sm text-draculared">{language.error}</p>
+                    {/await}
+                {/key}
+            {:else if regexPaneLive && owner.type === 'preset' && studioScreen.selectedPresetId !== null}
+                <!-- Keyed by the pinned id, not the row: a reorder keeps this pane, another preset builds a new one. -->
+                {#key studioScreen.selectedPresetId}
+                    {#await import('./StudioRegexPane.svelte') then loaded}
+                        {@const RegexPane = loaded.default}
+                        <RegexPane ownerType="preset" presetId={studioScreen.selectedPresetId} ownerId={owner.id} chaId={studioScreen.chaId} moduleId={null} moduleSlotIndex={null} itemId={studioScreen.selectedItemId} />
                     {:catch}
                         <p role="alert" data-part="studio-regex-pane-load-failed" class="text-sm text-draculared">{language.error}</p>
                     {/await}

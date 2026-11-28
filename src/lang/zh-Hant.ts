@@ -2878,6 +2878,7 @@ export const languageChineseTraditional = {
     "studioRegexWhyFlag": "flag 不是文字",
     "studioRegexWhyAbleFlag": "ableFlag 不是 true 或 false",
     "studioRegexListNotEditable": "此清單包含 Studio 無法安全編輯的值。請使用經典編輯器進行變更。",
+    "studioRegexPresetNotInChat": "此預設未啟用，因此其正規表達式不會在此聊天中執行。",
     "studioRegexRestoreLine": (n: number) => `正規表達式：復原 ${n} 項變更`,
     "studioRegexRestoreEarlierVisit": "此後對正規表達式的變更不會在這裡復原。請在歷史記錄中復原。",
     "studioRegexRestoreChanged": "此後正規表達式腳本已在別處被變更，因此保持原樣。請在歷史記錄中逐步復原。",
