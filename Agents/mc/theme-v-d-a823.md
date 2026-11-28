@@ -15,3 +15,11 @@
 - Tag: decisions (maintainer via AskUserQuestion, two questions in the theme-v-d-a823 session). Date: 2026-11-28. Exact times: UNKNOWN. Related: `#654`, `MC-4700`, `MC-4705`, `MC-4708`.
 
 **What the maintainer chose.** (1) "Replace with archive shape": the chat-only `BuiltinPack` is replaced; every built-in is a bundled `.risutheme` archive read through the intake on each apply. (2) "Simplify: whole-pack broken": Gate 1 showed runtime partial apply is nearly unreachable (bytes are SHA-pinned to what the build-time test judged), so a bundled pack that fails at runtime shows the existing broken row and the app's own colours; the build-time test judging every bundled archive stays. This overrides the partial-apply half of MC-4708 only.
+
+### MC-4743 — #823 A823: shell-only restyle, listed colours only, 2026-11-28
+
+- Tag: decisions (maintainer via AskUserQuestion in the theme-v-d-a823 session). Date: 2026-11-28. Exact times: UNKNOWN. Related: `#823`, `MC-2517`, `MC-4704`, `MC-4707`.
+
+**What the maintainer chose.** Option "Shell-only: switch, sidebar content, toast": the toggle-scope switch, the shell sidebar content files and the toast host move from scheme utilities to the chat role tokens with no visible change without a pack; the shared `Sidebar.svelte` panel wrapper, the classic rail and sidebar, and legacy `Chat.svelte` stay. The scout found the shell transcript `prose-invert` already follows the pack (`surfaceTone`, pinned by `ShellMessage.proseTone.svelte.test.ts`), so it needed no change.
+
+**Leftover (not decided, for the colour-ready stages).** `textcolor2`, `selected` and `draculared` utilities stay scheme-bound: their role tokens are contrast-derived and not equal to the scheme colour without a pack, so migrating them would change what every user sees. Hover and secondary text in those surfaces still follow the scheme under a pack.

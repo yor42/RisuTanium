@@ -83,16 +83,16 @@
         <button
             data-part="strip-avatar"
             data-cha-id={entry.chaId}
-            class="flex flex-col items-center gap-0.5 w-11 min-w-11 cursor-pointer text-textcolor hover:text-textcolor2"
+            class="flex flex-col items-center gap-0.5 w-11 min-w-11 cursor-pointer text-nexus-text hover:text-textcolor2"
             aria-label={label}
             title={label}
             aria-current={entry === current ? 'true' : undefined}
             onclick={(event) => onpick(entry, event)}
         >
-            <span class="relative flex rounded-md" class:ring-2={entry === current} class:ring-textcolor={entry === current}>
+            <span class="relative flex rounded-md" class:ring-2={entry === current} class:ring-nexus-text={entry === current}>
                 <CharListAvatar src={entry.image ?? ''} class="h-11! w-11! min-h-11!" />
                 {#if entry.type === 'group'}
-                    <span data-part="strip-group-glyph" class="absolute bottom-0 right-0 flex items-center justify-center rounded-tl-md rounded-br-md bg-darkbg text-textcolor p-0.5" aria-hidden="true">
+                    <span data-part="strip-group-glyph" class="absolute bottom-0 right-0 flex items-center justify-center rounded-tl-md rounded-br-md bg-(--nexus-surface-flat) text-nexus-text p-0.5" aria-hidden="true">
                         <UsersIcon size={12} />
                     </span>
                 {/if}
@@ -104,7 +104,7 @@
     {/each}
     <button
         data-part="strip-all"
-        class="flex items-center justify-center h-11 w-11 min-w-11 rounded-md bg-darkbutton text-textcolor hover:text-textcolor2 cursor-pointer"
+        class="flex items-center justify-center h-11 w-11 min-w-11 rounded-md bg-(--nexus-surface-raised) text-nexus-text hover:text-textcolor2 cursor-pointer"
         aria-label={language.chatShellAllCharacters}
         title={language.chatShellAllCharacters}
         onclick={onall}

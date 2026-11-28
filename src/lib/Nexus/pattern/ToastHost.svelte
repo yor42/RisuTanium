@@ -153,7 +153,7 @@
     })
 
     function edgeClass(kind: ToastKind | 'undo'): string {
-        return kind === 'warning' || kind === 'error' ? 'border-draculared' : 'border-darkborderc'
+        return kind === 'warning' || kind === 'error' ? 'border-draculared' : 'border-(--nexus-edge)'
     }
 </script>
 
@@ -179,7 +179,7 @@
             {#if host.tasksHidden > 0 || host.tasksExpanded}
                 <button
                     type="button"
-                    class="pointer-events-auto min-h-11 self-end rounded-md border border-darkborderc bg-darkbg px-3 text-sm text-textcolor2 hover:bg-selected"
+                    class="pointer-events-auto min-h-11 self-end rounded-md border border-(--nexus-edge) bg-(--nexus-surface-flat) px-3 text-sm text-textcolor2 hover:bg-selected"
                     data-part="task-toast-more"
                     aria-expanded={host.tasksExpanded}
                     aria-label={host.tasksExpanded ? language.patternTaskShowLess : language.patternTaskToastMoreLabel(host.tasksHidden)}
@@ -191,7 +191,7 @@
                     <!-- The pointer handlers only feed the hold derivation; the buttons are the controls. -->
                     <!-- svelte-ignore a11y_no_static_element_interactions -->
                     <div
-                        class="toast pointer-events-auto flex items-center gap-2 rounded-md border p-3 text-nexus-text shadow-lg {task.mark === 'error' ? 'border-draculared' : 'border-darkborderc'}"
+                        class="toast pointer-events-auto flex items-center gap-2 rounded-md border p-3 text-nexus-text shadow-lg {task.mark === 'error' ? 'border-draculared' : 'border-(--nexus-edge)'}"
                         data-part="task-toast"
                         data-part-critical
                         role="group"
@@ -251,7 +251,7 @@
         >
             {#if toast.actionLabel !== undefined}
                 <div
-                    class="flex items-center gap-2 rounded-md border bg-darkbg p-3 text-textcolor shadow-lg {edgeClass(toast.kind)}"
+                    class="flex items-center gap-2 rounded-md border bg-(--nexus-surface-flat) p-3 text-nexus-text shadow-lg {edgeClass(toast.kind)}"
                     data-part="toast-undo"
                     data-kind={toast.kind}
                     data-part-critical
@@ -281,7 +281,7 @@
                 </div>
             {:else}
                 <div
-                    class="flex items-center gap-2 rounded-md border bg-darkbg p-3 text-textcolor shadow-lg {edgeClass(toast.kind)}"
+                    class="flex items-center gap-2 rounded-md border bg-(--nexus-surface-flat) p-3 text-nexus-text shadow-lg {edgeClass(toast.kind)}"
                     data-part="toast"
                     data-kind={toast.kind}
                 >

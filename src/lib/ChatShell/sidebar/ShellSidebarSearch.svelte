@@ -206,7 +206,7 @@
             bind:value={query}
             data-part="chat-sidebar-search-field"
             type="text"
-            class="w-full rounded-md border border-darkborderc bg-darkbutton ps-8 pe-2 py-2 text-textcolor"
+            class="w-full rounded-md border border-(--nexus-edge) bg-(--nexus-surface-raised) ps-8 pe-2 py-2 text-nexus-text"
             placeholder={language.chatShellSearchPlaceholder}
             aria-label={language.chatShellSearchPlaceholder}
             autocomplete="off"
@@ -242,7 +242,7 @@
                             role="option"
                             data-part="chat-search-character"
                             data-index={entry.index}
-                            class="flex w-full select-none flex-col justify-center rounded-md px-2 text-start text-textcolor hover:bg-selected cursor-pointer"
+                            class="flex w-full select-none flex-col justify-center rounded-md px-2 text-start text-nexus-text hover:bg-selected cursor-pointer"
                             style:height="{ROW_HEIGHT}px"
                             tabindex={entry.index === stop ? 0 : -1}
                             aria-selected="false"
@@ -258,7 +258,7 @@
                             role="option"
                             data-part="chat-search-chat"
                             data-index={entry.index}
-                            class="flex w-full select-none flex-col justify-center gap-0.5 rounded-md px-2 text-start text-textcolor hover:bg-selected cursor-pointer"
+                            class="flex w-full select-none flex-col justify-center gap-0.5 rounded-md px-2 text-start text-nexus-text hover:bg-selected cursor-pointer"
                             style:height="{ROW_HEIGHT}px"
                             tabindex={entry.index === stop ? 0 : -1}
                             aria-selected="false"

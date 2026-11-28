@@ -534,23 +534,23 @@
         }
     }
 
-    const footerClass = "flex flex-1 flex-col items-center gap-1 rounded-md py-2 text-xs text-textcolor2 hover:text-textcolor cursor-pointer";
-    const menuItemClass = "w-full rounded-md px-3 py-2 text-start text-textcolor hover:bg-selected cursor-pointer";
+    const footerClass = "flex flex-1 flex-col items-center gap-1 rounded-md py-2 text-xs text-textcolor2 hover:text-nexus-text cursor-pointer";
+    const menuItemClass = "w-full rounded-md px-3 py-2 text-start text-nexus-text hover:bg-selected cursor-pointer";
 </script>
 
 <svelte:window bind:innerWidth={viewportWidth} />
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div bind:this={content} data-part="chat-sidebar" class="relative flex h-full min-h-0 w-full flex-col gap-3 text-textcolor" onkeydown={onKeydown}>
+<div bind:this={content} data-part="chat-sidebar" class="relative flex h-full min-h-0 w-full flex-col gap-3 text-nexus-text" onkeydown={onKeydown}>
     <RecentStrip characters={recent} current={owner} {layout} onpick={pickCharacter} onall={allCharacters} />
     {#if owner}
         <div data-part="chat-sidebar-header" class="flex flex-col gap-2">
             <h2 data-part="chat-sidebar-heading" class="truncate text-lg font-bold">{owner.name || language.settingsPage.unnamed}</h2>
             <div data-part="chat-sidebar-new-row" class="relative flex gap-1" onfocusout={menuFocusOut}>
-                <button data-part="chat-sidebar-new-chat" class="grow rounded-md bg-darkbutton px-3 py-2 text-textcolor hover:bg-selected cursor-pointer" onclick={newChat}>{language.newChat}</button>
+                <button data-part="chat-sidebar-new-chat" class="grow rounded-md bg-(--nexus-surface-raised) px-3 py-2 text-nexus-text hover:bg-selected cursor-pointer" onclick={newChat}>{language.newChat}</button>
                 <button
                     bind:this={newMenuButton}
                     data-part="chat-sidebar-new-menu-toggle"
-                    class="flex items-center justify-center rounded-md bg-darkbutton px-2 text-textcolor hover:bg-selected cursor-pointer"
+                    class="flex items-center justify-center rounded-md bg-(--nexus-surface-raised) px-2 text-nexus-text hover:bg-selected cursor-pointer"
                     aria-label={language.chatShellNewChatMenu}
                     aria-haspopup="menu"
                     aria-expanded={newMenuOpen}
@@ -559,7 +559,7 @@
                     <ChevronDownIcon size={18} />
                 </button>
                 {#if newMenuOpen}
-                    <div data-part="chat-sidebar-new-menu" role="menu" class="absolute right-0 top-full z-10 mt-1 flex min-w-48 flex-col rounded-md border border-darkborderc bg-bgcolor p-1 shadow-lg">
+                    <div data-part="chat-sidebar-new-menu" role="menu" class="absolute right-0 top-full z-10 mt-1 flex min-w-48 flex-col rounded-md border border-(--nexus-edge) bg-nexus-canvas p-1 shadow-lg">
                         <button role="menuitem" data-part="chat-sidebar-import" class={menuItemClass} onclick={() => { newMenuOpen = false; void importChat(); }}>{language.chatShellImportChat}</button>
                         <button role="menuitem" data-part="chat-sidebar-export-all" class={menuItemClass} onclick={() => { newMenuOpen = false; void exportAllChats(); }}>{language.chatShellExportAllChats}</button>
                     </div>
@@ -569,7 +569,7 @@
                 <span id="{uid}-sort-label" data-part="sidebar-sort-label" class="sr-only">{language.chatShellSortLabel}</span>
                 <select
                     data-part="sidebar-sort"
-                    class="rounded-md border border-darkborderc bg-darkbutton px-2 py-1 text-textcolor"
+                    class="rounded-md border border-(--nexus-edge) bg-(--nexus-surface-raised) px-2 py-1 text-nexus-text"
                     aria-labelledby="{uid}-sort-label"
                     aria-describedby="{uid}-sort-label {uid}-sort-help"
                     value={sort}
@@ -587,7 +587,7 @@
                         type="button"
                         bind:this={editOrderButton}
                         data-part="sidebar-edit-order"
-                        class="rounded-md border border-darkborderc bg-darkbutton px-2 py-1 text-textcolor hover:bg-selected cursor-pointer"
+                        class="rounded-md border border-(--nexus-edge) bg-(--nexus-surface-raised) px-2 py-1 text-nexus-text hover:bg-selected cursor-pointer"
                         aria-pressed={reorder !== null}
                         onclick={toggleReorder}
                     >{reorder !== null ? language.chatShellDoneEditing : language.chatShellEditOrder}</button>
@@ -610,7 +610,7 @@
             {/if}
         </div>
     {/if}
-    <div data-part="chat-sidebar-footer" class="flex gap-1 border-t border-darkborderc pt-2">
+    <div data-part="chat-sidebar-footer" class="flex gap-1 border-t border-(--nexus-edge) pt-2">
         <button data-part="sidebar-home" class={footerClass} onclick={goHome}>
             <HomeIcon size={20} />
             <span>{language.home}</span>

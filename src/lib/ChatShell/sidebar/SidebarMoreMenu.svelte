@@ -56,12 +56,12 @@
         PlaygroundStore.set(1);
     }
 
-    const itemClass = "flex w-full items-center gap-3 rounded-md px-3 py-2 text-start text-textcolor hover:bg-selected cursor-pointer";
+    const itemClass = "flex w-full items-center gap-3 rounded-md px-3 py-2 text-start text-nexus-text hover:bg-selected cursor-pointer";
 </script>
 
-<div data-part="sidebar-more-panel" class="absolute inset-0 z-10 flex flex-col bg-darkbg text-textcolor">
-    <div data-part="more-header" class="flex items-center gap-2 border-b border-darkborderc p-2">
-        <button data-part="more-back" class="flex items-center gap-1 rounded-md px-2 py-1 text-textcolor2 hover:text-textcolor cursor-pointer" onclick={back}>
+<div data-part="sidebar-more-panel" class="absolute inset-0 z-10 flex flex-col bg-(--nexus-surface-flat) text-nexus-text">
+    <div data-part="more-header" class="flex items-center gap-2 border-b border-(--nexus-edge) p-2">
+        <button data-part="more-back" class="flex items-center gap-1 rounded-md px-2 py-1 text-textcolor2 hover:text-nexus-text cursor-pointer" onclick={back}>
             <ArrowLeft size={18} />
             <span>{language.settingsPage.back}</span>
         </button>
