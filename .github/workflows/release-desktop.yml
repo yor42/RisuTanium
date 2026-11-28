@@ -47,7 +47,7 @@ name: Desktop draft release
 #   6. Publish the draft by hand. releases/latest/download/latest-android.json follows the newest non-draft release: a
 #      later desktop-only release hides Android updates until an Android-on release is newest.
 #   7. The first dispatch needs MQ5 answered (are desktop updates, the Docker image and Android all wanted) and the
-#      environment android-release created as SIGNING.md describes.
+#      environment android-release created as SIGNING.md describes. The environment desktop-release exists (MC-4951).
 on:
   workflow_dispatch:
     inputs:

@@ -8,7 +8,7 @@ The fork has no public release, so the maintainer regenerated the Tauri updater 
 
 - Tag: maintainer decision. Date: 2026-11-28. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-4950`, `.github/workflows/release-desktop.yml`.
 
-The maintainer created the GitHub environment `desktop-release` (branch rule main only, admin bypass off) holding TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD. Only `build-desktop` names it, so a run dispatched from another branch cannot read the key. The workflow must be dispatched from main.
+The maintainer created the GitHub environment `desktop-release` (branch rule main only, admin bypass off) holding TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD. Only `build-desktop` names it, so a run dispatched from another branch cannot read the key once the repository-level copies are deleted (MC-4952). The workflow must be dispatched from main.
 
 ### MC-4952 — Old repository-level signing secrets are deleted after this PR merges, 2026-11-28
 

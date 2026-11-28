@@ -338,7 +338,7 @@ describe('B-1: release build arguments', () => {
 const reusable = () => load(RELEASE)
 const caller = () => load(BUILD)
 
-describe('W1: one environment, on sign, with the exact name; no inherited secrets', () => {
+describe('W1: one environment per release key (sign, build-desktop), with the exact name; no inherited secrets', () => {
   test('exactly two environment keys in all workflows: sign (android-release) and build-desktop (desktop-release)', () => {
     const found = workflowFiles.flatMap(f => keysAnywhere(load(f), 'environment').map(v => `${f}:${JSON.stringify(v)}`))
     expect(found).toEqual([`${RELEASE}:${JSON.stringify(ENVIRONMENT)}`, `${DESKTOP}:${JSON.stringify(DESKTOP_ENVIRONMENT)}`])
