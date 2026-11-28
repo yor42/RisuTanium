@@ -615,10 +615,12 @@ interface WalkedOwner {
     size: number
 }
 
-// The keep walk. Priority order: the restore point, then `deleted`, `undone` and `done`, each newest
-// to oldest. It adds up the entry sizes and stops at the first entry for which the owner's size would
-// pass `ownerCap`: that entry and everything after it are dropped. That is the oldest `done` first,
-// then `undone`, `deleted` and the restore point, because every size is positive. `memo` holds the
+// The keep walk. Priority order: `deleted`, `undone` and `done`, each newest to oldest, then the
+// restore point. It adds up the entry sizes and stops at the first entry for which the owner's size
+// would pass `ownerCap`: that entry and everything after it are dropped. That is the restore point
+// first, then the oldest `done`, `undone` and `deleted`, because every size is positive. So a restore
+// point that does not fit in what the newer history leaves is the one that gives way, never the
+// owner's newest steps and deleted items. `memo` holds the
 // lengths of entries that were measured but not kept, so a repeated save does not measure them again.
 function walkOwner(record: StoredOwnerRecord, baseline: Baseline | null, ownerCap: number, memo: WeakMap<object, number>): WalkedOwner {
     const ownerKey = record.ownerKey
@@ -663,7 +665,6 @@ function walkOwner(record: StoredOwnerRecord, baseline: Baseline | null, ownerCa
         return { part, ref, n, text }
     }
 
-    const restore = record.restore === null ? null : take('r', record.restore, RESTORE_PART, 0)
     const deleted: KeptEntry[] = []
     for (let at = record.deleted.length - 1; at >= 0; at--) {
         const item = record.deleted[at]
@@ -688,6 +689,7 @@ function walkOwner(record: StoredOwnerRecord, baseline: Baseline | null, ownerCa
             done.push(kept)
         }
     }
+    const restore = record.restore === null ? null : take('r', record.restore, RESTORE_PART, 0)
     // Oldest first, the order the index lists and the record keep.
     return { done: done.reverse(), undone: undone.reverse(), deleted: deleted.reverse(), restore, trimmed, size }
 }

@@ -175,29 +175,29 @@ describe('the owner cap against the restore entry', () => {
         return { saved, loaded }
     }
 
-    test('T1s: a restore entry alone over the owner cap stores no step and no restore point, and says trimmed', async () => {
+    test('T1s: a restore entry alone over the owner cap is the only thing dropped: the steps are stored, and it says trimmed', async () => {
         const record = recordOf(twentySteps(), restoreHolding(['desc'], 3000))
         const oracle = walkOracle(record, OWNER_CAP)
-        expect(oracle.done).toEqual([])
+        expect(oracle.done.length).toBeGreaterThan(0)
+        expect(oracle.done.at(-1)?.id).toBe('p:20')
         expect(oracle.restore).toBeNull()
         const { saved, loaded } = await saveAndReload(record, CAP_BYTES)
         expect(saved).toMatchObject({ kind: 'ok', trimmed: true })
         expect(loaded).toEqual({ kind: 'ok', record: oracle })
     })
 
-    test('T1s: a restore entry just under the cap keeps itself and the newest steps, and drops the oldest', async () => {
+    test('T1s: a restore entry that fits only beside fewer steps gives way: the newest steps are kept and the restore point is dropped', async () => {
         const record = recordOf(twentySteps(), restoreHolding(['desc'], 1500))
         const oracle = walkOracle(record, OWNER_CAP)
-        expect(oracle.restore).toEqual(record.restore)
+        expect(oracle.restore).toBeNull()
         expect(oracle.done.length).toBeGreaterThan(0)
-        expect(oracle.done.length).toBeLessThan(20)
         expect(oracle.done.at(-1)?.id).toBe('p:20')
         const { saved, loaded } = await saveAndReload(record, CAP_BYTES)
         expect(saved).toMatchObject({ kind: 'ok', trimmed: true })
         expect(loaded).toEqual({ kind: 'ok', record: oracle })
     })
 
-    test('T1s: a record whose counted size equals the owner cap exactly is kept whole, and one counted byte less trims the oldest step', async () => {
+    test('T1s: a record whose counted size equals the owner cap exactly is kept whole, and one counted byte less drops the restore point and keeps every step', async () => {
         const record = recordOf(twentySteps().slice(0, 4), restoreHolding(['desc'], 5))
         const exact = storedSizeOf(record, CHARACTER, Infinity)
         // ownerCapFor halves the byte cap, so twice the size yields an owner cap equal to the size.
@@ -209,10 +209,11 @@ describe('the owner cap against the restore entry', () => {
         const tight = await saveAndReload(record, 2 * (exact - 1))
         expect(tight.saved).toMatchObject({ kind: 'ok', trimmed: true })
         expect(tight.loaded).toEqual({ kind: 'ok', record: walkOracle(record, exact - 1) })
-        expect(walkOracle(record, exact - 1).done.length).toBe(3)
+        expect(walkOracle(record, exact - 1).done.length).toBe(4)
+        expect(walkOracle(record, exact - 1).restore).toBeNull()
     })
 
-    test('T-1s: a restore point holding the four new text paths over the real owner cap stores nothing, and just under it stores everything', async () => {
+    test('T-1s: a restore point holding the four new text paths over the real owner cap is dropped alone, and just under it stores everything', async () => {
         const paths: RestorePath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle']
         const steps = [setStep('p:1', 'firstMessage', 'a', 'b'), setStep('p:2', 'exampleMessage', 'c', 'd')]
         const over = recordOf(steps, restoreHolding(paths, 140000))
@@ -220,7 +221,7 @@ describe('the owner cap against the restore entry', () => {
         await overStore.load(CHARACTER)
         expect(await overStore.save(CHARACTER, over, new Set<StoredOwnerKey>([CHARACTER]))).toMatchObject({ kind: 'ok', trimmed: true })
         expect(storedRecord(overStore.shared, CHARACTER)?.record).toEqual(walkOracle(over, OWNER_CAP_BYTES))
-        expect(storedRecord(overStore.shared, CHARACTER)?.record.done).toEqual([])
+        expect(storedRecord(overStore.shared, CHARACTER)?.record.done).toEqual(steps)
         expect(storedRecord(overStore.shared, CHARACTER)?.record.restore).toBeNull()
 
         const under = recordOf(steps, restoreHolding(paths, 100000))

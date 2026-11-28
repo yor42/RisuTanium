@@ -310,17 +310,17 @@ export function asStoredRecord(record: OwnerRecord): StoredOwnerRecord {
 }
 
 // The record the keep walk must store at `ownerCap`: the longest prefix of the priority order
-// (restore point, then deleted, undone and done, each newest to oldest) whose stored size fits. Built
+// (deleted, undone and done, each newest to oldest, then the restore point) whose stored size fits. Built
 // by measuring prefixes with the untrimmed size, so it shares no code with the walk itself.
 export function walkOracle(record: StoredOwnerRecord, ownerCap: number): StoredOwnerRecord {
     const order: { part: 'restore' | 'deleted' | 'undone' | 'done'; at: number }[] = []
-    if (record.restore !== null) {
-        order.push({ part: 'restore', at: 0 })
-    }
     for (const part of ['deleted', 'undone', 'done'] as const) {
         for (let at = record[part].length - 1; at >= 0; at--) {
             order.push({ part, at })
         }
+    }
+    if (record.restore !== null) {
+        order.push({ part: 'restore', at: 0 })
     }
     const build = (count: number): StoredOwnerRecord => {
         const taken = order.slice(0, count)
