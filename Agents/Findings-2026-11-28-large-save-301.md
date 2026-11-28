@@ -97,3 +97,12 @@ None. Own processes stopped: Chrome 13356, Node server 48908, run301 21160, prof
 | E. Chunked hashing inside one put | largest effect on the longest slice | touches `codec/reuse.ts` etc. (shared with the #224 plan) | large |
 
 Recommendation: A, then B and C only if the Note 9 row exceeds 200 ms. Not D or E.
+
+## Note 9 row recipe (for the #931 device session; lane A chose option A)
+
+Row `D-301-SAVE`: staged save pass timing of a very large character on the Note 9. Target: no single main-thread task of 200 ms or more per edit and per Undo all.
+
+- Fixture: `Agents/Tools/large-save-301/s301-fixture.bin` (seed 3404, sha256 `e039e8c958865f52585f26486b8c32c81629d1193997a053412b1fafec15dd35`, 641,978 bytes; manifest beside it). One character "S3d4 Large Synthetic": 1.50 MB description, 12 greetings of 100 KB, 300 lore entries (1.26 MB), 6 toggle keys (`mood` first), 20 modules; the core unit encodes to 1.5-2.7 MB. Synthetic data only; import through the app's load-backup UI on a disposable profile (`pm clear` allowed per the lease rules).
+- Flow (the PC driver `Agents/Tools/large-save-301/run301.mjs` is the reference, set `R301_CDP` to the device's own DevTools port (the lease gives it) and `R301_APP` to the app URL): open the Studio on the character; window E: type `2` in the `mood` toggle key and wait 36 s so the 500 ms debounce, the staged pass and two idle-net verdicts (2 s cadence) all fall in the window; window A: Back to the list; window U: Update all; window N: Undo all.
+- Read: CDP Tracing per window (categories `devtools.timeline`, `disabled-by-default-devtools.timeline`, `v8.execute`, `blink.user_timing`, `toplevel`); `summ301.mjs` / `analyze301.mjs` list main-thread tasks of 14 ms or more. Report per window: the longest task, the sum of the pass, and the tasks that recur about 12 s and 14 s later (idle-net verdicts). PC reference (production build, best case): longest task median E 43.6, A 39.8, U 43.1, N 41.3 ms; pass sum 74-121 ms. Record the phone state (thermal, battery per the live-checks method) and repeat 5 cold runs if time allows; a fast/slow phone-state spread of about 6x is on record, so state which.
+- Outcome: every window's longest task under 200 ms: #301 can close (maintainer's call). Any task at or over 200 ms: report it to lane A; options B and C then need their own ticket and Gate 2 (`opus-reviewer`, inlay memo must key on exact content).
