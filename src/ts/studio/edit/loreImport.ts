@@ -98,6 +98,9 @@ export function prepareLoreImport(host: LoreHost, live: readonly unknown[], impo
                 copy.key = next
                 key = next
                 renamedFolders++
+            } else if (!remap.has(key)) {
+                // The first folder to hold a key owns its children: a later same-key folder is re-keyed with no effective remap.
+                remap.set(key, key)
             }
         }
         if (id !== null) taken.add(id)

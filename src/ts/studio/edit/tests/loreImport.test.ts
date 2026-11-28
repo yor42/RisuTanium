@@ -106,6 +106,18 @@ describe('T25a: ids', () => {
 })
 
 describe('T25b: folders', () => {
+    test('two same-key folders with a key the live list does not hold: the first keeps its children, the second is re-keyed and empty', () => {
+        const file = [entry('c1', { folder: K('dup') }), folder(K('dup'), 'F1'), folder(K('dup'), 'F2'), entry('c2', { folder: K('dup') })]
+        const plan = prepare('character', [], file, ids([], ['k1']))
+        const [c1, f1, f2, c2] = plan.entries
+        expect(f1.key).toBe(K('dup'))
+        expect(f2.key).toBe(K('k1'))
+        expect(c1.folder).toBe(K('dup'))
+        expect(c2.folder).toBe(K('dup'))
+        expect(plan.entries.filter((e) => e.folder === K('k1'))).toHaveLength(0)
+        expect(plan.renamedFolders).toBe(1)
+    })
+
     test('a taken key is re-keyed with the U+F000 prefix, children before or after their folder follow, a second same-key folder is empty, live rows are untouched', () => {
         const live = [folder(K('live'), 'Live'), entry('L', { folder: K('live') })]
         const before = clone(live)
@@ -250,13 +262,23 @@ describe('the builder', () => {
         expect(op.summary()).toEqual({ count: 2, skipped: 1, renamedIds: 0, renamedFolders: 0 })
     })
 
-    test('an unreadable list refuses and clears the summary; no accepted element is unchanged and keeps the skipped count', () => {
-        const op = loreImport('chat', [null, 5], ids())
+    test('a refused build after a successful one clears the summary; no accepted element is unchanged and keeps the skipped count', () => {
+        const op = loreImport('chat', [null, 5, entry('X')], ids(['n1']))
+        okOf(op.build('s', liveOf([])))
+        expect(op.summary()).toMatchObject({ count: 1, skipped: 2 })
         expect(op.build('s', liveOf(null))).toEqual({ ok: false, reason: 'precondition' })
         expect(op.summary()).toBeNull()
-        expect(op.build('s', liveOf([]))).toEqual({ ok: false, reason: 'unchanged' })
-        expect(op.summary()).toEqual({ count: 0, skipped: 2, renamedIds: 0, renamedFolders: 0 })
         expect(op.landed()).toBeNull()
+        const none = loreImport('chat', [null, 5], ids())
+        expect(none.build('s', liveOf([]))).toEqual({ ok: false, reason: 'unchanged' })
+        expect(none.summary()).toEqual({ count: 0, skipped: 2, renamedIds: 0, renamedFolders: 0 })
+        expect(none.landed()).toBeNull()
+    })
+
+    test('a generated empty id is never used', () => {
+        const queue = ['', 'n1']
+        const source: LoreIds = { newId: () => queue.shift() ?? 'spare', newFolderKey: () => 'k' }
+        expect(prepare('chat', [], [entry('X')], source).entries[0].id).toBe('n1')
     })
 
     test('the built entries carry the ids the plan chose, and folder identity helpers agree', () => {
