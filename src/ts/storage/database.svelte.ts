@@ -2503,11 +2503,8 @@ export function setPreset(db:Database, newPres: botPreset){
     db.mainPrompt = newPres.mainPrompt ?? db.mainPrompt
     db.jailbreak = newPres.jailbreak ?? db.jailbreak
     db.globalNote = newPres.globalNote ?? db.globalNote
-    db.temperature = newPres.temperature ?? db.temperature
     db.maxContext = newPres.maxContext ?? db.maxContext
     db.maxResponse = newPres.maxResponse ?? db.maxResponse
-    db.frequencyPenalty = newPres.frequencyPenalty ?? db.frequencyPenalty
-    db.PresensePenalty = newPres.PresensePenalty ?? db.PresensePenalty
     db.formatingOrder = newPres.formatingOrder ?? db.formatingOrder
     db.aiModel = newPres.aiModel ?? db.aiModel
     db.subModel = newPres.subModel ?? db.subModel
@@ -2537,7 +2534,6 @@ export function setPreset(db:Database, newPres: botPreset){
     db.reverseProxyOobaArgs = safeStructuredClone(newPres.reverseProxyOobaArgs) ?? {
         mode: 'instruct'
     }
-    db.top_p = newPres.top_p ?? 1
     db.promptSettings = safeStructuredClone(newPres.promptSettings) ?? {
         assistantPrefill: '',
         postEndInnerFormat: '',
@@ -2546,15 +2542,11 @@ export function setPreset(db:Database, newPres: botPreset){
         utilOverride: false,
     }
     db.promptSettings.maxThoughtTagDepth ??= -1
-    db.repetition_penalty = newPres.repetition_penalty
-    db.min_p = newPres.min_p
-    db.top_a = newPres.top_a
     db.openrouterProvider = newPres.openrouterProvider
     db.useInstructPrompt = newPres.useInstructPrompt ?? false
     db.customPromptTemplateToggle = newPres.customPromptTemplateToggle ?? ''
     db.templateDefaultVariables = newPres.templateDefaultVariables ?? ''
     db.moduleIntergration = newPres.moduleIntergration ?? ''
-    db.top_k = newPres.top_k ?? db.top_k
     db.instructChatTemplate = newPres.instructChatTemplate ?? db.instructChatTemplate
     db.JinjaTemplate = newPres.JinjaTemplate ?? db.JinjaTemplate
     db.jsonSchemaEnabled = newPres.jsonSchemaEnabled ?? false
@@ -2572,13 +2564,26 @@ export function setPreset(db:Database, newPres: botPreset){
     db.customFlags = safeStructuredClone(newPres.customFlags) ?? []
     db.enableCustomFlags = newPres.enableCustomFlags ?? false
     db.presetRegex = newPres.regex ?? []
-    db.reasoningEffort = newPres.reasonEffort ?? 0
-    db.thinkingTokens = newPres.thinkingTokens ?? null
-    db.thinkingType = newPres.thinkingType ?? 'budget'
-    db.deepseekThinkingType = newPres.deepseekThinkingType ?? 'off'
-    db.adaptiveThinkingEffort = newPres.adaptiveThinkingEffort ?? 'high'
-    db.deepseekReasoningEffort = newPres.deepseekReasoningEffort ?? 'high'
     db.outputImageModal = newPres.outputImageModal ?? false
+    if(!isLocked(db, 'sampling')){
+        db.temperature = newPres.temperature ?? db.temperature
+        db.frequencyPenalty = newPres.frequencyPenalty ?? db.frequencyPenalty
+        db.PresensePenalty = newPres.PresensePenalty ?? db.PresensePenalty
+        db.top_p = newPres.top_p ?? 1
+        db.repetition_penalty = newPres.repetition_penalty
+        db.min_p = newPres.min_p
+        db.top_a = newPres.top_a
+        db.top_k = newPres.top_k ?? db.top_k
+    }
+    if(!isLocked(db, 'reasoning')){
+        db.reasoningEffort = newPres.reasonEffort ?? 0
+        db.thinkingTokens = newPres.thinkingTokens ?? null
+        db.thinkingType = newPres.thinkingType ?? 'budget'
+        db.deepseekThinkingType = newPres.deepseekThinkingType ?? 'off'
+        db.adaptiveThinkingEffort = newPres.adaptiveThinkingEffort ?? 'high'
+        db.deepseekReasoningEffort = newPres.deepseekReasoningEffort ?? 'high'
+        db.verbosity = newPres.verbosity ?? 1
+    }
     if(!isLocked(db, 'auxModels')){
         db.seperateModelsForAxModels = newPres.seperateModelsForAxModels ?? false
         db.seperateModels = safeStructuredClone(newPres.seperateModels) ?? {
@@ -2611,7 +2616,6 @@ export function setPreset(db:Database, newPres: botPreset){
         }   
     }
     db.modelTools = safeStructuredClone(newPres.modelTools ?? [])
-    db.verbosity = newPres.verbosity ?? 1
     db.dynamicOutput = newPres.dynamicOutput
 
     return db
