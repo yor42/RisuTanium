@@ -11,6 +11,7 @@ import { backupNoticeHeader, downloadNotice } from "../exportNotice";
 import { encodeRisuSaveStreamed, type StreamedRisuSave } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { assertNoModuleStubs } from "../storage/moduleStub";
+import { withoutTaskModes } from "../storage/taskParameterModes";
 import { assertNoForeignModuleStubs, snapshotModuleList } from "./exportModules";
 import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport, ensureGestureForWriter, openWriterOutsideBusy, runExport, type ExportSession, type ExportShellCard } from "./exportShell";
 import type { RisuModule } from "../process/modules";
@@ -270,7 +271,14 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // new arrays, so a preset or model added or deleted while the export runs cannot shift the indices the projection is
     // joined on. The migration over the projection sets no flag; the page's database is never changed.
     if (Array.isArray(plain.botPresets)) {
-        plain.botPresets = [...plain.botPresets]
+        // The per-task modes key is fork-only and sits inside each container; a record that holds it becomes a new record with
+        // a new container without it, a record that does not keeps the page's own object. A record that held the key is
+        // never the page's own, so the page is never changed; a keyless record is shared as it is everywhere in this copy.
+        plain.botPresets = plain.botPresets.map((preset) => withoutTaskModes(preset))
+    }
+    const rootWithoutModes = withoutTaskModes(plain)
+    if (rootWithoutModes !== plain) {
+        plain.seperateParameters = rootWithoutModes.seperateParameters
     }
     if (Array.isArray(plain.customModels)) {
         plain.customModels = [...plain.customModels]

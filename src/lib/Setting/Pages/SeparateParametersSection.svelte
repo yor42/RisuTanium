@@ -4,6 +4,7 @@
     import Accordion from 'src/lib/UI/Accordion.svelte';
     import CheckInput from 'src/lib/UI/GUI/CheckInput.svelte';
     import AllSeperateParameters from 'src/lib/Others/AllSeperateParameters.svelte';
+    import { setAllTaskModes, TASK_MODES_KEY } from 'src/ts/storage/taskParameterModes';
 
     const paramLabels: Record<string, string> = {
         memory: 'longTermMemory',
@@ -14,9 +15,9 @@
 </script>
 
 <Accordion name={language.seperateParameters} styled>
-    <CheckInput bind:check={DBState.db.seperateParametersEnabled} name={language.seperateParametersEnabled} />
+    <CheckInput bind:check={() => DBState.db.seperateParametersEnabled, (check) => setAllTaskModes(DBState.db, check ? 'own' : 'same')} name={language.seperateParametersEnabled} />
     {#if DBState.db.seperateParametersEnabled}
-        {#each Object.keys(DBState.db.seperateParameters) as param}
+        {#each Object.keys(DBState.db.seperateParameters).filter((key) => key !== TASK_MODES_KEY) as param}
             <Accordion name={language[paramLabels[param]] ?? param} styled>
                 <AllSeperateParameters bind:value={DBState.db.seperateParameters[param]} paramKey={param} />
             </Accordion>

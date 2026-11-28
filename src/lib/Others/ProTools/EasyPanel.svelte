@@ -14,6 +14,7 @@
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import CustomModelsSettings from "src/lib/Setting/Pages/Advanced/CustomModelsSettings.svelte";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
+    import { effectiveTaskModes, setAllTaskModes, TASK_KEYS } from "src/ts/storage/taskParameterModes";
 
     let selectedOption = $state('models');
     let selectedParameterOption = $state('memory')
@@ -68,7 +69,10 @@
             </div>
 
             <Button className="mt-4" onclick={() => {
-                DBState.db.seperateParametersEnabled = true
+                // A mix that is already set stays; the modes and the flag only change together.
+                if (!TASK_KEYS.some((task) => effectiveTaskModes(DBState.db)[task] === 'own')) {
+                    setAllTaskModes(DBState.db, 'own')
+                }
                 DBState.db.doNotChangeSeperateModels = true
                 DBState.db.seperateModels = {
                     memory: '',
