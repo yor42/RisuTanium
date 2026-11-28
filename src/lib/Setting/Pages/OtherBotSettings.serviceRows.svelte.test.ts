@@ -205,8 +205,8 @@ afterEach(async () => {
 })
 
 /** The first row that follows an editor in document order: the one that belongs to it. */
-function rowAfter(target: HTMLElement, labelSuffix: string): HTMLElement | null {
-    const input = target.querySelector<HTMLInputElement>(`input[aria-labelledby$="${labelSuffix}"]`)
+function rowAfter(target: HTMLElement, slot: string): HTMLElement | null {
+    const input = target.querySelector<HTMLElement>(`[data-slot-key="field"][data-slot="${slot}"]`)
     if (!input) return null
     const rows = Array.from(target.querySelectorAll<HTMLElement>('[data-part="settings-service-connection"]'))
     return rows.find((row) => input.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING) ?? null
@@ -232,17 +232,19 @@ const SITES: Array<{ name: string, overrides: Record<string, unknown>, labelSuff
 describe('E-OBS: a connection row under each key editor', () => {
     test.each(SITES)('$name: the editor is followed by the row of slot $slot', async ({ overrides, labelSuffix, slot }) => {
         const target = await render(overrides)
-        expect(target.querySelector(`input[aria-labelledby$="${labelSuffix}"]`)).not.toBeNull()
-        expect(rowAfter(target, labelSuffix)?.getAttribute('data-slot')).toBe(slot)
+        expect(target.querySelector(`[data-slot-key="field"][data-slot="${slot}"]`)).not.toBeNull()
+        // A blank key opens the Replace key field, whose label is the one this site passes.
+        expect(target.querySelector(`[data-key-list-label$="${labelSuffix}"]`)).not.toBeNull()
+        expect(rowAfter(target, slot)?.getAttribute('data-slot')).toBe(slot)
     })
 
     test('the row shows the connection that holds the key', async () => {
         const target = await render({ sdProvider: 'fal', connections: [{ id: 'conn-1', name: 'My fal', provider: 'fal', key: 'SYN-fal-key-0000' }] })
-        expect(rowAfter(target, '-f15')?.textContent).toContain(language.connectionsServiceUses.replace('{name}', 'My fal'))
+        expect(rowAfter(target, 'falToken')?.textContent).toContain(language.connectionsServiceUses.replace('{name}', 'My fal'))
     })
 
     test('an editor with no connection shows the no-connection line', async () => {
         const target = await render({ sdProvider: 'fal' })
-        expect(rowAfter(target, '-f15')?.textContent).toContain(language.connectionsServiceNone)
+        expect(rowAfter(target, 'falToken')?.textContent).toContain(language.connectionsServiceNone)
     })
 })

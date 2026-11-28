@@ -45,10 +45,6 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
 import { languageSettingsItems } from './languageSettingsData.svelte'
-import { getSettingValue, setSettingValue } from './utils'
-import { DBState } from '../stores.svelte'
-import type { Database } from '../storage/database.svelte'
-import type { SettingContext } from './types'
 
 const ctxFor = (translatorType: string) => ({ db: { translator: 'ko', translatorType } }) as unknown as Parameters<NonNullable<typeof languageSettingsItems[number]['condition']>>[0]
 
@@ -73,21 +69,14 @@ describe('language settings service rows', () => {
 
 describe('language settings DeepL key editors', () => {
     test.each([
-        { id: 'lang.deeplKey', provider: 'deepl', legacy: 'deeplOptions', field: 'key' },
-        { id: 'lang.deeplXToken', provider: 'deeplx', legacy: 'deeplXOptions', field: 'token' },
-    ])('$id writes the key into a $provider connection and not into the legacy field', async ({ id, provider, legacy, field }) => {
-        DBState.db = {
-            deeplOptions: { key: '', freeApi: true },
-            deeplXOptions: { url: 'http://localhost:1188', token: '' },
-        } as unknown as Database
+        { id: 'lang.deeplKey', keySlot: 'deeplOptions.key', labelKey: 'deeplKey', type: 'deepl' },
+        { id: 'lang.deeplXToken', keySlot: 'deeplXOptions.token', labelKey: 'deeplXToken', type: 'deeplX' },
+    ])('regression reproducer: $id is a masked key row, not a text row that reads the saved key', ({ id, keySlot, labelKey, type }) => {
         const item = languageSettingsItems.find((candidate) => candidate.id === id)!
-        const ctx = { db: DBState.db } as unknown as SettingContext
-
-        setSettingValue(item, 'SYN-dl', ctx)
-        await vi.waitFor(() => expect(DBState.db.connections).toEqual([expect.objectContaining({ provider, key: 'SYN-dl' })]))
-
-        const legacyValue = (DBState.db as unknown as Record<string, Record<string, unknown>>)[legacy][field]
-        expect(legacyValue).toBe('')
-        expect(getSettingValue(item, ctx)).toBe('SYN-dl')
+        expect(item).toMatchObject({ type: 'custom', componentId: 'SlotKeyRow', labelKey, componentProps: expect.objectContaining({ keySlot, labelKey }) })
+        // No getter: nothing in the row's data can hand the saved key to an input.
+        expect(item.getValue).toBeUndefined()
+        expect(item.setValue).toBeUndefined()
+        expect(item.condition?.(ctxFor(type))).toBe(true)
     })
 })

@@ -100,9 +100,6 @@ describe('the embedding page follows the UI language', () => {
         expect(labels(target)).toContain('Request Model')
         await runBlank(target)
         expect(spies.alertError).toHaveBeenLastCalledWith('Enter a URL for the custom embedding server.')
-        await chooseModel(target, 'ada')
-        await runBlank(target)
-        expect(spies.alertError).toHaveBeenLastCalledWith('Enter an OpenAI API key.')
     })
 
     test('regression reproducer: Korean shows the Korean labels', () => {
@@ -125,8 +122,5 @@ describe('the embedding page follows the UI language', () => {
         expect(labels(target)).toContain(languageKorean.playground.requestModel)
         await runBlank(target)
         expect(spies.alertError).toHaveBeenLastCalledWith(languageKorean.playground.embeddingUrlMissing)
-        await chooseModel(target, 'ada')
-        await runBlank(target)
-        expect(spies.alertError).toHaveBeenLastCalledWith(languageKorean.playground.embeddingOpenAIKeyMissing)
     })
 })

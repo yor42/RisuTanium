@@ -341,9 +341,11 @@ describe('OtherBotSettings image generation value controls are named', () => {
     })
 })
 
-/** The visible label text each KeyListInput on the page is pointed at, in document order. */
+/** The visible label text each OpenAI or Google key field's open Replace key list is pointed at, in document order. */
 function keyListLabels(target: HTMLElement): string[] {
-    return Array.from(target.querySelectorAll('[data-key-list-label]')).map((marker) => {
+    const markers = Array.from(target.querySelectorAll('[data-key-list-label]'))
+        .filter((marker) => ['openAIKey', 'google.accessToken'].includes(marker.closest('[data-slot-key="field"]')?.getAttribute('data-slot') ?? ''))
+    return markers.map((marker) => {
         const label = document.getElementById(marker.getAttribute('data-key-list-label') ?? '')
         return label === null ? '' : (label.textContent ?? '').replace(/\s+/g, ' ').trim()
     })

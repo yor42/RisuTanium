@@ -11,7 +11,7 @@
  * `tokenizer`, `plugins.svelte`, the model-list modules, and every child component that is not
  * part of the key box.
  */
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -146,9 +146,31 @@ function seedClaudeKey(key: string): void {
     DBState.db.connections = [{ id: 'conn-1', name: 'Claude', provider: 'anthropic', key }]
 }
 
-function keyInputs(target: HTMLElement, hideApiKey = true): HTMLInputElement[] {
-    const selector = hideApiKey ? 'input[type=password]' : 'input[type=text]'
-    return Array.from(target.querySelectorAll<HTMLInputElement>(selector))
+function field(target: HTMLElement): HTMLElement {
+    return target.querySelector<HTMLElement>('[data-slot="claudeAPIKey"]')!
+}
+
+/** The masked rows of the open Replace key field; a saved key is never in one. */
+function keyInputs(target: HTMLElement): HTMLInputElement[] {
+    return Array.from(field(target).querySelectorAll<HTMLInputElement>('input'))
+}
+
+async function flush(): Promise<void> {
+    for (let round = 0; round < 4; round++) {
+        flushSync()
+        await tick()
+        await Promise.resolve()
+    }
+}
+
+async function openReplace(target: HTMLElement): Promise<void> {
+    field(target).querySelector<HTMLButtonElement>('[data-slot-key="replace"]')?.click()
+    await flush()
+}
+
+async function save(target: HTMLElement): Promise<void> {
+    field(target).querySelector<HTMLButtonElement>('[data-slot-key="save"]')!.click()
+    await flush()
 }
 
 function settle(node: HTMLInputElement, value: string, init: InputEventInit = {}) {
@@ -168,14 +190,17 @@ afterEach(async () => {
 })
 
 describe('the Claude key box keeps one key per row', () => {
-    test('BK1 an insertion that left two keys apart by a space ends as two masked rows', () => {
+    test('BK1 an insertion that left two keys apart by a space ends as two masked rows, saved on Save', async () => {
         const target = mountPage(true)
         settle(keyInputs(target)[0], 'sk-test-A sk-test-B')
-        expect(claudeKey()).toBe('sk-test-A\nsk-test-B')
         expect(keyInputs(target).map((node) => node.value)).toEqual(['sk-test-A', 'sk-test-B', ''])
+        expect(keyInputs(target).every((node) => node.type === 'password')).toBe(true)
+        expect(claudeKey()).toBeUndefined()
+        await save(target)
+        expect(claudeKey()).toBe('sk-test-A\nsk-test-B')
     })
 
-    test('BK2 a composition commit splits at compositionend, not before', () => {
+    test('BK2 a composition commit splits at compositionend, not before', async () => {
         const target = mountPage(false)
         const node = keyInputs(target)[0]
         node.focus()
@@ -187,48 +212,58 @@ describe('the Claude key box keeps one key per row', () => {
         expect(keyInputs(target).filter((row) => row.value !== '')).toHaveLength(1)
         node.dispatchEvent(new CompositionEvent('compositionend', { data: 'sk-test-A\nsk-test-B' }))
         flushSync()
-        expect(claudeKey()).toBe('sk-test-A\nsk-test-B')
         expect(keyInputs(target).map((row) => row.value)).toEqual(['sk-test-A', 'sk-test-B', ''])
+        await save(target)
+        expect(claudeKey()).toBe('sk-test-A\nsk-test-B')
     })
 
-    test('BK6 every key row is masked even when the saved hide-key value is off', () => {
+    test('BK6 every key row is masked even when the saved hide-key value is off', async () => {
         const target = mountPage(false)
         expect(keyInputs(target).length).toBeGreaterThanOrEqual(1)
-        expect(keyInputs(target, false)).toHaveLength(0)
+        expect(keyInputs(target).every((row) => row.type === 'password')).toBe(true)
+        seedClaudeKey('sk-SYNTH-cccc9999')
+        await flush()
+        await openReplace(target)
+        expect(keyInputs(target).every((row) => row.type === 'password')).toBe(true)
     })
 
-    test('SK1 compatibility guard (passes before and after): a secret reference stays readable in its row', () => {
+    test('SK1 a secret reference is shown by the chip, in no field', async () => {
         for (const hideApiKey of [true, false]) {
             const target = mountPage(hideApiKey)
             seedClaudeKey('${OPENAI_KEY}')
-            flushSync()
-            const shown = keyInputs(target, false).filter((row) => row.value === '${OPENAI_KEY}')
-            expect(shown).toHaveLength(1)
+            await flush()
+            expect(field(target).querySelector('[data-slot-key="chip"]')?.textContent).toContain('${OPENAI_KEY}')
+            expect(keyInputs(target)).toHaveLength(0)
         }
     })
 
-    test('BK3 three keys in one insertion end as three rows', () => {
+    test('BK3 three keys in one insertion end as three rows', async () => {
         const target = mountPage(true)
         settle(keyInputs(target)[0], 'sk-test-A sk-test-B sk-test-C')
-        expect(claudeKey()).toBe('sk-test-A\nsk-test-B\nsk-test-C')
         expect(keyInputs(target)).toHaveLength(4)
+        await save(target)
+        expect(claudeKey()).toBe('sk-test-A\nsk-test-B\nsk-test-C')
     })
 
-    test('BK4 compatibility guard (passes before and after): a single key keeps its spaces', () => {
+    test('BK4 compatibility guard (passes before and after): a single key keeps its spaces', async () => {
         const target = mountPage(true)
         settle(keyInputs(target)[0], ' sk-test-A ')
+        await save(target)
         expect(claudeKey()).toBe(' sk-test-A ')
     })
 
-    test('BK5 compatibility guard (passes before and after): focus and blur leave a saved spaced value alone', () => {
+    test('BK5 the saved key never reaches a field, and opening Replace key then leaving it changes nothing', async () => {
         const target = mountPage(true)
         seedClaudeKey('pass word')
-        flushSync()
+        await flush()
+        expect(keyInputs(target)).toHaveLength(0)
+        expect(field(target).innerHTML).not.toContain('pass word')
+        await openReplace(target)
         const node = keyInputs(target)[0]
+        expect(node.value).toBe('')
         node.focus()
         node.dispatchEvent(new FocusEvent('focusout'))
         flushSync()
         expect(claudeKey()).toBe('pass word')
-        expect(node.value).toBe('pass word')
     })
 })

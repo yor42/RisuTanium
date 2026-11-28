@@ -9,28 +9,26 @@
     import { DBState } from "src/ts/stores.svelte"
     import { alertError } from "src/ts/alert";
     import ServiceConnectionRow from "src/lib/SettingsShell/connections/ServiceConnectionRow.svelte";
-    import { serviceEditorValue, serviceKeyForUi, setServiceKey } from "src/ts/connections/serviceKeys";
+    import SlotKeyField from "src/lib/SettingsShell/connections/SlotKeyField.svelte";
+    import { serviceKeyForUi } from "src/ts/connections/serviceKeys";
 
     let query = $state("");
     // Starts on the user's own embedding model; the default only fills an unset or empty one.
     let model = $state<string>(DBState.db.hypaModel || DEFAULT_HYPA_MODEL);
-    // The OpenAI key and custom URL are this page's own copies, seeded once from the
-    // memory settings; editing them never writes the settings.
-    let openAIKey = $state(serviceKeyForUi('supaMemoryKey', DBState.db));
+    // The custom URL is this page's own copy, seeded once from the memory settings; editing it
+    // never writes the settings. The OpenAI key is never shown: the field starts empty and a
+    // typed key applies to this page's runs only; blank runs with the saved key.
+    let openAIKey = $state('');
     let customEmbeddingUrl = $state(DBState.db.hypaCustomSettings?.url ?? "");
     let data:string[] = $state([]);
     let dataresult:[string, number][] = $state([]);
     let running = $state(false);
     const uid = $props.id();
 
-    // HypaProcesser falls back to the saved value when given a blank one, so a blank
-    // local field must stop the run rather than silently use the saved value.
+    // A blank custom URL stops the run rather than silently using the saved URL.
     const missingFieldMessage = (): string | null => {
         if(model === 'custom' && !customEmbeddingUrl.trim()) {
             return language.playground.embeddingUrlMissing;
-        }
-        if((model === 'openai3small' || model === 'openai3large' || model === 'ada') && !openAIKey.trim()) {
-            return language.playground.embeddingOpenAIKeyMissing;
         }
         return null;
     }
@@ -45,7 +43,7 @@
         running = true;
         try {
             const processer = new HypaProcesser(model as any, customEmbeddingUrl);
-            processer.oaikey = openAIKey;
+            processer.oaikey = openAIKey.trim() || serviceKeyForUi('supaMemoryKey', DBState.db);
             await processer.addText(data);
             console.log(processer.vectors)
             dataresult = await processer.similaritySearchScored(query);
@@ -84,14 +82,14 @@
 
 {#if model === 'openai3small' || model === 'openai3large' || model === 'ada'}
     <span id="{uid}-openai-key" class="text-textcolor text-lg">OpenAI API Key</span>
-    <TextInput labelId="{uid}-openai-key" size="sm" marginBottom bind:value={openAIKey}/>
+    <TextInput labelId="{uid}-openai-key" size="sm" marginBottom hideText bind:value={openAIKey}/>
 {/if}
 
 {#if model === "custom"}
     <span id="{uid}-url" class="text-textcolor text-lg">URL</span>
     <TextInput labelId="{uid}-url" size="sm" marginBottom bind:value={customEmbeddingUrl}/>
     <span id="{uid}-proxy-key" class="text-textcolor text-lg">{language.proxyAPIKey}</span>
-    <TextInput labelId="{uid}-proxy-key" size="sm" marginBottom bind:value={() => serviceEditorValue(DBState.db, 'hypaCustomSettings.key'), (v) => { void setServiceKey(DBState.db, 'hypaCustomSettings.key', v) }}/>
+    <SlotKeyField keySlot={'hypaCustomSettings.key'} labelId="{uid}-proxy-key" marginBottom />
     <ServiceConnectionRow service="hypaCustomSettings.key" />
     <span id="{uid}-request-model" class="text-textcolor text-lg">{language.playground.requestModel}</span>
     <TextInput labelId="{uid}-request-model" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.model}/>

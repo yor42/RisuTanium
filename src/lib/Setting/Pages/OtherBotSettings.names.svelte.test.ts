@@ -87,7 +87,16 @@ vi.mock('src/ts/gui/highlight', () => ({
 vi.mock('src/ts/hotkey', () => ({
     hotkeyMatches: vi.fn(() => false),
 }))
-vi.mock('src/lib/UI/GUI/KeyListInput.svelte', () => ({ default: () => {} }))
+// The open Replace key field: one masked input named by the label the page passes, as the real list's first row.
+vi.mock('src/lib/UI/GUI/KeyListInput.svelte', () => ({
+    default: (anchor: Comment, props: { labelId?: string }) => {
+        const input = document.createElement('input')
+        input.type = 'password'
+        input.setAttribute('aria-labelledby', props.labelId ?? '')
+        input.setAttribute('aria-describedby', props.labelId ?? '')
+        anchor.before(input)
+    },
+}))
 vi.mock('src/lib/UI/GUI/SliderInput.svelte', () => ({ default: () => {} }))
 
 import { language } from 'src/lang'
@@ -174,6 +183,7 @@ function fieldNames(target: HTMLElement): string[] {
 const SPEECH_FIELDS = [
     fillLang(language.settingsPage.nameApiKeyLower, { name: 'ElevenLabs' }),
     fillLang(language.settingsPage.nameUrl, { name: 'VOICEVOX' }),
+    fillLang(language.settingsPage.nameKey, { name: 'OpenAI' }),
     fillLang(language.settingsPage.nameApiKeyLower, { name: 'NovelAI' }),
     fillLang(language.settingsPage.nameKey, { name: 'Huggingface' }),
     fillLang(language.settingsPage.nameApiKey, { name: 'fish-speech' }),

@@ -93,7 +93,7 @@ async function show(component: Parameters<typeof mount>[0], settle = false): Pro
     return target
 }
 
-const FIELDS = 'input[type="text"], input:not([type]), textarea, [role="textbox"]'
+const FIELDS = 'input[type="text"], input[type="password"], input:not([type]), textarea, [role="textbox"]'
 const fields = (target: HTMLElement) => [...target.querySelectorAll<HTMLElement>(FIELDS)]
 
 /** The field's name, and whether its description starts with the label element that names it. */
@@ -142,6 +142,7 @@ describe('Playground field names', () => {
         h.db.hypaModel = 'custom'
         const target = await show(PlaygroundEmbedding)
         expect(fields(target).map(named)).toEqual(['URL', language.proxyAPIKey, language.playground.requestModel, language.playground.query])
+        expect(target.querySelector('[data-slot="hypaCustomSettings.key"] input')?.getAttribute('type')).toBe('password')
         expect(unnamedControls(target, { fields: true })).toEqual([])
     })
 
