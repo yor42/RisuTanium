@@ -31,7 +31,8 @@ export const SHAPE_PROPERTY: readonly RegExp[] = [
  *
  * Consumer rule: an app rule may use a listed token inside `box-shadow`, `background*`, a `border` or `outline` shorthand or
  * any other paint property only when the same value already names its colour explicitly. Otherwise the token comes off this
- * list. Without that, a pack value in a listed token could add a colour while shape mode claims to be paint-free.
+ * list. Without that, a pack value in a listed token could add a colour while shape mode claims to be paint-free (H-7a in
+ * docs/design/THEMING.md).
  */
 export const SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set([
     '--bubble-max-width', '--bubble-pad-end', '--bubble-pad-start', '--bubble-pad-y', '--chat-message-font', '--cl-spacer-display',

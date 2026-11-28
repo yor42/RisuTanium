@@ -1,4 +1,5 @@
 <script lang="ts">
+    import '../../styles/settings-tokens.css'
     import { onDestroy, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { get } from 'svelte/store'

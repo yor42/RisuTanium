@@ -17,13 +17,14 @@ import type { SchemeTone } from '../gui/surfaceTone'
 import type { BuiltinPack } from './builtins'
 import { readBundledArchive } from './bundledArchive'
 import type { ResourceSpan } from './canonical'
+import { COLOUR_AREA_SPECS } from './colourAreas'
 import { COLOUR_READY_AREAS } from './colourReady'
 import { decls } from './csslit'
 import { fallbackTail } from './effectsFallback'
 import type { AreaSheetJudgement } from './index'
-import { intakePack, readVerifiedFile, type IntakeRefusal, type ScreenArea, type VerifiedPack } from './intake'
+import { intakePack, readVerifiedFile, SCREEN_AREAS, type IntakeRefusal, type ScreenArea, type VerifiedPack } from './intake'
 import { readJudgement, type JudgeJob, type JudgeResults, type JudgeSession } from './judgeClient'
-import { LIGHT_BASE_JUDGE_PREFIX, wantsLightBase } from './lightBase'
+import { wantsLightBase } from './lightBase'
 import { triggersOwnColours } from './ownColours.svelte'
 import { packDefaultScheme } from './packColours'
 import { PACK_ARCHIVE_KEY } from './packRefs'
@@ -46,7 +47,7 @@ export interface PreparedElement {
     readonly base: SchemeTone | null
 }
 /**
- * The popups sheet's two applied texts. `colourText` exists only when the chat element has text (the one colour-ready screen);
+ * The popups sheet's two applied texts. `colourText` exists only when a colour-ready screen's element has text;
  * `shapeText` is the judged shape variant. Each is on only over a screen that applies something in the matching variant.
  */
 export interface PreparedPopups {
@@ -54,7 +55,7 @@ export interface PreparedPopups {
     readonly shapeText: string | null
 }
 /**
- * `elements` holds every screen's applied text; `defaultScheme` comes from the chat sheet alone. `ownColourTrigger` is
+ * `elements` holds every screen's applied text; `defaultScheme` comes from the area whose spec says so (chat) alone. `ownColourTrigger` is
  * present, and true, only when a judged sheet carries a contrast or readability warning; absent means no trigger. `popups`
  * never sets it and never makes a pack show anything on its own.
  */
@@ -129,33 +130,24 @@ function textOrNull(text: string): string | null {
     return /^\s*$/.test(text) ? null : text
 }
 
-const LIGHT_LABEL = 'chat#light'
-const SHAPE_LABEL = 'chat#shape'
+const lightLabel = (area: ScreenArea): string => `${area}#light`
+const shapeLabel = (area: ScreenArea): string => `${area}#shape`
 
-/** The applied areas whose element carries only the judged shape variant, with no base, in both modes (not colour-ready). */
-type ShapeOnlyArea = Exclude<ScreenArea, 'chat'>
-const SHAPE_ONLY_AREAS: readonly ShapeOnlyArea[] = ['studio', 'settings', 'home']
-/** The shape-only areas whose judgement can switch the own colours on; Home's notes are shown but never trigger. */
-const OWN_COLOUR_SHAPE_AREAS: readonly ShapeOnlyArea[] = ['studio', 'settings']
-const shapeOnlyLabel = (area: ShapeOnlyArea): string => `${area}#shape`
+/** True for an area whose judged colour text applies, with its base (COLOUR_READY_AREAS, read at call time). */
+const isReady = (area: ScreenArea): boolean => COLOUR_READY_AREAS.has(area)
 
 /**
- * The text shape mode would judge, or null when it is not judged: a sheet the allowlist leaves whole applies as it is, and
- * one it leaves empty applies nothing.
+ * The text shape mode would judge for an area's sheet, or null when it is not judged: a sheet the area's allowlist leaves whole
+ * applies as it is, and one it leaves empty applies nothing.
  */
-function shapeJobText(chat: AreaSheetJudgement): string | null {
-    const shapeSource = shapeOnlySheet(chat.canonical)
-    return shapeSource === chat.canonical || /^\s*$/.test(shapeSource) ? null : shapeSource
-}
-
-/** The same for a shape-only area's sheet, over that area's own shape token list. */
-function shapeOnlyJobText(area: ShapeOnlyArea, sheet: AreaSheetJudgement): string | null {
+function shapeJobText(area: ScreenArea, sheet: AreaSheetJudgement): string | null {
     const shapeSource = shapeOnlySheet(sheet.canonical, shapeTokenNames(area))
     return shapeSource === sheet.canonical || /^\s*$/.test(shapeSource) ? null : shapeSource
 }
 
-type ShapeOnlySheets = Readonly<Record<ShapeOnlyArea, AreaSheetJudgement | null>>
-const NO_SHAPE_ONLY_SHEETS: ShapeOnlySheets = { studio: null, settings: null, home: null }
+/** One judgement slot per screen area; null where the pack has no such sheet or no verdict came back. */
+type AreaSheets = Readonly<Record<ScreenArea, AreaSheetJudgement | null>>
+const NO_SHEETS: AreaSheets = { chat: null, studio: null, settings: null, home: null }
 
 const POPUPS_SHAPE_LABEL = 'popups#shape'
 
@@ -175,35 +167,34 @@ function isThemedText(text: string): boolean {
 }
 
 interface Variants {
-    light: AreaSheetJudgement | null
-    shape: AreaSheetJudgement | null
-    /** The shape judgement of each shape-only area whose allowlisted subset differs from its canonical text. */
-    shapeOnly: ShapeOnlySheets
+    /** The light base proof of each colour-ready area that has a proof prefix, when the pack is labelled light. */
+    light: AreaSheets
+    /** The shape judgement of each area whose allowlisted subset differs from its canonical text. */
+    shape: AreaSheets
     /** The shape judgement of the popups sheet, when its allowlisted subset differs from its canonical text. */
     popupsShape: AreaSheetJudgement | null
 }
 
 /**
- * Judges the variants in one request: the chat light base proof, when the pack is labelled light and has a chat sheet, the
- * chat shape subset, and the shape subset of each shape-only area, each when there is one to judge. A rejected request, like a missing or
- * refused verdict, is fail-closed: the dark base and no shape text. `null` verdicts are what the callers read as that.
+ * Judges the variants in one request, in screen order: for each area with a sheet, the light base proof (a colour-ready area
+ * with a proof prefix, when the pack is labelled light) and the shape subset, each when there is one to judge; then the popups
+ * shape subset. A rejected request, like a missing or refused verdict, is fail-closed: the dark base and no shape text. `null`
+ * verdicts are what the callers read as that.
  */
-async function judgeVariants(modes: readonly string[], chat: AreaSheetJudgement | null, sheets: ShapeOnlySheets, popups: AreaSheetJudgement | null, session: JudgeSession, isCurrent: () => boolean): Promise<Variants | Stale> {
+async function judgeVariants(modes: readonly string[], sheets: AreaSheets, popups: AreaSheetJudgement | null, session: JudgeSession, isCurrent: () => boolean): Promise<Variants | Stale> {
     const jobs: JudgeJob[] = []
-    if (chat !== null) {
-        if (wantsLightBase(modes)) {
-            jobs.push({ label: LIGHT_LABEL, area: 'chat', text: `${LIGHT_BASE_JUDGE_PREFIX}\n${chat.canonical}` })
-        }
-        const shapeSource = shapeJobText(chat)
-        if (shapeSource !== null) {
-            jobs.push({ label: SHAPE_LABEL, area: 'chat', text: shapeSource })
-        }
-    }
-    for (const area of SHAPE_ONLY_AREAS) {
+    for (const area of SCREEN_AREAS) {
         const sheet = sheets[area]
-        const source = sheet === null ? null : shapeOnlyJobText(area, sheet)
-        if (source !== null) {
-            jobs.push({ label: shapeOnlyLabel(area), area, text: source })
+        if (sheet === null) {
+            continue
+        }
+        const prefix = COLOUR_AREA_SPECS[area].lightProofPrefix
+        if (isReady(area) && prefix !== null && wantsLightBase(modes)) {
+            jobs.push({ label: lightLabel(area), area, text: `${prefix}\n${sheet.canonical}` })
+        }
+        const shapeSource = shapeJobText(area, sheet)
+        if (shapeSource !== null) {
+            jobs.push({ label: shapeLabel(area), area, text: shapeSource })
         }
     }
     const popupsSource = popups === null ? null : popupsShapeJobText(popups)
@@ -211,7 +202,7 @@ async function judgeVariants(modes: readonly string[], chat: AreaSheetJudgement 
         jobs.push({ label: POPUPS_SHAPE_LABEL, area: 'popups', text: popupsSource })
     }
     if (jobs.length === 0) {
-        return { light: null, shape: null, shapeOnly: NO_SHAPE_ONLY_SHEETS, popupsShape: null }
+        return { light: NO_SHEETS, shape: NO_SHEETS, popupsShape: null }
     }
     let results: JudgeResults | null = null
     try {
@@ -225,7 +216,8 @@ async function judgeVariants(modes: readonly string[], chat: AreaSheetJudgement 
         return STALE
     }
     const verdictOf = (label: string): AreaSheetJudgement | null => results !== null && Object.hasOwn(results, label) ? results[label] : null
-    return { light: verdictOf(LIGHT_LABEL), shape: verdictOf(SHAPE_LABEL), shapeOnly: { studio: verdictOf(shapeOnlyLabel('studio')), settings: verdictOf(shapeOnlyLabel('settings')), home: verdictOf(shapeOnlyLabel('home')) }, popupsShape: verdictOf(POPUPS_SHAPE_LABEL) }
+    const verdictsOf = (label: (area: ScreenArea) => string): AreaSheets => ({ chat: verdictOf(label('chat')), studio: verdictOf(label('studio')), settings: verdictOf(label('settings')), home: verdictOf(label('home')) })
+    return { light: verdictsOf(lightLabel), shape: verdictsOf(shapeLabel), popupsShape: verdictOf(POPUPS_SHAPE_LABEL) }
 }
 
 /**
@@ -249,9 +241,9 @@ function judgementTriggers(judged: AreaSheetJudgement | null): boolean {
  * (with the same blob substitution) is what applies, so judged is applied for this variant too. A refused or unanswered
  * judgement, or a span naming a target with no minted URL, gives null: shape mode then applies no sheet.
  */
-function prepareShapeText(chat: AreaSheetJudgement, text: string, urlOfTarget: (raw: string) => string | undefined, shape: AreaSheetJudgement | null): string | null {
-    const shapeSource = shapeOnlySheet(chat.canonical)
-    if (shapeSource === chat.canonical) {
+function prepareShapeText(area: ScreenArea, sheet: AreaSheetJudgement, text: string, urlOfTarget: (raw: string) => string | undefined, shape: AreaSheetJudgement | null): string | null {
+    const shapeSource = shapeOnlySheet(sheet.canonical, shapeTokenNames(area))
+    if (shapeSource === sheet.canonical) {
         return textOrNull(text)
     }
     if (/^\s*$/.test(shapeSource)) {
@@ -280,7 +272,7 @@ function prepareShapeText(chat: AreaSheetJudgement, text: string, urlOfTarget: (
 }
 
 /**
- * The text of a non-colour-ready area's element: the judgement the shape variant stands for (the whole sheet when the allowlist
+ * The text of a not-colour-ready area's element: the judgement the shape variant stands for (the whole sheet when the allowlist
  * leaves it whole, else the shape judgement), with each resource span replaced by its blob URL. A refused or unanswered
  * judgement, a span with no minted URL, or a text with no declaration left (only emptied blocks) gives null: no element.
  */
@@ -433,33 +425,42 @@ async function prepareVerified(stored: Uint8Array, session: JudgeSession, isCurr
     }
 
     const pack = intake.pack
-    const chat = pack.sheets.chat ?? null
-    const sheets: ShapeOnlySheets = { studio: pack.sheets.studio ?? null, settings: pack.sheets.settings ?? null, home: pack.sheets.home ?? null }
+    const sheets: AreaSheets = { chat: pack.sheets.chat ?? null, studio: pack.sheets.studio ?? null, settings: pack.sheets.settings ?? null, home: pack.sheets.home ?? null }
     const urlOfRaw = new Map<string, string>()
-    // Order: the chat resources, then one request for every variant, then the resources only a shape-only area's shape variant names.
-    // Minting for such an area follows its judgement, so an image only its colour declarations name is never minted.
-    if (chat !== null) {
-        const outcome = await mintMissing(source, pack, chat.resources, urlOfRaw, minted, isCurrent)
-        if (outcome !== null) {
-            return outcome
+    // Order: the resources of every colour-ready area's sheet, then one request for every variant, then the resources only a
+    // not-colour-ready area's shape variant names. Minting for such an area follows its judgement, so an image only its colour
+    // declarations name is never minted.
+    const readyText: Partial<Record<ScreenArea, string>> = {}
+    for (const area of SCREEN_AREAS) {
+        const sheet = sheets[area]
+        if (sheet !== null && isReady(area)) {
+            const outcome = await mintMissing(source, pack, sheet.resources, urlOfRaw, minted, isCurrent)
+            if (outcome !== null) {
+                return outcome
+            }
         }
     }
-    const chatText = chat === null ? null : buildAppliedText(chat, (raw) => urlOfRaw.get(raw) ?? '')
+    for (const area of SCREEN_AREAS) {
+        const sheet = sheets[area]
+        if (sheet !== null && isReady(area)) {
+            readyText[area] = buildAppliedText(sheet, (raw) => urlOfRaw.get(raw) ?? '')
+        }
+    }
     const popupsSheet = pack.sheets.popups ?? null
-    const variants = await judgeVariants(pack.manifest.modes, chat, sheets, popupsSheet, session, isCurrent)
+    const variants = await judgeVariants(pack.manifest.modes, sheets, popupsSheet, session, isCurrent)
     if ('stale' in variants) {
         return variants
     }
-    const shapeJudged: Record<ShapeOnlyArea, AreaSheetJudgement | null> = { studio: null, settings: null, home: null }
-    for (const area of SHAPE_ONLY_AREAS) {
+    const shapeJudged: Record<ScreenArea, AreaSheetJudgement | null> = { ...NO_SHEETS }
+    for (const area of SCREEN_AREAS) {
         const sheet = sheets[area]
-        if (sheet === null) {
+        if (sheet === null || isReady(area)) {
             continue
         }
         // A sheet the area's allowlist leaves whole is its own shape variant; one it leaves empty applies nothing.
-        const judged = shapeOnlyJobText(area, sheet) === null
+        const judged = shapeJobText(area, sheet) === null
             ? (/^\s*$/.test(shapeOnlySheet(sheet.canonical, shapeTokenNames(area))) ? null : sheet)
-            : variants.shapeOnly[area]
+            : variants.shape[area]
         shapeJudged[area] = judged
         if (judged?.result?.ok === true) {
             const outcome = await mintMissing(source, pack, judged.resources, urlOfRaw, minted, isCurrent)
@@ -468,7 +469,7 @@ async function prepareVerified(stored: Uint8Array, session: JudgeSession, isCurr
             }
         }
     }
-    // Popups colours can paint only over a chat element that has text; its shape variant follows its own judgement. Minting
+    // Popups colours can paint only over a colour-ready area's element that has text; its shape variant follows its own judgement. Minting
     // follows the texts that will exist, so an image only a withheld variant names is never minted.
     let popupsShapeJudged: AreaSheetJudgement | null = null
     let popupsColourJudged: AreaSheetJudgement | null = null
@@ -476,7 +477,7 @@ async function prepareVerified(stored: Uint8Array, session: JudgeSession, isCurr
         popupsShapeJudged = popupsShapeJobText(popupsSheet) === null
             ? (/^\s*$/.test(shapeOnlySheet(popupsSheet.canonical, shapeTokenNames('popups'))) ? null : popupsSheet)
             : variants.popupsShape
-        popupsColourJudged = chatText !== null && textOrNull(chatText) !== null ? popupsSheet : null
+        popupsColourJudged = SCREEN_AREAS.some((area) => isReady(area) && textOrNull(readyText[area] ?? '') !== null) ? popupsSheet : null
         for (const judged of [popupsColourJudged, popupsShapeJudged]) {
             if (judged?.result?.ok === true) {
                 const outcome = await mintMissing(source, pack, judged.resources, urlOfRaw, minted, isCurrent)
@@ -488,18 +489,28 @@ async function prepareVerified(stored: Uint8Array, session: JudgeSession, isCurr
     }
     const elements: PreparedElement[] = []
     let defaultScheme: ColorScheme | null = null
-    // A shape-only sheet paints no colour, but its own judgement still counts, as Studio's always has.
-    let ownColourTrigger = OWN_COLOUR_SHAPE_AREAS.some((area) => judgementTriggers(sheets[area]))
-    if (chat !== null && chatText !== null) {
-        const base = baseOf(variants.light)
-        // The colours painted come from the light variant when the pack's light base applies, else from the chat sheet.
-        ownColourTrigger = judgementTriggers(base === 'light' ? variants.light : chat) || ownColourTrigger
-        defaultScheme = packDefaultScheme(chat.canonical, base)
-        elements.push({ area: 'chat', text: textOrNull(chatText), shapeText: prepareShapeText(chat, chatText, (raw) => urlOfRaw.get(raw), variants.shape), base })
-    }
-    // Studio, Settings and Home are not colour-ready: each element carries only its shape text and no base, in both modes.
-    for (const area of SHAPE_ONLY_AREAS) {
-        const areaText = prepareShapeOnlyText(shapeJudged[area], (raw) => urlOfRaw.get(raw))
+    // A not-colour-ready sheet paints no colour, but its own judgement still counts for the areas whose spec says so.
+    let ownColourTrigger = SCREEN_AREAS.some((area) => !isReady(area) && COLOUR_AREA_SPECS[area].triggersOwnColours && judgementTriggers(sheets[area]))
+    for (const area of SCREEN_AREAS) {
+        const sheet = sheets[area]
+        const text = readyText[area]
+        if (sheet !== null && text !== undefined) {
+            // A colour-ready area: its colour variant with its base, and its shape variant. Only an area with a light proof
+            // prefix can sit on the light base; the others always sit on the dark base.
+            const spec = COLOUR_AREA_SPECS[area]
+            const base: SchemeTone = spec.lightProofPrefix === null ? 'dark' : baseOf(variants.light[area])
+            // The colours painted come from the light variant when the pack's light base applies, else from the area's sheet.
+            if (spec.triggersOwnColours && judgementTriggers(base === 'light' ? variants.light[area] : sheet)) {
+                ownColourTrigger = true
+            }
+            if (spec.defaultScheme) {
+                defaultScheme = packDefaultScheme(sheet.canonical, base)
+            }
+            elements.push({ area, text: textOrNull(text), shapeText: prepareShapeText(area, sheet, text, (raw) => urlOfRaw.get(raw), variants.shape[area]), base })
+            continue
+        }
+        // Any other area carries only its shape text and no base, in both modes.
+        const areaText = isReady(area) ? null : prepareShapeOnlyText(shapeJudged[area], (raw) => urlOfRaw.get(raw))
         if (areaText !== null) {
             elements.push({ area, text: areaText, shapeText: areaText, base: null })
         }

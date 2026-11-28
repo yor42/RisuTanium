@@ -103,3 +103,18 @@ On every part of the reach tier (item 4 of the install rule above: the chat part
 - **Fill:** `background`, `background-color` and `background-image`.
 
 This holds for every value, keywords such as `inherit`, `unset`, `transparent` and `none` included, and in every `@media` block and state. Write `color: #191919 !important`, not `color: #191919`. An `!important` colour is then judged like any other, so it still needs its contrast against the fill it sits on. Other properties on these parts, and colours on every other part, take plain declarations.
+
+## Colour-consumption contract (H-7)
+
+The rules an area meets before its judged colour text may apply (`COLOUR_READY_AREAS` in `src/ts/themePack/colourReady.ts`). Until then an area applies only its judged shape variant, with no base. How a listed area is judged and painted is its row in `src/ts/themePack/colourAreas.ts`.
+
+- **H-7.1 Role tokens.** The area's role tokens live in `src/styles`. A colour role aliases a scheme role (MC-4702), and a drift test checks the alias.
+- **H-7.2 No scheme class.** No rule of the area selects on a scheme class in a painted position. A scan test enforces it.
+- **H-7.3 Base block.** The area ships `<area>-pack-base.css`, selected by `:root:where([data-theme-pack-base][data-theme-pack-area="<area>"])`, and a light twin only when the area has a light proof prefix. The specificity equals `:root`, so source order decides: the block beats the scheme mapping, and a pack's own `:root` still wins because its style element is in the body, after the app's head stylesheets, at equal specificity. The chat base blocks are presence-only and match under any ready area. A later area base block that overrides a name the chat blocks also set must be imported after `chat-pack-base.css`; the shell imports it right after its token file, and a CascadeModel row proves the order semantics.
+- **H-7.4 Recovery.** Studio and Home turn the pack off (MC-4703); Settings keeps its own-scheme island.
+- **H-7.5 Escape route.** The way back out of the area stays legible with the pack colours on.
+- **H-7.6 Rows due at join.** The `colourReady` row; `<area>CriticalClosure` and `escapeWalk.<area>`; `sharedTokenConsumers`, `appImportantPaint` and `cascadeRules`; base-file parity; a shell CSS import pin (as in `cascadeModel.test.ts`); the R rows of the apply tests.
+- **H-7.7 Timing.** The user-visible change lands in the PR that adds the area to the ready set, not before (MC-4707).
+- **H-7.8 Light base.** A light base exists only with a mirrored proof prefix that includes every `chat-light-base.css` declaration, because the value `light` activates those blocks. Readers of the base attribute alone are `chat-pack-base.css`, `chat-light-base.css`, and the shared `nexus-tokens.css` and `pattern-tokens.css` blocks, plus `ChatScreen.svelte`, `ChatShell.svelte` and `ShellMessage.svelte` (`:root[data-theme-pack-base]` rules, scoped to the chat DOM), and `--surface-pack-backdrop` stays chat-owned.
+- **H-7.9 Popups.** Popups colour applies only over a ready area whose element has text. The apply core and the install flow's held-colours notice use the same rule.
+- **H-7a Shape-list consumer rule.** An app rule may use a token on an area's shape list inside a paint property only when the same value already names its colour explicitly. Otherwise the token comes off the list (`shapeMode.ts`).
