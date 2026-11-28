@@ -97,7 +97,7 @@ Status 2026-11-24 (#438, MC-4162). Every statement was read from `src/ts/themePa
 
 ## Colours that need !important
 
-On every part of the reach tier (item 4 of the install rule above: the chat parts in `REACH_CHAT` and the Studio parts in `STUDIO_REACH`), a text colour or a fill must be written with `!important`. The app's own styles for these controls can outrank a plain pack rule. The app's install check refuses a plain one and asks for `!important` (the reference lint does not apply this rule):
+On every part of the reach tier (item 4 of the install rule above: the chat parts in `REACH_CHAT` and the Studio parts in `STUDIO_REACH`), write a text colour or a fill with `!important`. The app's own styles for these controls can outrank a plain pack rule. Neither the install check nor the reference lint refuses a plain one: it is accepted, but it may not paint, and it adds no contrast pair to judge (MC-2314; the refusal of MC-2370 was removed with the permissive validator, #560):
 
 - **Text colour:** `color`.
 - **Fill:** `background`, `background-color` and `background-image`.

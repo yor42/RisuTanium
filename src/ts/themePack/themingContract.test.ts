@@ -5,6 +5,7 @@
  * block only when it is imported after it).
  */
 import { afterEach, describe, expect, test } from 'vitest'
+import { judgePackSheets } from './index'
 import { CascadeModel, compileRules, readRepoFile as read } from '../../styles/tests/cascadeModel'
 
 const THEMING = read('docs/design/THEMING.md')
@@ -65,5 +66,21 @@ describe('area base block ordering (H-7.3)', () => {
 
     test('an inactive area never matches', () => {
         expect(valueWith(['chat', 'home'], null)).toBe('#000')
+    })
+})
+
+describe('plain colour and fill on a reach part (D4 of #654)',()=>{
+    const PLAIN = { chat: '[data-part="chat-send"] { background: #fee500; color: #191919; }', studio: '[data-part="studio-tree-row"][data-selected] { background: #ffe14d; color: #3b2a20; }' } as const
+
+    test('the install judge accepts a plain colour and fill on a reach part (guard)', () => {
+        for (const area of ['chat', 'studio'] as const) {
+            const judged = judgePackSheets({ [area]: PLAIN[area] }).areas[area]
+            expect(judged?.result.errors, area).toEqual([])
+        }
+    })
+
+    test('THEMING.md does not say the install check refuses a plain colour or fill (REPRO)', () => {
+        expect(THEMING).not.toMatch(/install check refuses a plain/)
+        expect(THEMING).toMatch(/plain (?:colour|one)[^.]*(?:accepted|is not refused)/i)
     })
 })
