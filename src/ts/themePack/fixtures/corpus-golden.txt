@@ -120,10 +120,10 @@
 "home-hostile on Navy: C7" 67281bce6ba7bb64 chat:c3cebfdc7f71c9ad settings:cd80ec8e5168a2d3 studio:a1b8d6437f3149ef home:2411de2e73130c4b
 "home-hostile: C8" 079d445ab24ee949 chat:397970c0434ae54c settings:397970c0434ae54c studio:61f4719667b00c94 home:397970c0434ae54c
 "home-hostile on Navy: C8" 2788db4500827415 chat:4321cfb459ec39a1 settings:4321cfb459ec39a1 studio:9f6a46deb13718bd home:4321cfb459ec39a1
-"home-hostile: R1" e10e65413ab99885 chat:25a9e7d9db4a6f33 settings:25a9e7d9db4a6f33 studio:25a9e7d9db4a6f33 home:5b547d66b26f04f5
-"home-hostile on Navy: R1" eaddbe5a127909f9 chat:458a3615af65b7cb settings:458a3615af65b7cb studio:b774a421a89ef7f4 home:2dec83bf0d063e84
-"home-hostile: R2" cea318858f725c74 chat:f90dcc3392b3e550 settings:f90dcc3392b3e550 studio:f90dcc3392b3e550 home:fd6cc0cb1cdfbaa0
-"home-hostile on Navy: R2" 569a6e1af787a2b2 chat:05bcf91c3a478076 settings:05bcf91c3a478076 studio:03b33a22047382a8 home:042887e9c5562328
+"home-hostile: R1" e10e65413ab99885 chat:25a9e7d9db4a6f33 settings:25a9e7d9db4a6f33 studio:25a9e7d9db4a6f33 home:903ce2d8ac05ade6
+"home-hostile on Navy: R1" eaddbe5a127909f9 chat:458a3615af65b7cb settings:458a3615af65b7cb studio:b774a421a89ef7f4 home:d6f5450cffd57912
+"home-hostile: R2" cea318858f725c74 chat:f90dcc3392b3e550 settings:f90dcc3392b3e550 studio:f90dcc3392b3e550 home:d6b0d1262f68d683
+"home-hostile on Navy: R2" 569a6e1af787a2b2 chat:05bcf91c3a478076 settings:05bcf91c3a478076 studio:03b33a22047382a8 home:17fd8fa771f7a05a
 "home-hostile: R3" 851ae8f7c9baeb6b chat:ab7dc6a539410d89 settings:ab7dc6a539410d89 studio:ab7dc6a539410d89 home:ab7dc6a539410d89
 "home-hostile on Navy: R3" 202c2718fb0c1e43 chat:741d3903891b610c settings:741d3903891b610c studio:09e002f8bf557a19 home:741d3903891b610c
 "home-hostile: R4" 956fd8eeae8c8353 chat:d62e8f0e53c17ce6 settings:d62e8f0e53c17ce6 studio:d62e8f0e53c17ce6 home:d62e8f0e53c17ce6
@@ -642,7 +642,7 @@
 "HOSTILE: H14 negative margin pulls the sheet away" ae5d725925991020 chat:844a65e67f910059 settings:844a65e67f910059 studio:844a65e67f910059 home:844a65e67f910059
 "HOSTILE: H15 a fixed width of zero on the sheet body" 48b4a6af05882de9 chat:17cf2e57663844c4 settings:d91c84cb1bd9f612 studio:8e9cfcbf29732df3 home:cfa8f8ac0538c928
 "HOSTILE: H16 pseudo-element" abb1c12abdecc3be chat:8fa93b405ac11f74 settings:61f0d6192aeda03f studio:46fbbe2f2cee2de2 home:9f4f2e51a4962399
-"HOSTILE: H17 @import of a stylesheet" cea318858f725c74 chat:0b3f9a74a0764563 settings:0b3f9a74a0764563 studio:0b3f9a74a0764563 home:5f58ecd3ce68bd0e
+"HOSTILE: H17 @import of a stylesheet" cea318858f725c74 chat:0b3f9a74a0764563 settings:0b3f9a74a0764563 studio:0b3f9a74a0764563 home:8e3250ce2918e927
 "HOSTILE_2: overlay by non-ancestor part (fixed, z-index)" 35cf78491231cf9b chat:692ed061776bbed3 settings:692ed061776bbed3 studio:692ed061776bbed3 home:692ed061776bbed3
 "HOSTILE_2: overlay by header" 4f8fbadda6ab9405 chat:17f27ed7f8492f13 settings:17f27ed7f8492f13 studio:17f27ed7f8492f13 home:17f27ed7f8492f13
 "HOSTILE_2: keyframes + animation on sheet" b7f95747ba492d6f chat:a0bea729583bdafd settings:a0bea729583bdafd studio:a0bea729583bdafd home:a0bea729583bdafd
@@ -835,13 +835,13 @@
 "studio reach: R14 data-kind=restore color/background close to bg" 0a0354fe33c22c04 chat:7b8a9a30dc7c1208 settings:2d444359c893da67 studio:7b8a9a30dc7c1208 home:2d444359c893da67
 "studio reach: R15 data-state=ask outline" cfaba86a44e197c6 chat:ae4b8286d588425b settings:fefb7fe66350ae14 studio:ae4b8286d588425b home:fefb7fe66350ae14
 "studio reach: R16 font-size 11 on sheet + width 50%" dc2394be54f3e950 chat:693b082a5edabbc6 settings:78808b48dae79838 studio:6acb705bd7e937fe home:fa2e1c1114cefeb8
-"resource forms: unquoted" 0907fbc38948bfbc chat:52c294e974b6b62d settings:6bff31724e413bc2 studio:84c2656b9c705d25 home:def31a5e3024f5b9
-"resource forms: unquoted with whitespace" 3df6189b8ff7f97d chat:6da8b17f4090944d settings:ec330b070f15a8d8 studio:24162196bd731676 home:d04e5083ee0fd4e0
-"resource forms: double quoted" 28a29f89ca3cf276 chat:0287b246f873bee0 settings:83c33ce1809e7f25 studio:c60351eadb449044 home:ba06afd36d89599c
-"resource forms: single quoted" 812c0d1053625d6c chat:823daedb9b3820b7 settings:c370814f227611c7 studio:d76f5a54a2e20820 home:27c1e60c22b34a9b
-"resource forms: quoted with whitespace" e996a34221bad575 chat:7ce41ce9f65fe27b settings:fef9674497892d7e studio:bd2e3251bd05dbb0 home:4cbfc71ebec88f5a
-"resource forms: image-set strings" 2c7dbcf3346e2ddf chat:56a74e242c73b03d settings:55eb058cede0d2b0 studio:57143e952f4ad2ba home:fcd3142a44ad4642
+"resource forms: unquoted" 0907fbc38948bfbc chat:52c294e974b6b62d settings:6bff31724e413bc2 studio:84c2656b9c705d25 home:b424bfd30584e651
+"resource forms: unquoted with whitespace" 3df6189b8ff7f97d chat:6da8b17f4090944d settings:ec330b070f15a8d8 studio:24162196bd731676 home:9005bf6b8ff213e5
+"resource forms: double quoted" 28a29f89ca3cf276 chat:0287b246f873bee0 settings:83c33ce1809e7f25 studio:c60351eadb449044 home:3f2fd28dc24bb03a
+"resource forms: single quoted" 812c0d1053625d6c chat:823daedb9b3820b7 settings:c370814f227611c7 studio:d76f5a54a2e20820 home:a40bfeef5bef242c
+"resource forms: quoted with whitespace" e996a34221bad575 chat:7ce41ce9f65fe27b settings:fef9674497892d7e studio:bd2e3251bd05dbb0 home:8693b16c8c93304e
+"resource forms: image-set strings" 2c7dbcf3346e2ddf chat:56a74e242c73b03d settings:55eb058cede0d2b0 studio:57143e952f4ad2ba home:7afbcbe4f311f8cd
 "resource forms: vendor image-set" a9fb23a6f14f85b7 chat:7e39592bd1509a6f settings:9e643581f9afe89f studio:4c02b5f9001d39df home:c1cf131849c055c6
-"resource forms: after a comment" 5098f795cceca215 chat:ea4f72220450276f settings:42dbe865538d5472 studio:53794bbe512ff4e5 home:666b03703b7e0fde
-"resource forms: font face sources" 0d7885809ea01656 chat:910877fdf99859bc settings:1a2c7bd10baa7a8d studio:7155281a6511324e home:97a058a72d10d91f
-"resource forms: remote and broken" bdd849c525037ce1 chat:7f6f1bc947b02561 settings:7f6f1bc947b02561 studio:7f6f1bc947b02561 home:bd0ebdaa93ffd2a9
+"resource forms: after a comment" 5098f795cceca215 chat:ea4f72220450276f settings:42dbe865538d5472 studio:53794bbe512ff4e5 home:da566846a0d8505d
+"resource forms: font face sources" 0d7885809ea01656 chat:910877fdf99859bc settings:1a2c7bd10baa7a8d studio:7155281a6511324e home:0fff18f05be8f488
+"resource forms: remote and broken" bdd849c525037ce1 chat:7f6f1bc947b02561 settings:7f6f1bc947b02561 studio:7f6f1bc947b02561 home:782f1990207f05c8

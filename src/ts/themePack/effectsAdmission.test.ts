@@ -190,8 +190,11 @@ describe('MK, CP, BI: mask, clip-path and border-image are admitted (MC-3422, MC
     it('BI4 chat REPRO a bundled border-image url installs', () => {
         expectOk('chat', `${sel('chat', 'S')}{border-image:url(images/edge.png) 8 round}`)
     })
-    it('BI4 home COMPAT a url in border-image stays refused in Home', () => {
-        expect(lintAreaPack('home', `${sel('home', 'S')}{border-image:url(images/edge.png) 8 round}`).ok).toBe(false)
+    it('BI4 home REPRO a bundled border-image url installs in Home as in chat', () => {
+        expectOk('home', `${sel('home', 'S')}{border-image:url(images/edge.png) 8 round}`)
+    })
+    it('BI4 home GUARD a remote border-image url stays refused in Home', () => {
+        expect(lintAreaPack('home', `${sel('home', 'S')}{border-image:url(https://example.invalid/edge.png) 8 round}`).ok).toBe(false)
     })
     it('MK GUARD kept global bans stay beside the new admissions', () => {
         for (const area of AREAS) {

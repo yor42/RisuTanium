@@ -3,7 +3,7 @@
 // (home/render.js, app.js, lib.js, home.css, home-tokens.css) and from home/checks/_census.out.txt (114 parts over 20 page states); lint-home.mjs re-verifies the part tiers in a real browser.
 //   node registry-home.mjs themes/origin-navy.css      -> OK / REJECTED, exit 1 on a rejection (the file path is relative to the cwd)
 // Imported as:  import { lintHome, HOME_REGISTRY } from './registry-home.mjs'
-// lintHome(css, name) = chat.lintPack(css, name, HOME_REGISTRY) plus homeSupplement(css): three gaps of the shared validator (resources, alias tokens, the primary button pair) that lint-home.mjs found; section 7 below.
+// lintHome(css, name) = chat.lintPack(css, name, HOME_REGISTRY) plus homeSupplement(css): three gaps of the shared validator (non-bundled resources, alias tokens, the primary button pair) that lint-home.mjs found; section 7 below.
 // Nothing in chat/, settings/ or studio/ is edited; the main session can lift the registry and the supplement into packlint.mjs when it integrates Home.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -163,7 +163,7 @@ export const HOME_REGISTRY = { fixedWidth: ['home-dialog'], chains: HOME_CHAINS,
 // ---- 7. SUPPLEMENT: three gaps that chat's validator leaves open, found while writing lint-home.mjs (each is a hostile case there). chat's validator is imported unchanged; these run next to it, and the main session
 // can lift them into packlint.mjs. lintHome(css, name) is chat.lintPack(css, name, HOME_REGISTRY) plus this pass (nothing it rejects is accepted here, nothing chat rejects is accepted by the supplement).
 //   a. url(), image-set(), src(): the shared lint checks url() on the reach tier only, so `[data-part="home-greeting"] { background-image: url(https://...) }` (safe tier) and `cursor: url()` (reach tier) pass. Packs
-//      carry no resources (THEMING: images and fonts are out of scope), so any of them anywhere is rejected.
+//      may carry bundled images and fonts (MC-1351, as in the other areas) but not a remote or non-bundled one, so any of those anywhere is rejected.
 //   b. alias tokens that a critical surface reads in place of the shared token the surfaces check judges: --home-dialog-bg (the sheet; a pack could make it transparent), --home-danger-edge, --home-danger-edge-strong,
 //      --home-warning-edge (the cue of the warning notes) and --home-danger-text. They are locked: a pack sets their sources (--color-surface-sheet, --nexus-danger-rgb, --home-warning-rgb) and the checks above judge those.
 //   c. --home-on-accent on --nexus-accent: the label of the primary button of every critical dialog is --home-on-accent on --nexus-accent. The surfaces list cannot express a token-on-token pair, so it is checked here (4.5:1).
@@ -176,7 +176,11 @@ const ratio = (a, b) => { const x = lum1(a), y = lum1(b); return (Math.max(x, y)
 export function homeSupplement(css) {
   const errs = []; const fail = (selector, prop, why, rule) => errs.push(rule ? { selector, prop, why, rule } : { selector, prop, why });
   const text = chat.normalise(css);
-  for (const m of text.matchAll(/(?<![\w-])(url|image-set|image|src|element)\s*\(/g)) fail('(stylesheet)', m[1] + '()', `${m[1]}() loads or draws a resource: a pack carries none (images and fonts are out of scope, THEMING.md)`);
+  // A bundled image or font is a relative path the archive carries (MC-1351, as in the other areas); a scheme or a host, and every form that draws another element or image, is refused.
+  for (const m of text.matchAll(/(?<![\w-])(url|image-set|image|src|element)\s*\(([^)]*)/g)) {
+    if ((m[1] === 'url' || m[1] === 'image-set') && !/[a-z][a-z0-9+.-]*:|\/\//i.test(m[2])) continue;
+    fail('(stylesheet)', m[1] + '()', `${m[1]}() loads or draws a resource from outside the pack: a pack may only point at its own bundled fonts and images (MC-1351)`);
+  }
   const T = new Map(APP_TOKENS); const own = []; for (const d of decls(text)) { if (!d.prop.startsWith('--')) continue; own.push(d); if (d.ctx.selector.trim() === ':root') T.set(d.prop, d.value.replace(/\s*!important\s*$/, '').trim()); }
   for (const d of own) if (LOCKED.includes(d.prop)) fail(d.ctx.selector.trim(), d.prop, `${d.prop} is locked: a critical surface reads it in place of the shared token that the surfaces check judges (set its source instead)`);
   const on = parseConcrete(solve(T.get('--home-on-accent') || '', T)), acc = parseConcrete(solve(T.get('--nexus-accent') || '', T));
