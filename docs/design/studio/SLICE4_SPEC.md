@@ -172,7 +172,7 @@ A sheet "샘플 이미지 고르기" (`studio-image-picker`, not critical) stand
 - **Imports** land in the open folder (the folder whose header or row holds focus when Add is pressed), else "No folder". If the imported name already has a folder and a row, that folder wins: "Added to {f} with the other rows named {x}".
 - **Bulk select** (`studio-asset-bulkbar`): "Select" shows checkboxes; select-all selects the visible rows only; "{n} selected". Actions: Move to folder, Delete, and Leave out of / Include in preview (only while the preview setting is on, and only for a character). The selection clears when the filter, owner or kind changes. Bulk delete is one step with one toast, "{n} assets deleted", with Undo, plus "{m} still used in text" with Show.
 - **Last picture of a name:** "Text using {name} now shows module {m}'s picture" appears only when the last character row of a name goes and an enabled module holds that name.
-- **Shared module id (MC-1207):** the module asset form is read-only (rows, folders, finder and merge show; every action is disabled) with "This module shares its id with another module; asset changes are off". It is editable as soon as one module holds the id.
+- **Shared module id (MC-1207, amended by #714):** the first holder is editable. A later copy of the id gets the read-only asset form (rows, folders, finder and merge show; every action is disabled) with the copy note and "Give this copy its own ID"; it is editable once it has its own id.
 
 ### 7.3a Duplicates
 
@@ -377,7 +377,7 @@ KO first. Terms follow chat slice 3 and Studio slice 3 (say "첫 메시지", nev
 | Filter, folders | No asset matches '{q}' / No folder / Move to folder / Moves {n} rows named {x} / A folder with this name exists / Folders from a newer version; not changed |
 | Rename, import | Joins folder {f} with the other rows named {y} / Added to {f} with the other rows named {x} |
 | Bulk, delete | Select / {n} selected / {n} assets deleted / {m} still used in text / Show / Text using {name} now shows module {m}'s picture / Loading module |
-| Refusals | Cannot keep undo right now / Open this character in one tab to remove assets / Open this module in one tab to remove assets / This module shares its id with another module; asset changes are off |
+| Refusals | Cannot keep undo right now / Open this character in one tab to remove assets / Open this module in one tab to remove assets (a later copy of a shared id shows the copy note instead) |
 | Duplicates | Same file / Possible duplicate / Size unknown, use Check bytes / Same file, different names / Same name, different file / File missing or unreadable / {k} files could not be read / Check bytes / {x} of {y} MB / Remove extras / Removed {n} extra copies of {name} / Older messages may show a different picture from this name |
 | Merge | Merge / Already shows {kept}; unchanged / Out of date / {n} chats still mention {old} / {k} archived chats not checked / {n} characters use this name; their text is not changed / {k} archived characters not checked / Not finished; at least {n} characters / These characters may show a lookalike picture: a missing name falls back to the closest name. / Merge anyway / Merged {old} into {kept} |
 | History | Deleted {name} / Deleted {n} assets / Renamed {old} to {new} / Moved {n} assets to {folder} / Renamed folder {a} to {b} / Deleted folder {a} / The file for {name} is gone, so this row was not restored / {j} places not restored |

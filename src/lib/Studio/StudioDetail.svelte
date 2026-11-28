@@ -7,12 +7,12 @@
     import { currentPresetAck } from '../../ts/studio/edit/presetAck.svelte'
     import { presetStateOf } from '../../ts/studio/edit/presetTarget'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
-    import { MODULE_LIST_KEY, applyStudioTarget, clearStudioSelection, followStudioPreset, openStudioModuleList, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { MODULE_LIST_KEY, applyStudioTarget, clearStudioSelection, followStudioPreset, openStudioModuleList, openStudioModuleOwner, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { moduleRowKeys } from '../Setting/Pages/Module/moduleListWindow'
     import { moduleListOf, moduleRefIdsOf } from '../../ts/process/moduleRefList'
     import { isModuleStub } from '../../ts/storage/moduleStub'
     import { isStudioModuleLoading, requestStudioModuleLoad } from '../../ts/studio/assets/moduleStubLoad.svelte'
-    import { clearOpenModuleId, clearWithdrawnOpenModuleId, moduleRowOf, publishOpenModuleId, withdrawnOpenModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
+    import { clearOpenModuleId, clearWithdrawnOpenModuleId, moduleRowOf, publishOpenModuleId, withdrawOpenModuleId, withdrawnOpenModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
     import { DBState } from '../../ts/stores.svelte'
     import type { EnabledModuleAssets } from './assets/StudioAssetList.svelte'
@@ -89,19 +89,51 @@
     // module that is not loaded or is private publishes nothing. These two are primitives, so a rebuild of the model that
     // leaves them as they were does not run the effect below again.
     const openableModuleId = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub ? moduleRawId : null)
-    // True while another module row holds the same id: such an id names several slots, so no write may target it.
-    const moduleIdShared = $derived(openableModuleId !== null && moduleSlotsWithId(DBState.db.modules, openableModuleId).length > 1)
+    // Every slot holding the selected module's id. Studio edits only the first holder (the slot the runtime and the
+    // store2 handle `id#0` pick); a later holder is a read-only copy.
+    const moduleHolders = $derived(openableModuleId !== null ? moduleSlotsWithId(DBState.db.modules, openableModuleId) : [])
+    // True while the selected row is a later holder of an id several rows share: it publishes nothing, so no write lands on it.
+    const moduleLaterCopy = $derived(openableModuleId !== null && moduleHolders.length > 1 && moduleHolders[0].index !== moduleSlotIndex)
 
     // The history service accepts a module write only while the module's id is published, and the History panel reaches
     // its steps through it. Each run publishes with a new token and clears by that token, so a run that ends after a newer
-    // one began never clears the newer one's id. Deselecting, selecting another owner, a module that stops being loaded
-    // and the detail unmounting all end with null published. The effect reads only the two primitives above, never the
-    // owner or kind node.
+    // one began never clears the newer one's id. Deselecting, selecting another owner, a module that stops being loaded,
+    // a later copy and the detail unmounting all end with null published. The effect reads only the two primitives above,
+    // never the owner or kind node.
     $effect(() => {
         const id = openableModuleId
-        const shared = moduleIdShared
-        const token = publishOpenModuleId(shared ? null : id)
+        const laterCopy = moduleLaterCopy
+        const token = publishOpenModuleId(laterCopy ? null : id)
         return () => clearOpenModuleId(token)
+    })
+
+    // The first holder's place in the list while the selected row is a resident first holder: the holder count and the
+    // slot index. Null for no module, a restricted module, a stub and a later copy, so a move from or to null never reads
+    // as a change of first holder.
+    const firstHolderSig = $derived(
+        openableModuleId !== null && moduleHolders.length > 0 && moduleHolders[0].index === moduleSlotIndex && !isModuleStub(moduleHolders[0].module)
+            ? `${moduleHolders.length}|${moduleHolders[0].index}`
+            : null
+    )
+    let previousOwnerKey: string | null = null
+    let previousFirstHolderSig: string | null = null
+    // An outside writer changed the holders of the selected id while the same module stayed selected (a duplicate
+    // appended, the first holder removed or moved): the published id may now name another row, so it is withdrawn and the
+    // withdrawn effect below clears the selection. Every navigation changes the owner key and never fires; the rule needs
+    // the same key and a signature on both sides, with a shared id on at least one side.
+    $effect(() => {
+        const key = ownerKey
+        const sig = firstHolderSig
+        const sharedCount = (value: string | null) => value === null ? 0 : Number(value.split('|')[0])
+        const changed = key === previousOwnerKey && previousFirstHolderSig !== null && sig !== null && sig !== previousFirstHolderSig
+            && (sharedCount(sig) > 1 || sharedCount(previousFirstHolderSig) > 1)
+        previousOwnerKey = key
+        previousFirstHolderSig = sig
+        if (changed) {
+            untrack(() => {
+                if (openableModuleId !== null) withdrawOpenModuleId(openableModuleId)
+            })
+        }
     })
 
     // The enabled modules' loaded assets in module order, as the engine's own module asset list reads them.
@@ -124,30 +156,28 @@
     // The 배경 HTML kind of a loaded character mounts its form while the kind has no item yet, so it is part of `formLive` for the status chip.
     const charHtmlFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'html')
     const formLive = $derived(characterFormLive || assetFormLive || exampleFormLive || chatFormLive || charHtmlFormLive)
-    // The toggle list builder of a character, or of a module while its id is published (loaded, private-free and not
-    // shared), or of the preset the selection pinned by id.
+    // The toggle list builder of a character, or of a module while its id is published (loaded, private-free and not a
+    // later copy), or of the preset the selection pinned by id.
     const characterToggleBuilderLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'toggles')
-    const moduleToggleBuilderLive = $derived(openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'toggles')
+    const moduleToggleBuilderLive = $derived(openableModuleId !== null && !moduleLaterCopy && kindNode?.kind === 'toggles')
     const presetToggleBuilderLive = $derived(owner?.type === 'preset' && studioScreen.selectedPresetId !== null && kindNode?.kind === 'toggles')
     const toggleBuilderLive = $derived(characterToggleBuilderLive || moduleToggleBuilderLive || presetToggleBuilderLive)
     // The advanced form of the preset the selection pinned by id. It is no part of `formLive`: only the preset's toggle builder carries its save chip.
     const presetAdvancedFormLive = $derived(owner?.type === 'preset' && studioScreen.selectedPresetId !== null && kindNode?.kind === 'advanced')
-    // A module whose id several rows share: its toggles stay read-only text, as its assets do.
-    const moduleToggleShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'toggles')
     // A loaded module's asset list. It is no part of `formLive`: that carries the character's save chip.
-    // The module's 고급 and 배경 HTML forms mount on the kind, so the html kind has its form while it has no item yet. A module whose
-    // id several rows share gets the same component as a read-only view of the given slot.
-    const moduleAdvancedFormLive = $derived(openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'advanced')
-    const moduleHtmlFormLive = $derived(openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'html')
-    const moduleAdvancedShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'advanced')
-    const moduleHtmlShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'html')
-    const moduleFormMounted = $derived(moduleAdvancedFormLive || moduleHtmlFormLive || moduleAdvancedShared || moduleHtmlShared)
+    // The module's 고급 and 배경 HTML forms mount on the kind, so the html kind has its form while it has no item yet. A later
+    // copy of a shared id gets the same component as a read-only view of the given slot.
+    const moduleAdvancedFormLive = $derived(openableModuleId !== null && !moduleLaterCopy && kindNode?.kind === 'advanced')
+    const moduleHtmlFormLive = $derived(openableModuleId !== null && !moduleLaterCopy && kindNode?.kind === 'html')
+    const moduleAdvancedCopy = $derived(openableModuleId !== null && moduleLaterCopy && kindNode?.kind === 'advanced')
+    const moduleHtmlCopy = $derived(openableModuleId !== null && moduleLaterCopy && kindNode?.kind === 'html')
+    const moduleFormMounted = $derived(moduleAdvancedFormLive || moduleHtmlFormLive || moduleAdvancedCopy || moduleHtmlCopy)
     const moduleAssetFormLive = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub && kindNode?.kind === 'display' && moduleRawId !== null && moduleSlotIndex !== null)
     // The lorebook pane of a loaded owner's lore kind: the list while no entry is selected, the entry's form otherwise.
     const lorePaneLive = $derived(owner !== undefined && !owner.restricted && !owner.stub && kindNode?.kind === 'lore' && (owner.type !== 'module' || openableModuleId !== null))
-    // The regex pane of a loaded character, of a loaded module while its id is unshared and published, or of the preset the
-    // selection pinned by id. Chat, group, private, not-loaded and shared-id owners keep the read-only view.
-    const regexPaneLive = $derived(owner !== undefined && !owner.restricted && !owner.stub && kindNode?.kind === 'regex' && (owner.type === 'character' || (owner.type === 'module' && openableModuleId !== null && !moduleIdShared) || (owner.type === 'preset' && studioScreen.selectedPresetId !== null && presetStateOf(studioScreen.selectedPresetId) !== null)))
+    // The regex pane of a loaded character, of a loaded module while its id is published (not a later copy), or of the
+    // preset the selection pinned by id. Chat, group, private, not-loaded and later-copy owners keep the read-only view.
+    const regexPaneLive = $derived(owner !== undefined && !owner.restricted && !owner.stub && kindNode?.kind === 'regex' && (owner.type === 'character' || (owner.type === 'module' && openableModuleId !== null && !moduleLaterCopy) || (owner.type === 'preset' && studioScreen.selectedPresetId !== null && presetStateOf(studioScreen.selectedPresetId) !== null)))
 
     const MODULE_KEY_PREFIX = ownerKeyOf('module', '')
 
@@ -221,6 +251,35 @@
     function openClassic(): void {
         if (!owner) return
         openInClassicEditor(owner.type, kindNode?.kind ?? null)
+    }
+
+    // The owner key a refused re-id was shown for; the status line shows only under that same selection.
+    let ownIdRefusedKey = $state<string | null>(null)
+
+    // Gives the selected later copy its own id. The row shown at the tap is captured before the helper loads (the module
+    // list code reaches the import, export and file APIs, which no other Studio screen needs) and passed by reference,
+    // so a list that changed during the load refuses instead of renaming another row; a selection that moved during the
+    // load does nothing. The selection then follows the copy to its new owner at the same kind.
+    async function giveCopyOwnId(): Promise<void> {
+        const keyAtTap = ownerKey
+        const rowAtTap = moduleSlotIndex === null ? undefined : DBState.db.modules?.[moduleSlotIndex]
+        let ops: typeof import('../../ts/process/moduleListOps')
+        try {
+            ops = await import('../../ts/process/moduleListOps')
+        } catch (error) {
+            console.error(error)
+            ownIdRefusedKey = keyAtTap
+            return
+        }
+        if (ownerKey !== keyAtTap) return
+        const made = rowAtTap ? ops.giveModuleCopyOwnId(rowAtTap) : null
+        if (made === null) {
+            ownIdRefusedKey = ownerKey
+            return
+        }
+        ownIdRefusedKey = null
+        const current = source.current.model
+        if (current) openStudioModuleOwner(current, made, studioScreen.selectedKind)
     }
 
     // Held text of this detail is written before the page changes (the list is reached through the selection).
@@ -301,8 +360,14 @@
                     <StudioToggleBuilder target={{ kind: 'preset', presetId: studioScreen.selectedPresetId }} />
                 {/key}
             {/if}
-            {#if moduleToggleShared}
-                <p role="status" data-part="studio-toggle-module-shared" class="text-sm text-textcolor2">{language.studioRefusalModuleSharedId}</p>
+            {#if moduleLaterCopy}
+                <!-- A later copy is read-only on every kind; giving it its own id makes it the first holder of a new id. -->
+                <p role="status" data-part="studio-module-shared-copy" class="text-sm text-textcolor2">{language.studioModuleSharedIdCopy}</p>
+                <button type="button" data-part="studio-module-own-id" class="self-start rounded border border-darkborderc bg-darkbutton px-3 py-1 text-sm hover:bg-selected" onclick={giveCopyOwnId}>{language.studioModuleOwnId}</button>
+                <p data-part="studio-module-own-id-help" class="text-sm text-textcolor2">{language.studioModuleOwnIdHelp}</p>
+                {#if ownIdRefusedKey !== null && ownIdRefusedKey === ownerKey}
+                    <p role="status" data-part="studio-module-own-id-refused" class="text-sm text-draculared">{language.studioModuleOwnIdRefused}</p>
+                {/if}
             {/if}
             {#if formLive}
                 <StudioStatusChip ack={currentVisitAck()} />
@@ -337,10 +402,10 @@
                         <StudioModuleAdvancedForm section={moduleAdvancedFormLive ? 'advanced' : 'html'} moduleId={moduleRawId} slotIndex={moduleSlotIndex} />
                     {/key}
                 {/if}
-            {:else if moduleAdvancedShared || moduleHtmlShared}
+            {:else if moduleAdvancedCopy || moduleHtmlCopy}
                 {#if moduleRawId !== null && moduleSlotIndex !== null}
                     {#key ownerKey}
-                        <StudioModuleAdvancedForm section={moduleAdvancedShared ? 'advanced' : 'html'} moduleId={moduleRawId} slotIndex={moduleSlotIndex} readOnlyShared />
+                        <StudioModuleAdvancedForm section={moduleAdvancedCopy ? 'advanced' : 'html'} moduleId={moduleRawId} slotIndex={moduleSlotIndex} readOnlyCopy />
                     {/key}
                 {/if}
             {:else if presetAdvancedFormLive && studioScreen.selectedPresetId !== null}
@@ -359,7 +424,7 @@
                 {#key ownerKey}
                     {#await import('./StudioLorePane.svelte') then loaded}
                         {@const LorePane = loaded.default}
-                        <LorePane ownerType={owner.type} ownerId={owner.id} chaId={studioScreen.chaId} moduleId={moduleRawId} {moduleSlotIndex} moduleShared={moduleIdShared} itemId={studioScreen.selectedItemId} />
+                        <LorePane ownerType={owner.type} ownerId={owner.id} chaId={studioScreen.chaId} moduleId={moduleRawId} {moduleSlotIndex} {moduleLaterCopy} itemId={studioScreen.selectedItemId} />
                     {:catch}
                         <p role="alert" data-part="studio-lore-pane-load-failed" class="text-sm text-draculared">{language.error}</p>
                     {/await}

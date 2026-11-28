@@ -24,7 +24,6 @@ import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './asse
 export type SetterRefusal =
     | 'not-selected'
     | 'duplicate-id'
-    | 'duplicate-module-id'
     | 'group'
     | 'restricted'
     | 'gone'
@@ -39,7 +38,7 @@ export interface LiveTarget {
     chat: Chat | null
 }
 
-// The one live slot of a module owner: found by id, never a stub and never an id two slots share.
+// The one live slot of a module owner: the first holder of the id, never a stub.
 export interface ModuleTarget {
     module: RisuModule
     index: number
@@ -75,8 +74,8 @@ export function uniqueChatById(chats: readonly Chat[] | undefined, chatId: strin
 }
 
 // A module owner is selected only while the open module is its own: the owner is refused as `not-selected`
-// otherwise. A shared id (stubs count, so an unloaded module sharing it counts) refuses `duplicate-module-id`, and a
-// stub holding the id alone is `gone`; no body key of a stub is read.
+// otherwise. An id several slots hold resolves to its first holder (stubs count for the order); a later copy is never
+// published, so it is refused `not-selected`. A stub as the first holder is `gone`; no body key of a stub is read.
 function resolveModuleTarget(moduleId: string, openModuleId: () => string | null): { ok: true; target: ModuleTarget } | { ok: false; reason: SetterRefusal } {
     if (openModuleId() !== moduleId) {
         return { ok: false, reason: 'not-selected' }
@@ -84,9 +83,6 @@ function resolveModuleTarget(moduleId: string, openModuleId: () => string | null
     const slots = moduleSlotsWithId(DBState.db.modules, moduleId)
     if (slots.length === 0) {
         return { ok: false, reason: 'gone' }
-    }
-    if (slots.length > 1) {
-        return { ok: false, reason: 'duplicate-module-id' }
     }
     const [slot] = slots
     if (isModuleStub(slot.module)) {
@@ -1043,11 +1039,11 @@ function replaceModuleSlot(index: number, next: RisuModule, replaced: ModuleSlot
     replaced?.()
 }
 
-// Assigns the module's slot in the database once, found again by id at write time. Refuses (writes nothing) when the
-// id no longer names exactly one resident module.
+// Assigns the first holder's slot of the id in the database once, found again by id at write time. Refuses (writes
+// nothing) when no slot holds the id or the first holder is a stub.
 export function writeLiveModule(moduleId: string, build: (live: RisuModule) => RisuModule, replaced?: ModuleSlotReplaced): boolean {
     const slots = moduleSlotsWithId(DBState.db.modules, moduleId)
-    if (slots.length !== 1 || isModuleStub(slots[0].module)) {
+    if (slots.length === 0 || isModuleStub(slots[0].module)) {
         return false
     }
     replaceModuleSlot(slots[0].index, build(slots[0].module as RisuModule), replaced)

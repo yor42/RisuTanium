@@ -40,6 +40,9 @@ vi.mock('src/ts/process/modules', () => ({
     refreshModules: h.refreshModules,
 }))
 vi.mock('src/ts/globalApi.svelte', () => ({ checkCharOrder: h.checkCharOrder }))
+// moduleListOf selects over the same plain database; the run context holds no chat, character or persona.
+vi.mock('src/ts/storage/database.svelte', () => ({ getDatabase: () => h.db.current, getCurrentChat: () => null, getCurrentCharacter: () => null }))
+vi.mock('src/ts/util', () => ({ checkPersonaBinded: () => null }))
 vi.mock('src/ts/interchangeability', async () => {
     const { language: lang } = await import('src/lang')
     return {
@@ -51,8 +54,9 @@ vi.mock('src/ts/interchangeability', async () => {
 })
 
 import {
-    convertModuleRow, createModule, exportModuleRow, moduleIntegrationState, removeModuleRow, setModuleGlobal,
+    convertModuleRow, createModule, exportModuleRow, giveModuleCopyOwnId, moduleCopyIdState, moduleIntegrationState, removeModuleRow, setModuleGlobal,
 } from 'src/ts/process/moduleListOps'
+import { moduleListOf } from 'src/ts/process/moduleRefList'
 
 type Db = { modules: RisuModule[], enabledModules: string[], moduleIntergration: string, characters: unknown[] }
 
@@ -131,6 +135,156 @@ describe('createModule', () => {
         expect(db.modules).toHaveLength(2)
         expect(db.modules[1]).toEqual({ name: 'Name', description: '', id: 'new-id' })
         expect(slot).toBe(db.modules[1])
+    })
+})
+
+describe('moduleCopyIdState', () => {
+    test('a later holder of a shared id is ok; the first holder, a unique row, a stub and a removed row are not', () => {
+        const first = mod('X')
+        const later = mod('X')
+        const unique = mod('U')
+        const stub = stubModule('S')
+        const modules = [first, later, unique, stub, mod('S2')]
+        expect(moduleCopyIdState(modules, later)).toBe('ok')
+        expect(moduleCopyIdState(modules, first)).toBe('first-holder')
+        expect(moduleCopyIdState(modules, unique)).toBe('not-shared')
+        expect(moduleCopyIdState(modules, stub)).toBe('stub')
+        expect(moduleCopyIdState(modules, mod('X'))).toBe('gone')
+    })
+
+    test('a stub that shares its id is a stub, whichever holder it is', () => {
+        const resident = mod('X')
+        const stub = stubModule('X')
+        expect(moduleCopyIdState([resident, stub], stub)).toBe('stub')
+    })
+})
+
+describe('giveModuleCopyOwnId: the later copy gets a fresh id and nothing else changes', () => {
+    const rich = (id: string, tag: string, over: Partial<RisuModule> = {}): RisuModule => ({
+        ...mod(id, { name: `Module ${tag}`, description: `about ${tag}` }),
+        lorebook: [{ key: tag, secondkey: '', insertorder: 1, comment: tag, content: tag, mode: 'normal', alwaysActive: false, selective: false }],
+        assets: [[`asset-${tag}`, `assets/${tag}.png`, 'png']],
+        risutanium_asset_retained: [[`kept-${tag}`, `assets/${tag}-kept.png`]],
+        ...over,
+    }) as unknown as RisuModule
+
+    function world() {
+        const a = rich('X', 'a')
+        const b = rich('X', 'b', { namespace: 'ns' })
+        const c = rich('X', 'c')
+        const db = installDb([a, b, c], ['X'], 'ns')
+        return { a, b, c, db, before: JSON.parse(JSON.stringify(b)) as unknown }
+    }
+
+    // Guard (the helper is new; the mutants below fail it): only the id of the clicked row changes.
+    test('T5: the clicked later copy is replaced by a shallow copy with only its id different; every other row keeps identity and every reference is untouched', () => {
+        const { a, b, c, db, before } = world()
+        const made = giveModuleCopyOwnId(b, () => 'Y')
+        expect(made).not.toBeNull()
+        expect(made).toBe(db.modules[1])
+        expect(made).not.toBe(b)
+        expect(made!.id).toBe('Y')
+        expect(JSON.parse(JSON.stringify({ ...made, id: 'X' }))).toEqual(before)
+        expect(b.id).toBe('X')
+        expect(db.modules).toHaveLength(3)
+        expect(db.modules[0]).toBe(a)
+        expect(db.modules[2]).toBe(c)
+        expect(a.id).toBe('X')
+        expect(c.id).toBe('X')
+        expect(db.enabledModules).toEqual(['X'])
+        expect(db.moduleIntergration).toBe('ns')
+        expect(h.refreshModules).toHaveBeenCalledTimes(1)
+        expect(h.acquire).not.toHaveBeenCalled()
+    })
+
+    test('T5: the first holder keeps its id and its place when a later copy is re-identified', () => {
+        const { a, db } = world()
+        giveModuleCopyOwnId(db.modules[2], () => 'Y')
+        expect(db.modules.map((row) => row.id)).toEqual(['X', 'X', 'Y'])
+        expect(db.modules[0]).toBe(a)
+    })
+
+    test('T5: the default mint is the v4 id of the uuid package (mocked to a fixed value here)', () => {
+        const { b } = world()
+        expect(giveModuleCopyOwnId(b)!.id).toBe('new-id')
+    })
+
+    describe('T6: each refusal writes nothing, refreshes nothing and acquires nothing', () => {
+        function expectRefusedUntouched(db: Db, row: RisuModule, mint: () => string = () => 'Y'): void {
+            const snapshot = JSON.stringify(db.modules)
+            const identities = [...db.modules]
+            expect(giveModuleCopyOwnId(row, mint)).toBeNull()
+            expect(JSON.stringify(db.modules)).toBe(snapshot)
+            expect(db.modules.every((entry, index) => entry === identities[index])).toBe(true)
+            expect(h.refreshModules).not.toHaveBeenCalled()
+            expect(h.acquire).not.toHaveBeenCalled()
+        }
+
+        test('the first holder keeps its id', () => {
+            const { a, db } = world()
+            expectRefusedUntouched(db, a)
+        })
+
+        test('a row that is not shared has nothing to give up', () => {
+            const only = mod('U')
+            const db = installDb([mod('X'), only])
+            expectRefusedUntouched(db, only)
+        })
+
+        test('a stub that shares its id is never acquired or renamed', () => {
+            const stub = stubModule('X')
+            const db = installDb([mod('X'), stub])
+            expectRefusedUntouched(db, stub)
+        })
+
+        test('a row that left the list, or was replaced since the click, is gone', () => {
+            const { b, db } = world()
+            db.modules.splice(1, 1)
+            expectRefusedUntouched(db, b)
+            const replaced = mod('X')
+            const later = installDb([mod('X'), replaced])
+            const stale = { ...replaced }
+            expectRefusedUntouched(later, stale)
+        })
+
+        test('a minted id that any row already holds is refused', () => {
+            const { b, db } = world()
+            db.modules.push(rich('Q', 'q'))
+            expectRefusedUntouched(db, b, () => 'Q')
+            expectRefusedUntouched(db, b, () => 'X')
+        })
+    })
+
+    describe('T13: which row a run uses before and after the re-id', () => {
+        // Guard: the runtime rule (filter by id or namespace, then first holder per id) is the existing one.
+        test('(a) a run that references X by id uses the first holder before and after', () => {
+            const { a, b, db } = world()
+            expect(moduleListOf(db.enabledModules)).toEqual([a])
+            const made = giveModuleCopyOwnId(b, () => 'Y')
+            expect(moduleListOf(db.enabledModules)).toEqual([a])
+            expect(db.enabledModules).toEqual(['X'])
+            expect(moduleListOf(['X'])).not.toContain(made)
+        })
+
+        test('(b) a run that references only the copy\'s namespace uses the copy before (as X) and after (as Y)', () => {
+            const first = mod('X')
+            const copy = mod('X', { namespace: 'n' })
+            const db = installDb([first, copy])
+            expect(moduleListOf(['n'])).toEqual([copy])
+            const made = giveModuleCopyOwnId(copy, () => 'Y')!
+            expect(moduleListOf(['n'])).toEqual([made])
+            expect(moduleListOf(['n'])[0].id).toBe('Y')
+            expect(db.modules[0]).toBe(first)
+        })
+
+        test('(c) a namespace both rows match drops the copy before the re-id and lists both after it', () => {
+            const first = mod('X', { namespace: 'n' })
+            const copy = mod('X', { namespace: 'n' })
+            installDb([first, copy])
+            expect(moduleListOf(['n'])).toEqual([first])
+            const made = giveModuleCopyOwnId(copy, () => 'Y')!
+            expect(moduleListOf(['n'])).toEqual([first, made])
+        })
     })
 })
 

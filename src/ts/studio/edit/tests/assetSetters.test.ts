@@ -24,6 +24,7 @@ import {
     buildFolderIntent,
     buildFolderReorder,
     everyRemovalHasSurvivor,
+    firstModuleHolderIndex,
     folderOpsOf,
     moduleSlotsWithId,
     orderAssetWrites,
@@ -330,5 +331,20 @@ describe('write ordering, module slots and the file probe', () => {
         expect(moduleSlotsWithId(modules, 'a')).toHaveLength(1)
         expect(moduleSlotsWithId(modules, 'zz')).toEqual([])
         expect(moduleSlotsWithId(undefined, 'a')).toEqual([])
+    })
+
+    test('the first holder of an id is the lowest slot holding it, a stub counts, and a missing id or list has none', () => {
+        const modules = [{ id: 'a' }, stubModule('b'), { id: 'b' }, null, 'x', { id: 'a' }]
+        expect(firstModuleHolderIndex(modules, 'a')).toBe(0)
+        expect(firstModuleHolderIndex(modules, 'b')).toBe(1)
+        expect(firstModuleHolderIndex([{ id: 'c' }, { id: 'c' }], 'c')).toBe(0)
+        expect(firstModuleHolderIndex(modules, 'zz')).toBeNull()
+        expect(firstModuleHolderIndex(undefined, 'a')).toBeNull()
+    })
+
+    test('the first holder is decided by slot order, not by a row-suffixed owner id: the third row of [X, X, "X#1"] is the first holder of "X#1"', () => {
+        const modules = [{ id: 'X' }, { id: 'X' }, { id: 'X#1' }]
+        expect(firstModuleHolderIndex(modules, 'X#1')).toBe(2)
+        expect(firstModuleHolderIndex(modules, 'X')).toBe(0)
     })
 })

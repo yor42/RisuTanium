@@ -98,6 +98,7 @@ const UPSTREAM_NAMING_KEYS = [
     'help.customPromptTemplateToggle',
     'studioTgDefaultUpstream',
     'studioTgFormatIntro',
+    'studioModuleOwnIdHelp',
 ]
 
 // Keys that name the upstream app as the product that restores a .bin file.

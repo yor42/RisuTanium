@@ -649,7 +649,6 @@ describe('T-RT refusalTextOf names a module only for a module owner', () => {
     const moduleReasons: [StudioRefusal, string][] = [
         ['not-selected', 'studioRefusalModuleNotSelected'],
         ['gone', 'studioRefusalModuleGone'],
-        ['duplicate-module-id', 'studioRefusalModuleSharedId'],
     ]
 
     test.each(moduleReasons)('a module owner reads %s as %s', (reason, key) => {
@@ -670,7 +669,6 @@ describe('T-RT refusalTextOf names a module only for a module owner', () => {
         }
         expect(refusalText('not-selected')).toBe('studioRefusalNotSelected')
         expect(refusalText('gone')).toBe('studioRefusalGone')
-        expect(refusalText('duplicate-module-id')).toBe('studioAssetModuleSharedId')
     })
 })
 

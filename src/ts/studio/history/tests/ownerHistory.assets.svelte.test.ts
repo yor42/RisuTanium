@@ -997,7 +997,7 @@ describe('a merge edit of a target that may not be rewritten is refused whole', 
 
 // ---------------------------------------------------------------- the module owner
 
-describe('a module owner is selected through the open module, found by id and never a stub or a shared id', () => {
+describe('a module owner is selected through the open module, found by id as its first holder and never a stub', () => {
     test('an owner is selected only while the port returns its id, and a null port or another id refuses not-selected', async () => {
         await ready(M1)
         harness.openModule = null
@@ -1031,10 +1031,35 @@ describe('a module owner is selected through the open module, found by id and ne
         expect(retained(liveModule('M1'))).toEqual([['grin', 'assets/grin.png'], ['smile', 'assets/smile.png']])
     })
 
-    test('two slots with one id, one of them a stub, refuse every asset intent and call the history port for none of them', async () => {
+    test('two resident slots with one id: the asset write lands on the first holder and the later copy is untouched', async () => {
+        harness.openModule = 'M1'
+        putModules(makeModule('M1'), makeModule('M1'))
+        await ready(M1)
+        const copy = DBState.db.modules[1]
+        const copyJson = JSON.stringify(copy)
+        expect(harness.service.assetDelete(M1, 'assets', [0]).ok).toBe(true)
+        expect((DBState.db.modules[0] as unknown as LiveModule).assets).toHaveLength(3)
+        expect(DBState.db.modules[1]).toBe(copy)
+        expect(JSON.stringify(copy)).toBe(copyJson)
+        expect(harness.service.undo(M1).ok).toBe(true)
+        expect((DBState.db.modules[0] as unknown as LiveModule).assets).toHaveLength(4)
+        expect(DBState.db.modules[1]).toBe(copy)
+    })
+
+    test('a later copy is never the open module: every asset intent refuses not-selected and nothing is written', async () => {
+        harness.openModule = null
+        putModules(makeModule('M1'), makeModule('M1'))
+        const before = JSON.stringify(DBState.db.modules)
+        expect(harness.service.assetDelete(M1, 'assets', [0])).toEqual({ ok: false, reason: 'not-selected' })
+        expect(harness.service.assetRename(M1, 'assets', 0, 'x')).toEqual({ ok: false, reason: 'not-selected' })
+        expect(JSON.stringify(DBState.db.modules)).toBe(before)
+        expect(h.marks).toBe(0)
+    })
+
+    test('a stub as the first holder of a shared id refuses every asset intent and calls the history port for none of them', async () => {
         harness.openModule = 'M1'
         const reads: string[] = []
-        putModules(makeModule('M1'), watchBodyKeys(stubModule('M1'), reads))
+        putModules(watchBodyKeys(stubModule('M1'), reads), makeModule('M1'))
         const claims = harness.claim.calls.length
         const loads = harness.store.counts.load
         const saves = harness.store.counts.save
@@ -1046,7 +1071,7 @@ describe('a module owner is selected through the open module, found by id and ne
             harness.service.undo(M1),
         ]
         for (const result of intents) {
-            expect(result).toEqual({ ok: false, reason: 'duplicate-module-id' })
+            expect(result).toEqual({ ok: false, reason: 'gone' })
         }
         expect(JSON.stringify(DBState.db.modules)).toBe(before)
         expect(reads).toEqual([])
@@ -1057,7 +1082,7 @@ describe('a module owner is selected through the open module, found by id and ne
         expect(harness.landed).toEqual([])
         expect(h.marks).toBe(0)
 
-        // Deleting one of the two slots lets the next write proceed.
+        // Removing the stub lets the next write proceed.
         putModules(makeModule('M1'))
         await ready(M1)
         expect(harness.service.assetDelete(M1, 'assets', [0]).ok).toBe(true)

@@ -102,7 +102,7 @@ export function mountInto(component: Parameters<typeof mount>[0], props: Record<
  * a selection writer reaches the pane through its prop. A test may override any prop, including `itemId`.
  */
 export async function mountPane(overrides: Record<string, unknown> = {}): Promise<HTMLElement> {
-    const props: Record<string, unknown> = { ownerType: 'character', ownerId: 'A', chaId: 'A', moduleId: null, moduleSlotIndex: null, moduleShared: false, ...overrides }
+    const props: Record<string, unknown> = { ownerType: 'character', ownerId: 'A', chaId: 'A', moduleId: null, moduleSlotIndex: null, moduleLaterCopy: false, ...overrides }
     if (!('itemId' in overrides)) Object.defineProperty(props, 'itemId', { enumerable: true, get: () => studioScreen.selectedItemId })
     const host = mountInto(StudioLorePane, props)
     await settle()

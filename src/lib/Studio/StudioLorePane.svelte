@@ -58,12 +58,13 @@
         chaId: string
         moduleId: string | null
         moduleSlotIndex: number | null
-        moduleShared: boolean
+        // A later copy of a shared id: read-only, with no history owner.
+        moduleLaterCopy: boolean
         // The selected item of this owner's lore kind; null while the list shows.
         itemId: string | null
     }
 
-    let { ownerType, ownerId, chaId, moduleId, moduleSlotIndex, moduleShared, itemId }: Props = $props()
+    let { ownerType, ownerId, chaId, moduleId, moduleSlotIndex, moduleLaterCopy, itemId }: Props = $props()
 
     const ownerKey = untrack(() => ownerKeyOf(ownerType, ownerId))
     const toasts = createStudioToasts({ service: getStudioHistoryService })
@@ -74,13 +75,13 @@
         return found && found.type !== 'group' ? found : undefined
     })
     const chat = $derived(ownerType === 'chat' ? uniqueChatById(character?.chats, ownerId) : null)
-    // The history owner of this list; null while none exists (no such character, a chat without a unique id, a module whose
-    // id another row shares).
+    // The history owner of this list; null while none exists (no such character, a chat without a unique id, a
+    // module that is a later copy of a shared id).
     const owner = $derived.by((): StoredOwnerKey | null => {
         if (character === undefined) return null
         if (ownerType === 'character') return characterOwnerKey(chaId)
         if (ownerType === 'chat') return chat === null ? null : chatOwnerKey(chaId, ownerId)
-        return moduleId !== null && !moduleShared ? moduleOwnerKey(moduleId) : null
+        return moduleId !== null && !moduleLaterCopy ? moduleOwnerKey(moduleId) : null
     })
 
     $effect(() => {
@@ -108,11 +109,10 @@
     })
     const moduleBody = $derived(ownerType === 'module' && moduleSlotIndex !== null ? DBState.db.modules?.[moduleSlotIndex] : undefined)
     const readOnlyNote = $derived(
-        moduleShared ? language.studioRefusalModuleSharedId
-            : moduleBody !== undefined && repairNeed?.(moduleBody) === 'ask' ? language.studioLoreRepairPending
-                : repairLoadFailed ? language.error
-                    : ownerType === 'chat' && chat === null ? language.studioHistoryNone
-                        : null,
+        moduleBody !== undefined && repairNeed?.(moduleBody) === 'ask' ? language.studioLoreRepairPending
+            : repairLoadFailed ? language.error
+                : ownerType === 'chat' && chat === null ? language.studioHistoryNone
+                    : null,
     )
     const view = $derived(service && owner !== null ? service.view(owner) : null)
     const editable = $derived(view?.editable === true && readOnlyNote === null && (ownerType !== 'module' || repairNeed !== null))

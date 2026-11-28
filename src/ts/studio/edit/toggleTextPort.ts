@@ -71,14 +71,14 @@ export function characterTogglePort(chaId: string): ToggleTextPort {
 /**
  * The port of a resident module's toggle definition. `moduleId` is the raw stored id, which is also what the module
  * owner key and the published open-module id carry; a Studio owner id of a later duplicate row (`id#row`) never reaches
- * it. The live text is read from the first non-stub slot holding the id, never by slot index; a shared id still shows
- * its text, and the service refuses every write to it.
+ * it. The live text is read from the first holder of the id (never a later copy, never by a row-suffixed slot index);
+ * a stub first holder reads as hidden. A later copy publishes no id, so the service refuses every write to it.
  */
 export function moduleTogglePort(moduleId: string): ToggleTextPort {
     const owner = moduleOwnerKey(moduleId)
     const slotOf = (): RisuModule | null => {
-        const slot = moduleSlotsWithId(DBState.db.modules, moduleId).find((candidate) => !isModuleStub(candidate.module))
-        return slot ? slot.module as RisuModule : null
+        const slot = moduleSlotsWithId(DBState.db.modules, moduleId)[0]
+        return slot && !isModuleStub(slot.module) ? slot.module as RisuModule : null
     }
     return {
         owner,

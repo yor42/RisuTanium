@@ -225,7 +225,7 @@ Layout follows SLICE4 §2, long text SLICE3. Theme tokens only. Mobile first: on
 
 - The owner tree keeps each owner's paged lorebook kind. A folder row with an empty name shows `sidebarUi.unnamedFolder`, not the raw key (`ownerModel.ts:230`; T31).
 - Kind selected: the lorebook list (3.2); for a character, a collapsed Lorebook settings section above it (3.5). Item selected: entry form (3.3), folder form or linked view (3.4). On the phone, Back returns to the list with the row revealed and focused (`revealListRow`).
-- Hosts: a character that is not restricted and not a group; the context chat (`ownerModel.ts:386-394`); a loaded, non-private module with its id published and not shared (`StudioDetail.svelte:81-83`, `:116`). A shared module id is read-only with `studioRefusalModuleSharedId` (`:119`, `:232-234`).
+- Hosts: a character that is not restricted and not a group; the context chat (`ownerModel.ts:386-394`); a loaded, non-private module with its id published (the first holder of a shared id; a later copy is not published, #714) (`StudioDetail.svelte:81-83`, `:116`). A later copy of a shared module id is read-only with `studioModuleSharedIdCopy` and can be given its own id (#714).
 - Status: `currentVisitAck()` for character and chat, `currentModuleAck()` for a module (`:221`, `:227`). A chat-host edit is a chat-owner step; header Undo follows the focused owner (SLICE4 §3, DD-189).
 
 ### 3.2 The lorebook list (windowed)
@@ -356,7 +356,7 @@ Chat links follow the same rules; a re-IDed link shows `studioLoreLinkedMissing`
 | Private character or its chat | SLICE4 §1 private rule |
 | Group | interim classic (1.1) |
 | Module not loaded | the existing stub load, then the list |
-| Module id shared | read-only, `studioRefusalModuleSharedId` |
+| Module id shared | first holder editable; a later copy read-only, `studioModuleSharedIdCopy` |
 | Module lorebook not a list (`'ask'`) | read-only `studioLoreRepairPending`, no list ops; the build guards `loreKind` with `Array.isArray` (`ownerModel.ts:218-233`) |
 | Module list below version 2 (`'migrate'`) | editable (5.3) |
 | Write refused | the existing refusal toasts |
@@ -584,7 +584,7 @@ Unchanged; a hit opens the entry form.
 
 ## 8. Proposed `en.ts` keys
 
-**Reused:** `name`, `activationKeys`, `activationKeysInfo`, `SecondaryKeys`, `selective`, `useRegexLorebook`, `caseSensitive`, `insertOrder`, `activationProbability`, `alwaysActive`, `alwaysActiveInChat`, `childLoreDesc`, `folderName`, `prompt`, `loreBookDepth`, `loreBookToken`, `recursiveScanning`, `fullWordMatching`, `fullWordAsciiBoundary`, `cjkWordStart`, `useGlobalSettings`, `lorePlus`, `globalLoreInfo`, `localLoreInfo`, `sidebarUi.unnamedLore`, `sidebarUi.unnamedFolder`, `import`, `export`, `cancel`, `successExport`, `errors.noData`, `studioRefusalModuleSharedId`, `studioLoreTest*`; Help keys `lorebook`, `loreName`, `loreActivationKey`, `loreorder`, `loreSelective`, `useRegexLorebook`, `caseSensitiveLorebook`, `fullWordAsciiBoundary`, `cjkWordStart`, `lorePlus`, `experimental`.
+**Reused:** `name`, `activationKeys`, `activationKeysInfo`, `SecondaryKeys`, `selective`, `useRegexLorebook`, `caseSensitive`, `insertOrder`, `activationProbability`, `alwaysActive`, `alwaysActiveInChat`, `childLoreDesc`, `folderName`, `prompt`, `loreBookDepth`, `loreBookToken`, `recursiveScanning`, `fullWordMatching`, `fullWordAsciiBoundary`, `cjkWordStart`, `useGlobalSettings`, `lorePlus`, `globalLoreInfo`, `localLoreInfo`, `sidebarUi.unnamedLore`, `sidebarUi.unnamedFolder`, `import`, `export`, `cancel`, `successExport`, `errors.noData`, `studioLoreTest*`; Help keys `lorebook`, `loreName`, `loreActivationKey`, `loreorder`, `loreSelective`, `useRegexLorebook`, `caseSensitiveLorebook`, `fullWordAsciiBoundary`, `cjkWordStart`, `lorePlus`, `experimental`.
 
 **New** (English; the translator writes the other seven):
 
@@ -694,7 +694,7 @@ Fixtures are built like the real producers (MC-329): characters from `createBlan
 | T19 | Unknown keys and `loreCache` survive every op, export and import | A | n/a | |
 | T20 | Studio-edited lore survives the upstream `.bin` encode and decode | C | | existing harness |
 | T21 | Chat host writes through `writeLiveChat` and marks | A | n/a | |
-| T22 | Module writes copy-on-write; refused for stub, shared id, `'ask'`; allowed for `'migrate'` | A | n/a | |
+| T22 | Module writes copy-on-write; refused for stub, a later copy of a shared id, `'ask'` (the first holder of a shared id is written); allowed for `'migrate'` | A | n/a | |
 | T23 | Settings seeding, `loreExt` sync, undo | A | n/a | |
 | T24 | Local activation on (id assigned) and off | A | n/a | |
 | T25 | Several-file risu and `entries` import is one step; classic `importLoreBook` unchanged after extraction | C (classic) / A | classic part passes before and after | |

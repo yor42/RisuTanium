@@ -262,6 +262,16 @@ describe('what the list shows (B3)', () => {
         expect(texts('studio-toggle-uses-unreached')).toEqual(['studioTgUsesNotLoaded(Module S1)'])
     })
 
+    test('a later copy that a namespace turns on is named as a shared id, not as not loaded, and is never an owner', async () => {
+        seed(`start ${READ}`, [moduleRow('X', READ), moduleRow('X', READ, { namespace: 'ns' })])
+        DBState.db.enabledModules = []
+        DBState.db.moduleIntergration = 'ns'
+        await service.whenReady(C1)
+        mountList()
+        expect(texts('studio-toggle-uses-unreached')).toEqual(['studioTgUsesSharedId(Module X)'])
+        expect(texts('studio-toggle-uses-count')).toEqual(['studioTgUsesWillChange(Alice,1)'])
+    })
+
     test('more than 50 listed rows show 50 and the rest as a count', async () => {
         seed(DYNAMIC.repeat(60))
         await service.whenReady(C1)

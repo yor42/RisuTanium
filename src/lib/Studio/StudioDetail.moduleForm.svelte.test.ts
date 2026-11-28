@@ -51,6 +51,8 @@ vi.mock('../../ts/studio/assets/openModuleForm.svelte', async (importActual) => 
     const actual = await importActual<typeof import('../../ts/studio/assets/openModuleForm.svelte')>()
     return { ...actual, publishOpenModuleId: vi.fn(actual.publishOpenModuleId) }
 })
+// The re-id helper's module reaches the conversion code, which this suite does not exercise.
+vi.mock('../../ts/interchangeability', () => ({ convertModuleToCharacter: vi.fn() }))
 vi.mock('../../ts/process/modules', () => ({ refreshModules: vi.fn() }))
 vi.mock('../../ts/process/moduleGuiBump', () => ({ bumpModuleGui: vi.fn() }))
 // The engine's own selection over the module list: the rows whose id is asked for.
@@ -233,11 +235,12 @@ describe('the display kind of a loaded module', () => {
         expect(part('studio-asset-list')).toBeNull()
     })
 
-    test('the later of two modules with one id gets its own form over its own rows', async () => {
+    test('the later of two modules with one id gets its own form over its own rows, read-only, with the banner', async () => {
         setWorld([loadedM1(), residentModule('M1', { assets: toAssetList([['z1', 'assets/z1.png', 'png']]) })])
         await show('module:M1#1', 'display')
         expect(all('studio-asset-name').map((field) => (field as HTMLInputElement).value)).toEqual(['z1'])
-        expect(part('studio-asset-module-readonly')).not.toBeNull()
+        expect(all('studio-asset-name').every((field) => (field as HTMLInputElement).readOnly)).toBe(true)
+        expect(part('studio-module-shared-copy')).not.toBeNull()
     })
 })
 
@@ -528,26 +531,36 @@ describe('the id the detail publishes for the selected module', () => {
         expect(openStudioModuleId()).toBeNull()
     })
 
-    test('a shared id publishes null on every kind, and publishes without a remount once the other module is gone', async () => {
+    // Regression reproducer: a shared id used to publish null on every kind.
+    test('the first holder of a shared id publishes its raw id on every kind, and its asset list is editable', async () => {
         setWorld([loadedM1(), residentModule('M1', { assets: toAssetList([['z1', 'assets/z1.png', 'png']]) })])
         await show(M1)
-        expect(openStudioModuleId()).toBeNull()
+        expect(openStudioModuleId()).toBe('M1')
         for (const kind of ['lore', 'scripts', 'display'] as const) {
             setStudioSelection(M1, kind, null)
             flushSync()
-            expect(openStudioModuleId()).toBeNull()
+            expect(openStudioModuleId()).toBe('M1')
         }
-        const list = part('studio-asset-list')
-        expect(list).not.toBeNull()
-        db.db.modules.splice(1, 1)
-        flushSync()
-        await settle()
-        expect(openStudioModuleId()).toBe('M1')
-        expect(part('studio-asset-list')).toBe(list)
+        expect(part('studio-asset-list')).not.toBeNull()
         expect(part('studio-asset-module-readonly')).toBeNull()
     })
 
-    test('another module taking the id withdraws it again', async () => {
+    test('a later copy publishes null on every kind, and the banner offers its own id', async () => {
+        setWorld([loadedM1(), residentModule('M1', { assets: toAssetList([['z1', 'assets/z1.png', 'png']]) })])
+        const later = 'module:M1#1'
+        await show(later)
+        expect(openStudioModuleId()).toBeNull()
+        for (const kind of ['lore', 'scripts', 'display'] as const) {
+            setStudioSelection(later, kind, null)
+            flushSync()
+            expect(openStudioModuleId()).toBeNull()
+            expect(part('studio-module-shared-copy')).not.toBeNull()
+            expect(part('studio-module-own-id')).not.toBeNull()
+        }
+        expect(part('studio-asset-list')).not.toBeNull()
+    })
+
+    test('a duplicate appended under the open first holder withdraws the id and drops the selection', async () => {
         setWorld([loadedM1()])
         await show(M1, 'scripts')
         expect(openStudioModuleId()).toBe('M1')

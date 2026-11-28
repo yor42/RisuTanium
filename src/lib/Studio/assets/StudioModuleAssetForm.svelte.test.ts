@@ -2,7 +2,7 @@
 /**
  * The asset form of a loaded module, under the real Studio screen, History panel and history service on the memory
  * doubles: the id the detail publishes while it is selected (the history of a selected module is in its own suite), the
- * read-only state of a module whose id another module shares, and what a module's list leaves out of the character's. "Settle" awaits resolved promises on one fake clock.
+ * read-only state of a later holder of a shared id, and what a module's list leaves out of the character's. "Settle" awaits resolved promises on one fake clock.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -42,6 +42,8 @@ vi.mock('src/ts/stores.svelte', async () => {
 })
 vi.mock('src/ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
 // The module code the history accessor loads for a module owner; the rig's own port stands in for what it does.
+// The re-id helper's module reaches the conversion code, which this suite does not exercise.
+vi.mock('src/ts/interchangeability', () => ({ convertModuleToCharacter: vi.fn() }))
 vi.mock('src/ts/process/modules', () => ({ refreshModules: vi.fn() }))
 vi.mock('src/ts/process/moduleGuiBump', () => ({ bumpModuleGui: vi.fn() }))
 // The engine's own selection over the module list: the rows whose id is asked for.
@@ -330,31 +332,43 @@ describe('a module whose id another module shares', () => {
         ...parts('studio-asset-new-folder'), ...parts('studio-asset-folder-rename'), ...parts('studio-asset-folder-delete'),
     ]
 
-    test('shows its rows and folders with the shared-id line, and every change off', async () => {
+    // Regression reproducer: a shared id used to make every holder read-only and publish nothing.
+    test('the first holder is editable: its id is published, a rename lands on its slot only, and the later copy keeps its rows', async () => {
         const rig = makeRig()
         shareM1()
-        await mountOnModule('M1')
-        expect(part('studio-asset-module-readonly')?.textContent).toBe('studioAssetModuleSharedId')
-        expect(names()).toEqual(['a1', 'a2', 'a3'])
-        expect(parts('studio-asset-folder-header')).toHaveLength(2)
-        expect(actionControls().length).toBeGreaterThan(0)
+        await mountOnModule('M1', true)
+        await rig.service.whenReady(M1)
+        expect(part('studio-asset-module-readonly')).toBeNull()
+        expect(openStudioModuleId()).toBe('M1')
+        expect(parts('studio-asset-name').every((field) => !(field as HTMLInputElement).readOnly)).toBe(true)
+        expect((part('studio-asset-new-folder') as HTMLButtonElement).disabled).toBe(false)
+        await rename(0, 'a1x')
+        expect(assetNames(0)).toEqual(['a1x', 'a2', 'a3'])
+        expect(assetNames(2)).toEqual(['c1', 'c2', 'c3'])
+        expect(rig.service.view(M1).done).toHaveLength(1)
+    })
+
+    // Compatibility guard on the read-only controls (passes before and after); the later copy still shows its rows.
+    test('a later copy shows its own rows and folders with every change off and publishes nothing', async () => {
+        const rig = makeRig()
+        shareM1()
+        await mountOnModule('M1#2')
+        expect(names()).toEqual(['c1', 'c2', 'c3'])
+        expect(openStudioModuleId()).toBeNull()
         for (const control of actionControls()) expect((control as HTMLButtonElement).disabled).toBe(true)
         for (const field of parts('studio-asset-name')) expect((field as HTMLInputElement).readOnly).toBe(true)
         await click(parts('studio-asset-row-more')[0])
         expect((part('studio-asset-menu-delete') as HTMLButtonElement).disabled).toBe(true)
         expect(part('studio-asset-menu-move')).toBeNull()
-        expect(part('studio-asset-loading')).toBeNull()
-        // The history of the id is not started and nothing is published.
-        expect(openStudioModuleId()).toBeNull()
         expect(rig.claim.calls).toEqual([])
         expect(rig.service.assetRename(M1, 'assets', 0, 'x')).toEqual({ ok: false, reason: 'not-selected' })
-        expect(assetNames(0)).toEqual(['a1', 'a2', 'a3'])
+        expect(assetNames(2)).toEqual(['c1', 'c2', 'c3'])
     })
 
-    test('the finder and the bulk bar show too, with their changes off', async () => {
+    test('the finder and the bulk bar of a later copy show, with their changes off', async () => {
         makeRig()
         shareM1()
-        await mountOnModule('M1')
+        await mountOnModule('M1#2')
         await click(part('studio-asset-select-toggle'))
         await click(parts('studio-asset-select')[0])
         expect(part('studio-asset-selected-count')?.textContent).toBe('studioAssetSelectedCount(1)')
@@ -362,48 +376,6 @@ describe('a module whose id another module shares', () => {
         expect((part('studio-asset-bulk-move') as HTMLButtonElement).disabled).toBe(true)
         await click(part('studio-asset-find-duplicates'))
         expect(part('studio-asset-dup-panel')).not.toBeNull()
-    })
-
-    test('the later of two modules with one id is read-only too and shows its own rows', async () => {
-        makeRig()
-        shareM1()
-        await mountOnModule('M1#2')
-        expect(part('studio-asset-module-readonly')).not.toBeNull()
-        expect(names()).toEqual(['c1', 'c2', 'c3'])
-        expect(openStudioModuleId()).toBeNull()
-    })
-
-    test('becomes editable and publishes its id, in the same list, once the other module is gone', async () => {
-        const rig = makeRig()
-        shareM1()
-        await mountOnModule('M1')
-        const list = part('studio-asset-list')
-        expect(openStudioModuleId()).toBeNull()
-        db.db.modules.splice(2, 1)
-        flushSync()
-        await settle()
-        await rig.service.whenReady(M1)
-        await settle()
-        expect(part('studio-asset-module-readonly')).toBeNull()
-        expect(part('studio-asset-list')).toBe(list)
-        expect(openStudioModuleId()).toBe('M1')
-        expect(parts('studio-asset-name').every((field) => !(field as HTMLInputElement).readOnly)).toBe(true)
-        expect((part('studio-asset-new-folder') as HTMLButtonElement).disabled).toBe(false)
-        expect(rig.service.assetRename(M1, 'assets', 0, 'a1x')).toMatchObject({ ok: true })
-    })
-
-    test('goes read-only again, without a remount, when another module takes its id', async () => {
-        const rig = makeRig()
-        await mountOnModule('M1')
-        await rig.service.whenReady(M1)
-        const list = part('studio-asset-list')
-        expect(openStudioModuleId()).toBe('M1')
-        shareM1()
-        await settle()
-        expect(part('studio-asset-list')).toBe(list)
-        expect(part('studio-asset-module-readonly')).not.toBeNull()
-        expect(openStudioModuleId()).toBeNull()
-        expect(rig.service.assetRename(M1, 'assets', 0, 'x')).toEqual({ ok: false, reason: 'not-selected' })
     })
 })
 

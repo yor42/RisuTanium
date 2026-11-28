@@ -267,7 +267,20 @@ describe('T15: the module owner', () => {
         expect(acks[0].id).toBe('M1')
     })
 
-    test('a stub module, two slots sharing the id and a module that is not open are refused with nothing written', async () => {
+    test('two slots sharing the id: the edit lands on the first holder only and the twin is untouched', async () => {
+        await start([classicEntry()])
+        const modules = DBState.db.modules as unknown as { regex: Entry[] }[]
+        modules.push({ id: 'M1', name: 'twin', assets: [], regex: [classicEntry()] } as unknown as { regex: Entry[] })
+        const twin = modules[1]
+        const twinText = JSON.stringify(twin)
+        expect(edit(M1, regexFieldEdit(0, 'in', 'changed', null))).toEqual({ ok: true })
+        expect((modules[0].regex[0] as Entry).in).toBe('changed')
+        expect(modules[1]).toBe(twin)
+        expect(JSON.stringify(twin)).toBe(twinText)
+        expect(acks).toHaveLength(1)
+    })
+
+    test('a stub module and a module that is not open are refused with nothing written', async () => {
         await start([classicEntry()])
         const stubbed = { id: 'M1', [MODULE_STUB_KEY]: MODULE_STUB_VALUE }
         const slot = (DBState.db.modules as unknown as unknown[])[0]
@@ -276,10 +289,6 @@ describe('T15: the module owner', () => {
         ;(DBState.db.modules as unknown as unknown[])[0] = stubbed
         expect(edit(M1, regexFieldEdit(0, 'in', 'x', null))).toMatchObject({ ok: false, reason: 'gone' })
         ;(DBState.db.modules as unknown as unknown[])[0] = slot
-
-        ;(DBState.db.modules as unknown as unknown[]).push({ id: 'M1', name: 'twin', assets: [], regex: [classicEntry()] })
-        expect(edit(M1, regexFieldEdit(0, 'in', 'x', null))).toMatchObject({ ok: false, reason: 'duplicate-module-id' })
-        ;(DBState.db.modules as unknown as unknown[]).pop()
 
         open = 'M2'
         expect(edit(M1, regexFieldEdit(0, 'in', 'x', null))).toMatchObject({ ok: false, reason: 'not-selected' })
