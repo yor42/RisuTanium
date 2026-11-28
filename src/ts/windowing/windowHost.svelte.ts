@@ -44,10 +44,11 @@ import { sameKeys, WIDEN_DELAY_MS, type WindowPhase } from './listWindow'
  *   else the window. Pass `scroller: () => element` for another one (null is the window).
  * - The band is the scroller's rect clipped to the viewport; its height falls back to the
  *   viewport height when the rect has none. It is re-read on scroll (one read per frame), on
- *   ResizeObserver reports for the scroller and `root` (only once a measured segment exists),
+ *   ResizeObserver reports for the scroller and `root` (only once a measured segment exists or a
+ *   segment was read without layout),
  *   and once per flush in which any segment's keys or heights changed. Each read also re-reads
- *   the top and `row-gap` of every segment. A host with fixed segments only does not observe
- *   sizes, so a scroller that resizes without a window resize or a scroll leaves its band stale
+ *   the top and `row-gap` of every segment. A host with fixed segments only that are all laid out does not
+ *   observe sizes, so a scroller that resizes without a window resize or a scroll leaves its band stale
  *   until the next one; such a consumer calls `refresh()` when it resizes the scroller.
  * - The host writes no style to `root`, the scroller or any ancestor. Spacers carry
  *   `overflow-anchor: none`, so the browser's scroll anchoring never selects a spacer and keeps
@@ -672,6 +673,11 @@ export function createWindowHost(options: WindowHostOptions): WindowHost {
                 const laidOut = hasLayout(element)
                 if (measured !== laidOut) {
                     measured = laidOut
+                }
+                // A segment with no layout mounts no row, so no item exists to start the size observer; without
+                // it nothing reports when the root gains layout (a tab panel shown) and the segment stays empty.
+                if (!laidOut) {
+                    ensureObserver()
                 }
                 const parsed = parseFloat(getComputedStyle(element).rowGap)
                 const nextGap = Number.isFinite(parsed) && parsed > 0 ? parsed : 0
