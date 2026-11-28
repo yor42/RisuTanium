@@ -22,6 +22,7 @@
     import { regexTwinCount, type RegexMove } from '../../ts/studio/edit/regexListOps'
     import { toPlainJson } from '../../ts/storage/store2/codec/normalize'
     import type { RegexRowClass } from '../../ts/studio/edit/regexEntry'
+    import { regexProblems } from '../../ts/studio/edit/regexCheck'
     import { orderOf } from '../../ts/studio/edit/regexFlags'
     import { registerStudioBackLayer } from '../../ts/studio/studioBack.svelte'
     import { createWindowHost } from '../../ts/windowing/windowHost.svelte'
@@ -78,6 +79,8 @@
         stage: string
         disabled: boolean
         order: number | null
+        // The engine's message when the pattern does not compile, else null.
+        invalid: string | null
     }
 
     // The visible facts of a readable row. The order shows only while custom flags are on and the flag text holds one.
@@ -92,6 +95,9 @@
             stage: stageText(entry.type),
             disabled: entry.type === 'disabled',
             order,
+            invalid: typeof entry.in === 'string'
+                ? regexProblems({ in: entry.in, flag: typeof entry.flag === 'string' ? entry.flag : '', ableFlag: entry.ableFlag === true }).invalid
+                : null,
         }
     }
 
@@ -311,6 +317,9 @@
                             {/if}
                             {#if shown.order !== null}
                                 <span data-part="studio-regex-order-chip" class="rounded border border-darkborderc px-1 text-xs text-textcolor2">{language.sidebarUi.orderFlag} {shown.order}</span>
+                            {/if}
+                            {#if shown.invalid !== null}
+                                <span data-part="studio-regex-invalid-chip" title={language.studioRegexInvalid(shown.invalid)} class="rounded border border-draculared px-1 text-xs text-draculared">{language.studioRegexInvalidMarker}</span>
                             {/if}
                         </button>
                     {/if}

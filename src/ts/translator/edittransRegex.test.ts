@@ -23,6 +23,7 @@ vi.mock("../parser/parser.svelte", () => ({
 }));
 
 import { applyEdittransRegex } from "./translator";
+import { tryRegexEntry } from "../studio/edit/regexCheck";
 
 const script = (v: Partial<customscript>): customscript => ({
     comment: "",
@@ -195,5 +196,123 @@ describe("applyEdittransRegex", () => {
     it("returns the text untouched for an empty charArg", () => {
         database.presetRegex = [script({ in: "hello", out: "bye" })];
         expect(applyEdittransRegex("hello", "", alwaysExistChar)).toBe("hello");
+    });
+});
+
+describe("applyEdittransRegex flag pipeline", () => {
+    const on = (text: string, v: Partial<customscript>) => apply(text, [
+        script({ in: "a", out: "b", ableFlag: true, ...v }),
+    ]);
+
+    it("guard: an empty or absent flag text with the flag box on is global", () => {
+        expect(on("aaa", { flag: "" })).toBe("bbb");
+        expect(on("aaa", {})).toBe("bbb");
+    });
+
+    it("guard: a sticky flag replaces only at the start of the text", () => {
+        expect(on("baa", { flag: "y" })).toBe("baa");
+        expect(on("aa", { flag: "<,>y" })).toBe("ba");
+    });
+
+    it("guard: repeated flag characters are de-duplicated", () => {
+        expect(on("aaa", { flag: "gg" })).toBe("bbb");
+    });
+
+    it("guard: the v flag is passed to the engine", () => {
+        expect(on("aÄb", { in: "[\\p{L}--[a-z]]", out: "X", flag: "v" })).toBe("aXb");
+    });
+
+    it("guard: the cbs action parses the find text", () => {
+        expect(on("Risu Risu", { in: "{{char}}", out: "X", flag: "<cbs>" })).toBe("X X");
+        expect(on("Risu Risu", { in: "{{char}}", out: "X", flag: "<order 2, cbs>" })).toBe("X X");
+    });
+
+    it("guard: an order action sorts higher first, no order keeps the declaration order", () => {
+        const a = script({ in: "a", out: "b" });
+        const b = script({ in: "b", out: "c", ableFlag: true, flag: "<order 2>" });
+        expect(apply("abab", [a, b])).toBe("bcbc");
+        expect(apply("abab", [a, { ...b, flag: "" }])).toBe("cccc");
+        expect(apply("abab", [a, { ...b, flag: "u<order 2>" }])).toBe("bcbb");
+    });
+
+    it("guard: a move action with the u flag moves the first match to the bottom", () => {
+        expect(on("abab", { out: "X$&", flag: "<move_bottom>u" })).toBe("bab\nXa");
+    });
+
+    it("guard: the flag text is kept while the flag box is on, ignored while off", () => {
+        expect(on("aA", { flag: "gi<cbs>" })).toBe("bb");
+        expect(on("aA", { ableFlag: false, flag: "i" })).toBe("bA");
+    });
+
+    it("guard: a flag text with no regex flag left falls back to u", () => {
+        expect(on("aaa", { flag: "z<cbs>" })).toBe("baa");
+    });
+
+    it("regression reproducer: an entry with a non text flag is skipped and the others still apply", () => {
+        expect(apply("aaa", [
+            script({ in: "a", out: "b" }),
+            script({ in: "a", out: "Z", ableFlag: true, flag: 5 as unknown as string }),
+        ])).toBe("bbb");
+    });
+
+    it("guard: a mixed list of entries of every type", () => {
+        const list: customscript[] = [
+            script({ in: "a", out: "b", type: "editinput", ableFlag: true, flag: "g<order 1>" }),
+            script({ in: "b", out: "c", ableFlag: true, flag: "<order 2>" }),
+            script({ in: "x", out: "y", type: "editoutput" }),
+            script({ in: "d", out: "[$&]", ableFlag: true, flag: "g<move_top>" }),
+            script({ in: "a", out: "Z", type: "disabled" }),
+            script({ in: "(", out: "W" }),
+            script({ in: "a", out: "A", ableFlag: true, flag: "g<order 5>" }),
+            script({ in: "p", out: "q", ableFlag: true, flag: "i" }),
+        ];
+        expect(apply("abdxpPab", list)).toBe("[d]\nAcxqPAc");
+    });
+});
+
+describe("Studio Try it follows the translation step", () => {
+    const tryIt = (v: Partial<customscript>, sample: string) => {
+        const r = tryRegexEntry(script(v) as never, sample);
+        if (r.outcome !== "ran") throw new Error("expected outcome ran, got " + r.outcome);
+        return r;
+    };
+
+    it("rewrites $n only: no line feed after a closing >, {{data}} stays literal", () => {
+        const v = { in: "a", out: "<b>{{data}}</b>" };
+        const r = tryIt(v, "xay");
+        expect(r.engine).toBe("translation");
+        expect(r.directive).toBe(false);
+        expect(r.text).toBe(apply("xay", [script(v)]));
+        expect(r.text).toBe("x<b>{{data}}</b>y");
+    });
+
+    it("reads $n as a line feed", () => {
+        const v = { in: "a", out: "b$nc" };
+        expect(tryIt(v, "a").text).toBe(apply("a", [script(v)]));
+    });
+
+    it("treats the inject action and an @@emo out as plain replacements", () => {
+        const inject = { in: "a", out: "Z", ableFlag: true, flag: "<inject>" };
+        expect(tryIt(inject, "aa").text).toBe(apply("aa", [script(inject)]));
+        const emo = { in: "a", out: "@@emo x" };
+        expect(tryIt(emo, "aa").text).toBe(apply("aa", [script(emo)]));
+        expect(tryIt(emo, "aa").directive).toBe(false);
+    });
+
+    it("does not test first: a sticky pattern replaces at the start", () => {
+        const v = { in: "a", out: "b", ableFlag: true, flag: "<,>y" };
+        expect(tryIt(v, "aa").text).toBe(apply("aa", [script(v)]));
+        expect(tryIt(v, "aa").text).toBe("ba");
+    });
+
+    it("shows a move action as a directive without text", () => {
+        const r = tryIt({ in: "a", out: "X", ableFlag: true, flag: "<move_top>u" }, "xay");
+        expect(r.directive).toBe(true);
+        expect(r.text).toBeNull();
+        expect(r.count).toBe(1);
+    });
+
+    it("does not run a cbs entry", () => {
+        expect(tryRegexEntry(script({ in: "{{char}}", ableFlag: true, flag: "<cbs>" }) as never, "Risu").outcome).toBe("cbsFind");
     });
 });

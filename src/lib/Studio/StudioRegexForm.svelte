@@ -6,13 +6,16 @@
     import { FLAG_ACTIONS, keptTokens, lettersOn, actionsOn, orderOf, setOrder, toggleAction, toggleLetter, type FlagAction } from '../../ts/studio/edit/regexFlags'
     import { regexCustomFlag, regexFieldEdit, regexFlagEdit, regexStageEdit, regexTypingKey, type RegexOp } from '../../ts/studio/edit/regexListOps'
     import { refusalTextOf } from '../../ts/studio/edit/studioToasts'
+    import { regexProblems, type RegexProblems } from '../../ts/studio/edit/regexCheck'
     import { registerStudioField } from '../../ts/studio/fieldFlush'
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import type { OwnerKey } from '../../ts/studio/history/ownerPhase'
     import type { LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
     import { ReloadGUIPointer } from '../../ts/stores.svelte'
+    import { createPauseScheduler } from '../../ts/studio/longText/pauseScheduler'
     import { createCompositionGate } from '../../ts/studio/toggleBuilderModel'
     import LongTextField from './LongTextField.svelte'
+    import StudioRegexTry from './StudioRegexTry.svelte'
 
     // The item editor of one regex script, addressed by its index (a regex row has no identity). Every write is one
     // `service.objEdit` build over the live row; nothing is written by mounting, focusing or leaving a control that was not
@@ -190,6 +193,29 @@
         input.value = order === null ? '' : String(order)
     }
 
+    // ------------------------------------------------------------- problems
+    // The check reads the live row after the last change of Find, the flag text or the custom-flag switch (typing, undo,
+    // redo and outside edits alike); it only shows a line and never gates a write.
+    function checkLive(): RegexProblems | null {
+        if (row === null || typeof row.in !== 'string') return null
+        return regexProblems({ in: row.in, flag, ableFlag })
+    }
+    let problems = $state<RegexProblems | null>(untrack(() => checkLive()))
+    const problemScheduler = createPauseScheduler(250, () => { problems = checkLive() })
+    $effect(() => {
+        void findText
+        void flag
+        void ableFlag
+        untrack(() => problemScheduler.touch())
+    })
+    onDestroy(() => problemScheduler.cancel())
+
+    // The live entry the Try it panel runs; null while Find or Replace is not text.
+    function readEntry(): { in: string, out: string, type: string, flag: string, ableFlag: boolean } | null {
+        if (row === null || typeof row.in !== 'string' || typeof row.out !== 'string') return null
+        return { in: row.in, out: row.out, type: stage, flag, ableFlag }
+    }
+
     // ------------------------------------------------------------- flush on leave
     // Held composed text is written before the view changes, and the open step is closed so the next edit starts a step.
     onMount(() => registerStudioField((reason) => {
@@ -315,5 +341,17 @@
                 {/if}
             </div>
         {/if}
+        <div data-part="studio-regex-problems" aria-live="polite" class="flex flex-col gap-1">
+            {#if problems !== null}
+                {#if problems.invalid !== null}
+                    <p data-part="studio-regex-problem-invalid" class="text-sm text-draculared">{language.studioRegexInvalid(problems.invalid)}</p>
+                {:else if problems.emptyFind}
+                    <p data-part="studio-regex-note-empty" class={noteClass}>{language.studioRegexEmptyFind}</p>
+                {:else if problems.cbsFirst}
+                    <p data-part="studio-regex-note-cbs" class={noteClass}>{language.studioRegexNotCheckedCbs}</p>
+                {/if}
+            {/if}
+        </div>
+        <StudioRegexTry read={readEntry} />
     </section>
 {/if}
