@@ -334,14 +334,14 @@ async function mintMissing(source: RangeSource, pack: VerifiedPack, spans: reado
         if (urlOfRaw.has(span.raw)) {
             continue
         }
-        const read = await readVerifiedFile(source, pack, span.raw)
+        const read = await readVerifiedFile(source, pack, span.raw, 'parts')
         if (!isCurrent()) {
             return STALE
         }
         if (read.ok === false) {
             return failure(brokenReasonOf([read.refusal]))
         }
-        const url = URL.createObjectURL(new Blob([read.bytes as BlobPart], { type: read.mime }))
+        const url = URL.createObjectURL(new Blob([...read.parts] as BlobPart[], { type: read.mime }))
         minted.push(url)
         if (!BLOB_URL_PATTERN.test(url)) {
             return failure('couldNotCheck')

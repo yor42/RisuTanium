@@ -71,6 +71,8 @@ export interface VerifiedPack {
 }
 export type IntakeResult = { ok: true; pack: VerifiedPack } | { ok: false; refusals: readonly IntakeRefusal[] }
 export type VerifiedFileRead = { ok: true; bytes: Uint8Array; mime: PackFileMime } | { ok: false; refusal: IntakeRefusal }
+/** The same verified read as ordered chunks: for a stored entry views of the source's own bytes, so nothing the size of the entry is allocated. */
+export type VerifiedFileParts = { ok: true; parts: readonly Uint8Array[]; mime: PackFileMime } | { ok: false; refusal: IntakeRefusal }
 
 const MANIFEST_MAX_BYTES = 64 * 1024
 const SHEET_MAX_BYTES = 1024 * 1024
@@ -491,21 +493,69 @@ async function runIntake(source: RangeSource, judge: PackJudge): Promise<IntakeR
     }
 }
 
-/** Pass 2: re-reads one font or image of an accepted pack from the same source; CRC, size and sniff must equal pass 1. */
-export async function readVerifiedFile(source: RangeSource, pack: VerifiedPack, path: string): Promise<VerifiedFileRead> {
+/** Reads a stored entry as the chunks the source returned (CRC checked, nothing copied); a deflated entry is inflated into one buffer. */
+async function readParts(source: RangeSource, index: ZipIndex, i: number): Promise<{ ok: true; parts: Uint8Array[] } | { ok: false; refusal: IntakeRefusal }> {
+    if (index.entry(i).method !== 0) {
+        const whole = await readWhole(source, index, i)
+        return whole.ok === false ? { ok: false, refusal: whole.refusal } : { ok: true, parts: [whole.bytes] }
+    }
+    const parts: Uint8Array[] = []
+    const read = await readEntry(source, index, i, (chunk) => {
+        parts.push(chunk)
+    })
+    return read.ok === false ? { ok: false, refusal: refusalOfRead(read.finding) } : { ok: true, parts }
+}
+
+function headOf(parts: readonly Uint8Array[]): Uint8Array {
+    const head = new Uint8Array(SNIFF_BYTES)
+    let got = 0
+    for (const part of parts) {
+        if (got >= SNIFF_BYTES) {
+            break
+        }
+        const take = Math.min(SNIFF_BYTES - got, part.length)
+        head.set(part.subarray(0, take), got)
+        got += take
+    }
+    return head.subarray(0, got)
+}
+
+/**
+ * Pass 2: re-reads one font or image of an accepted pack from the same source; CRC, size and sniff must equal pass 1.
+ * With `'parts'` the bytes come back as chunks that stay valid only while the source's bytes do, so the caller consumes them at once.
+ */
+export async function readVerifiedFile(source: RangeSource, pack: VerifiedPack, path: string): Promise<VerifiedFileRead>
+export async function readVerifiedFile(source: RangeSource, pack: VerifiedPack, path: string, as: 'parts'): Promise<VerifiedFileParts>
+export async function readVerifiedFile(source: RangeSource, pack: VerifiedPack, path: string, as?: 'parts'): Promise<VerifiedFileRead | VerifiedFileParts> {
     const file = pack.files.get(path)
     if (!file) {
         return { ok: false, refusal: { code: 'damaged', name: path } }
     }
     try {
-        const whole = await readWhole(source, pack.directory, file.entryIndex)
-        if (whole.ok === false) {
-            return { ok: false, refusal: whole.refusal }
+        const read = await readParts(source, pack.directory, file.entryIndex)
+        if (read.ok === false) {
+            return { ok: false, refusal: read.refusal }
         }
-        if (whole.bytes.length !== file.size || sniffPackFile(whole.bytes.subarray(0, SNIFF_BYTES)) !== file.mime) {
+        let length = 0
+        for (const part of read.parts) {
+            length += part.length
+        }
+        if (length !== file.size || sniffPackFile(headOf(read.parts)) !== file.mime) {
             return { ok: false, refusal: { code: 'wrongContent', name: path } }
         }
-        return { ok: true, bytes: whole.bytes, mime: file.mime }
+        if (as === 'parts') {
+            return { ok: true, parts: read.parts, mime: file.mime }
+        }
+        if (read.parts.length === 1) {
+            return { ok: true, bytes: read.parts[0], mime: file.mime }
+        }
+        const bytes = new Uint8Array(length)
+        let at = 0
+        for (const part of read.parts) {
+            bytes.set(part, at)
+            at += part.length
+        }
+        return { ok: true, bytes, mime: file.mime }
     } catch (error) {
         if (error instanceof RtbCouldNotReadError) {
             return { ok: false, refusal: { code: 'couldNotCheck' } }
