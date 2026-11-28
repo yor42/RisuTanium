@@ -26,7 +26,8 @@ const PACKS: BinLeaveOutEntry = { kind: 'themePacks', count: 5, names: ['Navy'] 
 const USAGE: BinLeaveOutEntry = { kind: 'usageStats', count: 1 }
 const CHRO: BinLeaveOutEntry = { kind: 'chroMemory', count: 1 }
 const DRAFTS: BinLeaveOutEntry = { kind: 'chatDrafts', drafts: 3, hintChats: 2 }
-const ALL = [ALTERNATIVES, FORK_CHAT, PRESETS, WORKSPACES, PACKS, USAGE, CHRO, DRAFTS]
+const LOCKS: BinLeaveOutEntry = { kind: 'presetLocks', ids: ['sampling', 'reasoning'] }
+const ALL = [ALTERNATIVES, FORK_CHAT, PRESETS, WORKSPACES, PACKS, USAGE, CHRO, DRAFTS, LOCKS]
 
 /** The count text each entry must put on a shown line. */
 function countText(entry: BinLeaveOutEntry): string {
@@ -39,6 +40,7 @@ function countText(entry: BinLeaveOutEntry): string {
         case 'usageStats': return language.settingsShellDataLeaveOutUsage
         case 'chroMemory': return language.settingsShellDataKindChroMemory
         case 'chatDrafts': return language.settingsShellDataLeaveOutChatDrafts(entry.drafts, entry.hintChats)
+        case 'presetLocks': return language.settingsShellDataLeaveOutPresetLocks(entry.ids.length)
     }
 }
 
@@ -51,8 +53,8 @@ function subsets(): BinLeaveOutEntry[][] {
 }
 
 describe('leaveOutSheetDef', () => {
-    test('there are 255 non-empty combinations of the eight kinds', () => {
-        expect(subsets()).toHaveLength(255)
+    test('there are 511 non-empty combinations of the nine kinds', () => {
+        expect(subsets()).toHaveLength(511)
     })
 
     test('for every combination at most VISIBLE_CONSEQUENCES lines, and every present kind is named on one of them', () => {
@@ -108,6 +110,13 @@ describe('leaveOutSheetDef', () => {
         expect(leftOutKindLabels([DRAFTS])).toEqual(['Unsent message edits and long-chat hints'])
     })
 
+    test('L8 reproducer: the fork-only preset locks are one app item with their group ids named in the detail', () => {
+        expect(leaveOutSheetDef([LOCKS]).consequences).toEqual([language.settingsShellDataLeaveOutAppData('2 preset field lock(s)')])
+        expect((leaveOutSheetDef([LOCKS]).detail ?? []).some((line) => line.includes('sampling') && line.includes('reasoning'))).toBe(true)
+        expect(leftOutKindLabels([LOCKS])).toEqual(['Preset field locks'])
+        expect((leaveOutSheetDef(ALL).consequences ?? []).length).toBe((leaveOutSheetDef(ALL.filter((entry) => entry.kind !== 'presetLocks')).consequences ?? []).length)
+    })
+
     test('the combined app-data line lists the present items in order', () => {
         const lines = leaveOutSheetDef([PRESETS, WORKSPACES, PACKS, USAGE]).consequences ?? []
         expect(lines).toEqual([
@@ -139,6 +148,7 @@ describe('leftOutKindLabels', () => {
             language.settingsShellDataKindUsage,
             language.settingsShellDataKindChroMemory,
             language.settingsShellDataKindChatDrafts,
+            language.settingsShellDataKindPresetLocks,
         ])
     })
 })

@@ -26,7 +26,7 @@ import {
 import { repairBotPresetsId } from 'src/ts/storage/botPresetRepair'
 import { DBState } from 'src/ts/stores.svelte'
 import { PRESET_RECORD_FIELDS } from 'src/ts/storage/store2/fastForward/records'
-import { LOCK_GROUPS, PRESET_LOCK_FIELDS, isLocked, lockedGroups, nextLockList, setLocked, type LockGroup, type LockHost } from 'src/ts/storage/presetLocks'
+import { LOCK_GROUPS, PRESET_LOCK_FIELDS, forkOnlyLockIds, isLocked, lockedGroups, nextLockList, setLocked, type LockGroup, type LockHost } from 'src/ts/storage/presetLocks'
 
 type Loose = Record<string, unknown>
 
@@ -323,5 +323,13 @@ describe('L1b the lock list is not a record field', () => {
         for (const field of PRESET_LOCK_FIELDS) {
             expect((PRESET_RECORD_FIELDS as readonly string[]).includes(field)).toBe(false)
         }
+    })
+})
+
+describe('forkOnlyLockIds (stage 2)', () => {
+    test('returns the string members in list order, and nothing for an absent or non-array list', () => {
+        expect(forkOnlyLockIds({ presetFieldLocks: ['sampling', 7 as unknown as string, 'reasoning'] })).toEqual(['sampling', 'reasoning'])
+        expect(forkOnlyLockIds({})).toEqual([])
+        expect(forkOnlyLockIds({ presetFieldLocks: 'sampling' as unknown as string[] })).toEqual([])
     })
 })

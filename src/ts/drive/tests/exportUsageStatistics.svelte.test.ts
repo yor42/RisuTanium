@@ -301,6 +301,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 
 //#endregion
 
+import type { BinLeaveOutEntry } from 'src/ts/drive/binLeaveOut'
 import { SaveLocalBackup, SavePartialLocalBackup, type BackupExportOptions, type ExportOutcome } from 'src/ts/drive/backuplocal'
 import { getDatabase } from 'src/ts/storage/database.svelte'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
@@ -372,6 +373,9 @@ async function decodedDatabase(): Promise<Record<string, unknown>> {
 
 const usagePrompts = (): string[] => alertConfirmMock.mock.calls.map((call) => String(call[0])).filter((text) => text.includes(USAGE_PROMPT))
 
+const PRESET_LOCK_PROMPT = 'preset field locks'
+const presetLockPrompts = (): string[] => alertConfirmMock.mock.calls.map((call) => String(call[0])).filter((text) => text.includes(PRESET_LOCK_PROMPT))
+
 type Runner = (options?: BackupExportOptions) => Promise<ExportOutcome>
 
 //#endregion
@@ -441,6 +445,53 @@ describe.each([
         expect(Object.hasOwn(written, 'presetFieldLocks')).toBe(false)
         expect(written.doNotChangeFallbackModels).toBe(true)
         expect(db.presetFieldLocks).toEqual(['sampling'])
+    }, 120_000)
+
+    test('L8 reproducer: with a fork-only lock on, the sheet names the groups, no per-kind prompt is asked, and the file holds no list', async () => {
+        const db = page({ presetFieldLocks: ['sampling', 'reasoning'], doNotChangeFallbackModels: true })
+        let summary: readonly BinLeaveOutEntry[] = []
+        const askLeaveOut = vi.fn(async (given: readonly BinLeaveOutEntry[]) => {
+            summary = given
+            return true
+        })
+
+        const outcome = await run({ askLeaveOut })
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        expect(askLeaveOut).toHaveBeenCalledTimes(1)
+        expect(summary).toEqual([{ kind: 'presetLocks', ids: ['sampling', 'reasoning'] }])
+        expect(presetLockPrompts()).toEqual([])
+        const written = await decodedDatabase()
+        expect(Object.hasOwn(written, 'presetFieldLocks')).toBe(false)
+        expect(written.doNotChangeFallbackModels).toBe(true)
+        expect(db.presetFieldLocks).toEqual(['sampling', 'reasoning'])
+    }, 120_000)
+
+    test('L8 guard (passes before and after): the legacy flags alone, an empty list and a list that is not an array ask nothing', async () => {
+        for (const fields of [{ doNotChangeFallbackModels: true }, { presetFieldLocks: [] }, { presetFieldLocks: 'sampling' as unknown as string[] }, { presetFieldLocks: [7] as unknown as string[] }]) {
+            backupSink.writes.length = 0
+            page(fields)
+            const askLeaveOut = vi.fn(async () => true)
+
+            const outcome = await run({ askLeaveOut })
+
+            expect(outcome).toMatchObject({ status: 'saved' })
+            expect(askLeaveOut).not.toHaveBeenCalled()
+            expect(Object.hasOwn(await decodedDatabase(), 'presetFieldLocks')).toBe(false)
+        }
+        expect(presetLockPrompts()).toEqual([])
+    }, 120_000)
+
+    test('L8 reproducer: an unanswered sheet falls back to one prompt that names the groups, and declining writes nothing', async () => {
+        page({ presetFieldLocks: ['sampling'] })
+        alertConfirmMock.mockImplementation(async (message: string) => !message.includes(PRESET_LOCK_PROMPT))
+
+        const outcome = await run({ askLeaveOut: async () => null })
+
+        expect(presetLockPrompts()).toHaveLength(1)
+        expect(presetLockPrompts()[0]).toContain('sampling')
+        expect(outcome).toEqual({ status: 'declined', cause: 'incomplete-data-declined' })
+        expect(backupSink.writes).toEqual([])
     }, 120_000)
 
     test('T11 reproducer: price overrides alone are named and left out too', async () => {

@@ -22,6 +22,8 @@ export type BinLeaveOutEntry =
     | { kind: 'chroMemory', count: 1 }
     /** Unsent message edits and long-chat hint flags: drafts edits across all chats, hintChats chats whose hint flag is set. */
     | { kind: 'chatDrafts', drafts: number, hintChats: number }
+    /** Preset field locks with no upstream flag (`presetFieldLocks`): the ids of the groups that are on. */
+    | { kind: 'presetLocks', ids: readonly string[] }
 
 export interface BinLeaveOutInput {
     /** Every chat that loses fork-only data, as the export labelled them. */
@@ -33,6 +35,8 @@ export interface BinLeaveOutInput {
     chroMemory: boolean
     /** What the profile holds of the unsent edits and hint flags; both zero means there is nothing to leave out. */
     chatDrafts: { drafts: number, hintChats: number }
+    /** The fork-only preset lock groups that are on; empty means the entry is absent. */
+    presetLocks: readonly string[]
 }
 
 /** The kinds the chat table names, in table order. */
@@ -69,6 +73,9 @@ export function binLeaveOutSummary(input: BinLeaveOutInput): BinLeaveOutEntry[] 
     }
     if (input.chatDrafts.drafts > 0 || input.chatDrafts.hintChats > 0) {
         summary.push({ kind: 'chatDrafts', drafts: input.chatDrafts.drafts, hintChats: input.chatDrafts.hintChats })
+    }
+    if (input.presetLocks.length > 0) {
+        summary.push({ kind: 'presetLocks', ids: input.presetLocks })
     }
     return summary
 }

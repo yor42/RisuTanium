@@ -81,6 +81,10 @@ export function leaveOutSheetDef(summary: readonly BinLeaveOutEntry[]): PatternW
             case 'chatDrafts':
                 appItems.push(language.settingsShellDataLeaveOutChatDrafts(entry.drafts, entry.hintChats));
                 break;
+            case 'presetLocks':
+                appItems.push(language.settingsShellDataLeaveOutPresetLocks(entry.ids.length));
+                named.push(namedLine(language.settingsShellDataKindPresetLocks, entry.ids.slice(0, UPSTREAM_PROMPT_NAMES_SHOWN), entry.ids.length));
+                break;
         }
     }
     if (appItems.length > 0) {
@@ -112,6 +116,7 @@ export function leftOutKindLabels(summary: readonly BinLeaveOutEntry[]): string[
             case 'usageStats': return language.settingsShellDataKindUsage;
             case 'chroMemory': return language.settingsShellDataKindChroMemory;
             case 'chatDrafts': return language.settingsShellDataKindChatDrafts;
+            case 'presetLocks': return language.settingsShellDataKindPresetLocks;
         }
     });
 }
