@@ -18,7 +18,10 @@
     import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from "../../ts/process/firstMessage";
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
-    import { chroMemoryOn, legacyEngineFields } from "../../ts/process/memory/memoryEngine";
+    import { chroMemoryModeOf, chroMemoryOn, legacyEngineFields } from "../../ts/process/memory/memoryEngine";
+    import { effectiveMemory } from "../../ts/parser/chatToggleScope";
+    import { chroMemoryEmbedder } from "../../ts/process/memory/chroMemory/denseEmbedder";
+    import { prefetchChroMemoryVectors, releaseChroMemoryPrefetch } from "../../ts/process/memory/chroMemory/shadow";
     import { runChatScreenshot } from "src/ts/chatScreenshot";
     import { alertError, showHypaV2Alert } from "../../ts/alert";
     import CreatorQuote from "./CreatorQuote.svelte";
@@ -132,6 +135,20 @@
     let currentChatObj = $derived(currentCharacter?.chats?.[currentCharacter.chatPage])
     let lv = $derived(legacyEngineFields(DBState.db))
     let currentChat = $derived(currentChatObj?.message ?? [])
+
+    // Opening a hybrid chat starts its persisted-vector read, so the first send does not outrun it. Only the chat's
+    // identity and the retrieval settings are tracked; leaving the chat frees a read no send used.
+    $effect(() => {
+        const owner = currentCharacter
+        const chat = currentChatObj
+        if (!owner || !chat) return
+        const ownerId = owner.chaId
+        const chatId = chat.id
+        const settings = DBState.db.ltmSettings
+        if (chroMemoryModeOf(DBState.db, effectiveMemory(owner, chat), settings) !== 'inject') return
+        prefetchChroMemoryVectors({ ownerId, chatId, ltmSettings: settings, embedder: chroMemoryEmbedder })
+        return () => releaseChroMemoryPrefetch(ownerId, chatId)
+    })
 
     const composerSurface = createComposerSurface({ character: () => currentCharacter, chat: () => currentChatObj })
     let shownDraft = $derived(composerSurface.shownDraft)
