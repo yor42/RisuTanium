@@ -2835,6 +2835,7 @@ export const languageSpanish = {
     "studioRegexWhyFlag": "el indicador no es texto",
     "studioRegexWhyAbleFlag": "ableFlag no es verdadero ni falso",
     "studioRegexListNotEditable": "Esta lista contiene valores que Studio no puede editar de forma segura. Usa el editor clásico para cambiarla.",
+    "studioRegexPresetNotInChat": "Este preajuste no está activo, por lo que su regex no se ejecuta en este chat.",
     "studioRegexRestoreLine": (n: number) => n === 1 ? "Regex: deshacer 1 cambio" : `Regex: deshacer ${n} cambios`,
     "studioRegexRestoreEarlierVisit": "Los cambios de regex posteriores no se deshacen aquí. Usa el Historial para deshacerlos.",
     "studioRegexRestoreChanged": "Los scripts de regex han cambiado en otro lugar desde entonces, así que se dejan como están. Usa el Historial para deshacer pasos individuales.",

@@ -1,15 +1,20 @@
-// The `preset` session owner: the toggle text and the advanced-form fields of one bot preset, addressed by its stable
-// id. Each value lives in one of two copies: the active preset's is the working setting `db.<property>` (saveCurrentPreset
-// rebuilds the slot from it and setPreset overwrites it), every other preset's is its own slot; the name is the one
-// value that is always the slot's. Which copy is live is decided on every read and every write, never cached, so a
-// reorder, a switch or a delete between two calls cannot send a value to the wrong copy. The table that names the
-// properties and the absent rules is presetFields.ts.
+// The `preset` session owner: the toggle text, the advanced-form fields and the regex script list of one bot preset,
+// addressed by its stable id. Each value lives in one of two copies: the active preset's is the working setting
+// `db.<property>` (saveCurrentPreset rebuilds the slot from it and setPreset overwrites it), every other preset's is its
+// own slot; the name is the one value that is always the slot's. Which copy is live is decided on every read and every
+// write, never cached, so a reorder, a switch or a delete between two calls cannot send a value to the wrong copy. The
+// table that names the properties and the absent rules is presetFields.ts. The regex list is never edited in place: a
+// slot can share its array and its rows with the working copy (setPreset), so a write builds one new array, copies each
+// row it edits and assigns the array once to the live copy.
 // The history of this owner is memory-only, so nothing here marks a save beyond what the database write hook
 // already reports for the assignments below. A landed edit is forwarded to the preset's save chip by `noteEdit`.
 
 import { DBState } from '../../stores.svelte'
 import type { botPreset } from '../../storage/database.svelte'
+import { toPlainJson } from '../../storage/store2/codec/normalize'
 import type { FieldValue, LiveReader, WriteOp } from '../history/historyModel'
+import { OBJ_LIST_FIELDS } from '../history/objectLists'
+import type { ObjWrite } from '../history/objectListOps'
 import { sessionOwnerKey } from '../history/ownerPhase'
 import { cloneValue, valueMatchesKind, valuesEqual } from '../history/fieldAccess'
 import { notePresetEdit } from './presetAck.svelte'
@@ -150,12 +155,99 @@ export function presetHasTemplate(id: string): boolean {
     return Array.isArray(resolved.active ? DBState.db.promptTemplate : resolved.slot.promptTemplate)
 }
 
+// The object and the property that hold the regex list now: the working setting for the active preset, the slot otherwise.
+function regexHomeOf(resolved: { slot: botPreset; active: boolean }): { holder: PropertyBag; property: string } {
+    return resolved.active ? { holder: bagOf(DBState.db), property: 'presetRegex' } : { holder: bagOf(resolved.slot), property: 'regex' }
+}
+
+// The live regex list: an absent value (undefined or null) is an empty list, an array is returned as it is stored, and
+// anything else is null (a list the writers cannot edit).
+function regexListOf(resolved: { slot: botPreset; active: boolean }): unknown[] | null {
+    const { holder, property } = regexHomeOf(resolved)
+    const stored = holder[property]
+    if (stored === undefined || stored === null) {
+        return []
+    }
+    return Array.isArray(stored) ? stored : null
+}
+
+// The regex list as the live copy stores it, for showing: an absent value reads as an empty list; undefined when the
+// preset is gone. It never writes.
+export function presetRegexRows(id: string): unknown {
+    const resolved = resolvePreset(id)
+    if (resolved.ok === false) {
+        return undefined
+    }
+    const { holder, property } = regexHomeOf(resolved)
+    const stored = holder[property]
+    return stored === undefined || stored === null ? [] : stored
+}
+
 function presetReader(id: string): LiveReader {
     return {
         field: (path): FieldValue => (isPresetPath(path) ? readPresetField(id, path) : { had: false }),
         greetings: () => null,
         fmIndex: () => null,
+        objList(list) {
+            if (list !== 'regex') {
+                return null
+            }
+            const resolved = resolvePreset(id)
+            return resolved.ok === false ? null : regexListOf(resolved)
+        },
     }
+}
+
+// The regex ops of a batch: the insert, remove and set of the regex list.
+type RegexWrite = Exclude<ObjWrite, { op: 'propSet' }>
+
+function isRegexWrite(write: WriteOp): write is RegexWrite {
+    return (write.op === 'objInsert' || write.op === 'objRemove' || write.op === 'objSet') && write.list === 'regex'
+}
+
+// The regex ops applied to a copy of the live list, every one verified; the live list and its rows are never touched.
+// Null when any op cannot be applied. A row is copied the first time the batch edits it, so an unknown key survives.
+function buildRegexList(current: readonly unknown[], writes: readonly RegexWrite[]): unknown[] | null {
+    const next = [...current]
+    const own = new Set<object>()
+    for (const write of writes) {
+        if (!Number.isInteger(write.index)) {
+            return null
+        }
+        if (write.op === 'objInsert') {
+            const entry = toPlainJson(write.entry)
+            if (entry === undefined || write.index < 0 || write.index > next.length) {
+                return null
+            }
+            if (typeof entry === 'object' && entry !== null) {
+                own.add(entry)
+            }
+            next.splice(write.index, 0, entry)
+        } else if (write.op === 'objRemove') {
+            if (write.index < 0 || write.index >= next.length) {
+                return null
+            }
+            next.splice(write.index, 1)
+        } else {
+            const element: unknown = next[write.index]
+            if (write.index < 0 || write.index >= next.length || !isPlainObject(element) || !Object.hasOwn(OBJ_LIST_FIELDS.regex.fields, write.field)) {
+                return null
+            }
+            const target = own.has(element) ? element : { ...element }
+            own.add(target)
+            next[write.index] = target
+            if (!write.value.had) {
+                delete target[write.field]
+            } else {
+                const value = toPlainJson(write.value.value)
+                if (value === undefined) {
+                    return null
+                }
+                target[write.field] = value
+            }
+        }
+    }
+    return next
 }
 
 type PresetSet = { op: 'set'; path: PresetPath; value: FieldValue }
@@ -228,12 +320,15 @@ export const presetAdapter: SessionOwnerAdapter = {
         return { ok: true, target: { session: 'preset', id, reader: presetReader(id) } }
     },
     // A write the copy that is live now cannot take as a whole: the working copy never loses a required setting (a
-    // `{ had: false }` write of a field whose slot absence means "keep the working value"), and a container that is
-    // not a plain object is never written into.
+    // `{ had: false }` write of a field whose slot absence means "keep the working value"), a container that is
+    // not a plain object is never written into, and a regex list that is not an array is never replaced.
     check(id, writes) {
         const resolved = resolvePreset(id)
         if (resolved.ok === false) {
             return 'ok'
+        }
+        if (writes.some(isRegexWrite) && regexListOf(resolved) === null) {
+            return 'precondition'
         }
         for (const write of writes) {
             const op = asPresetSet(write)
@@ -247,22 +342,44 @@ export const presetAdapter: SessionOwnerAdapter = {
         }
         return 'ok'
     },
-    // Only `set` ops of the table's paths are accepted, and the whole batch is checked before the first assignment.
+    // Only `set` ops of the table's paths and the insert, remove and set of the regex list are accepted. The whole batch
+    // is verified (the sets, then the regex ops on a copy of the list) before the first assignment; the sets are assigned
+    // next and the new regex array last, in one assignment.
     write(id, writes) {
         const resolved = resolvePreset(id)
         if (resolved.ok === false) {
             return false
         }
         const ops: PresetSet[] = []
+        const regexWrites: RegexWrite[] = []
         for (const write of writes) {
+            if (isRegexWrite(write)) {
+                regexWrites.push(write)
+                continue
+            }
             const op = asPresetSet(write)
             if (!op || !opAssignable(op, resolved)) {
                 return false
             }
             ops.push(op)
         }
+        let nextRegex: unknown[] | null = null
+        if (regexWrites.length > 0) {
+            const current = regexListOf(resolved)
+            if (current === null) {
+                return false
+            }
+            nextRegex = buildRegexList(current, regexWrites)
+            if (nextRegex === null) {
+                return false
+            }
+        }
         for (const op of ops) {
             assignOp(op, resolved)
+        }
+        if (nextRegex !== null) {
+            const home = regexHomeOf(resolved)
+            home.holder[home.property] = nextRegex
         }
         return true
     },

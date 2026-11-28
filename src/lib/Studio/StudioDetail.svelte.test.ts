@@ -403,6 +403,31 @@ describe('4d text of the chat, a resident module and a preset', () => {
         expect(part('studio-detail-text')?.textContent).toContain('PRESET-IN')
     })
 
+    // U3: a preset that holds an id mounts the regex pane for the pinned id; deleting it clears the selection with the
+    // gone notice and touches no other preset.
+    test('a pinned preset mounts the regex pane, and deleting it clears the selection with the gone notice', async () => {
+        setFull(makeInput({
+            presets: [makePreset('P0', { regex: [regexBody('pr', 'PRESET-IN', 'PRESET-OUT')] }), makePreset('P1', { regex: [regexBody('other', 'OTHER-IN', 'OTHER-OUT')] })],
+            activePreset: 1,
+        }))
+        db.db.botPresets.forEach((preset, index) => { Object.assign(preset, { id: `pid-${index}` }) })
+        openStudio({ owner: { type: 'preset', id: '0' }, kind: 'regex', from: 'chat' }, null)
+        show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
+        expect(studioScreen.selectedPresetId).toBe('pid-0')
+        expect(part('studio-regex-pane')).not.toBeNull()
+        expect(part('studio-detail-text')).toBeNull()
+        const survivor = JSON.stringify(db.db.botPresets[1])
+        db.db.botPresets.splice(0, 1)
+        flushSync()
+        expect(studioScreen.selectedOwnerKey).toBeNull()
+        expect(studioScreen.selectedPresetId).toBeNull()
+        expect(studioScreen.notice).toBe('studioRefusalPresetGone')
+        expect(JSON.stringify(db.db.botPresets)).toBe(`[${survivor}]`)
+    })
+
     test('an unloaded module shows the not-loaded line and its body is never read', async () => {
         const reads: string[] = []
         setFull(makeInput({ modules: [watchBodyKeys(stubModule('stub'), reads)] }))

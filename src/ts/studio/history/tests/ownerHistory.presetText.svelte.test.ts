@@ -178,10 +178,14 @@ describe('T2: edits land in the live copy', () => {
         expect(JSON.stringify(DBState.db)).toBe(before)
     })
 
-    test('the preset kind allows a set of the toggle text and no other op', () => {
+    test('the preset kind allows a set of the toggle text and the regex list ops, and refuses the lore and members ops and every other op', () => {
         const set = (path: string) => ({ op: 'set', path, before: { had: false }, after: { had: false } }) as never
         expect(isOpAllowedFor('preset', set(PATH))).toBe(true)
         expect(isOpAllowedFor('preset', set('desc'))).toBe(false)
+        const insert = (list: string) => ({ op: 'objInsert', list, index: 0, entry: {}, counts: {} }) as never
+        expect(isOpAllowedFor('preset', insert('regex'))).toBe(true)
+        expect(isOpAllowedFor('preset', insert('lore'))).toBe(false)
+        expect(isOpAllowedFor('preset', insert('members'))).toBe(false)
         for (const op of ['listSet', 'listInsert', 'listRemove', 'chatFm', 'assetRowRemove', 'assetRowInsert', 'assetRowSet', 'assetFolderSet', 'assetFolderOrder', 'textEdit', 'portraitSet']) {
             expect(isOpAllowedFor('preset', { op } as never), op).toBe(false)
         }

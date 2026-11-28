@@ -14,8 +14,9 @@ export interface SessionOwnerKindSpec {
 }
 
 export const SESSION_OWNER_KINDS = {
-    // A bot preset's toggle text and the fields of its advanced form, by the preset's stable id (see presetTarget.ts
-    // and presetFields.ts). The row derives the kind's set row and restore row; the adapter table holds exactly these.
+    // A bot preset's toggle text, the fields of its advanced form and its regex script list, by the preset's stable id
+    // (see presetTarget.ts and presetFields.ts). The row derives the kind's set row, restore row and holder row for the
+    // regex list; the adapter table holds exactly these.
     preset: {
         setPaths: [
             'customModuleToggle',
@@ -88,6 +89,7 @@ export const SESSION_OWNER_KINDS = {
             'presetFallbackOtherAx',
             'presetImage',
         ],
+        objLists: ['regex'],
     },
     // A group's name, its order flag and its member list, by the group's chaId (see groupTarget.ts). The three parallel
     // member arrays of the group change only together, through the `members` list.

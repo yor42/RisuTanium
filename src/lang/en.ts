@@ -2969,6 +2969,7 @@ export const languageEnglish = {
     studioRegexWhyFlag: "flag is not text",
     studioRegexWhyAbleFlag: "ableFlag is not true or false",
     studioRegexListNotEditable: "This list holds values Studio can't edit safely. Use the classic editor to change it.",
+    studioRegexPresetNotInChat: "This preset is not active, so its regex does not run in this chat.",
     studioRegexRestoreLine: (n: number) => n === 1 ? "Regex: undo 1 change" : `Regex: undo ${n} changes`,
     studioRegexRestoreEarlierVisit: "Regex changes since then aren't undone here. Use History to undo them.",
     studioRegexRestoreChanged: "The regex scripts changed elsewhere since, so they're left as they are. Use History to undo single steps.",

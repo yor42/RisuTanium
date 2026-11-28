@@ -7,7 +7,8 @@
     import { classifyRegexList } from '../../ts/studio/edit/regexEntry'
     import { regexAdd, regexDelete, regexDuplicate, regexMove, type RegexMove, type RegexOp } from '../../ts/studio/edit/regexListOps'
     import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
-    import { characterOwnerKey, moduleOwnerKey, type StoredOwnerKey } from '../../ts/studio/history/ownerPhase'
+    import { presetOwnerKey, presetRegexRows, presetStateOf } from '../../ts/studio/edit/presetTarget'
+    import { characterOwnerKey, moduleOwnerKey, type OwnerKey } from '../../ts/studio/history/ownerPhase'
     import {
         beginModuleAck,
         beginOwnerVisit,
@@ -18,17 +19,19 @@
     } from '../../ts/studio/history/studioHistoryService.svelte'
     import type { StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { ownerKeyOf, regexIndexOfItemId, regexItemIdOf } from '../../ts/studio/ownerModel'
-    import { openStudioListRow, setStudioSelection } from '../../ts/studio/studioScreen.svelte'
+    import { openStudioListRow, setStudioSelection, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { DBState } from '../../ts/stores.svelte'
     import Help from '../Others/Help.svelte'
     import StudioRegexForm from './StudioRegexForm.svelte'
     import StudioRegexList, { type RegexFocusRequest, type RegexTarget } from './StudioRegexList.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
 
-    // The regex scripts of one character or module: a plain row list while no script is selected, the item editor while one
-    // is. Every persisted write goes through the form or the list operations, which read the live list at each use.
+    // The regex scripts of one character, module or preset: a plain row list while no script is selected, the item editor
+    // while one is. Every persisted write goes through the form or the list operations, which read the live list at each use.
     interface Props {
-        ownerType: 'character' | 'module'
+        ownerType: 'character' | 'module' | 'preset'
+        // The preset's stable id (its row index moves); read only for a preset.
+        presetId?: string | null
         ownerId: string
         chaId: string
         moduleId: string | null
@@ -37,9 +40,24 @@
         itemId: string | null
     }
 
-    let { ownerType, ownerId, chaId, moduleId, moduleSlotIndex, itemId }: Props = $props()
+    let { ownerType, presetId = null, ownerId, chaId, moduleId, moduleSlotIndex, itemId }: Props = $props()
 
     const ownerKey = untrack(() => ownerKeyOf(ownerType, ownerId))
+    const PRESET_KEY_PREFIX = ownerKeyOf('preset', '')
+
+    // The selection key and the row part of item ids. A character or module never moves, so its mount-time key stands. A
+    // preset's row moves with reorders, so its key is read from the selection at each use, and null (no selection, or one
+    // that is not a preset) means nothing is selected or opened on its behalf.
+    function selectionKey(): string | null {
+        if (ownerType !== 'preset') return ownerKey
+        const key = studioScreen.selectedOwnerKey
+        return key !== null && key.startsWith(PRESET_KEY_PREFIX) && key.length > PRESET_KEY_PREFIX.length ? key : null
+    }
+    function itemOwnerId(): string | null {
+        if (ownerType !== 'preset') return ownerId
+        const key = selectionKey()
+        return key === null ? null : key.slice(PRESET_KEY_PREFIX.length)
+    }
 
     const service = $derived(getStudioHistoryService())
     const character = $derived.by(() => {
@@ -52,7 +70,8 @@
         return body !== undefined && body.id === moduleId ? body : undefined
     })
     // The history owner of this list; null while none exists (no such character, a module that is not at its slot).
-    const owner = $derived.by((): StoredOwnerKey | null => {
+    const owner = $derived.by((): OwnerKey | null => {
+        if (ownerType === 'preset') return presetId !== null && presetStateOf(presetId) !== null ? presetOwnerKey(presetId) : null
         if (character === undefined) return null
         if (ownerType === 'character') return characterOwnerKey(chaId)
         return moduleId !== null && moduleBody !== undefined ? moduleOwnerKey(moduleId) : null
@@ -77,6 +96,7 @@
     // The live list, read at each use so a row is the live one and never a snapshot. An absent list reads as empty; any
     // other stored value is returned as it is, so the classification can name it.
     function readLive(): unknown {
+        if (ownerType === 'preset') return presetId === null ? [] : presetRegexRows(presetId) ?? []
         const list: unknown = ownerType === 'character' ? character?.customscript : moduleBody?.regex
         return list === undefined ? [] : list
     }
@@ -88,7 +108,11 @@
         return Array.isArray(list) ? list : []
     })
 
-    const openIndex = $derived(itemId === null ? undefined : regexIndexOfItemId(ownerId, itemId))
+    const openIndex = $derived.by(() => {
+        if (itemId === null) return undefined
+        const id = itemOwnerId()
+        return id === null ? undefined : regexIndexOfItemId(id, itemId)
+    })
     const openClass = $derived(openIndex === undefined ? undefined : rows[openIndex])
     const formOpen = $derived(openClass !== undefined && openClass.kind === 'ok')
 
@@ -97,11 +121,17 @@
     $effect(() => {
         if (itemId === null) return
         if (formOpen) return
-        untrack(() => setStudioSelection(ownerKey, 'regex', null))
+        untrack(() => {
+            const key = selectionKey()
+            if (key !== null) setStudioSelection(key, 'regex', null)
+        })
     })
 
     function openRow(index: number): void {
-        openStudioListRow({ ownerKey, kind: 'regex' }, ownerKey, regexItemIdOf(ownerId, index))
+        const key = selectionKey()
+        const id = itemOwnerId()
+        if (key === null || id === null) return
+        openStudioListRow({ ownerKey: key, kind: 'regex' }, key, regexItemIdOf(id, index))
     }
 
     // ---------------------------------------------------------------- list operations
@@ -171,7 +201,10 @@
 </script>
 
 <div data-part="studio-regex-pane" class="flex flex-col gap-3">
-    {#if owner !== null}
+    {#if ownerType === 'preset' && presetId !== null && presetStateOf(presetId)?.active === false}
+        <p role="status" data-part="studio-regex-preset-not-in-chat" class="text-sm text-textcolor2">{language.studioRegexPresetNotInChat}</p>
+    {/if}
+    {#if owner !== null && ownerType !== 'preset'}
         <StudioStatusChip ack={ownerType === 'module' ? currentModuleAck() : currentVisitAck()} />
     {/if}
     {#if formOpen && openIndex !== undefined}

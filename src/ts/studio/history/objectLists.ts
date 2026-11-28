@@ -44,7 +44,8 @@ export const OBJ_LIST_HOLDERS = {
     lore: { character: 'globalLore', chat: 'localLore', module: 'lorebook' },
     // Held by the group session kind alone; the group adapter supplies the three parallel arrays.
     members: {},
-    // Regex scripts are held by characters and modules; a chat has none.
+    // Regex scripts are held by characters, modules and (as a session kind) presets, whose adapter supplies the live copy;
+    // a chat has none.
     regex: { character: 'customscript', module: 'regex' },
 } as const satisfies Record<string, ObjHolderRow>
 

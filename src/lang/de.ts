@@ -2835,6 +2835,7 @@ export const languageGerman = {
     "studioRegexWhyFlag": "Flag ist kein Text",
     "studioRegexWhyAbleFlag": "ableFlag ist weder true noch false",
     "studioRegexListNotEditable": "Diese Liste enthält Werte, die Studio nicht sicher bearbeiten kann. Nutze den klassischen Editor, um sie zu ändern.",
+    "studioRegexPresetNotInChat": "Dieses Preset ist nicht aktiv, daher wird seine Regex in diesem Chat nicht ausgeführt.",
     "studioRegexRestoreLine": (n: number) => n === 1 ? "Regex: 1 Änderung rückgängig machen" : `Regex: ${n} Änderungen rückgängig machen`,
     "studioRegexRestoreEarlierVisit": "Regex-Änderungen seitdem werden hier nicht rückgängig gemacht. Nutze den Verlauf, um sie rückgängig zu machen.",
     "studioRegexRestoreChanged": "Die Regex-Skripte wurden seitdem anderswo geändert und bleiben daher unverändert. Nutze den Verlauf, um einzelne Schritte rückgängig zu machen.",
