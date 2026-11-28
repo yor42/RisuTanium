@@ -10,6 +10,7 @@
     import TextInput from "../UI/GUI/TextInput.svelte";
     import { prebuiltPresets } from "src/ts/process/templates/templates";
     import { freshPresetMeta, slotBadgeFor } from "src/ts/storage/presetMeta";
+    import { postKeptGroupsToast } from "src/ts/storage/presetLockToast";
     import { movePresetIndex } from "src/ts/storage/presetListOps";
     import { openRealmUpload } from "src/ts/characterCards";
     import PromptDiffModal from "../Others/PromptDiffModal.svelte";
@@ -182,7 +183,11 @@
                 if(selectMode){
                     toggleSelected(preset.id)
                 } else if(!editMode){
+                    const switching = i !== DBState.db.botPresetsId
                     changeToPreset(i)
+                    if (switching) {
+                        postKeptGroupsToast(DBState.db)
+                    }
                     close()
                 }
             }}

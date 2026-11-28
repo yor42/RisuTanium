@@ -4,6 +4,7 @@ import { prebuiltPresets } from '../process/templates/templates'
 import { safeStructuredClone } from '../polyfill'
 import { changeToPreset, copyPreset } from '../storage/database.svelte'
 import { cutFolderName } from '../storage/presetBundle'
+import { postKeptGroupsToast } from '../storage/presetLockToast'
 import { movePresetById, newPresetFromTemplate, presetIndexById, presetOrderIds, removePresetKeepingActive, restorePresetOrder, stepTargetIndex, undoFolderMove } from '../storage/presetListOps'
 import { applySlotPlan, createPresetFolder, deletePresetFolder, movePresetFolder, movePresetToFolder, planSlotAssign, renamePresetFolder } from '../storage/presetMeta'
 import { slotUndoAction } from '../setting/hotkeyPage'
@@ -54,7 +55,10 @@ export function copyPresetById(id: string): PresetListResult {
 export function useInChats(id: string): PresetListResult {
     const index = presetIndexById(DBState.db.botPresets, id)
     if (index === -1) return GONE
-    if (index !== DBState.db.botPresetsId) changeToPreset(index)
+    if (index !== DBState.db.botPresetsId) {
+        changeToPreset(index)
+        postKeptGroupsToast(DBState.db)
+    }
     return { ok: true, id }
 }
 
