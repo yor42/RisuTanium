@@ -24,6 +24,8 @@ vi.mock('src/ts/stores.svelte', async () => {
 
 import { language } from 'src/lang'
 import { DBState } from 'src/ts/stores.svelte'
+import { resetPresetAckForTests, setPresetAckLoaderForTests } from '../../ts/studio/edit/presetAck.svelte'
+import { createSaveAck, type SaveAckDeps } from '../../ts/studio/edit/saveAck.svelte'
 import { presetOwnerKey } from '../../ts/studio/edit/presetTarget'
 import { presetNamed, seedPresetDb } from '../../ts/studio/edit/tests/presetFixture.test-helpers'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
@@ -74,11 +76,37 @@ async function mountPreset(index: number): Promise<HTMLElement> {
     return mounted
 }
 
+// A fresh ack on its own fake clock for each factory call: the holder disposes the ack it built, so one shared object
+// would be dead after the first end.
+function freshAck() {
+    const clock = createFakeClock()
+    const deps: SaveAckDeps = {
+        getMarkCount: () => 0,
+        getCommittedMarkCount: () => 0,
+        afterNextCommit: () => {},
+        requestSaveNow: () => {},
+        getPeerSaveCount: () => 0,
+        onStopped: () => () => {},
+        isStopped: () => false,
+        subscribeFailure: () => () => {},
+        currentFailure: () => null,
+        frozenKeys: () => new Set<string>(),
+        isCharacterUnsavable: () => false,
+        onPassStart: () => () => {},
+        visible: () => true,
+        onVisibilityChange: () => () => {},
+        clock,
+    }
+    return createSaveAck(deps, { kind: 'preset', verdict: () => 'saved' })
+}
+
 beforeEach(() => {
     setupRig()
+    setPresetAckLoaderForTests(async () => () => freshAck())
 })
 afterEach(async () => {
     await teardownRig()
+    resetPresetAckForTests()
 })
 
 describe('U1: the inactive note', () => {
@@ -98,7 +126,7 @@ describe('U1: the inactive note', () => {
 })
 
 describe('U2: add and delete on an inactive preset', () => {
-    test('Add appends to that slot only, Delete posts the toast, and no chip is shown', async () => {
+    test('Add appends to that slot only, Delete posts the toast, and the save chip is shown', async () => {
         await start()
         await mountPreset(1)
         const workingBefore = JSON.stringify(working())
@@ -107,7 +135,7 @@ describe('U2: add and delete on an inactive preset', () => {
         expect(slotRegex(1)).toHaveLength(3)
         expect(JSON.stringify(working())).toBe(workingBefore)
         expect(JSON.stringify([slotRegex(0), slotRegex(2)])).toBe(otherBefore)
-        expect(part('studio-chip')).toBeNull()
+        expect(part('studio-chip')).not.toBeNull()
         // The new row opened its editor; Back to the list is the selection of the list.
         setStudioSelection('preset:1', 'regex', null)
         await settle()

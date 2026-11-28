@@ -46,7 +46,7 @@ import { createOwnerHistoryService } from 'src/ts/studio/history/ownerHistory.sv
 import { createClaimDouble, createMemoryStudioStore } from 'src/ts/studio/history/tests/studioStoreDoubles'
 import { createFakeClock, drainMicrotasks, type FakeClock } from 'src/ts/studio/history/tests/historyTestKit.test-helpers'
 import { createSaveAck, type SaveAck, type SaveAckDeps } from '../saveAck.svelte'
-import { beginPresetAck, currentPresetAck, endPresetAck, notePresetEdit, resetPresetAckForTests, setPresetAckLoaderForTests } from '../presetAck.svelte'
+import { beginPresetAck, currentPresetAck, endPresetAck, notePresetEdit, resetPresetAckForTests, setPresetAckLoaderForTests, type PresetAckHolder } from '../presetAck.svelte'
 
 let clock: FakeClock
 let built: SaveAck[]
@@ -465,5 +465,121 @@ describe('H8 the real history service feeds the held ack', () => {
         const result = svc.editText(presetOwnerKey(ids[1]), PATH, 'b=edited', 'single')
         expect(result.ok).toBe(false)
         expect(built[0].noteEdit).not.toHaveBeenCalled()
+    })
+})
+
+describe('holders', () => {
+    const h1: PresetAckHolder = { label: 'one' }
+    const h2: PresetAckHolder = { label: 'two' }
+
+    test('A1 one holder ending leaves the ack another holder joined; the last holder disposes it', async () => {
+        setPresetAckLoaderForTests(immediateLoad(newFactory()))
+        beginPresetAck('A', 'v1', h1)
+        beginPresetAck('A', 'v1', h2)
+        await settle()
+        const ack = currentPresetAck('A')
+        expect(ack).not.toBeNull()
+        endPresetAck('A', h1)
+        expect(currentPresetAck('A')).toBe(ack)
+        expect(built[0].dispose).not.toHaveBeenCalled()
+        expect(live()).toBe(1)
+        endPresetAck('A', h2)
+        expect(currentPresetAck('A')).toBeNull()
+        expect(live()).toBe(0)
+    })
+
+    test('A2 a holder that never joined the entry ends nothing', async () => {
+        setPresetAckLoaderForTests(immediateLoad(newFactory()))
+        beginPresetAck('A', 'v1', h1)
+        await settle()
+        endPresetAck('A', h2)
+        expect(currentPresetAck('A')).toBe(built[0])
+        expect(built[0].dispose).not.toHaveBeenCalled()
+        expect(live()).toBe(1)
+    })
+
+    test('A3 a lone holder ends the ack it began, after a deferred import (compatibility guard)', async () => {
+        const pending = deferredLoad()
+        setPresetAckLoaderForTests(pending.load)
+        beginPresetAck('A', 'v1', h1)
+        pending.resolve(newFactory())
+        await settle()
+        expect(currentPresetAck('A')).toBe(built[0])
+        endPresetAck('A', h1)
+        expect(currentPresetAck('A')).toBeNull()
+        expect(live()).toBe(0)
+    })
+
+    test('A4 a holder end of one preset leaves another preset; the no-argument end ends everything (compatibility guard)', async () => {
+        setPresetAckLoaderForTests(immediateLoad(newFactory()))
+        beginPresetAck('A', 'v1', h1)
+        beginPresetAck('B', 'v1', h2)
+        await settle()
+        endPresetAck('A', h1)
+        expect(currentPresetAck('B')).toBe(built[0])
+        expect(live()).toBe(1)
+        endPresetAck()
+        expect(currentPresetAck('B')).toBeNull()
+        expect(live()).toBe(0)
+    })
+
+    test('A5a the last holder ending during the import builds nothing (compatibility guard)', async () => {
+        const factory = newFactory()
+        const pending = deferredLoad()
+        setPresetAckLoaderForTests(pending.load)
+        beginPresetAck('A', 'v1', h1)
+        endPresetAck('A', h1)
+        pending.resolve(factory)
+        await settle()
+        expect(factory).not.toHaveBeenCalled()
+        expect(currentPresetAck('A')).toBeNull()
+        expect(live()).toBe(0)
+    })
+
+    test('A5b one holder ending during the import leaves the request the other joined', async () => {
+        const factory = newFactory()
+        const pending = deferredLoad()
+        setPresetAckLoaderForTests(pending.load)
+        beginPresetAck('A', 'v1', h1)
+        beginPresetAck('A', 'v1', h2)
+        endPresetAck('A', h1)
+        pending.resolve(factory)
+        await settle()
+        expect(factory).toHaveBeenCalledTimes(1)
+        expect(currentPresetAck('A')).toBe(built[0])
+        expect(live()).toBe(1)
+        endPresetAck('A', h2)
+        expect(currentPresetAck('A')).toBeNull()
+        expect(live()).toBe(0)
+    })
+
+    test('A6 a late end of an older visit\'s holder leaves the newer visit\'s ack', async () => {
+        setPresetAckLoaderForTests(immediateLoad(newFactory()))
+        beginPresetAck('A', 'v1', h1)
+        await settle()
+        beginPresetAck('A', 'v2', h2)
+        await settle()
+        expect(built[0].dispose).toHaveBeenCalledTimes(1)
+        endPresetAck('A', h1)
+        expect(currentPresetAck('A')).toBe(built[1])
+        expect(built[1].dispose).not.toHaveBeenCalled()
+        expect(live()).toBe(1)
+    })
+
+    test('A7 a same-entry begin while the import runs joins it and keeps the edit noted meanwhile', async () => {
+        const pending = deferredLoad()
+        setPresetAckLoaderForTests(pending.load)
+        beginPresetAck('A', 'v1', h1)
+        beginPresetAck('A', 'v1', h2)
+        notePresetEdit('A', 3)
+        endPresetAck('A', h2)
+        pending.resolve(newFactory())
+        await settle()
+        expect(currentPresetAck('A')).toBe(built[0])
+        expect(built[0].noteEdit).toHaveBeenCalledWith('A', 3)
+        expect(built[0].dispose).not.toHaveBeenCalled()
+        endPresetAck('A', h1)
+        expect(currentPresetAck('A')).toBeNull()
+        expect(live()).toBe(0)
     })
 })

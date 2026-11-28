@@ -1,4 +1,4 @@
-// What the latest reported commit says about one preset's toggle edit, for the preset save ack. Pure: the commit's
+// What the latest reported commit says about one preset's toggle or regex edit, for the preset save ack. Pure: the commit's
 // unsavable-item set and the live preset lookup are injected (`productionPresetAckSubject` wires the real ones).
 // An edit lands in the preset's slot or, for the active preset, in the working settings, so both homes are judged.
 
@@ -18,9 +18,11 @@ export interface PresetVerdictProbe {
 
 // Every working setting a preset field can be live in: the union over the table, not only the active preset's, because
 // the verdict runs after the plan was encoded and a switch may have moved the edit between the two homes.
-const WORKING_KEYS: readonly string[] = [...new Set(
-    Object.values(PRESET_FIELDS).flatMap((spec) => (spec.db === 'slotOnly' ? [] : [spec.db])),
-)]
+// `presetRegex` is the regex list's active home: an objList, not a table path, so no field row carries it.
+const WORKING_KEYS: readonly string[] = [...new Set([
+    ...Object.values(PRESET_FIELDS).flatMap((spec) => (spec.db === 'slotOnly' ? [] : [spec.db])),
+    'presetRegex',
+])]
 
 // The order is load-bearing: a refused working setting is a refusal Retry cannot help, so it is judged before the
 // carried list; a carried list or a missing preset is only unconfirmed.

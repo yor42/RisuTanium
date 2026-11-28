@@ -38,4 +38,12 @@ describe('presetCommitVerdict', () => {
         expect(presetCommitVerdict('p1', probe(['presets:presets', 'settings:customPromptTemplateToggle'], false))).toBe('unsavable')
         expect(presetCommitVerdict('p1', probe(['presets:presets'], false))).toBe('blocked')
     })
+
+    test('V7 a refused active regex list is unsavable', () => {
+        expect(presetCommitVerdict('p1', probe(['settings:presetRegex']))).toBe('unsavable')
+    })
+
+    test('V8 a refused regex list outranks a carried list and a gone preset', () => {
+        expect(presetCommitVerdict('p1', probe(['presets:presets', 'settings:presetRegex'], false))).toBe('unsavable')
+    })
 })

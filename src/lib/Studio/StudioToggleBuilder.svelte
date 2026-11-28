@@ -8,7 +8,7 @@
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
-import { beginPresetAck, endPresetAck } from '../../ts/studio/edit/presetAck.svelte'
+import { beginPresetAck, endPresetAck, type PresetAckHolder } from '../../ts/studio/edit/presetAck.svelte'
 import { presetNameOf, presetStateOf } from '../../ts/studio/edit/presetTarget'
 import { characterTogglePort, moduleTogglePort, presetTogglePort } from '../../ts/studio/edit/toggleTextPort'
     import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
@@ -87,6 +87,8 @@ import { characterTogglePort, moduleTogglePort, presetTogglePort } from '../../t
     let carriedToast: ToastId | null = null
     let carryError = $state('')
 
+    // This builder's own share of the preset ack: its end never ends a share another holder joined.
+    const ackHolder: PresetAckHolder = { label: 'toggle builder' }
     const service = $derived(getStudioHistoryService())
     $effect(() => {
         if (service) {
@@ -95,7 +97,7 @@ import { characterTogglePort, moduleTogglePort, presetTogglePort } from '../../t
                 if (fixed.kind === 'module') {
                     beginModuleAck(fixed.moduleId)
                 } else if (fixed.kind === 'preset') {
-                    beginPresetAck(fixed.presetId, studioScreen.visitId)
+                    beginPresetAck(fixed.presetId, studioScreen.visitId, ackHolder)
                 }
             })
         } else {
@@ -376,7 +378,7 @@ import { characterTogglePort, moduleTogglePort, presetTogglePort } from '../../t
         if (fixed.kind === 'module') {
             endModuleAck(fixed.moduleId)
         } else if (fixed.kind === 'preset') {
-            endPresetAck(fixed.presetId)
+            endPresetAck(fixed.presetId, ackHolder)
         }
     })
 </script>

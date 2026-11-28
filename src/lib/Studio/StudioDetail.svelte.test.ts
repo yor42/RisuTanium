@@ -70,7 +70,9 @@ vi.mock('../../lang', async () => {
 })
 
 import type { loreBook } from '../../ts/storage/database.svelte'
-import type { SaveAck } from '../../ts/studio/edit/saveAck.svelte'
+import { resetPresetAckForTests, setPresetAckLoaderForTests } from '../../ts/studio/edit/presetAck.svelte'
+import type { SaveAck, SaveAckDeps } from '../../ts/studio/edit/saveAck.svelte'
+import { createFakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import type { OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import {
     resetStudioHistoryAccessorForTests,
@@ -158,6 +160,7 @@ afterEach(async () => {
     app = undefined
     host?.remove()
     host = undefined
+    resetPresetAckForTests()
     resetStudioHistoryAccessorForTests()
     resetStudioScreenForTests()
     setStudioEnabled(false)
@@ -484,6 +487,30 @@ describe('4d text of the chat, a resident module and a preset', () => {
     // U3: a preset that holds an id mounts the regex pane for the pinned id; deleting it clears the selection with the
     // gone notice and touches no other preset.
     test('a pinned preset mounts the regex pane, and deleting it clears the selection with the gone notice', async () => {
+        // The pane begins the preset ack; a fresh ack per factory call on its own fake clock keeps the import off the real save loop.
+        setPresetAckLoaderForTests(async () => {
+            const { createSaveAck } = await import('../../ts/studio/edit/saveAck.svelte')
+            return () => {
+                const deps: SaveAckDeps = {
+                    getMarkCount: () => 0,
+                    getCommittedMarkCount: () => 0,
+                    afterNextCommit: () => {},
+                    requestSaveNow: () => {},
+                    getPeerSaveCount: () => 0,
+                    onStopped: () => () => {},
+                    isStopped: () => false,
+                    subscribeFailure: () => () => {},
+                    currentFailure: () => null,
+                    frozenKeys: () => new Set<string>(),
+                    isCharacterUnsavable: () => false,
+                    onPassStart: () => () => {},
+                    visible: () => true,
+                    onVisibilityChange: () => () => {},
+                    clock: createFakeClock(),
+            }
+            return createSaveAck(deps, { kind: 'preset', verdict: () => 'saved' })
+            }
+        })
         setFull(makeInput({
             presets: [makePreset('P0', { regex: [regexBody('pr', 'PRESET-IN', 'PRESET-OUT')] }), makePreset('P1', { regex: [regexBody('other', 'OTHER-IN', 'OTHER-OUT')] })],
             activePreset: 1,

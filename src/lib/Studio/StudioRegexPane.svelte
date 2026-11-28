@@ -7,6 +7,7 @@
     import { classifyRegexList } from '../../ts/studio/edit/regexEntry'
     import { regexAdd, regexDelete, regexDuplicate, regexMove, type RegexMove, type RegexOp } from '../../ts/studio/edit/regexListOps'
     import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
+    import { beginPresetAck, currentPresetAck, endPresetAck, type PresetAckHolder } from '../../ts/studio/edit/presetAck.svelte'
     import { presetOwnerKey, presetRegexRows, presetStateOf } from '../../ts/studio/edit/presetTarget'
     import { characterOwnerKey, moduleOwnerKey, type OwnerKey } from '../../ts/studio/history/ownerPhase'
     import {
@@ -59,6 +60,10 @@
         return key === null ? null : key.slice(PRESET_KEY_PREFIX.length)
     }
 
+    // A preset pane is keyed by its pinned id, so the id it acks is fixed at mount; null for a character or module.
+    const ackPresetId = untrack(() => (ownerType === 'preset' ? presetId : null))
+    const ackHolder: PresetAckHolder = { label: 'regex pane' }
+
     const service = $derived(getStudioHistoryService())
     const character = $derived.by(() => {
         const found = DBState.db.characters?.find((candidate) => candidate?.chaId === chaId)
@@ -87,6 +92,7 @@
         untrack(() => {
             beginOwnerVisit(key)
             if (ownerType === 'module' && moduleId !== null) beginModuleAck(moduleId)
+            if (ackPresetId !== null) beginPresetAck(ackPresetId, studioScreen.visitId, ackHolder)
         })
     })
 
@@ -198,7 +204,11 @@
     // The pane is keyed by its owner, so a selection change destroys it; a pick that resolves afterwards writes nothing.
     let importing = $state(false)
     let destroyed = false
-    onDestroy(() => { destroyed = true })
+    onDestroy(() => {
+        destroyed = true
+        // Only this pane's share of the preset ack ends; a builder of the same preset keeps its own.
+        if (ackPresetId !== null) endPresetAck(ackPresetId, ackHolder)
+    })
 
     // The history key of this pane's owner, built from its props because `owner` is null once the owner is gone; the
     // refusal text picks its preset or module wording from it.
@@ -246,8 +256,8 @@
     {#if ownerType === 'preset' && presetId !== null && presetStateOf(presetId)?.active === false}
         <p role="status" data-part="studio-regex-preset-not-in-chat" class="text-sm text-textcolor2">{language.studioRegexPresetNotInChat}</p>
     {/if}
-    {#if owner !== null && ownerType !== 'preset'}
-        <StudioStatusChip ack={ownerType === 'module' ? currentModuleAck() : currentVisitAck()} />
+    {#if owner !== null}
+        <StudioStatusChip ack={ownerType === 'preset' ? currentPresetAck(ackPresetId) : ownerType === 'module' ? currentModuleAck() : currentVisitAck()} />
     {/if}
     {#if formOpen && openIndex !== undefined}
         {#key itemId}
