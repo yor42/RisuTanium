@@ -299,3 +299,176 @@ describe('the Manage presets sheet', () => {
         expect(target.querySelector('[data-part="studio-preset-classic-note"]')?.textContent).toBe(language.studioPresetClassicOnly)
     })
 })
+
+describe('folders in the sheet (stage b)', () => {
+    function installFolders(): void {
+        installDb(['P0', 'P1', 'P2', 'P3'], 0)
+        DBState.db.presetFolders = [{ id: 'fa', name: 'Alpha' }, { id: 'fb', name: 'Beta' }]
+        DBState.db.botPresets[1].folderId = 'fb'
+        DBState.db.botPresets[3].folderId = 'fa'
+    }
+    const order = (target: HTMLElement) => [...target.querySelectorAll('[data-part="studio-preset-folder"], [data-part="studio-preset-row"], [data-part="studio-preset-loose-heading"]')].map((el) => el.getAttribute('data-part') === 'studio-preset-folder' ? 'F:' + el.querySelector('[data-part="studio-preset-folder-toggle"] span.font-bold')?.textContent : el.getAttribute('data-part') === 'studio-preset-row' ? el.querySelector('[data-part="studio-preset-open"] span')?.textContent : '--')
+    const folderEl = (target: HTMLElement, id: string) => target.querySelector<HTMLElement>(`[data-part="studio-preset-folder"][data-folder-id="${id}"]`)!
+
+    beforeEach(() => { localStorage.clear() })
+
+    test('L-b5: folders in folder order, then the unfoldered presets', async () => {
+        installFolders()
+        const target = await mountSheet()
+        expect(order(target)).toEqual(['F:Alpha', 'P3', 'F:Beta', 'P1', '--', 'P0', 'P2'])
+    })
+
+    test('L-b5: collapse hides the rows, is stored per device and is restored on the next mount', async () => {
+        installFolders()
+        let target = await mountSheet()
+        await click(folderEl(target, 'fa').querySelector('[data-part="studio-preset-folder-toggle"]'))
+        expect(order(target)).toEqual(['F:Alpha', 'F:Beta', 'P1', '--', 'P0', 'P2'])
+        for (const m of mounted) { await unmount(m.app as never); m.target.remove() }
+        mounted = []
+        target = await mountSheet()
+        expect(order(target)).toEqual(['F:Alpha', 'F:Beta', 'P1', '--', 'P0', 'P2'])
+        await click(folderEl(target, 'fa').querySelector('[data-part="studio-preset-folder-toggle"]'))
+        expect(localStorage.getItem('risuStudio.presetFolders.collapsed')).toBeNull()
+    })
+
+    test('L-b1: New folder adds a trimmed folder; an empty name shows the required text and adds nothing', async () => {
+        installFolders()
+        const target = await mountSheet()
+        await click(target.querySelector('[data-part="studio-preset-folder-new"]'))
+        const input = target.querySelector<HTMLInputElement>('[data-part="studio-preset-folder-input"]')!
+        input.value = '   '
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        await click(target.querySelector('[data-part="studio-preset-folder-add"]'))
+        expect(DBState.db.presetFolders.length).toBe(2)
+        expect(target.querySelector('[data-part="studio-preset-message"]')?.textContent).toBe(language.studioPresetFolderRequired)
+        input.value = ' Gamma '
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        await click(target.querySelector('[data-part="studio-preset-folder-add"]'))
+        expect(DBState.db.presetFolders.map((f) => f.name)).toEqual(['Alpha', 'Beta', 'Gamma'])
+        expect(order(target)).toContain('F:Gamma')
+    })
+
+    test('L-b1: Rename folder writes the new name; empty keeps the form open with the required text', async () => {
+        installFolders()
+        const target = await mountSheet()
+        const f = folderEl(target, 'fa')
+        await click(f.querySelector('[data-part="studio-preset-folder-menu-button"]'))
+        await click(f.querySelector('[data-part="studio-preset-folder-rename"]'))
+        const input = f.querySelector<HTMLInputElement>('[data-part="studio-preset-folder-rename-input"]')!
+        input.value = ''
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        await click(f.querySelector('[data-part="studio-preset-folder-rename-apply"]'))
+        expect(DBState.db.presetFolders[0].name).toBe('Alpha')
+        expect(f.querySelector('[data-part="studio-preset-folder-rename-input"]')).not.toBeNull()
+        input.value = 'Renamed'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        await click(f.querySelector('[data-part="studio-preset-folder-rename-apply"]'))
+        expect(DBState.db.presetFolders[0].name).toBe('Renamed')
+        expect(f.querySelector('[data-part="studio-preset-folder-menu"]')).toBeNull()
+    })
+
+    test('L-b2: Move to folder from the row menu puts that preset in the chosen folder and No folder takes it out', async () => {
+        installFolders()
+        const target = await mountSheet()
+        await menuAction(target, 'P2', 'studio-preset-move')
+        await click(row(target, 'P2').querySelector('[data-part="studio-preset-move-to"][data-folder-id="fb"]'))
+        expect(DBState.db.botPresets.find((p) => p.name === 'P2')!.folderId).toBe('fb')
+        expect(order(target)).toEqual(['F:Alpha', 'P3', 'F:Beta', 'P1', 'P2', '--', 'P0'])
+        await menuAction(target, 'P2', 'studio-preset-move')
+        await click(row(target, 'P2').querySelector('[data-part="studio-preset-move-none"]'))
+        expect('folderId' in DBState.db.botPresets.find((p) => p.name === 'P2')!).toBe(false)
+    })
+
+    test('L-b2: a move tapped after the list changed goes to the preset that holds the id', async () => {
+        installFolders()
+        const target = await mountSheet()
+        await menuAction(target, 'P2', 'studio-preset-move')
+        const choice = row(target, 'P2').querySelector<HTMLElement>('[data-part="studio-preset-move-to"][data-folder-id="fa"]')!
+        DBState.db.botPresets = DBState.db.botPresets.filter((p) => p.name !== 'P0')
+        choice.click()
+        await settle()
+        expect(DBState.db.botPresets.map((p) => [p.name, p.folderId])).toEqual([['P1', 'fb'], ['P2', 'fa'], ['P3', 'fa']])
+    })
+
+    test('L-b4: a dangling folder id shows the preset under No folder and it can be moved', async () => {
+        installFolders()
+        DBState.db.botPresets[2].folderId = 'gone'
+        const target = await mountSheet()
+        expect(order(target)).toEqual(['F:Alpha', 'P3', 'F:Beta', 'P1', '--', 'P0', 'P2'])
+        await menuAction(target, 'P2', 'studio-preset-move')
+        await click(row(target, 'P2').querySelector('[data-part="studio-preset-move-to"][data-folder-id="fa"]'))
+        expect(DBState.db.botPresets[2].folderId).toBe('fa')
+    })
+
+    test('L-b3: Delete folder confirms with the count, leaves every preset and unfolders its members', async () => {
+        installFolders()
+        const target = await mountSheet()
+        const f = folderEl(target, 'fb')
+        await click(f.querySelector('[data-part="studio-preset-folder-menu-button"]'))
+        await click(f.querySelector('[data-part="studio-preset-folder-delete"]'))
+        expect(confirms.pending[0].message).toBe(language.studioPresetFolderDeleteConfirm(1))
+        confirms.pending[0].settle(true)
+        await settle()
+        expect(names()).toEqual(['P0', 'P1', 'P2', 'P3'])
+        expect(DBState.db.presetFolders.map((f) => f.id)).toEqual(['fa'])
+        expect(order(target)).toEqual(['F:Alpha', 'P3', '--', 'P0', 'P1', 'P2'])
+    })
+
+    test('folder order buttons move the folder and are disabled at the ends', async () => {
+        installFolders()
+        const target = await mountSheet()
+        await click(folderEl(target, 'fa').querySelector('[data-part="studio-preset-folder-menu-button"]'))
+        expect(folderEl(target, 'fa').querySelector<HTMLButtonElement>('[data-part="studio-preset-folder-up"]')!.disabled).toBe(true)
+        await click(folderEl(target, 'fa').querySelector('[data-part="studio-preset-folder-down"]'))
+        expect(DBState.db.presetFolders.map((f) => f.id)).toEqual(['fb', 'fa'])
+    })
+
+    test('New preset from a folder menu lands in that folder', async () => {
+        installFolders()
+        const target = await mountSheet()
+        await click(folderEl(target, 'fb').querySelector('[data-part="studio-preset-folder-menu-button"]'))
+        await click(folderEl(target, 'fb').querySelector('[data-part="studio-preset-folder-new-preset"]'))
+        const created = DBState.db.botPresets[4]
+        expect(created.name).toBe(language.studioPresetNewName)
+        expect(created.folderId).toBe('fb')
+        expect(DBState.db.botPresetsId).toBe(0)
+    })
+
+    test('L-b7: folders that appear in the store while the sheet is open (a bundle import) show at once', async () => {
+        installDb(['P0'], 0)
+        const target = await mountSheet()
+        expect(order(target)).toEqual(['P0'])
+        DBState.db.presetFolders = [{ id: 'imp', name: 'Imported' }]
+        DBState.db.botPresets = [...DBState.db.botPresets, { name: 'P9', id: 'p9', folderId: 'imp' } as never]
+        flushSync()
+        expect(order(target)).toEqual(['F:Imported', 'P9', '--', 'P0'])
+    })
+
+    test('an open folder menu follows its folder when the folders are reordered or one is deleted', async () => {
+        installFolders()
+        const target = await mountSheet()
+        await click(folderEl(target, 'fa').querySelector('[data-part="studio-preset-folder-menu-button"]'))
+        await click(folderEl(target, 'fa').querySelector('[data-part="studio-preset-folder-down"]'))
+        expect(folderEl(target, 'fa').querySelector('[data-part="studio-preset-folder-menu"]')).not.toBeNull()
+        expect(folderEl(target, 'fb').querySelector('[data-part="studio-preset-folder-menu"]')).toBeNull()
+        await click(folderEl(target, 'fb').querySelector('[data-part="studio-preset-folder-menu-button"]'))
+        await click(folderEl(target, 'fb').querySelector('[data-part="studio-preset-folder-delete"]'))
+        confirms.pending[0].settle(true)
+        await settle()
+        expect(folderEl(target, 'fa').querySelector('[data-part="studio-preset-folder-menu"]')).not.toBeNull()
+    })
+
+    test('a storage that throws leaves the folders expanded and the toggle still works', async () => {
+        installFolders()
+        const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied') })
+        const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('full') })
+        try {
+            const target = await mountSheet()
+            await click(folderEl(target, 'fa').querySelector('[data-part="studio-preset-folder-toggle"]'))
+            expect(order(target)).toEqual(['F:Alpha', 'F:Beta', 'P1', '--', 'P0', 'P2'])
+        } finally {
+            spy.mockRestore()
+            set.mockRestore()
+        }
+    })
+})

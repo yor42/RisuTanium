@@ -1,5 +1,5 @@
-import type { botPreset, Database } from './database.svelte'
-import { freshPresetMeta } from './presetMeta'
+import type { botPreset, Database, PresetFolder } from './database.svelte'
+import { freshPresetMeta, presetFolderOf } from './presetMeta'
 
 /**
  * Pure list operations on the persisted preset list and its active pointer. Nothing here imports a value from
@@ -86,4 +86,30 @@ export function newPresetFromTemplate(template: botPreset, name: string, clone: 
     const created = clone(template)
     created.name = name
     return freshPresetMeta(created, { keepFolder: false })
+}
+
+/** One block of the grouped list: a folder (null for the unfoldered block) and the list indices of its presets. */
+export interface PresetSection {
+    folder: PresetFolder | null
+    indices: number[]
+}
+
+/**
+ * The list grouped for display: one section per folder in `presetFolders` order (empty folders included), then the
+ * presets that sit in no folder. A folder id that names no folder reads as no folder (`presetFolderOf`). Indices keep
+ * the global order, so a folder is a filter of the one list. The unfoldered section is left out only when it is empty
+ * and at least one folder exists.
+ */
+export function groupPresetsByFolder(db: Pick<Database, 'botPresets' | 'presetFolders'>): PresetSection[] {
+    const folders = db.presetFolders ?? []
+    const sections: PresetSection[] = folders.map((folder) => ({ folder, indices: [] }))
+    const loose: PresetSection = { folder: null, indices: [] }
+    db.botPresets.forEach((preset, index) => {
+        if (!preset) return
+        const folder = presetFolderOf(db, preset)
+        const section = folder ? sections.find((candidate) => candidate.folder?.id === folder.id) : undefined
+        ;(section ?? loose).indices.push(index)
+    })
+    if (loose.indices.length > 0 || sections.length === 0) sections.push(loose)
+    return sections
 }

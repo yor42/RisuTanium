@@ -14,18 +14,23 @@
         renaming: boolean
         renameText: string
         busy: boolean
+        folders: { id: string, name: string }[]
+        folderId: string | undefined
+        moveOpen: boolean
         onopen: () => void
         onmenu: () => void
         onuse: () => void
         oncopy: () => void
         onrename: () => void
+        onmoveopen: () => void
+        onmoveto: (folderId: string | undefined) => void
         ondelete: () => void
         onrenametext: (text: string) => void
         onrenamesubmit: () => void
         onrenamecancel: () => void
     }
 
-    let { id, active, slot, highlighted, menuOpen, renaming, renameText, busy, onopen, onmenu, onuse, oncopy, onrename, ondelete, onrenametext, onrenamesubmit, onrenamecancel }: Props = $props()
+    let { id, active, slot, highlighted, menuOpen, renaming, renameText, busy, folders, folderId, moveOpen, onopen, onmenu, onuse, oncopy, onrename, onmoveopen, onmoveto, ondelete, onrenametext, onrenamesubmit, onrenamecancel }: Props = $props()
 
     const name = $derived(presetNameOf(id))
     const itemClass = 'min-h-11 rounded px-2 text-start hover:bg-selected cursor-pointer disabled:cursor-default disabled:opacity-50'
@@ -54,10 +59,16 @@
                     <button type="submit" data-part="studio-preset-rename-apply" class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer disabled:opacity-50" disabled={busy}>{language.studioPresetRename}</button>
                     <button type="button" data-part="studio-preset-rename-cancel" class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={onrenamecancel}>{language.cancel}</button>
                 </form>
+            {:else if moveOpen}
+                <button type="button" role="menuitem" data-part="studio-preset-move-none" class={itemClass} aria-current={folderId === undefined ? 'true' : undefined} disabled={busy} onclick={() => onmoveto(undefined)}>{language.studioPresetNoFolder}</button>
+                {#each folders as folder, at (at)}
+                    <button type="button" role="menuitem" data-part="studio-preset-move-to" data-folder-id={folder.id} class={itemClass} aria-current={folderId === folder.id ? 'true' : undefined} disabled={busy} onclick={() => onmoveto(folder.id)}>{folder.name}</button>
+                {/each}
             {:else}
                 <button type="button" role="menuitem" data-part="studio-preset-use" class={itemClass} disabled={active || busy} onclick={onuse}>{language.studioPresetUse}</button>
                 <button type="button" role="menuitem" data-part="studio-preset-copy" class={itemClass} disabled={busy} onclick={oncopy}>{language.copy}</button>
                 <button type="button" role="menuitem" data-part="studio-preset-rename" class={itemClass} disabled={busy} onclick={onrename}>{language.studioPresetRename}</button>
+                <button type="button" role="menuitem" data-part="studio-preset-move" class={itemClass} disabled={busy} onclick={onmoveopen}>{language.studioPresetMoveToFolder}</button>
                 <button type="button" role="menuitem" data-part="studio-preset-delete" class="{itemClass} text-draculared" disabled={busy} onclick={ondelete}>{language.remove}</button>
             {/if}
         </div>
