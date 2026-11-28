@@ -225,6 +225,16 @@ export function loreIndexOfItemId(ownerId: string, id: string): number | undefin
     return indexOfItemId({ id: ownerId }, 'lore', id)
 }
 
+/** The item id of the regex script at index of the owner's list (<ownerId>/regex:<index>). */
+export function regexItemIdOf(ownerId: string, index: number): string {
+    return itemId(ownerId, 'regex', index)
+}
+
+/** The regex list index an item id names, or undefined unless it is <ownerId>/regex:<canonical decimal index>. */
+export function regexIndexOfItemId(ownerId: string, id: string): number | undefined {
+    return indexOfItemId({ id: ownerId }, 'regex', id)
+}
+
 function loreKind(owner: { key: string, id: string }, list: readonly LoreLike[] | undefined): KindNode {
     const source: readonly LoreLike[] = Array.isArray(list) ? list : []
     const folderCount = countFolders(source)

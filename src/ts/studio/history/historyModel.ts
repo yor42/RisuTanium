@@ -1804,16 +1804,18 @@ export function objRefusalOf(failure: ObjFailure, forward: readonly ObjFamilyOp[
     return { list, kind }
 }
 
-// The first list whose asset prefix a merge text edit of these steps (newest first) targets. A revert range holding
-// one next to the list's obj ops cannot keep the text and the rows consistent, so it is refused whole.
-function mixedListOf(steps: readonly Step[]): ObjListName | null {
+// The first list, among those holding an obj op in the range, whose asset prefix a merge text edit of these steps
+// (newest first) targets. A revert range holding one next to the list's obj ops cannot keep the text and the rows
+// consistent, so it is refused whole; a list with no obj op in the range has nothing to keep consistent.
+function mixedListOf(steps: readonly Step[], objOps: readonly ObjFamilyOp[]): ObjListName | null {
+    const held = new Set<ObjListName>(objOps.map(journalListOf))
     for (const step of steps) {
         for (const op of step.ops) {
             if (op.op !== 'textEdit') {
                 continue
             }
             for (const [list, prefix] of Object.entries<string>(OBJ_LIST_ASSET_PREFIX)) {
-                if (isObjListName(list) && op.target.startsWith(prefix)) {
+                if (isObjListName(list) && held.has(list) && op.target.startsWith(prefix)) {
                     return list
                 }
             }
@@ -2470,7 +2472,7 @@ export function planRevert(
     const objOrder = above.flatMap((step) => [...step.ops].reverse().filter(isObjFamilyOp).map(invertObjOp))
     let objPlanned: { writes: ObjWrite[]; executed: ObjFamilyOp[]; effect: ObjEffect } | null = null
     if (objOrder.length > 0) {
-        const mixed = mixedListOf(above)
+        const mixed = mixedListOf(above, objOrder)
         if (mixed !== null) {
             return { ok: false, reason: 'precondition', obj: { list: mixed, kind: 'mixed' } }
         }

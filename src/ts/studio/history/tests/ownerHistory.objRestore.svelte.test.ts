@@ -254,7 +254,7 @@ describe('T38: the restore point and its line', () => {
         const view = reloaded.view(A)
         expect(Object.keys(view.restore?.fields ?? {})).toContain('desc')
         expect(view.restoreLines).toEqual([])
-        expect(view.restoreNotes).toEqual(['lore'])
+        expect(view.restoreNotes).toEqual(['lore', 'regex'])
     })
 
     test('(j) a replay-only visit leaves the point as it was and offers no line', async () => {

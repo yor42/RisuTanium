@@ -100,10 +100,10 @@ describe('T56: the parser reads each list\'s own table', () => {
     })
 
     test('an unknown list, an unknown lore field and an unknown label field are refused whole', () => {
-        expect(parseObjOp({ ...loreInsert, list: 'regex' })).toBeNull()
+        expect(parseObjOp({ ...loreInsert, list: 'futureList' })).toBeNull()
         expect(parseObjOp(setOp('lore', 'flag'))).toBeNull()
         expect(parseObjLabel({ kind: 'obj', list: 'lore', action: 'edit', name: null, field: 'flag' })).toBeNull()
-        expect(read('character', record('character', loreLabel, [{ ...loreInsert, list: 'regex' }]))).toBeNull()
+        expect(read('character', record('character', loreLabel, [{ ...loreInsert, list: 'futureList' }]))).toBeNull()
     })
 
     test('a probe objSet parses on its own field and refuses a lore field', () => {

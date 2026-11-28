@@ -311,14 +311,15 @@ export function readObjField(element: Record<string, unknown>, field: string): O
     }
 }
 
-// `had: false` always fits; a present value must be of the field's kind.
+// `had: false` fits unless the list's table requires the field; a present value must be of the field's kind.
 export function fieldValueFits(list: ObjListName, field: string, value: ObjFieldValue): boolean {
     const kind = fieldKindOf(list, field)
     if (kind === null) {
         return false
     }
     if (!value.had) {
-        return true
+        const row: ObjListFieldsRow = OBJ_LIST_FIELDS[list]
+        return !(row.required ?? []).includes(field)
     }
     const stored = value.value
     switch (kind) {
@@ -481,7 +482,11 @@ function parseObjFieldValue(list: ObjListName, field: string, value: unknown): O
         return null
     }
     if (value.had === false) {
-        return hasOnlyKeys(value, ['had']) ? { had: false } : null
+        if (!hasOnlyKeys(value, ['had'])) {
+            return null
+        }
+        const absent: ObjFieldValue = { had: false }
+        return fieldValueFits(list, field, absent) ? absent : null
     }
     if (value.had !== true || !hasOnlyKeys(value, ['had', 'value']) || !Object.hasOwn(value, 'value')) {
         return null

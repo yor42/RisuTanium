@@ -245,9 +245,11 @@ describe('T38s: the restore sheet carries the lorebook line', () => {
         expect(parts('studio-restore-field').map((row) => row.dataset.path)).toContain('desc')
         expect(parts('studio-restore-line')).toHaveLength(0)
         const notes = parts('studio-restore-earlier-note')
-        expect(notes).toHaveLength(1)
+        expect(notes).toHaveLength(2)
         expect(notes[0].dataset.list).toBe('lore')
         expect(notes[0].textContent).toBe(languageEnglish.studioLoreRestoreEarlierVisit)
+        expect(notes[1].dataset.list).toBe('regex')
+        expect(notes[1].textContent).toBe(languageEnglish.studioRegexRestoreEarlierVisit)
     })
 
     test('(m) the riskyConfirm retry sends the confirmed flags and the lines read again at retry time', async () => {

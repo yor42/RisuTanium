@@ -131,8 +131,8 @@ describe('T5: the v2 base vocabulary still reads, and the new shapes are not rea
 
 describe('what the reader does not know is refused whole', () => {
     const refusedOps: [string, unknown][] = [
-        ['an unknown list', { ...insertOp, list: 'regex' }],
-        ['an unknown list on a set', { ...setOp, list: 'regex' }],
+        ['an unknown list', { ...insertOp, list: 'futureList' }],
+        ['an unknown list on a set', { ...setOp, list: 'futureList' }],
         ['a field outside the table', { ...setOp, field: 'flag' }],
         ['a set of id', { ...setOp, field: 'id', before: { had: false }, after: { had: true, value: 'x' } }],
         ['a set of mode', { ...setOp, field: 'mode', before: { had: true, value: 'normal' }, after: { had: true, value: 'folder' } }],
@@ -161,7 +161,7 @@ describe('what the reader does not know is refused whole', () => {
 
     const refusedLabels: [string, unknown][] = [
         ['an unknown action', { ...OBJ_LABEL, action: 'explode' }],
-        ['an unknown list', { ...OBJ_LABEL, list: 'regex' }],
+        ['an unknown list', { ...OBJ_LABEL, list: 'futureList' }],
         ['an unknown label field', { ...OBJ_LABEL, field: 'flag' }],
         ['an extra key', { ...OBJ_LABEL, extra: 1 }],
         ['a missing name', { kind: 'obj', list: 'lore', action: 'edit' }],
@@ -197,7 +197,7 @@ describe('what the reader does not know is refused whole', () => {
             expect(parseObjItem({ ...item, entries }), JSON.stringify(entries)).toBeNull()
         }
         expect(parseObjItem({ ...item, entries: [entry(0), entry(5)] })).not.toBeNull()
-        expect(parseObjItem({ ...item, list: 'regex' })).toBeNull()
+        expect(parseObjItem({ ...item, list: 'futureList' })).toBeNull()
         expect(parseObjItem({ ...item, at: 'now' })).toBeNull()
     })
 })
