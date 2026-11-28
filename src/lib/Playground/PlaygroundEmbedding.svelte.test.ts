@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 
 /**
- * `PlaygroundEmbedding.svelte` (the Playground's embedding tool): the OpenAI key and the
- * custom URL are the page's own copies, seeded from the memory settings and never written
- * back; a blank copy stops the run instead of falling back to the saved value; a failing
+ * `PlaygroundEmbedding.svelte` (the Playground's embedding tool): the custom URL is the page's
+ * own copy, seeded from the memory settings and never written back; a blank URL stops the run;
+ * the OpenAI key field starts empty and masked (#892), a typed key applies to the run only and a
+ * blank field runs with the saved key; a failing
  * embed clears the spinner and is shown as an error. The custom key and request model stay
  * bound to the memory settings.
  *
@@ -160,7 +161,9 @@ describe('the embedding page: the OpenAI key and custom URL copies', () => {
     test('guard: the fields start with the memory settings values', async () => {
         const target = mountPage()
         await chooseModel(target, 'openai3small')
-        expect(field(target, 'OpenAI API Key').value).toBe('sk-live')
+        expect(field(target, 'OpenAI API Key').value).toBe('')
+        expect(field(target, 'OpenAI API Key').type).toBe('password')
+        expect(target.innerHTML).not.toContain('sk-live')
         await chooseModel(target, 'custom')
         expect(field(target, 'URL').value).toBe('http://live.example/v1')
     })
@@ -204,16 +207,15 @@ describe('the embedding page: the OpenAI key and custom URL copies', () => {
         expect(hypa.alertError).toHaveBeenCalledTimes(2)
     })
 
-    test('regression reproducer: a blank or whitespace-only key stops an OpenAI run with an error', async () => {
+    test('a blank or whitespace-only key runs with the saved key', async () => {
         const target = mountPage()
         await chooseModel(target, 'ada')
         for (const blank of ['', '   ']) {
             await type(field(target, 'OpenAI API Key'), blank)
             await run(target)
         }
-        expect(hypa.created).toEqual([])
-        expect(hypa.addText).not.toHaveBeenCalled()
-        expect(hypa.alertError).toHaveBeenCalledTimes(2)
+        expect(hypa.created.map((c) => c.oaikey)).toEqual(['sk-live', 'sk-live'])
+        expect(hypa.alertError).not.toHaveBeenCalled()
     })
 
     test('guard: a local model runs without a key or URL', async () => {
