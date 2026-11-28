@@ -1,6 +1,6 @@
 // @vitest-environment node
 // Stage H (#654, MC-4702, H-7): Home's colour roles. The landing re-points the Tailwind scheme names at --home-* roles
-// (home-roles.css), each role defaults to the scheme role it replaces (home-tokens.css), the pack base pins them
+// (home-roles.css), each role defaults to the scheme role it replaces (home-roles.css), the pack base pins them
 // (home-pack-base.css), and a pack that sets them is judged. These rows fail when a scheme name is read inside Home with no
 // role behind it (a colour variant nothing reads), when a role default drifts from the scheme (a visible change with no pack),
 // or when the base, its selector or its import order changes.
@@ -39,12 +39,11 @@ function declarations(css: string, selector: string): Map<string, string> {
 
 const registryTokens = read('docs/design/home/home-tokens.css')
 const rolesCss = read('src/styles/home-roles.css')
-const appTokens = rolesCss
 const baseCss = read('src/styles/home-pack-base.css')
 const BASE_SELECTOR = ':root:where([data-theme-pack-base][data-theme-pack-area="home"])'
 
 describe('H-7.1 role tokens', () => {
-    const app = declarations(appTokens, ':root, [data-own-scheme]')
+    const app = declarations(rolesCss, ':root, [data-own-scheme]')
     const registry = declarations(registryTokens, ':root')
 
     it('each role aliases the scheme role its Tailwind name read, in the app and in the registry', () => {

@@ -1,9 +1,9 @@
 /* Home's fixed base while a pack paints the landing (H-7.3). The gate sets data-theme-pack-base and data-theme-pack-area="home"
    only while Home is in COLOUR_READY_AREAS and its pack sheet is on; until then no rule here matches. The values are the
    registry's reference scheme (docs/design/home/home-tokens.css), the colours the pack was judged against, so a role the
-   pack leaves unset resolves to a judged value whatever scheme the user runs. This file is imported by HomeShell right
-   after home-tokens.css: at the same specificity it comes later and beats the scheme mapping there, and a pack's own
-   :root, in the body, still wins. --home-fg-2 is the one role lifted above the reference scheme's raw secondary text (#64748b is
+   pack leaves unset resolves to a judged value whatever scheme the user runs. HomeShell imports this file after
+   home-roles.css, which holds the role defaults it must beat: both sit at :root specificity, so the later one wins and the
+   base must stay last. A pack's own :root, in the body, still wins. --home-fg-2 is the one role lifted above the reference scheme's raw secondary text (#64748b is
    2:1 on the selected fill): it carries no pair, so the base itself keeps the drawer and mode labels readable. */
 :root:where([data-theme-pack-base][data-theme-pack-area="home"]) {
   --home-fg: #f8f8f2;

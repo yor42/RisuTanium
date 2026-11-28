@@ -1,6 +1,6 @@
 # C0 optional PC row, observed during stage H (2026-11-28)
 
-Diagnostic, desktop Chrome via CDP, production dist of claude/theme-h-home (origin/main 43bc1499e plus stage H CSS-only edits), synthetic empty profile. Raw captures stayed in scratch (%TEMP%isu-theme-h\pcrow\out). Run by a delegated agent; the observation below is its report, not independently re-run.
+Diagnostic, desktop Chrome via CDP, production dist of claude/theme-h-home (origin/main 43bc1499e plus stage H CSS-only edits), synthetic empty profile. Raw captures stayed in scratch (%TEMP%\risu-theme-h\pcrow\out). Run by a delegated agent; the observation below is its report, not independently re-run.
 
 **Result against the expectation (MC-4882): not met.** With builtin:banana-cocoa on, 148 custom properties differ on Home, and data-theme-pack-area and data-theme-pack-base are absent in both states (Home is shown, the pack is colour-ready only for chat). The differences are the pack scheme: the root inline --risu-theme-* block is rewritten to the pack palette and every derived property follows (--color-*, --nexus-*, --pattern-*, --home-*, --FontColor*). So Home already takes the pack palette through the scheme today; stage H aliases its roles to the scheme, so this is unchanged by H.
 
