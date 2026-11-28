@@ -46,6 +46,7 @@ import {
     type LoreMove,
     type LoreOp,
 } from 'src/ts/studio/edit/loreListOps'
+import { loreImport } from 'src/ts/studio/edit/loreImport'
 import { buildLoreFlag, buildUseGlobal } from 'src/ts/studio/edit/loreSettingsOps'
 import { MAX_DONE } from '../historyModel'
 import { createOwnerHistoryService, type ObjBuildResult, type OwnerHistoryService, type StudioResult } from '../ownerHistory.svelte'
@@ -488,12 +489,12 @@ const KINDS = [
     'edit', 'edit', 'edit', 'case', 'add', 'add', 'dup', 'del', 'del', 'folderDel', 'folderDel', 'move', 'move', 'newId', 'bulk', 'prop',
     'outInsert', 'outDelete', 'outReorder', 'outRewrite', 'outAppend',
     'undo', 'undo', 'undo', 'redo', 'redo', 'revert', 'restoreDel', 'restoreDel', 'line', 'reloadHistory', 'reloadData',
-    'link', 'unlink', 'burst',
+    'link', 'unlink', 'burst', 'import', 'import',
 ] as const
 type Kind = (typeof KINDS)[number]
 // The round trip has no outside change, no lost save, no burst (its evicted item makes an undo drop) and no link (it
 // writes two owners in one action).
-const STUDIO_ONLY: readonly Kind[] = ['edit', 'edit', 'case', 'add', 'dup', 'del', 'folderDel', 'move', 'newId', 'bulk', 'prop', 'undo', 'redo']
+const STUDIO_ONLY: readonly Kind[] = ['edit', 'edit', 'case', 'add', 'dup', 'del', 'folderDel', 'move', 'newId', 'bulk', 'prop', 'import', 'undo', 'redo']
 
 interface Action {
     k: Kind
@@ -576,6 +577,23 @@ interface Tally {
 
 function count(tally: Tally, name: string): void {
     tally[name] = (tally[name] ?? 0) + 1
+}
+
+// Import oracle: after a landed import, each inserted row's id and folder key has exactly one holder in the list. Only
+// the inserted rows' identities are asserted; the rest of the list may hold duplicates of its own.
+function checkImportIdentities(list: readonly unknown[], insertedFrom: number): void {
+    for (const row of list.slice(insertedFrom)) {
+        const id = idOf(row)
+        if (id !== null && list.filter((other) => idOf(other) === id).length !== 1) {
+            breach(`import: the id ${id} has several holders`)
+        }
+        if (isRow(row) && row.mode === 'folder' && typeof row.key === 'string' && row.key !== '') {
+            const key = row.key
+            if (list.filter((other) => isRow(other) && other.mode === 'folder' && other.key === key).length !== 1) {
+                breach(`import: the folder key ${key} has several holders`)
+            }
+        }
+    }
 }
 
 async function flush(ctx: Ctx): Promise<void> {
@@ -787,6 +805,22 @@ async function perform(ctx: Ctx, a: Action, tally: Tally, entryAnchor: (row: unk
             }
             break
         }
+        case 'import': {
+            // One or two earlier list exports stand in for the parsed files, so ids, folder keys, non-objects and dangling
+            // references collide with the list on purpose.
+            const files = [JSON.parse(ctx.snapshots[a.b % ctx.snapshots.length]) as unknown[]]
+            if (a.c % 2 === 1) {
+                files.push(JSON.parse(ctx.snapshots[a.a % ctx.snapshots.length]) as unknown[])
+            }
+            const doneBefore = ctx.service.view(owner.key).done.length
+            const sizeBefore = list.length
+            edit(loreImport(host, files.flat(), ids), 'import')
+            const doneAfter = ctx.service.view(owner.key).done
+            if (doneAfter.length === doneBefore + 1 && doneAfter[doneAfter.length - 1].label.kind === 'obj' && (doneAfter[doneAfter.length - 1].label as { action?: string }).action === 'import') {
+                checkImportIdentities(listOf(owner), sizeBefore)
+            }
+            break
+        }
         case 'burst':
             // Rare (each burst is 102 checked actions), and only while the done stack has room for the 51 steps, so each
             // delete records a step of its own.
@@ -882,7 +916,7 @@ async function runActions(world: number, actions: readonly Action[], tally: Tall
         if (a.k !== 'reloadHistory' && a.k !== 'reloadData') {
             ctx.prevData = dataBefore
             await flush(ctx)
-            if (a.k === 'outAppend' || a.k === 'outInsert') {
+            if (a.k === 'outAppend' || a.k === 'outInsert' || a.k === 'import') {
                 ctx.snapshots.push(JSON.stringify(listOf(OWNERS[0])))
             }
         }
@@ -968,7 +1002,7 @@ describe('T50: generated lorebook histories', () => {
         )
         report(`T50: seed ${SEED}, ${RUNS} runs, ms${Math.round(performance.now() - started)} ${JSON.stringify(tally)}`)
         if (RUNS >= 200) {
-            for (const name of ['edit:applied', 'add:applied', 'del:applied', 'folderDel:applied', 'move:applied', 'newId:applied', 'undo:applied', 'redo:applied', 'revert:applied', 'restoreDel:applied', 'line:applied', 'undo:already', 'undo:dropped', 'dup:applied', 'link:applied', 'bulk:applied', 'edit:refused:precondition', 'outside', 'reloadHistory', 'reloadData']) {
+            for (const name of ['edit:applied', 'add:applied', 'del:applied', 'folderDel:applied', 'move:applied', 'newId:applied', 'undo:applied', 'redo:applied', 'revert:applied', 'restoreDel:applied', 'line:applied', 'undo:already', 'undo:dropped', 'dup:applied', 'import:applied', 'link:applied', 'bulk:applied', 'edit:refused:precondition', 'outside', 'reloadHistory', 'reloadData']) {
                 expect(tally[name] ?? 0, `class ${name}`).toBeGreaterThan(0)
             }
         }

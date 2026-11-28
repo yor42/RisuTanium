@@ -4,8 +4,8 @@
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import type { loreBook } from "src/ts/storage/database.svelte";
     import LoreBookList from "src/lib/SideBars/LoreBook/LoreBookList.svelte";
-    import { type CCLorebook, type ImportedLorebookFile, convertExternalLorebook } from "src/ts/process/lorebook.svelte";
-    import { NoLorebookInPng, readLorebookFileJson } from "src/ts/process/lorebookFile";
+    import { parseLorebookImport } from "src/ts/process/lorebook.svelte";
+    import { NoLorebookInPng, lorebookExportBytes } from "src/ts/process/lorebookFile";
     import type { RisuModule } from "src/ts/process/modules";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { DownloadIcon, FileMusicIcon, FolderPlusIcon, HardDriveUploadIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
@@ -151,11 +151,7 @@
     async function exportLoreBook(){
         try {
             const lore = currentModule.lorebook        
-            const stringl = Buffer.from(JSON.stringify({
-                type: 'risu',
-                ver: 1,
-                data: lore
-            }), 'utf-8')
+            const stringl = lorebookExportBytes(lore)
 
             const saved = await downloadFile(`lorebook_export.json`, stringl)
             if(!saved){
@@ -176,16 +172,8 @@
         }
         try {
             for(const f of lorebook){
-                const importedlore = readLorebookFileJson(f.data) as ImportedLorebookFile
-                if(importedlore.type === 'risu' && importedlore.data){
-                    const datas:loreBook[] = importedlore.data
-                    for(const data of datas){
-                        lore.push(data)
-                    }
-                }
-                else if(importedlore.entries){
-                    const entries:{[key:string]:CCLorebook} = importedlore.entries
-                    lore.push(...convertExternalLorebook(entries))
+                for(const data of parseLorebookImport(f.data)){
+                    lore.push(data as loreBook)
                 }
             }
         } catch (error) {

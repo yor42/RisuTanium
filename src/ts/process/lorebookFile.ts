@@ -15,6 +15,15 @@ function isPng(data: Uint8Array): boolean {
     return data.length >= PNG_SIGNATURE.length && PNG_SIGNATURE.every((byte, i) => data[i] === byte)
 }
 
+/** The bytes of a lorebook export file: the list verbatim under RisuAI's own envelope. */
+export function lorebookExportBytes(list: unknown): Uint8Array {
+    return Buffer.from(JSON.stringify({
+        type: 'risu',
+        ver: 1,
+        data: list
+    }), 'utf-8')
+}
+
 /**
  * The parsed JSON of a picked lorebook file. A PNG is a NovelAI lorebook
  * image: its `naidata` tEXt chunk holds the lorebook JSON in base64, which
