@@ -2,7 +2,7 @@
    reads var(--color-<scheme name>), so the landing re-points those names at its own roles. With no pack each role is the scheme role
    its name already was, so nothing changes; a pack's Home sheet or the Home base block (home-pack-base.css) then recolours the shared
    catalog, Realm panel and form controls inside Home without touching them on any other screen. Elements portalled out of the landing
-   (dialogs, popups) keep the scheme: they belong to the popups stage. */
+   (dialogs, popups) read the shared --overlay-* roles (overlay-roles.css). */
 :root, [data-own-scheme] {
   /* roles Home's scheme utilities read inside the landing (home-roles.css); each defaults to the scheme role of the same Tailwind name */
   --home-fg: var(--risu-theme-textcolor);
