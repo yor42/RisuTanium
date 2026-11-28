@@ -1749,7 +1749,7 @@
                     src={char.image}
                     {visible}
                     large={homeVariant}
-                    fallbackStyle={char.image ? '' : index === $selectedCharID ? 'background:var(--risu-theme-selected)' : ''}
+                    fallbackStyle={char.image ? '' : index === $selectedCharID ? 'background:var(--color-selected)' : ''}
                     label={char.name || language.settingsPage.unnamed}
                     busy={openingIndex === index}
                     onclick={() => {

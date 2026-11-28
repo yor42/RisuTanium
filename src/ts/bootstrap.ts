@@ -11,6 +11,7 @@ import { sweepVectorsAtBoot } from "./process/memory/chroMemory/vectorPersist";
 import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { takePresetIdsMinted } from "./storage/presetMeta";
 import { takeConnectionsMigrated } from "./connections/migrate";
+import { takeStoredVertexTokenDropped } from "./storage/legacyVertexToken";
 import { whenVaultReady } from "./connections/keyVaultStore.svelte";
 import { vaultBoot, type VaultBootHandle } from "./connections/vaultBoot";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -819,7 +820,9 @@ async function checkNewFormat(): Promise<void> {
     // The connections migration rewrites the config and preset units the same way; the same mark persists it.
     const presetIdsMinted = takePresetIdsMinted();
     const connectionsMigrated = takeConnectionsMigrated();
-    if (presetIdsMinted || connectionsMigrated) {
+    // A Vertex token an older build stored in plain text is cleared in memory by setDatabase; the mark writes that out.
+    const vertexTokenDropped = takeStoredVertexTokenDropped();
+    if (presetIdsMinted || connectionsMigrated || vertexTokenDropped) {
         markBootWrite();
     }
     checkCharOrder();

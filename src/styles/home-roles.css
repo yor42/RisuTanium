@@ -1,0 +1,29 @@
+/* Home's colour channel (H-7.1, MC-4702). Every Tailwind scheme utility inside the landing (bg-darkbg, text-textcolor, border-borderc/10, ...)
+   reads var(--color-<scheme name>), so the landing re-points those names at its own roles. With no pack each role is the scheme role
+   its name already was, so nothing changes; a pack's Home sheet or the Home base block (home-pack-base.css) then recolours the shared
+   catalog, Realm panel and form controls inside Home without touching them on any other screen. Elements portalled out of the landing
+   (dialogs, popups) keep the scheme: they belong to the popups stage. */
+:root, [data-own-scheme] {
+  /* roles Home's scheme utilities read inside the landing (home-roles.css); each defaults to the scheme role of the same Tailwind name */
+  --home-fg: var(--risu-theme-textcolor);
+  --home-fg-2: var(--risu-theme-textcolor2);
+  --home-canvas: var(--risu-theme-bgcolor);
+  --home-surface: var(--risu-theme-darkbg);
+  --home-surface-raised: var(--risu-theme-darkbutton);
+  --home-selected: var(--risu-theme-selected);
+  --home-edge: var(--risu-theme-borderc);
+  --home-edge-strong: var(--risu-theme-darkborderc);
+  --home-danger: var(--risu-theme-draculared);
+}
+
+.home-root {
+  --color-textcolor: var(--home-fg);
+  --color-textcolor2: var(--home-fg-2);
+  --color-bgcolor: var(--home-canvas);
+  --color-darkbg: var(--home-surface);
+  --color-darkbutton: var(--home-surface-raised);
+  --color-selected: var(--home-selected);
+  --color-borderc: var(--home-edge);
+  --color-darkborderc: var(--home-edge-strong);
+  --color-draculared: var(--home-danger);
+}
