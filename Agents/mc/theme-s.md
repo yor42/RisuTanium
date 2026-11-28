@@ -21,3 +21,15 @@
 - Tag: decisions (this session, after Gate 1 round 1 REJECT and round 2 APPROVE). Date: 2026-11-28. Exact times: UNKNOWN. Related: `#654`, `MC-4707`, `MC-4882`.
 
 **Result.** S1 migrates 25 shell files with 167 hits and declares only the roles it reads; S2 (stacked) migrates Personas, Connections and Plugins and adds `--settings-swatch-2` and `--settings-danger-fill`. The pack base block `settings-pack-base.css`, its tests and the Settings contrast pairs are not shipped before a pack with a Settings sheet exists, so provisional base targets are not frozen; they go to the join PR. The `ToastHost` paren-syntax gap in the shared-token consumers scan is a separate Tier-1 follow-up. Shared form controls and the classic Settings pages keep scheme classes, exempt by directory; after the join they paint the chat-derived pack scheme over Settings-sheet surfaces and nothing judges that pairing (a join item). Hover fills keep the text role over `hover:bg-selected` (about 35 buttons), unjudged until the join.
+
+### MC-5034 — #654 stage S part 2: the dual-use shell components import the roles themselves, 2026-11-28
+
+- Tag: decisions and findings (this session; lane A condition on question 2). Date: 2026-11-28. Exact times: UNKNOWN. Related: `#654`, `MC-5031`, `MC-5033`.
+
+**Result.** Part 2 migrates Personas, Connections and Plugins (265 uses, 16 files; 18 files change) and adds `--settings-swatch-2` and `--settings-danger-fill`; the pending list is now empty. `MaskedKeyField`, `SlotKeyField`, `ConnectionsLink`, `ServiceConnectionRow`, `SlotKeyRow` and `UiSoundsRow` are rendered by the classic Settings pages, the legacy sidebars and the Playground, and the classic Settings page renders ConnectionsShellPage; the roles reach them through the static App-to-SettingsSurface-to-SettingsShell import chain, so today nothing changes. To keep that from depending on the chain, each now imports `settings-roles.css` itself, so the roles resolve to today's scheme values there and no visible change appears outside the shell (a test pins each import; the paint differential runs with no shell element, at the root). Lane A's ruling: classic pages stay out of scope (question 1, option A); dual-use components migrate in part 2 on this condition. Known limitation beside the MC-5033 hover line: two static buttons (PersonaBuilder Create, PluginRow Update) pair bg-selected with the text role, not on-selected; unjudged until the join.
+
+### MC-5035 — #654 stage S: ToastHost paren-syntax gap is a separate Tier-1 follow-up, 2026-11-28
+
+- Tag: findings (follow-up note, not folded into part 2). Date: 2026-11-28. Exact times: UNKNOWN. Related: `#654`, `A823/#823`.
+
+**Result.** `ToastHost.svelte` reads `--nexus-*` through paren utilities (`-(--nexus-*)`) that the `sharedTokenConsumers` scan does not count, so its consumption of those tokens is invisible to the recompute. Fix is the scan's utility pattern, not the component. Lane A checks overlap with #823 before a ticket exists.

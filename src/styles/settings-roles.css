@@ -12,7 +12,9 @@
     --settings-text: var(--risu-theme-textcolor);
     --settings-text-2: var(--risu-theme-textcolor2);
     --settings-swatch: var(--risu-theme-textcolor);
+    --settings-swatch-2: var(--risu-theme-textcolor2);
     --settings-border-strong: var(--risu-theme-borderc);
     --settings-border-subtle: var(--risu-theme-darkborderc);
     --settings-danger: var(--risu-theme-draculared);
+    --settings-danger-fill: var(--risu-theme-draculared);
 }

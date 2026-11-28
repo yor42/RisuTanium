@@ -113,10 +113,10 @@
         })
     }
 
-    const iconButton = 'inline-flex items-center justify-center min-h-11 min-w-11 rounded-md text-textcolor2 hover:text-textcolor'
+    const iconButton = 'inline-flex items-center justify-center min-h-11 min-w-11 rounded-md text-(--settings-text-2) hover:text-(--settings-text)'
 </script>
 
-<div class="flex flex-col gap-2 px-3 py-3 rounded-md bg-darkbutton text-textcolor" role="group" aria-labelledby="{uid}-name" data-part="settings-plugins-item" data-plugin={plugin.name}>
+<div class="flex flex-col gap-2 px-3 py-3 rounded-md bg-(--settings-raised) text-(--settings-text)" role="group" aria-labelledby="{uid}-name" data-part="settings-plugins-item" data-plugin={plugin.name}>
     <div class="flex items-start gap-3">
         <div class="flex flex-col grow min-w-0">
             <span class="flex flex-wrap items-center gap-2">
@@ -125,8 +125,8 @@
                     <span class="text-sm rounded bg-amber-700 px-2 py-1 text-white">{language.settingsPage.hotBadge}</span>
                 {/if}
             </span>
-            <span class="text-sm text-textcolor2" data-part="settings-plugin-version">{versionLine}</span>
-            <span id="{uid}-access" class="text-sm" class:text-textcolor2={runnable} class:text-draculared={!runnable} data-part="settings-plugin-access-level">
+            <span class="text-sm text-(--settings-text-2)" data-part="settings-plugin-version">{versionLine}</span>
+            <span id="{uid}-access" class="text-sm" class:text-(--settings-text-2)={runnable} class:text-(--settings-danger)={!runnable} data-part="settings-plugin-access-level">
                 {#if access.kind === 'limited'}
                     {language.pluginsPage.accessLimited}
                 {:else}
@@ -136,7 +136,7 @@
                 {/if}
             </span>
             {#if access.kind === 'limited' && access.ipcCount > 0}
-                <span class="text-sm text-textcolor2" data-part="settings-plugin-ipc">{fillLang(language.pluginsPage.accessIpc, { count: access.ipcCount })}</span>
+                <span class="text-sm text-(--settings-text-2)" data-part="settings-plugin-ipc">{fillLang(language.pluginsPage.accessIpc, { count: access.ipcCount })}</span>
             {/if}
         </div>
         <button
@@ -151,8 +151,8 @@
             onclick={toggle}
         >
             <span class="text-sm">{on ? language.pluginsPage.switchOn : language.pluginsPage.switchOff}</span>
-            <span class="w-10 h-6 rounded-full border border-borderc flex items-center px-0.5" class:bg-selected={on} class:justify-end={on} aria-hidden="true">
-                <span class="w-5 h-5 rounded-full bg-textcolor"></span>
+            <span class="w-10 h-6 rounded-full border border-(--settings-border-strong) flex items-center px-0.5" class:bg-(--settings-selected)={on} class:justify-end={on} aria-hidden="true">
+                <span class="w-5 h-5 rounded-full bg-(--settings-swatch)"></span>
             </span>
         </button>
     </div>
@@ -179,14 +179,14 @@
             </button>
         {/if}
         {#if updateVersion}
-            <span class="text-sm text-textcolor px-2" data-part="settings-plugin-update-chip">{fillLang(language.pluginsPage.updateChip, { version: updateVersion })}</span>
-            <button type="button" class="px-3 min-h-11 rounded-md bg-selected text-textcolor" data-part="settings-plugin-update" onclick={update}>{language.pluginsPage.updateAction}</button>
+            <span class="text-sm text-(--settings-text) px-2" data-part="settings-plugin-update-chip">{fillLang(language.pluginsPage.updateChip, { version: updateVersion })}</span>
+            <button type="button" class="px-3 min-h-11 rounded-md bg-(--settings-selected) text-(--settings-text)" data-part="settings-plugin-update" onclick={update}>{language.pluginsPage.updateAction}</button>
         {/if}
         <span class="grow"></span>
         {#if runnable && hasArgs}
             <button
                 type="button"
-                class="px-3 min-h-11 rounded-md text-textcolor2 hover:text-textcolor"
+                class="px-3 min-h-11 rounded-md text-(--settings-text-2) hover:text-(--settings-text)"
                 aria-expanded={open}
                 aria-controls="{uid}-args"
                 data-part="settings-plugin-settings-toggle"

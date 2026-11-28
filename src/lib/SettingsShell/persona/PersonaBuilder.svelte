@@ -146,7 +146,7 @@
 </script>
 
 <div class="flex flex-col gap-3 min-w-0" bind:this={rootEl} data-persona-builder onfocusin={keepVisible}>
-    <p class="text-sm text-textcolor2" data-persona-builder-progress>{language.settingsShellPersonaBuilderProgress(step, STEPS, titles[step - 1])}</p>
+    <p class="text-sm text-(--settings-text-2)" data-persona-builder-progress>{language.settingsShellPersonaBuilderProgress(step, STEPS, titles[step - 1])}</p>
     <h2 class="text-xl font-bold outline-hidden" tabindex="-1" bind:this={headingEl} data-step-heading>{titles[step - 1]}</h2>
 
     {#if persona}
@@ -159,13 +159,13 @@
         {/if}
     {/if}
 
-    <div class="sticky bottom-0 flex flex-wrap items-center gap-2 py-2 bg-bgcolor border-t border-darkborderc" data-persona-builder-footer>
-        <button type="button" class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected" onclick={back}>{language.settingsShellPersonaBuilderPrev}</button>
-        <button type="button" class="min-h-11 px-4 rounded-md text-textcolor2 hover:text-textcolor" onclick={oncancel}>{language.cancel}</button>
+    <div class="sticky bottom-0 flex flex-wrap items-center gap-2 py-2 bg-(--settings-canvas) border-t border-(--settings-border-subtle)" data-persona-builder-footer>
+        <button type="button" class="min-h-11 px-4 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover)" onclick={back}>{language.settingsShellPersonaBuilderPrev}</button>
+        <button type="button" class="min-h-11 px-4 rounded-md text-(--settings-text-2) hover:text-(--settings-text)" onclick={oncancel}>{language.cancel}</button>
         {#if step < STEPS}
-            <button type="button" class="min-h-11 px-4 ml-auto rounded-md bg-darkbutton text-textcolor hover:bg-selected" onclick={next}>{language.settingsShellPersonaBuilderNext}</button>
+            <button type="button" class="min-h-11 px-4 ml-auto rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover)" onclick={next}>{language.settingsShellPersonaBuilderNext}</button>
         {:else}
-            <button type="button" class="min-h-11 px-4 ml-auto rounded-md bg-selected text-textcolor" onclick={onfinish}>{language.settingsShellPersonaBuilderCreate}</button>
+            <button type="button" class="min-h-11 px-4 ml-auto rounded-md bg-(--settings-selected) text-(--settings-text)" onclick={onfinish}>{language.settingsShellPersonaBuilderCreate}</button>
         {/if}
     </div>
 </div>
