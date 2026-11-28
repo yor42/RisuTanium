@@ -242,7 +242,7 @@ export function buildCharacter(input, index) {
     chatPage: params.chatsPerCharacter > 0 ? Math.floor(rnd() * params.chatsPerCharacter) : 0,
     firstMsgIndex: Math.floor(rnd() * 3) - 1, lastInteraction: T + index * 1000,
     desc: text(bytes * share.desc), firstMessage: text(bytes * share.firstMessage, hangul.greeting), notes: '',
-    backgroundHTML: text(bytes * share.rest * 0.43), defaultVariables: text(bytes * share.rest * 0.3), replaceGlobalNote: text(bytes * share.rest * 0.27),
+    backgroundHTML: `<div hidden>${text(bytes * share.rest * 0.43)}</div>`, defaultVariables: text(bytes * share.rest * 0.3), replaceGlobalNote: text(bytes * share.rest * 0.27),
     alternateGreetings: spread(bytes * share.alternates, alternateBytes, (k, each) => text(each, hangul.greeting)),
     image: '', additionalAssets: [], emotionImages: [],
     chats,
