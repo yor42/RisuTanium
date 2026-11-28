@@ -76,8 +76,8 @@ export interface ImportFacts {
     omitted: ReadonlyMap<string, SalvageOmittedBlock>
     incomplete: readonly IncompleteItem[]
     repair: RepairSummary | null
-    /** `written` is counted after the asset pipeline has drained. */
-    assets: { written: number, skipped: readonly SkippedAssetFact[] } | null
+    /** `written` is counted after the asset pipeline has drained; `present` counts assets the store already held byte for byte, which were not written. */
+    assets: { written: number, present: number, skipped: readonly SkippedAssetFact[] } | null
     inlays: InlayRestoreResult | null
 }
 

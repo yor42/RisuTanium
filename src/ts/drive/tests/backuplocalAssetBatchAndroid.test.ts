@@ -245,6 +245,12 @@ vi.mock('@tauri-apps/api/core', () => ({
         if (command === 'write_chunk' && wire.inBatch === 0) {
             wire.chunkKeys.push((args as { key: string }).key)
         }
+        if (command === 'list_assets_sized') {
+            // As the command answers: every key under assets/ with its size, and no temp file of a write in progress.
+            return fakeFs.listing('assets')
+                .filter((name) => !name.includes('risu-write'))
+                .map((name) => [`assets/${name}`, fakeFs.files.get(`assets/${name}`)?.length ?? 0])
+        }
         const chunk = command === 'write_chunk' ? args as { key: string, id: string, offset: number, last: boolean } : undefined
         const isStream = chunk !== undefined && chunk.key.startsWith('assets/l')
         if (isStream) {
@@ -420,6 +426,7 @@ import { CHUNK_MAX, resetByteTransportForTests, WRITE_CHUNK_BYTES } from 'src/ts
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
 import { overrideBackupWindowBytes } from 'src/ts/drive/backupContainer'
 import { resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
+import { ANDROID_EXPORT_PIECE_BYTES } from 'src/ts/drive/assetPieces'
 
 //#region helpers
 
@@ -1336,6 +1343,130 @@ describe('the card copy line of a restore with streamed assets', () => {
         expectNeverDecreasing()
         expect(lastReported()).toBe(bytes.length)
         expect(sameBytes(storedBytes('big.bin'), filled(4 * CHUNK_MAX + 5, 9))).toBe(true)
+        expectCommittedOnce()
+    })
+})
+
+// A `.bin` import over a store that already holds assets (`binAssetHeld.ts`): the held bytes are not sent again. The held
+// reads go through the Android piece source (pieces of `ANDROID_EXPORT_PIECE_BYTES`), and the sized listing is the
+// `list_assets_sized` responder of the invoke stand-in above. A mocked command is not evidence about the native backend.
+describe('a restore on an Android page over a store that holds the assets', () => {
+    function restoreCard(bytes: Uint8Array): Promise<Awaited<ReturnType<typeof LoadPickedLocalBackup>>> {
+        const file = new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')
+        const run = LoadPickedLocalBackup(file, undefined, { card: true })
+        lastRestore = run.then(() => undefined)
+        return run
+    }
+
+    function assetCounts(end: Awaited<ReturnType<typeof LoadPickedLocalBackup>>): { written: number, present: number } | null {
+        const assets = end.detail.assets
+        // A build without the count reads as none present.
+        return assets === null ? null : { written: assets.written, present: assets.present ?? 0 }
+    }
+
+    function heldReadOffsets(key: string): number[] {
+        return desktop.chunk.callsOf('read_range').filter((call) => call.args.key === key).map((call) => Number(call.args.offset))
+    }
+
+    // Regression reproducer (T2). On the base every entry is sent again: the small ones in b64 batches and the large one
+    // through the chunk writer, and no `present` count exists.
+    test('T2: small and large assets with the held bytes are not sent, the held files stay untouched, and each counts as present', async () => {
+        const small = patterned(1000, 1)
+        const tiny = filled(40, 2)
+        const big = patterned(5 * MIB + 3, 3)
+        fakeFs.plant('assets/a.png', small)
+        fakeFs.plant('assets/b.png', tiny)
+        fakeFs.plant('assets/big.bin', big)
+        const before = ['a.png', 'b.png', 'big.bin'].map((name) => storedBytes(name))
+
+        const end = await restoreCard(backupOf([['a.png', small], ['big.bin', big], ['b.png', tiny]]))
+
+        expect(wire.batches).toEqual([])
+        expect(perAssetChunkKeys()).toEqual([])
+        expect(desktop.chunk.callsOf('write_chunk')).toEqual([])
+        expect(storedBytes('a.png')).toBe(before[0])
+        expect(storedBytes('b.png')).toBe(before[1])
+        expect(storedBytes('big.bin')).toBe(before[2])
+        expect(assetCounts(end)).toEqual({ written: 0, present: 3 })
+        // The large compare reads the held value in the Android piece size, from the start.
+        expect(heldReadOffsets('assets/big.bin')).toEqual([0, ANDROID_EXPORT_PIECE_BYTES, 2 * ANDROID_EXPORT_PIECE_BYTES])
+        expectCommittedOnce()
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    test('T5 Android: a held large value that differs in its last piece is written through the chunk writer', async () => {
+        const big = patterned(5 * MIB + 3, 3)
+        const held = big.slice()
+        held[held.length - 1] ^= 0xff
+        fakeFs.plant('assets/big.bin', held)
+
+        const end = await restoreCard(backupOf([['big.bin', big]]))
+
+        expect(perAssetChunkKeys()).toContain('assets/big.bin')
+        expect(sameBytes(storedBytes('big.bin'), big)).toBe(true)
+        expect(assetCounts(end)).toEqual({ written: 1, present: 0 })
+        expectCommittedOnce()
+    })
+
+    // Regression reproducer (T4): a first import that failed in its second batch left `a` and `b` in the store. On the
+    // base the import after it sends `a` and `b` again.
+    test('T4: the first import after a partial one skips what landed and writes the rest', async () => {
+        const entries: [string, Uint8Array][] = [
+            ['a.png', patterned(400 * 1024, 1)],
+            ['b.png', patterned(400 * 1024, 2)],
+            ['c.png', patterned(400 * 1024, 3)],
+        ]
+        const bytes = backupOf(entries)
+        wire.rejectCall = 1
+
+        await restoreCard(bytes)
+
+        // The precondition: the first call carried `a` and `b`, the second `c` and was refused.
+        expect(wire.batches.map((batch) => batch.keys)).toEqual([['assets/a.png', 'assets/b.png'], ['assets/c.png']])
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expectNotCommitted()
+        expect(storedBytes('a.png')).toBeDefined()
+        expect(storedBytes('b.png')).toBeDefined()
+        expect(storedBytes('c.png')).toBeUndefined()
+        const landedA = storedBytes('a.png')
+        const landedB = storedBytes('b.png')
+
+        wire.batches.length = 0
+        wire.rejectCall = -1
+        wire.failureSeen = null
+        alertErrorMock.mockReset()
+        resetBusyActionsForTest()
+        const end = await restoreCard(bytes)
+
+        expect(wire.batches.flatMap((batch) => batch.keys)).toEqual(['assets/c.png'])
+        expect(storedBytes('a.png')).toBe(landedA)
+        expect(storedBytes('b.png')).toBe(landedB)
+        for (const [name, data] of entries) {
+            expect(sameBytes(storedBytes(name), data)).toBe(true)
+        }
+        expect(assetCounts(end)).toEqual({ written: 1, present: 2 })
+        expectCommittedOnce()
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    // Guard (T7c): a large entry of the key is streamed first, a small entry of the same key follows and the store holds
+    // that small value. The later entry must be sent, so the stream cannot be the last writer of the key.
+    test('T7c: a large entry streamed first and a small entry of the same key after it: the store ends on the later entry', async () => {
+        const X = patterned(MIB + 5, 1)
+        const Y = filled(40, 2)
+        fakeFs.plant('assets/lk.bin', Y)
+        const release = gate()
+        streamTrack.hold = release.promise
+        streamTrack.release = release.release
+
+        const restoring = restoreCard(backupOf([['lk.bin', X], ['lk.bin', Y]]))
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(1) })
+        await settleTimers()
+        release.release()
+        await restoring
+
+        expect(wire.batches.flatMap((batch) => batch.keys)).toContain('assets/lk.bin')
+        expect(sameBytes(storedBytes('lk.bin'), Y)).toBe(true)
         expectCommittedOnce()
     })
 })

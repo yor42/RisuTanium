@@ -52,7 +52,8 @@ import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActions";
 import { inlayAttachmentLimit } from "../process/files/inlayStore";
 import { parseInlayEntryName } from "./inlayBackupCodec";
-import { ExportReadError, openFirstPiece, writeInlaysToBackup, type ReadPiece } from "./inlayBackupExport";
+import { ExportReadError, nodePieceOpener, openFirstPiece, writeInlaysToBackup, type PieceOpener, type ReadPiece } from "./inlayBackupExport";
+import { chainHeldPieces, createHeldAssetJudge, type HeldAssetJudge, type HeldListingEntry, type HeldSource } from "./binAssetHeld";
 import { ANDROID_EXPORT_PIECE_BYTES, ANDROID_PIECE_SOURCE, DESKTOP_PIECE_SOURCE, desktopStreamingUsable, exportTauriPieceSource, nodeAssetPieceSource, nodePieceStore, type AssetPieceSource } from "./assetPieces";
 import { findOversizeAssets, formatMiB, shownPromptNames, UPSTREAM_PROMPT_NAMES_SHOWN } from "./backupUpstreamSizes";
 import { InlayRestoreCollector, listOversizedInlays, restoreCollectedInlays, type InlaySkipped } from "./inlayBackupImport";
@@ -432,6 +433,55 @@ async function sizedListingOrNull(): Promise<SizedAssetKey[] | null> {
         }
     }
     return null
+}
+
+/**
+ * The sized asset listing a `.bin` import judges held assets against, with the kind of store it came from: the files
+ * store's batch command on the desktop and Android, `listSized` on a Node page whose store can also `touch`. Any other
+ * page, a missing answer or a failure gives `null`, and the import then writes every asset as it always did.
+ */
+async function heldAssetListing(): Promise<{ kind: 'tauri' | 'node'; sized: HeldListingEntry[] } | null> {
+    const tauri = await sizedListingOrNull()
+    if (tauri !== null) {
+        return { kind: 'tauri', sized: tauri }
+    }
+    try {
+        if (await getAppStoreKind() !== 'node') {
+            return null
+        }
+        const store = await getAppStore()
+        if (store.listSized === undefined || store.touch === undefined) {
+            return null
+        }
+        const sized = await store.listSized('assets/', 0)
+        return sized === null ? null : { kind: 'node', sized }
+    } catch (e) {
+        console.error(e)
+        return null
+    }
+}
+
+/** The held value of a key as a piece source with its total, from a piece opener; `null` when the key is absent. */
+function heldOpenerOf(open: PieceOpener): (key: string) => Promise<HeldSource | null> {
+    return async (key) => {
+        const pieces = open(key)
+        const first = await pieces.next()
+        if (first.done) {
+            return null
+        }
+        const rest: AsyncIterator<Uint8Array> = {
+            async next(): Promise<IteratorResult<Uint8Array>> {
+                const step = await pieces.next()
+                return step.done ? { done: true, value: undefined } : { done: false, value: (step.value as ReadPiece).bytes }
+            },
+            async return(): Promise<IteratorResult<Uint8Array>> {
+                await pieces.return(undefined)
+                return { done: true, value: undefined }
+            },
+        }
+        const head = first.value as ReadPiece
+        return { total: head.total, pieces: chainHeldPieces(head.bytes, rest) }
+    }
 }
 
 /** Large-entry streams at once on Android; the desktop stays at one, where the literal path runs. */
@@ -2393,6 +2443,12 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 if (store2Import.boot === null && releaseExclusiveHold && !await store2Import.guard.check()) {
                     return declined();
                 }
+                // The sized listing the held-asset skip judges against is fetched before the point of no return, so a
+                // Cancel pressed meanwhile is still honoured; it only reads.
+                const heldListing = await heldAssetListing();
+                if (heldListing !== null) {
+                    noteImportPhase(`held listing, ${heldListing.sized.length} keys`);
+                }
                 // The point of no return: the first asset or inlay write follows. A Cancel that came first wins,
                 // and once the lock is granted none can be accepted, so no cancelled card can follow a write.
                 if (!progress.lockCancel()) {
@@ -2430,6 +2486,33 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 const nodeRestoreStore = desktopStreamLargeAssets ? null : await nodePieceStore();
                 const streamLargeAssets = desktopStreamLargeAssets || nodeRestoreStore !== null;
                 const openRestoreStream = (key: string): ChunkedWriter => nodeRestoreStore !== null ? nodeRestoreStore.openWriter!(key) : openAssetStream(key);
+                // Assets the store already held byte for byte: not written, and counted apart from `written`.
+                let assetsPresent = 0;
+                // The listing and the reader always come from the same kind of store; either missing means no judge.
+                let heldJudge: HeldAssetJudge | null = null;
+                if (heldListing !== null) {
+                    const smallLimit = assetPipeline?.batchBytes ?? CHUNK_MAX;
+                    if (heldListing.kind === 'tauri') {
+                        const tauriPieces = await exportTauriPieceSource();
+                        if (tauriPieces !== null) {
+                            heldJudge = createHeldAssetJudge({ listing: heldListing.sized, openHeld: heldOpenerOf(tauriPieces.open), smallLimit });
+                        }
+                    } else {
+                        const nodeStore = await getAppStore();
+                        const touch = nodeStore.touch?.bind(nodeStore);
+                        if (touch !== undefined) {
+                            heldJudge = createHeldAssetJudge({
+                                listing: heldListing.sized,
+                                openHeld: nodeRestoreStore !== null ? heldOpenerOf(nodePieceOpener(nodeRestoreStore)) : undefined,
+                                readWholeSmall: nodeRestoreStore !== null ? undefined : async (key) => (await nodeStore.read(key)).bytes,
+                                touch,
+                                smallLimit,
+                            });
+                        }
+                    }
+                }
+                // A stream beside the loop failed or found its source changed: a compare in flight stops between pieces.
+                const heldHalted = (): boolean => Boolean(assetPipeline?.failure) || assetPipeline?.sourceChanged === true;
                 let stopMessage: string | null = null;
                 let passFailure: { error: unknown } | null = null;
                 let visitedEntries = 0;
@@ -2554,9 +2637,15 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                                 && name !== 'database.risudat' && !getColdStorageBackupKey(name)) {
                             const assetKey = 'assets/' + name;
                             noteAssetWrittenThisPage(assetKey);
+                            // Every asset entry is observed in file order before any test, so a later entry of a fold
+                            // is never judged against what an earlier one left in the store.
+                            const mayCompareHeld = heldJudge !== null && heldJudge.observe(assetKey);
                             // The header counts as the entry is handed on; its body counts slice by slice below.
                             pendingShare = 0;
                             addCopied(entry.headerLength);
+                            // The body bytes counted so far: the compare's reads and the write's reads share it, so the
+                            // line never counts a byte twice and a skipped entry fills it to the entry's end.
+                            let bodyCounted = 0;
                             const streamed: StreamedAssetEntry = {
                                 key: assetKey,
                                 name,
@@ -2564,10 +2653,32 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                                 size: entry.dataLength,
                                 readSlice: async (start, end) => {
                                     const slice = new Uint8Array(await file.slice(dataStart + start, dataStart + end).arrayBuffer());
-                                    addCopied(slice.length);
+                                    const reached = start + slice.length;
+                                    if (reached > bodyCounted) {
+                                        addCopied(reached - bodyCounted);
+                                        bodyCounted = reached;
+                                    }
                                     return slice;
                                 },
                             };
+                            if (heldJudge !== null && mayCompareHeld) {
+                                const verdict = await heldJudge.judgeStreamed(assetKey, entry.dataLength, streamed.readSlice, heldHalted);
+                                if (verdict === 'held') {
+                                    assetsPresent++;
+                                    addCopied(entry.dataLength - bodyCounted);
+                                    bodyCounted = entry.dataLength;
+                                    await yieldBudget.maybeYield();
+                                    continue;
+                                }
+                                if (verdict === 'source') {
+                                    stopMessage = language.backupFileChangedWhileReading;
+                                    break;
+                                }
+                                if (verdict === 'stopped') {
+                                    // The loop-top checks end the pass; on the last entry the drain below does.
+                                    continue;
+                                }
+                            }
                             if (assetPipeline) {
                                 if (await assetPipeline.addStreamed(streamed)) {
                                     stopMessage = language.backupFileChangedWhileReading;
@@ -2633,6 +2744,12 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                         // restore.
                         const assetKey = 'assets/' + name
                         noteAssetWrittenThisPage(assetKey)
+                        const mayCompareHeld = heldJudge !== null && heldJudge.observe(assetKey)
+                        if (heldJudge !== null && mayCompareHeld && await heldJudge.judgeBytes(assetKey, data) === 'held') {
+                            assetsPresent++
+                            await yieldBudget.maybeYield();
+                            continue;
+                        }
                         if (assetPipeline) {
                             // The header offset orders the skip report by position in the file.
                             // The pipeline holds the entry until its batch is sent, and counts the entry's own bytes
@@ -2698,7 +2815,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 // Only now are the streams done, so the line fills here and not at the end of the loop.
                 progress.bytes('copy', file.size, file.size, null);
                 // The pipeline has drained: what it was handed less what the store refused by name.
-                facts.assets = { written: assetsSubmitted - (assetPipeline?.invalidAssets().length ?? 0), skipped: skippedAssets };
+                facts.assets = { written: assetsSubmitted - (assetPipeline?.invalidAssets().length ?? 0), present: assetsPresent, skipped: skippedAssets };
 
                 // Reached only for a walk that ended on an entry boundary and
                 // holds a database, so every inlay part the file has is
