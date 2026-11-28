@@ -491,11 +491,11 @@ export interface EffectsResult {
     warnings: LintError[]
 }
 
-interface EntryFacts { candidate: (prop: string) => boolean, usable: (prop: string, paint: boolean) => boolean }
+interface EntryFacts { candidate: (prop: string) => boolean, usable: (prop: string, paint: boolean) => boolean, escapeAncestor: string }
 
 /** The entry-level half of the eligibility rule: (a) and (b) and the part of (c) that does not read the value. */
 function entryFactsOf(area: JudgedArea, judge: (entry: string) => SubjectFacts, entry: string): EntryFacts {
-    const refused: EntryFacts = { candidate: () => false, usable: () => false }
+    const refused: EntryFacts = { candidate: () => false, usable: () => false, escapeAncestor: '' }
     const e = normalise(entry)
     const facts = judge(e)
     if (facts.why.length || !facts.parts.length || facts.tier === undefined || facts.tier === 'root') return refused
@@ -506,6 +506,7 @@ function entryFactsOf(area: JudgedArea, judge: (entry: string) => SubjectFacts, 
     const backdropOk = facts.subjectParts.length > 0 && !facts.subjectParts.some((part) => ESCAPE_ANCESTORS.has(part))
     const safe = facts.tier === 'safe'
     return {
+        escapeAncestor: facts.subjectParts.find((part) => ESCAPE_ANCESTORS.has(part)) ?? '',
         candidate: (prop) => safe || prop === 'transition' || (prop === 'backdrop-filter' && backdropOk),
         usable: (prop, paint) => safe || (prop === 'transition' && paint) || (prop === 'backdrop-filter' && backdropOk),
     }
@@ -531,7 +532,17 @@ export function effectsPass(area: JudgedArea, text: string, keyframes: Readonly<
         const entries = splitTop(d.ctx.selector, ',').map((entry) => entry.trim())
         if (!entries.length || entries.some((entry) => !entry)) continue
         const facts = entries.map(factsOf)
-        if (!facts.every((f) => f.candidate(d.prop))) continue
+        if (!facts.every((f) => f.candidate(d.prop))) {
+            // The generic refusals of the later passes name no cause for a backdrop-filter on an escape-route ancestor, so say it here (text only: the declaration stays refused).
+            const ancestor = d.prop === 'backdrop-filter' ? facts.map((f) => f.escapeAncestor).find(Boolean) : undefined
+            if (ancestor) {
+                const selector = d.ctx.selector.trim()
+                const why = `backdrop-filter is not allowed on ${ancestor}: it holds the controls that close or leave the screen, so a blur over it could hide them (this backdrop-filter declaration is not admitted and stays refused)`
+                const key = `${selector}|${d.prop}|${why}`
+                if (!warned.has(key)) { warned.add(key); warnings.push({ selector, prop: d.prop, why }) }
+            }
+            continue
+        }
         const parsed = elementWhy(d.prop, d.value.replace(/\s*!\s*important\s*$/i, '').trim(), keyframes)
         if (parsed.why) {
             const selector = d.ctx.selector.trim()
