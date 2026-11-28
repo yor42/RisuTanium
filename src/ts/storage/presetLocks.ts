@@ -47,6 +47,18 @@ export const LOCK_GROUPS = [
         slotKeys: ['seperateParameters', 'seperateParametersEnabled'],
         dbKeys: ['seperateParameters', 'seperateParametersEnabled'],
     },
+    {
+        id: 'sampling',
+        storage: { kind: 'list' },
+        slotKeys: ['temperature', 'top_p', 'top_k', 'min_p', 'top_a', 'repetition_penalty', 'frequencyPenalty', 'PresensePenalty'],
+        dbKeys: ['temperature', 'top_p', 'top_k', 'min_p', 'top_a', 'repetition_penalty', 'frequencyPenalty', 'PresensePenalty'],
+    },
+    {
+        id: 'reasoning',
+        storage: { kind: 'list' },
+        slotKeys: ['reasonEffort', 'thinkingTokens', 'thinkingType', 'deepseekThinkingType', 'adaptiveThinkingEffort', 'deepseekReasoningEffort', 'verbosity'],
+        dbKeys: ['reasoningEffort', 'thinkingTokens', 'thinkingType', 'deepseekThinkingType', 'adaptiveThinkingEffort', 'deepseekReasoningEffort', 'verbosity'],
+    },
 ] as const satisfies readonly LockGroup[]
 
 export type LockGroupId = typeof LOCK_GROUPS[number]['id']

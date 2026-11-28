@@ -80,9 +80,13 @@ const LOCKED: JsonObject = { doNotChangeFallbackModels: true }
 
 describe('L5 the fast-forward switch check under a lock', () => {
     test('compatibility guard: with every lock on, the writes of setPreset are a subset of the record fields', () => {
-        for (const field of ['doNotChangeSeperateModels', 'doNotChangeFallbackModels', 'disableSeperateParameterChangeOnPresetChange']) {
+        const states: [string, unknown][] = [
+            ['doNotChangeSeperateModels', true], ['doNotChangeFallbackModels', true], ['disableSeperateParameterChangeOnPresetChange', true],
+            ['presetFieldLocks', ['sampling', 'reasoning']],
+        ]
+        for (const [field, state] of states) {
             const written = new Set<string>()
-            const db = new Proxy({ NAIsettings: {}, [field]: true } as Record<string, unknown>, {
+            const db = new Proxy({ NAIsettings: {}, [field]: state } as Record<string, unknown>, {
                 set(target, name, value) {
                     written.add(String(name))
                     target[String(name)] = value
@@ -104,6 +108,18 @@ describe('L5 the fast-forward switch check under a lock', () => {
         expect(cleanSwitch(mine, base, OPS)).toBe(true)
         expect(decideSwitch(base, mine, theirs, OPS)).toEqual({ kind: 'keep' })
         expect(decideSwitch(base, theirs, mine, OPS)).toEqual({ kind: 'keep' })
+    })
+
+    test('the list-held groups: both pages switching cleanly under the same list keep; a different list parks', () => {
+        const held: JsonObject = { presetFieldLocks: ['sampling', 'reasoning'] }
+        const { base } = fixture(held)
+        const mine = switched(base, 1, held)
+        const theirs = switched(base, 2, held)
+        expect(cleanSwitch(mine, base, OPS)).toBe(true)
+        expect(decideSwitch(base, mine, theirs, OPS)).toEqual({ kind: 'keep' })
+        const other = switched(base, 2, { presetFieldLocks: ['sampling'] })
+        expect(cleanSwitch(other, base, OPS)).toBe(false)
+        expect(decideSwitch(base, mine, other, OPS).kind).toBe('park')
     })
 
     test('regression: a switch made under a lock is not recognised by a side that reports no lock state (guards the lock-equality check)', () => {

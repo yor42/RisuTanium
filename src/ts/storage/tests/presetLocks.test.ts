@@ -44,6 +44,26 @@ const VALUES: Record<string, Record<string, [unknown, unknown]>> = {
         seperateParameters: [{ memory: { temperature: 1 }, emotion: {}, translate: {}, otherAx: {}, overrides: {} }, { memory: { temperature: 2 }, emotion: {}, translate: {}, otherAx: {}, overrides: {} }],
         seperateParametersEnabled: [true, false],
     },
+    sampling: {
+        temperature: [1.5, 0.5],
+        top_p: [0.9, 0.7],
+        top_k: [40, 20],
+        min_p: [0.1, 0.05],
+        top_a: [0.2, 0.1],
+        repetition_penalty: [1.2, 1.1],
+        frequencyPenalty: [0.4, 0.2],
+        PresensePenalty: [0.3, 0.6],
+    },
+    reasoning: {
+        reasonEffort: [3, 1],
+        thinkingTokens: [4096, 1024],
+        // Each slot value differs from the default setPreset falls back to, so "takes the slot" cannot be mistaken for "writes the default".
+        thinkingType: ['adaptive', 'off'],
+        deepseekThinkingType: ['off', 'enabled'],
+        adaptiveThinkingEffort: ['low', 'max'],
+        deepseekReasoningEffort: ['high', 'max'],
+        verbosity: [2, 0],
+    },
 }
 
 const FLAG_OF: Record<string, string> = {
@@ -58,6 +78,20 @@ function liveOf(group: string): Loose {
     return Object.fromEntries(Object.entries(VALUES[group]).map(([key, [live]]) => [key, structuredClone(live)]))
 }
 
+/** The live values under the database's own key names (the slot key `reasonEffort` is `reasoningEffort` there). */
+function liveDbOf(group: string): Loose {
+    const registry = LOCK_GROUPS.find(item => item.id === group)!
+    const live = liveOf(group)
+    return Object.fromEntries(registry.slotKeys.map((slotKey, index) => [registry.dbKeys[index], live[slotKey]]))
+}
+
+/** Reads a group from the working database, keyed by slot key so it compares with `liveOf` and `slotOf`. */
+function pickDb(source: object, group: string): Loose {
+    const registry = LOCK_GROUPS.find(item => item.id === group)!
+    const record = source as Loose
+    return Object.fromEntries(registry.slotKeys.map((slotKey, index) => [slotKey, record[registry.dbKeys[index]]]))
+}
+
 function slotOf(group: string): Loose {
     return Object.fromEntries(Object.entries(VALUES[group]).map(([key, [, own]]) => [key, structuredClone(own)]))
 }
@@ -66,10 +100,14 @@ function slotOf(group: string): Loose {
 function working(locked: string[], extra: Loose = {}): Database {
     const db: Loose = { NAIsettings: {}, mainPrompt: 'live prompt', botPresets: [], botPresetsId: 0 }
     for (const id of GROUP_IDS) {
-        Object.assign(db, liveOf(id))
+        Object.assign(db, liveDbOf(id))
     }
     for (const id of locked) {
-        db[FLAG_OF[id]] = true
+        if (Object.hasOwn(FLAG_OF, id)) {
+            db[FLAG_OF[id]] = true
+        } else {
+            db.presetFieldLocks = [...(db.presetFieldLocks as string[] ?? []), id]
+        }
     }
     return { ...db, ...extra } as unknown as Database
 }
@@ -129,11 +167,11 @@ describe('L2 setPreset skips a locked group', () => {
         const slot = slotWith('S', [id])
         const locked = working([id])
         setPreset(locked, slot)
-        expect(pick(locked, keysOf(id))).toEqual(liveOf(id))
+        expect(pickDb(locked, id)).toEqual(liveOf(id))
         expect(locked.mainPrompt).toBe('S prompt')
         const open = working([])
         setPreset(open, slot)
-        expect(pick(open, keysOf(id))).toEqual(slotOf(id))
+        expect(pickDb(open, id)).toEqual(slotOf(id))
     })
 
     test('a lock leaves the other groups to the switch', () => {
@@ -142,13 +180,23 @@ describe('L2 setPreset skips a locked group', () => {
         const db = working([GROUP_IDS[0]])
         setPreset(db, slot)
         for (const id of GROUP_IDS.slice(1)) {
-            expect(pick(db, keysOf(id))).toEqual(slotOf(id))
+            expect(pickDb(db, id)).toEqual(slotOf(id))
+        }
+    })
+
+    test('a lock on one group leaves every other group to the switch, for each group', () => {
+        for (const locked of GROUP_IDS) {
+            const db = working([locked])
+            setPreset(db, slotWith('S', GROUP_IDS))
+            for (const id of GROUP_IDS) {
+                expect(pickDb(db, id), `${id} with ${locked} locked`).toEqual(id === locked ? liveOf(id) : slotOf(id))
+            }
         }
     })
 })
 
 describe('L3 saving into a slot keeps a locked group the slot already holds', () => {
-    test.each(GROUP_IDS)('regression reproducer (fails on base): lock %s on keeps the slot\'s own value; off writes the working value', (id) => {
+    test.each(GROUP_IDS)('regression reproducer (fails on base for the three legacy groups; a guard for sampling and reasoning, whose save side was already generic): lock %s on keeps the slot\'s own value; off writes the working value', (id) => {
         const slot = slotWith('S', [id])
         const saved = savedPresetFor(working([id]), slot) as unknown as Loose
         expect(pick(saved, keysOf(id))).toEqual(slotOf(id))
@@ -190,6 +238,8 @@ function twoPresets(locked: string[]): Database {
     b.fallbackModels = { memory: ['B'], emotion: [], translate: [], otherAx: [], model: [] }
     b.seperateModels = { memory: 'B', emotion: '', translate: '', otherAx: '' }
     b.seperateParameters = { memory: { temperature: 3 }, emotion: {}, translate: {}, otherAx: {}, overrides: {} }
+    b.temperature = 0.25
+    b.reasonEffort = 2
     return db
 }
 
@@ -200,9 +250,9 @@ describe('L4 a round trip A, B, A', () => {
         const b0 = structuredClone(pick((db as unknown as { botPresets: Loose[] }).botPresets[1], keysOf(id)))
         DBState.db = db
         changeToPreset(1)
-        expect(pick(db, keysOf(id))).toEqual(liveOf(id))
+        expect(pickDb(db, id)).toEqual(liveOf(id))
         changeToPreset(0)
-        expect(pick(db, keysOf(id))).toEqual(liveOf(id))
+        expect(pickDb(db, id)).toEqual(liveOf(id))
         const slots = db.botPresets as unknown as Loose[]
         expect(pick(slots[0], keysOf(id))).toEqual(a0)
         expect(pick(slots[1], keysOf(id))).toEqual(b0)
@@ -220,12 +270,9 @@ describe('L4 a round trip A, B, A', () => {
 })
 
 describe('L6 reader and writer rule of the lock list', () => {
-    const KNOWN = ['sampling', 'reasoning']
-    const groups: LockGroup[] = [
-        ...LOCK_GROUPS,
-        { id: 'sampling', storage: { kind: 'list' }, slotKeys: ['temperature'], dbKeys: ['temperature'] },
-        { id: 'reasoning', storage: { kind: 'list' }, slotKeys: ['thinkingType'], dbKeys: ['thinkingType'] },
-    ]
+    // The real registry: its list-held groups are the two new ones, so the rule is pinned on what ships.
+    const groups: LockGroup[] = [...LOCK_GROUPS]
+    const KNOWN = groups.filter(group => group.storage.kind === 'list').map(group => group.id)
 
     test('the reader applies a known id and no lock for an unknown id, a non-string member or a non-array', () => {
         expect(isLocked({ presetFieldLocks: ['reasoning'] }, 'reasoning', groups)).toBe(true)
@@ -261,6 +308,11 @@ describe('L6 reader and writer rule of the lock list', () => {
         expect(setLocked(watched, 'reasoning', true, groups)).toBe(false)
         expect(setLocked(watched, 'nonsense', true, groups)).toBe(false)
         expect(writes).toHaveBeenCalledTimes(1)
+    })
+
+    test('the registry holds exactly sampling and reasoning in the list, after the three legacy flags', () => {
+        expect(KNOWN).toEqual(['sampling', 'reasoning'])
+        expect(groups.map(group => group.id)).toEqual(['auxModels', 'fallbackModels', 'separateParameters', 'sampling', 'reasoning'])
     })
 
     test('a legacy group is held by its upstream flag, never by the list', () => {
