@@ -196,9 +196,50 @@ function denseStoreFor(chatKey: string, persist: { chaId: string, chatId: string
         // The snapshot is taken before the dispose empties the store, so what it holds still persists.
         if (evicted && evicted.hasUnpersisted()) requestPersist(evicted, evicted.snapshot())
         evicted?.dispose()
+        prefetchOnly.delete(oldest)
         denseStores.delete(oldest)
     }
     return store
+}
+
+/** Chats whose store was opened by a prefetch and no send has used yet; only these are released by the chat's exit. */
+const prefetchOnly = new Set<string>()
+
+/**
+ * Starts a chat's persisted-vector read when the chat opens, so the first hybrid send finds it settled instead of
+ * waiting out the load cap. It builds the same store a send would (same key, owner, chat and model), so the send reuses
+ * it; nothing is read for a lexical chat, a chat without a persist target or a phone without a usable embedder. A
+ * second call for the same chat finds the store and starts nothing. Never throws.
+ */
+export function prefetchChroMemoryVectors(args: { ownerId: string, chatId: string | undefined, ltmSettings: unknown, embedder: () => DenseEmbedderResult }): void {
+    try {
+        if (readLtmSettings(args.ltmSettings, 0).retrieval !== 'hybrid') return
+        const persist = persistTargetOf(args.ownerId, args.chatId)
+        if (!persist) return
+        const chatKey = `${args.ownerId}:${args.chatId ?? ''}`
+        if (denseStores.has(chatKey)) return
+        const embedder = args.embedder().embedder
+        if (!embedder) return
+        denseStoreFor(chatKey, persist, embedder.modelKey)
+        prefetchOnly.add(chatKey)
+    } catch {
+        // A prefetch is an optimisation; the send builds its own store.
+    }
+}
+
+/** Frees a prefetched store its chat never used (the chat closed or the retrieval changed); a store a send used stays. */
+export function releaseChroMemoryPrefetch(ownerId: string, chatId: string | undefined): void {
+    try {
+        const chatKey = `${ownerId}:${chatId ?? ''}`
+        if (!prefetchOnly.delete(chatKey)) return
+        const store = denseStores.get(chatKey)
+        if (!store) return
+        if (store.hasUnpersisted()) requestPersist(store, store.snapshot())
+        store.dispose()
+        denseStores.delete(chatKey)
+    } catch {
+        // Nothing here may reach the UI.
+    }
 }
 
 interface CoreResult {
@@ -383,6 +424,7 @@ async function fuseWithDense(
             return null
         }
         const store = (s.dense ??= denseStoreFor(s.index.chatKey, s.persist, embedder.modelKey))
+        prefetchOnly.delete(s.index.chatKey)
         store.useModel(embedder.modelKey)
         // A late read still imports and serves the next send; this send goes out on the keyword order.
         if (!store.loaded) await settleWithin(store.ready, DENSE_LOAD_WAIT_MS)
@@ -718,6 +760,7 @@ export function markChroMemoryDroppedAtRecheck(chatKey: string): void {
  */
 export function discardChroMemoryIndex(chatKey: string): void {
     if (slot && slot.index.chatKey === chatKey) slot = null
+    prefetchOnly.delete(chatKey)
     const store = denseStores.get(chatKey)
     if (store) {
         store.dispose()
@@ -736,6 +779,7 @@ export function resetChroMemoryShadowForTests(): void {
     slot = null
     for (const store of denseStores.values()) store.dispose()
     denseStores.clear()
+    prefetchOnly.clear()
     resetDensePauseForTests()
     resetDenseIndexerForTests()
     resetVectorPersistForTests()
