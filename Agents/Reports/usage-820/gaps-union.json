@@ -1,0 +1,97 @@
+{
+ "acceptedResultIds": null,
+ "attribution": "union",
+ "gaps": [
+  {
+   "category": "no-accepted-result-ids",
+   "costUsd": null,
+   "evidence": "No usage record links a call to an accepted-result id, so no per-result cost or saving can be stated",
+   "id": "accepted-result-denominators",
+   "missing": [
+    "acceptedResultIds"
+   ],
+   "pricing": "not-applicable",
+   "provider": "any"
+  },
+  {
+   "category": "dispatch-usage-unreported",
+   "costUsd": null,
+   "evidence": "maintainer brief for #820: no usage block is recorded for Antigravity dispatches; no repository record carries one",
+   "id": "antigravity-delegation",
+   "missing": [
+    "tokens",
+    "cache",
+    "costUsd"
+   ],
+   "pricing": "unverified",
+   "provider": "antigravity"
+  },
+  {
+   "category": "dispatch-usage-unreported",
+   "costUsd": null,
+   "evidence": "docs/workflow/audit-2026-10-08.md: collaboration usage did not report token costs; they remain unavailable",
+   "id": "codex-collaboration",
+   "missing": [
+    "tokens",
+    "cache",
+    "costUsd"
+   ],
+   "pricing": "unverified",
+   "provider": "codex"
+  },
+  {
+   "category": "dispatch-usage-unreported",
+   "costUsd": null,
+   "evidence": "Agents/Investigation-Ledger.md rows state usage 'not reported by the tool' for some native dispatches (for example row 255); row 1628 records agents lost to a crash, which is a different cause",
+   "id": "native-dispatch-without-usage-block",
+   "missing": [
+    "tokens",
+    "cache",
+    "costUsd"
+   ],
+   "pricing": "not-applicable",
+   "provider": "claude"
+  },
+  {
+   "category": "scope-not-frozen",
+   "costUsd": null,
+   "evidence": "A frozen set that holds only top-level session transcripts omits subagent transcripts; their calls are not counted by analyze",
+   "id": "subagent-transcripts-outside-frozen-set",
+   "missing": [
+    "tokens",
+    "cache",
+    "costUsd"
+   ],
+   "pricing": "not-applicable",
+   "provider": "claude"
+  }
+ ],
+ "manifestDigest": "ccc29f10781204a838b9362a7a82418e2de8b9ea19014e6d45ac359706476c05",
+ "measured": {
+  "calls": 12503,
+  "costUsdAssumedListPrice": 1431.173253,
+  "coverageDiagnostics": {
+   "boundary-straddle": 1,
+   "cross-transcript-collision": 0,
+   "missing-id": 1,
+   "missing-timestamp": 0,
+   "synthetic-skipped": 10,
+   "tuple-without-usage": 0,
+   "turn-straddles-since": 10
+  },
+  "sources": 77,
+  "tokens": {
+   "cr": 2994603410,
+   "cw": 33564620,
+   "in": 28952,
+   "out": 7255454
+  },
+  "tools": 13297
+ },
+ "resultSchema": "mainloop-analysis/1",
+ "schema": "usage-gaps/1",
+ "window": {
+  "since": "2026-11-22T00:00:00Z",
+  "until": "2026-11-25T00:00:00Z"
+ }
+}

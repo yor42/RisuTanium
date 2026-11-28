@@ -1,0 +1,45 @@
+{
+  "schema": "usage-gap-registry/1",
+  "gaps": [
+    {
+      "id": "codex-collaboration",
+      "provider": "codex",
+      "category": "dispatch-usage-unreported",
+      "missing": ["tokens", "cache", "costUsd"],
+      "evidence": "docs/workflow/audit-2026-10-08.md: collaboration usage did not report token costs; they remain unavailable",
+      "pricing": "unverified"
+    },
+    {
+      "id": "antigravity-delegation",
+      "provider": "antigravity",
+      "category": "dispatch-usage-unreported",
+      "missing": ["tokens", "cache", "costUsd"],
+      "evidence": "maintainer brief for #820: no usage block is recorded for Antigravity dispatches; no repository record carries one",
+      "pricing": "unverified"
+    },
+    {
+      "id": "native-dispatch-without-usage-block",
+      "provider": "claude",
+      "category": "dispatch-usage-unreported",
+      "missing": ["tokens", "cache", "costUsd"],
+      "evidence": "Agents/Investigation-Ledger.md rows state usage 'not reported by the tool' for some native dispatches (for example row 255); row 1628 records agents lost to a crash, which is a different cause",
+      "pricing": "not-applicable"
+    },
+    {
+      "id": "subagent-transcripts-outside-frozen-set",
+      "provider": "claude",
+      "category": "scope-not-frozen",
+      "missing": ["tokens", "cache", "costUsd"],
+      "evidence": "A frozen set that holds only top-level session transcripts omits subagent transcripts; their calls are not counted by analyze",
+      "pricing": "not-applicable"
+    },
+    {
+      "id": "accepted-result-denominators",
+      "provider": "any",
+      "category": "no-accepted-result-ids",
+      "missing": ["acceptedResultIds"],
+      "evidence": "No usage record links a call to an accepted-result id, so no per-result cost or saving can be stated",
+      "pricing": "not-applicable"
+    }
+  ]
+}
