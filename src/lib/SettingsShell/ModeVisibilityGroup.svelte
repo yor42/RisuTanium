@@ -59,26 +59,26 @@
 
 <section class="flex flex-col gap-3 mb-6" aria-labelledby="{uid}-title" data-part="settings-mode-visibility">
     <h3 id="{uid}-title" class="text-lg font-semibold" data-part="settings-mode-visibility-title">{language.settingsShellModesTitle}</h3>
-    <p class="text-textcolor2" data-part="settings-mode-visibility-note">{language.settingsShellModesNote}</p>
+    <p class="text-(--settings-text-2)" data-part="settings-mode-visibility-note">{language.settingsShellModesNote}</p>
 
     <button
         type="button"
         role="switch"
-        class="flex items-center justify-between gap-3 px-3 min-h-11 rounded-md bg-darkbutton text-textcolor"
+        class="flex items-center justify-between gap-3 px-3 min-h-11 rounded-md bg-(--settings-raised) text-(--settings-text)"
         aria-checked={state.hideUnusedModes === true}
         data-part="settings-mode-hide-switch"
         onclick={() => setHideUnusedModes(DBState.db, state.hideUnusedModes !== true)}
     >
         <span>{language.settingsShellModesHide}</span>
-        <span class="w-10 h-6 rounded-full border border-borderc flex items-center px-0.5" class:bg-selected={state.hideUnusedModes === true} class:justify-end={state.hideUnusedModes === true} aria-hidden="true">
-            <span class="w-5 h-5 rounded-full bg-textcolor"></span>
+        <span class="w-10 h-6 rounded-full border border-(--settings-border-strong) flex items-center px-0.5" class:bg-(--settings-selected)={state.hideUnusedModes === true} class:justify-end={state.hideUnusedModes === true} aria-hidden="true">
+            <span class="w-5 h-5 rounded-full bg-(--settings-swatch)"></span>
         </span>
     </button>
 
     {#if repair}
-        <div class="flex flex-col gap-1 px-3 py-2 rounded-md border border-draculared text-textcolor" data-part="settings-mode-repair-banner">
+        <div class="flex flex-col gap-1 px-3 py-2 rounded-md border border-(--settings-danger) text-(--settings-text)" data-part="settings-mode-repair-banner">
             <span class="font-semibold">{language.settingsShellModesBanner(modeNames(shown))}</span>
-            <span class="text-textcolor2">{language.settingsShellModesBannerSub}</span>
+            <span class="text-(--settings-text-2)">{language.settingsShellModesBannerSub}</span>
         </div>
     {/if}
 
@@ -86,7 +86,7 @@
         <legend class="mb-1 font-semibold">{language.settingsShellModesLegend}</legend>
         {#each HOME_MODES as mode (mode)}
             {@const lock = lockOf(mode, state)}
-            <label class="flex items-start gap-3 min-h-11 px-3 py-2 rounded-md bg-darkbutton text-textcolor" data-part="settings-mode-row" data-mode={mode}>
+            <label class="flex items-start gap-3 min-h-11 px-3 py-2 rounded-md bg-(--settings-raised) text-(--settings-text)" data-part="settings-mode-row" data-mode={mode}>
                 <input
                     type="checkbox"
                     class="mt-1"
@@ -100,29 +100,29 @@
                 />
                 <span class="flex flex-col">
                     <span>{modeName(mode)}</span>
-                    <span id="{uid}-{mode}-desc" class="text-textcolor2">{modeDescription(mode)}</span>
+                    <span id="{uid}-{mode}-desc" class="text-(--settings-text-2)">{modeDescription(mode)}</span>
                     {#if lock !== null}
-                        <span id="{uid}-{mode}-reason" class="text-textcolor2" data-part="settings-mode-lock-reason">{lock === 'off' ? language.settingsShellModesLockOff : language.settingsShellModesLockLast}</span>
+                        <span id="{uid}-{mode}-reason" class="text-(--settings-text-2)" data-part="settings-mode-lock-reason">{lock === 'off' ? language.settingsShellModesLockOff : language.settingsShellModesLockLast}</span>
                     {/if}
                 </span>
             </label>
         {/each}
     </fieldset>
 
-    <p class="text-textcolor2" role="status" aria-live="polite" data-part="settings-mode-status">{shown.length === HOME_MODES.length ? language.settingsShellModesStatusAll : language.settingsShellModesStatusSome(shown.length, modeNames(shown))}</p>
+    <p class="text-(--settings-text-2)" role="status" aria-live="polite" data-part="settings-mode-status">{shown.length === HOME_MODES.length ? language.settingsShellModesStatusAll : language.settingsShellModesStatusSome(shown.length, modeNames(shown))}</p>
 
     <div class="flex flex-col gap-1">
         <button
             type="button"
-            class="px-3 min-h-11 rounded-md bg-darkbutton text-textcolor self-start"
-            class:text-textcolor2={!showAllEnabled}
+            class="px-3 min-h-11 rounded-md bg-(--settings-raised) text-(--settings-text) self-start"
+            class:text-(--settings-text-2)={!showAllEnabled}
             aria-disabled={showAllEnabled ? undefined : 'true'}
             aria-describedby={showAllEnabled ? undefined : `${uid}-already`}
             data-part="settings-mode-show-all"
             onclick={onShowAll}
         >{language.settingsShellModesShowAll}</button>
         {#if !showAllEnabled}
-            <span id="{uid}-already" class="text-textcolor2" data-part="settings-mode-show-all-reason">{language.settingsShellModesAlready}</span>
+            <span id="{uid}-already" class="text-(--settings-text-2)" data-part="settings-mode-show-all-reason">{language.settingsShellModesAlready}</span>
         {/if}
     </div>
 </section>

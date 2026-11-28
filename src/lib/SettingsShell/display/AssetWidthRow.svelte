@@ -28,10 +28,10 @@
 </script>
 
 <fieldset class="mt-4 min-w-0 border-0 p-0" data-part="settings-asset-width">
-    <legend class="text-textcolor">{language.assetWidth}</legend>
-    <div class="mt-2 mb-2 flex w-full overflow-hidden rounded-md border border-darkborderc">
+    <legend class="text-(--settings-text)">{language.assetWidth}</legend>
+    <div class="mt-2 mb-2 flex w-full overflow-hidden rounded-md border border-(--settings-border-subtle)">
         {#each choices as choice (choice.mode)}
-            <label class="relative flex min-h-11 grow items-center justify-center px-3 text-sm cursor-pointer transition-colors {mode === choice.mode ? 'bg-darkbutton text-textcolor' : 'text-textcolor2 hover:text-textcolor'}">
+            <label class="relative flex min-h-11 grow items-center justify-center px-3 text-sm cursor-pointer transition-colors {mode === choice.mode ? 'bg-(--settings-raised) text-(--settings-text)' : 'text-(--settings-text-2) hover:text-(--settings-text)'}">
                 <input
                     class="sr-only peer"
                     type="radio"
@@ -46,7 +46,7 @@
         {/each}
     </div>
     {#if mode === 'custom'}
-        <span class="text-textcolor" data-part="settings-asset-width-custom" id="{group}-max-width">{language.settingsShellAssetMaxWidth}</span>
+        <span class="text-(--settings-text)" data-part="settings-asset-width-custom" id="{group}-max-width">{language.settingsShellAssetMaxWidth}</span>
         <SliderInput
             labelId="{group}-max-width"
             marginBottom={true}

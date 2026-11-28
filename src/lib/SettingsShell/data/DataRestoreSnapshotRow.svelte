@@ -17,7 +17,7 @@
 <div class="flex flex-col">
     <button
         type="button"
-        class="self-start min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected mb-2"
+        class="self-start min-h-11 px-4 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover) mb-2"
         data-part="settings-data-action"
         aria-disabled={dataSheetState.running ? 'true' : undefined}
         onclick={restore}

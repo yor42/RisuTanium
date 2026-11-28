@@ -18,8 +18,8 @@
     {#each quoteBoxItems as item (item.id)}
         <ShellSettingRow id={item.id} {ctx} {item} />
     {/each}
-    <p class="mt-2 text-sm text-textcolor2" data-part="settings-quote-preview">
+    <p class="mt-2 text-sm text-(--settings-text-2)" data-part="settings-quote-preview">
         <span class="mr-2">{language.settingsShellQuotePreviewTitle}</span>
-        <span class="text-textcolor">{language.settingsShellQuotePreview(quotes[0], quotes[1], quotes[2], quotes[3])}</span>
+        <span class="text-(--settings-text)">{language.settingsShellQuotePreview(quotes[0], quotes[1], quotes[2], quotes[3])}</span>
     </p>
 </div>

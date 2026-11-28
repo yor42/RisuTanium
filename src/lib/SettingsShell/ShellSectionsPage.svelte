@@ -53,7 +53,7 @@
         {#if gateOpen(section)}
             {@const open = !section.collapsed || opened[section.id] === true}
             <section data-part="settings-section" data-section={section.id} aria-labelledby="{uid}-{section.id}">
-                <h3 id="{uid}-{section.id}" class="text-lg font-semibold text-textcolor outline-none rounded-sm risu-focus-ring" tabindex="-1" data-part="settings-section-heading">
+                <h3 id="{uid}-{section.id}" class="text-lg font-semibold text-(--settings-text) outline-none rounded-sm risu-focus-ring" tabindex="-1" data-part="settings-section-heading">
                     {#if section.collapsed}
                         <button
                             type="button"
@@ -89,9 +89,9 @@
                             {:else}
                                 {@const jump = row}
                                 <div class="flex flex-col" data-setting-row={jump.id}>
-                                    <button type="button" class="self-start min-h-11 pr-1 text-left text-textcolor underline hover:text-textcolor2" data-part="settings-row-jump" onclick={() => SettingsMenuIndex.set(jump.index)}>{settingsLabel(jump.labelKey)}</button>
+                                    <button type="button" class="self-start min-h-11 pr-1 text-left text-(--settings-text) underline hover:text-(--settings-text-2)" data-part="settings-row-jump" onclick={() => SettingsMenuIndex.set(jump.index)}>{settingsLabel(jump.labelKey)}</button>
                                     {#if jump.hintKey}
-                                        <p class="text-xs text-textcolor2 mb-2" data-part="settings-row-hint">{settingsLabel(jump.hintKey)}</p>
+                                        <p class="text-xs text-(--settings-text-2) mb-2" data-part="settings-row-hint">{settingsLabel(jump.hintKey)}</p>
                                     {/if}
                                 </div>
                             {/if}

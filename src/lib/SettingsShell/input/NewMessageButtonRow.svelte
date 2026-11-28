@@ -31,11 +31,11 @@
 </script>
 
 <fieldset class="mt-4 flex flex-col gap-1 min-w-0" data-part="settings-new-message-button-row">
-    <legend class="text-textcolor">{settingsLabel('settingsShellInputNewMsgButton')}</legend>
-    <p class="text-xs text-textcolor2 mb-1">{settingsLabel('settingsShellInputNewMsgButtonHint')}</p>
+    <legend class="text-(--settings-text)">{settingsLabel('settingsShellInputNewMsgButton')}</legend>
+    <p class="text-xs text-(--settings-text-2) mb-1">{settingsLabel('settingsShellInputNewMsgButtonHint')}</p>
     <div class="flex flex-wrap gap-x-4 gap-y-1">
         {#each options as option (option.value)}
-            <label class="flex min-h-11 items-center gap-2 text-textcolor2 has-[:checked]:text-textcolor">
+            <label class="flex min-h-11 items-center gap-2 text-(--settings-text-2) has-[:checked]:text-(--settings-text)">
                 <input
                     type="radio"
                     name="{uid}-new-message-button"
@@ -48,7 +48,7 @@
             </label>
         {/each}
     </div>
-    <div class="relative h-12 w-24 rounded-md border border-darkborderc" aria-hidden="true" data-part="settings-new-message-button-outline">
-        <span class="absolute bg-selected {MARKER_CLASS[current] ?? MARKER_CLASS['bottom-center']}"></span>
+    <div class="relative h-12 w-24 rounded-md border border-(--settings-border-subtle)" aria-hidden="true" data-part="settings-new-message-button-outline">
+        <span class="absolute bg-(--settings-selected) {MARKER_CLASS[current] ?? MARKER_CLASS['bottom-center']}"></span>
     </div>
 </fieldset>
