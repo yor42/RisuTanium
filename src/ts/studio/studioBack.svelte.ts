@@ -7,6 +7,7 @@ import {
     closeStudio,
     closeStudioTogglePreview,
     setStudioHistoryOpen,
+    setStudioPresetSheetOpen,
     setStudioRestoreSheetOpen,
     studioDetailBack,
     studioDetailBackSnapshot,
@@ -93,6 +94,15 @@ export function installStudioBack(): void {
  */
 export function registerStudioSheetBack(): void {
     registerStudioBackLayer({ isOpen: () => studioScreen.restoreSheetOpen, close: closeStudioRestoreSheet })
+}
+
+/** The "Manage presets" sheet's Back layer, registered from the sheet's own initialisation. */
+export function registerStudioPresetSheetBack(): void {
+    registerStudioBackLayer({ isOpen: () => studioScreen.presetSheetOpen, close: closeStudioPresetSheet })
+}
+
+export function closeStudioPresetSheet(): void {
+    setStudioPresetSheetOpen(false)
 }
 
 /**

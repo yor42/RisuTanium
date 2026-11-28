@@ -28,6 +28,7 @@
         ownerRowId,
         selectStudioNode,
         setStudioExpanded,
+        setStudioPresetSheetOpen,
         setStudioSelection,
         showMoreStudioRows,
         studioScreen,
@@ -57,6 +58,7 @@
     const model = $derived(source.current.model)
 
     const MODULE_LIST_ROW_ID = 'l:modules'
+    const PRESET_LIST_ROW_ID = 'a:presetList'
 
     // Only lorebooks and regex lists have rows below the kind; every other kind is one leaf.
     const LISTED_KINDS: readonly StudioKind[] = ['lore', 'regex']
@@ -182,8 +184,10 @@
         }
         if (current.presets.length + current.otherPresets.length > 0) {
             pushGroup('presets', language.studioOwnerPresets, 1, null, topCount, ++position, (id) => {
-                const size = current.presets.length + (current.otherPresets.length > 0 ? 1 : 0)
-                current.presets.forEach((owner, index) => pushOwner(owner, 2, id, size, index + 1))
+                // The first child is the entry to the "Manage presets" sheet; it is an action row, not an owner.
+                const size = 1 + current.presets.length + (current.otherPresets.length > 0 ? 1 : 0)
+                rows.push(base(PRESET_LIST_ROW_ID, 'more', 2, id, size, 1, language.studioPresetListManage))
+                current.presets.forEach((owner, index) => pushOwner(owner, 2, id, size, index + 2))
                 if (current.otherPresets.length > 0) {
                     pushGroup('otherPresets', language.studioOwnerOtherPresets(current.otherPresets.length), 2, id, size, size,
                         (otherId) => pushOwnerPage(current.otherPresets, otherId, 3))
@@ -266,6 +270,10 @@
     function activate(row: TreeNode): void {
         focusId = row.id
         menuRowId = null
+        if (row.id === PRESET_LIST_ROW_ID) {
+            setStudioPresetSheetOpen(true)
+            return
+        }
         if (row.rowKind === 'more') {
             if (row.moreFor !== null) void showMore(row, row.moreFor)
             return

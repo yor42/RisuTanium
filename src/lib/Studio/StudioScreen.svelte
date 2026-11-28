@@ -17,7 +17,7 @@
     import { STUDIO_HISTORY_STEP, type StudioHistoryStep } from '../../ts/studio/historyStepContext'
     import { readOwnerFields, type OwnerFields } from '../../ts/studio/ownerFields'
     import { trackStudioFocus } from '../../ts/studio/layerFocus'
-    import { closeStudioDrawer, closeStudioHistory, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
+    import { closeStudioDrawer, closeStudioHistory, closeStudioPresetSheet, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
     import { selectedHistoryOwner, setStudioHistoryOpen, setStudioLayout, setStudioNotice, setStudioNotRestoredNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
     import { declareSurface } from '../../ts/themePack/surfaceGate.svelte'
@@ -234,6 +234,9 @@
         if (studioScreen.restoreSheetOpen) {
             closeStudioRestoreSheet()
             event.preventDefault()
+        } else if (studioScreen.presetSheetOpen) {
+            closeStudioPresetSheet()
+            event.preventDefault()
         } else if (studioScreen.searchOpen) {
             closeStudioSearch()
             event.preventDefault()
@@ -307,6 +310,12 @@
         {/if}
         {#if studioScreen.restoreSheetOpen}
             <StudioRestoreSheet host={toastHost} />
+        {/if}
+        <!-- Loaded when first opened: the sheet pulls in the preset list actions and the database module. -->
+        {#if studioScreen.presetSheetOpen}
+            {#await import('./StudioPresetListSheet.svelte') then sheet}
+                <sheet.default />
+            {/await}
         {/if}
         <!-- The risky turn-on question sits above the restore sheet and covers this body only. -->
         {#if riskyQuestion() !== null}
