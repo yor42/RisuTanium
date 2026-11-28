@@ -429,15 +429,47 @@ describe.each(OWNERS)('T35, T41: unreadable and inert rows (%s owner)', (_name, 
         upstreamEntry(),
     ]
 
-    test.each([3, 4])('an element that is not an object (row %i) gets no operation', async (index) => {
+    test.each([3, 4])('an element that is not an object (row %i) gets no duplicate and no move', async (index) => {
         await start(await importedList(rows()))
         const before = snapshot(owner)
         const target = liveList(owner)[index]
-        for (const op of [regexDelete(target, index), regexDuplicate(target, index), regexMove(target, index, 'top')]) {
+        for (const op of [regexDuplicate(target, index), regexMove(target, index, 'top')]) {
             expect(edit(owner, op)).toEqual({ ok: false, reason: 'precondition' })
         }
         expect(snapshot(owner)).toBe(before)
         expect(doneOf(owner)).toHaveLength(0)
+    })
+
+    test.each([3, 4])('an element that is not an object (row %i) is removed in one step; undo restores it at its index, redo removes it again', async (index) => {
+        await start(await importedList(rows()))
+        const before = snapshot(owner)
+        const target = liveList(owner)[index]
+        const op = regexDelete(target, index)
+        expect(edit(owner, op)).toEqual({ ok: true })
+        expect(op.landedDeletedId()).toBeNull()
+        expect(doneOf(owner)).toHaveLength(1)
+        expect(liveList(owner)).toHaveLength(5)
+        const after = snapshot(owner)
+        expect(service.undo(owner)).toEqual({ ok: true })
+        expect(snapshot(owner)).toBe(before)
+        expect(liveList(owner)[index]).toEqual(target)
+        expect(service.redo(owner)).toEqual({ ok: true })
+        expect(snapshot(owner)).toBe(after)
+    })
+
+    test('an outside change of the inert row refuses the redo, and other rows keep their operations', async () => {
+        await start(await importedList(rows()))
+        expect(edit(owner, regexDelete(null, 3))).toEqual({ ok: true })
+        expect(service.undo(owner)).toEqual({ ok: true })
+        // The null moves away from index 3, so the recorded remove no longer finds it there.
+        liveList(owner).splice(3, 1)
+        liveList(owner).unshift(null)
+        const before = snapshot(owner)
+        expect(service.redo(owner)).toMatchObject({ ok: false, reason: 'precondition' })
+        expect(snapshot(owner)).toBe(before)
+        const survivor = liveList(owner)[1]
+        expect(edit(owner, regexFieldEdit(1, 'in', 'still editable', null))).toEqual({ ok: true })
+        expect(liveList(owner)[1]).toEqual({ ...survivor as object, in: 'still editable' })
     })
 
     test.each([1, 2])('an unreadable object (row %i) is deleted and moved, never duplicated, and undo restores it exactly', async (index) => {

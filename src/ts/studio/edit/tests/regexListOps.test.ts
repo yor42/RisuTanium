@@ -53,11 +53,28 @@ describe('the copy rule (M10)', () => {
 describe('refusals (M44)', () => {
     const inert = [named(0), null, 'text', 5, ['x']]
 
-    test.each([1, 2, 3, 4])('an inert element %i is refused by delete, move and duplicate', (index) => {
+    test.each([1, 2, 3, 4])('an inert element %i is refused by move and duplicate', (index) => {
         const row = inert[index]
-        expect(build(regexDelete(row, index), inert)).toEqual(REFUSED)
         expect(build(regexMove(row, index, 'top'), inert)).toEqual(REFUSED)
         expect(build(regexDuplicate(row, index), inert)).toEqual(REFUSED)
+    })
+
+    test.each([1, 2, 3, 4])('an inert element %i is removed by delete as one nonEntry step with no deleted item', (index) => {
+        const op = regexDelete(inert[index], index)
+        expect(build(op, inert)).toEqual({
+            ok: true,
+            label: { kind: 'obj', list: 'regex', action: 'delete', name: null, count: 1 },
+            drafts: [{ op: 'objRemove', list: 'regex', index, nonEntry: true }],
+            coalesceKey: null,
+        })
+        expect(op.landedDeletedId()).toBeNull()
+    })
+
+    test('identical inert rows follow the twin rule: the hint row, the only equal row, else refused', () => {
+        const rows = ['text', named(0), 'text']
+        expect(build(regexDelete('text', 2, 2), rows)).toMatchObject({ ok: true, drafts: [{ op: 'objRemove', index: 2, nonEntry: true }] })
+        expect(build(regexDelete('text', 1, 2), rows)).toEqual(REFUSED)
+        expect(build(regexDelete('text', 0, 1), [named(0), 'text'])).toMatchObject({ ok: true, drafts: [{ op: 'objRemove', index: 1, nonEntry: true }] })
     })
 
     test('an unreadable object may be deleted and moved but not duplicated', () => {

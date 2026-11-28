@@ -127,14 +127,17 @@ describe('the row menu by row class', () => {
         expect(items).toEqual(['studio-regex-move-up', 'studio-regex-move-down', 'studio-regex-move-top', 'studio-regex-move-bottom', 'studio-regex-duplicate', 'studio-regex-delete'])
     })
 
-    test('an unreadable object offers move and delete but no duplicate; an inert element has no menu button', async () => {
+    test('an unreadable object offers move and delete but no duplicate; an inert element offers delete only', async () => {
         await start('character', [{ comment: 'x', in: 123, out: '', type: 'editinput' }, null, addShape('ok')])
         await mountRegex('character')
-        expect(parts('studio-regex-row-menu')).toHaveLength(2)
+        expect(parts('studio-regex-row-menu')).toHaveLength(3)
         await click(parts('studio-regex-row-menu')[0])
         expect(part('studio-regex-duplicate')).toBeNull()
         expect(part('studio-regex-delete')).not.toBeNull()
         expect(part('studio-regex-move-down')).not.toBeNull()
+        await click(parts('studio-regex-row-menu')[1])
+        const items = Array.from(document.querySelectorAll('[data-part="studio-regex-menu"] [role="menuitem"]')).map((item) => item.getAttribute('data-part'))
+        expect(items).toEqual(['studio-regex-delete'])
     })
 })
 

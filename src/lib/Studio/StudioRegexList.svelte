@@ -34,7 +34,7 @@
 
     // The regex list of one owner. It shows what the pane hands it and acts only through the pane's callbacks, which read
     // the live row at the moment of the action. A readable row offers every action; an unreadable object only Move and
-    // Delete (nothing multiplies data Studio cannot edit); any other element none.
+    // Delete (nothing multiplies data Studio cannot edit); any other element (not an object) only Delete, one undoable step.
     interface Props {
         classes: readonly RegexRowClass[]
         // The live list, read at each use so a row is the live one and never a snapshot.
@@ -153,6 +153,8 @@
         index: number
         target: RegexTarget
         readable: boolean
+        // An element that is not an object: the menu holds Delete alone.
+        removeOnly: boolean
         top: number
         right: number
     }
@@ -168,7 +170,7 @@
     $effect(() => {
         const open = menu
         if (open === null) return
-        if (open.index < classes.length && classes[open.index].kind !== 'inert' && editable) return
+        if (open.index < classes.length && editable) return
         untrack(() => {
             const active = document.activeElement
             const inside = active === null || active === document.body || (menuElement?.contains(active) ?? false)
@@ -196,7 +198,7 @@
             closeMenu(true)
             return
         }
-        menu = { index, target: targetOf(index), readable: classes[index]?.kind === 'ok', ...anchorOf(button) }
+        menu = { index, target: targetOf(index), readable: classes[index]?.kind === 'ok', removeOnly: classes[index]?.kind === 'inert', ...anchorOf(button) }
         await afterFlush()
         menuElement?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus()
     }
@@ -332,18 +334,16 @@
                         <span class="min-w-0 break-words">{regexUnreadableText(row)}</span>
                     </div>
                 {/if}
-                {#if row.kind !== 'inert'}
-                    <button
-                        type="button"
-                        data-part="studio-regex-row-menu"
-                        class={iconButtonClass}
-                        aria-label={language.studioRegexRowMenu(labelOf(index))}
-                        aria-haspopup="menu"
-                        aria-expanded={menu !== null && menu.index === index}
-                        disabled={!editable}
-                        onclick={(event) => openMenu(index, event.currentTarget)}
-                    ><EllipsisIcon size={18} aria-hidden="true" /></button>
-                {/if}
+                <button
+                    type="button"
+                    data-part="studio-regex-row-menu"
+                    class={iconButtonClass}
+                    aria-label={language.studioRegexRowMenu(labelOf(index))}
+                    aria-haspopup="menu"
+                    aria-expanded={menu !== null && menu.index === index}
+                    disabled={!editable}
+                    onclick={(event) => openMenu(index, event.currentTarget)}
+                ><EllipsisIcon size={18} aria-hidden="true" /></button>
             </div>
         {/if}
     {/snippet}
@@ -358,10 +358,12 @@
             style="top: {menu.top}px; right: {menu.right}px"
             onkeydown={onMenuKey}
         >
-            <button type="button" role="menuitem" data-part="studio-regex-move-up" class={itemClass} onclick={() => moveFromMenu('up')}>{language.studioRegexMoveUp}</button>
-            <button type="button" role="menuitem" data-part="studio-regex-move-down" class={itemClass} onclick={() => moveFromMenu('down')}>{language.studioRegexMoveDown}</button>
-            <button type="button" role="menuitem" data-part="studio-regex-move-top" class={itemClass} onclick={() => moveFromMenu('top')}>{language.studioRegexMoveTop}</button>
-            <button type="button" role="menuitem" data-part="studio-regex-move-bottom" class={itemClass} onclick={() => moveFromMenu('bottom')}>{language.studioRegexMoveBottom}</button>
+            {#if !menu.removeOnly}
+                <button type="button" role="menuitem" data-part="studio-regex-move-up" class={itemClass} onclick={() => moveFromMenu('up')}>{language.studioRegexMoveUp}</button>
+                <button type="button" role="menuitem" data-part="studio-regex-move-down" class={itemClass} onclick={() => moveFromMenu('down')}>{language.studioRegexMoveDown}</button>
+                <button type="button" role="menuitem" data-part="studio-regex-move-top" class={itemClass} onclick={() => moveFromMenu('top')}>{language.studioRegexMoveTop}</button>
+                <button type="button" role="menuitem" data-part="studio-regex-move-bottom" class={itemClass} onclick={() => moveFromMenu('bottom')}>{language.studioRegexMoveBottom}</button>
+            {/if}
             {#if menu.readable}
                 <button type="button" role="menuitem" data-part="studio-regex-duplicate" class={itemClass} onclick={duplicateFromMenu}>{language.studioRegexDuplicate}</button>
             {/if}

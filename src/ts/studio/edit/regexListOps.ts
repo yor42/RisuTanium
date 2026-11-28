@@ -182,7 +182,10 @@ export function regexDuplicate(expected: unknown, hint: number, twins = 1): Rege
     })
 }
 
-/** Removes the row to the deleted list. A readable row and an unreadable object are removed; any other element is not (it is not an object). */
+/**
+ * Removes the row. A readable row and an unreadable object go to the deleted list; any other element (not an object) is
+ * removed as one `nonEntry` step with no deleted item, and only history undoes it.
+ */
 export function regexDelete(expected: unknown, hint: number, twins = 1): RegexOp {
     const text = canonicalJson(expected)
     return makeListOp((deletedId, live) => {
@@ -191,7 +194,14 @@ export function regexDelete(expected: unknown, hint: number, twins = 1): RegexOp
         const at = targetOf(rows, text, hint, twins)
         if (at === null) return NO_PLAN
         const row = rows[at]
-        if (classifyRegexRow(row).kind === 'inert') return NO_PLAN
+        if (classifyRegexRow(row).kind === 'inert') {
+            // A non-object has no Recently Deleted item: one nonEntry remove, undone by history alone.
+            return {
+                result: { ok: true, label: listLabel('delete', null, 1), drafts: [{ op: 'objRemove', list: 'regex', index: at, nonEntry: true }], coalesceKey: null },
+                index: null,
+                deletedId: null,
+            }
+        }
         return {
             result: { ok: true, label: listLabel('delete', nameOf(row as Row), 1), drafts: [{ op: 'objRemove', list: 'regex', index: at, deletedId }], coalesceKey: null },
             index: null,
