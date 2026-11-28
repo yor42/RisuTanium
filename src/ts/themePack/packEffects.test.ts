@@ -167,6 +167,17 @@ describe('G2, G5: refusals outside the envelope keep their legacy messages (GUAR
         expect(judged.result.errors.map((e) => `${e.selector}|${e.prop}|${e.why}`)).toEqual(BASE_ERRORS['G2-H39'])
         expect(judged.warnings.filter((w) => w.prop === 'backdrop-filter')).toHaveLength(1)
     })
+    // V-1 of #654: both refusals share the generic errors; the cap names itself in a warning, and so must the ancestor rule. Regression reproducer for the ancestor rows (no warning before).
+    it.each([['chat', 'chat-sidebar'], ['chat', 'chat-sheet'], ['settings', 'settings-section'], ['settings', 'settings-page']] as const)('V1 %s %s: a backdrop-filter on an escape-route ancestor names that rule in a warning, verdict unchanged', (area, part) => {
+        const judged = judge(area, `[data-part="${part}"]{backdrop-filter:blur(8px)}`)
+        expect(judged.result.ok).toBe(false)
+        expect(judged.warnings.filter((w) => w.prop === 'backdrop-filter' && w.why.includes(`not allowed on ${part}`))).toHaveLength(1)
+    })
+    it('V1 a capped blur and an ancestor blur give different reasons (guard for the cap)', () => {
+        const cap = judge('chat', '[data-part="chat-header"]{backdrop-filter:blur(40px)}').warnings.map((w) => w.why).join()
+        expect(cap).toMatch(/at most 24px/)
+        expect(cap).not.toMatch(/not allowed on/)
+    })
     it('G4 no app stylesheet defines a @keyframes pack-* block', async () => {
         const { readdirSync, readFileSync, statSync } = await import('node:fs')
         const { join } = await import('node:path')
@@ -230,11 +241,11 @@ describe('N: single-defect rows stay refused (GUARD: the verdict and the legacy 
         ['N33', 'chat', `${SEND}{transition:opacity 1s}`, 'subset', false],
         ['N34', 'chat', `${A}{transition:all 1s}`, 'subset', true],
         ['N35', 'chat', `${A}{transition:opacity 1001ms}`, 'subset', true],
-        ['N36', 'chat', `${SHEET}{backdrop-filter:blur(12px)}`, 'subset', false],
+        ['N36', 'chat', `${SHEET}{backdrop-filter:blur(12px)}`, 'subset', true],
         ['N37', 'chat', `${HEADER} [data-kind="x"]{backdrop-filter:blur(4px)}`, 'subset', false],
         ['N38', 'chat', `${SEND}{transform:translateX(4px) rotate(5deg)}`, 'subset', false],
         ['N39', 'chat', `${A}, ${SHEET}{transform:translateX(4px)}`, 'subset', false],
-        ['N40', 'chat', `${HEADER}, ${SHEET}{backdrop-filter:blur(4px)}`, 'subset', false],
+        ['N40', 'chat', `${HEADER}, ${SHEET}{backdrop-filter:blur(4px)}`, 'subset', true],
         ['N41', 'chat', `[data-own-scheme] ${A}{transform:translateX(4px)}`, 'subset', false],
         ['N42', 'chat', `[data-part-critical] ${A}{transform:translateX(4px)}`, 'subset', false],
         ['N43', 'home', '[data-kind="x"] [data-part="home-brand"]{transition:opacity 200ms}', 'subset', false],
