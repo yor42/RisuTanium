@@ -101,7 +101,7 @@
 </script>
 
 <div class="flex flex-col gap-1 w-full" data-part="toggle-scope-switch">
-    <label class="relative flex items-center gap-2 cursor-pointer text-textcolor min-h-11">
+    <label class="relative flex items-center gap-2 cursor-pointer text-nexus-text min-h-11">
         <input
             bind:this={switchEl}
             class="sr-only peer"
@@ -113,10 +113,10 @@
             onchange={flip}
         />
         <span
-            class="relative w-9 h-5 min-w-9 rounded-full border-2 border-darkborderc transition-colors duration-200 risu-focus-ring-peer {scoped ? 'bg-darkborderc' : 'bg-darkbutton'}"
+            class="relative w-9 h-5 min-w-9 rounded-full border-2 border-(--nexus-edge) transition-colors duration-200 risu-focus-ring-peer {scoped ? 'bg-(--nexus-edge)' : 'bg-(--nexus-surface-raised)'}"
             aria-hidden="true"
         >
-            <span class="absolute top-0 w-4 h-4 rounded-full bg-textcolor transition-all duration-200 {scoped ? 'left-4' : 'left-0'}"></span>
+            <span class="absolute top-0 w-4 h-4 rounded-full bg-nexus-text transition-all duration-200 {scoped ? 'left-4' : 'left-0'}"></span>
         </span>
         <span>{language.chatShellToggleScopeLabel}</span>
     </label>
@@ -127,7 +127,7 @@
     <div role="status" class="text-sm text-textcolor2">
         {#if row === 'undo'}
             <span>{language.chatShellTogglesDiscarded}</span>
-            <button type="button" class="ml-2 min-h-11 px-2 underline text-textcolor" onclick={undo}>{language.chatShellToggleScopeUndo}</button>
+            <button type="button" class="ml-2 min-h-11 px-2 underline text-nexus-text" onclick={undo}>{language.chatShellToggleScopeUndo}</button>
         {:else if row === 'refused'}
             <span>{language.chatShellToggleScopeUndoRefused}</span>
         {/if}

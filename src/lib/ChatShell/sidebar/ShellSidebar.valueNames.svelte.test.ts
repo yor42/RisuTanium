@@ -101,7 +101,7 @@ afterEach(async () => {
 })
 
 // The chat search text field: not a value control, so outside #334.
-const KNOWN_UNNAMED: string[] = ['<input type=text class="w-full rounded-md border border-darkborderc bg-darkbutton ps-8 pe-2 py-2 text-textcolor">']
+const KNOWN_UNNAMED: string[] = ['<input type=text class="w-full rounded-md border border-(--nexus-edge) bg-(--nexus-surface-raised) ps-8 pe-2 py-2 text-nexus-text">']
 
 describe('ShellSidebar value-control names', () => {
     test.each(['manual', 'recent'] as const)('regression reproducer: the sort select (%s) is named by the sort label, then helped by the device note', (sort) => {

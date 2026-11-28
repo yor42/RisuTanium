@@ -382,14 +382,14 @@
                     data-part="chat-folder-host"
                     data-ring={ringFolder === item.folder ? "" : undefined}
                     data-dragging={drag?.item === item.folder ? "" : undefined}
-                    class="relative rounded-md {ringFolder === item.folder ? 'ring-2 ring-darkborderc' : ''} {drag?.item === item.folder ? 'opacity-60' : ''}"
+                    class="relative rounded-md {ringFolder === item.folder ? 'ring-2 ring-(--nexus-edge)' : ''} {drag?.item === item.folder ? 'opacity-60' : ''}"
                     style:height="{ROW_HEIGHT}px"
                 >
                     {#if editing.renamingFolder === item.folder}
                         <div data-part="chat-folder-editing" class="flex h-full w-full items-center rounded-md bg-selected px-2">
                             <input
                                 data-part="chat-folder-name-input"
-                                class="w-full rounded-md border border-darkborderc bg-darkbg px-2 py-1 text-textcolor"
+                                class="w-full rounded-md border border-(--nexus-edge) bg-(--nexus-surface) px-2 py-1 text-nexus-text"
                                 aria-label={language.chatShellRenameFolder}
                                 value={item.folder.name}
                                 {@attach focusField}
@@ -403,7 +403,7 @@
                             role="treeitem"
                             data-part="chat-folder"
                             data-index={entry.index}
-                            class="flex h-full w-full select-none items-center gap-2 rounded-md ps-2 {ordering ? 'pe-28' : 'pe-10'} text-start text-textcolor hover:bg-selected cursor-pointer {folderColorClass[item.folder.color ?? ''] ?? ''}"
+                            class="flex h-full w-full select-none items-center gap-2 rounded-md ps-2 {ordering ? 'pe-28' : 'pe-10'} text-start text-nexus-text hover:bg-selected cursor-pointer {folderColorClass[item.folder.color ?? ''] ?? ''}"
                             tabindex={entry.index === stop ? 0 : -1}
                             aria-level={item.level}
                             aria-posinset={item.posinset}
@@ -432,7 +432,7 @@
                                 <button
                                     type="button"
                                     data-part="chat-move-up"
-                                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer {edge?.first ? 'opacity-40' : ''}"
+                                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-nexus-text cursor-pointer {edge?.first ? 'opacity-40' : ''}"
                                     tabindex={entry.index === stop ? 0 : -1}
                                     aria-label="{language.chatShellMoveUp} {item.folder.name || language.settingsPage.unnamed}"
                                     aria-disabled={edge?.first ? "true" : undefined}
@@ -443,7 +443,7 @@
                                 <button
                                     type="button"
                                     data-part="chat-move-down"
-                                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer {edge?.last ? 'opacity-40' : ''}"
+                                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-nexus-text cursor-pointer {edge?.last ? 'opacity-40' : ''}"
                                     tabindex={entry.index === stop ? 0 : -1}
                                     aria-label="{language.chatShellMoveDown} {item.folder.name || language.settingsPage.unnamed}"
                                     aria-disabled={edge?.last ? "true" : undefined}
@@ -467,7 +467,7 @@
                             <button
                                 type="button"
                                 data-part="chat-folder-menu"
-                                class="absolute end-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer"
+                                class="absolute end-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-nexus-text cursor-pointer"
                                 tabindex="-1"
                                 aria-label={language.chatShellFolderMenu(item.folder.name || language.settingsPage.unnamed)}
                                 aria-haspopup="menu"

@@ -160,7 +160,7 @@
     data-part="chat-row-host"
     data-ring={ring ? "" : undefined}
     data-dragging={dragging ? "" : undefined}
-    class="relative rounded-md {ring ? 'ring-2 ring-darkborderc' : ''} {dragging ? 'opacity-60' : ''}"
+    class="relative rounded-md {ring ? 'ring-2 ring-(--nexus-edge)' : ''} {dragging ? 'opacity-60' : ''}"
     style:height="{ROW_HEIGHT}px"
 >
     {#if renaming}
@@ -172,7 +172,7 @@
             <input
                 bind:this={nameInput}
                 data-part="chat-row-name-input"
-                class="w-full rounded-md border border-darkborderc bg-darkbg px-2 py-1 text-textcolor"
+                class="w-full rounded-md border border-(--nexus-edge) bg-(--nexus-surface) px-2 py-1 text-nexus-text"
                 aria-label={language.chatShellRename}
                 value={chat.name}
                 onkeydown={onFieldKeydown}
@@ -186,7 +186,7 @@
             role="treeitem"
             data-part="chat-row"
             data-index={index}
-            class="flex h-full w-full select-none flex-col justify-center gap-0.5 rounded-md {reordering ? 'pe-28' : writing ? 'pe-20' : 'pe-10'} text-start text-textcolor hover:bg-selected cursor-pointer"
+            class="flex h-full w-full select-none flex-col justify-center gap-0.5 rounded-md {reordering ? 'pe-28' : writing ? 'pe-20' : 'pe-10'} text-start text-nexus-text hover:bg-selected cursor-pointer"
             class:bg-selected={open}
             style:padding-inline-start={level === 2 ? "1.5rem" : "0.5rem"}
             tabindex={tabbable ? 0 : -1}
@@ -220,7 +220,7 @@
             <span data-part="chat-row-meta" class="flex items-center gap-2 text-xs text-textcolor2">
                 <span data-part="chat-row-preview" class="grow truncate">{preview}</span>
                 {#if draft}
-                    <span data-part="chat-row-draft" class="shrink-0 rounded-sm border border-darkborderc px-1 text-textcolor">{language.chatShellStatusDraft}</span>
+                    <span data-part="chat-row-draft" class="shrink-0 rounded-sm border border-(--nexus-edge) px-1 text-nexus-text">{language.chatShellStatusDraft}</span>
                 {/if}
             </span>
         </button>
@@ -230,7 +230,7 @@
                 <button
                     type="button"
                     data-part="chat-move-up"
-                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer {first ? 'opacity-40' : ''}"
+                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-nexus-text cursor-pointer {first ? 'opacity-40' : ''}"
                     tabindex={tabbable ? 0 : -1}
                     aria-label="{language.chatShellMoveUp} {name}"
                     aria-disabled={first ? "true" : undefined}
@@ -241,7 +241,7 @@
                 <button
                     type="button"
                     data-part="chat-move-down"
-                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer {last ? 'opacity-40' : ''}"
+                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-nexus-text cursor-pointer {last ? 'opacity-40' : ''}"
                     tabindex={tabbable ? 0 : -1}
                     aria-label="{language.chatShellMoveDown} {name}"
                     aria-disabled={last ? "true" : undefined}
@@ -275,7 +275,7 @@
                 bind:this={menuButton}
                 type="button"
                 data-part="chat-row-menu"
-                class="absolute end-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer"
+                class="absolute end-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-nexus-text cursor-pointer"
                 tabindex="-1"
                 aria-label={language.chatShellRowMenu(name)}
                 aria-haspopup="menu"
