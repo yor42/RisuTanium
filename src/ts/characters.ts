@@ -1886,7 +1886,7 @@ export function archivedMemberIds(group: groupChat): string[] {
  * `chaId` is held by several characters, one of them archived, counts as not
  * loaded.
  */
-async function restoreGroupMembers(group: groupChat): Promise<string[]> {
+export async function restoreGroupMembers(group: groupChat): Promise<string[]> {
     const failed: string[] = []
     for(const chaId of archivedMemberIds(group)){
         // Looked up again for each member: the list may change while an
@@ -1917,7 +1917,7 @@ async function restoreGroupMembers(group: groupChat): Promise<string[]> {
 }
 
 /** One notice naming every member `restoreGroupMembers` could not load; nothing for none. */
-function alertGroupMembersNotLoaded(names: string[]){
+export function alertGroupMembersNotLoaded(names: string[]){
     if(names.length > 0){
         alertError(language.errors.coldStorageGroupMembersNotLoaded(names.join(', ')))
     }
@@ -1959,6 +1959,8 @@ export async function changeChar(index: number, arg:{
     keepInteraction?: boolean,
     /** Shows no alert for a refused restore of an archived character; the outcome carries the reason. */
     quiet?: boolean,
+    /** The caller has already restored this group's archived members (and told the user of any it could not load), so the group is selected without waiting. */
+    membersHandled?: boolean,
 } = {}): Promise<ChangeCharOutcome> {
     const reseter = arg.reseter ?? (() => {})
     const updateInteraction = !arg.keepInteraction
@@ -2005,7 +2007,7 @@ export async function changeChar(index: number, arg:{
         selectedCharID.set(selectedIndex);
         return 'selected'
     }
-    if(clicked?.type === 'group' && archivedMemberIds(clicked).length > 0){
+    if(clicked?.type === 'group' && !arg.membersHandled && archivedMemberIds(clicked).length > 0){
         // Members are restored before the group is selected; the group is
         // formatted and its interaction bumped once they are in memory.
         const failedMembers = await restoreGroupMembers(clicked)
