@@ -34,6 +34,7 @@
   --color-on-brand: #fff;
   --color-code-bg-inline: rgb(var(--nexus-shade-rgb) / 0.3);
   --color-code-bg: rgb(var(--nexus-shade-rgb) / 0.38);
+  --color-code-block-bg: #282c34; --color-code-block-text: #abb2bf;                      /* a committed code block under a pack: the highlighter's own ground, whatever the bubble */
   --color-syntax-keyword: #b6c4ff;
   --color-tint-faint: rgb(var(--nexus-overlay-rgb) / 0.03);
   --color-field: rgb(var(--nexus-overlay-rgb) / 0.05);

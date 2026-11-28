@@ -1032,4 +1032,6 @@
         --tw-prose-kbd-shadows: var(--nexus-overlay-rgb);
     }
     :global(:root[data-theme-pack-base]) [data-part="chat-message-body"] :global(mark[risu-mark^="blockquote"]) { background-color: transparent; }
+    /* The code highlighter's token colours (atom-one-dark) are fixed light-on-dark, and the transparent prose ground above would put them on the bubble, unreadable on a light one. A committed code block keeps the highlighter's own ground and text colour under a pack, whatever the bubble. */
+    :global(:root[data-theme-pack-base]) [data-part="chat-message-body"] :global(pre.hljs) { background-color: var(--color-code-block-bg); color: var(--color-code-block-text); }
 </style>
