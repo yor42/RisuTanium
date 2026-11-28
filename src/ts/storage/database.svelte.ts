@@ -38,7 +38,7 @@ import {
 } from '../chatLoadPages';
 import { normalizeHideUnusedModes, normalizeVisibleModes, type HomeMode } from './homeModes';
 import { assignPresetIds, carryPresetMeta, freshPresetMeta, migratePresetSlots, withoutPresetMeta } from './presetMeta';
-import { withoutTaskModes, type TaskKey } from './taskParameterModes';
+import { translateTaskParameters, type TaskKey } from './taskParameterModes';
 import { DEFAULT_HYPA_MODEL } from '../process/memory/embeddingModels';
 import type { PRESET_RECORD_FIELDS } from './store2/fastForward/records';
 
@@ -2641,7 +2641,7 @@ import { dropStoredVertexToken } from './legacyVertexToken';
 export async function downloadPreset(id:number, type:'json'|'risupreset'|'return' = 'json'){
     saveCurrentPreset()
     let db = getDatabase()
-    let pres = withoutTaskModes(withoutPresetMeta(safeStructuredClone(db.botPresets[id])))
+    let pres = translateTaskParameters(withoutPresetMeta(safeStructuredClone(db.botPresets[id])), 'slot').record
     shareSafePreset(pres)
     console.log(pres)
 

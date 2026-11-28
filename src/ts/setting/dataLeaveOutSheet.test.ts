@@ -27,7 +27,8 @@ const USAGE: BinLeaveOutEntry = { kind: 'usageStats', count: 1 }
 const CHRO: BinLeaveOutEntry = { kind: 'chroMemory', count: 1 }
 const DRAFTS: BinLeaveOutEntry = { kind: 'chatDrafts', drafts: 3, hintChats: 2 }
 const LOCKS: BinLeaveOutEntry = { kind: 'presetLocks', ids: ['sampling', 'reasoning'] }
-const ALL = [ALTERNATIVES, FORK_CHAT, PRESETS, WORKSPACES, PACKS, USAGE, CHRO, DRAFTS, LOCKS]
+const TASK_PARAMETERS: BinLeaveOutEntry = { kind: 'taskParameters', presets: ['Mix'], lines: ['Mix / emotion / thinking_tokens', 'Mix / otherAx / replaced block'] }
+const ALL = [ALTERNATIVES, FORK_CHAT, PRESETS, WORKSPACES, PACKS, USAGE, CHRO, DRAFTS, LOCKS, TASK_PARAMETERS]
 
 /** The count text each entry must put on a shown line. */
 function countText(entry: BinLeaveOutEntry): string {
@@ -41,6 +42,7 @@ function countText(entry: BinLeaveOutEntry): string {
         case 'chroMemory': return language.settingsShellDataKindChroMemory
         case 'chatDrafts': return language.settingsShellDataLeaveOutChatDrafts(entry.drafts, entry.hintChats)
         case 'presetLocks': return language.settingsShellDataLeaveOutPresetLocks(entry.ids.length)
+        case 'taskParameters': return language.settingsShellDataLeaveOutTaskParameters(entry.presets.length)
     }
 }
 
@@ -53,8 +55,8 @@ function subsets(): BinLeaveOutEntry[][] {
 }
 
 describe('leaveOutSheetDef', () => {
-    test('there are 511 non-empty combinations of the nine kinds', () => {
-        expect(subsets()).toHaveLength(511)
+    test('there are 1023 non-empty combinations of the ten kinds', () => {
+        expect(subsets()).toHaveLength(1023)
     })
 
     test('for every combination at most VISIBLE_CONSEQUENCES lines, and every present kind is named on one of them', () => {
@@ -149,6 +151,7 @@ describe('leftOutKindLabels', () => {
             language.settingsShellDataKindChroMemory,
             language.settingsShellDataKindChatDrafts,
             language.settingsShellDataKindPresetLocks,
+            language.settingsShellDataKindTaskParameters,
         ])
     })
 })

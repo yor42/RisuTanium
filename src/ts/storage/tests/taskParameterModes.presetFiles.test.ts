@@ -148,12 +148,12 @@ beforeEach(() => {
 })
 
 describe('T-R12 preset files carry no taskModes key', () => {
-    test.each(['json', 'risupreset', 'return'] as const)('new-behaviour: a %s export has no key and keeps the blocks and the flag', async (kind) => {
+    test.each(['json', 'risupreset', 'return'] as const)('new-behaviour: a %s export has no key, keeps the own block and the flag, and holds a copy for a same task', async (kind) => {
         const exported = await exportAs(kind)
 
         expect(containerOf(exported)).not.toHaveProperty('taskModes')
         expect(containerOf(exported).memory).toEqual({ temperature: 11 })
-        expect(containerOf(exported).translate).toEqual({ top_k: 3 })
+        expect(containerOf(exported).translate).toHaveProperty('temperature', 80)
         expect(exported.seperateParametersEnabled).toBe(true)
     })
 
