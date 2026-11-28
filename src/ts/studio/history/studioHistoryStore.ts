@@ -94,6 +94,9 @@ export const HISTORY_FORMAT_VERSION = 2
 // widening that older builds refuse whole (unknown op, unknown label, an item without a string `value` and integer
 // `index`, an unknown set path), so the version stays 2. A record naming a list, field or label field this build's
 // tables do not hold is refused whole.
+// An `objInsert` or `objRemove` whose `entry` is not an object (`null`, a string, a number, a boolean or an array; the
+// repair of a list element that is not an entry, #720) is the same kind of widening: an older build's strict parse
+// refuses the op, so the step and the whole owner record are refused and the version stays 2.
 export const HEADER_PREFIX = 'h:'
 export const ASIDE_MARK_PREFIX = 'xh:'
 export const ENTRY_PREFIX = 'e:'

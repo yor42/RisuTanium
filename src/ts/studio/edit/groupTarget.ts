@@ -9,6 +9,7 @@
 import { DBState } from '../../stores.svelte'
 import { writeLiveCharacter } from '../../liveCharacterWrite'
 import type { groupChat } from '../../storage/database.svelte'
+import { isJsonObject } from '../../storage/store2/codec/normalize'
 import type { FieldValue, LiveReader, WriteOp } from '../history/historyModel'
 import type { ObjWrite } from '../history/objectListOps'
 import { groupOwnerKey } from '../history/ownerPhase'
@@ -146,7 +147,8 @@ function simulateMember(write: MemberWrite, length: number): number | null {
     }
     switch (write.op) {
         case 'objInsert':
-            return write.index >= 0 && write.index <= length && typeof write.entry.chaId === 'string' && write.entry.chaId !== '' ? length + 1 : null
+            // A member is an object; any other element refuses the whole batch.
+            return write.index >= 0 && write.index <= length && isJsonObject(write.entry) && typeof write.entry.chaId === 'string' && write.entry.chaId !== '' ? length + 1 : null
         case 'objRemove':
             return write.index >= 0 && write.index < length ? length - 1 : null
         case 'objSet': {
@@ -168,6 +170,9 @@ function simulateMember(write: MemberWrite, length: number): number | null {
 function applyMember(arrays: MemberArrays, write: MemberWrite): void {
     switch (write.op) {
         case 'objInsert':
+            if (!isJsonObject(write.entry)) {
+                return
+            }
             arrays.characters.splice(write.index, 0, write.entry.chaId)
             // A key the entry lacks inserts `undefined`, never a default: the row restores as it was recorded.
             arrays.talks.splice(write.index, 0, write.entry.talk)

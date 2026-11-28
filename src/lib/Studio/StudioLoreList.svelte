@@ -17,6 +17,7 @@
     import { onDestroy, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
+    import { canonicalJson } from '../../ts/studio/history/objectListOps'
     import {
         ancestorFolderKeys,
         displayNameOf,
@@ -38,6 +39,7 @@
         loreBulkActive,
         loreDuplicate,
         loreMove,
+        loreRemoveNonEntry,
         type LoreMove,
         type LoreOp,
     } from '../../ts/studio/edit/loreListOps'
@@ -372,6 +374,19 @@
         runOwn(loreAlwaysActive(surface.target, row.index, !isActive(row)), 'same', surface, 'toggle')
     }
 
+    // Only an element that is not an object and has a JSON form can be removed here; a keyless folder row is an object and
+    // stays inert.
+    function removable(row: LoreListRow): boolean {
+        const element = rows[row.index]
+        return !(typeof element === 'object' && element !== null && !Array.isArray(element)) && canonicalJson(element) !== null
+    }
+
+    function removeNonEntry(row: LoreListRow): void {
+        if (!editable || !removable(row)) return
+        const result = runOwn(loreRemoveNonEntry(rows[row.index], row.index), 'same', { token: { from: 'list', n: listToken }, target: null, hint: row.index })
+        if (result.ok) afterFlush().then(focusRootIfLost)
+    }
+
     function addEntry(): void {
         if (!editable) return
         runOwn(loreAddEntry(null), 'opens', { token: { from: 'list', n: listToken }, target: null, hint: -1 })
@@ -509,6 +524,9 @@
                 {/if}
                 {#if row.kind === 'nonEntry'}
                     <span data-part="studio-lore-row-inert" class="min-w-0 flex-1 truncate text-textcolor2">{language.studioLoreNonEntryRow}</span>
+                    {#if removable(row)}
+                        <button type="button" data-part="studio-lore-row-remove" class={buttonClass} disabled={!editable} onclick={() => removeNonEntry(row)}>{language.studioLoreNonEntryRemove}</button>
+                    {/if}
                 {:else}
                     <button
                         type="button"

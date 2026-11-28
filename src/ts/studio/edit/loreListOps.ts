@@ -8,7 +8,7 @@ import { isJsonObject, toPlainJson } from '../../storage/store2/codec/normalize'
 import { migrateLoreEntryToV2 } from '../../process/loreEntryMigration'
 import type { LiveReader } from '../history/historyModel'
 import type { ObjBuildResult, OwnerHistoryService, StudioResult } from '../history/ownerHistory.svelte'
-import type { ObjAction, ObjDraft, ObjEntry, ObjFieldValue, ObjLabel } from '../history/objectListOps'
+import { canonicalJson, type ObjAction, type ObjDraft, type ObjEntry, type ObjFieldValue, type ObjLabel } from '../history/objectListOps'
 import type { OwnerKey } from '../history/ownerPhase'
 import { readProbabilityLine, writeProbabilityLine } from '../longText/loreDecorators'
 import {
@@ -264,6 +264,32 @@ export function loreDelete(t: LoreTracked, hint: number): LoreOp {
         const at = find(live, t, hint)
         if (at === null || at.row.mode === 'folder') return REFUSED
         return ready(labelOf('delete', displayNameOf(at.row), { count: 1 }), [{ op: 'objRemove', list: 'lore', index: at.i, deletedId }], null, { index: null, deletedId })
+    })
+}
+
+/**
+ * The undoable removal of a list element that is not an entry (MC-4860): `null`, a scalar or an array. A scalar has no
+ * identity, so the element is found by the exact JSON captured when the action began: at `hint`, else the only equal
+ * element. An entry, a folder or a keyless folder row is never removed here. Untagged, so nothing joins the deleted list;
+ * History undoes it.
+ */
+export function loreRemoveNonEntry(expected: unknown, hint: number): LoreOp {
+    const text = canonicalJson(expected)
+    return makeOp((_id, live) => {
+        const rows = live.objList?.('lore') ?? null
+        if (rows === null || text === null) return REFUSED
+        const same = (i: number): boolean => {
+            const row = rows[i]
+            return !(typeof row === 'object' && row !== null && !Array.isArray(row)) && canonicalJson(row) === text
+        }
+        let at = same(hint) ? hint : -1
+        if (at < 0) {
+            const found: number[] = []
+            for (let i = 0; i < rows.length; i++) if (same(i)) found.push(i)
+            if (found.length !== 1) return REFUSED
+            at = found[0]
+        }
+        return ready(labelOf('delete', null, { count: 1 }), [{ op: 'objRemove', list: 'lore', index: at, nonEntry: true }], null, { index: null })
     })
 }
 

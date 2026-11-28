@@ -2726,6 +2726,7 @@ export const languageGerman = {
     "studioLoreBulkKeys": "Alle auf Schlüsselwort-aktiviert setzen",
     "studioLoreRepairPending": "Das Lore-Buch dieses Moduls ist keine Liste und muss repariert werden, bevor es bearbeitet werden kann. Beantworte zuerst die Reparaturfrage.",
     "studioLoreNonEntryRow": "Dieses Element ist kein Lore-Buch-Eintrag. Es bleibt unverändert erhalten.",
+    "studioLoreNonEntryRemove": "Entfernen",
     "studioLoreRowMenu": (name: string) => `Weitere Aktionen für "${name}"`,
     "studioLoreDepth": (n: number) => `Ebene ${n}`,
     "studioLoreDeletedPreview": (name: string, n: number) => n === 0 ? name : `${name} und ${n} weitere`,

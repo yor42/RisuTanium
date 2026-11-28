@@ -918,8 +918,10 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
             }
             if (write.op === 'objInsert') {
                 const copy = toPlainJson(write.entry)
-                if (copy !== undefined && typeof copy === 'object' && copy !== null) {
-                    ownElements.add(copy)
+                if (copy !== undefined) {
+                    if (typeof copy === 'object' && copy !== null) {
+                        ownElements.add(copy)
+                    }
                     list.splice(write.index, 0, copy)
                 }
             } else if (write.op === 'objRemove') {

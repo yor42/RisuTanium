@@ -2,7 +2,8 @@
 // obj deleted item and the obj and prop labels, as stored; their strict parsers; and the pure helpers every
 // route shares (canonical JSON, anchors, identities, tag runs, inversion). It is part of the stored format: every
 // shape here is refused whole by a reader that does not know it, and every function is total, so a list holding
-// non-objects, cycles or bigints never throws. Every list-dependent rule reads the tables of `objectLists.ts`.
+// non-objects, cycles or bigints never throws. An insert or remove names its element as any plain JSON value, an
+// object being the common case; a non-object element has no identity and is never tagged. Every list-dependent rule reads the tables of `objectLists.ts`.
 
 import type { JsonObject, JsonValue } from '../../storage/blockFrame'
 import { isJsonObject, sameJsonValue, toPlainJson } from '../../storage/store2/codec/normalize'
@@ -49,6 +50,9 @@ checkTables()
 // ---------------------------------------------------------------- types
 
 export type ObjEntry = JsonObject
+// A stored remove or insert names its element as plain JSON: an object (an entry) or, for the repair of an element
+// that is not an entry, `null`, a string, a number, a boolean or an array. Every list shares this one shape.
+export type ObjElement = JsonValue
 export type ObjValue = string | number | boolean | null | ObjEntry
 export type ObjFieldValue = { had: false } | { had: true; value: ObjValue }
 export type PropValue = { had: false } | { had: true; value: ObjEntry }
@@ -57,8 +61,8 @@ export type IdentityKind = 'id' | 'folderKey' | 'content'
 export type IdentityCounts = Partial<Record<IdentityKind, number>>
 
 // `deletedId` marks a run of ops that lists (remove) or consumes (insert) the deleted item with that id.
-export type ObjInsertOp = { op: 'objInsert'; list: ObjListName; index: number; entry: ObjEntry; counts: IdentityCounts; deletedId?: string }
-export type ObjRemoveOp = { op: 'objRemove'; list: ObjListName; index: number; entry: ObjEntry; counts: IdentityCounts; deletedId?: string }
+export type ObjInsertOp = { op: 'objInsert'; list: ObjListName; index: number; entry: ObjElement; counts: IdentityCounts; deletedId?: string }
+export type ObjRemoveOp = { op: 'objRemove'; list: ObjListName; index: number; entry: ObjElement; counts: IdentityCounts; deletedId?: string }
 export type ObjSetOp = {
     op: 'objSet'
     list: ObjListName
@@ -74,7 +78,7 @@ export type ObjFamilyOp = ObjInsertOp | ObjRemoveOp | ObjSetOp | PropSetOp
 
 // The writes a plan hands to a host writer. Never stored or posted.
 export type ObjWrite =
-    | { op: 'objInsert'; list: ObjListName; index: number; entry: ObjEntry }
+    | { op: 'objInsert'; list: ObjListName; index: number; entry: ObjElement }
     | { op: 'objRemove'; list: ObjListName; index: number }
     | { op: 'objSet'; list: ObjListName; index: number; field: string; value: ObjFieldValue }
     | { op: 'propSet'; prop: PropName; value: PropValue }
@@ -243,7 +247,7 @@ export function identitiesOf(list: ObjListName, element: unknown): Identities | 
 const IDENTITY_ORDER: readonly IdentityKind[] = ['id', 'folderKey', 'content']
 
 // The kinds an entry holds, in the fixed order `id`, `folderKey`, `content`.
-export function identityKindsOf(list: ObjListName, entry: ObjEntry): IdentityKind[] {
+export function identityKindsOf(list: ObjListName, entry: unknown): IdentityKind[] {
     const found = identitiesOf(list, entry)
     return found === null ? [] : IDENTITY_ORDER.filter((kind) => found[kind] !== undefined)
 }
@@ -456,8 +460,18 @@ function parsePlainObject(value: unknown): ObjEntry | null {
     }
 }
 
+// A fresh plain copy of any element, or null when it has no JSON form (`undefined`, a bigint, a cycle).
+function parseElement(value: unknown): { value: ObjElement } | null {
+    try {
+        const plain = toPlainJson(value)
+        return plain === undefined ? null : { value: plain }
+    } catch {
+        return null
+    }
+}
+
 // `counts` must hold exactly the entry's identity kinds, each a positive integer.
-function parseCounts(list: ObjListName, entry: ObjEntry, value: unknown): IdentityCounts | null {
+function parseCounts(list: ObjListName, entry: unknown, value: unknown): IdentityCounts | null {
     if (!isPlainObject(value) || !hasOnlyKeys(value, IDENTITY_ORDER)) {
         return null
     }
@@ -535,9 +549,15 @@ export function parseObjOp(value: unknown): ObjFamilyOp | null {
             if (deletedId === null) {
                 return null
             }
-            const entry = parsePlainObject(value.entry)
-            const counts = entry === null ? null : parseCounts(value.list, entry, value.counts)
-            if (entry === null || counts === null) {
+            // Wrapped: `null` is a legitimate element, so it cannot also be the refusal sentinel.
+            const element = parseElement(value.entry)
+            // A deleted item holds objects only, so a tagged op never names another element.
+            if (element === null || (deletedId !== undefined && !isJsonObject(element.value))) {
+                return null
+            }
+            const entry = element.value
+            const counts = parseCounts(value.list, entry, value.counts)
+            if (counts === null) {
                 return null
             }
             const tag = deletedId === undefined ? {} : { deletedId }
@@ -653,7 +673,8 @@ export function storedHolderKindsOf(list: ObjListName): ('character' | 'chat' | 
 // builder cannot record a wrong count or anchor.
 export type ObjDraft =
     | { op: 'objInsert'; list: ObjListName; index: number; entry: object; deletedId?: string }
-    | { op: 'objRemove'; list: ObjListName; index: number; deletedId?: string }
+    // `nonEntry` removes an element that is not an object (and no other); without it only an object is removed.
+    | { op: 'objRemove'; list: ObjListName; index: number; deletedId?: string; nonEntry?: true }
     | { op: 'objSet'; list: ObjListName; index: number; field: string; after: ObjFieldValue }
     | { op: 'propSet'; prop: PropName; after: PropValue }
 
@@ -781,6 +802,16 @@ export function completeObjOps(drafts: readonly ObjDraft[], live: LiveReader): O
             }
             case 'objRemove': {
                 const row = rows[draft.index]
+                if (draft.nonEntry === true) {
+                    // Untagged and not an object, with a JSON form: no identity and no deleted item.
+                    const element = isPlainObject(row) || draft.deletedId !== undefined ? null : parseElement(row)
+                    if (element === null) {
+                        return { ok: false, reason: 'precondition' }
+                    }
+                    rows.splice(draft.index, 1)
+                    ops.push({ op: 'objRemove', list: draft.list, index: draft.index, entry: element.value, counts: {} })
+                    break
+                }
                 const entry = isPlainObject(row) ? parsePlainObject(row) : null
                 if (entry === null) {
                     return { ok: false, reason: 'precondition' }
@@ -843,7 +874,7 @@ function runRemoves(ops: readonly ObjFamilyOp[], i: number, end: number): ObjIte
     const entries: ObjItemEntry[] = []
     for (let k = end; k >= i; k--) {
         const op = ops[k]
-        if (op.op === 'objRemove') {
+        if (op.op === 'objRemove' && isJsonObject(op.entry)) {
             entries.push({ index: op.index, entry: op.entry, counts: op.counts })
         }
     }
@@ -896,6 +927,11 @@ export function planObjStep(ops: readonly ObjFamilyOp[], live: LiveReader, liste
                 if (rows === null || !(op.index >= 0 && op.index <= rows.length)) {
                     return { kind: 'changed', list: op.list, at }
                 }
+                // The `already` witness (`tags` off) rests on identity counts, which a non-object has none of: it
+                // would pass wherever the list is long enough and prove nothing, so it is refused.
+                if (!tags && !isPlainObject(op.entry)) {
+                    return { kind: 'changed', list: op.list, at }
+                }
                 rows.splice(op.index, 0, op.entry)
                 const identities = identitiesOf(op.list, op.entry)
                 for (const kind of identityKindsOf(op.list, op.entry)) {
@@ -911,7 +947,18 @@ export function planObjStep(ops: readonly ObjFamilyOp[], live: LiveReader, liste
             case 'objRemove': {
                 const rows = listOf(op.list)
                 const row = rows?.[op.index]
-                // A non-object is never removed.
+                if (rows !== null && !isPlainObject(op.entry)) {
+                    // A non-object element: the row must read as exactly this element, by canonical text (an
+                    // object's text starts with a brace, so an object row never matches).
+                    const text = canonicalJson(row)
+                    if (isPlainObject(row) || text === null || text !== canonicalJson(op.entry)) {
+                        return { kind: 'changed', list: op.list, at }
+                    }
+                    rows.splice(op.index, 1)
+                    writes.push({ op: 'objRemove', list: op.list, index: op.index })
+                    return null
+                }
+                // An object entry never removes a non-object.
                 if (rows === null || !isPlainObject(row)) {
                     return { kind: 'changed', list: op.list, at }
                 }
@@ -964,7 +1011,7 @@ export function planObjStep(ops: readonly ObjFamilyOp[], live: LiveReader, liste
             }
             for (let k = i; k <= end; k++) {
                 const member = ops[k]
-                if (member.op === 'propSet' || member.op === 'objSet' || member.list !== op.list) {
+                if (member.op === 'propSet' || member.op === 'objSet' || member.list !== op.list || !isJsonObject(member.entry)) {
                     return { ok: false, failure: { kind: 'changed', list: op.list, at: k } }
                 }
                 const failure = applyOne(member, k)
@@ -1015,7 +1062,7 @@ export function listingEffectOf(forwardOps: readonly ObjFamilyOp[], listed: Read
             const id = op.deletedId
             for (let k = i; k <= end; k++) {
                 const member = forwardOps[k]
-                if (member.op !== op.op || member.list !== op.list) {
+                if (member.op !== op.op || member.list !== op.list || !isJsonObject(member.entry)) {
                     return null
                 }
             }

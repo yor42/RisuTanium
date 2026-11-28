@@ -2724,6 +2724,7 @@ export const languageChinese = {
     "studioLoreBulkKeys": "全部设为关键词激活",
     "studioLoreRepairPending": "此模块的世界书不是列表，需要先修复才能编辑。请先回答修复问题。",
     "studioLoreNonEntryRow": "此项不是世界书条目，将保持原样。",
+    "studioLoreNonEntryRemove": "移除",
     "studioLoreRowMenu": (name: string) => `"${name}"的更多操作`,
     "studioLoreDepth": (n: number) => `第 ${n} 级`,
     "studioLoreDeletedPreview": (name: string, n: number) => n === 0 ? name : `${name} 等另外 ${n} 项`,

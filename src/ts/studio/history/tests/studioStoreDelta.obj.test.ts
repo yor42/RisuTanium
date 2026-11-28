@@ -47,7 +47,7 @@ describe('T57: obj payloads survive the delta protocol', () => {
         expect(JSON.stringify(rebuilt)).toBe(JSON.stringify(next))
         const rebuiltOps = rebuilt.ops as ObjFamilyOp[]
         const rebuiltEntry = rebuiltOps[0].op === 'objInsert' ? rebuiltOps[0].entry : undefined
-        if (rebuiltEntry !== undefined) {
+        if (typeof rebuiltEntry === 'object' && rebuiltEntry !== null) {
             expect(Object.hasOwn(rebuiltEntry, '__proto__')).toBe(true)
             expect(Object.getPrototypeOf(rebuiltEntry)).toBe(Object.prototype)
             expect(({} as Record<string, unknown>).polluted).toBeUndefined()

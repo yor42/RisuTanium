@@ -2861,6 +2861,7 @@ export const languageJapanese = {
     studioLoreBulkKeys: "すべてキーで発動にする",
     studioLoreRepairPending: "このモジュールのロアブックはリストではないため、編集する前に修復が必要です。先に修復の質問に答えてください。",
     studioLoreNonEntryRow: "この項目はロアブックのエントリではありません。そのまま保持されます。",
+    studioLoreNonEntryRemove: "削除",
     studioLoreRowMenu: (name: string) => `"${name}"のその他の操作`,
     studioLoreDepth: (n: number) => `レベル${n}`,
     studioLoreDeletedPreview: (name: string, n: number) => n === 0 ? name : `${name}ほか${n}件`,
