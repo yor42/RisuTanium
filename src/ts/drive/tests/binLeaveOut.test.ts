@@ -10,7 +10,7 @@ function label(key: string, kinds: ForkOnlyKind[], branches?: ForkOnlyChatLabel[
     return { key, text: `Char / ${key}`, kinds, ...(branches !== undefined ? { branches } : {}) }
 }
 
-const NONE: BinLeaveOutInput = { chats: [], taskPresets: [], workspaces: [], themePacks: [], usageStats: false, chroMemory: false, chatDrafts: { drafts: 0, hintChats: 0 } }
+const NONE: BinLeaveOutInput = { chats: [], taskPresets: [], workspaces: [], themePacks: [], usageStats: false, chroMemory: false, chatDrafts: { drafts: 0, hintChats: 0 }, presetLocks: [] }
 
 describe('binLeaveOutSummary', () => {
     test('nothing to leave out gives an empty list', () => {
@@ -26,8 +26,10 @@ describe('binLeaveOutSummary', () => {
             usageStats: true,
             chroMemory: true,
             chatDrafts: { drafts: 4, hintChats: 1 },
+            presetLocks: ['sampling', 'reasoning'],
         })
-        expect(summary.map((entry) => entry.kind)).toEqual(['alternatives', 'forkChatData', 'taskPresets', 'workspaces', 'themePacks', 'usageStats', 'chroMemory', 'chatDrafts'])
+        expect(summary.map((entry) => entry.kind)).toEqual(['alternatives', 'forkChatData', 'taskPresets', 'workspaces', 'themePacks', 'usageStats', 'chroMemory', 'chatDrafts', 'presetLocks'])
+        expect(summary[8]).toEqual({ kind: 'presetLocks', ids: ['sampling', 'reasoning'] })
         expect(summary.slice(0, 7).map((entry) => 'count' in entry ? entry.count : undefined)).toEqual([1, 1, 2, 3, 1, 1, 1])
         expect(summary[7]).toEqual({ kind: 'chatDrafts', drafts: 4, hintChats: 1 })
         const forkChat = summary[1]
@@ -90,10 +92,11 @@ describe('binLeaveOutSummary', () => {
         expect(binLeaveOutSummary({ ...NONE, chatDrafts: { drafts: 0, hintChats: 3 } })).toEqual([{ kind: 'chatDrafts', drafts: 0, hintChats: 3 }])
         // guard: passes before and after
         expect(binLeaveOutSummary({ ...NONE, chatDrafts: { drafts: 0, hintChats: 0 } })).toEqual([])
+        expect(binLeaveOutSummary({ ...NONE, presetLocks: [] })).toEqual([])
     })
 
     test('the input is not changed', () => {
-        const input: BinLeaveOutInput = { chats: [label('a', ['alternatives', 'hideNames'])], taskPresets: ['One'], workspaces: ['Notes'], themePacks: [], usageStats: false, chroMemory: false, chatDrafts: { drafts: 0, hintChats: 0 } }
+        const input: BinLeaveOutInput = { chats: [label('a', ['alternatives', 'hideNames'])], taskPresets: ['One'], workspaces: ['Notes'], themePacks: [], usageStats: false, chroMemory: false, chatDrafts: { drafts: 0, hintChats: 0 }, presetLocks: ['sampling'] }
         const before = JSON.stringify(input)
         binLeaveOutSummary(input)
         expect(JSON.stringify(input)).toBe(before)

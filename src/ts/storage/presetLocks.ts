@@ -64,6 +64,15 @@ export function isLocked(host: LockHost, id: string, groups: readonly LockGroup[
     return Array.isArray(held) && held.includes(id)
 }
 
+/**
+ * The groups held in `presetFieldLocks`, which a `.bin` cannot carry: every string member of the list, so a member a newer
+ * build wrote is named too (by its id). Empty when the list is absent or not an array.
+ */
+export function forkOnlyLockIds(host: LockHost): string[] {
+    const held = host.presetFieldLocks
+    return Array.isArray(held) ? held.filter((member): member is string => typeof member === 'string') : []
+}
+
 /** The locked groups, in registry order. */
 export function lockedGroups(host: LockHost, groups: readonly LockGroup[] = LOCK_GROUPS): LockGroup[] {
     return groups.filter(group => isLocked(host, group.id, groups))

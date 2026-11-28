@@ -73,6 +73,7 @@ import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
 import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
 import { binLeaveOutSummary, type BinLeaveOutEntry } from "./binLeaveOut";
 import { chroMemoryOn } from "../process/memory/memoryEngine";
+import { forkOnlyLockIds } from "../storage/presetLocks";
 import { vectorsPresent } from "../process/memory/chroMemory/vectorPersist";
 import { countChatDrafts } from "../chatDraftsModel";
 import { flushPersistedDrafts } from "../draftContentOrphanGate";
@@ -299,7 +300,7 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
         plain.statics = withoutUsageKeys(db.statics)
     }
     delete plain.usagePriceOverrides
-    // The fork-only preset field locks have no upstream field; they are always left out of a `.bin` (stage 2 adds the warning that names them).
+    // The fork-only preset field locks have no upstream field; they are always left out of a `.bin`, and the export names them first (confirmOmitPresetLocks).
     delete plain.presetFieldLocks
     // The statistics retention period is a fork-only device preference: left out silently, so an import ends with it off.
     delete plain.usageRetentionMonths
@@ -928,7 +929,17 @@ async function confirmOmitChatDrafts(session: ExportSession, left: { drafts: num
 }
 
 /**
- * The fork-only consent before the writer opens: the eight per-kind prompts, or one answer to `options.askLeaveOut` that
+ * Asks, before the writer opens, whether to create the backup without the preset field locks that have no upstream flag
+ * (`exportCopyOf` drops `presetFieldLocks`; the three legacy locks travel as upstream's own flags). True when none is on
+ * or the person confirms; declining writes nothing.
+ */
+async function confirmOmitPresetLocks(session: ExportSession, ids: readonly string[]): Promise<boolean> {
+    const present = ids.length > 0
+    return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupPresetLocksConfirm(ids)))
+}
+
+/**
+ * The fork-only consent before the writer opens: the nine per-kind prompts, or one answer to `options.askLeaveOut` that
  * names every present kind. A summary with nothing in it asks nothing. An unanswered summary (`null`) falls back to the
  * per-kind prompts, so a sheet that could not be shown never turns the consent silent. `true` when the export may go on.
  */
@@ -949,11 +960,12 @@ async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupEx
         && await confirmOmitUsageStats(session, hasUsageData(db))
         && await confirmOmitChroMemory(session, chroMemoryLeftOut(db, vectors))
         && await confirmOmitChatDrafts(session, chatDraftsLeftOut(db))
+        && await confirmOmitPresetLocks(session, forkOnlyLockIds(db))
     const ask = options.askLeaveOut
     if (ask === undefined) {
         return await perKind()
     }
-    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), workspaces: workspaceLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db, vectors), chatDrafts: chatDraftsLeftOut(db) })
+    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), workspaces: workspaceLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db, vectors), chatDrafts: chatDraftsLeftOut(db), presetLocks: forkOnlyLockIds(db) })
     if (summary.length === 0) {
         return true
     }
