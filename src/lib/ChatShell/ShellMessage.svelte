@@ -36,6 +36,7 @@
         'chat-status-row', 'chat-message-delete-pending', 'chat-message-render-failed', 'chat-message-interrupted', 'chat-message-memory-limit', 'chat-message-divider',
     ])
     // Inside an allowed part these keep their own touch behaviour (taps, text entry, media controls, sliders, the pager and the end control).
+    const DOUBLE_TAP_MS = 350
     const SWIPE_INTERACTIVE = 'a, button, input, textarea, select, summary, label, [contenteditable], audio[controls], video[controls], [role="button"], [role="link"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="slider"], [role="scrollbar"], [role="tab"], [role="checkbox"], [role="radio"], [role="switch"], [role="option"], [role="combobox"], [role="textbox"], [role="spinbutton"], [data-part="chat-message-alts"], [data-part="chat-message-end"]'
     // The control inside the row that has focus, as a selector the successor row can resolve; null when the row itself or nothing in it has focus.
     function focusedControl(row: HTMLElement): string | null {
@@ -181,6 +182,10 @@
     let activePointerId: number | null = null
     let longPressTimer: ReturnType<typeof setTimeout> | undefined
     let longPressRing = $state(false)
+    // True from a touch that can open the sheet by holding until it lifts: the browser's own hold-to-select is off for that touch, so one hold opens one menu. A quick second tap keeps native selection, so double-tap still selects a word.
+    let holdNoSelect = $state(false)
+    let downAt = 0
+    let lastTap: { time: number, x: number, y: number } | null = null
     let swipeProgress = $state(0)
     let dragX = $state(0)
     let armed = $state(false)
@@ -482,7 +487,12 @@
                 break
             }
             case 'copyCard': copyMessageAsCard({ owner: message, captureText: () => streaming ? message.data : msgDisplay, report: reportCard, role: () => message.role, name: () => name, messageGenerationInfo: () => message.generationInfo ?? null, idx: liveIndex, getCbsCondition: cbsConditions }); break
-            case 'selectText': bodyRoot?.focus(); break
+            case 'selectText': {
+                bodyRoot?.focus()
+                const selection = window.getSelection()
+                if (bodyRoot && selection) { selection.selectAllChildren(bodyRoot) }
+                break
+            }
             case 'edit': editor.toggleOriginalEdit(); break
             case 'translate': translated = !translated; break
             case 'retranslate': retranslate = true; translated = true; break
@@ -551,6 +561,7 @@
     }
     function onPointerUp(event: PointerEvent): void {
         if (!swipe || event.pointerId !== activePointerId) return
+        if (event.timeStamp - downAt < DOUBLE_TAP_MS && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) <= 10) lastTap = { time: event.timeStamp, x: event.clientX, y: event.clientY }
         finishSwipe(swipeBlocked() ? swipe.cancel() : swipe.up(sample(event)))
     }
     function onPointerCancel(event: PointerEvent): void {
@@ -580,6 +591,8 @@
         ringAt = box ? { x: event.clientX - box.left, y: event.clientY - box.top } : null
         commitMark = false
         clearTimeout(markTimer)
+        const secondTap = lastTap !== null && event.timeStamp - lastTap.time < DOUBLE_TAP_MS && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) <= 30
+        downAt = event.timeStamp
         const edge = drawerOwnsStart(event.clientX)
         swipe = createSwipeGesture({ widthPx: bodyRoot?.clientWidth ?? 320, dpPerPx: 1, index: position.index - 1, count: position.count, edge: edge || startsInHorizontalScroller(target), streaming, firstMessage, canGenerate: newestCharacter, enabled: DBState.db.swipe && showPager, pointerType: event.pointerType })
         swipe.down(sample(event))
@@ -587,6 +600,7 @@
         const opener = bodyRoot ?? (event.currentTarget as HTMLElement)
         // A hold on a code block belongs to the code block's own menu; the row's sheet stays on the More actions button and the rest of the row.
         longPressTimer = codeBlockOf(target) !== null ? undefined : setTimeout(() => { if (swipe) { swipe.cancel(); clearTimeout(armTimer); armTimer = undefined; longPressRing = false; peek = null; openActions(opener, pointerStart) } }, 500)
+        holdNoSelect = longPressTimer !== undefined && !secondTap
         setTimeout(() => { if (longPressTimer) longPressRing = true }, 200)
     }
     // The body follows the finger one to one where a reply exists, pulls with resistance toward a new reply, and stops at a rubber band where nothing can happen.
@@ -602,7 +616,7 @@
         if (!swipe || event.pointerId !== activePointerId) return
         if (swipeBlocked()) { finishSwipe(swipe.cancel()); return }
         spring = false
-        if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 10) { clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false }
+        if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 10) { clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false; holdNoSelect = false }
         const stamp = sample(event)
         lastSampleAt = { time: stamp.time, wall: performance.now() }
         const result = swipe.move(stamp)
@@ -658,7 +672,7 @@
         markTimer = setTimeout(() => { commitMark = false }, MARK_FALLBACK_MS)
     }
     function finishSwipe(result: SwipeResult): void {
-        clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false
+        clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false; holdNoSelect = false
         clearTimeout(armTimer); armTimer = undefined
         const wasDragged = dragX !== 0
         swipe = null; swipeProgress = 0; armed = false; swipeLocked = false
@@ -834,7 +848,7 @@
 
 <!-- The article keeps the transcript semantics and is a tab stop and the focus target of message navigation, so its key and context-menu events and the captured clicks and submits of rich message content must reach it; the swipe gesture listens here too, so it starts on the message's own parts (SWIPE_START_PARTS) except on an interactive descendant, and the body moves. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} style:touch-action="pan-y" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={onPointerCancel} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (codeBlockOf(event.target) !== null) return; if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
+<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hold-select={holdNoSelect ? 'none' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} style:touch-action="pan-y" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={onPointerCancel} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (codeBlockOf(event.target) !== null) return; if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
     {#if disabled === true}<div data-part="chat-message-divider" data-kind="disabled"></div>{/if}
     <div data-part="chat-message-name-row">
         <div data-part="chat-message-meta">
@@ -922,6 +936,7 @@
 </article>
 
 <style>
+    [data-part="chat-message"][data-hold-select="none"] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     [data-part="chat-message"] { width: 100%; padding: var(--space-8) var(--space-12); color: var(--nexus-text); }
     [data-part="chat-message-name-row"] { min-height: var(--message-name-row-height); }
     /* The name keeps its content width; the action cluster takes the rest of the row and wraps below the name, end-aligned, when both do not fit. */
