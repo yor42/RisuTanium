@@ -12,7 +12,7 @@
     let { id, className = "" }: Props = $props();
 </script>
 
-<div data-part="preset-lock-switch" data-lock={id} class="flex min-h-11 items-center">
+<div data-part="settings-preset-lock-switch" data-lock={id} class="flex min-h-11 items-center">
     <Check
         check={isLocked(DBState.db, id)}
         name={lockLabel(id)}

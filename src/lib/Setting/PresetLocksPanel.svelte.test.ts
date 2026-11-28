@@ -29,8 +29,8 @@ function mountPanel(): void {
     flushSync()
 }
 
-const rows = () => [...document.querySelectorAll<HTMLElement>('[data-part="preset-lock-switch"]')]
-const rowOf = (id: string) => document.querySelector<HTMLElement>(`[data-part="preset-lock-switch"][data-lock="${id}"]`)
+const rows = () => [...document.querySelectorAll<HTMLElement>('[data-part="settings-preset-lock-switch"]')]
+const rowOf = (id: string) => document.querySelector<HTMLElement>(`[data-part="settings-preset-lock-switch"][data-lock="${id}"]`)
 const boxOf = (id: string) => rowOf(id)?.querySelector<HTMLInputElement>('input[type="checkbox"]') as HTMLInputElement
 
 function flip(box: HTMLInputElement): void {
@@ -56,7 +56,7 @@ describe('PresetLocksPanel', () => {
         expect(rows().map((row) => row.dataset.lock)).toEqual(LOCK_GROUPS.map((group) => group.id))
         expect(rows()).toHaveLength(5)
         expect(rows().every((row) => row.querySelector<HTMLInputElement>('input')?.checked === false)).toBe(true)
-        expect(document.querySelector('[data-part="preset-locks-panel"]')?.textContent).toContain(language.presetLockTitle)
+        expect(document.querySelector('[data-part="settings-preset-locks-panel"]')?.textContent).toContain(language.presetLockTitle)
     })
 
     test('toggling a legacy group writes its flag and nothing in the list', () => {
