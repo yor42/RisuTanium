@@ -54,7 +54,7 @@
     }
 </script>
 
-<nav class="flex flex-col h-full min-h-0 overflow-y-auto bg-darkbg text-textcolor" aria-label={language.settingsShellMenu} data-part="settings-index">
+<nav class="flex flex-col h-full min-h-0 overflow-y-auto bg-(--settings-panel) text-(--settings-text)" aria-label={language.settingsShellMenu} data-part="settings-index">
     <ul class="flex flex-col gap-1 p-2 grow">
         {#each pages as page, at (page.id)}
             {@const Icon = ICONS[page.id]}
@@ -64,10 +64,10 @@
                     <button
                         type="button"
                         bind:this={entries[at]}
-                        class="flex w-full items-center gap-3 px-3 min-h-12 rounded-md text-left hover:text-textcolor hover:bg-darkbutton"
-                        class:bg-selected={selected === page.id}
-                        class:text-textcolor={selected === page.id}
-                        class:text-textcolor2={selected !== page.id}
+                        class="flex w-full items-center gap-3 px-3 min-h-12 rounded-md text-left hover:text-(--settings-text) hover:bg-(--settings-raised)"
+                        class:bg-(--settings-selected)={selected === page.id}
+                        class:text-(--settings-on-selected)={selected === page.id}
+                        class:text-(--settings-text-2)={selected !== page.id}
                         data-part="settings-index-display"
                         data-part-critical
                         data-page={page.id}
@@ -82,10 +82,10 @@
                     <button
                         type="button"
                         bind:this={entries[at]}
-                        class="flex w-full items-center gap-3 px-3 min-h-12 rounded-md text-left hover:text-textcolor hover:bg-darkbutton"
-                        class:bg-selected={selected === page.id}
-                        class:text-textcolor={selected === page.id}
-                        class:text-textcolor2={selected !== page.id}
+                        class="flex w-full items-center gap-3 px-3 min-h-12 rounded-md text-left hover:text-(--settings-text) hover:bg-(--settings-raised)"
+                        class:bg-(--settings-selected)={selected === page.id}
+                        class:text-(--settings-on-selected)={selected === page.id}
+                        class:text-(--settings-text-2)={selected !== page.id}
                         data-part="settings-index-entry"
                         data-page={page.id}
                         aria-current={selected === page.id ? 'page' : undefined}

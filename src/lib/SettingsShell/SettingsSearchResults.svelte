@@ -81,21 +81,21 @@
 <div class="grow min-w-0 min-h-0 overflow-y-auto px-4 py-4" data-part="settings-search-results">
     {#if blocks.length === 0}
         <div class="flex flex-col items-start gap-3" data-part="settings-search-none">
-            <p class="text-textcolor">{language.settingsShellSearchNone(query.trim())}</p>
+            <p class="text-(--settings-text)">{language.settingsShellSearchNone(query.trim())}</p>
             <div class="flex flex-wrap gap-2">
-                <button type="button" class="px-3 min-h-11 rounded-md bg-darkbutton hover:text-textcolor text-textcolor2" data-part="settings-search-clear" onclick={onclear}>{language.settingsShellSearchClear}</button>
-                <button type="button" class="px-3 min-h-11 rounded-md bg-darkbutton hover:text-textcolor text-textcolor2" data-part="settings-search-browse" onclick={onbrowse}>{language.settingsShellSearchBrowse}</button>
+                <button type="button" class="px-3 min-h-11 rounded-md bg-(--settings-raised) hover:text-(--settings-text) text-(--settings-text-2)" data-part="settings-search-clear" onclick={onclear}>{language.settingsShellSearchClear}</button>
+                <button type="button" class="px-3 min-h-11 rounded-md bg-(--settings-raised) hover:text-(--settings-text) text-(--settings-text-2)" data-part="settings-search-browse" onclick={onbrowse}>{language.settingsShellSearchBrowse}</button>
             </div>
         </div>
     {:else}
         {#if partial}
-            <p class="text-sm text-textcolor2 mb-3" data-part="settings-search-partial">{language.settingsShellSearchPartial}</p>
+            <p class="text-sm text-(--settings-text-2) mb-3" data-part="settings-search-partial">{language.settingsShellSearchPartial}</p>
         {/if}
         <div role="listbox" id={listboxId} aria-label={language.settingsShellSearchResultsLabel} class="flex flex-col gap-4">
             {#each blocks as block (block.key)}
                 <div role="group" aria-label={block.label} data-part="settings-search-group" data-group={block.key}>
                     {#if block.showLabel}
-                        <div class="text-sm text-textcolor2 mb-1" aria-hidden="true">{block.label}</div>
+                        <div class="text-sm text-(--settings-text-2) mb-1" aria-hidden="true">{block.label}</div>
                     {/if}
                     {#each block.rows as row (row.optionId)}
                         {@const active = row.optionId === activeOptionId}
@@ -106,20 +106,20 @@
                             id={row.optionId}
                             tabindex="-1"
                             aria-selected={active}
-                            class="flex flex-col justify-center min-h-11 px-3 py-1 rounded-md cursor-pointer hover:bg-darkbutton"
-                            class:bg-darkbutton={active}
+                            class="flex flex-col justify-center min-h-11 px-3 py-1 rounded-md cursor-pointer hover:bg-(--settings-raised)"
+                            class:bg-(--settings-raised)={active}
                             data-part={row.kind === 'hit' ? 'settings-search-result' : 'settings-search-more'}
                             data-result={row.kind === 'hit' ? row.hit.entry.id : undefined}
                             onclick={() => { if (row.kind === 'hit') onopen(row.hit); else onexpand(row.block) }}
                         >
                             {#if row.kind === 'hit'}
-                                <span class="text-textcolor">
-                                    {#each row.hit.label as segment}{#if segment.marked}<mark class="bg-transparent text-textcolor font-bold underline">{segment.text}</mark>{:else}{segment.text}{/if}{/each}
+                                <span class="text-(--settings-text)">
+                                    {#each row.hit.label as segment}{#if segment.marked}<mark class="bg-transparent text-(--settings-text) font-bold underline">{segment.text}</mark>{:else}{segment.text}{/if}{/each}
                                 </span>
                                 {@const crumb = crumbOf(row.hit)}
-                                {#if crumb}<span class="text-xs text-textcolor2">{crumb}</span>{/if}
+                                {#if crumb}<span class="text-xs text-(--settings-text-2)">{crumb}</span>{/if}
                             {:else}
-                                <span class="text-textcolor2">{language.settingsShellSearchShowAll(row.count)}</span>
+                                <span class="text-(--settings-text-2)">{language.settingsShellSearchShowAll(row.count)}</span>
                             {/if}
                         </div>
                     {/each}

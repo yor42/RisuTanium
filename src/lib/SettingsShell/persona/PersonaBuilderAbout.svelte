@@ -20,9 +20,9 @@
 <div class="flex flex-col gap-3" data-persona-builder-step="about">
     {#each fields as field (field.key)}
         <div class="flex flex-col gap-1">
-            <label class="text-sm text-textcolor2" for="{uid}-{field.key}">{field.label}</label>
-            <textarea id="{uid}-{field.key}" rows="3" autocomplete="off" aria-describedby="{uid}-{field.key}-help" placeholder={field.example} class="w-full min-h-20 px-3 py-2 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden risu-focus-ring" bind:value={answers[field.key]}></textarea>
-            <span id="{uid}-{field.key}-help" class="text-xs text-textcolor2">{field.help}</span>
+            <label class="text-sm text-(--settings-text-2)" for="{uid}-{field.key}">{field.label}</label>
+            <textarea id="{uid}-{field.key}" rows="3" autocomplete="off" aria-describedby="{uid}-{field.key}-help" placeholder={field.example} class="w-full min-h-20 px-3 py-2 rounded-md border border-(--settings-border-subtle) bg-transparent text-(--settings-text) focus:border-(--settings-border-strong) focus:outline-hidden risu-focus-ring" bind:value={answers[field.key]}></textarea>
+            <span id="{uid}-{field.key}-help" class="text-xs text-(--settings-text-2)">{field.help}</span>
         </div>
     {/each}
 </div>

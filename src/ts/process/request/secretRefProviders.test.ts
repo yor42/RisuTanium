@@ -24,6 +24,7 @@ import { writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import '../../polyfill'
 import { redactResolved, resetSecretRefState } from '../../secretRef'
+import { resetVertexTokenStateForTest } from './vertexToken'
 import { language } from '../../../lang'
 import { fillLang } from '../../../lang/fill'
 
@@ -249,6 +250,7 @@ function ask(extra: Record<string, unknown> = {}) {
 let realFetch: typeof globalThis.fetch
 
 beforeEach(() => {
+    resetVertexTokenStateForTest()
     h.calls.length = 0
     h.resolveCalls.length = 0
     h.resolved = 'SENTINEL-resolved-value'
@@ -463,13 +465,16 @@ describe('Vertex service-account key as a reference', () => {
         }
     })
 
-    test('guard: a plain key is exchanged for a token that is cached in the database', async () => {
+    test('a plain key is exchanged for a token that is kept in memory and never written to the database', async () => {
         installDb(vertexDb(pem))
 
         await ask()
+        await ask()
 
-        expect(DBState.db.vertexAccessToken).toBe('MINTED-access-token')
-        expect(h.setDatabase).toHaveBeenCalled()
+        expect(h.calls.filter((call) => call.url.includes('oauth2.googleapis.com'))).toHaveLength(1)
+        expect(DBState.db.vertexAccessToken).toBe('')
+        expect(DBState.db.vertexAccessTokenExpires).toBe(0)
+        expect(h.setDatabase).not.toHaveBeenCalled()
         expect(h.resolveCalls).toEqual([])
     })
 
@@ -585,7 +590,7 @@ describe('Vertex token service: one mint per credential, redacted, through the s
         expect(oauthCalls().map((call) => call.via)).toEqual(['fetchNative'])
     })
 
-    test('R4a a connection deleted while a plain-key mint is in flight leaves no persisted token', async () => {
+    test('R4a a connection deleted while a plain-key mint is in flight leaves no memory token and no persisted token', async () => {
         installDb(vertexDb(pem))
         const release = holdTokenEndpoint()
         const { deleteConnection } = await import('../../connections/connectionEditor')
@@ -686,7 +691,7 @@ describe('Vertex token service: one mint per credential, redacted, through the s
             expect((second as Error).message).toBe(expected)
         })
 
-        test('R5b guard: a failed mint caches nothing, so the next request mints and persists', async () => {
+        test('R5b a failed mint caches nothing, so the next request mints and keeps the token in memory only', async () => {
             installDb(vertexDb(pem))
             h.oauth.answer = failure
             await rejectionOf()
@@ -696,7 +701,7 @@ describe('Vertex token service: one mint per credential, redacted, through the s
             await ask()
 
             expect(oauthCalls()).toHaveLength(2)
-            expect(DBState.db.vertexAccessToken).toBe('MINTED-access-token')
+            expect(DBState.db.vertexAccessToken).toBe('')
         })
     })
 

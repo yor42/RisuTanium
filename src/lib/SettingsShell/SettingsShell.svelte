@@ -1,5 +1,6 @@
 <script lang="ts">
     import '../../styles/settings-tokens.css'
+    import '../../styles/settings-roles.css'
     import { onDestroy, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { get } from 'svelte/store'
@@ -241,7 +242,7 @@
 <svelte:window bind:innerWidth />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="h-full w-full flex flex-col bg-bgcolor text-textcolor rs-setting-cont" data-part="settings-shell" bind:this={root} onkeydown={onrootkeydown}>
+<div class="h-full w-full flex flex-col bg-(--settings-canvas) text-(--settings-text) rs-setting-cont" data-part="settings-shell" bind:this={root} onkeydown={onrootkeydown}>
     <SettingsShellHeader
         bind:this={header}
         {backLabel}

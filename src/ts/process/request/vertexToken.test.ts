@@ -1,7 +1,7 @@
 /**
  * The Vertex token service in isolation: one token request per credential, a generation guard that
  * keeps a stale mint out of both caches, redaction of the assertion and the token, and the exact
- * persisted write of the plain-key branch.
+ * absence of any persisted write on the plain-key branch (the token is memory-only).
  *
  * Mocked: the transport (`fetchNative`), the database module (`getDatabase`, `setDatabase`), the
  * platform, and the resolver (`resolveSecret`) of the secret module. The RS256 signer, the redaction
@@ -265,8 +265,11 @@ describe('the invalidation generation', () => {
 
         expect(h.calls).toHaveLength(2)
         expect(tokenOf(staleResult)).not.toBe(tokenOf(freshResult))
-        expect(h.store.vertexAccessToken).toBe(tokenOf(freshResult))
-        expect(h.setDatabase).toHaveBeenCalledTimes(1)
+        expect(h.store.vertexAccessToken).toBe('')
+        expect(h.setDatabase).not.toHaveBeenCalled()
+        // The fresh attempt filled the memory cache; the stale one did not.
+        expect(tokenOf(await mint(db, pemA))).toBe(tokenOf(freshResult))
+        expect(h.calls).toHaveLength(2)
     })
 
     test('U6d an invalidation right after the call starts, before anything is awaited, still makes the mint stale', async () => {
@@ -392,27 +395,62 @@ describe('redaction', () => {
 })
 
 describe('the plain branch and the transport', () => {
-    test('U10 a valid persisted token is returned with no transport call and no database access', async () => {
+    test('U10 a token an older build stored in the database is never returned or read', async () => {
         const db = fields(EMAIL, 'persisted-token-0123456789', Date.now() + 60_000)
 
         const result = await mint(db, pemA)
 
-        expect(tokenOf(result)).toBe('persisted-token-0123456789')
-        expect(h.calls).toHaveLength(0)
+        expect(tokenOf(result)).toBe('minted-token-1-0123456789')
+        expect(h.calls).toHaveLength(1)
+        expect(h.store.vertexAccessToken).toBe('')
+    })
+
+    test('U11 a plain mint writes nothing to the database and the next call reuses the memory token', async () => {
+        const db = fields()
+
+        const first = await mint(db, pemA)
+        const second = await mint(db, pemA)
+
+        expect(tokenOf(first)).toBe('minted-token-1-0123456789')
+        expect(tokenOf(second)).toBe(tokenOf(first))
+        expect(h.calls).toHaveLength(1)
+        expect(h.store.vertexAccessToken).toBe('')
+        expect(h.store.vertexAccessTokenExpires).toBe(0)
+        expect(h.setDatabase).not.toHaveBeenCalled()
         expect(h.getDatabase).not.toHaveBeenCalled()
     })
 
-    test('U11 the mint persists the token and the expiry 3500 seconds ahead through setDatabase', async () => {
+    test('U11b the memory token expires 3500 seconds after the mint', async () => {
         vi.useFakeTimers({ toFake: ['Date'] })
         vi.setSystemTime(new Date('2030-01-01T00:00:00Z'))
-        const now = Date.now()
 
         await mint(fields(), pemA)
+        vi.setSystemTime(new Date('2030-01-01T00:58:00Z'))
+        await mint(fields(), pemA)
+        expect(h.calls).toHaveLength(1)
 
-        expect(h.store.vertexAccessToken).toBe('minted-token-1-0123456789')
-        expect(h.store.vertexAccessTokenExpires).toBe(now + 3500 * 1000)
-        expect(h.setDatabase).toHaveBeenCalledTimes(1)
-        expect(h.setDatabase).toHaveBeenCalledWith(h.store)
+        vi.setSystemTime(new Date('2030-01-01T00:59:00Z'))
+        await mint(fields(), pemA)
+        expect(h.calls).toHaveLength(2)
+    })
+
+    test('U11c a replaced plain key never receives the token of the old key, even without an invalidation', async () => {
+        const first = await mint(fields(), pemA)
+        const second = await mint(fields(), pemB)
+
+        expect(h.calls).toHaveLength(2)
+        expect(tokenOf(second)).not.toBe(tokenOf(first))
+    })
+
+    test('U11d an invalidation drops the plain memory token, and another email never gets it', async () => {
+        await mint(fields(), pemA)
+        await mint(fields(OTHER_EMAIL), pemA)
+        expect(h.calls).toHaveLength(2)
+
+        invalidateVertexToken(h.store)
+        await mint(fields(OTHER_EMAIL), pemA)
+
+        expect(h.calls).toHaveLength(3)
     })
 
     test('a referenced mint never touches the database', async () => {

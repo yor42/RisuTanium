@@ -38,11 +38,11 @@
     <button
         bind:this={button}
         type="button"
-        class="self-start min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected"
+        class="self-start min-h-11 px-4 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover)"
         data-part="settings-data-action"
         aria-disabled={dataSheetState.running ? 'true' : undefined}
         onclick={start}
     >{getLabel(item)}</button>
-    <p class="text-xs text-textcolor2 mt-1 mb-2" data-part="settings-row-hint">{language.settingsShellDataMakeBackupHint}</p>
-    <p class="text-xs text-textcolor2" data-part="settings-data-backup-result" aria-live="polite">{dataSheetState.lastBinLeftOut ?? ''}</p>
+    <p class="text-xs text-(--settings-text-2) mt-1 mb-2" data-part="settings-row-hint">{language.settingsShellDataMakeBackupHint}</p>
+    <p class="text-xs text-(--settings-text-2)" data-part="settings-data-backup-result" aria-live="polite">{dataSheetState.lastBinLeftOut ?? ''}</p>
 </div>

@@ -413,6 +413,25 @@ describe('S4b-T10: a drag is one step and the switch is its own', () => {
         expect(slotBag(2).min_p).toBeCloseTo(0.51, 5)
     })
 
+    test('off then on restores the value the slider held, as two discrete steps; undo returns the exact prior value', async () => {
+        slotBag(2).aiModel = 'openrouter'
+        slotBag(2).min_p = 0.5
+        await mountPreset(2)
+        const wrap = field('presetMinP')
+        const check = wrap?.querySelector<HTMLInputElement>('input[type="checkbox"]')
+        check?.click()
+        flushSync()
+        expect(slotBag(2).min_p).toBe(-1000)
+        check?.click()
+        flushSync()
+        expect(slotBag(2).min_p).toBe(0.5)
+        expect(service.view(owner(2)).done).toHaveLength(2)
+        expect(service.undo(owner(2))).toEqual({ ok: true })
+        expect(slotBag(2).min_p).toBe(-1000)
+        expect(service.undo(owner(2))).toEqual({ ok: true })
+        expect(slotBag(2).min_p).toBe(0.5)
+    })
+
     test('typing a number writes it, an entry above the range is clamped and shown back clamped', async () => {
         await mountPreset(0)
         const input = field('presetMaxResponse')?.querySelector<HTMLInputElement>('input[type="number"]')

@@ -1,0 +1,229 @@
+{
+  "format": "risu-s3d4-fixture-manifest/1",
+  "seed": 3404,
+  "file": "s301-fixture.bin",
+  "bytes": 641978,
+  "sha256": "e039e8c958865f52585f26486b8c32c81629d1193997a053412b1fafec15dd35",
+  "character": {
+    "name": "S3d4 Large Synthetic",
+    "chaId": "0a546ddb-20cc-4749-89ee-4cfabfda7cf1",
+    "toggleKeys": [
+      "mood",
+      "energy",
+      "weather",
+      "notes",
+      "verbose",
+      "gloss"
+    ],
+    "descBytes": 1503960,
+    "greetings": 12,
+    "greetingBytesEach": 100462,
+    "loreEntries": 300,
+    "loreBytesTotal": 1261504,
+    "approxTextBytes": 3973569
+  },
+  "modules": {
+    "count": 20,
+    "enabledModules": 20,
+    "uniqueIds": 20,
+    "carryingUses": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "definingMood": {
+      "index": 8,
+      "name": "S3d4 Module 8 (defines mood)",
+      "toggleText": "mood=Module mood\nmodopt=Module option"
+    }
+  },
+  "staticUsesByForm": {
+    "getglobalvar": 71,
+    "when": 70,
+    "calc": 70
+  },
+  "staticUsesByLocation": {
+    "character.desc": {
+      "getglobalvar": 8,
+      "when": 8,
+      "calc": 8
+    },
+    "character.firstMessage": {
+      "getglobalvar": 1,
+      "when": 1,
+      "calc": 1
+    },
+    "character.alternateGreetings": {
+      "getglobalvar": 8,
+      "when": 8,
+      "calc": 8
+    },
+    "character.lore": {
+      "getglobalvar": 12,
+      "when": 12,
+      "calc": 12
+    },
+    "module[0].lore": {
+      "getglobalvar": 3,
+      "when": 3,
+      "calc": 2
+    },
+    "module[0].regexOut": {
+      "getglobalvar": 2,
+      "when": 2,
+      "calc": 2
+    },
+    "module[1].lore": {
+      "getglobalvar": 3,
+      "when": 2,
+      "calc": 3
+    },
+    "module[1].regexOut": {
+      "getglobalvar": 2,
+      "when": 2,
+      "calc": 2
+    },
+    "module[2].lore": {
+      "getglobalvar": 2,
+      "when": 3,
+      "calc": 3
+    },
+    "module[2].regexOut": {
+      "getglobalvar": 2,
+      "when": 2,
+      "calc": 2
+    },
+    "module[3].lore": {
+      "getglobalvar": 3,
+      "when": 3,
+      "calc": 2
+    },
+    "module[3].regexOut": {
+      "getglobalvar": 2,
+      "when": 2,
+      "calc": 2
+    },
+    "module[4].lore": {
+      "getglobalvar": 3,
+      "when": 2,
+      "calc": 3
+    },
+    "module[4].regexOut": {
+      "getglobalvar": 2,
+      "when": 2,
+      "calc": 2
+    },
+    "module[5].lore": {
+      "getglobalvar": 2,
+      "when": 3,
+      "calc": 3
+    },
+    "module[5].regexOut": {
+      "getglobalvar": 2,
+      "when": 2,
+      "calc": 2
+    },
+    "module[6].lore": {
+      "getglobalvar": 3,
+      "when": 3,
+      "calc": 2
+    },
+    "module[6].regexOut": {
+      "getglobalvar": 2,
+      "when": 2,
+      "calc": 2
+    },
+    "module[7].lore": {
+      "getglobalvar": 3,
+      "when": 2,
+      "calc": 3
+    },
+    "module[7].regexOut": {
+      "getglobalvar": 2,
+      "when": 2,
+      "calc": 2
+    },
+    "module[8].lore": {
+      "getglobalvar": 3,
+      "when": 4,
+      "calc": 3
+    },
+    "module[8].regexOut": {
+      "getglobalvar": 1,
+      "when": 0,
+      "calc": 1
+    }
+  },
+  "staticTotal": 211,
+  "staticInDefiningModule_expectedSkipped": 12,
+  "staticExpectedWillChange": 199,
+  "listedOnly": [
+    {
+      "location": "character.firstMessage",
+      "form": "calc @toggle_mood(1)",
+      "expectedReason": "calcKey"
+    },
+    {
+      "location": "character.triggerscript[0] triggerlua",
+      "form": "lua getGlobalVar \"toggle_mood\"",
+      "expectedReason": "code"
+    },
+    {
+      "location": "module[1].lore[24]",
+      "form": "dynamic getglobalvar::toggle_{{getvar::x}}",
+      "expectedReason": "dynamicName"
+    },
+    {
+      "location": "module[2].lore[10..20]",
+      "form": "calc @toggle_mood(1) x11",
+      "expectedReason": "calcKey",
+      "n": 11
+    },
+    {
+      "location": "module[3].lore[10..20]",
+      "form": "calc @toggle_mood(1) x11",
+      "expectedReason": "calcKey",
+      "n": 11
+    },
+    {
+      "location": "module[4].lore[10..20]",
+      "form": "calc @toggle_mood(1) x11",
+      "expectedReason": "calcKey",
+      "n": 11
+    },
+    {
+      "location": "module[5].lore[10..20]",
+      "form": "calc @toggle_mood(1) x11",
+      "expectedReason": "calcKey",
+      "n": 11
+    },
+    {
+      "location": "module[6].lore[10..20]",
+      "form": "calc @toggle_mood(1) x11",
+      "expectedReason": "calcKey",
+      "n": 11
+    }
+  ],
+  "listedOnlyTotal": 58,
+  "totalUsesIncludingListed": 269,
+  "recountOverFinalTexts": {
+    "getglobalvar": 71,
+    "when": 70,
+    "calc": 70,
+    "calcParen": 56,
+    "dynamic": 1
+  },
+  "expectedDisplay": {
+    "willChange": 199,
+    "skipped": 12,
+    "listedOnly": 58,
+    "moreLineExpected": "8 more",
+    "note": "expectation from construction; the app display is the check. A when reader counts once. Skipped may be shown per owner+key entry."
+  },
+  "usePlainFetch": false
+}

@@ -80,24 +80,24 @@
 
 <div class="flex flex-col gap-3 min-w-0" data-part="settings-connection-add">
     {#if provider === null}
-        <h2 class="font-semibold text-textcolor">{language.connectionsPickProvider}</h2>
+        <h2 class="font-semibold text-(--settings-text)">{language.connectionsPickProvider}</h2>
         {#if onlyProxy}
-            <p class="text-sm text-textcolor2" data-part="settings-connection-all-added">{language.connectionsAllAdded}</p>
+            <p class="text-sm text-(--settings-text-2)" data-part="settings-connection-all-added">{language.connectionsAllAdded}</p>
         {/if}
         {#each groups as item (item.group)}
             <section class="flex flex-col gap-2" aria-label={groupLabel(item.group)}>
-                <h3 class="text-sm text-textcolor2">{groupLabel(item.group)}</h3>
+                <h3 class="text-sm text-(--settings-text-2)">{groupLabel(item.group)}</h3>
                 <ul class="grid gap-2 list-none p-0 m-0">
                     {#each item.entries as entry (entry.provider)}
                         {@const Icon = providerIconOf({ id: '', name: '', provider: entry.provider, key: '' })}
                         <li>
                             <button
                                 type="button"
-                                class="flex w-full items-center gap-3 min-h-11 px-3 rounded-md border border-darkborderc bg-darkbg text-left text-textcolor risu-focus-ring active:bg-selected"
+                                class="flex w-full items-center gap-3 min-h-11 px-3 rounded-md border border-(--settings-border-subtle) bg-(--settings-panel) text-left text-(--settings-text) risu-focus-ring active:bg-(--settings-hover)"
                                 data-connection-provider={entry.provider}
                                 onclick={() => { void choose(entry) }}
                             >
-                                <Icon class="shrink-0 text-textcolor2" size={20} aria-hidden="true" />
+                                <Icon class="shrink-0 text-(--settings-text-2)" size={20} aria-hidden="true" />
                                 <span class="truncate">{entry.label}</span>
                             </button>
                         </li>
@@ -107,19 +107,19 @@
         {/each}
     {:else}
         <div class="flex flex-col gap-1">
-            <span class="text-sm text-textcolor2">{language.connectionsProvider}</span>
-            <span class="font-semibold text-textcolor" data-part="settings-connection-add-provider">{provider.label}</span>
+            <span class="text-sm text-(--settings-text-2)">{language.connectionsProvider}</span>
+            <span class="font-semibold text-(--settings-text)" data-part="settings-connection-add-provider">{provider.label}</span>
         </div>
         {#if provider.provider === 'vertex'}
-            <p class="text-sm text-textcolor2">{language.connectionsVertexNote}</p>
+            <p class="text-sm text-(--settings-text-2)">{language.connectionsVertexNote}</p>
         {/if}
         <div class="flex flex-col gap-1">
-            <label class="text-sm text-textcolor2" for="{uid}-name">{language.connectionsName}</label>
+            <label class="text-sm text-(--settings-text-2)" for="{uid}-name">{language.connectionsName}</label>
             <input
                 id="{uid}-name"
                 type="text"
                 autocomplete="off"
-                class="min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor risu-focus-ring"
+                class="min-h-11 px-3 rounded-md border border-(--settings-border-subtle) bg-transparent text-(--settings-text) risu-focus-ring"
                 value={shownName}
                 bind:this={nameField}
                 oninput={(event) => { nameTouched = true; name = event.currentTarget.value }}
@@ -127,19 +127,19 @@
         </div>
         {#if provider.takesUrl}
             <div class="flex flex-col gap-1">
-                <label class="text-sm text-textcolor2" for="{uid}-url">{language.connectionsUrl}</label>
+                <label class="text-sm text-(--settings-text-2)" for="{uid}-url">{language.connectionsUrl}</label>
                 <input
                     id="{uid}-url"
                     type="url"
                     autocomplete="off"
                     spellcheck="false"
-                    class="min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor risu-focus-ring"
+                    class="min-h-11 px-3 rounded-md border border-(--settings-border-subtle) bg-transparent text-(--settings-text) risu-focus-ring"
                     bind:value={url}
                 />
             </div>
         {/if}
         <div class="flex flex-col gap-1">
-            <span class="text-sm text-textcolor2" id="{uid}-key">{language.connectionsKey}</span>
+            <span class="text-sm text-(--settings-text-2)" id="{uid}-key">{language.connectionsKey}</span>
             <div data-part="settings-connection-key-input">
                 {#if provider.singleKey}
                     <TextInput labelId="{uid}-key" size="sm" hideText bind:value={key} />
@@ -147,15 +147,15 @@
                     <KeyListInput labelId="{uid}-key" size="sm" hideText bind:value={key} />
                 {/if}
             </div>
-            <span class="text-xs text-textcolor2">{language.connectionsKeyLocal}</span>
+            <span class="text-xs text-(--settings-text-2)">{language.connectionsKeyLocal}</span>
         </div>
         {#if error !== ''}
-            <p class="flex items-center gap-1 text-sm text-draculared" role="alert" data-part="settings-connection-error">{error}</p>
+            <p class="flex items-center gap-1 text-sm text-(--settings-danger)" role="alert" data-part="settings-connection-error">{error}</p>
         {/if}
         <div class="flex flex-wrap gap-2">
             <button
                 type="button"
-                class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected disabled:opacity-50 risu-focus-ring"
+                class="min-h-11 px-4 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover) disabled:opacity-50 risu-focus-ring"
                 data-part="settings-connection-save"
                 disabled={!canSave}
                 onclick={() => { void save() }}

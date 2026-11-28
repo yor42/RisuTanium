@@ -37,6 +37,8 @@ const h = vi.hoisted(() => ({
     sleepGate: undefined as ((ms: number) => Promise<void>) | undefined,
 }))
 
+// The token service is not under test here: a Vertex request gets a fixed token.
+vi.mock('./vertexToken', () => ({ vertexAccessToken: async () => ({ kind: 'token', token: 'vt' }), vertexTokenTicket: () => 0 }))
 vi.mock('localforage', () => ({ default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}), removeItem: vi.fn(async () => {}) }) } }))
 vi.mock('@tauri-apps/plugin-fs', () => ({ writeFile: vi.fn(), exists: vi.fn(async () => false), mkdir: vi.fn(), readFile: vi.fn(), BaseDirectory: { AppData: 0 } }))
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(async () => null) }))
