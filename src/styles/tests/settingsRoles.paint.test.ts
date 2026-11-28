@@ -27,8 +27,6 @@ const ROLE_OF = (pre: string, kind: string, name: string): string => {
 
 // Variants a cascade model can state. The placeholder: and has-[:checked]: uses (one each) are not modelled here; they are checked by compile parity outside the tree.
 const MODELLED = /^(?:class:|hover:|focus:|active:)?$/
-// Roles whose readers and declaration arrive with the next PR of the stage.
-const UNDECLARED = new Set(['swatch-2', 'danger-fill'])
 interface Case { old: string, role: string }
 const cases: Case[] = []
 const seen = new Set<string>()
@@ -37,7 +35,6 @@ for (const list of Object.values(census as Record<string, string[]>)) {
         const m = /^((?:[\w[\]:&>*=.-]*:)?)(bg|text|border|ring|outline)-(\w+?)(\/\d+)?$/.exec(token)!
         if (!MODELLED.test(m[1]) || seen.has(token)) continue
         seen.add(token)
-        if (UNDECLARED.has(ROLE_OF(m[1], m[2], m[3]))) continue
         const variant = m[1].replace(/^class:/, '')
         // bg-selected under hover reads the hover role; on-selected paints as text and its alias is pinned by T1, the forward choice by T4
         cases.push({ old: `${variant}${m[2]}-${m[3]}${m[4] ?? ''}`, role: `${variant}${m[2]}-(--settings-${ROLE_OF(m[1], m[2], m[3])})${m[4] ?? ''}` })

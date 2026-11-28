@@ -1,4 +1,5 @@
 <script lang="ts">
+    import '../../../styles/settings-roles.css'
     import { language } from '../../../lang'
     import type { SettingContext } from '../../../ts/setting/types'
     import { playUiSound, uiSoundsMutedByTalkBack } from '../../../ts/uiSound/uiSound'

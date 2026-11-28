@@ -1,4 +1,5 @@
 <script lang="ts">
+    import '../../../styles/settings-roles.css'
     import { slotConnection, type ConnectionSlot } from '../../../ts/connections/connections'
     import { connectionKeyHint, type KeyHint } from '../../../ts/connections/connectionHint'
     import { setSlotKey } from '../../../ts/connections/slotEditor'

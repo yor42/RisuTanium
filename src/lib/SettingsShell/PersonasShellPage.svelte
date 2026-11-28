@@ -480,7 +480,7 @@
         {#if searchable}
             <input
                 type="search"
-                class="grow min-w-0 min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden risu-focus-ring"
+                class="grow min-w-0 min-h-11 px-3 rounded-md border border-(--settings-border-subtle) bg-transparent text-(--settings-text) focus:border-(--settings-border-strong) focus:outline-hidden risu-focus-ring"
                 data-part="settings-persona-search"
                 aria-label={language.settingsShellPersonaSearch}
                 placeholder={language.settingsShellPersonaSearch}
@@ -489,13 +489,13 @@
         {/if}
         <button
             type="button"
-            class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected"
+            class="min-h-11 px-4 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover)"
             aria-haspopup="menu"
             aria-expanded={addMenuOpen}
             bind:this={addButton}
             onclick={() => { addMenuOpen = true }}
         >+ {language.settingsShellPersonaAdd}</button>
-        <span class="text-textcolor2 text-sm">{language.settingsShellPersonaCount(rows.length)}</span>
+        <span class="text-(--settings-text-2) text-sm">{language.settingsShellPersonaCount(rows.length)}</span>
     </div>
 
     <div class="flex gap-4 min-w-0" class:flex-row={split} class:flex-col={!split}>
@@ -505,10 +505,10 @@
               <ul class="grid gap-2 list-none p-0 m-0" class:grid-cols-1={cols === 1} class:grid-cols-2={cols === 2} data-part="settings-persona-list">
                 {#each visibleRows.slice(line * cols, line * cols + cols) as row (row.key)}
                     {@const active = row.index === DBState.db.selectedPersona}
-                    <li class="flex items-stretch gap-1 rounded-md border bg-darkbg min-w-0" class:border-borderc={row.persona === shown} class:border-darkborderc={row.persona !== shown} class:opacity-60={drag?.id === row.persona.id} class:outline-2={isDropTarget(row)} class:outline-selected={isDropTarget(row)} data-part="settings-persona-card" data-persona-index={row.index}>
+                    <li class="flex items-stretch gap-1 rounded-md border bg-(--settings-panel) min-w-0" class:border-(--settings-border-strong)={row.persona === shown} class:border-(--settings-border-subtle)={row.persona !== shown} class:opacity-60={drag?.id === row.persona.id} class:outline-2={isDropTarget(row)} class:outline-(--settings-focus)={isDropTarget(row)} data-part="settings-persona-card" data-persona-index={row.index}>
                         {#if draggable}
                             <span
-                                class="flex shrink-0 items-center justify-center min-w-11 touch-none select-none rounded-md text-textcolor2 hover:text-textcolor"
+                                class="flex shrink-0 items-center justify-center min-w-11 touch-none select-none rounded-md text-(--settings-text-2) hover:text-(--settings-text)"
                                 class:cursor-grab={drag === null}
                                 class:cursor-grabbing={drag !== null}
                                 aria-hidden="true"
@@ -522,7 +522,7 @@
                         {/if}
                         <button
                             type="button"
-                            class="flex grow items-center gap-3 min-w-0 min-h-11 p-2 text-left text-textcolor"
+                            class="flex grow items-center gap-3 min-w-0 min-h-11 p-2 text-left text-(--settings-text)"
                             data-persona-open={row.key}
                             aria-current={row.persona === shown ? 'true' : undefined}
                             onclick={() => { void openById(row.persona.id ?? '') }}
@@ -530,27 +530,27 @@
                         >
                             {#if row.persona.icon}
                                 {#await warnOnReject('PersonasShellPage: persona icon rejected', lookups.get('persona:' + row.key, row.persona.icon, 'css', { everySize: true }))}
-                                    <span class="rounded-md h-14 w-14 shrink-0 bg-textcolor2"></span>
+                                    <span class="rounded-md h-14 w-14 shrink-0 bg-(--settings-swatch-2)"></span>
                                 {:then im}
-                                    <span class="rounded-md h-14 w-14 shrink-0 bg-textcolor2" style={im}></span>
+                                    <span class="rounded-md h-14 w-14 shrink-0 bg-(--settings-swatch-2)" style={im}></span>
                                 {:catch}
-                                    <span class="rounded-md h-14 w-14 shrink-0 bg-textcolor2"></span>
+                                    <span class="rounded-md h-14 w-14 shrink-0 bg-(--settings-swatch-2)"></span>
                                 {/await}
                             {:else}
-                                <span class="rounded-md h-14 w-14 shrink-0 bg-textcolor2"></span>
+                                <span class="rounded-md h-14 w-14 shrink-0 bg-(--settings-swatch-2)"></span>
                             {/if}
                             <span class="flex flex-col min-w-0">
                                 <span class="font-semibold truncate">{displayName(row.persona)}</span>
-                                <span class="text-sm text-textcolor2 truncate">{row.persona.note ?? ''}</span>
-                                <span class="text-xs text-textcolor2 truncate" data-part="settings-persona-usage">{countText(row.persona, active)}</span>
+                                <span class="text-sm text-(--settings-text-2) truncate">{row.persona.note ?? ''}</span>
+                                <span class="text-xs text-(--settings-text-2) truncate" data-part="settings-persona-usage">{countText(row.persona, active)}</span>
                             </span>
                             {#if active}
-                                <span class="ml-auto shrink-0 px-2 rounded-md bg-selected text-sm" data-part="settings-persona-active">{language.settingsShellPersonaActive}</span>
+                                <span class="ml-auto shrink-0 px-2 rounded-md bg-(--settings-selected) text-sm" data-part="settings-persona-active">{language.settingsShellPersonaActive}</span>
                             {/if}
                         </button>
                         <button
                             type="button"
-                            class="min-h-11 min-w-11 shrink-0 rounded-md text-textcolor2 hover:text-textcolor"
+                            class="min-h-11 min-w-11 shrink-0 rounded-md text-(--settings-text-2) hover:text-(--settings-text)"
                             aria-haspopup="menu"
                             aria-label={language.settingsShellPersonaActions(displayName(row.persona))}
                             onclick={(event) => { cardMenu = { id: row.persona.id ?? '', opener: event.currentTarget } }}
@@ -572,43 +572,43 @@
                         <button type="button" class="shrink-0 rounded-md" data-part="settings-persona-portrait" aria-label={language.onboarding.choosePicture} onclick={() => { void selectUserImg(shown.id) }}>
                             {#if shown.icon}
                                 {#await warnOnReject('PersonasShellPage: editor icon rejected', lookups.get('persona-editor', shown.icon, shown.largePortrait ? 'lgcss' : 'css'))}
-                                    <span class="block rounded-md h-28 w-28 bg-textcolor2"></span>
+                                    <span class="block rounded-md h-28 w-28 bg-(--settings-swatch-2)"></span>
                                 {:then im}
-                                    <span class="block rounded-md h-28 w-28 bg-textcolor2" style={im}></span>
+                                    <span class="block rounded-md h-28 w-28 bg-(--settings-swatch-2)" style={im}></span>
                                 {:catch}
-                                    <span class="block rounded-md h-28 w-28 bg-textcolor2"></span>
+                                    <span class="block rounded-md h-28 w-28 bg-(--settings-swatch-2)"></span>
                                 {/await}
                             {:else}
-                                <span class="block rounded-md h-28 w-28 bg-textcolor2"></span>
+                                <span class="block rounded-md h-28 w-28 bg-(--settings-swatch-2)"></span>
                             {/if}
                         </button>
                         <div class="flex flex-col grow min-w-0 gap-1">
-                            <label class="text-sm text-textcolor2" for="{uid}-name">{language.settingsShellPersonaName}</label>
-                            <input id="{uid}-name" type="text" autocomplete="off" class="min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden risu-focus-ring" value={shown.name} oninput={(event) => edit('name', event.currentTarget.value)} />
-                            <label class="text-sm text-textcolor2" for="{uid}-note">{language.settingsShellPersonaNote}</label>
-                            <input id="{uid}-note" type="text" autocomplete="off" class="min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden risu-focus-ring" value={shown.note ?? ''} oninput={(event) => edit('note', event.currentTarget.value)} />
+                            <label class="text-sm text-(--settings-text-2)" for="{uid}-name">{language.settingsShellPersonaName}</label>
+                            <input id="{uid}-name" type="text" autocomplete="off" class="min-h-11 px-3 rounded-md border border-(--settings-border-subtle) bg-transparent text-(--settings-text) focus:border-(--settings-border-strong) focus:outline-hidden risu-focus-ring" value={shown.name} oninput={(event) => edit('name', event.currentTarget.value)} />
+                            <label class="text-sm text-(--settings-text-2)" for="{uid}-note">{language.settingsShellPersonaNote}</label>
+                            <input id="{uid}-note" type="text" autocomplete="off" class="min-h-11 px-3 rounded-md border border-(--settings-border-subtle) bg-transparent text-(--settings-text) focus:border-(--settings-border-strong) focus:outline-hidden risu-focus-ring" value={shown.note ?? ''} oninput={(event) => edit('note', event.currentTarget.value)} />
                         </div>
                     </div>
-                    <label class="text-sm text-textcolor2" for="{uid}-desc">{language.settingsShellPersonaDesc}</label>
-                    <textarea id="{uid}-desc" autocomplete="off" class="w-full min-h-40 px-3 py-2 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden risu-focus-ring" value={shown.personaPrompt ?? ''} oninput={(event) => edit('personaPrompt', event.currentTarget.value)}></textarea>
-                    <span class="text-xs text-textcolor2">{language.settingsShellPersonaDescCount((shown.personaPrompt ?? '').length)}</span>
+                    <label class="text-sm text-(--settings-text-2)" for="{uid}-desc">{language.settingsShellPersonaDesc}</label>
+                    <textarea id="{uid}-desc" autocomplete="off" class="w-full min-h-40 px-3 py-2 rounded-md border border-(--settings-border-subtle) bg-transparent text-(--settings-text) focus:border-(--settings-border-strong) focus:outline-hidden risu-focus-ring" value={shown.personaPrompt ?? ''} oninput={(event) => edit('personaPrompt', event.currentTarget.value)}></textarea>
+                    <span class="text-xs text-(--settings-text-2)">{language.settingsShellPersonaDescCount((shown.personaPrompt ?? '').length)}</span>
                     <!-- Function binding: binding an absent flag directly would write `false` into the persona on mount. -->
                     <Check className="min-h-11" label={language.settingsShellPersonaLarge} bind:check={() => shown.largePortrait ?? false, (value) => setLarge(value)}>{language.settingsShellPersonaLarge}</Check>
                     <div class="flex flex-wrap gap-2">
-                        <button type="button" class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected disabled:opacity-50" disabled={shownActive} onclick={() => { if (shown.id) activatePersona(DBState.db, shown.id) }}>{shownActive ? language.settingsShellPersonaUsed : language.settingsShellPersonaUse}</button>
-                        <button type="button" class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected" onclick={exportShown}>{language.settingsShellPersonaExport}</button>
-                        <button type="button" class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected" onclick={() => duplicate(shown)}>{language.settingsShellPersonaDup}</button>
-                        <button type="button" class="min-h-11 px-4 rounded-md bg-draculared text-white disabled:opacity-50" disabled={rows.length <= 1} onclick={() => askDelete(shown)}>{language.settingsShellPersonaDelete}</button>
+                        <button type="button" class="min-h-11 px-4 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover) disabled:opacity-50" disabled={shownActive} onclick={() => { if (shown.id) activatePersona(DBState.db, shown.id) }}>{shownActive ? language.settingsShellPersonaUsed : language.settingsShellPersonaUse}</button>
+                        <button type="button" class="min-h-11 px-4 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover)" onclick={exportShown}>{language.settingsShellPersonaExport}</button>
+                        <button type="button" class="min-h-11 px-4 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover)" onclick={() => duplicate(shown)}>{language.settingsShellPersonaDup}</button>
+                        <button type="button" class="min-h-11 px-4 rounded-md bg-(--settings-danger-fill) text-white disabled:opacity-50" disabled={rows.length <= 1} onclick={() => askDelete(shown)}>{language.settingsShellPersonaDelete}</button>
                     </div>
                     {#if rows.length <= 1}
-                        <p class="text-sm text-textcolor2" data-part="settings-persona-guard">{language.settingsShellPersonaLast}</p>
+                        <p class="text-sm text-(--settings-text-2)" data-part="settings-persona-guard">{language.settingsShellPersonaLast}</p>
                     {/if}
                     <div class="flex flex-col gap-1" data-part="settings-persona-binding">
-                        <span class="text-sm text-textcolor2">{boundChats.length > 0 ? language.settingsShellPersonaBoundList : (shownActive ? language.settingsShellPersonaBoundNoneActive : language.settingsShellPersonaBoundNone)}</span>
+                        <span class="text-sm text-(--settings-text-2)">{boundChats.length > 0 ? language.settingsShellPersonaBoundList : (shownActive ? language.settingsShellPersonaBoundNoneActive : language.settingsShellPersonaBoundNone)}</span>
                         {#each boundChats as chatLine}
                             <span class="text-sm">{chatLine}</span>
                         {/each}
-                        <span class="text-xs text-textcolor2">{language.settingsShellPersonaBoundHint}</span>
+                        <span class="text-xs text-(--settings-text-2)">{language.settingsShellPersonaBoundHint}</span>
                     </div>
                 {/if}
             </div>
@@ -622,20 +622,20 @@
     {#if menuTarget}
         <div class="flex flex-col gap-2 p-2">
             {#if DBState.db.personas.indexOf(menuTarget) !== DBState.db.selectedPersona}
-                <button type="button" role="menuitem" data-sheet-initial class="min-h-11 px-3 rounded-md text-left bg-darkbutton text-textcolor" onclick={() => { if (menuTarget.id) activatePersona(DBState.db, menuTarget.id); cardMenu = null }}>{language.settingsShellPersonaUse}</button>
+                <button type="button" role="menuitem" data-sheet-initial class="min-h-11 px-3 rounded-md text-left bg-(--settings-raised) text-(--settings-text)" onclick={() => { if (menuTarget.id) activatePersona(DBState.db, menuTarget.id); cardMenu = null }}>{language.settingsShellPersonaUse}</button>
             {/if}
-            <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-darkbutton text-textcolor" aria-disabled={menuIndex <= 0 ? 'true' : undefined} onclick={() => { if (menuIndex > 0) { moveBy(menuTarget, -1); cardMenu = null } }}>{language.settingsShellPersonaUp}</button>
-            <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-darkbutton text-textcolor" aria-disabled={menuIndex >= rows.length - 1 ? 'true' : undefined} onclick={() => { if (menuIndex < rows.length - 1) { moveBy(menuTarget, 1); cardMenu = null } }}>{language.settingsShellPersonaDown}</button>
-            <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-darkbutton text-textcolor" onclick={() => { duplicate(menuTarget); cardMenu = null }}>{language.settingsShellPersonaDup}</button>
+            <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-(--settings-raised) text-(--settings-text)" aria-disabled={menuIndex <= 0 ? 'true' : undefined} onclick={() => { if (menuIndex > 0) { moveBy(menuTarget, -1); cardMenu = null } }}>{language.settingsShellPersonaUp}</button>
+            <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-(--settings-raised) text-(--settings-text)" aria-disabled={menuIndex >= rows.length - 1 ? 'true' : undefined} onclick={() => { if (menuIndex < rows.length - 1) { moveBy(menuTarget, 1); cardMenu = null } }}>{language.settingsShellPersonaDown}</button>
+            <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-(--settings-raised) text-(--settings-text)" onclick={() => { duplicate(menuTarget); cardMenu = null }}>{language.settingsShellPersonaDup}</button>
         </div>
     {/if}
 </ShellSheet>
 
 <ShellSheet open={addMenuOpen} kind="menu" mode="action" label={language.settingsShellPersonaAdd} opener={addButton ?? null} inertOutside onclose={() => { addMenuOpen = false }}>
     <div class="flex flex-col gap-2 p-2">
-        <button type="button" role="menuitem" data-sheet-initial class="min-h-11 px-3 rounded-md text-left bg-darkbutton text-textcolor" onclick={create}>{language.settingsShellPersonaNew}</button>
-        <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-darkbutton text-textcolor" onclick={() => { void startBuilder() }}>{language.settingsShellPersonaGuided}</button>
-        <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-darkbutton text-textcolor" onclick={() => { void startImport() }}>{language.settingsShellPersonaImportMenu}</button>
+        <button type="button" role="menuitem" data-sheet-initial class="min-h-11 px-3 rounded-md text-left bg-(--settings-raised) text-(--settings-text)" onclick={create}>{language.settingsShellPersonaNew}</button>
+        <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-(--settings-raised) text-(--settings-text)" onclick={() => { void startBuilder() }}>{language.settingsShellPersonaGuided}</button>
+        <button type="button" role="menuitem" class="min-h-11 px-3 rounded-md text-left bg-(--settings-raised) text-(--settings-text)" onclick={() => { void startImport() }}>{language.settingsShellPersonaImportMenu}</button>
     </div>
 </ShellSheet>
 

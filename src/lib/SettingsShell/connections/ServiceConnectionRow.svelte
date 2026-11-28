@@ -1,4 +1,5 @@
 <script lang="ts">
+    import '../../../styles/settings-roles.css'
     import { CircleAlertIcon, KeyRoundIcon } from '@lucide/svelte'
     import { language } from '../../../lang'
     import { fillLang } from '../../../lang/fill'
@@ -30,19 +31,19 @@
 
 <div class="flex flex-col gap-1 mb-2" data-part="settings-service-connection" data-slot={service}>
     {#if conn === undefined}
-        <span class="text-sm text-textcolor2" data-part="settings-service-connection-none">{language.connectionsServiceNone}</span>
+        <span class="text-sm text-(--settings-text-2)" data-part="settings-service-connection-none">{language.connectionsServiceNone}</span>
     {:else}
-        <span class="flex flex-wrap items-center gap-2 text-sm text-textcolor2" data-part="settings-service-connection-uses">
+        <span class="flex flex-wrap items-center gap-2 text-sm text-(--settings-text-2)" data-part="settings-service-connection-uses">
             <span>{fillLang(language.connectionsServiceUses, { name: conn.name })}</span>
             {#if chip !== ''}
-                <span class="inline-flex items-center gap-1 max-w-full px-3 py-1 rounded-full bg-darkbutton text-textcolor font-mono" data-part="settings-service-connection-chip">
+                <span class="inline-flex items-center gap-1 max-w-full px-3 py-1 rounded-full bg-(--settings-raised) text-(--settings-text) font-mono" data-part="settings-service-connection-chip">
                     <KeyRoundIcon class="shrink-0" size={14} aria-hidden="true" />
                     <span class="truncate">{chip}</span>
                 </span>
             {/if}
         </span>
         {#if reason !== ''}
-            <span class="flex items-center gap-1 text-sm text-draculared" data-part="settings-service-connection-alert">
+            <span class="flex items-center gap-1 text-sm text-(--settings-danger)" data-part="settings-service-connection-alert">
                 <CircleAlertIcon class="shrink-0" size={14} aria-hidden="true" />
                 <span>{reason}</span>
             </span>

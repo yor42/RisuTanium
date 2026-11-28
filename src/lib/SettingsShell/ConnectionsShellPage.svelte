@@ -1,4 +1,5 @@
 <script lang="ts">
+    import '../../styles/settings-roles.css'
     import { onDestroy } from 'svelte'
     import { PlusIcon } from '@lucide/svelte'
     import { language } from '../../lang'
@@ -207,7 +208,7 @@
                 <div class="flex items-center gap-2">
                     <button
                         type="button"
-                        class="inline-flex items-center gap-2 min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected risu-focus-ring"
+                        class="inline-flex items-center gap-2 min-h-11 px-4 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover) risu-focus-ring"
                         data-part="settings-connection-add-open"
                         bind:this={addButton}
                         onclick={() => { sub = { kind: 'add' } }}
@@ -217,15 +218,15 @@
                     </button>
                 </div>
                 {#if showNotice}
-                    <section class="flex flex-col gap-2 p-3 rounded-md border border-darkborderc bg-darkbg" data-part="settings-connection-notice">
-                        <h2 class="font-semibold text-textcolor">{language.connectionsRenameNoticeTitle}</h2>
-                        <p class="text-sm text-textcolor2">{language.connectionsRenameNoticeBody}</p>
+                    <section class="flex flex-col gap-2 p-3 rounded-md border border-(--settings-border-subtle) bg-(--settings-panel)" data-part="settings-connection-notice">
+                        <h2 class="font-semibold text-(--settings-text)">{language.connectionsRenameNoticeTitle}</h2>
+                        <p class="text-sm text-(--settings-text-2)">{language.connectionsRenameNoticeBody}</p>
                         <ul class="flex flex-wrap gap-2 list-none p-0 m-0">
                             {#each noticeList as conn (conn.id)}
                                 <li>
                                     <button
                                         type="button"
-                                        class="min-h-11 px-3 rounded-md bg-darkbutton text-textcolor hover:bg-selected risu-focus-ring"
+                                        class="min-h-11 px-3 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover) risu-focus-ring"
                                         onclick={() => openDetail(conn.id)}
                                     >{conn.name}</button>
                                 </li>
@@ -233,14 +234,14 @@
                         </ul>
                         <button
                             type="button"
-                            class="self-start min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected risu-focus-ring"
+                            class="self-start min-h-11 px-4 rounded-md bg-(--settings-raised) text-(--settings-text) hover:bg-(--settings-hover) risu-focus-ring"
                             data-part="settings-connection-notice-dismiss"
                             onclick={dismiss}
                         >{language.connectionsRenameNoticeDismiss}</button>
                     </section>
                 {/if}
                 {#if rows.length === 0}
-                    <p class="text-textcolor2" data-part="settings-connections-empty">{language.connectionsEmpty}</p>
+                    <p class="text-(--settings-text-2)" data-part="settings-connections-empty">{language.connectionsEmpty}</p>
                 {:else}
                     <ul class="grid grid-cols-1 gap-2 list-none p-0 m-0" data-part="settings-connections-list">
                         {#each rows as conn (conn.id)}

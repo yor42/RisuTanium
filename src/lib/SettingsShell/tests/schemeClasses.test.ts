@@ -14,9 +14,7 @@ import census from './fixtures/schemeClassCensus.base.json'
 
 const ROOT = 'src/lib/SettingsShell'
 // Files that still carry scheme classes because a later PR of stage S migrates them. Empty when the stage is complete.
-const PENDING: readonly string[] = [
-    'PersonasShellPage', 'persona/', 'connections/', 'ConnectionsShellPage', 'PluginsShellPage', 'plugins/',
-].map((p) => `${ROOT}/${p}`)
+const PENDING: readonly string[] = []
 const pending = (file: string): boolean => PENDING.some((p) => file.startsWith(p))
 
 const SCHEME = /(?<![\w-])((?:[\w[\]:&>*=.-]*:)?)(bg|text|border|ring|outline)-(bgcolor|darkbg|textcolor2|textcolor|borderc|darkborderc|darkbutton|selected|draculared)(\/\d+)?(?![\w-])/g
@@ -43,7 +41,7 @@ function expectedRole(pre: string, kind: string, name: string): string {
     if (!role) throw new Error(`no role for ${pre}${kind}-${name}`)
     return role
 }
-// The text drawn on a selected fill reads its own role; these are the only elements that do (class: directives beside class:bg-selected).
+// The text drawn on a selected fill reads its own role where a class: directive sits beside class:bg-selected. Two static buttons (PersonaBuilder Create, PluginRow Update) pair bg-selected with the text role; unjudged until the join.
 const ON_SELECTED: Readonly<Record<string, number>> = {
     [`${ROOT}/SettingsShellIndex.svelte`]: 2,
     [`${ROOT}/SettingsShellPage.svelte`]: 1,

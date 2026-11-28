@@ -78,11 +78,11 @@
         }
     }
 
-    const buttonClass = 'flex items-center gap-2 px-3 min-h-11 rounded-md bg-darkbutton text-textcolor hover:text-textcolor'
+    const buttonClass = 'flex items-center gap-2 px-3 min-h-11 rounded-md bg-(--settings-raised) text-(--settings-text) hover:text-(--settings-text)'
 </script>
 
 <div class="flex flex-col gap-3" data-part="settings-plugins-page">
-    <p class="text-draculared text-sm" data-part="settings-plugins-warning">{language.pluginsPage.warning}</p>
+    <p class="text-(--settings-danger) text-sm" data-part="settings-plugins-warning">{language.pluginsPage.warning}</p>
 
     <div class="flex flex-wrap gap-2">
         <button type="button" class={buttonClass} data-part="settings-plugins-add" onclick={() => { void importPlugin() }}>
@@ -103,22 +103,22 @@
 
     <div class="flex flex-col gap-1 text-sm" role="status" aria-live="polite" data-part="settings-plugins-results">
         {#if checking}
-            <span class="text-textcolor2">{language.pluginsPage.checking}</span>
+            <span class="text-(--settings-text-2)">{language.pluginsPage.checking}</span>
         {:else}
             {#if summary.failed.length > 0}
-                <span class="text-draculared" data-part="settings-plugins-result-failed">{fillLang(language.pluginsPage.resultFailed, { count: summary.failed.length, names: summary.failed.join(', ') })}</span>
+                <span class="text-(--settings-danger)" data-part="settings-plugins-result-failed">{fillLang(language.pluginsPage.resultFailed, { count: summary.failed.length, names: summary.failed.join(', ') })}</span>
             {/if}
             {#if summary.updates > 0}
-                <span class="text-textcolor" data-part="settings-plugins-result-updates">{fillLang(language.pluginsPage.resultUpdates, { count: summary.updates })}</span>
+                <span class="text-(--settings-text)" data-part="settings-plugins-result-updates">{fillLang(language.pluginsPage.resultUpdates, { count: summary.updates })}</span>
             {/if}
             {#if summary.allCurrent}
-                <span class="text-textcolor2" data-part="settings-plugins-result-current">{language.pluginsPage.resultAllCurrent}</span>
+                <span class="text-(--settings-text-2)" data-part="settings-plugins-result-current">{language.pluginsPage.resultAllCurrent}</span>
             {/if}
         {/if}
     </div>
 
     {#if plugins.length === 0}
-        <span class="text-textcolor2">{language.noPlugins}</span>
+        <span class="text-(--settings-text-2)">{language.noPlugins}</span>
     {/if}
     <div class="flex flex-col gap-2">
         {#each plugins as plugin (plugin)}

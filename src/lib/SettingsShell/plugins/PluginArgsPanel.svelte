@@ -57,7 +57,7 @@
         }
     })
 
-    const fieldClass = 'border border-darkborderc focus:border-borderc rounded-md bg-transparent text-textcolor px-3 py-2 min-h-11 w-full focus:outline-hidden risu-focus-ring'
+    const fieldClass = 'border border-(--settings-border-subtle) focus:border-(--settings-border-strong) rounded-md bg-transparent text-(--settings-text) px-3 py-2 min-h-11 w-full focus:outline-hidden risu-focus-ring'
 </script>
 
 <div class="flex flex-col pt-1" data-part="settings-plugin-args">
@@ -69,12 +69,12 @@
         {#if typeof meta?.divider === 'string'}
             {#if meta.divider}
                 <div class="flex items-center mt-4">
-                    <div aria-hidden="true" class="w-full border-t border-darkborderc"></div>
-                    <span class="px-2 text-sm text-textcolor2 text-nowrap">{meta.divider}</span>
-                    <div aria-hidden="true" class="w-full border-t border-darkborderc"></div>
+                    <div aria-hidden="true" class="w-full border-t border-(--settings-border-subtle)"></div>
+                    <span class="px-2 text-sm text-(--settings-text-2) text-nowrap">{meta.divider}</span>
+                    <div aria-hidden="true" class="w-full border-t border-(--settings-border-subtle)"></div>
                 </div>
             {:else}
-                <div aria-hidden="true" class="w-full border-t border-darkborderc mt-4"></div>
+                <div aria-hidden="true" class="w-full border-t border-(--settings-border-subtle) mt-4"></div>
             {/if}
         {/if}
         {#if hasField}
@@ -83,7 +83,7 @@
             <span class="mb-1 mt-4" id="{fieldId}-label">{meta?.name || key}</span>
         {/if}
         {#if meta?.description}
-            <span class="mb-1 text-sm text-textcolor2">{meta.description}</span>
+            <span class="mb-1 text-sm text-(--settings-text-2)">{meta.description}</span>
         {/if}
         {#if Array.isArray(kind)}
             <div class="flex flex-col">
@@ -169,7 +169,7 @@
                     onblur={(event) => commitField(key, 'int', event.currentTarget)}
                     onkeydown={(event) => onEnter(key, 'int', event)}
                 />
-                <span class="text-sm text-draculared" role="status" aria-live="polite" data-part="settings-plugin-arg-invalid">{invalidKey === key ? language.pluginsPage.numberInvalid : ''}</span>
+                <span class="text-sm text-(--settings-danger)" role="status" aria-live="polite" data-part="settings-plugin-arg-invalid">{invalidKey === key ? language.pluginsPage.numberInvalid : ''}</span>
             {/if}
         {/if}
     {/each}

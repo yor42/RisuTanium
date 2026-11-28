@@ -11,10 +11,10 @@ import { describe, expect, test } from 'vitest'
 import { readRepoFile as read } from './cascadeModel'
 
 const FILE = 'src/styles/settings-roles.css'
-// Roles declared by this PR; the next PR of stage S adds swatch-2 and danger-fill with their readers.
+// Every role the Settings shell reads.
 const ALIASES: Readonly<Record<string, string>> = {
     canvas: 'bgcolor', panel: 'darkbg', raised: 'darkbutton', selected: 'selected', hover: 'selected', focus: 'selected',
-    'on-selected': 'textcolor', text: 'textcolor', 'text-2': 'textcolor2', swatch: 'textcolor',
+    'on-selected': 'textcolor', text: 'textcolor', 'text-2': 'textcolor2', swatch: 'textcolor', 'swatch-2': 'textcolor2', 'danger-fill': 'draculared',
     'border-strong': 'borderc', 'border-subtle': 'darkborderc', danger: 'draculared',
 }
 
@@ -57,5 +57,13 @@ describe('settings-roles.css (H-7.1)', () => {
 
     test('the shell imports the roles file beside its token file', () => {
         expect(read('src/lib/SettingsShell/SettingsShell.svelte')).toContain("import '../../styles/settings-roles.css'")
+    })
+
+    test('a shell component that the classic pages, the sidebars or the Playground render imports the roles itself', () => {
+        // The roles must not depend on SettingsShell.svelte staying statically imported: these files are mounted by hosts outside the shell.
+        expect(read('src/lib/SettingsShell/ConnectionsShellPage.svelte')).toContain("import '../../styles/settings-roles.css'")
+        for (const f of ['connections/MaskedKeyField', 'connections/SlotKeyField', 'connections/ConnectionsLink', 'connections/ServiceConnectionRow', 'connections/SlotKeyRow', 'display/UiSoundsRow']) {
+            expect(read(`src/lib/SettingsShell/${f}.svelte`), f).toContain("import '../../../styles/settings-roles.css'")
+        }
     })
 })
