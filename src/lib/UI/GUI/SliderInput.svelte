@@ -45,7 +45,7 @@
     class:cursor-default={dormant}
     aria-disabled={dormant ? 'true' : undefined}
     style:background={
-      `linear-gradient(to right, var(--risu-theme-darkbutton) 0%, var(--risu-theme-darkbutton) ${sliderPercent}%, var(--risu-theme-darkbg) ${sliderPercent}%, var(--risu-theme-darkbg) 100%)`
+      `linear-gradient(to right, var(--color-darkbutton) 0%, var(--color-darkbutton) ${sliderPercent}%, var(--color-darkbg) ${sliderPercent}%, var(--color-darkbg) 100%)`
     }
     onpointerdown={(event) => {
       if (dormant) return;

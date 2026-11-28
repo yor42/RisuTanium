@@ -104,8 +104,8 @@
         width: fit-content;
         align-items: center;
         border-radius: 0.5rem;
-        background-color: var(--risu-theme-darkbg);
-        border: 1px solid var(--risu-theme-darkborderc);
+        background-color: var(--color-darkbg);
+        border: 1px solid var(--color-darkborderc);
         padding: 4px;
         gap: 2px;
         user-select: none;
@@ -122,7 +122,7 @@
         top: 4px;
         bottom: 4px;
         border-radius: 0.375rem;
-        background-color: var(--risu-theme-borderc);
+        background-color: var(--color-borderc);
         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
                     width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         will-change: transform, width;
@@ -135,7 +135,7 @@
         z-index: 1;
         border: none;
         background: transparent;
-        color: var(--risu-theme-textcolor2);
+        color: var(--color-textcolor2);
         font-weight: 500;
         border-radius: 0.375rem;
         cursor: pointer;
@@ -145,7 +145,7 @@
     }
 
     .segmented-btn:hover:not(.segmented-btn-active) {
-        color: var(--risu-theme-textcolor);
+        color: var(--color-textcolor);
     }
 
     .segmented-btn-active {
@@ -153,7 +153,7 @@
     }
 
     .segmented-btn:focus-visible {
-        outline: 2px solid var(--risu-theme-borderc);
+        outline: 2px solid var(--color-borderc);
         outline-offset: -2px;
     }
 </style>

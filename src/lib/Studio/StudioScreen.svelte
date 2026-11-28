@@ -2,6 +2,7 @@
     import { onDestroy, onMount, setContext, untrack, type Snippet } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import '../../styles/studio-tokens.css'
+    import '../../styles/studio-roles.css'
     import { language } from '../../lang'
     import { alertError } from '../../ts/alert'
     import { dispatchBack } from '../../ts/backHandlers'
@@ -260,7 +261,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div bind:this={root} data-part="studio" data-layout={studioScreen.layout} tabindex="-1" class="flex h-full min-h-0 w-full flex-col bg-bgcolor text-textcolor outline-none" {onkeydown} {onmouseup} oninputcapture={noteStudioInput} oncompositionstartcapture={noteStudioInput}>
+<div bind:this={root} data-part="studio" data-layout={studioScreen.layout} tabindex="-1" class="studio-root flex h-full min-h-0 w-full flex-col bg-bgcolor text-textcolor outline-none" {onkeydown} {onmouseup} oninputcapture={noteStudioInput} oncompositionstartcapture={noteStudioInput}>
     <StudioHeader
         layout={studioScreen.layout}
         drawerOpen={studioScreen.drawerOpen}
