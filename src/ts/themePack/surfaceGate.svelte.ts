@@ -79,6 +79,13 @@ export function shownScreen(): GatedArea | null {
  * base (shape mode) sets neither the attribute nor the base tone.
  */
 const BASE_ATTRIBUTE = 'data-theme-pack-base'
+/**
+ * The root attribute that names the area of the element that is on with a base. It is set and removed together with
+ * BASE_ATTRIBUTE, so an area's own base block can select it (`:root:where([data-theme-pack-base][data-theme-pack-area="home"])`)
+ * while the presence-only chat blocks keep matching on the base attribute alone. Only a colour-ready area in colour mode is
+ * registered with a base, so the value is always such an area.
+ */
+const AREA_ATTRIBUTE = 'data-theme-pack-area'
 
 /**
  * Sets each registered element on exactly when its area is the shown surface, and marks the document root and the
@@ -88,6 +95,7 @@ export function syncThemePackMedia(): void {
     const shown = shownScreen()
     let on = false
     let base: SchemeTone = 'dark'
+    let baseArea = ''
     // The shown screen's own element decides its popups overlay: none when that screen applies nothing, the colour variant
     // when it paints its colour variant, the shape variant otherwise. An overlay never sets the base or the tone.
     let target: RegistryEntry | null = null
@@ -104,6 +112,7 @@ export function syncThemePackMedia(): void {
         if (wanted === 'all' && entry.overlay === undefined && entry.base !== null) {
             on = true
             base = entry.base
+            baseArea = entry.area
         }
         if (element.getAttribute('media') !== wanted) element.setAttribute('media', wanted)
     }
@@ -111,9 +120,11 @@ export function syncThemePackMedia(): void {
     const value = base === 'light' ? 'light' : ''
     if (on) {
         if (root.getAttribute(BASE_ATTRIBUTE) !== value) root.setAttribute(BASE_ATTRIBUTE, value)
+        if (root.getAttribute(AREA_ATTRIBUTE) !== baseArea) root.setAttribute(AREA_ATTRIBUTE, baseArea)
     }
-    else if (root.hasAttribute(BASE_ATTRIBUTE)) {
-        root.removeAttribute(BASE_ATTRIBUTE)
+    else {
+        if (root.hasAttribute(BASE_ATTRIBUTE)) root.removeAttribute(BASE_ATTRIBUTE)
+        if (root.hasAttribute(AREA_ATTRIBUTE)) root.removeAttribute(AREA_ATTRIBUTE)
     }
     packBaseTone.set(on ? base : null)
 }
@@ -162,6 +173,7 @@ export function resetThemePackGateForTests(): void {
     declared.home = 0
     registry.clear()
     document.documentElement.removeAttribute(BASE_ATTRIBUTE)
+    document.documentElement.removeAttribute(AREA_ATTRIBUTE)
     packBaseTone.set(null)
     generation += 1
     untrack(() => { version = 0 })

@@ -14,7 +14,7 @@ import type { LintError } from 'src/ts/themePack'
 import { cancelPackSchemeRequest, requestPackScheme } from 'src/ts/themePack/activePack.svelte'
 import { COLOUR_READY_AREAS } from 'src/ts/themePack/colourReady'
 import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome, type PackTileColours, type PackVerifyIcon } from 'src/ts/themePack/install'
-import { APPLIED_AREAS, intakePackBytes, type IntakeRefusal, type IntakeResult, type VerifiedPack } from 'src/ts/themePack/intake'
+import { APPLIED_AREAS, SCREEN_AREAS, intakePackBytes, type IntakeRefusal, type IntakeResult, type VerifiedPack } from 'src/ts/themePack/intake'
 import { createJudgeClient } from 'src/ts/themePack/judgeClient'
 import { leavePackSafeMode } from 'src/ts/themePack/packSafeMode.svelte'
 import type { PackTile } from 'src/ts/themePack/manifest'
@@ -210,10 +210,13 @@ function applyNoticesOf(pack: VerifiedPack): string[] {
             continue
         }
         if (area === 'popups') {
-            // Its colours paint over a chat element that has text; without one only its shape variant can apply. It never
-            // makes a pack show anything by itself.
-            const chat = pack.sheets.chat
-            if (chat === undefined || /^\s*$/.test(chat.canonical)) {
+            // Its colours paint over a colour-ready area's element that has text; without one only its shape variant can
+            // apply. It never makes a pack show anything by itself.
+            const hasColourHost = SCREEN_AREAS.some((host) => {
+                const hostSheet = pack.sheets[host]
+                return COLOUR_READY_AREAS.has(host) && hostSheet !== undefined && !/^\s*$/.test(hostSheet.canonical)
+            })
+            if (!hasColourHost) {
                 if (shapeOnlySheet(judgement.canonical, shapeTokenNames(area)) !== judgement.canonical) {
                     held.push(`${area}.css`)
                 }

@@ -31,6 +31,10 @@ const world = vi.hoisted(() => ({
     log: [] as string[],
     requestSaveNow: vi.fn(),
 }))
+// The colour-ready set the held-colours notice reads at call time; production's is chat alone.
+const ready = vi.hoisted(() => new Set<string>(['chat']))
+
+vi.mock('src/ts/themePack/colourReady', () => ({ COLOUR_READY_AREAS: ready }))
 
 vi.mock('localforage', () => ({
     default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => { }), removeItem: vi.fn(async () => { }) }) },
@@ -586,6 +590,41 @@ describe('S4a notices: colours held back and a pack that shows nothing (MC-3125,
             attach()
             await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': '/* nothing */', 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_COLOURS }))).deps)
             expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('popups.css')])
+        })
+
+        describe('the colour host follows the ready set (H-7.9)', () => {
+            const HOME_COLOURS = '[data-part="home-greeting"]{letter-spacing:.08rem;color:#7a1f5c}'
+
+            afterEach(() => {
+                ready.delete('home')
+            })
+
+            test('I1 (guard, passes before: the production set holds the popups colours with no chat sheet, home or not)', async () => {
+                attach()
+                await runThemePackInstall(runOf(zipPack({ 'manifest.json': manifestText(), 'home.css': HOME_COLOURS, 'popups.css': POPUPS_COLOURS })).deps)
+                expect(outcomeLines()).toContain(language.themePackColoursHeld('home.css, popups.css'))
+            })
+
+            test('I1b (reproducer; fails at the base on the held popups.css line): with home ready, a home sheet with text is the colour host and popups is not held', async () => {
+                ready.add('home')
+                attach()
+                await runThemePackInstall(runOf(zipPack({ 'manifest.json': manifestText(), 'home.css': HOME_COLOURS, 'popups.css': POPUPS_COLOURS })).deps)
+                expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
+            })
+
+            test('I1c (kills M10): with home ready, a studio sheet is not a colour host: popups stays held without a chat or home sheet', async () => {
+                ready.add('home')
+                attach()
+                await runThemePackInstall(runOf(zipPack({ 'manifest.json': manifestText(), 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_COLOURS })).deps)
+                expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('popups.css')])
+            })
+
+            test('I1d: a comment-only home sheet is not a colour host', async () => {
+                ready.add('home')
+                attach()
+                await runThemePackInstall(runOf(zipPack({ 'manifest.json': manifestText(), 'home.css': '/* nothing */', 'studio.css': STUDIO_LEAF, 'popups.css': POPUPS_COLOURS })).deps)
+                expect(outcomeLines()).toContain(language.themePackColoursHeld('popups.css'))
+            })
         })
     })
 })
