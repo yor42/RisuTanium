@@ -219,7 +219,7 @@
                         </div>
                         <button
                             type="button"
-                            class="min-h-11 min-w-11 rounded-md bg-(--nexus-surface-raised) px-3 text-nexus-text hover:bg-selected"
+                            class="min-h-11 min-w-11 rounded-md bg-darkbutton px-3 text-textcolor hover:bg-selected"
                             data-part="task-toast-open"
                             aria-disabled={modalLayerOpen() ? 'true' : undefined}
                             onclick={() => { if (!modalLayerOpen()) host.openTask(task.id) }}
@@ -227,7 +227,7 @@
                         {#if task.phase !== 'running'}
                             <button
                                 type="button"
-                                class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-nexus-text-muted hover:bg-selected hover:text-nexus-text"
+                                class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-nexus-text-muted hover:bg-selected hover:text-textcolor"
                                 data-part="task-toast-dismiss"
                                 aria-label={language.uiCommon.close}
                                 onclick={() => host.dismissTask(task.id)}
@@ -264,7 +264,7 @@
                     </div>
                     <button
                         type="button"
-                        class="min-h-11 min-w-11 rounded-md bg-(--nexus-surface-raised) px-3 hover:bg-selected"
+                        class="min-h-11 min-w-11 rounded-md bg-darkbutton px-3 hover:bg-selected"
                         data-part="toast-action"
                         aria-disabled={toast.pending ? 'true' : undefined}
                         onclick={() => host.activate(toast.id)}

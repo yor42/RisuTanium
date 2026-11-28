@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 /**
- * The plain and undo toasts, and the task toasts' borders and buttons, paint with the pack-aware role tokens. The
+ * The plain and undo toasts, and the task toasts' borders, paint with the pack-aware role tokens. The
  * toast body uses the flat surface token (opaque in a pack base) because a toast floats over content. With no pack
  * the tokens resolve to the scheme variables they replaced. Declared-source test: Tailwind is not compiled under
  * Vitest, so the class source and the token declarations are what the paint is derived from.
@@ -17,13 +17,15 @@ const tokens = read('src/styles/nexus-tokens.css')
 const MIGRATED_SCHEME_UTILITY = /(?<![\w-])(?:hover:)?(?:bg|text|border|ring)-(?:textcolor|darkborderc|darkbutton|darkbg|bgcolor)(?![\w-])/
 
 describe('ToastHost paint source', () => {
-    test('no migrated scheme utility remains', () => {
-        expect(source.match(MIGRATED_SCHEME_UTILITY)).toBeNull()
+    test('only the paired buttons keep scheme utilities', () => {
+        // Open, the dismiss glyph and the toast action pair their text with the scheme's selected fill under the
+        // task toast contrast contract, so they stay together on scheme colours.
+        const left = [...source.matchAll(new RegExp(MIGRATED_SCHEME_UTILITY, 'g'))].map((m) => m[0]).sort()
+        expect(left).toEqual(['bg-darkbutton', 'bg-darkbutton', 'hover:text-textcolor', 'text-textcolor'])
     })
 
-    test('toast surfaces, edges and buttons read the role tokens', () => {
+    test('toast surfaces and edges read the role tokens', () => {
         expect(source.match(/bg-\(--nexus-surface-flat\)/g)?.length).toBe(3)
-        expect(source.match(/bg-\(--nexus-surface-raised\)/g)?.length).toBe(2)
         expect(source).toContain("'border-(--nexus-edge)'")
         expect(source).toContain('border border-(--nexus-edge)')
     })
