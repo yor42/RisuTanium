@@ -9,13 +9,13 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { language } from 'src/lang'
 import SliderInput from './SliderInput.svelte'
 
-interface Rig { target: HTMLElement, app: Record<string, unknown>, state: { v: number | undefined, key: string } }
+interface Rig { target: HTMLElement, app: Record<string, unknown>, state: { v: number | undefined, key: string | object | undefined } }
 let rigs: Rig[] = []
 
-function render(initial: number | undefined, extra: Record<string, unknown> = {}): Rig {
+function render(initial: number | undefined, extra: Record<string, unknown> = {}, key: string | object | null = 'a'): Rig {
     const target = document.createElement('div')
     document.body.appendChild(target)
-    const state = $state<{ v: number | undefined, key: string }>({ v: initial, key: 'a' })
+    const state = $state<{ v: number | undefined, key: string | object | undefined }>({ v: initial, key: key ?? undefined })
     const props = {
         min: 0, max: 10, step: 1, label: 'Field', disableable: true, ...extra,
         get memoryKey() { return state.key },
@@ -72,7 +72,7 @@ describe('SliderInput off switch', () => {
         expect(r.state.v).toBe(4)
     })
 
-    test('regression reproducer: off then on restores the last value seen while on', () => {
+    test('regression reproducer: off then on restores the number the toggle turned off', () => {
         const r = render(7)
         box(r).click()
         flushSync()
@@ -93,36 +93,56 @@ describe('SliderInput off switch', () => {
         expect(r.state.v).toBe(2)
     })
 
-    test('compatibility guard (mutant: memory never cleared): an off value set from outside drops the memory, so a preset switch never restores the old preset', () => {
-        const r = render(7)
-        r.state.v = -1000
+    test('compatibility guard (mutant: remembers without a token): with no subject token the toggle restores the range minimum', () => {
+        const r = render(7, {}, null)
+        box(r).click()
         flushSync()
         box(r).click()
         flushSync()
         expect(r.state.v).toBe(0)
     })
 
-    test('regression reproducer: an off-to-off switch of the subject drops the memory, so the toggle never restores another subject number', () => {
-        const r = render(7)
+    test('compatibility guard (mutant: token comparison removed): a changed token while off restores the minimum, including a structurally equal clone', () => {
+        const r = render(7, {}, { id: 'p' })
         box(r).click()
         flushSync()
-        expect(r.state.v).toBe(-1000)
+        r.state.key = { id: 'p' }
+        flushSync()
+        box(r).click()
+        flushSync()
+        expect(r.state.v).toBe(0)
+        const q = render(7)
+        box(q).click()
+        flushSync()
+        q.state.key = 'b'
+        flushSync()
+        box(q).click()
+        flushSync()
+        expect(q.state.v).toBe(0)
+    })
+
+    test('compatibility guard: a token change while on, then off and on, restores the current value', () => {
+        const r = render(7)
         r.state.key = 'b'
         flushSync()
         box(r).click()
         flushSync()
-        expect(r.state.v).toBe(0)
+        box(r).click()
+        flushSync()
+        expect(r.state.v).toBe(7)
     })
 
-    test('compatibility guard: the memory survives an unrelated re-render while the subject is unchanged', () => {
+    test('compatibility guard (mutant: clear-on-observed-on removed): an external on between off and on drops the memory', () => {
         const r = render(7)
         box(r).click()
+        flushSync()
+        r.state.v = 4
         flushSync()
         r.state.v = -1000
         flushSync()
         box(r).click()
         flushSync()
-        expect(r.state.v).toBe(7)
+        expect(r.state.v).toBe(0)
     })
 
     test('compatibility guard: with no remembered value the toggle restores the range minimum', () => {

@@ -19,9 +19,12 @@
       <CheckInput check={value !== -1000 && value !== undefined} margin={false} {label} onChange={(c) => {
         onchange?.()
         if(c) {
-          value = lastOn !== undefined && lastOn >= min && lastOn <= max ? lastOn : min;
+          // The remembered number is restored only for the subject it was taken from; anything else gets the range minimum.
+          const kept = memory;
+          memory = undefined;
+          value = kept !== undefined && kept.token === memoryKey && kept.value >= min && kept.value <= max ? kept.value : min;
         } else {
-          userOff = true;
+          memory = memoryKey === undefined || isDisabledValue ? undefined : { value, token: memoryKey };
           value = -1000;
         }
       }}></CheckInput>
@@ -85,10 +88,11 @@
   import { language } from "src/lang";
   import CheckInput from "./CheckInput.svelte";
   import { fieldNameIds } from "./fieldNameIds";
-  import { DBState } from "src/ts/stores.svelte";
 
     let slider: HTMLDivElement = $state()
     let mouseDown = $state(false)
+  type SubjectToken = string | number | object;
+
   interface Props {
     min?: number;
     max?: number;
@@ -106,8 +110,8 @@
     label?: string;
     /** Extra description ids, listed after the naming element. */
     describedBy?: string;
-    /** Names what the value belongs to when one instance can show another subject's value (a different parameter group or model). */
-    memoryKey?: string | number;
+    /** Names the subject the value belongs to (compared by identity). Without it the toggle restores the range minimum. */
+    memoryKey?: SubjectToken;
   }
 
   let {
@@ -137,26 +141,12 @@
   let sliderPercent = $derived((sliderValue - min) / (max - min) * 100);
   // An off disableable slider is inert: the checkbox is the only way back on.
   let dormant = $derived(disableable && isDisabledValue);
-  let userOff = false;
-  let lastOn: number | undefined = undefined;
-  // The value to restore is the last one seen while on. A switch of the active preset (or of the caller's `memoryKey`) drops it, and so
-  // does an off value that did not come from this toggle (undo, redo), so a reused instance never restores another preset's number.
-  // An off-to-off switch changes neither the value nor the on/off state, so only the key can reveal it.
-  let subjectKey = $derived(`${DBState.db?.botPresetsId ?? ''}|${memoryKey ?? ''}`);
+  // The number the toggle turned off, with the subject token it belonged to. Only the toggle-off action writes it, and the toggle-on action
+  // restores it only when the caller's current token is identical, so every other path can only lose the memory (a fall back to the range
+  // minimum), never restore another subject's number. Without a token nothing is remembered.
+  let memory: { value: number, token: SubjectToken } | undefined = undefined;
   $effect(() => {
-    subjectKey;
-    lastOn = undefined;
-    userOff = false;
-  });
-  $effect(() => {
-    if (!isDisabledValue) {
-      lastOn = value;
-      userOff = false;
-    } else if (userOff) {
-      userOff = false;
-    } else {
-      lastOn = undefined;
-    }
+    if (!isDisabledValue) memory = undefined;
   });
   let displayText = $derived(customText === undefined ? (isDisabledValue ? (disableable ? language.optOff : language.disabled) : (value * multiple).toFixed(fixed)) : customText);
 
