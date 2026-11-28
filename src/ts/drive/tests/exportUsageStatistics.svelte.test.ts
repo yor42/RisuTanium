@@ -327,6 +327,8 @@ interface PageFields {
     statics?: Record<string, number>
     usagePriceOverrides?: unknown
     usageRetentionMonths?: number
+    presetFieldLocks?: string[]
+    doNotChangeFallbackModels?: boolean
     taskPresets?: unknown
     themePacks?: unknown
 }
@@ -427,6 +429,18 @@ describe.each([
         expect(JSON.stringify(written)).not.toContain('u1|')
         expect(db.statics).toEqual({ messages: 7, imports: 2, ...USAGE_KEYS })
         expect((db as unknown as { usagePriceOverrides: unknown }).usagePriceOverrides).toEqual(OVERRIDES)
+    }, 120_000)
+
+    test('#149 reproducer: the fork-only preset field locks are never written, and the upstream flag is', async () => {
+        const db = page({ presetFieldLocks: ['sampling'], doNotChangeFallbackModels: true })
+
+        const outcome = await run()
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        const written = await decodedDatabase()
+        expect(Object.hasOwn(written, 'presetFieldLocks')).toBe(false)
+        expect(written.doNotChangeFallbackModels).toBe(true)
+        expect(db.presetFieldLocks).toEqual(['sampling'])
     }, 120_000)
 
     test('T11 reproducer: price overrides alone are named and left out too', async () => {

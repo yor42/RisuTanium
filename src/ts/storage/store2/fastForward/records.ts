@@ -37,6 +37,11 @@ export interface SwitchSide {
     list: readonly JsonValue[]
     id: JsonValue | undefined
     working: JsonObject
+    /**
+     * The settings that change what a selection change does but are not part of the record (the preset field locks), as
+     * this side holds them. A switch is only recognised when the side and the base hold the same ones.
+     */
+    locks?: JsonObject
 }
 
 /** What a selection change does to the record; the preset record's is `setPreset` and `presetFromWorkingSettings`, in plain JSON. */
@@ -93,6 +98,13 @@ export function cleanSwitch(side: SwitchSide, base: SwitchSide, ops: SwitchOps):
     if (left === null || entered === null || sameJsonValue(side.id, base.id) || side.list.length !== base.list.length) {
         return false
     }
+    // The locks are not record fields, so each side's switch is replayed under the lock state that side holds; a side whose
+    // locks differ from the base's cannot be replayed from the base and is not a clean switch (it parks).
+    const locks = base.locks ?? {}
+    if (!sameJsonValue(side.locks ?? {}, locks)) {
+        return false
+    }
+    const working: JsonObject = { ...base.working, ...locks }
     const leftAt = base.id as number
     for (let index = 0; index < base.list.length; index++) {
         if (index !== leftAt && !sameJsonValue(side.list[index], base.list[index])) {
@@ -100,10 +112,14 @@ export function cleanSwitch(side: SwitchSide, base: SwitchSide, ops: SwitchOps):
         }
     }
     const after = side.list[leftAt]
-    if (!sameJsonValue(after, left) && !(isJsonObject(after) && sameJsonValue(after, ops.saveInto(base.working, left)))) {
+    if (!sameJsonValue(after, left) && !(isJsonObject(after) && sameJsonValue(after, ops.saveInto(working, left)))) {
         return false
     }
-    return sameJsonValue(side.working, ops.apply(base.working, entered))
+    const applied: JsonObject = { ...ops.apply(working, entered) }
+    for (const name of Object.keys(locks)) {
+        delete applied[name]
+    }
+    return sameJsonValue(side.working, applied)
 }
 
 /**

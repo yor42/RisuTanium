@@ -1,5 +1,6 @@
 import type { Database, StoredDatabase, botPreset } from 'src/ts/storage/database.svelte'
 import { SECRET_FIELDS } from 'src/ts/secretFields'
+import { PRESET_LOCK_FIELDS } from 'src/ts/storage/presetLocks'
 import { PRESET_RECORD_FIELDS } from 'src/ts/storage/store2/fastForward/records'
 
 /**
@@ -66,7 +67,7 @@ const GENERATION_FIELDS = [
     'jailbreakToggle', 'generationSeed', 'requestRetrys', 'useStreaming', 'swipe', 'instantRemove', 'useSayNothing',
     'autoContinueChat', 'autoContinueMinTokens', 'removeIncompleteResponse', 'chainOfThought',
     'doNotChangeSeperateModels', 'doNotChangeFallbackModels', 'seperateParametersByModel',
-    'disableSeperateParameterChangeOnPresetChange', 'claudeCachingExperimental', 'claudeRetrivalCaching',
+    'disableSeperateParameterChangeOnPresetChange', 'presetFieldLocks', 'claudeCachingExperimental', 'claudeRetrivalCaching',
     'claude1HourCaching', 'claudeBatching', 'automaticCachePoint', 'geminiStream', 'streamGeminiThoughts',
     'openAIFlexProcessing', 'antiClaudeOverload', 'antiServerOverloads', 'openrouterMiddleOut', 'openrouterFallback',
     'ollamaModel', 'ollamaModelSource', 'ollamaInputMode', 'ollamaRequestFormat', 'ollamaModelName',
@@ -152,7 +153,7 @@ export const SETTINGS_FIELD_RULES: Readonly<Record<SettingsField, FieldRule>> = 
     jailbreakToggle: bool, generationSeed: num, requestRetrys: num, useStreaming: bool, swipe: bool, instantRemove: bool,
     useSayNothing: bool, autoContinueChat: bool, autoContinueMinTokens: num, removeIncompleteResponse: bool,
     chainOfThought: bool, doNotChangeSeperateModels: bool, doNotChangeFallbackModels: bool,
-    seperateParametersByModel: bool, disableSeperateParameterChangeOnPresetChange: bool,
+    seperateParametersByModel: bool, disableSeperateParameterChangeOnPresetChange: bool, presetFieldLocks: arr,
     claudeCachingExperimental: bool, claudeRetrivalCaching: bool, claude1HourCaching: bool, claudeBatching: bool,
     automaticCachePoint: bool, geminiStream: bool, streamGeminiThoughts: bool, openAIFlexProcessing: bool,
     antiClaudeOverload: bool, antiServerOverloads: bool, openrouterMiddleOut: bool, openrouterFallback: bool,
@@ -270,10 +271,10 @@ export const LIST_FIELD_NAMES: readonly string[] = [
 ]
 
 /**
- * The database fields `presetFromWorkingSettings` reads: the working preset fields plus the flag that decides
- * whether the separate models are saved. Never the omitted connection and endpoint fields.
+ * The database fields the settings-only preset build reads: the working preset fields plus the lock state that decides
+ * which groups of the saved slot are kept. Never the omitted connection and endpoint fields.
  */
-export const PRESET_SOURCE_FIELDS = [...PRESET_WORKING_FIELDS, 'doNotChangeSeperateModels'] as const
+export const PRESET_SOURCE_FIELDS = [...PRESET_WORKING_FIELDS, ...PRESET_LOCK_FIELDS] as const
 
 /** The keys whose values are checked more closely than their kind alone: a crafted value of the right kind could break boot. */
 export const FALLBACK_MODEL_MEMBERS = ['model', 'memory', 'emotion', 'translate', 'otherAx'] as const

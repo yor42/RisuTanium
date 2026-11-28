@@ -20,6 +20,7 @@ import type { DeferClass } from './defer'
 import type { GuardEntry } from './guard'
 import type { EntityUnit } from './read'
 import { makeChatCopy } from './chatCopy'
+import { PRESET_LOCK_FIELDS } from '../../presetLocks'
 import {
     answerFor, decideSwitch, PERSONA_OPS, PERSONA_RECORD_FIELDS, PRESET_RECORD_FIELDS, valueFingerprint,
     type ConflictAnswers, type ConflictChoice, type ConflictRecord, type SwitchOps, type SwitchSide,
@@ -262,10 +263,14 @@ function sameKeyLists(a: readonly Ref[] | undefined, b: readonly Ref[] | undefin
     return (a ?? []).length === (b ?? []).length && (a ?? []).every((ref, index) => keyOfRef(ref) === keyOfRef((b ?? [])[index]))
 }
 
-function sideOf(config: JsonObject, listName: string, idName: string, list: readonly JsonValue[] | undefined, fields: readonly string[]): SwitchSide {
+function sideOf(config: JsonObject, listName: string, idName: string, list: readonly JsonValue[] | undefined, fields: readonly string[], lockFields?: readonly string[]): SwitchSide {
     const held = config[listName]
     const own: readonly JsonValue[] = Array.isArray(held) ? held : []
-    return { list: list ?? own, id: config[idName], working: pickFields(config, fields) }
+    const side: SwitchSide = { list: list ?? own, id: config[idName], working: pickFields(config, fields) }
+    if (lockFields !== undefined) {
+        side.locks = pickFields(config, lockFields)
+    }
+    return side
 }
 
 /** What an install step holds of its own write: the live list's element at the written index, empty until the step applied. */
@@ -976,18 +981,18 @@ export function prepareFastForward(input: PrepareInput): Prepared {
     }
 
     // The two switchable records, each decided whole.
-    const records: Array<{ ops: SwitchOps, list: string, id: string, fields: readonly string[], baseList: readonly JsonValue[] | undefined, theirsList: readonly JsonValue[] | undefined, unitIdentities: boolean }> = [
+    const records: Array<{ ops: SwitchOps, list: string, id: string, fields: readonly string[], lockFields?: readonly string[], baseList: readonly JsonValue[] | undefined, theirsList: readonly JsonValue[] | undefined, unitIdentities: boolean }> = [
         {
             ops: host.presetOps(), list: 'botPresets', id: 'botPresetsId', fields: PRESET_RECORD_FIELDS,
-            baseList: baseObjects.presets, theirsList: nextObjects.presets, unitIdentities: true,
+            lockFields: PRESET_LOCK_FIELDS, baseList: baseObjects.presets, theirsList: nextObjects.presets, unitIdentities: true,
         },
         { ops: PERSONA_OPS, list: 'personas', id: 'selectedPersona', fields: PERSONA_RECORD_FIELDS, baseList: undefined, theirsList: undefined, unitIdentities: false },
     ]
     for (const record of records) {
         const names = [record.id, ...record.fields, ...(record.unitIdentities ? [] : [record.list])]
         const sideFields = record.unitIdentities ? record.fields : PERSONA_RECORD_FIELDS
-        const base = sideOf(baseConfig, record.list, record.id, record.baseList, sideFields)
-        const theirs = sideOf(theirsConfig, record.list, record.id, record.theirsList, sideFields)
+        const base = sideOf(baseConfig, record.list, record.id, record.baseList, sideFields, record.lockFields)
+        const theirs = sideOf(theirsConfig, record.list, record.id, record.theirsList, sideFields, record.lockFields)
         const presetKeysChanged = record.unitIdentities && !sameKeyLists(baseObjects.manifest.fixed.presets, nextObjects.manifest.fixed.presets)
         const changed = presetKeysChanged || !sameJsonValue(base.id, theirs.id) || !sameJsonValue(base.working, theirs.working)
             || (!record.unitIdentities && !sameJsonValue(base.list, theirs.list))
@@ -1001,6 +1006,9 @@ export function prepareFastForward(input: PrepareInput): Prepared {
             ? (Array.isArray(db.botPresets) ? db.botPresets.map(item => toPlainJson(item) ?? null) : [])
             : sideOf(mineConfig, record.list, record.id, undefined, sideFields).list
         const mine: SwitchSide = { list: mineList, id: mineConfig[record.id], working: pickFields(mineConfig, sideFields) }
+        if (record.lockFields !== undefined) {
+            mine.locks = pickFields(mineConfig, record.lockFields)
+        }
         const decision = decideSwitch(base, mine, theirs, record.ops)
         let value: SwitchSide
         if (decision.kind === 'park') {

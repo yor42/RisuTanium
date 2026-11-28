@@ -299,6 +299,8 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
         plain.statics = withoutUsageKeys(db.statics)
     }
     delete plain.usagePriceOverrides
+    // The fork-only preset field locks have no upstream field; they are always left out of a `.bin` (stage 2 adds the warning that names them).
+    delete plain.presetFieldLocks
     // The statistics retention period is a fork-only device preference: left out silently, so an import ends with it off.
     delete plain.usageRetentionMonths
     // The ChroMemory choice and its settings are fork-only and have no place in a `.bin` (the export confirm names the engine

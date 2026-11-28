@@ -409,6 +409,9 @@ export function presetSourceOf(source: SettingsSource): WorkingPresetSource {
         verbosity: source.get('verbosity'),
         dynamicOutput: source.get('dynamicOutput'),
         doNotChangeSeperateModels: source.get('doNotChangeSeperateModels'),
+        doNotChangeFallbackModels: source.get('doNotChangeFallbackModels'),
+        disableSeperateParameterChangeOnPresetChange: source.get('disableSeperateParameterChangeOnPresetChange'),
+        presetFieldLocks: source.get('presetFieldLocks'),
     }
 }
 
