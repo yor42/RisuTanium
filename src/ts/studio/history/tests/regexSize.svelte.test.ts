@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// T39, field part: a field edit of one row of a 300 x 20 KB regex list, on a character and on a module, is stored as one
+// T39 (field part and delete part): a field edit of one row of a 300 x 20 KB regex list, on a character and on a module, is stored as one
 // small step and the restore point holds no list. Record size, save time and plan time are written to the console in
 // MEASURE lines (a diagnostic, never asserted tightly); the assertions are that the step is stored after a reload, the
 // restore holds no list and the owner's stored bytes stay far below the owner cap.
@@ -8,7 +8,7 @@ import { DBState, selIdState } from 'src/ts/stores.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
-import { regexFieldEdit, regexTypingKey } from 'src/ts/studio/edit/regexListOps'
+import { regexAdd, regexDelete, regexDuplicate, regexFieldEdit, regexMove, regexTypingKey } from 'src/ts/studio/edit/regexListOps'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
 import { characterOwnerKey, moduleOwnerKey, SAVE_DEBOUNCE_MS, type OwnerKey } from '../ownerPhase'
 import { CAP_BYTES } from '../studioHistoryStore'
@@ -113,6 +113,49 @@ describe('T39 (field part): a field edit of a huge regex list is one small store
             expect(text).not.toContain('<ROW0>')
             expect(text).not.toContain('<ROW150>')
             expect(Object.keys(point?.fields ?? {}).filter((path) => path.startsWith('customscript') || path.startsWith('regex'))).toEqual([])
+        })
+    }
+})
+
+describe('T39 (delete part): a delete of a huge regex list stores the step and the deleted item, and the other operations plan in bounded time', () => {
+    for (const [name, owner] of [['character', A], ['module', M1]] as const) {
+        test(`${name}: delete, save, reload; add, move, duplicate and the undo of a delete are measured`, async () => {
+            putCharacter({ ...makeCharacter(), customscript: hugeList() })
+            DBState.db.modules = [{ id: 'M1', name: 'M1', assets: [], regex: hugeList() }] as unknown as typeof DBState.db.modules
+            clock = createFakeClock()
+            service = createService()
+            await service.whenReady(A)
+            await service.whenReady(M1)
+            const list = (): Entry[] => owner === A
+                ? (DBState.db.characters as unknown as { customscript: Entry[] }[])[0].customscript
+                : (DBState.db.modules as unknown as { regex: Entry[] }[])[0].regex
+            const timed = (label: string, run: () => unknown): void => {
+                const started = performance.now()
+                run()
+                console.log(`MEASURE regexSize ${name} ${label} plan=${(performance.now() - started).toFixed(1)}ms`)
+            }
+
+            const op = regexDelete(list()[150], 150)
+            timed('delete', () => expect(service.objEdit(owner, op.build).ok).toBe(true))
+            expect(list()).toHaveLength(COUNT - 1)
+            await clock.advance(SAVE_DEBOUNCE_MS + 1)
+            const bytes = storedBytes(store.shared, owner)
+            console.log(`MEASURE regexSize ${name} deleteRecordBytes=${bytes}`)
+            expect(bytes).toBeLessThan(CAP_BYTES)
+
+            const reloaded = createService(new Map(store.shared))
+            await reloaded.whenReady(owner)
+            const view = reloaded.view(owner)
+            expect(view.done).toHaveLength(1)
+            expect(view.deleted.map((item) => item.id)).toEqual([op.landedDeletedId()])
+            const point = storedRecord(store.shared, owner as never)?.record.restore ?? null
+            expect(JSON.stringify(point)).not.toContain('<ROW0>')
+
+            timed('undo of the delete', () => expect(service.undo(owner).ok).toBe(true))
+            expect(list()).toHaveLength(COUNT)
+            timed('add', () => expect(service.objEdit(owner, regexAdd().build).ok).toBe(true))
+            timed('move', () => expect(service.objEdit(owner, regexMove(list()[10], 10, 'bottom').build).ok).toBe(true))
+            timed('duplicate', () => expect(service.objEdit(owner, regexDuplicate(list()[20], 20).build).ok).toBe(true))
         })
     }
 })

@@ -9,7 +9,7 @@ import { DBState, selIdState } from 'src/ts/stores.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
-import { regexFieldEdit, regexTypingKey } from 'src/ts/studio/edit/regexListOps'
+import { regexAdd, regexDelete, regexDuplicate, regexFieldEdit, regexMove, regexTypingKey } from 'src/ts/studio/edit/regexListOps'
 import { COALESCE_MS } from '../historyModel'
 import { fingerprintElement } from '../listFingerprint'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
@@ -154,6 +154,35 @@ describe('T34 (a)-(c): the regex line, the earlier-visit note and the stored ste
         expect(view.done).toHaveLength(done)
         expect(view.deleted).toHaveLength(1)
         expect(view.deleted[0]).toMatchObject({ id: 'D1', list: 'lore' })
+    })
+})
+
+describe('T34 (d): the regex line after list operations', () => {
+    const listOps = (): void => {
+        expect(service.objEdit(A, regexAdd().build).ok).toBe(true)
+        expect(service.objEdit(A, regexDuplicate(regex()[0], 0).build).ok).toBe(true)
+        expect(service.objEdit(A, regexMove(regex()[3], 3, 'top').build).ok).toBe(true)
+        expect(service.objEdit(A, regexDelete(regex()[2], 2).build).ok).toBe(true)
+    }
+
+    test('a visit of list operations shows one regex line and the line reverts the whole list', async () => {
+        await start()
+        const before = JSON.stringify(regex())
+        listOps()
+        expect(JSON.stringify(regex())).not.toBe(before)
+        expect(service.view(A).restoreLines).toEqual([{ list: 'regex', n: 4 }])
+        expect(service.restore(A, new Set(), { lines: ['regex'] })).toMatchObject({ ok: true })
+        expect(JSON.stringify(regex())).toBe(before)
+    })
+
+    test('an outside change to a row the operations touched refuses the line and leaves the list as it stands', async () => {
+        await start()
+        listOps()
+        regex()[0].out = 'changed outside'
+        const standing = JSON.stringify(regex())
+        const result = service.restore(A, new Set(), { lines: ['regex'] })
+        expect(result).toMatchObject({ ok: false, linesRefused: ['regex'] })
+        expect(JSON.stringify(regex())).toBe(standing)
     })
 })
 

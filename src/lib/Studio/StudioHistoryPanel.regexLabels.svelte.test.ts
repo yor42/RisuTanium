@@ -163,17 +163,17 @@ describe('T24: regex step texts', () => {
         for (const text of stepTexts()) expect(text).not.toContain(languageEnglish.sidebarUi.unnamedLore)
     })
 
-    test('an action other than an edit reads as the plain regex step text', async () => {
+    test('a list action reads as that action on the named script, never the lorebook wording', async () => {
         const service = makeService()
         await service.whenReady(A)
-        // A label whose action S6a never builds: the step text must still be the regex one.
+        // A move label on a stage step: the step text is the regex move text.
         apply(service, (id, live) => {
             const built = regexStageEdit(0, 'editdisplay').build(id, live)
             return built.ok ? { ...built, label: { ...built.label, action: 'move' } } : built
         })
         await mountPanel(service)
-        expect(stepTexts()).toEqual(['Changed "Alpha"'])
-        expect(regexStepText({ kind: 'obj', list: 'regex', action: 'move', name: null })).toBe(`Changed "${languageEnglish.sidebarUi.unnamedScript}"`)
+        expect(stepTexts()).toEqual(['Moved "Alpha"'])
+        expect(regexStepText({ kind: 'obj', list: 'regex', action: 'move', name: null })).toBe(`Moved "${languageEnglish.sidebarUi.unnamedScript}"`)
     })
 
     test('a lorebook edit in the same history keeps the lorebook wording', async () => {

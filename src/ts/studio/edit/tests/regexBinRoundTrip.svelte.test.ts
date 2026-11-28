@@ -20,7 +20,7 @@ import type { OwnerHistoryService } from 'src/ts/studio/history/ownerHistory.sve
 import type { OwnerKey } from 'src/ts/studio/history/ownerPhase'
 import { createFakeClock } from 'src/ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from 'src/ts/studio/history/tests/studioStoreDoubles'
-import { regexCustomFlag, regexFieldEdit, regexFlagEdit, regexStageEdit, type RegexOp } from '../regexListOps'
+import { regexAdd, regexCustomFlag, regexDelete, regexDuplicate, regexFieldEdit, regexFlagEdit, regexMove, regexStageEdit, type RegexOp } from '../regexListOps'
 
 vi.setConfig({ testTimeout: 60_000 })
 
@@ -173,6 +173,13 @@ const editedList = (): Entry[] => [
     { comment: 'flagged', in: 'x', out: 'y', type: 'editoutput', flag: 'gim', ableFlag: true },
 ]
 
+/** The list after `editList` and then the list operations: a duplicate of row 0, a move of the flagged row to the top, a delete of the malformed row, an add. */
+const listOpsList = (): Entry[] => {
+    const [up, malformed, nothing, flagged] = editedList()
+    void malformed
+    return [flagged, up, structuredClone(up), nothing, { comment: '', in: '', out: '', type: 'editinput' }]
+}
+
 function seed(): Record<string, unknown> {
     const db = makeDb('base', [CHA])
     ;(db.characters as Record<string, unknown>[])[0].customscript = startList()
@@ -181,7 +188,7 @@ function seed(): Record<string, unknown> {
 }
 
 /** Edits through the real service: two landed rows, and the malformed row refused. */
-function editList(service: OwnerHistoryService, owner: OwnerKey): void {
+function editList(service: OwnerHistoryService, owner: OwnerKey, withListOps: boolean): void {
     const run = (op: RegexOp) => service.objEdit(owner, op.build)
     expect(run(regexFieldEdit(0, 'out', 'edited out', null))).toEqual({ ok: true })
     expect(run(regexStageEdit(0, 'editdisplay'))).toEqual({ ok: true })
@@ -189,6 +196,12 @@ function editList(service: OwnerHistoryService, owner: OwnerKey): void {
     expect(run(regexFlagEdit(3, (flag) => flag + 'm', null))).toEqual({ ok: true })
     expect(run(regexFieldEdit(1, 'out', 'refused', null))).toMatchObject({ ok: false, reason: 'precondition' })
     expect(run(regexFieldEdit(2, 'out', 'refused', null))).toMatchObject({ ok: false, reason: 'precondition' })
+    if (!withListOps) return
+    const rows = editedList()
+    expect(run(regexDuplicate(rows[0], 0))).toEqual({ ok: true })
+    expect(run(regexMove(rows[3], 4, 'top'))).toEqual({ ok: true })
+    expect(run(regexDelete(rows[1], 3))).toEqual({ ok: true })
+    expect(run(regexAdd())).toEqual({ ok: true })
 }
 
 interface Trip {
@@ -201,7 +214,7 @@ interface Trip {
     pageModule: unknown
 }
 
-async function trip(): Promise<Trip> {
+async function trip(withListOps = false): Promise<Trip> {
     const locks = new FakeLockManagerCore()
     Object.defineProperty(window.navigator, 'locks', { value: new FakeTabLockManagerView(locks, 'this'), configurable: true })
     h.db = seed()
@@ -241,8 +254,8 @@ async function trip(): Promise<Trip> {
     })
     await service.whenReady(characterOwnerKey(CHA))
     await service.whenReady(moduleOwnerKey(MOD))
-    editList(service, characterOwnerKey(CHA))
-    editList(service, moduleOwnerKey(MOD))
+    editList(service, characterOwnerKey(CHA), withListOps)
+    editList(service, moduleOwnerKey(MOD), withListOps)
     const live = h.db as unknown as { characters: { customscript: unknown }[]; modules: { regex: unknown }[] }
     const pageCharacter = JSON.parse(JSON.stringify(live.characters[0].customscript))
     const pageModule = JSON.parse(JSON.stringify(live.modules[0].regex))
@@ -302,5 +315,21 @@ describe('T14a (class CG) edited regex lists through the real .bin export and im
         const savedModule = result.saved.modules.find((module) => module.id === MOD) as unknown as { regex: unknown }
         expect(savedCharacter.customscript).toEqual(editedList())
         expect(savedModule.regex).toEqual(editedList())
+    })
+})
+
+describe('T14b (class CG) add, duplicate, move and delete through the real .bin export and import', () => {
+    test('the page lists, the export and the import hold the same list, with the deleted row gone and the others unchanged', async () => {
+        const result = await trip(true)
+        expect(result.pageCharacter).toEqual(listOpsList())
+        expect(result.pageModule).toEqual(listOpsList())
+        const exportedCharacter = result.exported.characters.find((slot) => slot.chaId === CHA) as unknown as { customscript: unknown }
+        const exportedModule = result.exported.modules.find((module) => module.id === MOD) as unknown as { regex: unknown }
+        expect(exportedCharacter.customscript).toEqual(listOpsList())
+        expect(exportedModule.regex).toEqual(listOpsList())
+        const savedCharacter = result.saved.characters.find((slot) => slot.chaId === CHA) as unknown as { customscript: unknown }
+        const savedModule = result.saved.modules.find((module) => module.id === MOD) as unknown as { regex: unknown }
+        expect(savedCharacter.customscript).toEqual(listOpsList())
+        expect(savedModule.regex).toEqual(listOpsList())
     })
 })

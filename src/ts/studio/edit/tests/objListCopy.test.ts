@@ -15,6 +15,7 @@ import {
     objListLine,
     objListMixed,
     objRefusalText,
+    regexStepText,
 } from '../objListCopy'
 
 describe('the message table resolves to language keys', () => {
@@ -94,6 +95,26 @@ describe('objItemPreview', () => {
     test('the folder is the subject even when a child row comes first; an unnamed row shows what it is', () => {
         expect(objItemPreview(item([{ comment: 'Dragon', mode: 'normal' }, { comment: 'Lairs', key: 'K', mode: 'folder' }]))).toBe('Lairs and 1 more')
         expect(objItemPreview(item([{ comment: '', key: '', mode: 'normal' }]))).toBe(language.sidebarUi.unnamedLore)
+    })
+})
+
+describe('regex step and deleted-item text', () => {
+    const label = (action: ObjLabel extends { action: infer A } ? A : never, name: string | null): ObjLabel => ({ kind: 'obj', list: 'regex', action, name })
+
+    test('each list action names the script; an unnamed one shows the unnamed fallback', () => {
+        expect(regexStepText(label('add', 'Alpha'))).toBe(language.studioRegexStepAdd('Alpha'))
+        expect(regexStepText(label('delete', 'Alpha'))).toBe(language.studioRegexStepDelete('Alpha'))
+        expect(regexStepText(label('move', 'Alpha'))).toBe(language.studioRegexStepMove('Alpha'))
+        expect(regexStepText(label('duplicate', null))).toBe(language.studioRegexStepDuplicate(language.sidebarUi.unnamedScript))
+        expect(regexStepText(label('add', 'Alpha'))).not.toBe(regexStepText(label('delete', 'Alpha')))
+    })
+
+    test('a deleted regex row previews as its name, else the unnamed script; an unreadable one says so', () => {
+        const item = (entry: Record<string, unknown>): ObjDeletedItem => ({ id: 'd1', at: 0, list: 'regex', entries: [{ index: 0, entry: entry as ObjDeletedItem['entries'][number]['entry'], counts: {} }] })
+        expect(objItemPreview(item({ comment: 'Alpha', in: '', out: '', type: 'editinput' }))).toBe('Alpha')
+        expect(objItemPreview(item({ comment: '', in: '', out: '', type: 'editinput' }))).toBe(language.sidebarUi.unnamedScript)
+        expect(objItemPreview(item({ in: '', out: '', type: 'editinput' }))).toContain(language.studioRegexWhyField('comment'))
+        expect(objItemPreview(item({ comment: 'Beta', in: 5, out: '', type: 'editinput' }))).toBe(`Beta: ${language.studioRegexUnreadable(language.studioRegexWhyField('in'))}`)
     })
 })
 
