@@ -189,6 +189,14 @@ describe('isItemUnsavable inside the next-commit callback', () => {
         expect(seen).toEqual({ setting: true, verdict: 'unsavable' })
     })
 
+    test('G8 a refused active regex list is reported as a settings item, so the preset verdict is unsavable', async () => {
+        const page = await startPage(seedOf())
+        page.db.presetRegex = [{ comment: 'r', in: unstorable(), out: '', type: 'editinput' }]
+        const verdict = await verdictOf()
+        const seen = await afterCommit(page, () => ({ setting: page.w.api.isItemUnsavable('settings', 'presetRegex'), verdict: verdict('preset-0') }))
+        expect(seen).toEqual({ setting: true, verdict: 'unsavable' })
+    })
+
     test('G6 a notice that throws does not leave the key set stale: the callback still sees the carried list, now and at the next commit', async () => {
         const page = await startPage(seedOf())
         const alert = await import('src/ts/alert')

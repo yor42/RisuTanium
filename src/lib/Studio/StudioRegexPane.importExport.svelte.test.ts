@@ -61,6 +61,8 @@ import { language } from 'src/lang'
 import { alertNormal } from 'src/ts/alert'
 import { exportRegex } from 'src/ts/process/scripts'
 import { DBState } from 'src/ts/stores.svelte'
+import { resetPresetAckForTests, setPresetAckLoaderForTests } from '../../ts/studio/edit/presetAck.svelte'
+import { createSaveAck, type SaveAckDeps } from '../../ts/studio/edit/saveAck.svelte'
 import { presetOwnerKey } from '../../ts/studio/edit/presetTarget'
 import { presetNamed, seedPresetDb } from '../../ts/studio/edit/tests/presetFixture.test-helpers'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
@@ -356,6 +358,35 @@ describe('T32: the export button', () => {
         const slotRegex = (index: number): Entry[] => (DBState.db.botPresets[index] as unknown as { regex: Entry[] }).regex
 
         // A: active, its working list differs from its slot's. B: inactive with two rows.
+        // A fresh ack on its own fake clock for each factory call: the holder disposes the ack it built.
+        function freshAck() {
+            const deps: SaveAckDeps = {
+                getMarkCount: () => 0,
+                getCommittedMarkCount: () => 0,
+                afterNextCommit: () => {},
+                requestSaveNow: () => {},
+                getPeerSaveCount: () => 0,
+                onStopped: () => () => {},
+                isStopped: () => false,
+                subscribeFailure: () => () => {},
+                currentFailure: () => null,
+                frozenKeys: () => new Set<string>(),
+                isCharacterUnsavable: () => false,
+                onPassStart: () => () => {},
+                visible: () => true,
+                onVisibilityChange: () => () => {},
+                clock: createFakeClock(),
+            }
+            return createSaveAck(deps, { kind: 'preset', verdict: () => 'saved' })
+        }
+
+        beforeEach(() => {
+            setPresetAckLoaderForTests(async () => () => freshAck())
+        })
+        afterEach(() => {
+            resetPresetAckForTests()
+        })
+
         async function startPresets(): Promise<void> {
             ids = seedPresetDb([presetNamed('A', 'a=A'), presetNamed('B', 'b=B')], 0, 'a=A')
             Object.assign(DBState.db.botPresets[0], { regex: [addShape('slotA0')] })
