@@ -552,6 +552,46 @@ describe('T1-29 pass 2', () => {
     })
 })
 
+describe('#325 pass 2 as chunks', () => {
+    const BIG = padPngTo(PNG_1X1, 2_500_000)
+
+    it('a stored entry comes back as views of the archive, with no entry-sized copy, and equals the bytes', async () => {
+        const bytes = zipPack(validPackFiles({ 'chat.css': CHAT_SHEET, 'images/a.png': { data: BIG, stored: true } }))
+        const source = spySource(bytes)
+        const pack = packOf(await intakePack(source, realJudge))
+        const read = await readVerifiedFile(source, pack, 'images/a.png', 'parts')
+        if (read.ok === false) throw new Error('expected an accepted read')
+        expect(read.mime).toBe('image/png')
+        expect(read.parts.length).toBeGreaterThan(1)
+        for (const part of read.parts) {
+            expect(part.buffer).toBe(bytes.buffer)
+        }
+        expect(Buffer.concat(read.parts).equals(Buffer.from(BIG))).toBe(true)
+    })
+
+    it('a deflated entry still reads whole and equal', async () => {
+        const bytes = zipPack(validPackFiles({ 'chat.css': CHAT_SHEET, 'images/a.png': PNG_1X1 }))
+        const source = spySource(bytes)
+        const pack = packOf(await intakePack(source, realJudge))
+        const read = await readVerifiedFile(source, pack, 'images/a.png', 'parts')
+        if (read.ok === false) throw new Error('expected an accepted read')
+        expect(Buffer.concat(read.parts).equals(Buffer.from(PNG_1X1))).toBe(true)
+    })
+
+    it('a byte changed after intake is damaged and a changed head is wrong content, as for whole reads', async () => {
+        const bytes = zipPack(validPackFiles({ 'chat.css': CHAT_SHEET, 'images/a.png': { data: BIG, stored: true } }))
+        const source = spySource(bytes)
+        const pack = packOf(await intakePack(source, realJudge))
+        const file = pack.files.get('images/a.png')!
+        const offset = pack.directory.entry(file.entryIndex).offset
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+        const at = offset + 30 + view.getUint16(offset + 26, true) + view.getUint16(offset + 28, true)
+        bytes[at + 2_000_000] ^= 0xFF
+        expect(await readVerifiedFile(source, pack, 'images/a.png', 'parts')).toEqual({ ok: false, refusal: { code: 'damaged', name: 'images/a.png' } })
+        expect(await readVerifiedFile(source, pack, 'images/none.png', 'parts')).toEqual({ ok: false, refusal: { code: 'damaged', name: 'images/none.png' } })
+    })
+})
+
 describe('T1-30 a judge that fails', () => {
     it.each(['the check timed out', 'the worker crashed'])('%s is could-not-check, logs once in development and reads nothing more', async (message) => {
         const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
