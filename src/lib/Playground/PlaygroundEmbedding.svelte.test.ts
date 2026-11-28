@@ -117,6 +117,17 @@ async function type(input: HTMLInputElement, value: string): Promise<void> {
     await settle()
 }
 
+/** The key is never in a field: open Replace key when a key is saved, type, and Save. */
+async function replaceKey(target: HTMLElement, label: string, value: string): Promise<void> {
+    const span = Array.from(target.querySelectorAll('span')).find((s) => s.textContent?.trim() === label)!
+    const box = span.nextElementSibling as HTMLElement
+    box.querySelector<HTMLButtonElement>('[data-slot-key="replace"]')?.click()
+    await settle()
+    await type(box.querySelector<HTMLInputElement>('input')!, value)
+    box.querySelector<HTMLButtonElement>('[data-slot-key="save"]')!.click()
+    await settle()
+}
+
 const runButton = (target: HTMLElement) => {
     const buttons = Array.from(target.querySelectorAll('button'))
     return buttons[buttons.length - 1] as HTMLButtonElement
@@ -219,7 +230,7 @@ describe('the embedding page: the shared custom key and model', () => {
     test('guard: editing the custom key and request model writes the memory settings', async () => {
         const target = mountPage()
         await chooseModel(target, 'custom')
-        await type(field(target, 'Key/Password'), 'new-key')
+        await replaceKey(target, 'Key/Password', 'new-key')
         await type(field(target, 'Request Model'), 'new-model')
         expect(serviceKeyForUi('hypaCustomSettings.key', DBState.db)).toBe('new-key')
         expect(DBState.db.hypaCustomSettings.model).toBe('new-model')

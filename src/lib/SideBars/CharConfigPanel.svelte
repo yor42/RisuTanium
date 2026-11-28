@@ -46,6 +46,8 @@
     import { writeLiveCharacter } from "src/ts/liveCharacterWrite";
     import StudioEntryRow from "../Studio/StudioEntryRow.svelte";
     import StudioToggleLink from "../Studio/StudioToggleLink.svelte";
+    import MaskedKeyField from "../SettingsShell/connections/MaskedKeyField.svelte";
+    import { maskKeyHint } from "src/ts/connections/connectionHint";
 
     interface Props {
         // The Studio row sits at the top; a host that already offers Studio itself passes false.
@@ -1004,9 +1006,12 @@
                     placeholder="https://api.openai.com/v1" />
 
                 <span id="{uid}-openai-api-key" class="text-textcolor">{language.sidebarUi.apiKeyOverridesGlobal}</span>
-                <TextInput className="mb-4 mt-2" hideText
+                <MaskedKeyField
                     labelId="{uid}-openai-api-key"
-                    bind:value={DBState.db.characters[$selectedCharID].oaiTTSConfig.apiKey}
+                    fieldName="characterTtsApiKey"
+                    marginBottom
+                    hint={maskKeyHint(DBState.db.characters[$selectedCharID].oaiTTSConfig.apiKey ?? '', 'openai')}
+                    write={async (plain) => { DBState.db.characters[$selectedCharID].oaiTTSConfig.apiKey = plain }}
                     placeholder={language.sidebarUi.apiKeyEmptyPlaceholder} />
 
                 <span id="{uid}-openai-model" class="text-textcolor">{language.model}</span>

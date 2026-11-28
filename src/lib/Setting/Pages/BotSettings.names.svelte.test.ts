@@ -11,7 +11,7 @@
  * model catalog whose provider and format constants match the branches each run needs, plus the
  * highlighter, size and hotkey modules of `TextAreaInput.ime.svelte.test.ts`.
  */
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -86,6 +86,7 @@ const catalog = vi.hoisted(() => {
     const byId: Record<string, { provider: number, format: number }> = {
         vertex: { provider: LLMProvider.VertexAI, format: -1 },
         nai: { provider: -1, format: LLMFormat.NovelAI },
+        novelai: { provider: LLMProvider.NovelAI, format: LLMFormat.NovelAI },
     }
     return { LLMProvider, LLMFormat, byId }
 })
@@ -144,7 +145,7 @@ import BotSettings from './BotSettings.svelte'
 
 let mounted: Array<{ target: HTMLElement, app: Record<string, unknown> }> = []
 
-function mountPage(aiModel: string, subModel: string): HTMLElement {
+function mountPage(aiModel: string, subModel: string, extra: Record<string, unknown> = {}): HTMLElement {
     DBState.db = {
         useLegacyGUI: true,
         aiModel,
@@ -207,6 +208,7 @@ function mountPage(aiModel: string, subModel: string): HTMLElement {
         formatingOrder: [],
         promptPreprocess: false,
         auxModelUnderModelSettings: false,
+        ...extra,
     } as unknown as Database
     const target = document.createElement('div')
     document.body.appendChild(target)
@@ -249,7 +251,6 @@ describe('BotSettings text fields are named', () => {
         ['reverse proxy and Vertex', 'reverse_proxy', 'vertex', [
             language.settingsPage.projectId,
             fillLang(language.settingsPage.nameClientEmail, { name: 'Vertex' }),
-            fillLang(language.settingsPage.namePrivateKey, { name: 'Vertex' }),
             'URL',
             language.proxyRequestModel,
         ]],
@@ -300,5 +301,61 @@ describe('BotSettings icon buttons and colours', () => {
     test('regression reproducer: no Tailwind palette class remains', () => {
         expect(paletteClasses(mountPage('textgen_webui', 'nanogpt'))).toEqual([])
         expect(paletteClasses(mountPage('nai', 'ooba'))).toEqual([])
+    })
+})
+
+vi.mock('src/lib/Nexus/pattern/patternWarning', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('src/lib/Nexus/pattern/patternWarning')>()),
+    armDelayMs: () => 0,
+}))
+
+describe('the NovelAI token field is masked (#892)', () => {
+    const TOKEN = 'SYN-novelai-token-abcdef-5555'
+    const seeded = { connections: [{ id: 'conn-1', name: 'NovelAI', provider: 'novelai', key: TOKEN }] }
+
+    async function flush(): Promise<void> {
+        for (let round = 0; round < 4; round++) {
+            flushSync()
+            await tick()
+            await Promise.resolve()
+        }
+    }
+
+    function tokenField(target: HTMLElement): HTMLElement {
+        return target.querySelector<HTMLElement>('[data-slot-key="field"][data-slot="novelai.token"]')!
+    }
+
+    test('regression reproducer: a last-four chip shows and the saved token is in no field or attribute', async () => {
+        const target = mountPage('novelai', 'ooba', seeded)
+        await flush()
+        const field = tokenField(target)
+        expect(field.querySelector('[data-slot-key="chip"]')?.textContent).toContain('5555')
+        const everything = [target.innerHTML, ...Array.from(target.querySelectorAll<HTMLInputElement>('input, textarea')).map((el) => el.value)].join(' ')
+        expect(everything).not.toContain(TOKEN)
+        expect(everything).not.toContain('novelai-token')
+    })
+
+    test('Replace key opens the key field and Cancel closes it with the saved token kept', async () => {
+        const target = mountPage('novelai', 'ooba', seeded)
+        await flush()
+        tokenField(target).querySelector<HTMLButtonElement>('[data-slot-key="replace"]')!.click()
+        await flush()
+        expect(tokenField(target).querySelector('[data-slot-key="save"]')).not.toBeNull()
+        const cancel = Array.from(tokenField(target).querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Cancel')!
+        cancel.click()
+        await flush()
+        expect(tokenField(target).querySelector('[data-slot-key="replace"]')).not.toBeNull()
+        expect(DBState.db.connections?.[0].key).toBe(TOKEN)
+    })
+
+    test('Remove key asks first, then blanks the token', async () => {
+        const target = mountPage('novelai', 'ooba', seeded)
+        await flush()
+        tokenField(target).querySelector<HTMLButtonElement>('[data-slot-key="remove"]')!.click()
+        await flush()
+        expect(DBState.db.connections?.[0].key).toBe(TOKEN)
+        Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Remove key' && b.dataset.slotKey !== 'remove')!.click()
+        await flush()
+        expect(DBState.db.connections?.[0].key).toBe('')
     })
 })

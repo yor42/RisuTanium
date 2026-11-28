@@ -11,7 +11,7 @@
  * fields. T22 reproducer: the dashboard receives the first line of the connection's key; a reader that
  * only looks at the legacy root field hands it an empty string.
  */
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { Database, StoredDatabase } from 'src/ts/storage/database.svelte'
@@ -116,6 +116,11 @@ vi.mock('./SeparateParametersSection.svelte', () => ({ default: () => {} }))
 vi.mock('./Model/AuxModelSelectors.svelte', () => ({ default: () => {} }))
 vi.mock('./Model/ModelDataRefresh.svelte', () => ({ default: () => {} }))
 
+vi.mock('src/lib/Nexus/pattern/patternWarning', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('src/lib/Nexus/pattern/patternWarning')>()),
+    armDelayMs: () => 0,
+}))
+
 import { DBState } from 'src/ts/stores.svelte'
 import BotSettings from './BotSettings.svelte'
 import { changeToPreset, setDatabase } from 'src/ts/storage/database.svelte'
@@ -160,16 +165,25 @@ afterEach(async () => {
     mounted = []
 })
 
-describe('the NanoGPT section reads its key from the connection', () => {
-    test('T19 compatibility guard (passes before and after): clearing the key field resets the five NanoGPT fields', () => {
-        const target = mountNanoGPT('nano-key', 'nano-key')
-        const input = Array.from(target.querySelectorAll<HTMLInputElement>('input[type=password]')).find((node) => node.value === 'nano-key')
-        expect(input).toBeDefined()
-
-        input!.focus()
-        input!.value = ''
-        input!.dispatchEvent(new InputEvent('input', { inputType: 'deleteContentBackward' }))
+async function settle(): Promise<void> {
+    for (let round = 0; round < 4; round++) {
         flushSync()
+        await tick()
+        await Promise.resolve()
+    }
+}
+
+describe('the NanoGPT section reads its key from the connection', () => {
+    test('T19 compatibility guard: removing the key resets the five NanoGPT fields, and the key is in no field', async () => {
+        const target = mountNanoGPT('nano-key', 'nano-key')
+        expect(target.innerHTML).not.toContain('nano-key')
+        expect(Array.from(target.querySelectorAll<HTMLInputElement>('input')).some((node) => node.value === 'nano-key')).toBe(false)
+
+        const field = target.querySelector<HTMLElement>('[data-slot="nanogptKey"]')!
+        field.querySelector<HTMLButtonElement>('[data-slot-key="remove"]')!.click()
+        await settle()
+        Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Remove key' && b.dataset.slotKey !== 'remove')!.click()
+        await settle()
 
         expect(DBState.db.nanogptUseSubscriptionEndpoint).toBe(false)
         expect(DBState.db.nanogptSubscriptionState).toBe('')
@@ -201,7 +215,7 @@ describe('the NanoGPT section reads its key from the connection', () => {
 })
 
 describe('the working proxy key is shared by every preset that names its connection', () => {
-    test('T10b typing a new proxy key in the model tab reaches a preset switch to a preset that shared the pair', () => {
+    test('T10b replacing the proxy key in the model tab reaches a preset switch to a preset that shared the pair', async () => {
         const db = {
             characters: [], enabledModules: [], modules: [], templateDefaultVariables: '', requestRetrys: 0, banCharacterset: [],
             useLegacyGUI: false, hideApiKey: true, aiModel: 'reverse_proxy', subModel: 'reverse_proxy', customProxyRequestModel: 'm',
@@ -227,12 +241,17 @@ describe('the working proxy key is shared by every preset that names its connect
         const app = mount(BotSettings, { target, props: {} }) as unknown as Record<string, unknown>
         mounted.push({ target, app })
         flushSync()
-        const input = Array.from(target.querySelectorAll<HTMLInputElement>('input[type=password]')).find((node) => node.value === 'K-old')
-        expect(input).toBeDefined()
-        input!.focus()
-        input!.value = 'K-new'
-        input!.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: 'K-new' }))
+        const field = target.querySelector<HTMLElement>('[data-slot="proxyKey"]')!
+        expect(target.innerHTML).not.toContain('K-old')
+        field.querySelector<HTMLButtonElement>('[data-slot-key="replace"]')!.click()
+        await settle()
+        const input = field.querySelector<HTMLInputElement>('input')!
+        input.focus()
+        input.value = 'K-new'
+        input.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: 'K-new' }))
         flushSync()
+        field.querySelector<HTMLButtonElement>('[data-slot-key="save"]')!.click()
+        await settle()
         changeToPreset(1)
 
         expect(DBState.db.botPresetsId).toBe(1)

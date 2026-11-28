@@ -7,7 +7,7 @@
  * `$state` database with the same module mocks as BotSettings.connections.svelte.test.ts; the token
  * service is replaced by a spy, so this is a contract test of the call sites, not of the service.
  */
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -162,14 +162,24 @@ afterEach(async () => {
 })
 
 describe('the Vertex fields invalidate the token through the service', () => {
-    test('C1 typing the project id, the email or the private key calls the service with the live database', () => {
+    test('C1 typing the project id or the email, or saving the private key, calls the service with the live database', async () => {
         const target = mountVertex()
 
         typeInto(target, 'f1', 'proj-1')
         expect(invalidateVertexToken).toHaveBeenCalledTimes(1)
         typeInto(target, 'f2', 'sa@proj.iam.gserviceaccount.com')
         expect(invalidateVertexToken).toHaveBeenCalledTimes(2)
-        typeInto(target, 'f3', 'key-text')
+        const box = target.querySelector<HTMLElement>('[data-slot="vertexPrivateKey"]')!
+        const input = box.querySelector<HTMLInputElement>('input')!
+        input.value = 'key-text'
+        input.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: 'key-text', bubbles: true }))
+        flushSync()
+        box.querySelector<HTMLButtonElement>('[data-slot-key="save"]')!.click()
+        for (let round = 0; round < 4; round++) {
+            flushSync()
+            await tick()
+            await Promise.resolve()
+        }
         expect(invalidateVertexToken).toHaveBeenCalledTimes(3)
 
         for (const call of vi.mocked(invalidateVertexToken).mock.calls) {

@@ -9,7 +9,8 @@
     import { DBState } from "src/ts/stores.svelte"
     import { alertError } from "src/ts/alert";
     import ServiceConnectionRow from "src/lib/SettingsShell/connections/ServiceConnectionRow.svelte";
-    import { serviceEditorValue, serviceKeyForUi, setServiceKey } from "src/ts/connections/serviceKeys";
+    import SlotKeyField from "src/lib/SettingsShell/connections/SlotKeyField.svelte";
+    import { serviceKeyForUi } from "src/ts/connections/serviceKeys";
 
     let query = $state("");
     // Starts on the user's own embedding model; the default only fills an unset or empty one.
@@ -91,7 +92,7 @@
     <span id="{uid}-url" class="text-textcolor text-lg">URL</span>
     <TextInput labelId="{uid}-url" size="sm" marginBottom bind:value={customEmbeddingUrl}/>
     <span id="{uid}-proxy-key" class="text-textcolor text-lg">{language.proxyAPIKey}</span>
-    <TextInput labelId="{uid}-proxy-key" size="sm" marginBottom bind:value={() => serviceEditorValue(DBState.db, 'hypaCustomSettings.key'), (v) => { void setServiceKey(DBState.db, 'hypaCustomSettings.key', v) }}/>
+    <SlotKeyField keySlot={'hypaCustomSettings.key'} labelId="{uid}-proxy-key" marginBottom />
     <ServiceConnectionRow service="hypaCustomSettings.key" />
     <span id="{uid}-request-model" class="text-textcolor text-lg">{language.playground.requestModel}</span>
     <TextInput labelId="{uid}-request-model" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.model}/>
