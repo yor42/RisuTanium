@@ -13,7 +13,7 @@
 </script>
 
 <script lang="ts">
-    import { ChevronDownIcon, ChevronRightIcon, EllipsisIcon, FileTextIcon, FolderIcon, FolderOpenIcon, LinkIcon, PlusIcon, FolderPlusIcon, TriangleAlertIcon } from '@lucide/svelte'
+    import { ChevronDownIcon, ChevronRightIcon, EllipsisIcon, FileTextIcon, FolderIcon, FolderOpenIcon, LinkIcon, PlusIcon, FolderPlusIcon, TriangleAlertIcon, UploadIcon, DownloadIcon } from '@lucide/svelte'
     import { onDestroy, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
@@ -382,6 +382,30 @@
         runOwn(loreAddFolder(), 'opens', { token: { from: 'list', n: listToken }, target: null, hint: -1 })
     }
 
+    // The import holds the list token it started under and writes only when that surface is still live after the pick;
+    // a list destroyed during the pick writes nothing.
+    let importing = $state(false)
+    let destroyed = false
+    onDestroy(() => { destroyed = true })
+
+    async function importFiles(): Promise<void> {
+        if (!editable || importing) return
+        const surface: LoreSurface = { token: { from: 'list', n: listToken }, target: null, hint: -1 }
+        importing = true
+        try {
+            const { runLoreImport } = await import('../../ts/studio/edit/loreFileActions')
+            await runLoreImport(host, () => !destroyed && surfaceIsLive(surface), (op) => runOwn(op, 'same', surface))
+        } finally {
+            importing = false
+        }
+    }
+
+    async function exportFile(): Promise<void> {
+        if (rows.length === 0) return
+        const { runLoreExport } = await import('../../ts/studio/edit/loreFileActions')
+        await runLoreExport(readLive())
+    }
+
     function onRowKey(event: KeyboardEvent, row: LoreListRow): void {
         if (event.isComposing || event.keyCode === 229 || row.kind === 'nonEntry') return
         const plain = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
@@ -432,6 +456,8 @@
     <div class="flex flex-wrap items-center gap-2" data-part="studio-lore-toolbar">
         <button type="button" data-part="studio-lore-add" class="{buttonClass} flex items-center gap-1" disabled={!editable} onclick={addEntry}><PlusIcon size={16} aria-hidden="true" /><span>{language.studioLoreAddEntry}</span></button>
         <button type="button" data-part="studio-lore-add-folder" class="{buttonClass} flex items-center gap-1" disabled={!editable} onclick={addFolder}><FolderPlusIcon size={16} aria-hidden="true" /><span>{language.studioLoreAddFolder}</span></button>
+        <button type="button" data-part="studio-lore-import" class="{buttonClass} flex items-center gap-1" disabled={!editable || importing} onclick={importFiles}><UploadIcon size={16} aria-hidden="true" /><span>{language.import}</span></button>
+        <button type="button" data-part="studio-lore-export" class="{buttonClass} flex items-center gap-1" disabled={rows.length === 0} onclick={exportFile}><DownloadIcon size={16} aria-hidden="true" /><span>{language.export}</span></button>
         {#if bulkEnabling}
             <button
                 type="button"

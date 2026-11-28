@@ -19,10 +19,17 @@ import { clone, golden, liveCharacter, makeCharacter, putCharacter, row } from '
 import { LORE_FOLDER_PREFIX, trackedOf } from '../loreListModel'
 import { loreImport } from '../loreImport'
 import { loreDeleteFolder, loreFieldEdit, type LoreIds } from '../loreListOps'
+import { language } from 'src/lang'
+import type { PlainToastInit } from 'src/ts/toast/toastHost.svelte'
+import { runLoreImport } from '../loreFileActions'
 
 const h = vi.hoisted(() => ({ marks: 0 }))
 
 vi.mock('src/ts/globalApi.svelte', () => ({ getSaveMarkCount: () => h.marks }))
+// loreFileActions is the real module; only its heavy leaves are stubbed, and every dependency the test exercises is passed explicitly.
+vi.mock('src/ts/util', () => ({ selectMultipleFile: vi.fn() }))
+vi.mock('src/ts/process/lorebook.svelte', () => ({ parseLorebookImport: vi.fn() }))
+vi.mock('src/ts/downloadFile', () => ({ downloadFile: vi.fn() }))
 vi.mock('src/ts/stores.svelte', async () => {
     const { writable } = await import('svelte/store')
     return {
@@ -162,6 +169,42 @@ describe('T-AWAIT, builder side: the list is read at build time', () => {
         expect(holders((r) => r.id, 'id-x')).toBe(1)
         expect(holders((r) => (r.mode === 'folder' ? r.key : undefined), K('f'))).toBe(1)
         expect(lore().slice(-2).map((r) => [r.id, r.key])).toEqual([['n1', ''], [undefined, K('k1')]])
+    })
+})
+
+describe('T-AWAIT: the real runLoreImport with a deferred pick', () => {
+    const pickedFile = { name: 'a.json', data: new Uint8Array() }
+    const holders = (pick: (r: Row) => unknown, value: string): number => lore().filter((r) => pick(r) === value).length
+
+    test('an id and a folder key inserted while the pick is pending are re-issued, with the counts in the toast sub', async () => {
+        await start([row(0)])
+        const file = [{ ...row(10), id: 'id-x' }, folderRow(K('f'), 'F')]
+        let release!: (files: { name: string, data: Uint8Array }[]) => void
+        const pick = new Promise<{ name: string, data: Uint8Array }[]>((resolve) => { release = resolve })
+        const toasts: PlainToastInit[] = []
+        const running = runLoreImport('character', () => true, (op) => service.objEdit(A, op.build), { pick: () => pick, parse: () => file, toast: (init) => { toasts.push(init) } })
+        lore().push({ ...row(30), id: 'id-x' }, folderRow(K('f'), 'Outside'))
+        release([pickedFile])
+        await running
+        expect(holders((r) => r.id, 'id-x')).toBe(1)
+        expect(holders((r) => (r.mode === 'folder' ? r.key : undefined), K('f'))).toBe(1)
+        expect(lore()).toHaveLength(5)
+        expect(toasts).toEqual([{ kind: 'info', text: language.studioLoreImported(2), sub: language.studioLoreImportRenamed(1, 1) }])
+    })
+
+    test('a surface that is no longer live after the pick writes nothing and shows nothing', async () => {
+        await start([row(0)])
+        let release!: (files: { name: string, data: Uint8Array }[]) => void
+        const pick = new Promise<{ name: string, data: Uint8Array }[]>((resolve) => { release = resolve })
+        const toasts: PlainToastInit[] = []
+        let live = true
+        const running = runLoreImport('character', () => live, (op) => service.objEdit(A, op.build), { pick: () => pick, parse: () => [row(10)], toast: (init) => { toasts.push(init) } })
+        live = false
+        release([pickedFile])
+        await running
+        expect(lore()).toHaveLength(1)
+        expect(doneOf()).toHaveLength(0)
+        expect(toasts).toEqual([])
     })
 })
 
