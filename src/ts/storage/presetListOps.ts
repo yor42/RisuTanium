@@ -113,3 +113,61 @@ export function groupPresetsByFolder(db: Pick<Database, 'botPresets' | 'presetFo
     if (loose.indices.length > 0 || sections.length === 0) sections.push(loose)
     return sections
 }
+
+/** The ids of the list in order, an empty string for an entry without a usable id. */
+export function presetOrderIds(presets: readonly (Pick<botPreset, 'id'> | undefined)[]): string[] {
+    return presets.map((preset) => (typeof preset?.id === 'string' ? preset.id : ''))
+}
+
+/**
+ * The insertion position for `movePresetById` that moves the preset one place up (-1) or down (1) among the presets of
+ * its own folder section, passing the neighbouring row of that section; null at the end of the section or when no
+ * single preset holds the id. Rows of other sections between the two shift by one and keep their order among
+ * themselves.
+ */
+export function stepTargetIndex(db: Pick<Database, 'botPresets' | 'presetFolders'>, id: string, step: -1 | 1): number | null {
+    const at = presetIndexById(db.botPresets, id)
+    if (at === -1) return null
+    const section = groupPresetsByFolder(db).find((candidate) => candidate.indices.includes(at))
+    if (!section) return null
+    const neighbour = section.indices[section.indices.indexOf(at) + step]
+    if (neighbour === undefined) return null
+    return step === -1 ? neighbour : neighbour + 1
+}
+
+/**
+ * Puts the list back in the order `beforeIds` while it is still exactly in the order `afterIds`; false, writing nothing,
+ * when a later edit changed the order, added or removed a preset, or an id repeats. `botPresetsId` follows the
+ * preset that is active now, by id, so an undo never switches the active preset.
+ */
+export function restorePresetOrder(db: PresetListDb, beforeIds: readonly string[], afterIds: readonly string[]): boolean {
+    const current = presetOrderIds(db.botPresets)
+    if (current.length !== afterIds.length || current.some((id, at) => id === '' || id !== afterIds[at])) return false
+    if (new Set(current).size !== current.length || beforeIds.length !== current.length) return false
+    const byId = new Map(db.botPresets.map((preset) => [preset.id as string, preset]))
+    const restored = beforeIds.map((id) => byId.get(id))
+    if (restored.some((preset) => preset === undefined)) return false
+    const activeId = db.botPresets[db.botPresetsId]?.id
+    const next = restored as botPreset[]
+    const pointer = activeId === undefined ? -1 : next.findIndex((preset) => preset.id === activeId)
+    db.botPresets = next
+    if (pointer !== -1) db.botPresetsId = pointer
+    return true
+}
+
+/** One preset's folder before and after a move; `undefined` is no folder. */
+export interface FolderMoveStep {
+    id: string
+    before: string | undefined
+    after: string | undefined
+}
+
+/** Undoes a folder move while the preset still holds `after` and `before` still names a folder (or is none). */
+export function undoFolderMove(db: Pick<Database, 'botPresets' | 'presetFolders'>, move: FolderMoveStep): boolean {
+    const at = presetIndexById(db.botPresets, move.id)
+    if (at === -1 || db.botPresets[at].folderId !== move.after) return false
+    if (move.before !== undefined && !(db.presetFolders ?? []).some((folder) => folder.id === move.before)) return false
+    if (move.before === undefined) delete db.botPresets[at].folderId
+    else db.botPresets[at].folderId = move.before
+    return true
+}
