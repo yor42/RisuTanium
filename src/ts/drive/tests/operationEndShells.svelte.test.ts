@@ -318,7 +318,7 @@ describe('the Settings .bin import ends', () => {
         expect(end).toMatchObject({ operation: 'import', target: 'my backup.bin', outcome: 'committed', cause: null })
         expect(end.detail.source).toMatchObject({ kind: 'file', name: 'my backup.bin', size: bytes.length })
         expect(typeof (end.detail.source as { lastModified: number }).lastModified).toBe('number')
-        expect(end.detail.assets).toEqual({ written: 1, skipped: [] })
+        expect(end.detail.assets).toEqual({ written: 1, present: 0, skipped: [] })
         expect(end.detail.inlays).toMatchObject({ skipped: [], changed: false })
         expect(end.detail.repair).toEqual({ dropped: 0, changed: 0, recovered: 0 })
         expect(end.detail.incomplete).toEqual([])
@@ -479,7 +479,7 @@ describe('the Settings .bin import ends', () => {
 
         expect(batchFake.ctl.calls.length, 'the batch pipeline must have carried the assets').toBeGreaterThan(0)
         expect(end).toMatchObject({ operation: 'import', outcome: 'committed' })
-        expect(end.detail.assets).toEqual({ written: 1, skipped: [{ name: 'refused.png', reason: 'invalidName' }] })
+        expect(end.detail.assets).toEqual({ written: 1, present: 0, skipped: [{ name: 'refused.png', reason: 'invalidName' }] })
     })
 })
 
@@ -494,7 +494,7 @@ describe('the boot .bin import ends', () => {
         expect(end.detail.repair).toEqual({ dropped: 1, changed: 2, recovered: 3 })
         expect(end.detail.flushed).toBe(true)
         expect(end.detail.incomplete).toEqual([incompleteItem])
-        expect(end.detail.assets).toEqual({ written: 1, skipped: [] })
+        expect(end.detail.assets).toEqual({ written: 1, present: 0, skipped: [] })
         expect(bootEnd).toEqual({ kind: 'finished', result: installedResult })
     })
 
