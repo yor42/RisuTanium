@@ -178,7 +178,7 @@ import { DBState, moduleBackgroundEmbedding, selectedCharID } from '../../ts/sto
 import { setDatabase } from '../../ts/storage/database.svelte'
 import { updateColorScheme } from '../../ts/gui/colorscheme'
 import { packBaseTone } from '../../ts/gui/surfaceTone'
-import { BUILTIN_PACKS } from '../../ts/themePack/builtins'
+import { builtinSheetForTests } from '../../ts/themePack/fixtures/bundledPacks'
 import { buildAppliedText, commitPackSheet, resetPackSheetForTests } from '../../ts/themePack/apply'
 import { chatCommitInput } from '../../ts/themePack/fixtures/packCommit'
 import { judgeAreaSheet } from '../../ts/themePack/index'
@@ -195,11 +195,11 @@ const SCREEN_FILE = 'src/lib/ChatScreens/ChatScreen.svelte'
 const CARD = '<style>.r337{color:#123456}</style><div style="position:fixed;inset:0;z-index:10;background:#ff0000"></div>'
 // The built-in Origin Navy sheet with its canvas made translucent; the judge needs the on-accent text pinned to black
 // because the worst case it judges over a translucent canvas is lighter than the opaque one.
-const TRANSLUCENT = BUILTIN_PACKS.find((p) => p.id === 'builtin:origin-navy')!.chatCss
+const TRANSLUCENT = builtinSheetForTests('origin-navy', 'chat')
     .replace(/--nexus-canvas:\s*#21222c;/, '--nexus-canvas: rgb(33 34 44 / 0.6);\n  --color-on-accent: #000000;')
 // A judged sheet that paints the shell and the transcript with `!important`; the transcript fill equals the pack canvas,
 // so the contrast the judge checks is the one Origin Navy already passes.
-const IMPORTANT_CANVAS = BUILTIN_PACKS.find((p) => p.id === 'builtin:origin-navy')!.chatCss
+const IMPORTANT_CANVAS = builtinSheetForTests('origin-navy', 'chat')
     + '\n[data-part="chat-shell"] { background-color: #21222c !important; }\n[data-part="chat-transcript"] { background-color: #21222c !important; }'
 // jsdom's `style.cssText` keeps only the colour and the border and drops the text shadow, radius and padding, so those
 // three options are left off here; they travel in the same inline declaration list as the two that are kept.
@@ -311,12 +311,6 @@ function setScheme(scheme: 'light' | 'default'): void {
     DBState.db.colorSchemeName = scheme
 }
 
-function pack(id: string) {
-    const found = BUILTIN_PACKS.find((p) => p.id === id)
-    if (!found) throw new Error(`no built-in ${id}`)
-    return found
-}
-
 /** A sheet through the real path: judge, applied text, commit (which syncs the real gate). */
 async function commitJudged(css: string): Promise<void> {
     const judged = judgeAreaSheet('chat', css, undefined, 'chat')
@@ -325,7 +319,7 @@ async function commitJudged(css: string): Promise<void> {
     await settle()
 }
 
-const commitBuiltin = (id: string): Promise<void> => commitJudged(pack(id).chatCss)
+const commitBuiltin = (id: string): Promise<void> => commitJudged(builtinSheetForTests(id.replace(/^builtin:/, ''), 'chat'))
 
 // ---- the cascade model over the compiled component CSS
 

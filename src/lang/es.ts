@@ -4143,6 +4143,7 @@ export const languageSpanish = {
     "themePackSize": (size: string) => `Tamaño: ${size}`,
     "themePackLicense": (license: string) => `Licencia: ${license}`,
     "themePackAttribution": (attribution: string) => `Atribución: ${attribution}`,
+    "themePackShipsWithApp": "Se incluye con la aplicación y se actualiza con ella. No se puede quitar.",
     "themePackDetails": "Detalles",
     "themePackDetailsFor": (name: string) => `Detalles: ${name}`,
     "themePackFonts": "Licencias de fuentes",

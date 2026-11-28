@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { BUILTIN_PACKS } from './builtins'
+import { builtinSheetForTests } from './fixtures/bundledPacks'
 import { decls } from './csslit'
 import { judgeAreaSheet } from './index'
 import { baseTokenLayers, packDefaultScheme, sameScheme } from './packColours'
@@ -21,7 +22,7 @@ describe('T7 packDefaultScheme: the built-ins', () => {
     }
     for (const pack of BUILTIN_PACKS) {
         it(`${pack.slug} gives its pinned scheme`, () => {
-            const scheme = packDefaultScheme(canonicalOf(pack.chatCss), pack.modes.length === 1 && pack.modes[0] === 'light' ? 'light' : 'dark')
+            const scheme = packDefaultScheme(canonicalOf(builtinSheetForTests(pack.slug, 'chat')), pack.modes.length === 1 && pack.modes[0] === 'light' ? 'light' : 'dark')
             expect(scheme).toEqual(PINS[pack.slug])
         })
     }

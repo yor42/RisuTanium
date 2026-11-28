@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import type { character as Character } from '../../ts/storage/database.svelte'
-import { BUILTIN_PACKS } from '../../ts/themePack/builtins'
+import { builtinSheetForTests } from '../../ts/themePack/fixtures/bundledPacks'
 import { CascadeModel, compileRules } from '../../styles/tests/cascadeModel'
 
 vi.mock('../../ts/stores.svelte', async () => {
@@ -71,7 +71,7 @@ vi.mock('../../lang', () => ({ language: {
 import ShellMessageList from './ShellMessageList.svelte'
 import { DBState } from '../../ts/stores.svelte'
 
-const OFFICE_CSS = BUILTIN_PACKS.find((p) => p.id === 'builtin:office-sheet')!.chatCss
+const OFFICE_CSS = builtinSheetForTests('office-sheet', 'chat')
 const IMPORTANT_LIST = OFFICE_CSS + '\n[data-part="chat-message-list"] { background-color: #ffffff !important; }'
 
 class FakeObserver {

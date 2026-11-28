@@ -4140,6 +4140,7 @@ export const languageKorean = {
     "themePackSize": (size: string) => `크기: ${size}`,
     "themePackLicense": (license: string) => `라이선스: ${license}`,
     "themePackAttribution": (attribution: string) => `출처 표기: ${attribution}`,
+    "themePackShipsWithApp": "앱에 포함되어 있으며 앱과 함께 업데이트돼요. 삭제할 수 없어요.",
     "themePackDetails": "상세 정보",
     "themePackDetailsFor": (name: string) => `상세 정보: ${name}`,
     "themePackFonts": "폰트 라이선스",

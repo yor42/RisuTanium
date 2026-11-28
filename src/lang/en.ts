@@ -4282,6 +4282,7 @@ export const languageEnglish = {
     themePackSize: (size: string) => `Size: ${size}`,
     themePackLicense: (license: string) => `License: ${license}`,
     themePackAttribution: (attribution: string) => `Attribution: ${attribution}`,
+    themePackShipsWithApp: 'Ships with the app and updates with it. It cannot be removed.',
     themePackDetails: 'Details',
     themePackDetailsFor: (name: string) => `Details: ${name}`,
     themePackFonts: 'Font licenses',

@@ -4185,6 +4185,7 @@ export const languageChineseTraditional = {
     "themePackSize": (size: string) => `大小：${size}`,
     "themePackLicense": (license: string) => `授權：${license}`,
     "themePackAttribution": (attribution: string) => `署名：${attribution}`,
+    "themePackShipsWithApp": '隨應用程式一起提供，並隨應用程式更新。無法移除。',
     "themePackDetails": '詳細資訊',
     "themePackDetailsFor": (name: string) => `詳細資訊：${name}`,
     "themePackFonts": '字型授權',

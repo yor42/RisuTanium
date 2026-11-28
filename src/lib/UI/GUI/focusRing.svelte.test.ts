@@ -88,7 +88,7 @@ vi.mock(import('src/lib/UI/Home/homeEmptyActions'), () => ({
 
 import { colorSchemeList, colorSchemePresets, updateColorScheme } from 'src/ts/gui/colorscheme'
 import { trimMarkdown } from 'src/ts/parser/parser.svelte'
-import { BUILTIN_PACKS } from 'src/ts/themePack/builtins'
+import { builtinSheetForTests } from 'src/ts/themePack/fixtures/bundledPacks'
 import { buildAppliedText, commitPackSheet, resetPackSheetForTests } from 'src/ts/themePack/apply'
 import { chatCommitInput } from 'src/ts/themePack/fixtures/packCommit'
 import { judgeAreaSheet } from 'src/ts/themePack/index'
@@ -352,8 +352,7 @@ describe('TB5f: a theme pack does not move the classic ring', () => {
     })
 
     test('under light with Origin Navy on, the focused Button keeps the light role and the new-screen ring sits on the pack base', () => {
-        const navy = BUILTIN_PACKS.find((p) => p.id === 'builtin:origin-navy')!
-        const judged = judgeAreaSheet('chat', navy.chatCss, undefined, 'chat')
+        const judged = judgeAreaSheet('chat', builtinSheetForTests('origin-navy', 'chat'), undefined, 'chat')
         expect(judged.result.ok).toBe(true)
         expect(commitPackSheet(chatCommitInput(buildAppliedText(judged, () => '')))).toEqual({ ok: true })
         expect(document.documentElement.hasAttribute('data-theme-pack-base')).toBe(true)

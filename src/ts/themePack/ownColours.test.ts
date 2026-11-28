@@ -49,6 +49,7 @@ import { CustomCSSStore } from '../stores.svelte'
 import { PACK_SCHEME_NAME, colorSchemePresets, defaultColorScheme, schemeReadable, setPackSchemeProvider, setSettingsOwnColours, updateColorScheme, type ColorScheme } from '../gui/colorschemeCore'
 import { isLite } from '../lite'
 import { BUILTIN_PACKS } from './builtins'
+import { builtinSheetForTests } from './fixtures/bundledPacks'
 import { packDefaultScheme } from './packColours'
 import { readJudgement } from './judgeClient'
 import { judgeAreaSheet } from './index'
@@ -104,7 +105,7 @@ describe('schemeReadable', () => {
             expect(schemeReadable(colorSchemePresets[name]), name).toBe(true)
         }
         for (const pack of BUILTIN_PACKS) {
-            const chat = judgeAreaSheet('chat', pack.chatCss, undefined, 'chat')
+            const chat = judgeAreaSheet('chat', builtinSheetForTests(pack.slug, 'chat'), undefined, 'chat')
             for (const base of ['dark', 'light'] as const) {
                 const scheme = packDefaultScheme(chat.canonical, base)
                 expect(scheme, pack.slug).not.toBeNull()

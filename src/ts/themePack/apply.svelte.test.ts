@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { canonicalStylesheet } from './canonical'
 import { shapeOnlySheet, shapeTokenNames } from './shapeMode'
 import { judgeAreaSheet, type PackSheetsJudgement } from './index'
-import { builtinPackById, type BuiltinPack } from './builtins'
+import { BUILTIN_PACKS, builtinPackById } from './builtins'
 import { judgeSessionOverForTests, openJudgeSession, type JudgeRequest, type JudgeSession, type JudgeWorkerLike } from './judgeClient'
 import type { IntakeRefusal, PackJudge } from './intake'
 import { handleJudgeRequest, type JudgeResponse } from './worker/judgeHandler'
@@ -24,6 +24,7 @@ import studioScratchWhite from '../../../docs/design/studio/themes/scratch-white
 import { declareSurface, installThemePackGate, registerThemePackElement, resetThemePackGateForTests } from './surfaceGate.svelte'
 import { getFileSrc } from '../globalApi.svelte'
 import { packBaseTone } from '../gui/surfaceTone'
+import { builtinSheetForTests, syntheticBuiltinForTests, syntheticBuiltinOfSheetForTests } from './fixtures/bundledPacks'
 import { chatCommitInput, chatElementOf } from './fixtures/packCommit'
 import {
     CHAT_SHEET, concat, fakeFont, manifestText, PLAIN_CHAT_SHEET, PNG_1X1, utf8, validPackFiles, zipPack, type PackFile,
@@ -557,45 +558,137 @@ describe('T3-4 a pack that cannot apply', () => {
         expect(world.reads).toEqual([])
     })
 
-    it('a built-in the validator refuses: refused with one synthetic sheetRefused refusal in intake form', async () => {
-        const builtin: BuiltinPack = { id: 'builtin:bad', slug: 'bad', name: 'Bad', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: 'body{color:red}' }
-        const prepared = await prepare({ kind: 'builtin', pack: builtin })
+    it('a built-in archive the validator refuses: refused with the sheetRefused refusal of the intake', async () => {
+        const prepared = await prepare({ kind: 'builtin', pack: syntheticBuiltinOfSheetForTests('body{color:red}') })
         const judged = judgeAreaSheet('chat', 'body{color:red}', undefined, 'chat')
         expect(judged.result.ok).toBe(false)
-        expect(prepared).toEqual({ ok: false, reason: 'refused', refusals: [{ code: 'sheetRefused', sheet: 'chat.css', errors: judged.result.errors }] })
-    })
-
-    it('a built-in that names a file is refused (a built-in bundles none)', async () => {
-        const builtin: BuiltinPack = { id: 'builtin:files', slug: 'files', name: 'Files', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: CHAT_SHEET }
-        expect(await prepare({ kind: 'builtin', pack: builtin })).toEqual({ ok: false, reason: 'refused' })
+        expect(prepared).toEqual({ ok: false, reason: 'refused', refusals: [expect.objectContaining({ code: 'sheetRefused', sheet: 'chat.css', errors: judged.result.errors })] })
         expect(blobs.minted).toEqual([])
     })
 
     it('a built-in whose judge rejects or answers without a chat verdict: couldNotCheck', async () => {
-        const builtin: BuiltinPack = { id: 'builtin:ok', slug: 'ok', name: 'Ok', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET }
+        const builtin = syntheticBuiltinOfSheetForTests(PLAIN_CHAT_SHEET)
         const rejecting: PackJudge = async () => { throw new Error('no answer') }
         const empty: PackJudge = async (): Promise<PackSheetsJudgement> => ({ ok: true, areas: {} })
         expect(await preparePackSheet({ kind: 'builtin', pack: builtin }, judgeSessionOverForTests(rejecting), ALWAYS)).toEqual({ ok: false, reason: 'couldNotCheck' })
         expect(await preparePackSheet({ kind: 'builtin', pack: builtin }, judgeSessionOverForTests(empty), ALWAYS)).toEqual({ ok: false, reason: 'couldNotCheck' })
     })
 
-    it('a built-in that the validator accepts applies its judged text with no blobs and no skipped areas', async () => {
-        const builtin: BuiltinPack = { id: 'builtin:ok', slug: 'ok', name: 'Ok', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET }
-        const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
+    it('a built-in archive the validator accepts applies its judged text with no blobs and no skipped areas', async () => {
+        const prepared = accepted(await prepare({ kind: 'builtin', pack: syntheticBuiltinOfSheetForTests(PLAIN_CHAT_SHEET) }))
         expect(prepared).toEqual({ ok: true, blobs: [], skippedAreas: [], defaultScheme: null, elements: [{ area: 'chat', text: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, shapeText: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, base: 'dark' }], popups: null })
     })
 
     it('a built-in whose raw text differs from its canonical text applies the judged canonical text, never the raw one', async () => {
         const raw = `/* note */ ${PLAIN_CHAT_SHEET}`
-        const builtin: BuiltinPack = { id: 'builtin:commented', slug: 'commented', name: 'Commented', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: raw }
         const canonical = judgeAreaSheet('chat', raw, undefined, 'chat').canonical
         expect(canonical).not.toBe(raw)
-        const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
+        const prepared = accepted(await prepare({ kind: 'builtin', pack: syntheticBuiltinOfSheetForTests(raw) }))
         expect(prepared).toEqual({ ok: true, blobs: [], skippedAreas: [], defaultScheme: null, elements: [{ area: 'chat', text: canonical, shapeText: canonical, base: 'dark' }], popups: null })
         expect(chatElementOf(prepared).text).not.toContain('note')
     })
 })
 
+describe('D-AP the bundled built-in archive path (the installed-archive intake over pinned bundled bytes)', () => {
+    const packA = (): Uint8Array => packOf(TWO_FONTS_SHEET, [FONT_A, FONT_B], {}, 'Pack A')
+    const packB = (): Uint8Array => packOf(TWO_FONTS_SHEET, [FONT_A, FONT_B], {}, 'Pack B')
+    const builtin = (bytes: Uint8Array, slug = 'synthetic'): ApplySource => ({ kind: 'builtin', pack: syntheticBuiltinForTests(bytes, { slug }) })
+
+    it('AP-1 A2: an archive with fonts and an image mints blobs and creates the chat element an installed archive would; replacing it revokes them', async () => {
+        const bytes = packOf(MIXED_SHEET, [FONT_A, FONT_B], { 'images/a.png': PNG_1X1 })
+        const installed = accepted(await prepareArchive(bytes))
+        expect(installed.blobs).toHaveLength(3)
+        blobs.minted.length = 0
+        blobs.revoked.length = 0
+        const prepared = accepted(await prepare(builtin(bytes)))
+        expect(prepared.blobs).toHaveLength(3)
+        expect(prepared.blobs.every((url) => BLOB_URL_PATTERN.test(url))).toBe(true)
+        expect(prepared.elements.map((element) => [element.area, element.text !== null])).toEqual(installed.elements.map((element) => [element.area, element.text !== null]))
+        commitPrepared(prepared)
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat'])
+        expect(blobs.revoked).toEqual([])
+        const next = accepted(await prepare(builtin(packA(), 'next')))
+        commitPrepared(next)
+        expect([...blobs.revoked].sort()).toEqual([...prepared.blobs].sort())
+        expect(commitPackSheet(null)).toEqual({ ok: true })
+        expectBalanced()
+    })
+
+    it('AP-2 A4 a refused studio sheet breaks the whole built-in with the intake refusals, nothing minted and nothing applied', async () => {
+        const bytes = packOf(PLAIN_CHAT_SHEET, [], { 'studio.css': 'body{color:red}' })
+        const prepared = await prepare(builtin(bytes))
+        expect(prepared).toEqual({ ok: false, reason: 'refused', refusals: [expect.objectContaining({ code: 'sheetRefused', sheet: 'studio.css' })] })
+        expect(blobs.minted).toEqual([])
+        expect(packElements()).toHaveLength(0)
+    })
+
+    it('AP-3a a missing archive: files, the judge is never called, nothing minted', async () => {
+        const rig = judgeRig()
+        const pack = { ...syntheticBuiltinForTests(packA()), archive: { url: '/src/ts/themePack/bundled/no-such-pack.risutheme', size: 10, sha256: '0'.repeat(64) } }
+        expect(await prepare({ kind: 'builtin', pack }, rig)).toEqual({ ok: false, reason: 'files' })
+        expect(rig.spawns()).toBe(0)
+        expect(blobs.minted).toEqual([])
+    })
+
+    it('AP-3b the pinned size differs from the bytes: files, never judged', async () => {
+        const bytes = packA()
+        const rig = judgeRig()
+        for (const size of [bytes.length + 1, bytes.length - 1]) {
+            expect(await prepare({ kind: 'builtin', pack: syntheticBuiltinForTests(bytes, { size }) }, rig)).toEqual({ ok: false, reason: 'files' })
+        }
+        expect(rig.spawns()).toBe(0)
+        expect(blobs.minted).toEqual([])
+    })
+
+    it('AP-3c same size, different bytes: files, never judged', async () => {
+        const pinned = packOf(PLAIN_CHAT_SHEET, [], {}, 'Pack AAAA')
+        const served = packOf(PLAIN_CHAT_SHEET, [], {}, 'Pack BBBB')
+        expect(served.length).toBe(pinned.length)
+        expect(served).not.toEqual(pinned)
+        const pack = syntheticBuiltinForTests(served, { sha256: createHash('sha256').update(pinned).digest('hex'), size: pinned.length })
+        const rig = judgeRig()
+        expect(await prepare({ kind: 'builtin', pack }, rig)).toEqual({ ok: false, reason: 'files' })
+        expect(rig.spawns()).toBe(0)
+        expect(blobs.minted).toEqual([])
+    })
+
+    it('AP-3d a read that throws could not be checked: couldNotCheck (not files), never judged', async () => {
+        const rig = judgeRig()
+        const pack = syntheticBuiltinForTests(packA(), { url: 'not a url' })
+        expect(await prepare({ kind: 'builtin', pack }, rig)).toEqual({ ok: false, reason: 'couldNotCheck' })
+        expect(rig.spawns()).toBe(0)
+        expect(blobs.minted).toEqual([])
+    })
+
+    it('AP-4a stale while the archive is being read answers stale, whatever the read found', async () => {
+        const bytes = packA()
+        const rig = judgeRig()
+        for (const pack of [syntheticBuiltinForTests(bytes, { size: bytes.length + 1 }), syntheticBuiltinForTests(bytes, { url: 'not a url' })]) {
+            expect(await prepare({ kind: 'builtin', pack }, rig, currentTimes(0))).toEqual({ ok: false, stale: true })
+        }
+        expect(rig.spawns()).toBe(0)
+    })
+
+    it('AP-4b stale after the first mint revokes it; a throw after the first mint revokes it', async () => {
+        // The built-in path asks after the read, the hash, the intake, then each file read.
+        expect(await prepare(builtin(packA()), judgeRig(), currentTimes(4))).toEqual({ ok: false, stale: true })
+        expect(blobs.minted).toHaveLength(1)
+        expectBalanced()
+        world.verifiedCalls = 0
+        world.verifiedThrowAt = 2
+        expect(await prepare(builtin(packB()))).toEqual({ ok: false, reason: 'couldNotCheck' })
+        expect(blobs.minted).toHaveLength(2)
+        expectBalanced()
+        expect(packElements()).toHaveLength(0)
+    })
+
+    it('AP-4c the shipped listing carries the same pins the files have (the setup reader serves the bundled bytes)', async () => {
+        for (const pack of BUILTIN_PACKS) {
+            const prepared = accepted(await prepare({ kind: 'builtin', pack }))
+            expect(prepared.elements.map((element) => element.area)).toEqual(['chat'])
+        }
+    })
+})
 describe('TB-3 the own-colour verdict carried by prepareBuiltin and prepareArchive', () => {
     // REPRODUCER for the carriage: no pack sheet tags a rule yet, so each case tags the judge's answer for one label.
     const tagged = (label: string, rule: 'contrast' | 'readability' | 'layout' | null) => (response: JudgeResponse): JudgeResponse => {
@@ -606,8 +699,8 @@ describe('TB-3 the own-colour verdict carried by prepareBuiltin and prepareArchi
         const warning = { selector: 's', prop: 'color', why: 'w', ...(rule === null ? {} : { rule }) }
         return { ...response, results: { ...response.results, [label]: { ...verdict, warnings: [...verdict.warnings, warning] } } }
     }
-    const builtin: BuiltinPack = { id: 'builtin:ok', slug: 'ok', name: 'Ok', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET }
-    const lightCss = builtinPackById('builtin:scratch-white')!.chatCss
+    const builtin = syntheticBuiltinOfSheetForTests(PLAIN_CHAT_SHEET)
+    const lightCss = builtinSheetForTests('scratch-white', 'chat')
     const archiveOf = (modes: string[], chatCss: string): Uint8Array => zipPack(validPackFiles({ 'manifest.json': manifestText({ name: 'Tagged', modes }), 'chat.css': chatCss }))
 
     it('a builtin whose chat verdict carries a contrast or readability note: the trigger is carried', async () => {
@@ -774,7 +867,7 @@ describe('T3-9 no asset URL path', () => {
         const bytes = packOf(MIXED_SHEET, [FONT_A, FONT_B], { 'images/a.png': PNG_1X1 })
         const key = store(bytes)
         accepted(await prepare({ kind: 'archive', key }))
-        accepted(await prepare({ kind: 'builtin', pack: { id: 'builtin:p', slug: 'p', name: 'P', version: '1', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET } }))
+        accepted(await prepare({ kind: 'builtin', pack: syntheticBuiltinOfSheetForTests(PLAIN_CHAT_SHEET, { slug: 'p' }) }))
         expect(vi.mocked(getFileSrc)).not.toHaveBeenCalled()
         expect(world.reads).toEqual([key])
     })
@@ -912,10 +1005,9 @@ describe('S4a the studio element (MC-3121: shape variant only, no base, in both 
     })
 
     it('A3: a light chat sheet beside a design studio sheet: chat keeps its light base, studio applies its shape text with no base in both modes', async () => {
-        const light = builtinPackById('builtin:scratch-white')!
         const bytes = zipPack(validPackFiles({
             'manifest.json': manifestText({ name: 'Light', modes: ['light'] }),
-            'chat.css': light.chatCss,
+            'chat.css': builtinSheetForTests('scratch-white', 'chat'),
             'studio.css': studioScratchWhite.replace(/\r\n/g, '\n'),
         }))
         const prepared = accepted(await prepareArchive(bytes))
@@ -1036,13 +1128,28 @@ describe('S4a the studio element (MC-3121: shape variant only, no base, in both 
         expect(blobs.minted).toHaveLength(0)
     })
 
-    it('A7: a chat-only built-in prepares one chat element with its judged text and its base (compatibility)', async () => {
+    // Compatibility guard (passes before and after the move to bundled archives): the values were dumped from the real judge on the
+    // base before the change, so the archive path applies exactly what the text-bundled built-ins applied.
+    const D0_SCHEMES: Record<string, unknown> = {
+        'origin-navy': { bgcolor: '#21222c', darkbg: '#282a38', darkbutton: '#2f3446', darkBorderc: '#363c52', borderc: '#8be9fd', textcolor: '#f8f8f2', textcolor2: '#9aa5c8', selected: '#343746', draculared: '#ff5555', type: 'dark' },
+        'banana-cocoa': { bgcolor: '#b2c7da', darkbg: '#dce6ee', darkbutton: '#a6b9cb', darkBorderc: '#a0b3c4', borderc: '#6b3f18', textcolor: '#191919', textcolor2: '#46505b', selected: '#fffbe0', draculared: '#c62828', type: 'light' },
+        'scratch-white': { bgcolor: '#fdfdfa', darkbg: '#f5f5f2', darkbutton: '#ececea', darkBorderc: '#e0e0de', borderc: '#1f4aa8', textcolor: '#2b2e34', textcolor2: '#545a64', selected: '#fffef5', draculared: '#b3261e', type: 'light' },
+        'office-sheet': { bgcolor: '#f3f4f6', darkbg: '#ebecee', darkbutton: '#e4e5e8', darkBorderc: '#d1d3d5', borderc: '#1a55ba', textcolor: '#1f2328', textcolor2: '#50565f', selected: '#ffffff', draculared: '#b42318', type: 'light' },
+    }
+
+    it('A7/P-1: a chat-only built-in prepares one chat element with its judged text, its base and its default scheme, no trigger, no popups', async () => {
         for (const slug of ['origin-navy', 'banana-cocoa', 'scratch-white', 'office-sheet']) {
             const prepared = accepted(await prepare({ kind: 'builtin', pack: builtinPackById(`builtin:${slug}`)! }))
             const pack = builtinPackById(`builtin:${slug}`)!
-            expect(prepared.elements.map((element) => element.area)).toEqual(['chat'])
-            expect(prepared.elements[0].text).toBe(judgeAreaSheet('chat', pack.chatCss, undefined, 'chat').canonical)
-            expect(prepared.elements[0].base).toBe(pack.modes.length === 1 && pack.modes[0] === 'light' ? 'light' : 'dark')
+            const canonical = judgeAreaSheet('chat', builtinSheetForTests(slug, 'chat'), undefined, 'chat').canonical
+            expect(prepared.elements.map((element) => element.area), slug).toEqual(['chat'])
+            expect(prepared.elements[0].text, slug).toBe(canonical)
+            expect(prepared.elements[0].base, slug).toBe(pack.modes.length === 1 && pack.modes[0] === 'light' ? 'light' : 'dark')
+            expect(prepared.defaultScheme, slug).toEqual(D0_SCHEMES[slug])
+            expect(Object.hasOwn(prepared, 'ownColourTrigger'), slug).toBe(false)
+            expect(prepared.popups, slug).toBeNull()
+            expect(prepared.blobs, slug).toEqual([])
+            expect(prepared.skippedAreas, slug).toEqual([])
         }
     })
 })

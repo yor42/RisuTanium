@@ -4141,6 +4141,7 @@ export const languageChinese = {
     "themePackSize": (size: string) => `大小：${size}`,
     "themePackLicense": (license: string) => `许可证：${license}`,
     "themePackAttribution": (attribution: string) => `署名：${attribution}`,
+    "themePackShipsWithApp": "随应用一起提供，并随应用更新。无法移除。",
     "themePackDetails": "详细信息",
     "themePackDetailsFor": (name: string) => `详细信息：${name}`,
     "themePackFonts": "字体许可证",
