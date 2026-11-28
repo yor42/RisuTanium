@@ -1,6 +1,6 @@
 # Import reuse of identical data (#224, NEW-import-dedup) and re-import asset resend (#278, CHORE-102): sizing and plan
 
-Status: **plan, revision 1** (2026-11-28, from `origin/main` 5968b7485). Ticket yor42/RisuTanium#224 (`Refs #224`), related #278. Planning only: no application code, no persisted-format decision taken here. Items marked **Q** are maintainer questions for lane A, each with a recommendation. Gate tier: **2** if any code is added (persisted read/write/GC and asset lifecycle); the measurement stage is Tier 0 (docs only). Decisions respected: MC-175, MC-223, MC-350, MC-774, MC-011, MC-2131 (parked #278), and the #224 issue text ("no format, .bin or migration change (maintainer decision)").
+Status: **plan, revision 2** (2026-11-28, from `origin/main` 5968b7485; maintainer answers to Q1 to Q4 folded in, section 7). Ticket yor42/RisuTanium#224 (`Refs #224`), related #278. Planning only: no application code, no persisted-format decision taken here. Items marked **Q** are maintainer questions for lane A, each with a recommendation. Gate tier: **2** if any code is added (persisted read/write/GC and asset lifecycle); the measurement stage is Tier 0 (docs only). Decisions respected: MC-175, MC-223, MC-350, MC-774, MC-011, MC-2131 (parked #278), and the #224 issue text ("no format, .bin or migration change (maintainer decision)").
 
 ## 0. The headline: the build part of #224 is already merged
 
@@ -69,16 +69,16 @@ This is **not** covered by #116 (units, not assets). Mechanism, read from source
 | B. Size and hash-name skip | Skip an entry when its name is a 64-hex hash name and the store reports the same size (the sized listing `listAssetsSized` exists on desktop and Android; one listing per import, no reads) | none | A same-size different-content file under a hash name (only after an interrupted earlier write; whether writes are temp file then rename is to be verified at Gate 1) would be left in place |
 | C. Verify skip | Skip only when stored length and checksum equal the entry's (as `targetHolds` does for `.rtb`): reads the stored file locally, no IPC send | none | cost of reading stored bytes, still far below sending them |
 
-Recommendation: **A now, C if the cost is raised again**. #278 was re-parked after measurement (OPQ6) with "revisit if the measured cost becomes a problem", and C reuses the proven `.rtb` rule instead of trusting a name.
+Recommendation was A now; the maintainer chose **C now** (section 7). #278 was re-parked after measurement (OPQ6) with "revisit if the measured cost becomes a problem", and C reuses the proven `.rtb` rule instead of trusting a name.
 
 ## 5. Stages
 
 | Stage | Content | Tier | Needs maintainer |
 |---|---|---|---|
 | 1 (this PR) | This plan, `Agents/mc/224.md`, `Refs #224` | docs | no |
-| 2 | Measurement record, **no code** (the remaining scope of #224): the PC table in section 3, plus the Note 9 index-time row only if Q2 says so; record in Agents; close #224 if the maintainer agrees | 0 | Q1, Q2 |
-| 3 (optional) | A committed, test-only helper that prints counts (fresh keys by type, reused, duplicates) over `ST1`/`ST2`/`IT1`-style rigs | 1 | Q2 |
-| 4 (only on Q3 = C) | `.bin` asset copy skips an asset whose stored length and checksum equal the entry's; shared helper with `targetHolds`; whole and streamed `.bin` and Node server store arms | 2 (asset lifecycle) | Q3 |
+| 1b | Measurement record, **no code** (the remaining scope of #224): the PC table in section 3, plus the Note 9 index-time row only if Q2 says so; record in Agents; close #224 if the maintainer agrees | 0 | Q1, Q2 |
+| (dropped, Q2) | A committed, test-only helper that prints counts (fresh keys by type, reused, duplicates) over `ST1`/`ST2`/`IT1`-style rigs | 1 | Q2 |
+| 2 (decided, Q3 = C) | `.bin` asset copy skips an asset whose stored length and checksum equal the entry's; shared helper with `targetHolds`; whole and streamed `.bin` and Node server store arms | 2 (asset lifecycle) | Q3 |
 
 ### Tests and mutants for stage 4 (none needed for stages 2 and 3)
 
@@ -91,15 +91,23 @@ Recommendation: **A now, C if the cost is raised again**. #278 was re-parked aft
 ## 6. Overlaps with other open sessions (noted, not edited)
 
 - **#301** (large character save, MC-4380): changed the save pass and `codec/scoped.ts`. #116 also touched `scoped.ts`, `split.ts` and `reuse.ts`. Stage 4 lives in `backuplocal.ts`, so no overlap; stages 2 and 3 only read. Any later change to the content-reuse path in `scoped.ts` must rebase on #301.
-- **#816** (ChroMemory vectors in the `.rtb`, MC-4390): adds an optional side row to `.rtb` export and restore; stage 4 could share `targetHolds` with `rtbRestoreCopy.ts`, which #816 may also edit. Build stage 4 after #816 merges, or put the helper in a new file and leave `rtbRestoreCopy.ts` alone.
+- **#816** (ChroMemory vectors in the `.rtb`, MC-4390): adds an optional side row to `.rtb` export and restore; stage 4 could share `targetHolds` with `rtbRestoreCopy.ts`, which #816 may also edit. Stage 2 has no overlap now that #816 has merged; or put the helper in a new file and leave `rtbRestoreCopy.ts` alone.
 - Studio history-core files: untouched.
 
-## 7. Maintainer questions (lane A asks)
+## 7. Maintainer decisions (2026-11-28, relayed by lane A)
 
-- **Q1.** Given that #116 built the unit dedup, is #224's remaining scope exactly the measurement, and may #224 close on a recorded measurement (the PC table in section 3 plus Q2's choice)? Recommendation: **yes**.
-- **Q2.** The "D2 harness" does not exist by that name. Accept the PR #116 reproducers plus the F1 scratch rig as the measurement, and is a Note 9 index-time MEASURE build worth a second APK build and a lease cycle? Recommendation: **accept the F1 PC numbers, skip stage 3 and the Note 9 MEASURE build**: the scaled estimate (about 1 s for 5,000 units against an import of minutes) cannot change a decision; revisit only if a device import report shows an index phase over 5 s.
-- **Q3.** #278: A, B or C? Recommendation: **A, with C as the design if raised again**.
-- **Q4.** Track the streamed-versus-whole parent-unit difference (the known limitation in #116) as its own ticket? Recommendation: **no** until a fixture reproduces it (F1-224 found none on three fixtures).
+- **Q1: yes.** The remaining scope of #224 is the recorded measurement only; #224 closes on it (this PR, `Closes #224`).
+- **Q2: yes.** The PR #116 rigs (`ST1`, `ST2`, `IT1`) plus the F1-224 PC numbers in section 3 are the measurement. No Note 9 MEASURE build, no printing helper (stage 3 is dropped).
+- **Q3: option C now.** A `.bin` asset already held is skipped on length plus checksum, as the `.rtb` copy does (`targetHolds`), as its own stage and PR (`Closes #278`), in `backuplocal.ts` or a new helper file (#816 has merged, so no overlap with `rtbRestoreCopy.ts`). Import write path (asset lifecycle): Gate 1 independent plan review and Gate 2 `opus-reviewer`. Named failure scenarios: a held asset that differs but matches length plus checksum; an asset skipped though unreferenced and later collected; the first import after a partial one. Reproducers fail on the base; mutants in scratch.
+- **Q4: yes.** The streamed-versus-whole parent-unit limitation is tracked as its own issue (text in the PR report).
+- **Merge order:** this PR first (docs), then the #278 PR.
+
+## 7a. Stages after the decisions
+
+| Stage | Content | PR |
+|---|---|---|
+| 1 | This plan and the measurement record (section 3) | this PR, `Closes #224` |
+| 2 | `.bin` asset copy skips a held asset on length plus checksum (C) | its own PR, `Closes #278` |
 
 ## 8. Gate record
 
