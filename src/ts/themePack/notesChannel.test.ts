@@ -174,3 +174,20 @@ describe('the shape of a verdict', () => {
         expect('notes' in raw).toBe(false)
     })
 })
+
+// D1 of #654: a bubble's text token is judged against its own fill like --nexus-text is. Regression reproducers: accepted with no note before.
+describe('bubble text and fill pairs (D1 of #654)', () => {
+    // --nexus-text is readable here, so a note on the bubble text token can only come from the token's own pair
+    const noted = (css: string, prop: string, re: RegExp): void => {
+        const v = judge('chat', `:root{--nexus-text:#101010;${css}}`)
+        expect(v.ok).toBe(true)
+        expect(v.notes).toEqual(expect.arrayContaining([expect.objectContaining({ prop, rule: 'contrast', why: expect.stringMatching(re) })]))
+    }
+    it('D1-user a user bubble text equal to its fill is noted', () => noted('--color-bubble-user:#ffe14d;--color-bubble-user-text:#ffe14d', '--color-bubble-user-text', /1\.00:1 on your message bubble/))
+    it('D1-char a character bubble text equal to its fill is noted', () => noted('--color-bubble-char:#ffffff;--color-bubble-char-text:#ffffff', '--color-bubble-char-text', /1\.00:1 on the message bubble/))
+    it('D1-ok readable bubble pairs give no bubble-text note (guard)', () => {
+        const v = judge('chat', ':root{--color-bubble-user:#ffe14d;--color-bubble-user-text:#3b2a20;--color-bubble-char:#ffffff;--color-bubble-char-text:#3b2a20}')
+        expect(v.ok).toBe(true)
+        expect(v.notes.filter((n) => /bubble-(user|char)-text/.test(n.prop))).toEqual([])
+    })
+})
