@@ -726,6 +726,36 @@ describe('a streamed re-import of the same file reuses the units the profile alr
         expect(puts).toBeLessThan(firstPuts)
     })
 
+    // Compatibility guard (passes before and after): the streamed arm claims stored keys in another order than the whole
+    // arm (characters first, then the front and the modules), yet over one store both arms must write the same fresh
+    // keys by type. Equal-content asset and inlay lists of the characters and the modules compete for the stored keys, so
+    // a streamed arm that reuses less than the whole arm shows as more fresh keys of a type.
+    test('ST6: a re-import of a library with modules writes the same fresh keys by type whole and streamed', async () => {
+        const db = buildLibrary({ seed: 7, characters: 80, chatsPerCharacter: 2, messagesPerChat: 2, modules: 12, archiveCharacters: false, nonChatScale: 0.02 })
+        const bytes = await dbContainer(db)
+        const freshByType = async (stream: false | { minUnits?: number }): Promise<{ counts: Record<number, number>, verdicts: string[] }> => {
+            const first = await run(bytes)
+            const before = first.raw.snapshot()
+            const second = await run(bytes, { stream, store: await storeAfter(first), seed: 101 })
+            expect(second.end.kind).toBe('landed')
+            const counts: Record<number, number> = {}
+            for (const [key, stored] of second.raw.snapshot()) {
+                const frame = decodeFrame(stored)
+                if (!before.has(key) && frame.status === 'ok') {
+                    counts[frame.type] = (counts[frame.type] ?? 0) + 1
+                }
+            }
+            return { counts, verdicts: second.verdicts }
+        }
+
+        const whole = await freshByType(false)
+        const streamed = await freshByType({})
+
+        expect(streamed.verdicts).toEqual(['stream'])
+        expect(Object.keys(whole.counts).length).toBeGreaterThan(2)
+        expect(streamed.counts).toEqual(whole.counts)
+    })
+
     // New rule: P2 uses P1b's index object. A peer that replaces the profile between the passes and keeps the manifest the
     // index was read from retained does not change what P2 reuses, so the passes still agree.
     test('ST3: a peer commit that keeps the indexed manifest retained lands the import with the first pass\'s decisions', async () => {
