@@ -28,6 +28,7 @@ const REUSABLE_USES = `./.github/workflows/${RELEASE}`
 const FOUR = ['ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD']
 const VARIABLE = 'ANDROID_RELEASE_CERT_SHA256'
 const ENVIRONMENT = 'android-release'
+const DESKTOP_ENVIRONMENT = 'desktop-release'
 const EXPR = /\$\{\{([\s\S]*?)\}\}/g
 
 function asObj(value: unknown): Obj {
@@ -338,9 +339,9 @@ const reusable = () => load(RELEASE)
 const caller = () => load(BUILD)
 
 describe('W1: one environment, on sign, with the exact name; no inherited secrets', () => {
-  test('exactly one environment key in all workflows, on sign', () => {
+  test('exactly two environment keys in all workflows: sign (android-release) and build-desktop (desktop-release)', () => {
     const found = workflowFiles.flatMap(f => keysAnywhere(load(f), 'environment').map(v => `${f}:${JSON.stringify(v)}`))
-    expect(found).toEqual([`${RELEASE}:${JSON.stringify(ENVIRONMENT)}`])
+    expect(found).toEqual([`${RELEASE}:${JSON.stringify(ENVIRONMENT)}`, `${DESKTOP}:${JSON.stringify(DESKTOP_ENVIRONMENT)}`])
     expect(jobsOf(reusable()).sign.environment).toBe(ENVIRONMENT)
   })
   test('no secrets: inherit anywhere, and exactly the four names', () => {
@@ -631,14 +632,26 @@ describe('D3: the android job calls the reusable with the exact inputs and by-na
 })
 
 describe('D4: release-check and publish hold no key and no environment', () => {
-  test('no environment in the file, no secrets in the two keyless jobs, the token is github.token', () => {
-    expect(keysAnywhere(desktop(), 'environment')).toEqual([])
+  test('the only environment in the file is desktop-release on build-desktop, no secrets in the two keyless jobs, the token is github.token', () => {
+    expect(keysAnywhere(desktop(), 'environment')).toEqual([DESKTOP_ENVIRONMENT])
+    expect(dJobs()['build-desktop'].environment).toBe(DESKTOP_ENVIRONMENT)
+    for (const id of Object.keys(dJobs()).filter(j => j !== 'build-desktop')) expect(dJobs()[id].environment, id).toBeUndefined()
     for (const id of ['release-check', 'publish']) {
       expect(JSON.stringify(dJobs()[id]), id).not.toContain('secrets.')
       expect(JSON.stringify(dJobs()[id]), id).not.toMatch(/ANDROID_KEY/)
     }
     expect(asObj(stepById(desktop(), 'release-check', 'release-check').env).GITHUB_TOKEN).toBe('${{ github.token }}')
     expect(asObj(stepById(desktop(), 'publish', 'publish').env).GITHUB_TOKEN).toBe('${{ github.token }}')
+  })
+})
+
+describe('D4b: the updater signing key reaches only the build-desktop tauri-action step, inside desktop-release', () => {
+  test('TAURI_SIGNING_* is read from secrets in that one step and nowhere else in any workflow', () => {
+    const where = (f: string) => leaves(load(f)).filter(l => !l.isKey && /secrets\s*\.\s*TAURI_SIGNING|TAURI_SIGNING[A-Z_]*\s*\}\}/i.test(l.value)).map(l => l.loc.join('.'))
+    for (const f of workflowFiles) {
+      expect(where(f), f).toEqual(f === DESKTOP ? ['jobs.build-desktop.steps.8.env.TAURI_SIGNING_PRIVATE_KEY', 'jobs.build-desktop.steps.8.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD'] : [])
+    }
+    expect(text(DESKTOP)).toContain('environment desktop-release')
   })
 })
 

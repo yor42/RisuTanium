@@ -6,8 +6,9 @@ name: Desktop draft release
 #
 # The installers are unsigned: no Apple or Windows signing secrets exist (MC-3231). Updates are
 # signed: tauri.conf.json has createUpdaterArtifacts on, the fork's own Tauri updater (minisign)
-# key comes from the TAURI_SIGNING_PRIVATE_KEY secrets, and tauri-action attaches the signed
-# updater artifacts (.sig files) and a merged latest.json to the draft. Installed desktop builds
+# key comes from the TAURI_SIGNING_PRIVATE_KEY environment secrets of environment desktop-release (branch rule main
+# only, so dispatch from main), and tauri-action attaches the signed updater artifacts (.sig files) and a
+# merged latest.json to the draft. Installed desktop builds
 # check releases/latest/download/latest.json on boot, so they see a release only once it is published
 # (not a draft, not a prerelease), and only if its tauri.conf.json version is higher.
 #
@@ -104,6 +105,7 @@ jobs:
   build-desktop:
     name: Build ${{ matrix.settings.target }}
     needs: release-check
+    environment: desktop-release
     permissions:
       contents: write
     strategy:
