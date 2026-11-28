@@ -72,10 +72,16 @@ export function withPackElement(sheets: ModelSheet[], element: HTMLStyleElement 
     return [...sheets, { name: 'pack', css: element.textContent ?? '' }]
 }
 
+const PAREN_CLASS = /[^\s"'`<>{}=;()]*-\([^\s"'`<>{}=;()]+\)[^\s"'`<>{}=;()]*/g
+
 /** The class tokens a source file can name, as Tailwind candidates. */
 export function classCandidates(...sources: string[]): string[] {
     const out = new Set<string>()
-    for (const s of sources) for (const t of s.split(/[\s"'`<>{}()=;,]+/)) if (t) out.add(t)
+    for (const s of sources) {
+        for (const t of s.split(/[\s"'`<>{}()=;,]+/)) if (t) out.add(t)
+        // Tailwind paren syntax (a utility written with a parenthesised variable) is one class; the split above would cut it at the parentheses.
+        for (const m of s.matchAll(PAREN_CLASS)) out.add(m[0])
+    }
     return [...out]
 }
 

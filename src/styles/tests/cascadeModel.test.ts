@@ -7,7 +7,8 @@
  * helper itself and pass on any base.
  */
 import { afterEach, describe, expect, test } from 'vitest'
-import { CascadeModel, chatShellCssImports, compileRules, compositeHex, normaliseColours, withPackElement } from './cascadeModel'
+import { cr, parseConcrete } from 'src/ts/themePack/colour'
+import { CascadeModel, chatShellCssImports, classCandidates, compileAppStyles, compileRules, compositeHex, normaliseColours, withPackElement } from './cascadeModel'
 
 function mount(html: string): HTMLElement {
     document.body.innerHTML = html
@@ -254,5 +255,34 @@ describe('the opt-in importance tiers', () => {
     test('CM-I6: with the option !important is no longer unmodelled', () => {
         mount('<p style="color:#222222"></p>')
         expect(model('p{color:#111111 !important}', IMPORTANT).unmodelled.filter((entry) => entry.includes('!important'))).toEqual([])
+    })
+})
+
+// Built from parts so Tailwind's source scan of this file emits no real utilities (nexusCss T-CSS-1 diffs the scan output).
+function paren(prefix: string, variable: string, suffix = ''): string {
+    return `${prefix}-(${variable})${suffix}`
+}
+
+describe('classCandidates paren syntax (#908)', () => {
+    test('CM-P1: a Tailwind paren-syntax class stays whole, with its variant and opacity (regression reproducer: the base split it at the parentheses)', () => {
+        const withVariant = paren('md:bg', '--nexus-edge', '/50')
+        const plain = paren('text', '--nexus-text')
+        const got = classCandidates(`<p class="${withVariant} ${plain} cn(a, b)">`)
+        expect(got).toContain(withVariant)
+        expect(got).toContain(plain)
+        expect(got).toContain('a')
+    })
+
+    test('CM-P2: a paren-syntax pair that fails contrast is reported by the cascade model (regression reproducer: the base compiled no rule for either class)', async () => {
+        mount(`<p class="${paren('bg', '--nexus-surface-flat')} ${paren('text', '--nexus-text')}">x</p>`)
+        const tailwind = await compileAppStyles(classCandidates(document.body.innerHTML))
+        const theme = { name: 'theme', css: ':root{--nexus-surface-flat:#ffffff;--nexus-text:#eeeeee}' }
+        const m = new CascadeModel(compileRules([tailwind, theme]))
+        const painted = m.painted(document.querySelector('p')!)
+        const fill = parseConcrete(painted['background-color'] ?? '')
+        const text = parseConcrete(painted['color'] ?? '')
+        expect(fill).not.toBeNull()
+        expect(text).not.toBeNull()
+        expect(cr(text!, fill!)).toBeLessThan(4.5)
     })
 })
