@@ -1,0 +1,24 @@
+/* Home's fixed base while a pack paints the landing (H-7.3). The gate sets data-theme-pack-base and data-theme-pack-area="home"
+   only while Home is in COLOUR_READY_AREAS and its pack sheet is on; until then no rule here matches. The values are the
+   registry's reference scheme (docs/design/home/home-tokens.css), the colours the pack was judged against, so a role the
+   pack leaves unset resolves to a judged value whatever scheme the user runs. This file is imported by HomeShell right
+   after home-tokens.css: at the same specificity it comes later and beats the scheme mapping there, and a pack's own
+   :root, in the body, still wins. --home-fg-2 is the one role lifted above the reference scheme's raw secondary text (#64748b is
+   2:1 on the selected fill): it carries no pair, so the base itself keeps the drawer and mode labels readable. */
+:root:where([data-theme-pack-base][data-theme-pack-area="home"]) {
+  --home-fg: #f8f8f2;
+  --home-fg-2: #b8bfd0;
+  --home-canvas: #282a36;
+  --home-surface: #21222c;
+  --home-surface-raised: #374151;
+  --home-selected: #44475a;
+  --home-edge: #6272a4;
+  --home-edge-strong: #4b5563;
+  --home-danger: #ff5555;
+}
+
+/* The page canvas under the landing is the body's scheme background; the base repaints it so the pinned text is never drawn on a
+   user's light scheme. The lattice is a sibling layer inside the screen, so it stays over this fill. */
+:root:where([data-theme-pack-base][data-theme-pack-area="home"]) body {
+  background-color: var(--home-canvas);
+}
