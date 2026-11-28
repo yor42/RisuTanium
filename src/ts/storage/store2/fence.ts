@@ -64,6 +64,11 @@ export async function readFenceVerdict(backend: Store2Backend): Promise<FenceVer
         }
         throw error
     }
+    return fenceVerdictOf(read)
+}
+
+/** The verdict of a fence read already in hand: what `readFenceVerdict` answers for that read. */
+export function fenceVerdictOf(read: Store2Read): FenceVerdict {
     const classified = classifyFenceBytes(read.bytes)
     switch (classified.kind) {
         case 'absent':

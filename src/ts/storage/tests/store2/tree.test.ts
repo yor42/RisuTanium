@@ -10,7 +10,7 @@ import { Store2BackendFailureError, createMemoryBackend, type Store2Backend } fr
 import {
     encodeUnit, keyOfTail, newManifestKey, newShardKey, newUnitKey, refOfFrame, UNIT_TYPE, type KeyEnv, type Manifest,
 } from 'src/ts/storage/store2/format'
-import { readTree, TREE_READ_TYPES } from 'src/ts/storage/store2/tree'
+import { readTree, readTreeKeeping, TREE_READ_TYPES } from 'src/ts/storage/store2/tree'
 import { buildTree, COMMIT_BACKENDS, createClock, hooked, testEnv, type OpenedBackend } from './commitFixtures'
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 })
@@ -293,6 +293,42 @@ describe('tree read behaviour that does not depend on the backend', () => {
 
         expect(result.status).toBe('too-new')
         expect(result.status === 'too-new' && result.keys).toEqual([planted.keys.configAl])
+    })
+
+    test('the keeping read holds the manifest and every unit it read, byte for byte, only for an ok tree', async () => {
+        const memory = createMemoryBackend()
+        const planted = await plantTree(memory, envOf(18))
+
+        const kept = await readTreeKeeping(memory, planted.manifestKey)
+
+        expect(kept.read).toEqual(await readTree(memory, planted.manifestKey))
+        expect(kept.units === null ? [] : [...kept.units.keys()].sort()).toEqual([planted.manifestKey, ...Object.values(planted.keys)].sort())
+        for (const [key, bytes] of kept.units ?? []) {
+            expect(bytes).toEqual((await memory.readUnits([key])).get(key))
+        }
+    })
+
+    test('the keeping read holds nothing for a missing, damaged, too-new or unreadable tree', async () => {
+        const probe = await plantTree(createMemoryBackend(), envOf(19))
+        // The same seed mints the same keys, so the probe names the unit each tree is damaged at.
+        const stores = await Promise.all([0, 1, 2].map(async (at) => {
+            const memory = createMemoryBackend()
+            await plantTree(memory, envOf(19), (key, bytes) => {
+                if (key === probe.keys.shard) {
+                    return at === 0 ? null : at === 1 ? bytes.slice(0, 20) : bytes
+                }
+                return at === 2 && key === probe.keys.configAl ? withCodec(bytes, 1) : bytes
+            })
+            return memory
+        }))
+        const results = await Promise.all(stores.map(memory => readTreeKeeping(memory, probe.manifestKey)))
+        expect(results.map(result => result.read.status)).toEqual(['missing', 'damaged', 'too-new'])
+        expect(results.map(result => result.units)).toEqual([null, null, null])
+
+        const failing = hooked(stores[0], { before: () => { throw new Store2BackendFailureError('Injected read failure.') } })
+        const unreadable = await readTreeKeeping(failing.backend, probe.manifestKey)
+        expect(unreadable.read.status).toBe('unreadable')
+        expect(unreadable.units).toBeNull()
     })
 
     test('the positions it opens are positions the reference table names', () => {

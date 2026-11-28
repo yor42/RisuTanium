@@ -215,29 +215,46 @@ export function judgeTree(
  * (`readUnits` bounds its own parallelism).
  */
 export async function readTree(backend: Store2Backend, manifestKey: string): Promise<TreeRead> {
+    return (await readTreeKeeping(backend, manifestKey)).read
+}
+
+/**
+ * `readTree` that also keeps the bytes it judged: `units` holds the manifest and every unit it names at a position of
+ * `TREE_READ_TYPES`, exactly as read, and is non-null only when the read is `ok` (every one of them present and valid).
+ */
+export async function readTreeKeeping(backend: Store2Backend, manifestKey: string): Promise<{ read: TreeRead, units: ReadonlyMap<string, Uint8Array> | null }> {
     const refused = checkManifestKey(manifestKey)
     if (refused !== null) {
-        return refused
+        return { read: refused, units: null }
     }
 
     const first = await readBatch(backend, [manifestKey])
     if (first.status === 'unreadable') {
-        return { status: 'unreadable', manifestKey, cause: first.cause }
+        return { read: { status: 'unreadable', manifestKey, cause: first.cause }, units: null }
     }
     if (first.status === 'not-binary') {
-        return { status: 'damaged', manifestKey, keys: [manifestKey], missing: [], reason: `${manifestKey} is not binary data.` }
+        return { read: { status: 'damaged', manifestKey, keys: [manifestKey], missing: [], reason: `${manifestKey} is not binary data.` }, units: null }
     }
-    const planned = planTree(manifestKey, first.units.get(manifestKey) ?? null)
+    const manifestBytes = first.units.get(manifestKey) ?? null
+    const planned = planTree(manifestKey, manifestBytes)
     if ('read' in planned) {
-        return planned.read
+        return { read: planned.read, units: null }
     }
 
     const second = await readBatch(backend, [...planned.plan.expectations.keys()])
     if (second.status === 'unreadable') {
-        return { status: 'unreadable', manifestKey, cause: second.cause }
+        return { read: { status: 'unreadable', manifestKey, cause: second.cause }, units: null }
     }
     if (second.status === 'not-binary') {
-        return { status: 'damaged', manifestKey, keys: [second.key], missing: [], reason: `${second.key} is not binary data.` }
+        return { read: { status: 'damaged', manifestKey, keys: [second.key], missing: [], reason: `${second.key} is not binary data.` }, units: null }
     }
-    return judgeTree(planned.plan, second.units).read
+    const { read } = judgeTree(planned.plan, second.units)
+    if (read.status !== 'ok') {
+        return { read, units: null }
+    }
+    const units = new Map<string, Uint8Array>([[manifestKey, manifestBytes as Uint8Array]])
+    for (const key of planned.plan.expectations.keys()) {
+        units.set(key, second.units.get(key) as Uint8Array)
+    }
+    return { read, units }
 }

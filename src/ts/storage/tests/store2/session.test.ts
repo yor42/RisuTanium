@@ -47,7 +47,7 @@ import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import { encodeUnit, newStagingId, stagingPrefix, UNIT_TYPE, type StagingLabel } from 'src/ts/storage/store2/format'
 import type { OwnerIdStore } from 'src/ts/storage/store2/owner'
-import { reflushTopLevel, Store2Session } from 'src/ts/storage/store2/session'
+import { reflushTopLevel, Store2Session, takeBootTreeUnits } from 'src/ts/storage/store2/session'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { bytesOf } from './backendConformance'
 import { createClock, hooked, parsedCommit, plantKey, seedStore, START_TIME, testEnv } from './commitFixtures'
@@ -143,6 +143,105 @@ describe('Tauri re-flush on every page load', () => {
         const before = watched.log.length
         expect((await session.openGate('gc')).status).toBe('open')
         expect(watched.log.length).toBeGreaterThan(before)
+    })
+
+    test('the session classifies from the re-flush reads: no commit or fence read lies between the re-flush and the tree read', async () => {
+        const { store, backend } = await seeded(true)
+        const watched = hooked(backend)
+
+        const session = await Store2Session.open(store, { kind: 'tauri', backend: watched.backend, upstreamMainFile: async () => false })
+
+        const firstCas = watched.log.indexOf('casCommit')
+        const treeRead = watched.log.indexOf('readUnits')
+        expect(firstCas).toBeGreaterThanOrEqual(0)
+        expect(treeRead).toBeGreaterThan(firstCas)
+        expect(watched.log.slice(watched.log.indexOf('casFence'), treeRead).filter(name => name === 'readCommit' || name === 'readFence')).toEqual([])
+        expect(session.decision).toEqual({ row: 5, mode: 'normal', fence: 'fenced' })
+        expect(session.fence).toMatchObject({ state: 'fenced' })
+        expect(session.commit).toMatchObject({ status: 'parsed' })
+    })
+
+    test('a re-flush read that carries a revision token is not reused: the keys are read again for the session', async () => {
+        const memory = createMemoryBackend()
+        await seedStore(memory, env)
+        await plantFence(memory, fenceBytes())
+        const confirming = flushConfirming(memory).backend
+        // A backend whose reads carry revision tokens (as the Node backend's do); its writes still compare the stored bytes.
+        const revisions: Store2Backend = {
+            ...confirming,
+            readCommit: async () => {
+                const read = await confirming.readCommit()
+                return { bytes: read.bytes, token: { kind: 'revision', revision: 1, present: read.bytes !== null } }
+            },
+            readFence: async () => {
+                const read = await confirming.readFence()
+                return { bytes: read.bytes, token: { kind: 'revision', revision: 1, present: read.bytes !== null } }
+            },
+            casCommit: async (_expected, next) => confirming.casCommit((await confirming.readCommit()).token, next),
+            casFence: async (_expected, next) => confirming.casFence((await confirming.readFence()).token, next),
+        }
+        const watched = hooked(revisions)
+
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: watched.backend, upstreamMainFile: async () => false })
+
+        const treeRead = watched.log.indexOf('readUnits')
+        const afterFlush = watched.log.slice(watched.log.indexOf('casFence'), treeRead)
+        expect(afterFlush.filter(name => name === 'readCommit' || name === 'readFence').sort()).toEqual(['readCommit', 'readFence'])
+        expect(session.commitRead?.token.kind).toBe('revision')
+        expect(session.decision).toMatchObject({ row: 5, mode: 'normal' })
+    })
+
+    test('a commit key that cannot be read during the re-flush is read again, and stays unreadable, never absent', async () => {
+        const memory = createMemoryBackend()
+        await seedStore(memory, env)
+        const failing = hooked(memory, { before: (name) => {
+            if (name === 'readCommit') {
+                throw new Store2BackendFailureError('Injected read failure.')
+            }
+        } })
+
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: failing.backend, upstreamMainFile: async () => false })
+
+        expect(session.reflush?.commit).toBe('failed')
+        expect(failing.count('readCommit')).toBeGreaterThan(3)
+        expect(session.decision).toEqual({ row: null, mode: 'blocked', reason: 'commit-unreadable', detail: 'Injected read failure.' })
+        expect(session.commitRead).toBeNull()
+    })
+
+    test('a commit key that fails to read for every re-flush attempt and then reads is classified from the fresh read', async () => {
+        const memory = createMemoryBackend()
+        await seedStore(memory, env)
+        const flaky = hooked(memory, { before: (name, call) => {
+            if (name === 'readCommit' && call <= 3) {
+                throw new Store2BackendFailureError('Injected read failure.')
+            }
+        } })
+
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flaky.backend, upstreamMainFile: async () => false })
+
+        expect(session.reflush?.commit).toBe('failed')
+        expect(session.decision).toEqual({ row: 5, mode: 'normal', fence: 'absent' })
+        expect(session.commitRead?.bytes).toEqual((await memory.readCommit()).bytes)
+    })
+
+    test('a commit key a peer replaces during every re-flush attempt is classified from the key stored at the end, not from a re-flush read', async () => {
+        const memory = createMemoryBackend()
+        await seedStore(memory, env)
+        let planted = 0
+        const racing = hooked(memory, { before: async (name) => {
+            if (name === 'casCommit') {
+                planted += 1
+                await plantKey(memory, firstCommitKey({ current: null, staging: null }, testEnv(clock, 100 + planted)))
+            }
+        } })
+
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: racing.backend, upstreamMainFile: async () => false })
+
+        expect(session.reflush?.commit).toBe('failed')
+        expect(planted).toBe(3)
+        const stored = await memory.readCommit()
+        expect(session.commitRead?.bytes).toEqual(stored.bytes)
+        expect(session.decision).toEqual({ row: 7, mode: 'recovery' })
     })
 
     test('absent keys have nothing to re-flush', async () => {
@@ -346,6 +445,65 @@ describe('session decisions', () => {
 
         expect(session.decision).toMatchObject({ row: null, mode: 'blocked', reason: 'commit-unreadable' })
         expect(session.commitRead).toBeNull()
+    })
+
+    describe('the units of the session\'s tree read are handed to the load once', () => {
+        function tooNewFence(): Uint8Array {
+            const out = new Uint8Array(fenceBytes())
+            out[4] = 9
+            new DataView(out.buffer, out.byteOffset + 12, 4).setUint32(0, crc32(out.subarray(0, 12)), true)
+            return out
+        }
+
+        test('a row 5 session hands the manifest and the units once, and a second take finds nothing', async () => {
+            const memory = createMemoryBackend()
+            const manifestKey = await seedStore(memory, env)
+            const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flushConfirming(memory).backend, upstreamMainFile: async () => false })
+
+            expect(session.decision).toMatchObject({ row: 5 })
+            const taken = takeBootTreeUnits(session, manifestKey)
+            expect(taken).not.toBeNull()
+            expect(taken?.has(manifestKey)).toBe(true)
+            expect(taken?.size).toBeGreaterThan(1)
+            expect(takeBootTreeUnits(session, manifestKey)).toBeNull()
+        })
+
+        test('a take for another manifest finds nothing and drops the entry', async () => {
+            const memory = createMemoryBackend()
+            const manifestKey = await seedStore(memory, env)
+            const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flushConfirming(memory).backend, upstreamMainFile: async () => false })
+
+            expect(takeBootTreeUnits(session, `${manifestKey}-other`)).toBeNull()
+            expect(takeBootTreeUnits(session, manifestKey)).toBeNull()
+        })
+
+        test('a session whose tree is damaged holds no entry', async () => {
+            const memory = createMemoryBackend()
+            const manifestKey = await seedStore(memory, env)
+            const shard = (await memory.listStore2()).find(key => key.startsWith('store2/s-')) as string
+            const partial = createMemoryBackend()
+            for (const key of await memory.listStore2()) {
+                if (key !== shard) {
+                    await partial.putUnit(key, (await memory.readUnits([key])).get(key) as Uint8Array)
+                }
+            }
+            await partial.casCommit((await partial.readCommit()).token, (await memory.readCommit()).bytes as Uint8Array)
+            const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flushConfirming(partial).backend, upstreamMainFile: async () => false })
+
+            expect(session.decision).toMatchObject({ row: 6 })
+            expect(takeBootTreeUnits(session, manifestKey)).toBeNull()
+        })
+
+        test('a session with a too-new fence over an intact tree holds no entry', async () => {
+            const memory = createMemoryBackend()
+            const manifestKey = await seedStore(memory, env)
+            await plantFence(memory, tooNewFence())
+            const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flushConfirming(memory).backend, upstreamMainFile: async () => false })
+
+            expect(session.decision).toMatchObject({ row: 3, source: 'fence' })
+            expect(session.tree?.status).toBe('ok')
+            expect(takeBootTreeUnits(session, manifestKey)).toBeNull()
+        })
     })
 
     test('a Node page whose store has no guarded operations is read-only', async () => {

@@ -16,6 +16,7 @@ import {
 } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
 import { hydrateModuleDigests, previousOfTree } from 'src/ts/storage/store2/previousOfTree'
+import { readTreeKeeping } from 'src/ts/storage/store2/tree'
 import { CommitKeyRecheckError, readEntityBytes, readModuleBytes, readTreeBytes, type FlaggedLeaf, type ResidentPlanInput } from 'src/ts/storage/store2/treeBytes'
 import { createClock, seedTree, testEnv, type TestClock } from '../store2SaveKit'
 import { buildSmall, chat, fakeLists, message, mulberry32, prosePool, type Obj } from './codecFixtures'
@@ -981,5 +982,74 @@ describe('contract: readModuleBytes reads the units of one module, the module un
             expect(read.cause).toBeInstanceOf(Store2BackendFailureError)
         }
         expect((await readModuleBytes(world.memory, entry)).status).toBe('ok')
+    })
+})
+
+describe('guard: bytes handed over as known give the read a fresh read would give', () => {
+    /** What a read came to, as plain data: the status, its findings and the checksum of every unit of the source. */
+    function outcomeOf(read: Awaited<ReturnType<typeof readTreeBytes>>): unknown {
+        if (read.status !== 'ok') {
+            return read.status === 'unreadable' ? { status: read.status } : { ...read }
+        }
+        return {
+            status: read.status,
+            flagged: read.flagged,
+            newerLists: read.newerLists,
+            dropped: read.dropped ?? [],
+            source: world.tree.units.map(unit => {
+                const held = read.tree.source.get(unit.key)
+                return [unit.key, held === undefined ? null : [held.length, crc32(held)]]
+            }),
+        }
+    }
+
+    async function knownOf(): Promise<ReadonlyMap<string, Uint8Array>> {
+        const kept = await readTreeKeeping(world.memory, world.manifestKey)
+        if (kept.units === null) {
+            throw new Error('The intact tree did not keep its units.')
+        }
+        return kept.units
+    }
+
+    const FIXED_OUTSIDE_KNOWN = (): string => keyOfRef(world.tree.manifest.fixed.config)
+    const CASES: { name: string, key: () => string, damage: (bytes: Uint8Array) => Uint8Array | null }[] = [
+        { name: 'intact', key: FIXED_OUTSIDE_KNOWN, damage: bytes => bytes },
+        { name: 'a deleted leaf', key: () => keyOfRef(richEntry(world).chats[2].chunks[0]), damage: () => null },
+        { name: 'a damaged fixed unit the tree read does not hold', key: FIXED_OUTSIDE_KNOWN, damage: bytes => flipped(bytes, FRAME_HEADER_BYTES + 1) },
+        { name: 'a too-new leaf', key: () => keyOfRef(richEntry(world).core), damage: bytes => tooNewFrame(bytes) },
+    ]
+
+    test.each(CASES)('$name: the read with known equals the read without it', async ({ key, damage }) => {
+        const known = await knownOf()
+        const target = key()
+        const original = world.memory.snapshot().get(target) as Uint8Array
+        const [without, withKnown] = await withUnit(world, target, damage(original), async () => [
+            await readTreeBytes(world.memory, world.manifestKey),
+            await readTreeBytes(world.memory, world.manifestKey, { known }),
+        ] as const)
+        expect(outcomeOf(withKnown)).toEqual(outcomeOf(without))
+    })
+
+    test('known keys are not read again, the others are, and the caller\'s map is not changed', async () => {
+        const known = await knownOf()
+        const size = known.size
+        const asked: string[] = []
+        const spy = spied(world.memory, { beforeReadUnits: (_call, keys) => { asked.push(...keys) } })
+        const read = await readTreeBytes(spy.backend, world.manifestKey, { known })
+
+        expect(read.status).toBe('ok')
+        expect(asked.filter(key => known.has(key))).toEqual([])
+        expect(asked).toContain(keyOfRef(richEntry(world).core))
+        expect(known.size).toBe(size)
+    })
+
+    test('a known unit is still checked against its Ref: a shard that does not match is a structure failure', async () => {
+        const known = new Map(await knownOf())
+        const shard = keyOfRef(world.tree.manifest.shards[0])
+        known.set(shard, flipped(known.get(shard) as Uint8Array, FRAME_HEADER_BYTES + 1))
+        const read = await readTreeBytes(world.memory, world.manifestKey, { known })
+
+        expect(read.status).toBe('structure')
+        expect(read.status === 'structure' ? read.keys : []).toContain(shard)
     })
 })

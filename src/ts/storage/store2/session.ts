@@ -13,11 +13,11 @@ import {
 import { createCommitter, type AbandonResult, type Committer } from './commit'
 import { classifyCommitRead, type CommitRead } from './commitKey'
 import { meterCommitter } from './commitMeter'
-import { readFenceVerdict, type FenceVerdict } from './fence'
+import { fenceVerdictOf, readFenceVerdict, type FenceVerdict } from './fence'
 import { trackFlushes } from './flushTracker'
 import { defaultKeyEnv, type KeyEnv } from './format'
 import { freshOwnerId, persistedOwnerId, type ForeignClearHook, type OwnerIdStore } from './owner'
-import { readTree, type TreeRead } from './tree'
+import { readTreeKeeping, type TreeRead } from './tree'
 
 /**
  * One page load's opening of the store2 protocol over the page's byte store: the
@@ -44,12 +44,17 @@ const REFLUSH_ATTEMPTS = 3
  * bytes (hence `seq` and `epoch` of a commit key) never change. Only a reported
  * `flushed === true` counts; a conflict re-reads, a failure or a missing flush
  * report retries, and the last attempt's failure stands.
+ *
+ * `read` answers the read the result rests on: the one that saw the key absent, or the one whose bytes a flushed write
+ * stored again (so the key holds those bytes now). It is null for `failed`, whose reads say nothing about what is stored,
+ * and for a revision token, since only a bytes token is known to match the key after a rewrite (Node, the one revision
+ * backend, never re-flushes).
  */
 async function reflushKey(
     read: () => Promise<Store2Read>,
     write: (current: Store2Read) => Promise<Store2WriteResult>,
     attempts: number,
-): Promise<ReflushKeyResult> {
+): Promise<{ result: ReflushKeyResult, read: Store2Read | null }> {
     for (let attempt = 0; attempt < attempts; attempt++) {
         let current: Store2Read
         try {
@@ -60,12 +65,13 @@ async function reflushKey(
             }
             throw error
         }
+        const reusable = current.token.kind === 'bytes' ? current : null
         if (current.bytes === null) {
-            return 'absent'
+            return { result: 'absent', read: reusable }
         }
         try {
             if ((await write(current)).flushed === true) {
-                return 'flushed'
+                return { result: 'flushed', read: reusable }
             }
         } catch (error) {
             if (!(error instanceof Store2BackendError)) {
@@ -73,7 +79,25 @@ async function reflushKey(
             }
         }
     }
-    return 'failed'
+    return { result: 'failed', read: null }
+}
+
+interface ReflushReading {
+    result: ReflushResult
+    /** The commit key's read the re-flush ended on, or null when it is to be read again. */
+    commitRead: Store2Read | null
+    /** The fence's read the re-flush ended on, or null when it is to be read again. */
+    fenceRead: Store2Read | null
+}
+
+async function reflushTopLevelReading(backend: Store2Backend, attempts: number): Promise<ReflushReading> {
+    const commit = await reflushKey(() => backend.readCommit(), (current) => backend.casCommit(current.token, current.bytes as Uint8Array), attempts)
+    const fence = await reflushKey(() => backend.readFence(), (current) => backend.casFence(current.token, current.bytes), attempts)
+    return {
+        result: { ok: commit.result !== 'failed' && fence.result !== 'failed', commit: commit.result, fence: fence.result },
+        commitRead: commit.read,
+        fenceRead: fence.read,
+    }
 }
 
 /**
@@ -89,9 +113,7 @@ async function reflushKey(
  * Absent keys have nothing to re-flush.
  */
 export async function reflushTopLevel(backend: Store2Backend, attempts: number = REFLUSH_ATTEMPTS): Promise<ReflushResult> {
-    const commit = await reflushKey(() => backend.readCommit(), (current) => backend.casCommit(current.token, current.bytes as Uint8Array), attempts)
-    const fence = await reflushKey(() => backend.readFence(), (current) => backend.casFence(current.token, current.bytes), attempts)
-    return { ok: commit !== 'failed' && fence !== 'failed', commit, fence }
+    return (await reflushTopLevelReading(backend, attempts)).result
 }
 
 // ---- Session ----
@@ -271,7 +293,8 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
     }
 
     // Before any other read or write: a commit key or fence that never reached stable storage is made durable first.
-    const reflush = kind === 'tauri' ? await reflushTopLevel(backend, options.reflushAttempts) : null
+    const reflushed = kind === 'tauri' ? await reflushTopLevelReading(backend, options.reflushAttempts ?? REFLUSH_ATTEMPTS) : null
+    const reflush = reflushed === null ? null : reflushed.result
     const bootIdleReason = reflush !== null && !reflush.ok ? IDLE_REFLUSH : null
     // From here every protocol write of a Tauri page goes through the tracker, so the idle state follows later unflushed writes.
     const tracker = reflush === null ? null : trackFlushes(backend, { commit: reflush.commit === 'failed', fence: reflush.fence === 'failed' })
@@ -285,14 +308,18 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
     const committer = MEASURE
         ? meterCommitter(backend, metered => createCommitter(metered, committerOptions))
         : createCommitter(backend, committerOptions)
-    const fence = await readFenceVerdict(backend)
-    let read = await readCommitOrNull(backend)
+    // A key whose re-flush ended on a read (flushed or absent) is classified from that read; any other key is read now.
+    const fence = reflushed?.fenceRead != null ? fenceVerdictOf(reflushed.fenceRead) : await readFenceVerdict(backend)
+    let read = reflushed?.commitRead != null
+        ? { read: reflushed.commitRead, commit: classifyCommitRead(reflushed.commitRead) }
+        : await readCommitOrNull(backend)
     const commit: BootCommit = 'reason' in read ? { status: 'unreadable', reason: read.reason } : read.commit
 
     const presence = commit.status === 'absent' ? await probeStore2Presence(backend) : null
 
     const current = commit.status === 'parsed' ? commit.value.current : null
-    const tree = current === null ? null : await readTree(backend, current.key)
+    const treeRead = current === null ? null : await readTreeKeeping(backend, current.key)
+    const tree = treeRead === null ? null : treeRead.read
 
     const needsMainFile = commit.status === 'absent'
         || (commit.status === 'parsed' && commit.value.current === null && commit.value.staging?.label === 'convert')
@@ -323,7 +350,7 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
         }
     }
 
-    return {
+    const session: Store2Session = {
         kind,
         decision,
         backend,
@@ -343,6 +370,23 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
         startupClear,
         openGate: (deleter, closure) => openDeleterGate(backend, deleter, { idleReason: liveIdleReason(), closure }),
     }
+    // Kept only for the one load that opens this tree (row 5, every unit read and valid); `takeBootTreeUnits` hands it over once.
+    if (decision.row === 5 && treeRead !== null && treeRead.read.status === 'ok' && treeRead.units !== null) {
+        bootTreeUnits.set(session, { manifestKey: treeRead.read.manifestKey, units: treeRead.units })
+    }
+    return session
+}
+
+const bootTreeUnits = new WeakMap<Store2Session, { manifestKey: string, units: ReadonlyMap<string, Uint8Array> }>()
+
+/**
+ * The units the session's tree read judged, once, for the load of that same manifest: the entry is dropped by every call,
+ * and a manifest other than the session's own gets nothing. The load checks each unit against its Ref like any other.
+ */
+export function takeBootTreeUnits(session: Store2Session, manifestKey: string): ReadonlyMap<string, Uint8Array> | null {
+    const held = bootTreeUnits.get(session)
+    bootTreeUnits.delete(session)
+    return held !== undefined && held.manifestKey === manifestKey ? held.units : null
 }
 
 type BootCommit = CommitRead | { status: 'unreadable', reason: string }
