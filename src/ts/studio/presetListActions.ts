@@ -3,7 +3,9 @@ import { alertConfirm, alertError } from '../alert'
 import { prebuiltPresets } from '../process/templates/templates'
 import { safeStructuredClone } from '../polyfill'
 import { changeToPreset, copyPreset } from '../storage/database.svelte'
+import { cutFolderName } from '../storage/presetBundle'
 import { newPresetFromTemplate, presetIndexById, removePresetKeepingActive } from '../storage/presetListOps'
+import { createPresetFolder, deletePresetFolder, movePresetFolder, movePresetToFolder, renamePresetFolder } from '../storage/presetMeta'
 import { DBState } from '../stores.svelte'
 import { presetOwnerKey } from './edit/presetTarget'
 import type { StudioResult } from './history/ownerHistory.svelte'
@@ -15,9 +17,10 @@ import { beginOwnerVisit, loadStudioHistoryService } from './history/studioHisto
 
 export type PresetListResult =
     | { ok: true; id?: string }
-    | { ok: false; reason: 'gone' | 'only' | 'cancelled' }
+    | { ok: false; reason: 'gone' | 'only' | 'cancelled' | 'required' | 'folder-gone' }
 
 const GONE: PresetListResult = { ok: false, reason: 'gone' }
+const FOLDER_GONE: PresetListResult = { ok: false, reason: 'folder-gone' }
 
 /** What `copyPreset` appends to the copied name before the sheet replaces it with the translated suffix. */
 const CLASSIC_COPY_SUFFIX = ' Copy'
@@ -95,4 +98,54 @@ export async function renamePresetById(id: string, name: string): Promise<Studio
     const result = service.editText(owner, 'presetName', name, 'single')
     service.closeOpenStep(owner)
     return result
+}
+
+/** A folder name as stored: trimmed and cut to the bundle's folder-name cap; null when nothing is left. */
+export function cleanFolderName(name: string): string | null {
+    const cut = cutFolderName(name.trim())
+    return cut === '' ? null : cut
+}
+
+/** Adds a folder at the end of the folder list. An empty (after trimming) name is refused. */
+export function createFolder(name: string): PresetListResult {
+    const clean = cleanFolderName(name)
+    if (clean === null) return { ok: false, reason: 'required' }
+    return { ok: true, id: createPresetFolder(DBState.db, clean) }
+}
+
+export function renameFolder(id: string, name: string): PresetListResult {
+    const clean = cleanFolderName(name)
+    if (clean === null) return { ok: false, reason: 'required' }
+    return renamePresetFolder(DBState.db, id, clean) ? { ok: true, id } : FOLDER_GONE
+}
+
+/**
+ * Deletes the folder after a confirm that names how many presets become unfoldered. The folder is resolved again after
+ * the confirm; no preset is removed.
+ */
+export async function deleteFolderById(id: string): Promise<PresetListResult> {
+    const folders = DBState.db.presetFolders ?? []
+    if (!folders.some((folder) => folder.id === id)) return FOLDER_GONE
+    const members = DBState.db.botPresets.filter((preset) => preset?.folderId === id).length
+    if (!(await alertConfirm(language.studioPresetFolderDeleteConfirm(members)))) {
+        return { ok: false, reason: 'cancelled' }
+    }
+    return deletePresetFolder(DBState.db, id) ? { ok: true } : FOLDER_GONE
+}
+
+/** Puts the preset in the folder, or takes it out of every folder when `folderId` is undefined. Both ids resolve now. */
+export function movePresetToFolderById(presetId: string, folderId: string | undefined): PresetListResult {
+    const index = presetIndexById(DBState.db.botPresets, presetId)
+    if (index === -1) return GONE
+    return movePresetToFolder(DBState.db, index, folderId) ? { ok: true, id: presetId } : FOLDER_GONE
+}
+
+/** Moves the folder one place up or down in the folder order; at either end it does nothing. */
+export function moveFolderBy(id: string, step: -1 | 1): PresetListResult {
+    const folders = DBState.db.presetFolders ?? []
+    const at = folders.findIndex((folder) => folder.id === id)
+    if (at === -1) return FOLDER_GONE
+    const to = at + step
+    if (to < 0 || to >= folders.length) return { ok: true, id }
+    return movePresetFolder(DBState.db, id, to) ? { ok: true, id } : FOLDER_GONE
 }

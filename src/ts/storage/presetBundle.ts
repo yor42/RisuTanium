@@ -55,7 +55,7 @@ function tooMany(): PresetBundleError {
 }
 
 /** The longest prefix of `name` within the folder-name cap that ends on a whole code point. */
-function cutFolderName(name: string): string {
+export function cutFolderName(name: string): string {
     if (name.length <= MAX_BUNDLE_FOLDER_NAME) {
         return name
     }
