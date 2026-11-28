@@ -101,7 +101,7 @@ describe('T29: windowing', () => {
 })
 
 describe('T59: rows that are not entries', () => {
-    test('are inert, carry no controls, and stay in place through a bulk change', async () => {
+    test('are inert, carry only a remove button, and stay in place through a bulk change', async () => {
         // The golden `mixedRows` list is the producer: an imported list holding an entry, a null, two scalars, an array and an entry.
         const mixed = clone(golden.mixedRows.globalLore)
         await startCharacter(mixed, { bulk: true })
@@ -111,7 +111,7 @@ describe('T59: rows that are not entries', () => {
         for (const element of inert) {
             expect(element.textContent).toBe(language.studioLoreNonEntryRow)
             const rowElement = element.closest<HTMLElement>('[data-part="studio-lore-row"]')!
-            expect(rowElement.querySelector('button')).toBeNull()
+            expect([...rowElement.querySelectorAll('button')].map((button) => button.dataset.part)).toEqual(['studio-lore-row-remove'])
         }
         // The keys of a row act only on an entry or a folder: Delete and Alt+ArrowDown on the inert array row do nothing.
         const inertRow = inert[3].closest<HTMLElement>('[data-part="studio-lore-row"]')!
@@ -131,6 +131,33 @@ describe('T59: rows that are not entries', () => {
         expect(lore()[3]).toBe(5)
         expect(lore()[4]).toEqual([])
         expect(doneCount()).toBe(1)
+    })
+})
+
+describe('T59 repair: removing a row that is not an entry (#720)', () => {
+    test('the remove button takes out only that element; the others stay where they are', async () => {
+        await startCharacter(clone(golden.mixedRows.globalLore))
+        await mountPane()
+        const before = clone(lore()) as unknown[]
+        const inert = parts('studio-lore-row-inert')
+        await click(inert[1].closest<HTMLElement>('[data-part="studio-lore-row"]')!.querySelector<HTMLElement>('[data-part="studio-lore-row-remove"]'))
+        expect(doneCount()).toBe(1)
+        const after = lore() as unknown[]
+        expect(after).toEqual([before[0], before[1], before[3], before[4], before[5]])
+        expect(parts('studio-lore-row-inert')).toHaveLength(3)
+        expect(part('studio-lore-refusal')).toBeNull()
+    })
+
+    test('a keyless folder row stays inert with no button, and the Delete key still does nothing', async () => {
+        await startCharacter([row(0), { ...folderRow('K1', 'F1'), key: undefined }, 'x'])
+        await mountPane()
+        const inert = parts('studio-lore-row-inert')
+        expect(inert).toHaveLength(2)
+        const buttons = inert.map((element) => element.closest<HTMLElement>('[data-part="studio-lore-row"]')!.querySelectorAll('button').length)
+        expect(buttons).toEqual([0, 1])
+        key(inert[1].closest<HTMLElement>('[data-part="studio-lore-row"]')!, { key: 'Delete' })
+        await settle()
+        expect(doneCount()).toBe(0)
     })
 })
 

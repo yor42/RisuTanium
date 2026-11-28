@@ -2767,6 +2767,7 @@ export const languageChineseTraditional = {
     "studioLoreBulkKeys": "全部設為關鍵字啟用",
     "studioLoreRepairPending": "此模組的 Lorebook 不是清單，需要先修復才能編輯。請先回答修復問題。",
     "studioLoreNonEntryRow": "此項目不是 Lorebook 條目，將保持原樣。",
+    "studioLoreNonEntryRemove": "移除",
     "studioLoreRowMenu": (name: string) => `「${name}」的更多操作`,
     "studioLoreDepth": (n: number) => `第 ${n} 級`,
     "studioLoreDeletedPreview": (name: string, n: number) => n === 0 ? name : `${name} 等另外 ${n} 項`,

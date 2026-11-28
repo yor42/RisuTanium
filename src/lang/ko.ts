@@ -2722,6 +2722,7 @@ export const languageKorean = {
     "studioLoreBulkKeys": "모두 키 활성화로 설정",
     "studioLoreRepairPending": "이 모듈의 로어북이 목록이 아니어서 편집하기 전에 복구해야 합니다. 먼저 복구 질문에 답하세요.",
     "studioLoreNonEntryRow": "이 항목은 로어북 항목이 아닙니다. 그대로 유지됩니다.",
+    "studioLoreNonEntryRemove": "제거",
     "studioLoreRowMenu": (name: string) => `"${name}"의 추가 작업`,
     "studioLoreDepth": (n: number) => `${n}단계`,
     "studioLoreDeletedPreview": (name: string, n: number) => n === 0 ? name : `${name} 외 ${n}개`,

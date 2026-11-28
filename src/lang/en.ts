@@ -2858,6 +2858,7 @@ export const languageEnglish = {
     studioLoreBulkKeys: "Make all key-activated",
     studioLoreRepairPending: "This module's lorebook isn't a list and needs repair before it can be edited. Answer the repair question first.",
     studioLoreNonEntryRow: "This item isn't a lorebook entry. It is kept as it is.",
+    studioLoreNonEntryRemove: "Remove",
     studioLoreRowMenu: (name: string) => `More actions for "${name}"`,
     studioLoreDepth: (n: number) => `Level ${n}`,
     studioLoreDeletedPreview: (name: string, n: number) => n === 0 ? name : `${name} and ${n} more`,

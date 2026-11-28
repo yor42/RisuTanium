@@ -2724,6 +2724,7 @@ export const languageSpanish = {
     "studioLoreBulkKeys": "Poner todas activadas por clave",
     "studioLoreRepairPending": "El libro de lore de este módulo no es una lista y necesita reparación antes de poder editarse. Responde primero a la pregunta de reparación.",
     "studioLoreNonEntryRow": "Este elemento no es una entrada del libro de lore. Se conserva tal como está.",
+    "studioLoreNonEntryRemove": "Quitar",
     "studioLoreRowMenu": (name: string) => `Más acciones para "${name}"`,
     "studioLoreDepth": (n: number) => `Nivel ${n}`,
     "studioLoreDeletedPreview": (name: string, n: number) => n === 0 ? name : `${name} y ${n} más`,

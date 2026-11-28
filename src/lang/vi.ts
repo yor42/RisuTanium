@@ -2722,6 +2722,7 @@ export const languageVietnamese = {
     "studioLoreBulkKeys": "Đặt tất cả kích hoạt theo khóa",
     "studioLoreRepairPending": "Lorebook của mô-đun này không phải là danh sách và cần được sửa chữa trước khi có thể chỉnh sửa. Hãy trả lời câu hỏi sửa chữa trước.",
     "studioLoreNonEntryRow": "Mục này không phải là mục Lorebook. Nó được giữ nguyên.",
+    "studioLoreNonEntryRemove": "Gỡ bỏ",
     "studioLoreRowMenu": (name: string) => `Thêm thao tác cho "${name}"`,
     "studioLoreDepth": (n: number) => `Cấp ${n}`,
     "studioLoreDeletedPreview": (name: string, n: number) => n === 0 ? name : `${name} và ${n} mục khác`,
