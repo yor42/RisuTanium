@@ -2,7 +2,7 @@ import { language } from '../../lang'
 import { alertConfirm, alertError } from '../alert'
 import { prebuiltPresets } from '../process/templates/templates'
 import { safeStructuredClone } from '../polyfill'
-import { changeToPreset, copyPreset } from '../storage/database.svelte'
+import { changeToPreset, copyPreset, downloadPreset, importPreset } from '../storage/database.svelte'
 import { cutFolderName } from '../storage/presetBundle'
 import { postKeptGroupsToast } from '../storage/presetLockToast'
 import { movePresetById, newPresetFromTemplate, presetIndexById, presetOrderIds, removePresetKeepingActive, restorePresetOrder, stepTargetIndex, undoFolderMove } from '../storage/presetListOps'
@@ -239,4 +239,31 @@ export function commitSlotPlan(plan: ReturnType<typeof planSlotAssign>): boolean
         action: slotUndoAction(() => DBState.db.botPresets ?? [], plan, { undone: language.settingsShellHkUndone, refused: language.settingsShellHkUndoRefused, failed: language.settingsShellHkUndoFailed }),
     })
     return true
+}
+
+/**
+ * Exports the preset as a `.risup` file through `downloadPreset`, which is what classic's file choice runs. The Realm
+ * choice of classic's export dialog is not offered. The id is resolved now; `downloadPreset` saves the working copy
+ * first and strips meta and keys itself.
+ */
+export async function exportPresetById(id: string): Promise<PresetListResult> {
+    const index = presetIndexById(DBState.db.botPresets, id)
+    if (index === -1) return GONE
+    await downloadPreset(index, 'risupreset')
+    return { ok: true, id }
+}
+
+/** Exports the presets with these ids, in list order, as one bundle (an empty selection does nothing). */
+export async function exportBundleByIds(ids: readonly string[]): Promise<PresetListResult> {
+    if (ids.length === 0) return { ok: true }
+    // Loaded on use so the sheet does not pull the bundle codec in when no bundle is exported.
+    const { downloadPresetBundle } = await import('../storage/presetBundleFlow')
+    await downloadPresetBundle(ids)
+    return { ok: true }
+}
+
+/** Classic's import, unchanged: the file picker, the bundle preview, the converters and the trust rule are its own. */
+export async function importPresetsFromPicker(): Promise<PresetListResult> {
+    const outcome = await importPreset()
+    return outcome && 'cancelled' in outcome ? { ok: false, reason: 'cancelled' } : { ok: true }
 }

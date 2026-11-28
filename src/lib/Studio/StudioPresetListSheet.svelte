@@ -7,7 +7,8 @@
     import { presetOwnerKey } from '../../ts/studio/edit/presetTarget'
     import { refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { ownerKeyOf } from '../../ts/studio/ownerModel'
-    import { commitSlotPlan, copyPresetById, createFolder, deleteFolderById, deletePresetById, dropPresetOnById, moveFolderBy, movePresetStepById, movePresetToFolderById, moveToFolderWithUndo, newPreset, planSlotForPreset, renameFolder, renamePresetById, useInChats, type PresetListResult } from '../../ts/studio/presetListActions'
+    import { commitSlotPlan, copyPresetById, createFolder, deleteFolderById, deletePresetById, dropPresetOnById, exportBundleByIds, exportPresetById, importPresetsFromPicker, moveFolderBy, movePresetStepById, movePresetToFolderById, moveToFolderWithUndo, newPreset, planSlotForPreset, renameFolder, renamePresetById, useInChats, type PresetListResult } from '../../ts/studio/presetListActions'
+    import { fillLang } from '../../lang/fill'
     import { readCollapsedFolders, writeCollapsedFolders } from '../../ts/studio/presetFolderCollapse'
     import { registerStudioPresetSheetBack } from '../../ts/studio/studioBack.svelte'
     import { selectStudioNode, setStudioPresetSheetOpen } from '../../ts/studio/studioScreen.svelte'
@@ -29,12 +30,18 @@
     let moveId = $state<string | null>(null)
     let slotId = $state<string | null>(null)
     let pendingSlot = $state<{ id: string, n: number } | null>(null)
+    let selectMode = $state(false)
+    let selectedIds = $state<string[]>([])
+    let exporting = $state(false)
     let folderFormOpen = $state(false)
     let folderText = $state('')
     let collapsed = $state(readCollapsedFolders())
     let closeButton = $state<HTMLButtonElement | undefined>()
 
     const presets = $derived(DBState.db.botPresets ?? [])
+    // The selection holds preset ids, so a reorder or a removal while selecting never shifts it.
+    const selectedCount = $derived(presets.filter((preset) => typeof preset?.id === 'string' && selectedIds.includes(preset.id)).length)
+    const allSelected = $derived(presets.length > 0 && selectedCount === presets.length)
     const pendingPlan = $derived(pendingSlot === null ? null : planSlotForPreset(pendingSlot.id, pendingSlot.n))
     // Each row carries its id from the render that built it, so a tap before the next render still names its own preset.
     // The section key is the folder id (a repeat of an id, which only damaged data has, gets its position), so a folder's open
@@ -208,6 +215,47 @@
         commitSlotPlan(planned.plan)
     }
 
+    function setSelectMode(on: boolean): void {
+        selectMode = on
+        selectedIds = []
+        reset()
+    }
+
+    function toggleSelected(id: string): void {
+        selectedIds = selectedIds.includes(id) ? selectedIds.filter((other) => other !== id) : [...selectedIds, id]
+    }
+
+    function toggleAll(): void {
+        selectedIds = allSelected ? [] : presets.flatMap((preset) => typeof preset?.id === 'string' ? [preset.id] : [])
+    }
+
+    // Import and export report through the alerts classic raises; a refusal here only says the preset is gone.
+    async function guarded(work: () => Promise<PresetListResult>): Promise<boolean> {
+        if (busy || exporting) return false
+        busy = true
+        exporting = true
+        try {
+            return noted(await work())
+        } catch (error) {
+            console.error(error)
+            message = language.studioRefusalUnknown
+            return false
+        } finally {
+            busy = false
+            exporting = false
+        }
+    }
+
+    async function exportSelected(): Promise<void> {
+        if (selectedCount === 0) return
+        if (await guarded(() => exportBundleByIds(presets.flatMap((preset) => typeof preset?.id === 'string' && selectedIds.includes(preset.id) ? [preset.id] : [])))) setSelectMode(false)
+    }
+
+    async function openClassic(): Promise<void> {
+        const { openInClassicEditor } = await import('../../ts/studio/classicLinks.svelte')
+        openInClassicEditor('preset', null)
+    }
+
     function step(id: string, direction: -1 | 1): void {
         noted(movePresetStepById(id, direction))
         reset()
@@ -233,10 +281,19 @@
             <button type="button" data-part="studio-preset-new" class="{buttonClass} flex items-center gap-1" disabled={busy} onclick={create}>
                 <PlusIcon size={16} aria-hidden="true" />{language.studioPresetListNew}
             </button>
+            <button type="button" data-part="studio-preset-import" class={buttonClass} disabled={busy} onclick={() => void guarded(importPresetsFromPicker)}>{language.import}</button>
+            <button type="button" data-part="studio-preset-select-mode" class={buttonClass} aria-pressed={selectMode} disabled={busy} onclick={() => setSelectMode(!selectMode)}>{language.presetBundleSelect}</button>
             <button type="button" data-part="studio-preset-folder-new" class="{buttonClass} flex items-center gap-1" disabled={busy} onclick={() => { folderFormOpen = !folderFormOpen }}>
                 <FolderPlusIcon size={16} aria-hidden="true" />{language.studioPresetFolderNew}
             </button>
         </div>
+        {#if selectMode}
+            <div data-part="studio-preset-select-bar" class="flex flex-wrap items-center gap-2">
+                <button type="button" data-part="studio-preset-select-all" class={buttonClass} aria-pressed={allSelected} onclick={toggleAll}>{language.presetBundleAll}</button>
+                <button type="button" data-part="studio-preset-export-selected" class={buttonClass} disabled={selectedCount === 0 || exporting} onclick={() => void exportSelected()}>{fillLang(language.presetBundleExport, { count: selectedCount })}</button>
+                <button type="button" data-part="studio-preset-select-cancel" class={buttonClass} onclick={() => setSelectMode(false)}>{language.cancel}</button>
+            </div>
+        {/if}
         {#if folderFormOpen}
             <form data-part="studio-preset-folder-form" class="flex flex-wrap items-center gap-2" onsubmit={(event) => { event.preventDefault(); addFolder() }}>
                 <input type="text" data-part="studio-preset-folder-input" aria-label={language.studioPresetFolderName} class="min-h-11 min-w-0 flex-1 rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor" value={folderText} oninput={(event) => { folderText = event.currentTarget.value }} />
@@ -293,6 +350,10 @@
                             folderId={section.folder?.id}
                             moveOpen={moveId === id}
                             slotOpen={slotId === id}
+                            selecting={selectMode}
+                            selected={selectedIds.includes(id)}
+                            onselect={() => toggleSelected(id)}
+                            onexport={() => { reset(); void guarded(() => exportPresetById(id)) }}
                             first={rowAt === 0}
                             last={rowAt === section.rows.length - 1}
                             onopen={() => open(id)}
@@ -317,6 +378,7 @@
             {/each}
         </ul>
         <p data-part="studio-preset-classic-note" class="text-sm text-textcolor2">{language.studioPresetClassicOnly}</p>
+        <button type="button" data-part="studio-preset-classic-button" class={buttonClass} onclick={() => void openClassic()}>{language.studioOpenClassic}</button>
         <p class="text-sm text-textcolor2">{language.quickPreset}</p>
     </div>
 </div>
