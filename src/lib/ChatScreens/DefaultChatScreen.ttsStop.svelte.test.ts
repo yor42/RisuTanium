@@ -418,7 +418,7 @@ function mountScreen(): HTMLElement {
 
 async function openMenu(target: HTMLElement): Promise<void> {
     const buttons = Array.from(target.querySelectorAll<HTMLButtonElement>('button'))
-    const menuButton = buttons.find((b) => !b.classList.contains('button-icon-send') && b.getAttribute('aria-labelledby') !== 'cancel')
+    const menuButton = buttons.find((b) => !b.classList.contains('button-icon-send') && !b.classList.contains('sr-only') && b.getAttribute('aria-labelledby') !== 'cancel')
     if (!menuButton) throw new Error('composer menu (hamburger) button not found')
     menuButton.click()
     flushSync()

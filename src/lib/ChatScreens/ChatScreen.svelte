@@ -67,9 +67,13 @@
     const shellStyle = $derived((bgImg.length > 2 ? externalStyles : '') + (canvasYield ? canvasYieldDeclaration(bgImg.length > 2 ? overlayBackground : null) : ''))
 </script>
 
+{#snippet headerToggle()}
+    <SideBarArrow placement="header" />
+{/snippet}
+
 {#if DBState.db.theme === 'waifu'}
     <div class="grow h-full flex justify-center relative" style="{bgImg.length < 4 ? wallPaper : bgImg}">
-        <SideBarArrow />
+        <SideBarArrow yieldOnPhone={$selectedCharID >= 0} />
         <BackgroundDom />
         {#if $selectedCharID >= 0}
             {#if DBState.db.characters[$selectedCharID] && DBState.db.characters[$selectedCharID].viewScreen !== 'none'}
@@ -79,13 +83,13 @@
             {/if}
         {/if}
         <div class="h-full w-2xl" style:width="{42 * (DBState.db.waifuWidth / 100)}rem" class:halfwp={$selectedCharID >= 0 && DBState.db.characters[$selectedCharID] && DBState.db.characters[$selectedCharID].viewScreen !== 'none'}>
-            <DefaultChatScreen customStyle={`${externalStyles}backdrop-filter: blur(4px);`} bind:openChatList bind:openModuleList/>
+            <DefaultChatScreen customStyle={`${externalStyles}backdrop-filter: blur(4px);`} phoneHeaderToggle={headerToggle} bind:openChatList bind:openModuleList/>
         </div>
     </div>
 {:else}
     <div class="chat-area grow h-full min-w-0 relative justify-center flex" data-user-background={userBackground ? '' : undefined}>
         {#if !shellEligible()}
-            <SideBarArrow />
+            <SideBarArrow yieldOnPhone={$selectedCharID >= 0} />
         {/if}
         <BackgroundDom />
         <div style={bgImg} class="h-full w-full" class:max-w-6xl={DBState.db.classicMaxWidth}>
@@ -97,7 +101,7 @@
             {#if shellEligible()}
                 <ChatShell customStyle={shellStyle} {userBackground} {canvasYield} bind:openChatList bind:openModuleList />
             {:else}
-                <DefaultChatScreen customStyle={bgImg.length > 2 ? `${externalStyles}`: ''} bind:openChatList bind:openModuleList/>
+                <DefaultChatScreen customStyle={bgImg.length > 2 ? `${externalStyles}`: ''} phoneHeaderToggle={headerToggle} bind:openChatList bind:openModuleList/>
             {/if}
         </div>
     </div>

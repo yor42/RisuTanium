@@ -12,6 +12,8 @@ interface TestCharacter {
     inlayViewScreen: boolean
 }
 
+const seen = vi.hoisted(() => ({ arrows: [] as Record<string, unknown>[], screens: [] as Record<string, unknown>[] }))
+
 const state = $state({ db: {
     theme: '', characters: [] as TestCharacter[],
     textScreenColor: '', textBorder: false, textScreenRounded: false, textScreenBorder: '',
@@ -29,7 +31,7 @@ vi.mock('src/ts/stores.svelte', () => ({
     moduleBackgroundEmbedding: writable(''),
 }))
 vi.mock('../../ts/util', () => ({ getCustomBackground: async () => '', getEmotion: () => '' }))
-vi.mock('./DefaultChatScreen.svelte', () => ({ default: () => ({}) }))
+vi.mock('./DefaultChatScreen.svelte', () => ({ default: (_anchor: Comment, props: Record<string, unknown>) => { seen.screens.push(props); return {} } }))
 vi.mock('../ChatShell/ChatShell.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ResizeBox.svelte', () => ({ default: () => ({}) }))
 vi.mock('./TransitionImage.svelte', () => ({ default: () => ({}) }))
@@ -37,7 +39,8 @@ vi.mock('../../ts/media/charImageLookups', () => ({ useCharImageLookups: () => (
 vi.mock('./BackgroundDom.svelte', () => ({ default: () => ({}) }))
 // The classic panel arrow is replaced by a marker so the test sees whether it mounted.
 vi.mock('../UI/GUI/SideBarArrow.svelte', () => ({
-    default: (anchor: Comment) => {
+    default: (anchor: Comment, props: Record<string, unknown>) => {
+        seen.arrows.push(props)
         const marker = document.createElement('div')
         marker.setAttribute('data-testid', 'sidebar-arrow-stub')
         anchor.before(marker)
@@ -52,6 +55,8 @@ let target: HTMLElement
 let app: ReturnType<typeof mount>
 
 afterEach(async () => {
+    seen.arrows.length = 0
+    seen.screens.length = 0
     if (app) await unmount(app)
     target?.remove()
     localStorage.clear()
@@ -101,5 +106,29 @@ describe('the classic sidebar arrow while the shell header carries its own Back'
         selectedCharID.set(0)
         await show(true)
         expect(arrow()).not.toBeNull()
+    })
+
+    test('R T1c the classic and waifu arrows yield on the phone layout while a chat is selected, and the screen gets the header toggle', async () => {
+        for (const theme of ['', 'waifu']) {
+            seen.arrows.length = 0
+            seen.screens.length = 0
+            state.db.theme = theme
+            state.db.characters = [{ chaId: 'char', type: 'character', chatPage: 0, chats: [{ id: 'chat' }], viewScreen: 'none', inlayViewScreen: false }]
+            selectedCharID.set(0)
+            await show(false)
+            expect(seen.arrows.map((props) => props.yieldOnPhone), theme).toEqual([true])
+            expect(typeof seen.screens[0].phoneHeaderToggle, theme).toBe('function')
+            await unmount(app)
+            target.remove()
+            app = undefined as never
+        }
+    })
+
+    test('G T1c with no chat selected the arrow stays and does not yield', async () => {
+        state.db.theme = ''
+        state.db.characters = []
+        selectedCharID.set(-1)
+        await show(false)
+        expect(seen.arrows.map((props) => props.yieldOnPhone)).toEqual([false])
     })
 })

@@ -2,6 +2,7 @@
     import type { character, groupChat, Message, StreamingDisplayOptimizationMode } from 'src/ts/storage/database.svelte';
     import { mount, onDestroy, unmount, untrack } from 'svelte';
     import ChatMessageBoundary from './ChatMessageBoundary.svelte';
+    import { language } from 'src/lang';
     import { useCharImageLookups } from 'src/ts/media/charImageLookups';
     import { createSimpleCharacter, DBState, selectedCharID, ReloadChatPointer } from 'src/ts/stores.svelte';
     import { chatFoldedStateMessageIndex } from 'src/ts/globalApi.svelte';
@@ -590,4 +591,4 @@
 
 </script>
 
-<div class="flex flex-col-reverse" data-part="chat-messages" bind:this={chatBody}></div>
+<div class="flex flex-col-reverse outline-none" data-part="chat-messages" role="region" aria-label={language.chatShellMessages} tabindex="-1" bind:this={chatBody}></div>

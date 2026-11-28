@@ -1,0 +1,21 @@
+/*
+ * The classic chat on touch and hover input. Every rule is prefixed with the root input attribute, so it
+ * outranks the utility classes the markup carries and applies to no other input. The markers are data-classic-*
+ * attributes, never the chat's data-part names.
+ * The composer is pinned and padded above the bottom safe area on touch whatever the fixed-composer setting says.
+ * The side menu sits above the composer by its measured height (the composer row sets --classic-composer-h on the
+ * menu; 4rem is the fallback before a measure) and scrolls when it is taller than the screen allows.
+ * The phone header carries the sidebar toggle and the character name; it exists in the markup everywhere but shows on the phone
+ * layout only, where the floating arrow steps aside and the top-bar pill sits below it.
+ * Controls reach 44px on touch and 40px on hover.
+ */
+html[data-input="touch"] [data-classic-composer] { position: sticky; bottom: 0; z-index: 29; background-color: var(--color-bgcolor); margin: 0; padding-top: .5rem; padding-bottom: max(.5rem, env(safe-area-inset-bottom)) }
+html[data-input="touch"] [data-classic-menu] { position: fixed; z-index: 30; bottom: calc(var(--classic-composer-h, 4rem) + env(safe-area-inset-bottom)); row-gap: 0; max-height: 70vh; overflow-y: auto }
+[data-classic-actions] button { display: flex; align-items: center; justify-content: center }
+html[data-input="touch"] :is([data-classic-actions] button, [data-classic-tap], [data-classic-menu] > div) { min-width: 44px; min-height: 44px }
+html[data-input="hover"] :is([data-classic-actions] button, [data-classic-tap], [data-classic-menu] > div) { min-width: 40px; min-height: 40px }
+
+[data-classic-header] { display: none }
+html[data-layout="phone"] [data-classic-header] { display: flex }
+html[data-layout="phone"] [data-classic-arrow-yield] { display: none }
+html[data-layout="phone"] [data-classic-pill="top"] { top: 3.5rem }

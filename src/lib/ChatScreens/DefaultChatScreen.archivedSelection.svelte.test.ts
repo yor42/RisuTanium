@@ -11,6 +11,7 @@
  * `Chat` is a stub that reads `altGreeting` as the real component does on mount.
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
+import { language } from 'src/lang'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -347,6 +348,16 @@ describe('DefaultChatScreen with an archived placeholder selected', () => {
         await tick()
         expect(root!.querySelector('.default-chat-screen')).toBeNull()
         expect(h.firstMessageAltGreeting).toEqual([])
+    })
+
+    test('R T1e the placeholder keeps the header with its name and says the chat cannot be shown', async () => {
+        selectedCharID.set(1)
+        const root = open()
+        await tick()
+        expect(root.querySelector('[data-classic-header] .truncate')!.textContent).toBe('archived')
+        expect(root.textContent).toContain(language.classicChatUnavailable)
+        expect(root.querySelector('.default-chat-screen')).toBeNull()
+        expect(root.querySelector('[data-classic-composer]')).toBeNull()
     })
 
     test('moving the selection from a loaded character to the placeholder throws nothing', async () => {
