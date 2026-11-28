@@ -256,7 +256,11 @@ export function tokenCheck(css: string, T0: TokenMap = APP): LintError[] {
         if (!sheet || !canvas) continue
         const bubbleRaw = col(T, '--color-bubble-char', canvas)
         const bubble = bubbleRaw || canvas
+        const userBubble = col(T, '--color-bubble-user', canvas) || canvas
         const pairs: [string, Rgba, string][] = [['--nexus-text', sheet, 'the sheet'], ['--nexus-text-secondary', sheet, 'the sheet'], ['--nexus-accent', sheet, 'the sheet'], ['--nexus-text', bubble, 'the message bubble'], ['--nexus-text-secondary', bubble, 'the message bubble'], ['--danger', bubble, 'the message bubble'], ['--nexus-accent', bubble, 'the message bubble']]
+        // A bubble text token defaults to --nexus-text, which is judged above; it is judged on its own fill only when the sheet states it, so a sheet that leaves it alone gains no repeat finding.
+        const stated = (n: string): boolean => configs[0][1].has(n) || over1.has(n)
+        for (const [text, fill, on] of [['--color-bubble-char-text', bubble, 'the message bubble'], ['--color-bubble-user-text', userBubble, 'your message bubble']] as [string, Rgba, string][]) if (stated(text)) pairs.push([text, fill, on])
         for (const [n, bg, on] of pairs) {
             const c = col(T, n, bg)
             if (c && cr(c, bg) < 4.5) errs.push({ selector: label, prop: n, why: `critical text would be ${cr(c, bg).toFixed(2)}:1 on ${on} (needs 4.5:1)`, rule: 'contrast' })
