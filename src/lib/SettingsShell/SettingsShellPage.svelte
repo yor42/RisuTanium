@@ -104,7 +104,7 @@
     }
 </script>
 
-<main class="flex flex-col grow min-w-0 min-h-0 bg-bgcolor text-textcolor" class:settings-shell-drill={phone} data-part="settings-page">
+<main class="flex flex-col grow min-w-0 min-h-0 bg-(--settings-canvas) text-(--settings-text)" class:settings-shell-drill={phone} data-part="settings-page">
     {#if page}
         <div class="px-4 pt-4 shrink-0" bind:this={headBlock}>
             <h2 class="text-xl font-semibold outline-none rounded-sm risu-focus-ring" tabindex="-1" bind:this={heading} data-part="settings-page-heading">{settingsLabel(page.labelKey)}</h2>
@@ -113,10 +113,10 @@
                     {#each page.views as view (view.id)}
                         <button
                             type="button"
-                            class="px-3 min-h-11 rounded-md bg-darkbutton hover:text-textcolor"
-                            class:bg-selected={view.legacyIndex === current}
-                            class:text-textcolor={view.legacyIndex === current}
-                            class:text-textcolor2={view.legacyIndex !== current}
+                            class="px-3 min-h-11 rounded-md bg-(--settings-raised) hover:text-(--settings-text)"
+                            class:bg-(--settings-selected)={view.legacyIndex === current}
+                            class:text-(--settings-on-selected)={view.legacyIndex === current}
+                            class:text-(--settings-text-2)={view.legacyIndex !== current}
                             data-part="settings-view-chip"
                             data-view={view.id}
                             aria-pressed={view.legacyIndex === current}
@@ -165,7 +165,7 @@
         {#if located?.page === 'extensions' && additionalSettingsMenu.length > 0}
             <div class="flex flex-col gap-2 mt-6" role="group" aria-label={language.settingsShellPluginRows} data-part="settings-plugin-rows">
                 {#each additionalSettingsMenu as menu (menu.id)}
-                    <button type="button" class="flex gap-2 items-center min-h-11 hover:text-textcolor text-textcolor2" data-part="settings-plugin-row" onclick={() => { menu.callback() }}>
+                    <button type="button" class="flex gap-2 items-center min-h-11 hover:text-(--settings-text) text-(--settings-text-2)" data-part="settings-plugin-row" onclick={() => { menu.callback() }}>
                         <PluginDefinedIcon ico={menu} />
                         <span>{menu.name}</span>
                     </button>
@@ -174,7 +174,7 @@
         {/if}
         {#if located?.page === 'advanced' && DBState.db.enableRisuaiProTools}
             <div class="flex flex-col gap-2 mt-6">
-                <button type="button" class="flex gap-2 items-center min-h-11 hover:text-textcolor text-textcolor2" data-part="settings-easy-panel" onclick={() => { easyPanelStore.open = true }}>
+                <button type="button" class="flex gap-2 items-center min-h-11 hover:text-(--settings-text) text-(--settings-text-2)" data-part="settings-easy-panel" onclick={() => { easyPanelStore.open = true }}>
                     <SparkleIcon aria-hidden="true" />
                     <span>{language.easyPanel}</span>
                 </button>

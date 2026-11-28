@@ -14,7 +14,7 @@
 <div class="mt-4 flex flex-col" data-part="settings-seasonal-logo">
     <div class="flex flex-wrap items-center gap-2">
         <CheckInput check={seasonalLogoEnabled()} onChange={setSeasonalLogoEnabled} name={language.seasonalLogoSetting} />
-        <span class="rounded-md border border-darkborderc px-2 text-xs text-textcolor2" data-part="settings-device-chip">{language.chatShellOnThisDevice}</span>
+        <span class="rounded-md border border-(--settings-border-subtle) px-2 text-xs text-(--settings-text-2)" data-part="settings-device-chip">{language.chatShellOnThisDevice}</span>
     </div>
-    <p class="mt-1 text-sm text-textcolor2" data-part="settings-seasonal-logo-help">{language.seasonalLogoHelp}</p>
+    <p class="mt-1 text-sm text-(--settings-text-2)" data-part="settings-seasonal-logo-help">{language.seasonalLogoHelp}</p>
 </div>

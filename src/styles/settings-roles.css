@@ -1,0 +1,18 @@
+/* Settings colour roles (H-7.1, MC-4702): the colours the Settings shell markup reads, each one an alias of a plain scheme name that updateColorScheme writes on the root.
+   Every value is exactly var(--risu-theme-<name>), so with no pack, a readable pack, pack safe mode or the own colours the shell paints as it did with the scheme classes. A role is read through a paren utility such as text-(--settings-text), never through @theme, so an island or a base block that re-declares the name reaches the utility.
+   Roles that alias the same scheme name stay separate on purpose: a later pack base re-points each one to its own judged colour. One block, no shared name, no derived (-role-) name and no color-scheme declaration. */
+:root, [data-own-scheme] {
+    --settings-canvas: var(--risu-theme-bgcolor);
+    --settings-panel: var(--risu-theme-darkbg);
+    --settings-raised: var(--risu-theme-darkbutton);
+    --settings-selected: var(--risu-theme-selected);
+    --settings-hover: var(--risu-theme-selected);
+    --settings-focus: var(--risu-theme-selected);
+    --settings-on-selected: var(--risu-theme-textcolor);
+    --settings-text: var(--risu-theme-textcolor);
+    --settings-text-2: var(--risu-theme-textcolor2);
+    --settings-swatch: var(--risu-theme-textcolor);
+    --settings-border-strong: var(--risu-theme-borderc);
+    --settings-border-subtle: var(--risu-theme-darkborderc);
+    --settings-danger: var(--risu-theme-draculared);
+}
