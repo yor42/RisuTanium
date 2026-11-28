@@ -7,7 +7,7 @@
     import { presetOwnerKey } from '../../ts/studio/edit/presetTarget'
     import { refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { ownerKeyOf } from '../../ts/studio/ownerModel'
-    import { copyPresetById, createFolder, deleteFolderById, deletePresetById, moveFolderBy, movePresetToFolderById, newPreset, renameFolder, renamePresetById, useInChats, type PresetListResult } from '../../ts/studio/presetListActions'
+    import { commitSlotPlan, copyPresetById, createFolder, deleteFolderById, deletePresetById, dropPresetOnById, moveFolderBy, movePresetStepById, movePresetToFolderById, moveToFolderWithUndo, newPreset, planSlotForPreset, renameFolder, renamePresetById, useInChats, type PresetListResult } from '../../ts/studio/presetListActions'
     import { readCollapsedFolders, writeCollapsedFolders } from '../../ts/studio/presetFolderCollapse'
     import { registerStudioPresetSheetBack } from '../../ts/studio/studioBack.svelte'
     import { selectStudioNode, setStudioPresetSheetOpen } from '../../ts/studio/studioScreen.svelte'
@@ -27,12 +27,15 @@
     let message = $state<string | null>(null)
     let busy = $state(false)
     let moveId = $state<string | null>(null)
+    let slotId = $state<string | null>(null)
+    let pendingSlot = $state<{ id: string, n: number } | null>(null)
     let folderFormOpen = $state(false)
     let folderText = $state('')
     let collapsed = $state(readCollapsedFolders())
     let closeButton = $state<HTMLButtonElement | undefined>()
 
     const presets = $derived(DBState.db.botPresets ?? [])
+    const pendingPlan = $derived(pendingSlot === null ? null : planSlotForPreset(pendingSlot.id, pendingSlot.n))
     // Each row carries its id from the render that built it, so a tap before the next render still names its own preset.
     // The section key is the folder id (a repeat of an id, which only damaged data has, gets its position), so a folder's open
     // menu moves with the folder when the folders are reordered or one is deleted.
@@ -57,6 +60,7 @@
         menuId = null
         renamingId = null
         moveId = null
+        slotId = null
     }
 
     // A refused action says why; a done one clears the line. A cancelled delete and the only-preset refusal were
@@ -124,6 +128,7 @@
     function toggleMenu(id: string): void {
         renamingId = null
         moveId = null
+        slotId = null
         menuId = menuId === id ? null : id
     }
 
@@ -169,7 +174,47 @@
     }
 
     function moveTo(id: string, folderId: string | undefined): void {
-        noted(movePresetToFolderById(id, folderId))
+        noted(moveToFolderWithUndo(id, folderId))
+        reset()
+    }
+
+    // A slot another preset holds opens the swap confirm instead of writing; the swap is planned again, by id, when it is pressed.
+    function chooseSlot(id: string, n: number | null): void {
+        const own = slotBadgeFor(DBState.db.botPresets, presetIndexById(DBState.db.botPresets, id))
+        const planned = planSlotForPreset(id, n, n === null ? own : undefined)
+        reset()
+        if (!planned.ok) {
+            message = language.studioRefusalPresetGone
+            return
+        }
+        message = null
+        if (n !== null && planned.holder !== null) {
+            pendingSlot = { id, n }
+            return
+        }
+        commitSlotPlan(planned.plan)
+    }
+
+    function swapSlot(): void {
+        const draft = pendingSlot
+        pendingSlot = null
+        if (!draft) return
+        const planned = planSlotForPreset(draft.id, draft.n)
+        if (!planned.ok) {
+            message = language.studioRefusalPresetGone
+            return
+        }
+        message = null
+        commitSlotPlan(planned.plan)
+    }
+
+    function step(id: string, direction: -1 | 1): void {
+        noted(movePresetStepById(id, direction))
+        reset()
+    }
+
+    function dropOn(targetId: string, sourceId: string): void {
+        noted(dropPresetOnById(sourceId, targetId))
         reset()
     }
 
@@ -201,6 +246,16 @@
         {#if message}
             <p role="status" data-part="studio-preset-message" class="text-sm text-draculared">{message}</p>
         {/if}
+        {#if pendingPlan && pendingPlan.ok && pendingPlan.holder}
+            <div data-part="studio-preset-slot-conflict" class="flex flex-col gap-1 rounded-md border border-draculared p-2 text-sm">
+                <span class="text-textcolor">{language.settingsShellHkConflict(pendingPlan.holder.name)}</span>
+                <span class="text-textcolor2">{language.settingsShellHkSwapOutcome(pendingPlan.holder.name, pendingPlan.moverSlot !== undefined ? language.settingsShellHkPresetSlot(pendingPlan.moverSlot) : language.settingsShellHkSlotNone)}</span>
+                <div class="flex gap-2">
+                    <button type="button" data-part="studio-preset-slot-swap" class={buttonClass} onclick={swapSlot}>{language.settingsShellHkSwap}</button>
+                    <button type="button" data-part="studio-preset-slot-cancel" class={buttonClass} onclick={() => { pendingSlot = null }}>{language.cancel}</button>
+                </div>
+            </div>
+        {/if}
         <ul data-part="studio-preset-list" class="flex flex-col gap-1">
             {#each sections as section, at (section.key)}
                 {#if section.folder}
@@ -224,7 +279,7 @@
                     <li data-part="studio-preset-loose-heading" class="px-2 pt-1 text-sm text-textcolor2">{language.studioPresetNoFolder}</li>
                 {/if}
                 {#if !section.folder || !collapsed.has(section.folder.id)}
-                    {#each section.rows as { index, id } (index)}
+                    {#each section.rows as { index, id }, rowAt (index)}
                         <StudioPresetRow
                             {id}
                             active={index === DBState.db.botPresetsId}
@@ -237,6 +292,9 @@
                             {folders}
                             folderId={section.folder?.id}
                             moveOpen={moveId === id}
+                            slotOpen={slotId === id}
+                            first={rowAt === 0}
+                            last={rowAt === section.rows.length - 1}
                             onopen={() => open(id)}
                             onmenu={() => toggleMenu(id)}
                             onuse={() => use(id)}
@@ -244,6 +302,11 @@
                             onrename={() => startRename(id)}
                             onmoveopen={() => { moveId = id }}
                             onmoveto={(target) => moveTo(id, target)}
+                            onslotopen={() => { slotId = id }}
+                            onslot={(n) => chooseSlot(id, n)}
+                            onup={() => step(id, -1)}
+                            ondown={() => step(id, 1)}
+                            ondropon={(sourceId) => dropOn(id, sourceId)}
                             ondelete={() => void remove(id)}
                             onrenametext={(text) => { renameText = text }}
                             onrenamesubmit={() => void rename(id)}

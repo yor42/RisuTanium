@@ -108,6 +108,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 import { language } from 'src/lang'
 import { assignPresetIds } from 'src/ts/storage/presetMeta'
 import { studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { resetToastHostForTests, toastHost } from 'src/ts/toast/toastHost.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 import StudioPresetListSheet from './StudioPresetListSheet.svelte'
 
@@ -470,5 +471,121 @@ describe('folders in the sheet (stage b)', () => {
             spy.mockRestore()
             set.mockRestore()
         }
+    })
+})
+
+describe('slots and reorder in the sheet (stage c)', () => {
+    const slotBadge = (target: HTMLElement, name: string) => row(target, name).querySelector('[data-part="studio-preset-slot"]')?.textContent ?? null
+    const chooseSlot = async (target: HTMLElement, name: string, n: number | 'none') => {
+        await menuAction(target, name, 'studio-preset-slot-menu')
+        await click(row(target, name).querySelector(n === 'none' ? '[data-part="studio-preset-slot-none"]' : `[data-part="studio-preset-slot-choice"][data-slot="${n}"]`))
+    }
+    const rowOrder = (target: HTMLElement) => [...target.querySelectorAll('[data-part="studio-preset-row"] [data-part="studio-preset-open"] span:first-child')].map((el) => el.textContent)
+
+    beforeEach(() => { resetToastHostForTests() })
+
+    test('L-c1: the badge shows only on the preset the Ctrl+n resolver picks', async () => {
+        installDb(['P0', 'P1', 'P2'], 0)
+        DBState.db.botPresets[1].slot = 3
+        DBState.db.botPresets[2].slot = 3
+        const target = await mountSheet()
+        expect([slotBadge(target, 'P0'), slotBadge(target, 'P1'), slotBadge(target, 'P2')]).toEqual([null, '3', null])
+    })
+
+    test('a free slot is assigned from the row menu, the badge appears and the Undo toast is delivered while the sheet is open (L-c2)', async () => {
+        installDb(['P0', 'P1'], 0)
+        const target = await mountSheet()
+        await chooseSlot(target, 'P1', 5)
+        expect(slotBadge(target, 'P1')).toBe('5')
+        expect(toastHost.suspended).toBe(false)
+        expect(toastHost.visible.length).toBe(1)
+    })
+
+    test('L-c2: a slot another preset holds opens the swap confirm; cancel writes nothing, Swap swaps as the Hotkeys plan does', async () => {
+        installDb(['P0', 'P1'], 0)
+        DBState.db.botPresets[0].slot = 1
+        DBState.db.botPresets[1].slot = 2
+        const target = await mountSheet()
+        await chooseSlot(target, 'P1', 1)
+        const panel = target.querySelector('[data-part="studio-preset-slot-conflict"]')!
+        expect(panel.textContent).toContain(language.settingsShellHkConflict('P0'))
+        expect(panel.textContent).toContain(language.settingsShellHkSwapOutcome('P0', language.settingsShellHkPresetSlot(2)))
+        await click(target.querySelector('[data-part="studio-preset-slot-cancel"]'))
+        expect(DBState.db.botPresets.map((p) => p.slot)).toEqual([1, 2])
+        expect(target.querySelector('[data-part="studio-preset-slot-conflict"]')).toBeNull()
+        expect(toastHost.visible.length).toBe(0)
+        await chooseSlot(target, 'P1', 1)
+        await click(target.querySelector('[data-part="studio-preset-slot-swap"]'))
+        expect(DBState.db.botPresets.map((p) => p.slot)).toEqual([2, 1])
+        expect(toastHost.visible.length).toBe(1)
+    })
+
+    test('L-c2: a preset deleted while the swap confirm is open closes the confirm and writes nothing for it', async () => {
+        installDb(['P0', 'P1', 'P2'], 0)
+        DBState.db.botPresets[0].slot = 1
+        DBState.db.botPresets[1].slot = 2
+        const target = await mountSheet()
+        await chooseSlot(target, 'P1', 1)
+        DBState.db.botPresets = DBState.db.botPresets.filter((p) => p.name !== 'P1')
+        flushSync()
+        await settle()
+        expect(target.querySelector('[data-part="studio-preset-slot-conflict"]')).toBeNull()
+        expect(DBState.db.botPresets.map((p) => p.slot)).toEqual([1, undefined])
+    })
+
+    test('L-c3: None clears the shown slot', async () => {
+        installDb(['P0', 'P1'], 0)
+        DBState.db.botPresets[1].slot = 4
+        const target = await mountSheet()
+        await chooseSlot(target, 'P1', 'none')
+        expect(DBState.db.botPresets[1].slot).toBeUndefined()
+        expect(slotBadge(target, 'P1')).toBeNull()
+    })
+
+    test('L-c4: Move up and Move down reorder the list; the first row cannot go up', async () => {
+        installDb(['P0', 'P1', 'P2'], 1)
+        const target = await mountSheet()
+        await click(row(target, 'P0').querySelector('[data-part="studio-preset-menu-button"]'))
+        expect(row(target, 'P0').querySelector<HTMLButtonElement>('[data-part="studio-preset-up"]')!.disabled).toBe(true)
+        await menuAction(target, 'P2', 'studio-preset-up')
+        expect(rowOrder(target)).toEqual(['P0', 'P2', 'P1'])
+        expect(DBState.db.botPresets[DBState.db.botPresetsId].name).toBe('P1')
+        await menuAction(target, 'P0', 'studio-preset-down')
+        expect(rowOrder(target)).toEqual(['P2', 'P0', 'P1'])
+    })
+
+    test('L-c4: dropping a dragged handle on another row moves it there, same as the steps', async () => {
+        installDb(['P0', 'P1', 'P2'], 0)
+        const target = await mountSheet()
+        const store = new Map<string, string>()
+        const dataTransfer = { types: ['application/x-risu-studio-preset'], setData: (k: string, v: string) => { store.set(k, v) }, getData: (k: string) => store.get(k) ?? '' }
+        const start = new Event('dragstart', { bubbles: true }); Object.assign(start, { dataTransfer })
+        row(target, 'P0').querySelector('[data-part="studio-preset-drag"]')!.dispatchEvent(start)
+        const drop = new Event('drop', { bubbles: true, cancelable: true }); Object.assign(drop, { dataTransfer })
+        row(target, 'P2').dispatchEvent(drop)
+        await settle()
+        expect(rowOrder(target)).toEqual(['P1', 'P2', 'P0'])
+        expect(toastHost.visible.length).toBe(1)
+    })
+
+    test('the Undo toast of a reorder restores the order', async () => {
+        installDb(['P0', 'P1', 'P2'], 0)
+        const target = await mountSheet()
+        await menuAction(target, 'P2', 'studio-preset-up')
+        await toastHost.activate(toastHost.visible[0].id)
+        await settle()
+        expect(rowOrder(target)).toEqual(['P0', 'P1', 'P2'])
+    })
+
+    test('a move to a folder offers Undo that puts the preset back', async () => {
+        installDb(['P0', 'P1'], 0)
+        DBState.db.presetFolders = [{ id: 'fa', name: 'Alpha' }]
+        const target = await mountSheet()
+        await menuAction(target, 'P1', 'studio-preset-move')
+        await click(row(target, 'P1').querySelector('[data-part="studio-preset-move-to"][data-folder-id="fa"]'))
+        expect(DBState.db.botPresets[1].folderId).toBe('fa')
+        await toastHost.activate(toastHost.visible[0].id)
+        await settle()
+        expect(DBState.db.botPresets[1].folderId).toBeUndefined()
     })
 })

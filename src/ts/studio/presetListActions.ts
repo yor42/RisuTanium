@@ -4,8 +4,10 @@ import { prebuiltPresets } from '../process/templates/templates'
 import { safeStructuredClone } from '../polyfill'
 import { changeToPreset, copyPreset } from '../storage/database.svelte'
 import { cutFolderName } from '../storage/presetBundle'
-import { newPresetFromTemplate, presetIndexById, removePresetKeepingActive } from '../storage/presetListOps'
-import { createPresetFolder, deletePresetFolder, movePresetFolder, movePresetToFolder, renamePresetFolder } from '../storage/presetMeta'
+import { movePresetById, newPresetFromTemplate, presetIndexById, presetOrderIds, removePresetKeepingActive, restorePresetOrder, stepTargetIndex, undoFolderMove } from '../storage/presetListOps'
+import { applySlotPlan, createPresetFolder, deletePresetFolder, movePresetFolder, movePresetToFolder, planSlotAssign, renamePresetFolder } from '../storage/presetMeta'
+import { slotUndoAction } from '../setting/hotkeyPage'
+import { postUndoToast, type UndoAction } from '../toast/toastHost.svelte'
 import { DBState } from '../stores.svelte'
 import { presetOwnerKey } from './edit/presetTarget'
 import type { StudioResult } from './history/ownerHistory.svelte'
@@ -148,4 +150,89 @@ export function moveFolderBy(id: string, step: -1 | 1): PresetListResult {
     const to = at + step
     if (to < 0 || to >= folders.length) return { ok: true, id }
     return movePresetFolder(DBState.db, id, to) ? { ok: true, id } : FOLDER_GONE
+}
+
+const undoTexts = () => ({ undone: language.studioPresetUndone, refused: language.studioPresetUndoRefused, failed: language.studioPresetUndoFailed })
+
+let undoCounter = 0
+
+/** A toast Undo that runs `revert` while the list is as the change left it (`revert` returns false when it is not). */
+function listUndoAction(revert: () => boolean): UndoAction {
+    const texts = undoTexts()
+    return {
+        id: 'preset-list:' + (++undoCounter),
+        failedText: texts.failed,
+        run: () => revert() ? { ok: true, text: texts.undone } : { ok: false, text: texts.refused, after: 'close' },
+    }
+}
+
+function postListUndo(text: string, revert: () => boolean): void {
+    postUndoToast({ text, actionLabel: language.uiCommon.undo, action: listUndoAction(revert) })
+}
+
+/** Moves the preset in the list to the insertion position `toIndex` and offers Undo; a move that changes nothing posts none. */
+function moveWithUndo(id: string, toIndex: number): PresetListResult {
+    const db = DBState.db
+    const before = presetOrderIds(db.botPresets)
+    if (!movePresetById(db, id, toIndex)) return presetIndexById(db.botPresets, id) === -1 ? GONE : { ok: true, id }
+    const after = presetOrderIds(db.botPresets)
+    postListUndo(language.studioPresetReordered, () => restorePresetOrder(DBState.db, before, after))
+    return { ok: true, id }
+}
+
+/** Move up or down past the neighbouring preset of the same folder section; at the end of the section nothing happens. */
+export function movePresetStepById(id: string, step: -1 | 1): PresetListResult {
+    if (presetIndexById(DBState.db.botPresets, id) === -1) return GONE
+    const to = stepTargetIndex(DBState.db, id, step)
+    return to === null ? { ok: true, id } : moveWithUndo(id, to)
+}
+
+/** Drag and drop: the dragged preset takes the place of the preset it was dropped on. Both ids resolve now. */
+export function dropPresetOnById(id: string, targetId: string): PresetListResult {
+    const from = presetIndexById(DBState.db.botPresets, id)
+    const target = presetIndexById(DBState.db.botPresets, targetId)
+    if (from === -1 || target === -1) return GONE
+    return moveWithUndo(id, from < target ? target + 1 : target)
+}
+
+/** `movePresetToFolderById` with a toast Undo that refuses once the preset's folder was changed again. */
+export function moveToFolderWithUndo(presetId: string, folderId: string | undefined): PresetListResult {
+    const presets = DBState.db.botPresets
+    const at = presetIndexById(presets, presetId)
+    const before = at === -1 ? undefined : presets[at].folderId
+    const result = movePresetToFolderById(presetId, folderId)
+    if (result.ok && before !== folderId) {
+        const step = { id: presetId, before, after: folderId }
+        postListUndo(language.studioPresetMovedToFolder, () => undoFolderMove(DBState.db, step))
+    }
+    return result
+}
+
+/** What assigning slot `n` to the preset would do: the plan, and the preset that holds the slot now when it is another. */
+export type SlotAssignment =
+    | { ok: true; plan: ReturnType<typeof planSlotAssign>; holder: { id: string; name: string } | null; moverSlot: number | undefined }
+    | { ok: false; reason: 'gone' }
+
+/** Plans slot `n` (or clearing it when `n` is null for the slot `clearSlot`) for the preset that holds `id`. */
+export function planSlotForPreset(id: string, n: number | null, clearSlot?: number): SlotAssignment {
+    const presets = DBState.db.botPresets
+    const at = presetIndexById(presets, id)
+    if (at === -1) return { ok: false, reason: 'gone' }
+    if (n === null) {
+        return { ok: true, plan: clearSlot === undefined ? [] : planSlotAssign(presets, clearSlot, null), holder: null, moverSlot: presets[at].slot }
+    }
+    const holderIndex = presets.findIndex((preset, index) => index !== at && preset?.slot === n)
+    const holder = holderIndex === -1 ? null : { id: presets[holderIndex].id ?? '', name: presets[holderIndex].name }
+    return { ok: true, plan: planSlotAssign(presets, n, at), holder, moverSlot: presets[at].slot }
+}
+
+/** Writes a slot plan and offers the Hotkeys page's Undo (reused unchanged). False, writing nothing, when it is empty or a preset is gone. */
+export function commitSlotPlan(plan: ReturnType<typeof planSlotAssign>): boolean {
+    if (plan.length === 0 || !applySlotPlan(DBState.db.botPresets, plan)) return false
+    postUndoToast({
+        text: language.settingsShellHkSlotSet,
+        actionLabel: language.uiCommon.undo,
+        action: slotUndoAction(() => DBState.db.botPresets ?? [], plan, { undone: language.settingsShellHkUndone, refused: language.settingsShellHkUndoRefused, failed: language.settingsShellHkUndoFailed }),
+    })
+    return true
 }
